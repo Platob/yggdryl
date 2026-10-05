@@ -774,7 +774,6 @@ fn a_null_column_holds_no_byte_so_a_spill_leaves_it_resident_and_readable() {
     assert_same_rows("null", &column, &after);
 }
 
-#[cfg(unix)]
 #[test]
 fn a_spill_under_a_stated_folder_leaves_no_file_in_it() -> yggdryl::Result<()> {
     let dir = std::env::temp_dir().join(format!("yggdryl-serie-spill-{}", std::process::id()));

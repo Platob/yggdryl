@@ -128,6 +128,25 @@ impl IdKey {
         spelled(&self.src, &self.kind).cmp(spelled(src, kind))
     }
 
+    /// The order of this key's spelling against `text`, compared without
+    /// building it.
+    pub(crate) fn cmp_text(&self, text: &str) -> Ordering {
+        match self.known() {
+            Some(known) => known.cmp(text),
+            None => spelled(&self.src, &self.kind).cmp(text.bytes()),
+        }
+    }
+
+    /// The order of this key's spelling under `name` and a dot -
+    /// `securityids.ullink:isin`, how a market-data row files it as side
+    /// information - against `text`, compared without building it.
+    pub(crate) fn cmp_text_under(&self, name: &str, text: &str) -> Ordering {
+        name.bytes()
+            .chain(std::iter::once(b'.'))
+            .chain(spelled(&self.src, &self.kind))
+            .cmp(text.bytes())
+    }
+
     /// The key a FIX entry's name or a bridge's field names, inferred: its
     /// explicit `src:type`, else a whole name a security type is spelled by
     /// from the base source, else the type an identifier name at the end of

@@ -1851,7 +1851,7 @@ fn digest_failure(entry: &ZipEntry, digest: u32) -> Error {
 /// implementation that answers none at all.
 fn unlocated() -> &'static Url {
     static UNLOCATED: std::sync::LazyLock<Url> =
-        std::sync::LazyLock::new(|| crate::holder::memory_identity(0, std::ptr::null::<u8>()));
+        std::sync::LazyLock::new(|| crate::holder::memory_identity(0, 0));
     &UNLOCATED
 }
 

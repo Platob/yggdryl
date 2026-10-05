@@ -712,56 +712,55 @@ impl JsIOBase {
         Self::over_fs(env, &filesystem, &path, uri)
     }
 
-    /// Resolve a filesystem URI once through the core URI boundary.
+    /// Hold the resource `uri` names, on the store its scheme selects, under
+    /// that store's properties.
     ///
-    /// Local URIs use the native local Arrow filesystem implementation. Arrow
-    /// JS supplies no S3 backend, so a valid S3 URI reports `Unsupported`
-    /// without exposing credentials; callers with an S3 implementation bind it
-    /// explicitly with [`Self::from_fs`].
+    /// The core's one location door, `Holder::from_url`, for every scheme
+    /// this build holds - a `file:` URL the local role, an object-store URL
+    /// the native store, an `http:` one the `GET` of that resource, an
+    /// `s3tables:` one the catalog object it names - with no file system
+    /// handler built on the way; the constructor is this door under no
+    /// properties, and `uri` is read as the constructor reads text. An
+    /// object-store location's query states the store's properties too, in
+    /// the names its reader takes -
+    /// `s3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1`
+    /// - which the core reads beneath `options` and takes off the location
+    /// the handle reports, refusing a parameter no store reads by name.
+    /// `options` is an object of the store's properties in any vocabulary
+    /// the core reads - this crate's own names, `PyIceberg`'s, `PyArrow`'s,
+    /// each store's environment names, the HTTP options' - beside `media_type`
+    /// and `codec`, which every location takes, each winning over the
+    /// query's: a string, a boolean or a number is the property's text,
+    /// `null` leaves it unstated, and any other value is refused by name. A
+    /// property no store reads is ignored, as the core ignores it, and a
+    /// scheme no backend of this build holds is refused by that scheme.
     #[napi(factory)]
     pub fn from_uri(
         uri: String,
         options: Option<std::collections::HashMap<String, serde_json::Value>>,
     ) -> Result<Self> {
-        let options = options
-            .map(|options| {
-                options
-                    .into_iter()
-                    .map(|(key, value)| {
-                        let value = match value {
-                            serde_json::Value::String(value) => value,
-                            serde_json::Value::Bool(value) => value.to_string(),
-                            serde_json::Value::Number(value) => value.to_string(),
-                            _ => {
-                                return Err(napi_error(format!(
-                                    "filesystem URI option {key:?} must be a string, boolean, or number"
-                                )));
-                            }
-                        };
-                        Ok((key, value))
-                    })
-                    .collect::<Result<std::collections::BTreeMap<_, _>>>()
-            })
-            .transpose()?;
-        let resolved = yggdryl::fs::ResolvedFileSystemUri::from_uri(uri, options.as_ref())
-            .map_err(napi_error)?;
-        match resolved.filesystem() {
-            yggdryl::fs::ResolvedFileSystem::Local => {
-                let filesystem: std::sync::Arc<dyn yggdryl::fs::FileSystem> =
-                    std::sync::Arc::new(yggdryl::fs::LocalFileSystem::new());
-                let bound = yggdryl::fs::BoundLocation::new(
-                    filesystem,
-                    resolved.path(),
-                    Some(resolved.uri().to_owned()),
-                )
-                .map_err(napi_error)?;
-                Ok(Self::from_core(yggdryl::fs::located(bound)))
-            }
-            yggdryl::fs::ResolvedFileSystem::S3(_) => Err(napi_error(yggdryl::Error::unsupported(
-                "S3 filesystem URI",
-                "Arrow JS",
-            ))),
+        let identifier = yggdryl::Uri::from_str(&uri).map_err(napi_error)?;
+        // Applied in name order: a JavaScript object's key order does not
+        // survive the map, and two spellings of one knob must meet the store
+        // in one order; the core reads the location's query beneath them.
+        let mut properties = std::collections::BTreeMap::new();
+        for (name, value) in options.into_iter().flatten() {
+            let text = match value {
+                serde_json::Value::Null => continue,
+                serde_json::Value::String(text) => text,
+                serde_json::Value::Bool(flag) => flag.to_string(),
+                serde_json::Value::Number(number) => number.to_string(),
+                serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+                    return Err(napi_error(format!(
+                        "location property {name:?} must be a string, boolean, number, or null"
+                    )));
+                }
+            };
+            properties.insert(name, text);
         }
+        Holder::from_url(&identifier, properties)
+            .map(Self::from_core)
+            .map_err(napi_error)
     }
 
     /// Describe an in-memory resource holding `data`.

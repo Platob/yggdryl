@@ -559,6 +559,266 @@ mod positional {
     }
 
     #[test]
+    fn move_into_moves_the_bytes_and_leaves_no_source() {
+        use yggdryl::local::{LocalFile, LocalFolder};
+
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+        root.push(format!("yggdryl-transfer-move-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+
+        // Local to local: neither side is bound, so the move is the copy then
+        // the removal, and the source is gone once the target holds the value.
+        let mut source = LocalFile::new(root.join("source.csv")).unwrap();
+        source.write_all_bytes(b"symbol,price\nAAPL,1\n").unwrap();
+        let mut target = LocalFile::new(root.join("target.csv")).unwrap();
+        target.write_all_bytes(b"stale contents").unwrap();
+        let moved = source.move_into(&mut target).unwrap();
+        assert_eq!(moved, 20);
+        assert_eq!(target.read_all_bytes().unwrap(), b"symbol,price\nAAPL,1\n");
+        assert!(!source.exists());
+        assert!(!root.join("source.csv").exists());
+
+        // Local to buffer: the same rule whatever the pair, the media type
+        // travelling with the bytes.
+        let mut buffer = Buffer::from_bytes(b"stale".to_vec());
+        let moved = target.move_into(&mut buffer).unwrap();
+        assert_eq!(moved, 20);
+        assert_eq!(buffer.as_slice(), b"symbol,price\nAAPL,1\n");
+        assert_eq!(buffer.media_type().base(), &MimeType::CSV);
+        assert!(!target.exists());
+        assert!(!root.join("target.csv").exists());
+
+        // And back: a buffer moves into a local file and holds nothing after.
+        let mut landed = LocalFile::new(root.join("landed.csv")).unwrap();
+        let moved = buffer.move_into(&mut landed).unwrap();
+        assert_eq!(moved, 20);
+        assert_eq!(landed.read_all_bytes().unwrap(), b"symbol,price\nAAPL,1\n");
+        assert_eq!(buffer.size(), 0);
+
+        LocalFolder::new(&root).unwrap().remove(true).unwrap();
+    }
+
+    #[test]
+    fn a_move_onto_its_own_location_keeps_the_bytes() {
+        use yggdryl::holder::Holder;
+        use yggdryl::holder::counted::Counted;
+        use yggdryl::local::{LocalFile, LocalFolder};
+
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+        root.push(format!("yggdryl-transfer-self-move-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+
+        // Two handles on one location: a rename onto itself is a no-op, so the
+        // move moves nothing, answers the value's size and leaves it there.
+        let mut source = LocalFile::new(root.join("self.csv")).unwrap();
+        source.write_all_bytes(b"symbol,price\nAAPL,1\n").unwrap();
+        let mut target = LocalFile::new(root.join("self.csv")).unwrap();
+        assert_eq!(source.move_into(&mut target).unwrap(), 20);
+        assert_eq!(target.read_all_bytes().unwrap(), b"symbol,price\nAAPL,1\n");
+        assert!(source.exists());
+        assert_eq!(
+            std::fs::read(root.join("self.csv")).unwrap(),
+            b"symbol,price\nAAPL,1\n"
+        );
+
+        // A handle that answers no local URL - a wrapper here, an object on
+        // a store - is refused by the location instead: one spelling may
+        // name two stores, and a copy onto itself would end in the removal.
+        let mut source = Counted::new(Holder::file(root.join("self.csv")).unwrap());
+        let mut target = Counted::new(Holder::file(root.join("self.csv")).unwrap());
+        let error = source.move_into(&mut target).unwrap_err();
+        assert!(matches!(error, yggdryl::Error::Conflict { .. }), "{error}");
+        assert!(error.to_string().contains("self.csv"), "{error}");
+        assert_eq!(
+            std::fs::read(root.join("self.csv")).unwrap(),
+            b"symbol,price\nAAPL,1\n"
+        );
+
+        LocalFolder::new(&root).unwrap().remove(true).unwrap();
+    }
+
+    #[test]
+    fn a_move_of_an_absent_source_refuses_by_name_and_leaves_the_target() {
+        use yggdryl::holder::Holder;
+        use yggdryl::local::{LocalFile, LocalFolder};
+
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+        root.push(format!(
+            "yggdryl-transfer-absent-move-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+
+        // Nothing at the source: refused by name before the target is read or
+        // written, never an empty value copied over it.
+        let mut source = LocalFile::new(root.join("missing.csv")).unwrap();
+        let mut target = LocalFile::new(root.join("target.csv")).unwrap();
+        target.write_all_bytes(b"kept").unwrap();
+        let error = source.move_into(&mut target).unwrap_err();
+        assert!(error.is_absent(), "{error}");
+        assert!(error.to_string().contains("missing.csv"), "{error}");
+        assert_eq!(target.read_all_bytes().unwrap(), b"kept");
+        assert_eq!(std::fs::read(root.join("target.csv")).unwrap(), b"kept");
+
+        // The same through holders, the pair that would otherwise rename.
+        let mut source = Holder::file(root.join("missing.csv")).unwrap();
+        let mut target = Holder::file(root.join("target.csv")).unwrap();
+        let error = source.move_into(&mut target).unwrap_err();
+        assert!(error.is_absent(), "{error}");
+        assert_eq!(target.read_all_bytes().unwrap(), b"kept");
+        assert!(!root.join("missing.csv").exists());
+
+        LocalFolder::new(&root).unwrap().remove(true).unwrap();
+    }
+
+    #[test]
+    fn a_local_move_between_holders_is_a_rename() {
+        use std::sync::Arc;
+        use std::time::{Duration, SystemTime};
+
+        use yggdryl::holder::Holder;
+        use yggdryl::holder::counted::Counted;
+        use yggdryl::local::LocalFolder;
+
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+        root.push(format!("yggdryl-transfer-rename-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+
+        // A payload past one transfer chunk, stamped with an instant no write
+        // of today could produce: a rename keeps the file and its instant
+        // where a copy would write a new file stamped now.
+        let payload: Vec<u8> = (0..4 << 20).map(|index| (index % 251) as u8).collect();
+        let stamped = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000_000);
+        let mut source = Holder::file(root.join("source.bin")).unwrap();
+        source.write_all_bytes(&payload).unwrap();
+        source.close().unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(root.join("source.bin"))
+            .unwrap()
+            .set_modified(stamped)
+            .unwrap();
+
+        // Into a folder that is not there yet: the move creates it, as a
+        // write at the destination would.
+        let landed = root.join("moved").join("target.bin");
+        let mut target = Holder::file(&landed).unwrap();
+        let moved = source.move_into(&mut target).unwrap();
+        assert_eq!(moved, payload.len() as u64);
+        assert_eq!(
+            std::fs::metadata(&landed).unwrap().modified().unwrap(),
+            stamped,
+            "a rename keeps the file's own instant"
+        );
+        assert_eq!(target.read_all_bytes().unwrap(), payload);
+        assert!(!source.exists());
+        assert!(!root.join("source.bin").exists());
+
+        // The location roles answer the same: a path onto a path renames, and
+        // the target handle reads what landed under it.
+        let mut source = Holder::local(&landed).unwrap();
+        let again = root.join("again.bin");
+        let mut target = Holder::local(&again).unwrap();
+        let moved = source.move_into(&mut target).unwrap();
+        assert_eq!(moved, payload.len() as u64);
+        assert_eq!(
+            std::fs::metadata(&again).unwrap().modified().unwrap(),
+            stamped
+        );
+        assert_eq!(target.read_all_bytes().unwrap(), payload);
+        assert!(!source.exists());
+        assert!(!landed.exists());
+
+        // A record configuration over local storage passes the bytes through
+        // unchanged, so two of them rename too: the file keeps its instant.
+        let rows = root.join("rows.arrows");
+        let mut source = Holder::file(&rows).unwrap().into_declared_media();
+        assert!(matches!(source, Holder::Media(_)), "{source:?}");
+        source.write_all_bytes(&payload).unwrap();
+        source.close().unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&rows)
+            .unwrap()
+            .set_modified(stamped)
+            .unwrap();
+        let shelved = root.join("shelved").join("rows.arrows");
+        let mut target = Holder::file(&shelved).unwrap().into_declared_media();
+        assert!(matches!(target, Holder::Media(_)), "{target:?}");
+        assert_eq!(source.move_into(&mut target).unwrap(), payload.len() as u64);
+        assert_eq!(
+            std::fs::metadata(&shelved).unwrap().modified().unwrap(),
+            stamped,
+            "a record configuration over local storage renames"
+        );
+        assert!(!rows.exists());
+
+        // A cache or a counting wrapper over a local target is never renamed
+        // beneath: it answers no local URL, so the move is the copy then the
+        // removal, every byte written through the wrapper where its tally
+        // sees it, and the file that lands is a new one stamped now.
+        let mut source = Holder::local(&again).unwrap();
+        let wrapped = root.join("wrapped.bin");
+        let mut target = Counted::new(Holder::file(&wrapped).unwrap());
+        let calls = Arc::clone(target.calls());
+        assert_eq!(source.move_into(&mut target).unwrap(), payload.len() as u64);
+        let tally = calls.snapshot().to_string();
+        assert!(tally.contains("pwrite="), "{tally}");
+        assert_eq!(std::fs::read(&wrapped).unwrap(), payload);
+        assert_ne!(
+            std::fs::metadata(&wrapped).unwrap().modified().unwrap(),
+            stamped,
+            "a copy lands a new file"
+        );
+        assert!(!again.exists());
+
+        LocalFolder::new(&root).unwrap().remove(true).unwrap();
+    }
+
+    #[test]
+    fn a_move_refuses_a_container_before_touching_either_side() {
+        use yggdryl::Error;
+        use yggdryl::local::LocalFolder;
+
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+        root.push(format!(
+            "yggdryl-transfer-move-container-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.csv"), b"symbol\nAAPL\n").unwrap();
+
+        let mut folder = LocalFolder::new(&root).unwrap();
+        let mut target = Buffer::from_bytes(b"kept".to_vec());
+        let error = folder.move_into(&mut target).unwrap_err();
+        assert!(
+            matches!(
+                error,
+                Error::NotAtomic {
+                    operation: "move",
+                    kind: "directory",
+                    ..
+                }
+            ),
+            "{error}"
+        );
+        // Refused before anything moved: the folder's leaf and the target's
+        // bytes are what they were.
+        assert_eq!(
+            std::fs::read(root.join("a.csv")).unwrap(),
+            b"symbol\nAAPL\n"
+        );
+        assert_eq!(target.as_slice(), b"kept");
+
+        folder.remove(true).unwrap();
+    }
+
+    #[test]
     fn compression_round_trips_and_tracks_the_coding() {
         let payload = "symbol,price\n".repeat(500).into_bytes();
         let source = Buffer::from_bytes(payload.clone())

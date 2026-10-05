@@ -1144,16 +1144,16 @@ impl PyIcebergTable {
 
     /// The folder the table lives in.
     ///
-    /// Rebuilt from the table's own root handle rather than from its recorded
-    /// location, because a location does not say which backend it belongs to:
-    /// a table on a foreign Arrow filesystem must hand back a folder on that
-    /// filesystem, not the local path its URL happens to spell.
+    /// The table's own root holder as a container - a bridged filesystem's
+    /// folder role, an object store's client under its options, a local
+    /// directory - rather than one rebuilt from its recorded location, because
+    /// a location does not say which store holds it.
     #[getter]
     fn root(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let slf = slf.borrow();
         let table = held(&slf)?;
         let root = table.root().get().map_err(value_error)?;
-        if let Some(holder) = crate::iobase::fs_folder_holder(root) {
+        if let Some(holder) = crate::iobase::container_holder(root)? {
             return crate::iobase::describe(py, holder);
         }
         let url = root

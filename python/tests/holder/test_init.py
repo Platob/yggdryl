@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime
 import gzip as stdlib_gzip
+import io
 import os
 import pathlib
 import re
@@ -155,18 +156,36 @@ class TestDescendingTheComposition:
 class TestTheExplicitRoles:
     """Naming a role is how a caller asks for the bytes rather than the value."""
 
-    def test_a_foreign_filesystem_has_the_same_three_roles(
+    def test_a_filesystem_this_build_holds_natively_answers_its_native_roles(
         self, log: pathlib.Path
     ) -> None:
         local = pafs.LocalFileSystem()
         stored = FsPath(local, str(log))
 
-        # The role-only spelling on a bucket, for the same reason the local one
-        # exists: the stored bytes, not the value they encode.
-        assert isinstance(stored, FsPath)
+        # PyArrow's local filesystem is this machine, which the local role
+        # already holds: the three spellings answer it - the stored bytes, not
+        # the value they encode - and no Python object stays in the path.
+        assert isinstance(stored, LocalPath)
+        assert stored.filesystem is None
         assert stored.read_bytes()[:2] == b"\x1f\x8b"
-        assert isinstance(FsFile(local, str(log)), FsFile)
-        assert isinstance(FsFolder(local, str(log.parent)), FsFolder)
+        assert isinstance(FsFile(local, str(log)), LocalFile)
+        assert isinstance(FsFolder(local, str(log.parent)), LocalFolder)
+
+    def test_a_bridged_filesystem_has_the_same_three_roles(
+        self, log: pathlib.Path
+    ) -> None:
+        mock = pafs._MockFileSystem()
+        mock.create_dir("lake")
+        stored = FsPath(mock, "lake/data.txt.gz")
+
+        # The role-only spelling on a bridged filesystem, for the same reason
+        # the local one exists: the stored bytes, not the value they encode.
+        assert isinstance(stored, FsPath)
+        assert stored.filesystem is mock
+        stored.write_bytes(log.read_bytes())
+        assert stored.read_bytes()[:2] == b"\x1f\x8b"
+        assert isinstance(FsFile(mock, "lake/data.txt.gz"), FsFile)
+        assert isinstance(FsFolder(mock, "lake"), FsFolder)
 
     def test_the_stored_byte_role_skips_the_composition(
         self, log: pathlib.Path
@@ -221,18 +240,19 @@ class TestRolesReachEveryHandleACallerGets:
         assert isinstance(root.joinpath("notes.txt"), Text)
         assert isinstance(IOBase(tmp_path / "lake" / "notes.txt").parent, LocalPath)
 
-    def test_a_foreign_filesystem_composes_over_its_own_role(
+    def test_a_filesystem_composes_over_the_role_it_answers(
         self, log: pathlib.Path
     ) -> None:
         handle = IOBase.from_fs(pafs.LocalFileSystem(), str(log))
 
         assert isinstance(handle, Text)
         assert handle.read_bytes() == PLAIN
-        # The location a wrapper stands on is still the bound one, so every
-        # filesystem accessor keeps answering.
-        assert handle.path == str(log)
-        assert handle.filesystem is not None
-        assert isinstance(handle.into_handle().into_handle(), FsPath)
+        # PyArrow's local filesystem is held natively, so the composition
+        # stands on the local role: the path is the platform's own, and no
+        # filesystem object answers.
+        assert handle.path is not None and pathlib.Path(handle.path) == log
+        assert handle.filesystem is None
+        assert isinstance(handle.into_handle().into_handle(), LocalPath)
 
     def test_creating_a_container_answers_the_container(
         self, tmp_path: pathlib.Path
@@ -244,6 +264,26 @@ class TestRolesReachEveryHandleACallerGets:
         # container is a different role - and a role is what a class says.
         assert isinstance(created, LocalFolder)
         assert created.is_dir()
+
+    def test_a_handle_held_again_is_the_role_it_was(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        leaf = LocalFile(tmp_path / "trades.bin")
+        container = LocalFolder(tmp_path / "lake")
+        location = LocalPath(tmp_path / "trades.bin")
+
+        # The constructor and `joinpath()` with nothing to join hold a native
+        # handle again as the role it is, on its own store; a wrapper answers
+        # the plain handle beneath it, composed again as the name says.
+        assert isinstance(IOBase(leaf), LocalFile)
+        assert isinstance(IOBase(container), LocalFolder)
+        assert isinstance(IOBase(location), LocalPath)
+        assert isinstance(leaf.joinpath(), LocalFile)
+        composed = IOBase(tmp_path / "trades.txt.gz")
+        assert repr(IOBase(composed)) == repr(composed)
+        # A media type declared beyond what the name says travels with it.
+        leaf.media_type = "application/json"
+        assert str(IOBase(leaf).media_type) == "application/json"
 
     def test_opening_never_changes_what_a_handle_is(
         self, tmp_path: pathlib.Path
@@ -288,6 +328,24 @@ class TestWhatTheRolesRefuse:
             (tmp_path / "rows.json.gz").read_bytes()
         ) == b"{}"
         assert coded.read_bytes() == b"{}"
+
+    def test_a_wrapper_is_asked_of_the_container_beneath_it(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        composed = IOBase(tmp_path / "lake" / "trades.txt.gz")
+        assert isinstance(composed, Text)
+
+        # A wrapper presents a value; a container verb reaches the plain
+        # handle beneath it on the same store, so the directory the name
+        # spells is made, emptied and removed there.
+        made = composed.mkdir()
+        assert isinstance(made, LocalFolder)
+        assert (tmp_path / "lake" / "trades.txt.gz").is_dir()
+        (tmp_path / "lake" / "trades.txt.gz" / "part.txt").write_bytes(b"x")
+        composed.delete_dir_contents()
+        assert list((tmp_path / "lake" / "trades.txt.gz").iterdir()) == []
+        composed.delete_dir()
+        assert not (tmp_path / "lake" / "trades.txt.gz").exists()
 
     def test_a_python_subclass_of_iobase_still_answers_a_native_role(
         self, tmp_path: pathlib.Path
@@ -406,6 +464,11 @@ class TestTheObjectStoreRoles:
         assert handle.url is not None
         assert str(handle.url) == "s3://trades/lake/a%20b/part.parquet"
         assert handle.url.key == "lake/a%20b/part.parquet"
+        # The path a filesystem would take is the raw key, as the store names
+        # it: the container, one slash, the key.
+        assert handle.path == "trades/lake/a b/part.parquet"
+        assert S3Folder("trades", "lake/a b", provider="s3").path == "trades/lake/a b"
+        assert S3Path("s3://trades").path == "trades"
 
         # The same name reaches the same object through the generic role.
         assert str(S3Path("trades", "lake/a b/part.parquet", provider="s3").url) == str(handle.url)
@@ -434,6 +497,27 @@ class TestTheObjectStoreRoles:
         # base class on the way out.
         assert isinstance(located.parent, S3Folder)
         assert isinstance(IOBase("s3://trades/lake/").joinpath("part.bin"), S3Path)
+
+    def test_a_handle_held_again_keeps_its_role_on_its_own_client(self) -> None:
+        options = {"endpoint": "http://127.0.0.1:9", "anonymous": True}
+        leaf = S3File("s3://trades/lake/part.bin", options=options)
+        prefix = S3Folder("s3://trades/lake/", options=options)
+        located = S3Path("s3://trades/lake/part.bin", options=options)
+
+        # The constructor holds a native handle again on its own client: the
+        # role it was, never the location rebuilt as the generic one.
+        assert isinstance(IOBase(leaf), S3File)
+        assert isinstance(IOBase(prefix), S3Folder)
+        assert isinstance(IOBase(located), S3Path)
+        assert str(IOBase(leaf).url) == "s3://trades/lake/part.bin"
+        assert str(IOBase(prefix).url) == "s3://trades/lake/"
+        # A location that is its own container - the bucket, a trailing slash
+        # - is held again as one.
+        assert isinstance(IOBase(S3Path("s3://trades/lake/", options=options)), S3Folder)
+        assert isinstance(IOBase(S3Path("s3://trades", options=options)), S3Folder)
+        # A media type declared beyond what the name says travels with it.
+        leaf.media_type = "application/json"
+        assert str(IOBase(leaf).media_type) == "application/json"
 
     @pytest.mark.parametrize(
         ("scheme", "authority"),

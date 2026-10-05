@@ -1,4 +1,10 @@
-"""Any ``pyarrow.fs.FileSystem`` becomes a handle, and answers the contract."""
+"""Any ``pyarrow.fs.FileSystem`` becomes a handle, and answers the contract.
+
+PyArrow's own filesystems - local, S3, GCS, Azure, and a subtree over one -
+name a store this build holds itself, so they are held natively and no Python
+object stays in the path; a ``PyFileSystem`` over a handler, which is also how
+``fsspec`` arrives, and the mock are bridged.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +12,7 @@ import errno
 import gzip as stdlib_gzip
 import io
 import pathlib
+from collections.abc import Callable
 from typing import Any
 
 import pyarrow as pa
@@ -15,7 +22,16 @@ import pytest
 
 from yggdryl import HOSTNAME, IOBase, TextOptions
 from yggdryl.coding import Gzip
-from yggdryl.holder import FsPath
+from yggdryl.holder import (
+    FsFile,
+    FsFolder,
+    FsPath,
+    LocalFile,
+    LocalFolder,
+    LocalPath,
+    S3File,
+    S3Path,
+)
 from yggdryl.media import Parquet
 
 
@@ -241,13 +257,14 @@ class TestConstruction:
         # Nothing filesystem-specific leaks into the surface: the same
         # contract, with the same pathlib-shaped names. What the class says is
         # which implementation answers them - the record encoding the name
-        # declares, over the foreign filesystem it stands on.
+        # declares, over the store it stands on.
         assert isinstance(handle, IOBase)
         assert isinstance(handle, Parquet)
         assert handle.name == "trades.parquet"
         assert str(handle.media_type) == "application/vnd.apache.parquet"
-        # Descending spends the handle, so it is the last thing asked.
-        assert isinstance(handle.into_handle(), FsPath)
+        # Descending spends the handle, so it is the last thing asked: PyArrow's
+        # local filesystem is this machine, held by the local role.
+        assert isinstance(handle.into_handle(), LocalPath)
 
     def test_a_non_filesystem_first_argument_is_refused_by_name(self) -> None:
         with pytest.raises(ValueError) as failure:
@@ -264,12 +281,15 @@ class TestConstruction:
 class TestBytesAndFolders:
     """The byte and hierarchy surface, over PyArrow's own local filesystem."""
 
-    def test_positional_writes_reach_the_backend_without_a_close(
+    def test_positional_writes_publish_on_flush(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
+        # The local role stages a positional write and publishes on flush,
+        # as it does for a location named directly.
         handle = IOBase.from_fs(local, f"{root}/direct.bin")
         handle.pwrite(0, b"pend")
         handle.pwrite(4, b"ing")
+        handle.flush()
 
         assert pathlib.Path(root, "direct.bin").read_bytes() == b"pending"
 
@@ -305,7 +325,7 @@ class TestBytesAndFolders:
         parts = list(folder.glob("**/*.parquet"))
         assert len(parts) == 2
 
-        # A child still carries the filesystem, so it reads through it.
+        # A child is on the same store, so it reads through it.
         child = folder / "year=2024" / "part-0.parquet"
         assert child.read_bytes() == b"PAR1"
         assert child.parent.name == "year=2024"
@@ -321,6 +341,29 @@ class TestBytesAndFolders:
         assert absent.read_bytes() == b""
         assert absent.size() == 0
         assert not absent.exists()
+
+    def test_info_and_create_dir_answer_the_native_facts(
+        self, local: pafs.LocalFileSystem, root: str
+    ) -> None:
+        # `info` on a store held natively is the kind, size and modification
+        # time the local role answers, under the platform path.
+        leaf = IOBase.from_fs(local, f"{root}/trades.bin")
+        assert leaf.info().type == pafs.FileType.NotFound
+        leaf.write_bytes(b"AAPL")
+        leaf.close()
+        info = leaf.info()
+        assert info.type == pafs.FileType.File
+        assert info.size == 4
+        assert info.mtime_ns is not None
+        assert pathlib.Path(info.path) == pathlib.Path(root, "trades.bin")
+
+        # `create_dir` is `mkdir` on a store held natively: the parents made,
+        # the container role answered, and read back as a directory.
+        made = IOBase.from_fs(local, f"{root}/lake/year=2026").create_dir()
+        assert isinstance(made, LocalFolder)
+        assert pathlib.Path(root, "lake", "year=2026").is_dir()
+        assert made.info().type == pafs.FileType.Directory
+        assert made.info().size is None
 
 
 class TestRecords:
@@ -440,21 +483,27 @@ class TestFramedText:
             assert handler.input_stream_opens == ["logs/a.log", "logs/b.log"]
 
     def test_s3_schema_is_known_without_contacting_the_endpoint(self) -> None:
+        # Built with no timeout, which PyArrow states back as `-1`: a number
+        # it was not given, which the native client reads as no option.
         filesystem = pafs.S3FileSystem(
             anonymous=True,
             scheme="http",
             endpoint_override="127.0.0.1:9",
-            connect_timeout=0.05,
-            request_timeout=0.05,
         )
         options = TextOptions()
         options.framing = True
         options.rowheader = r"^\[(?<kind>[A-Z])\] "
         options.max_record_byte_size = 64
 
-        reader = IOBase.from_fs(filesystem, "bucket/missing.log").read_arrow_reader(
-            options=options
-        )
+        # An S3 filesystem is held natively: the core's own client, at the
+        # endpoint the filesystem was built with, under its options - and a
+        # schema the options state asks it nothing.
+        handle = IOBase.from_fs(filesystem, "bucket/missing.log")
+        assert handle.filesystem is None
+        assert handle.path == "bucket/missing.log"
+        assert str(handle.url) == "s3://bucket/missing.log"
+        assert isinstance(IOBase.from_fs(filesystem, "bucket/missing.log").into_handle(), S3Path)
+        reader = handle.read_arrow_reader(options=options)
 
         assert reader.schema.names[len(EVENT_COLUMNS) :] == [
             "body",
@@ -526,6 +575,38 @@ class TestCustomFilesystems:
         # Written through the prefix, and readable from the real path.
         assert (base / "trades" / "part-0.parquet").exists()
         assert pq.read_table(base / "trades" / "part-0.parquet").equals(table())
+        assert isinstance(handle.into_handle(), LocalPath)
+
+    def test_a_subtree_over_a_native_filesystem_redirects_under_its_base(
+        self, local: pafs.LocalFileSystem, root: str
+    ) -> None:
+        base = pathlib.Path(root, "warehouse")
+        base.mkdir()
+        subtree = pafs.SubTreeFileSystem(base.as_posix(), local)
+
+        # A subtree is its base filesystem under its base path, so a location
+        # on one over the local filesystem is the local role at the joined
+        # path, through the generic and the three explicit spellings alike.
+        handle = FsPath(subtree, "trades/part-0.bin")
+        assert isinstance(handle, LocalPath)
+        assert handle.filesystem is None
+        assert handle.path is not None
+        assert pathlib.Path(handle.path) == base / "trades" / "part-0.bin"
+        assert isinstance(FsFile(subtree, "trades/part-0.bin"), LocalFile)
+        assert isinstance(FsFolder(subtree, "trades"), LocalFolder)
+        nested = FsPath(pafs.SubTreeFileSystem("trades", subtree), "part-0.bin")
+        assert nested.path is not None
+        assert pathlib.Path(nested.path) == base / "trades" / "part-0.bin"
+
+        # A subtree over a bridged filesystem stays bridged, whole.
+        bridged = pafs.SubTreeFileSystem("lake", pafs.PyFileSystem(MemoryHandler()))
+        assert isinstance(FsPath(bridged, "part-0.bin"), FsPath)
+        assert FsPath(bridged, "part-0.bin").path == "part-0.bin"
+
+        # The caller's spelling of a bridged location has no place beside a
+        # store held natively, which spells its own.
+        with pytest.raises(ValueError, match="uri="):
+            IOBase.from_fs(subtree, "trades/part-0.bin", uri="s3://trades/part-0.bin")
 
     def test_a_compressible_name_is_stored_as_the_bytes_the_handle_codes(
         self, local: pafs.LocalFileSystem, root: str
@@ -782,24 +863,204 @@ def test_injected_path_is_opaque_and_retains_all_bound_facts() -> None:
             "bucket/key",
         ),
         ("s3://bucket.s3.eu-west-1.amazonaws.com/key", "bucket/key"),
-        ("s3://bucket/v=a%2Fb", "bucket/v=a%2Fb"),
+        # The path is the raw key the store names, which the URL escapes.
+        ("s3://bucket/v=a%2Fb", "bucket/v=a/b"),
     ],
 )
 def test_s3_uri_resolution_needs_no_network(uri: str, path: str) -> None:
+    # The core's one location door: the native store role under the options
+    # given, no filesystem object, and the credentials a URL spells - and the
+    # query that states the store's properties - taken off the location the
+    # handle reports.
     options = None if "key:secret@" in uri else {"anonymous": True}
     handle = IOBase.from_uri(uri, options=options)
-    assert isinstance(handle.filesystem, pafs.S3FileSystem)
+    assert isinstance(handle, S3Path)
+    assert handle.filesystem is None
+    assert handle.bound_uri is None and handle.masked_uri is None
     assert handle.path == path
-    assert handle.bound_uri == uri
-    assert "secret" not in repr(handle)
+    assert handle.url is not None and handle.url.scheme == uri.split(":", 1)[0]
+    assert "secret" not in repr(handle) and "secret" not in str(handle.url)
+    assert "endpoint_override" not in str(handle.url)
 
 
-def test_file_uri_resolution_binds_a_local_filesystem(tmp_path: pathlib.Path) -> None:
+def _refused_at_the_endpoint(operation: Callable[[], object]) -> None:
+    """The one request `operation` sends goes to 127.0.0.1:9 and is refused
+    there - never to a public host, never carrying a secret."""
+    with pytest.raises(OSError) as failure:
+        operation()
+    message = str(failure.value)
+    assert "amazonaws" not in message and "do-not-leak" not in message, message
+    assert "127.0.0.1:9" in message or "refus" in message.lower() or "10061" in message, message
+
+
+def test_a_location_query_states_the_store_and_a_native_handle_is_held_again(
+    tmp_path: pathlib.Path,
+) -> None:
+    uri = "s3://bucket/lake/key.bin?endpoint_override=127.0.0.1%3A9&scheme=http&region=eu-west-1"
+    handle = IOBase.from_uri(uri, access_key_id="AKIAEXAMPLE", secret_access_key="do-not-leak")
+    assert isinstance(handle, S3Path)
+    # The query is read as the store's properties and taken off the location.
+    assert str(handle.url) == "s3://bucket/lake/key.bin"
+    assert handle.path == "bucket/lake/key.bin"
+    assert "do-not-leak" not in repr(handle)
+    # The endpoint the query stated is where the first request goes.
+    _refused_at_the_endpoint(handle.read_bytes)
+
+    # A handle held again - by the constructor, by `joinpath()` with nothing
+    # to join - is the same client under the same options, never the location
+    # rebuilt under default options.
+    for again in (IOBase(handle), handle.joinpath()):
+        assert isinstance(again, S3Path)
+        assert str(again.url) == "s3://bucket/lake/key.bin"
+        assert "do-not-leak" not in repr(again) and "do-not-leak" not in str(again.url)
+        _refused_at_the_endpoint(again.read_bytes)
+
+    # A move opens the source first, at that endpoint, so a store that
+    # refuses the connection refuses the move as its own failure - never read
+    # as an absent source - naming no secret.
+    target = IOBase.from_uri(
+        "s3://bucket/lake/moved.bin?endpoint_override=127.0.0.1%3A9&scheme=http", anonymous=True
+    )
+    with pytest.raises(OSError) as failure:
+        handle.move_into(target)
+    assert not isinstance(failure.value, FileNotFoundError)
+    assert "do-not-leak" not in str(failure.value) and "amazonaws" not in str(failure.value)
+
+    # The core reads the query, so the constructor honours it too, and a
+    # parameter no store reads is refused by name before anything is held.
+    constructed = IOBase("s3://bucket/lake/key.bin?endpoint_override=127.0.0.1%3A9&scheme=http")
+    assert str(constructed.url) == "s3://bucket/lake/key.bin"
+    with pytest.raises(ValueError, match="versionId"):
+        IOBase.from_uri("s3://bucket/lake/key.bin?versionId=3")
+    # A location property is text, a flag or a number; anything else is
+    # refused by name rather than spelled by `str()`.
+    with pytest.raises(TypeError, match="region"):
+        IOBase.from_uri("s3://bucket/lake/key.bin", options={"region": ["eu-west-1"]})
+
+    # The handle a move answers is the target held again, on its own store.
+    source = IOBase.from_uri((tmp_path / "source.bin").as_uri())
+    source.write_bytes(b"moved")
+    destination = IOBase.from_uri((tmp_path / "destination.bin").as_uri())
+    returned = source.move_into(destination)
+    assert isinstance(returned, LocalPath)
+    assert returned.url == destination.url
+    assert returned.read_bytes() == b"moved"
+    assert not source.exists()
+
+
+def test_a_container_verb_on_a_native_object_reaches_its_own_endpoint() -> None:
+    filesystem = pafs.S3FileSystem(
+        access_key="AKIAEXAMPLE",
+        secret_key="do-not-leak",
+        scheme="http",
+        endpoint_override="127.0.0.1:9",
+        region="eu-west-1",
+    )
+    handle = FsFile(filesystem, "bucket/lake/part.bin")
+    assert isinstance(handle, S3File)
+    # The prefix an object's own location names, on the object's own client:
+    # the listing that empties it goes to the endpoint the filesystem was
+    # built with, not to a container rebuilt from the URL under defaults.
+    _refused_at_the_endpoint(handle.delete_dir_contents)
+    _refused_at_the_endpoint(handle.delete_dir)
+
+
+def test_a_native_path_is_the_raw_key_the_store_names() -> None:
+    filesystem = pafs.S3FileSystem(anonymous=True, scheme="http", endpoint_override="127.0.0.1:9")
+    handle = FsPath(filesystem, "bucket/lake/a b/part %.bin")
+    assert isinstance(handle, S3Path)
+    # The path is the key as the store names it; the URL is what escapes it.
+    assert handle.path == "bucket/lake/a b/part %.bin"
+    assert str(handle.url) == "s3://bucket/lake/a%20b/part%20%25.bin"
+    assert handle.parent is not None and handle.parent.path == "bucket/lake/a b"
+    assert FsFolder(filesystem, "bucket").path == "bucket"
+
+
+@pytest.mark.parametrize(
+    ("build", "stated"),
+    [
+        (lambda: pafs.S3FileSystem(anonymous=True, tls_ca_file_path="C:/nowhere/ca.pem"), "tls"),
+        (
+            lambda: pafs.S3FileSystem(anonymous=True, default_metadata={"content-type": "binary"}),
+            "s3 metadata",
+        ),
+        (
+            lambda: pafs.GcsFileSystem(target_service_account="svc@example.iam.gserviceaccount.com"),
+            "target service account",
+        ),
+        (
+            lambda: pafs.GcsFileSystem(anonymous=True, default_metadata={"content-type": "binary"}),
+            "gcs metadata",
+        ),
+        (
+            lambda: pafs.AzureFileSystem(
+                account_name="acct", account_key="a2V5", blob_storage_authority="127.0.0.1:10000"
+            ),
+            "blob authority",
+        ),
+        (
+            lambda: pafs.AzureFileSystem(
+                account_name="acct", account_key="a2V5", blob_storage_scheme="http"
+            ),
+            "blob scheme",
+        ),
+        (
+            lambda: pafs.AzureFileSystem(
+                account_name="acct", account_key="a2V5", dfs_storage_authority="127.0.0.1:10000"
+            ),
+            "dfs authority",
+        ),
+        (
+            lambda: pafs.AzureFileSystem(
+                account_name="acct", account_key="a2V5", dfs_storage_scheme="http"
+            ),
+            "dfs scheme",
+        ),
+    ],
+    ids=lambda value: value if isinstance(value, str) else "",
+)
+def test_a_filesystem_stating_what_the_native_client_cannot_read_stays_bridged(
+    build: Callable[[], pafs.FileSystem], stated: str
+) -> None:
+    try:
+        filesystem = build()
+    except TypeError as refusal:
+        # An argument this PyArrow does not have (`tls_ca_file_path` arrived
+        # after 18) states nothing to bridge, so the case has no filesystem
+        # to build; the newer leg builds it.
+        pytest.skip(f"pyarrow {pa.__version__} has no such argument: {refusal}")
+    handle = FsPath(filesystem, "bucket/key.bin")
+    # Bridged whole, as a handler is: the filesystem object answers, under
+    # the exact path, and no native role misreads the argument it states.
+    assert isinstance(handle, FsPath), stated
+    assert not isinstance(handle, S3Path)
+    assert handle.filesystem is filesystem
+    assert handle.path == "bucket/key.bin"
+    assert isinstance(FsFile(filesystem, "bucket/key.bin"), FsFile)
+    assert isinstance(FsFolder(filesystem, "bucket"), FsFolder)
+
+
+def test_the_defaults_pyarrow_states_back_are_no_statement() -> None:
+    # An Azure filesystem states its account's own hosts over https, and an
+    # S3 one `force_virtual_addressing=False`, for every filesystem: neither
+    # keeps one off the native role.
+    azure = pafs.AzureFileSystem(account_name="acct", account_key="a2V5")
+    assert isinstance(FsPath(azure, "container/key.bin"), S3Path)
+    plain = pafs.S3FileSystem(anonymous=True, scheme="http", endpoint_override="127.0.0.1:9")
+    assert isinstance(FsPath(plain, "bucket/key.bin"), S3Path)
+    virtual = pafs.S3FileSystem(
+        anonymous=True, scheme="http", endpoint_override="127.0.0.1:9", force_virtual_addressing=True
+    )
+    assert isinstance(FsPath(virtual, "bucket/key.bin"), S3Path)
+
+
+def test_file_uri_resolution_holds_the_local_role(tmp_path: pathlib.Path) -> None:
     target = tmp_path / "literal-%2F.bin"
     handle = IOBase.from_uri(target.as_uri())
 
-    assert isinstance(handle.filesystem, pafs.LocalFileSystem)
-    assert handle.bound_uri == target.as_uri()
+    assert isinstance(handle, LocalPath)
+    assert handle.filesystem is None
+    assert handle.path is not None and pathlib.Path(handle.path) == target
     with handle.open_output_stream(compression=None) as stream:
         stream.write(b"local")
     assert target.read_bytes() == b"local"
@@ -811,7 +1072,7 @@ def test_uri_resolution_errors_mask_credentials() -> None:
     assert "do-not-leak" not in str(failure.value)
 
 
-def test_identity_uses_filesystem_equality_and_exact_path(
+def test_identity_is_the_store_and_the_path(
     tmp_path: pathlib.Path,
 ) -> None:
     local = pafs.LocalFileSystem()
@@ -819,7 +1080,12 @@ def test_identity_uses_filesystem_equality_and_exact_path(
     left = IOBase.from_fs(local, "same/path")
     right = IOBase.from_fs(equal, "same/path")
     assert left.same_location(right)
-    assert not left.same_location(IOBase.from_fs(equal, "same//path"))
+    # A location held natively is one identifier, so a spelling that only
+    # repeats a separator is the same place, and another name is not.
+    assert left.same_location(IOBase.from_fs(equal, "same//path"))
+    assert not left.same_location(IOBase.from_fs(equal, "same/other"))
+    # A bridged handle and a native one never share a location.
+    assert not left.same_location(IOBase.from_fs(pafs.PyFileSystem(MemoryHandler()), "same/path"))
 
     first_root = tmp_path / "first"
     second_root = tmp_path / "second"
@@ -848,9 +1114,14 @@ def test_listing_is_sorted_and_children_keep_the_same_filesystem() -> None:
 
 
 @pytest.mark.parametrize("kind", ["local", "mock", "subtree", "custom"])
-def test_hierarchy_keeps_raw_paths_and_filesystem_across_arrow_shapes(
+def test_hierarchy_keeps_raw_paths_and_the_store_across_arrow_shapes(
     kind: str, tmp_path: pathlib.Path
 ) -> None:
+    # The local filesystem and a subtree over it are held natively: the path
+    # is the platform's, no filesystem object answers, and the caller's
+    # spelling of a bridged location has no place. The mock and a handler are
+    # bridged, raw path and filesystem kept on every child.
+    native = kind in ("local", "subtree")
     if kind == "local":
         filesystem: pafs.FileSystem = pafs.LocalFileSystem()
         path = (tmp_path / "local" / "lake").as_posix()
@@ -878,21 +1149,30 @@ def test_hierarchy_keeps_raw_paths_and_filesystem_across_arrow_shapes(
             with filesystem.open_output_stream(f"{path}/{name}") as stream:
                 stream.write(name.encode())
 
-    uri = "s3://key:secret@bucket/base?session_token=hidden"
+    uri = None if native else "s3://key:secret@bucket/base?session_token=hidden"
     root = IOBase.from_fs(filesystem, path, uri=uri)
     children = list(root.iterdir())
-    expected = [f"{path}/{name}" for name in names]
-    assert [child.path for child in children] == expected
-    assert [child.path for child in root.glob("*.bin")] == expected
-    assert all(child.filesystem is filesystem for child in children)
-    assert all(
-        "secret" not in repr(child) and "hidden" not in repr(child)
-        for child in children
-    )
+    if native:
+        located = tmp_path / "subtree" / path if kind == "subtree" else pathlib.Path(path)
+        expected_paths = [located / name for name in names]
+        assert [pathlib.Path(child.path) for child in children] == expected_paths
+        assert [pathlib.Path(child.path) for child in root.glob("*.bin")] == expected_paths
+        assert all(child.filesystem is None for child in children)
+    else:
+        expected = [f"{path}/{name}" for name in names]
+        assert [child.path for child in children] == expected
+        assert [child.path for child in root.glob("*.bin")] == expected
+        assert all(child.filesystem is filesystem for child in children)
+        assert all(
+            "secret" not in repr(child) and "hidden" not in repr(child)
+            for child in children
+        )
 
-    joined = root.joinpath(names[0])
-    assert joined.path == expected[0]
-    assert joined.filesystem is filesystem
+    # A native child is named as URI path text, so a literal `%` is spelled
+    # `%25`; a bridged one takes the raw name its filesystem uses.
+    joined = root.joinpath(names[0].replace("%", "%25") if native else names[0])
+    assert joined.path == children[0].path
+    assert joined.filesystem is (None if native else filesystem)
     assert joined.same_location(children[0])
     assert joined.parent.same_location(root)
 
@@ -1062,26 +1342,43 @@ def test_selector_absence_policy_and_strict_deletes_are_typed() -> None:
 def test_directory_operations_are_distinct(tmp_path: pathlib.Path) -> None:
     filesystem = pafs.LocalFileSystem()
 
+    # PyArrow's local filesystem is held natively, so the Arrow-shaped verbs
+    # answer with the local role's own, each acting once: `delete_dir` removes
+    # an empty directory and refuses one holding children,
+    # `delete_dir_contents` empties and keeps, and absence is the success the
+    # native clear reports it as.
     empty = tmp_path / "empty"
     empty.mkdir()
-    with pytest.raises(io.UnsupportedOperation):
-        IOBase.from_fs(filesystem, empty.as_posix()).delete_dir()
-    assert empty.is_dir()
+    IOBase.from_fs(filesystem, empty.as_posix()).delete_dir()
+    assert not empty.exists()
+    empty.mkdir()
 
     kept = tmp_path / "kept"
     kept.mkdir()
     (kept / "child").write_bytes(b"x")
     IOBase.from_fs(filesystem, kept.as_posix()).delete_dir_contents()
     assert kept.is_dir() and list(kept.iterdir()) == []
+    # Absence is success whatever `missing_dir_ok` says - it forgives only a
+    # clear that itself reports absence - and nothing is created on the way.
+    absent = (tmp_path / "absent").as_posix()
+    IOBase.from_fs(filesystem, absent).delete_dir_contents()
+    IOBase.from_fs(filesystem, absent).delete_dir_contents(missing_dir_ok=True)
+    assert not (tmp_path / "absent").exists()
 
     nonempty = tmp_path / "nonempty"
     nonempty.mkdir()
     (nonempty / "child").write_bytes(b"x")
-    with pytest.raises(io.UnsupportedOperation):
+    with pytest.raises(OSError):
         IOBase.from_fs(filesystem, nonempty.as_posix()).delete_dir()
     assert (nonempty / "child").read_bytes() == b"x"
     IOBase.from_fs(filesystem, nonempty.as_posix()).remove(recursive=True)
     assert not nonempty.exists()
+
+    # The verbs that have no native meaning refuse by name.
+    with pytest.raises(io.UnsupportedOperation):
+        IOBase.from_fs(filesystem, empty.as_posix()).delete_root_dir_contents()
+    with pytest.raises(io.UnsupportedOperation):
+        IOBase.from_fs(filesystem, empty.as_posix()).normalize_path("a//b")
 
     class StrictHandler(MemoryHandler):
         def delete_file(self, path: str) -> None:
@@ -1106,19 +1403,25 @@ def test_directory_operations_are_distinct(tmp_path: pathlib.Path) -> None:
         b"ab"
     ]
 
-    # The raw filesystem verbs still address one file, and refuse a directory.
+    # The native role's positional read of a container lands in no leaf, so
+    # the Arrow streams over it read as empty; `read_bytes` and
+    # `pstream_bytes` are what stream the leaves end to end.
+    with IOBase.from_fs(filesystem, leaves.as_posix()).open_input_file() as stream:
+        assert stream.read() == b""
+    with IOBase.from_fs(filesystem, leaves.as_posix()).open_input_stream(
+        compression=None
+    ) as stream:
+        assert stream.read() == b""
+
+    # A bridged filesystem's raw stream verbs refuse a directory.
+    mock = pafs._MockFileSystem()
+    mock.create_dir("empty")
     for operation in (
-        lambda: IOBase.from_fs(filesystem, empty.as_posix()).delete_file(),
-        lambda: IOBase.from_fs(filesystem, empty.as_posix()).open_input_file(),
-        lambda: IOBase.from_fs(filesystem, empty.as_posix()).open_input_stream(
-            compression=None
-        ),
-        lambda: IOBase.from_fs(filesystem, empty.as_posix()).open_output_stream(
-            compression=None
-        ),
-        lambda: IOBase.from_fs(filesystem, empty.as_posix()).open_append_stream(
-            compression=None
-        ),
+        lambda: IOBase.from_fs(mock, "empty").delete_file(),
+        lambda: IOBase.from_fs(mock, "empty").open_input_file(),
+        lambda: IOBase.from_fs(mock, "empty").open_input_stream(compression=None),
+        lambda: IOBase.from_fs(mock, "empty").open_output_stream(compression=None),
+        lambda: IOBase.from_fs(mock, "empty").open_append_stream(compression=None),
     ):
         with pytest.raises(IsADirectoryError):
             operation()
@@ -1129,9 +1432,29 @@ def test_directory_operations_are_distinct(tmp_path: pathlib.Path) -> None:
     directory = IOBase.from_fs(filesystem, empty.as_posix())
     with pytest.raises(IsADirectoryError):
         source.copy_into(directory)
-    with pytest.raises(IsADirectoryError):
+    # Two bare local handles move by one rename, so a move onto a directory
+    # is the platform's own refusal of that rename - `IsADirectoryError`
+    # where the rename says so, `PermissionError` on Windows - and the source
+    # stays.
+    with pytest.raises(OSError):
         source.move_into(directory)
     assert source_path.read_bytes() == b"source"
+    assert empty.is_dir()
+
+    # `delete_file` on a native store is `remove(False)` on the plain handle,
+    # acting once with no kind read before it: an empty directory goes, a
+    # populated one is refused as not empty, and absence is success.
+    IOBase.from_fs(filesystem, empty.as_posix()).delete_file()
+    assert not empty.exists()
+    IOBase.from_fs(filesystem, empty.as_posix()).delete_file()
+    populated = tmp_path / "populated"
+    populated.mkdir()
+    (populated / "child").write_bytes(b"x")
+    with pytest.raises(OSError):
+        IOBase.from_fs(filesystem, populated.as_posix()).delete_file()
+    assert (populated / "child").read_bytes() == b"x"
+    IOBase.from_fs(filesystem, source_path.as_posix()).delete_file()
+    assert not source_path.exists()
 
 
 def test_explicit_unsupported_errno_remains_typed() -> None:

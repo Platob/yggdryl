@@ -419,7 +419,11 @@ test('bound facts keep the original handler, raw path, and safe URI', () => {
   )
 })
 
-test('S3 URI forms resolve before Arrow JS reports its missing backend', () => {
+test('S3 URI forms are held natively without a request and name no secret', () => {
+  // Every spelling the old resolver read is the native store's now, through
+  // the core's one location door: holding sends nothing, the query is read as
+  // the store's properties and taken off the location, and a credential
+  // written into the URL never comes back out of the handle.
   for (const uri of [
     's3://bucket/v=a%2Fb',
     's3a://bucket/key',
@@ -429,15 +433,13 @@ test('S3 URI forms resolve before Arrow JS reports its missing backend', () => {
     's3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1',
     's3://bucket.s3.eu-west-1.amazonaws.com/key',
   ]) {
-    assert.throws(
-      () => IOBase.fromUri(uri),
-      (error) => {
-        assert.match(error.message, /does not support S3 filesystem URI/)
-        assert.ok(!error.message.includes('secret'))
-        return true
-      },
-    )
+    const handle = IOBase.fromUri(uri)
+    assert.equal(handle.url.query, null, uri)
+    assert.ok(!handle.toString().includes('secret'), uri)
+    assert.ok(!handle.url.toString().includes('secret'), uri)
   }
+  // A parameter no store reads is refused by name before anything is held.
+  assert.throws(() => IOBase.fromUri('s3://bucket/key?versionId=3'), /versionId/)
 })
 
 test('file info preserves bigint size and nanosecond mtime', () => {

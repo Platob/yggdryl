@@ -32,6 +32,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import logging
+import os
 import pathlib
 import sys
 import threading
@@ -375,6 +377,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--threads", type=int, default=None, help="the codec's threads; the host's by default")
     parser.add_argument("--runs", type=int, default=1, help="how many times to run the window: a second run rewrites it")
     args = parser.parse_args(argv)
+    # The crate logs through Python's `logging`: `YGGDRYL_LOG_LEVEL=INFO`
+    # shows the identity walk (`yggdryl.aws.session`, key ids masked) and
+    # every store's requests beside the stages.
+    logging.basicConfig(level=os.environ.get("YGGDRYL_LOG_LEVEL", "WARNING").upper(), format="%(levelname)s %(name)s: %(message)s")
 
     catalogs = {"bronze": catalog_of(args.bronze, "bronze"), "silver": catalog_of(args.silver, "silver")}
     codec = FixCodec(FixRegistry.from_handle(args.dictionary), exclude_msgtypes=[], threads=args.threads)

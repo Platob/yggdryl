@@ -14,6 +14,7 @@ use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::Buffered;
 use yggdryl::s3::{Provider, S3Options};
 
+use crate::holder::fs::NativeRole;
 use crate::iobase::PyIOBase;
 use crate::value_error;
 
@@ -53,18 +54,23 @@ role!(
 role!(
     PyFsFile,
     "FsFile",
-    "One file on a foreign filesystem, read and written through its streams."
+    "One file on a bridged filesystem, read and written through its streams. \
+     A filesystem this build holds natively - PyArrow's local, S3, GCS and \
+     Azure filesystems, and a subtree over one - answers `LocalFile` or \
+     `S3File` instead."
 );
 role!(
     PyFsFolder,
     "FsFolder",
-    "One directory on a foreign filesystem."
+    "One directory on a bridged filesystem; `LocalFolder` or `S3Folder` for \
+     a filesystem this build holds natively."
 );
 role!(
     PyFsPath,
     "FsPath",
-    "One location on a foreign filesystem that resolves when an operation \
-     needs to know what is there."
+    "One location on a bridged filesystem that resolves when an operation \
+     needs to know what is there; `LocalPath` or `S3Path` for a filesystem \
+     this build holds natively."
 );
 role!(
     PyS3File,
@@ -106,35 +112,57 @@ fn local_holder(
     )))
 }
 
-/// Bind one location on a `pyarrow.fs.FileSystem`, as the roles take it.
-fn bound_location(
+/// Hold one location on a `pyarrow.fs.FileSystem`, as `role`.
+///
+/// Classified first: a filesystem this build holds natively - `PyArrow`'s
+/// local, S3, GCS and Azure filesystems, and a subtree over one of them - is
+/// held by the native role over its own store, and `uri` has no place beside
+/// it, because the handle spells its own location. Any other filesystem is
+/// bridged as a bound location, `uri` the caller's spelling of it.
+pub(crate) fn fs_holder(
     filesystem: &Bound<'_, PyAny>,
-    path: &Bound<'_, PyAny>,
-    uri: Option<&Bound<'_, PyAny>>,
-) -> PyResult<yggdryl::fs::BoundLocation> {
+    path: String,
+    uri: Option<String>,
+    role: NativeRole,
+) -> PyResult<Holder> {
     if !crate::holder::fs::is_arrow_filesystem(filesystem)? {
         return Err(PyValueError::new_err(format!(
             "expected a pyarrow.fs.FileSystem, got {}",
             filesystem.get_type().name()?,
         )));
     }
-    let path = crate::uri::path_string_from_value(path)?;
-    let uri = uri.map(crate::uri::path_string_from_value).transpose()?;
+    if let Some(holder) = crate::holder::fs::native_redirect(filesystem, &path, role)? {
+        if uri.is_some() {
+            return Err(PyValueError::new_err(format!(
+                "uri= is the caller's spelling of a location on a bridged filesystem; \
+                 {} is held natively and the handle spells its own",
+                filesystem.get_type().name()?,
+            )));
+        }
+        return Ok(holder);
+    }
     let backend: std::sync::Arc<dyn yggdryl::fs::FileSystem> =
         std::sync::Arc::new(crate::holder::fs::PyFileSystem::new(filesystem)?);
-    yggdryl::fs::BoundLocation::new(backend, path, uri).map_err(crate::holder::fs::storage_error)
+    let bound = yggdryl::fs::BoundLocation::new(backend, path, uri)
+        .map_err(crate::holder::fs::storage_error)?;
+    Ok(match role {
+        NativeRole::Path => yggdryl::fs::located(bound),
+        NativeRole::File => Holder::FsFile(yggdryl::fs::FsFile::new(bound)),
+        NativeRole::Folder => Holder::FsFolder(yggdryl::fs::FsFolder::new(bound)),
+    })
 }
 
-/// Build one foreign-filesystem role from a bound location.
-fn fs_holder(
+/// Describe the role `fs_holder` answers for the three explicit spellings.
+fn fs_role(
+    py: Python<'_>,
     filesystem: &Bound<'_, PyAny>,
     path: &Bound<'_, PyAny>,
     uri: Option<&Bound<'_, PyAny>>,
-    build: impl FnOnce(yggdryl::fs::BoundLocation) -> Holder,
-) -> PyResult<PyClassInitializer<PyIOBase>> {
-    Ok(PyClassInitializer::from(PyIOBase::from_core(build(
-        bound_location(filesystem, path, uri)?,
-    ))))
+    role: NativeRole,
+) -> PyResult<Py<PyAny>> {
+    let path = crate::uri::path_string_from_value(path)?;
+    let uri = uri.map(crate::uri::path_string_from_value).transpose()?;
+    crate::iobase::describe(py, fs_holder(filesystem, path, uri, role)?)
 }
 
 #[pymethods]
@@ -239,19 +267,24 @@ impl PyLocalFolder {
 
 #[pymethods]
 impl PyFsPath {
-    /// Describe a location on a foreign filesystem without deciding what it is.
+    /// Describe a location on a filesystem without deciding what it is.
     ///
     /// `IOBase.from_fs` answers with the coding and record implementation the
     /// name declares; this is the byte handle underneath that, and the way to
-    /// address the stored bytes of a coded name on a bucket.
+    /// address the stored bytes of a coded name on a bucket. A filesystem
+    /// this build holds natively answers its native role - `LocalPath` for
+    /// `PyArrow`'s local filesystem, `S3Path` for its S3, GCS and Azure ones -
+    /// and `uri` is refused beside it.
     #[new]
     #[pyo3(signature = (filesystem, path, *, uri = None))]
+    #[allow(clippy::new_ret_no_self)] // A natively held filesystem answers the native role.
     fn new(
+        py: Python<'_>,
         filesystem: &Bound<'_, PyAny>,
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<PyClassInitializer<Self>> {
-        Ok(fs_holder(filesystem, path, uri, yggdryl::fs::located)?.add_subclass(Self))
+    ) -> PyResult<Py<PyAny>> {
+        fs_role(py, filesystem, path, uri, NativeRole::Path)
     }
 
     /// Read this foreign-filesystem location as a stream-backed file.
@@ -280,31 +313,35 @@ impl PyFsPath {
 
 #[pymethods]
 impl PyFsFile {
-    /// Describe a file on a foreign filesystem, whether or not it exists yet.
+    /// Describe a file on a filesystem, whether or not it exists yet: `LocalFile`
+    /// or `S3File` for a filesystem this build holds natively.
     #[new]
     #[pyo3(signature = (filesystem, path, *, uri = None))]
+    #[allow(clippy::new_ret_no_self)] // A natively held filesystem answers the native role.
     fn new(
+        py: Python<'_>,
         filesystem: &Bound<'_, PyAny>,
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<PyClassInitializer<Self>> {
-        let build = |bound| Holder::FsFile(yggdryl::fs::FsFile::new(bound));
-        Ok(fs_holder(filesystem, path, uri, build)?.add_subclass(Self))
+    ) -> PyResult<Py<PyAny>> {
+        fs_role(py, filesystem, path, uri, NativeRole::File)
     }
 }
 
 #[pymethods]
 impl PyFsFolder {
-    /// Describe a directory on a foreign filesystem, creating nothing.
+    /// Describe a directory on a filesystem, creating nothing: `LocalFolder` or
+    /// `S3Folder` for a filesystem this build holds natively.
     #[new]
     #[pyo3(signature = (filesystem, path, *, uri = None))]
+    #[allow(clippy::new_ret_no_self)] // A natively held filesystem answers the native role.
     fn new(
+        py: Python<'_>,
         filesystem: &Bound<'_, PyAny>,
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<PyClassInitializer<Self>> {
-        let build = |bound| Holder::FsFolder(yggdryl::fs::FsFolder::new(bound));
-        Ok(fs_holder(filesystem, path, uri, build)?.add_subclass(Self))
+    ) -> PyResult<Py<PyAny>> {
+        fs_role(py, filesystem, path, uri, NativeRole::Folder)
     }
 }
 

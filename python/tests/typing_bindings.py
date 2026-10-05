@@ -116,6 +116,7 @@ from yggdryl.holder import (
     LocalFile,
     LocalFolder,
     LocalPath,
+    S3Folder,
 )
 from yggdryl.media import Avro, Csv, Excel, Ipc, Media, Parquet, Text, Xmla
 
@@ -619,10 +620,12 @@ role_temporary: LocalFolder = LocalFolder.temporary()
 role_home: LocalFolder = LocalFolder.home()
 role_config: LocalFolder = LocalFolder.config()
 role_cached: IOBase = IOBase.from_bytes(b"payload").buffered(page_size=8)
-role_fs_path: FsPath = FsPath(pa_fs.LocalFileSystem(), "trades.txt")
-role_fs_file: FsFile = FsFile(pa_fs.LocalFileSystem(), "trades.bin")
-role_fs_folder: FsFolder = FsFolder(pa_fs.LocalFileSystem(), "lake")
-role_created: FsFolder = role_fs_folder.create_dir(recursive=True)
+# A filesystem this build holds natively answers its native role, so the three
+# spellings are typed by the contract every role shares.
+role_fs_path: IOBase = FsPath(pa_fs.LocalFileSystem(), "trades.txt")
+role_fs_file: IOBase = FsFile(pa_fs.LocalFileSystem(), "trades.bin")
+role_fs_folder: IOBase = FsFolder(pa_fs.LocalFileSystem(), "lake")
+role_created: LocalFolder | FsFolder | S3Folder = role_fs_folder.create_dir(recursive=True)
 coding_roles: list[type[Coded]] = [Identity, Gzip, Zlib, Zstd]
 encoding_roles: list[type[Media]] = [Ipc, Parquet, Avro, Xmla, Csv, Excel]
 storage_roles: list[type[IOBase]] = [Buffer, Buffered, Text]

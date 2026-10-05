@@ -18,7 +18,7 @@ A fact has one name and one datatype in every row, so a reader who knows one row
 | Text line | The 15 element and event columns, then `body`, then one column per row-header capture |
 | FIX row | The 54 prefix columns, then the message's own bands and `fixentries`: 150 columns and 149 tags under the committed dictionary. A fact FIX states in a field of its own is that field, typed as the dictionary types it (`price` is `Price(44)`, `timeinforce` the `TimeInForce(59)` wire text the message's [`TimeInForce`](../types/enum/timeinforce.md) member is read from) |
 | `marketdata` row | The 54 prefix columns, the three book controls `bookscope`, `bookaction` and `bookposition`, then the nested `alive`, `deltas`, `executions`, `bidlimits` and `asklimits`: 62 columns |
-| Identifiers | `securityids`, `identifiers` and `partyids` are each a sorted `map<utf8, utf8>` from the key's text - `src:type`, the type alone for the base source - to its value, in every row that carries them, the FIX row's included, closed on read so every type held has its base key ([Identifier](identifier.md#arrow)) |
+| Identifiers | `securityids`, `identifiers` and `partyids` are each a sorted `map<utf8, utf8>` from the key's text to its value ([Identifier](identifier.md#arrow)): on the FIX row every key the map holds - `src:type`, the type alone for the base source; on a market-data row the base keys alone, one per type, every other key [side information](market-data.md#side-information) in `metadata` under its map's name and its `src:type` spelling, `securityids.ullink:isin`; read raw and closed once, so every type held has its base key |
 | Cross code | `crosscode` is the code as an element stores it - `{kind}:{side}:{base}` on a `marketdata` row and on a FIX row, the side stated by an order or an execution alone (`10:1:O-1001`, `14:0:Q-1`, `3:0:AAPL`) - and as given on a text line, which is no market element ([Market](market.md#sides-and-cross-codes)) |
 | Persisted | Every [market fill](market.md#setting-fill-or-overwrite) a leaf answered is stored as a column value. A row read back through `MarketData::from_arrow_reader` or `FixMsg::from_row` answers the same facts without running the fills again |
 
@@ -274,7 +274,7 @@ A group column (`trdregtimestamps`, `regulatorytradeids`) is a `serie` of the gr
 
 This is `MarketData::field()`: the prefix, then the book.
 
-- `securityids`, `identifiers` and `partyids` are sorted `map<utf8, utf8>`s from the key's text - `src:type`, the type alone for the base source - to the value.
+- `securityids`, `identifiers` and `partyids` are sorted `map<utf8, utf8>`s from a type's base key - the type alone - to its value, one per type; every other key a map holds, `src:type`, is [side information](market-data.md#side-information) in `metadata` under the map's name, `securityids.ullink:isin`.
 - `bookscope`, `bookaction` and `bookposition` are the [book control](order.md#book-control) a market-data entry states, which a book's deltas replay by.
 - `alive`, `deltas` and `executions` are series of the prefix and the three book controls (`operationevent`); `alive` is a complete book's, `deltas` every book's, `executions` a trade's alone - null on a book row.
 - `bidlimits` and `asklimits` are series of [`Limit`](book.md), best level first.

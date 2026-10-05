@@ -16,10 +16,11 @@
 //!
 //! The file is created new under [`SpillOptions::folder`] - the platform
 //! temporary folder unless stated - as `yggdryl-spill-<pid>-<seq>`, unlinked
-//! right after it is opened on Unix and opened to delete on close on Windows,
-//! so a crash leaves nothing behind and nothing outside the process can
-//! truncate it while it is mapped: the SIGBUS hazard a shared mapping of a
-//! named file carries ([`crate::local::LocalFile`]) does not arise here.
+//! right after it is opened on every platform - on Windows through a handle
+//! shared for deletion and opened to delete on close - so a crash leaves
+//! nothing behind and nothing outside the process can truncate it while it
+//! is mapped: the SIGBUS hazard a shared mapping of a named file carries
+//! ([`crate::local::LocalFile`]) does not arise here.
 //!
 //! [`SpillOptions`] is the bound and the folder. [`SpillOptions::from_env`]
 //! is the process default, read once from `YGGDRYL_SPILL_BYTE_SIZE` and
@@ -469,35 +470,33 @@ fn create_file(folder: &LocalFolder) -> Result<File> {
     ))
 }
 
-/// Open `path` new for reading and writing, and make it vanish on close:
-/// unlinked at once on Unix, flagged to delete on close on Windows.
-#[cfg(unix)]
+/// Open `path` new for reading and writing, and unlink it at once: the open
+/// handle, and the mapping made from it, keep the bytes while the folder
+/// lists nothing.
+///
+/// On Windows the handle is shared for deletion, so the unlink is taken while
+/// it is open - by POSIX semantics where the system deletes by them (current
+/// Windows on NTFS), the name gone at once, and otherwise as a pending delete
+/// the mapping's handle completes when it closes - and it is opened to delete
+/// on close, so a crash before the unlink, or an unlink refused, leaves
+/// nothing behind either.
 fn open_private(path: &std::path::Path) -> std::io::Result<File> {
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create_new(true)
-        .open(path)?;
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create_new(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        const FILE_SHARE_READ: u32 = 0x0000_0001;
+        const FILE_SHARE_WRITE: u32 = 0x0000_0002;
+        const FILE_SHARE_DELETE: u32 = 0x0000_0004;
+        const FILE_FLAG_DELETE_ON_CLOSE: u32 = 0x0400_0000;
+        options
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+            .custom_flags(FILE_FLAG_DELETE_ON_CLOSE);
+    }
+    let file = options.open(path)?;
     std::fs::remove_file(path)?;
     Ok(file)
-}
-
-/// Open `path` new for reading and writing, and make it vanish on close:
-/// unlinked at once on Unix, flagged to delete on close on Windows.
-#[cfg(windows)]
-fn open_private(path: &std::path::Path) -> std::io::Result<File> {
-    use std::os::windows::fs::OpenOptionsExt as _;
-    const FILE_SHARE_READ: u32 = 0x0000_0001;
-    const FILE_SHARE_WRITE: u32 = 0x0000_0002;
-    const FILE_SHARE_DELETE: u32 = 0x0000_0004;
-    const FILE_FLAG_DELETE_ON_CLOSE: u32 = 0x0400_0000;
-    OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create_new(true)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
-        .custom_flags(FILE_FLAG_DELETE_ON_CLOSE)
-        .open(path)
 }
 
 /// Write `array`'s buffers to a new spill file under `folder` - the platform

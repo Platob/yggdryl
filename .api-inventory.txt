@@ -1094,7 +1094,6 @@ pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of 
   pub use stream::{ByteReader, ByteWriter, RandomAccessReader};
   pub use system::{FileInfo, FileInfos, FileSelector, FileSystem, OutputMetadata};
   pub use transfer::{copy_bound, move_bound};
-  pub use uri::{ResolvedFileSystem, ResolvedFileSystemUri, S3AddressingStyle, S3FileSystemOptions};
   pub fn located(location: BoundLocation) -> Holder  (the resource as a `Holder::FsPath`; no filesystem call during construction, and it resolves only when an operation needs the resource's role)
 
 ### yggdryl::fs::file  [rust/src/fs/file.rs]
@@ -1237,33 +1236,6 @@ pub trait FileSystem: Send + Sync + Any  (the complete synchronous Arrow filesys
 ### yggdryl::fs::transfer  [rust/src/fs/transfer.rs]
 pub fn copy_bound(source: &BoundLocation, target: &BoundLocation) -> Result<u64>  (the backend copy_file where both locations share one filesystem; otherwise streamed to a temporary name beside the target and moved into place, the temporary removed on any failure)
 pub fn move_bound(source: &BoundLocation, target: &BoundLocation) -> Result<u64>  (the backend move_file within one filesystem, else copy_bound then delete_file on the source)
-
-### yggdryl::fs::uri  [rust/src/fs/uri.rs]
-pub enum S3AddressingStyle { Automatic, Path, Virtual }  (Automatic is the default: the Arrow backend chooses its normal addressing form)
-  impl Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd for S3AddressingStyle
-pub struct S3FileSystemOptions  (filesystem configuration extracted from an S3 URI)
-  pub fn access_key(&self) -> Option<&str>
-  pub fn secret_key(&self) -> Option<&str>
-  pub fn session_token(&self) -> Option<&str>
-  pub fn endpoint_override(&self) -> Option<&str>  (the host, with its explicit port when one was present)
-  pub fn transport(&self) -> &str  (`http` or `https`)
-  pub fn region(&self) -> Option<&str>  (explicit or AWS-host-derived)
-  pub const fn anonymous(&self) -> bool
-  pub const fn addressing_style(&self) -> S3AddressingStyle
-  impl Clone, Eq, PartialEq, Debug for S3FileSystemOptions  (Debug masks the access key, secret key and session token)
-pub enum ResolvedFileSystem { Local, S3(S3FileSystemOptions) }  (which Arrow filesystem a URI selects)
-  impl Clone, Debug, Eq, PartialEq for ResolvedFileSystem
-pub struct ResolvedFileSystemUri  (one URI resolved once into filesystem configuration and an opaque path)
-  pub const OPTION_NAMES: [&'static str; 10]  (the option names `from_uri` reads; any other is refused)
-  pub fn is_option(name: &str) -> bool
-  pub fn from_uri(uri: impl Into<String>, options: Option<&BTreeMap<String, String>>) -> Result<Self>  (`file`, `s3`, `s3a` or `s3n` exactly once, every other scheme Unsupported; S3 percent escapes stay literal in `path` and `key`, while option values are URI-decoded because they configure the filesystem rather than name an object)
-  pub const fn filesystem(&self) -> &ResolvedFileSystem
-  pub fn path(&self) -> &str  (the exact opaque path to pass to the selected filesystem)
-  pub fn bucket(&self) -> Option<&str>
-  pub fn key(&self) -> Option<&str>  (the exact escaped object key, excluding the bucket)
-  pub fn uri(&self) -> &str  (the caller's exact spelling; this may contain credentials)
-  pub fn masked_uri(&self) -> &str
-  impl Clone, Eq, PartialEq, Debug for ResolvedFileSystemUri
 
 ### yggdryl::graph  [rust/src/graph/mod.rs]
 pub mod arrow;
@@ -2005,7 +1977,7 @@ pub struct ZipPath
   pub struct S3Path / S3Folder / S3File
   S3Path: pub fn bucket, key, stats, exists, as_directory, as_file
   S3Folder: pub fn bucket, prefix, stats, exists, create
-  S3File: pub fn bucket, key, stats, exists, with_known_size
+  S3File: pub fn bucket, key, stats, exists, as_directory, with_known_size
   pub struct StatsSnapshot { requests, heads, gets, puts, posts, deletes, lists, retries, retry_tokens }
 
   pub struct S3Options
@@ -2866,6 +2838,7 @@ pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   fn applied_codec(&self) -> Codec  (the coding a decoded view applies; identity for stored bytes, what `compress_into`/`decompress_into` refuse otherwise)
   fn uri(&self) -> Option<&Uri>
   fn url(&self) -> Option<&Url>
+  fn local_url(&self) -> Option<&Url>  (the `file:` URL of bare local storage - a `Holder` holding a `LocalFile` or a `LocalPath` - `None` for every other handle, a wrapper over one included; what `move_into` reads to rename rather than copy)
   fn mtime(&self) -> Option<i64>
   fn read_scalar(&self, field: Option<&Field>) -> Result<Scalar>
   fn write_scalar(&mut self, value: &Scalar) -> Result<()>

@@ -1,4 +1,12 @@
-//! `pyarrow.fs.FileSystem` as the core Arrow-compatible filesystem seam.
+//! `pyarrow.fs.FileSystem` at the seam: the classifier that holds `PyArrow`'s
+//! own filesystems natively, and the bridge every other one crosses.
+//!
+//! A `LocalFileSystem`, an `S3FileSystem`, a `GcsFileSystem`, an
+//! `AzureFileSystem` and a `SubTreeFileSystem` over one of them name a store
+//! this build holds itself, so [`native_redirect`] answers the core's local
+//! or object-store role over it and no Python object stays in the path. A
+//! `PyFileSystem` over a handler - which is also how `fsspec` arrives - the
+//! mock and HDFS are held as [`PyFileSystem`], the bridge below.
 
 use std::any::Any;
 use std::io::{ErrorKind, SeekFrom};
@@ -8,12 +16,14 @@ use pyo3::exceptions::{
     PyNotImplementedError, PyOSError, PyPermissionError, PyValueError,
 };
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict};
+use pyo3::types::{PyBool, PyBytes, PyDict, PyFloat, PyInt, PyString};
 
 use yggdryl::fs::{
     ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, OutputMetadata,
     RandomAccessReader, mask_uri,
 };
+use yggdryl::holder::Holder;
+use yggdryl::s3::{self, Provider, S3Options};
 use yggdryl::{Error, Result};
 
 /// One held `pyarrow.fs.FileSystem`.
@@ -878,4 +888,251 @@ impl FileSystem for PyFileSystem {
 pub(crate) fn is_arrow_filesystem(value: &Bound<'_, PyAny>) -> PyResult<bool> {
     let class = value.py().import("pyarrow.fs")?.getattr("FileSystem")?;
     value.is_instance(&class)
+}
+
+/// The storage role a location on a filesystem is asked for.
+#[derive(Clone, Copy)]
+pub(crate) enum NativeRole {
+    /// Resolved when an operation needs to know what is there.
+    Path,
+    File,
+    Folder,
+}
+
+/// Hold `path` natively on the store `filesystem` stands for, where this
+/// build holds that store itself.
+///
+/// Keyed on the filesystem's `type_name`: `local` is the local role over
+/// the platform path; `s3`, `gcs` and `abfs` the object-store role over the
+/// container and the raw key the path spells, under the store options the
+/// filesystem was built with - what its `__reduce__` carries, in `PyArrow`'s
+/// own argument names, which `S3Options::from_properties` reads; `subtree`
+/// its base filesystem under its base path joined in front. Anything else -
+/// a `PyFileSystem` over a handler, the mock, HDFS - answers `None` and is
+/// bridged. Nothing is contacted.
+///
+/// A filesystem stating an argument the native client has no reader for
+/// stays on the bridge too, rather than being held under options that
+/// misread it ([`stays_bridged`]): an `AzureFileSystem` with
+/// `blob_storage_authority`, `blob_storage_scheme` or either `dfs_*`
+/// argument stated - other than the account's own `*.core.windows.net` host
+/// over `https`, which `PyArrow` states back for every filesystem - an
+/// `S3FileSystem` with `tls_ca_file_path` or `default_metadata` stated, a
+/// `GcsFileSystem` with `target_service_account` or `default_metadata`
+/// stated.
+pub(crate) fn native_redirect(
+    filesystem: &Bound<'_, PyAny>,
+    path: &str,
+    role: NativeRole,
+) -> PyResult<Option<Holder>> {
+    let name = filesystem.getattr("type_name")?.extract::<String>()?;
+    let held = match name.as_str() {
+        "local" => {
+            let path = std::path::PathBuf::from(path);
+            match role {
+                NativeRole::Path => Holder::local(path),
+                NativeRole::File => Holder::file(path),
+                NativeRole::Folder => Holder::folder(path),
+            }
+        }
+        "s3" | "gcs" | "abfs" => {
+            let provider = match name.as_str() {
+                "s3" => Provider::Aws,
+                "gcs" => Provider::Google,
+                _ => Provider::Azure,
+            };
+            match store_role(provider, filesystem, path, role)? {
+                Some(held) => held,
+                None => return Ok(None),
+            }
+        }
+        "subtree" => {
+            let base = filesystem.getattr("base_fs")?;
+            let base_path = filesystem.getattr("base_path")?.extract::<String>()?;
+            return native_redirect(&base, &under(&base_path, path), role);
+        }
+        _ => return Ok(None),
+    };
+    // Construction touches no store, so a failure here is about the name the
+    // caller gave: a `ValueError`, as the explicit roles raise.
+    held.map(Some).map_err(crate::value_error)
+}
+
+/// `path` beneath a subtree's base, which `PyArrow` keeps with its trailing
+/// slash.
+fn under(base: &str, path: &str) -> String {
+    let path = path.trim_start_matches('/');
+    if base.ends_with('/') || base.is_empty() {
+        format!("{base}{path}")
+    } else {
+        format!("{base}/{path}")
+    }
+}
+
+/// The object-store role `path` names as `PyArrow` spells it: the container,
+/// then the raw key beneath it, or none - or `None` for a filesystem that
+/// stays bridged ([`stays_bridged`]).
+fn store_role(
+    provider: Provider,
+    filesystem: &Bound<'_, PyAny>,
+    path: &str,
+    role: NativeRole,
+) -> PyResult<Option<Result<Holder>>> {
+    let arguments = reduced_arguments(filesystem)?;
+    if stays_bridged(provider, &arguments)? {
+        return Ok(None);
+    }
+    let path = path.trim_start_matches('/');
+    let (container, key) = path.split_once('/').unwrap_or((path, ""));
+    let options = store_options(&arguments)?;
+    Ok(Some(match role {
+        NativeRole::Path => s3::path_at_with(provider, container, key, options).map(Holder::S3Path),
+        NativeRole::File => s3::file_at_with(provider, container, key, options).map(Holder::S3File),
+        NativeRole::Folder => {
+            s3::folder_at_with(provider, container, key, options).map(Holder::S3Folder)
+        }
+    }))
+}
+
+/// The arguments a `PyArrow` filesystem was built with.
+///
+/// `__reduce__` is the one place `PyArrow` states them back: the keyword
+/// mapping its reconstructor takes, read once per classification.
+fn reduced_arguments<'py>(filesystem: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyDict>> {
+    let arguments = filesystem
+        .call_method0("__reduce__")?
+        .get_item(1)?
+        .get_item(0)?;
+    match arguments.cast::<PyDict>() {
+        Ok(arguments) => Ok(arguments.clone()),
+        Err(_) => Err(PyValueError::new_err(format!(
+            "expected {} to state its arguments as a mapping, got {}",
+            filesystem.get_type().name()?,
+            arguments.get_type().name()?,
+        ))),
+    }
+}
+
+/// Whether a filesystem states an argument the native client has no reader
+/// for, so that holding it natively would misread it: it stays on the
+/// bridge, where `PyArrow` reads its own argument.
+///
+/// Stated means given: `PyArrow` writes `None` or the empty text for an
+/// argument it was not given, and an `AzureFileSystem` states its account's
+/// own `*.core.windows.net` hosts over `https` for every filesystem, which
+/// is no statement either.
+fn stays_bridged(provider: Provider, arguments: &Bound<'_, PyDict>) -> PyResult<bool> {
+    let stated = |name: &str, default: &str| -> PyResult<bool> {
+        let Some(value) = arguments.get_item(name)? else {
+            return Ok(false);
+        };
+        if value.is_none() {
+            return Ok(false);
+        }
+        if let Ok(text) = value.cast::<PyString>() {
+            let text = text.to_str()?;
+            return Ok(!text.is_empty() && text != default);
+        }
+        // A metadata table: stated when it holds a pair.
+        Ok(value.len().is_ok_and(|len| len > 0))
+    };
+    Ok(match provider {
+        Provider::Aws => stated("tls_ca_file_path", "")? || stated("default_metadata", "")?,
+        Provider::Google => {
+            stated("target_service_account", "")? || stated("default_metadata", "")?
+        }
+        Provider::Azure => {
+            stated("blob_storage_authority", ".blob.core.windows.net")?
+                || stated("blob_storage_scheme", "https")?
+                || stated("dfs_storage_authority", ".dfs.core.windows.net")?
+                || stated("dfs_storage_scheme", "https")?
+        }
+    })
+}
+
+/// The store options a filesystem's `arguments` state.
+///
+/// A `None` is an argument not given, a mapping is `proxy_options` spelled
+/// as the URL the `proxy` knob reads, a negative number one `PyArrow` was not
+/// given, and an object - a retry strategy, a metadata table - names nothing
+/// a store option reads; the empty text `PyArrow` writes for an unset
+/// argument is dropped by the reader itself. `force_virtual_addressing`
+/// crosses only when true: `PyArrow` states `False` for every filesystem
+/// not asked for it, which read as a knob would force path-style addressing
+/// on all of them.
+fn store_options(arguments: &Bound<'_, PyDict>) -> PyResult<S3Options> {
+    let mut pairs: Vec<(String, String)> = Vec::with_capacity(arguments.len());
+    for (name, value) in arguments {
+        let name = name.extract::<String>()?;
+        let Some(text) = option_text(&value)? else {
+            continue;
+        };
+        if name == "force_virtual_addressing" && text == "false" {
+            continue;
+        }
+        pairs.push((name, text));
+    }
+    S3Options::from_properties(pairs).map_err(crate::value_error)
+}
+
+/// One argument's text, or `None` for one that states no store option.
+fn option_text(value: &Bound<'_, PyAny>) -> PyResult<Option<String>> {
+    if value.is_none() {
+        return Ok(None);
+    }
+    // A `bool` is an `int`, so it is read first.
+    if let Ok(flag) = value.cast::<PyBool>() {
+        return Ok(Some(
+            if flag.is_true() { "true" } else { "false" }.to_owned(),
+        ));
+    }
+    if let Ok(mapping) = value.cast::<PyDict>() {
+        return proxy_url(mapping);
+    }
+    if value.is_instance_of::<PyInt>() || value.is_instance_of::<PyFloat>() {
+        // `-1` is `PyArrow`'s spelling of a number it was not given - its
+        // timeouts, a proxy port - which states no option.
+        if value.extract::<f64>()? < 0.0 {
+            return Ok(None);
+        }
+        return Ok(Some(value.str()?.to_str()?.to_owned()));
+    }
+    if value.is_instance_of::<PyString>() {
+        return Ok(Some(value.str()?.to_str()?.to_owned()));
+    }
+    Ok(None)
+}
+
+/// `PyArrow`'s `proxy_options` mapping as the proxy URL it spells, or `None`
+/// when it names no host.
+fn proxy_url(options: &Bound<'_, PyDict>) -> PyResult<Option<String>> {
+    let text = |key: &str| -> PyResult<String> {
+        match options.get_item(key)? {
+            Some(value) if !value.is_none() => Ok(value.str()?.to_str()?.to_owned()),
+            _ => Ok(String::new()),
+        }
+    };
+    let host = text("host")?;
+    if host.is_empty() {
+        return Ok(None);
+    }
+    let scheme = text("scheme")?;
+    let mut url = format!("{}://", if scheme.is_empty() { "http" } else { &scheme });
+    let user = text("username")?;
+    if !user.is_empty() {
+        url.push_str(&user);
+        let password = text("password")?;
+        if !password.is_empty() {
+            url.push(':');
+            url.push_str(&password);
+        }
+        url.push('@');
+    }
+    url.push_str(&host);
+    let port = text("port")?;
+    if !port.is_empty() && port != "-1" {
+        url.push(':');
+        url.push_str(&port);
+    }
+    Ok(Some(url))
 }
