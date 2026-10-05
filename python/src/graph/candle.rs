@@ -7,6 +7,7 @@ use std::sync::{Mutex, PoisonError};
 
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
+use pyo3::sync::MutexExt;
 use pyo3::types::{PyBool, PyDict, PyInt};
 
 use yggdryl::graph::{
@@ -361,7 +362,7 @@ fn book_event_of(item: &Bound<'_, PyAny>) -> PyResult<CoreBookEvent> {
 
 /// Candles from a sorted stream of books, one per cross code and bucket,
 /// pulling its books lazily from the caller's iterable. Yields `Candle`.
-#[pyclass(name = "CandleIterator", module = "yggdryl._native")]
+#[pyclass(name = "CandleIterator", module = "yggdryl._native", frozen)]
 pub(crate) struct PyCandleIterator {
     inner: Mutex<CoreCandleIterator<CandleSource>>,
     failed: Failed,
@@ -396,12 +397,19 @@ impl PyCandleIterator {
     }
 
     /// The next candle, a Python failure raised as itself.
-    fn pull(&self) -> PyResult<Option<PyCandle>> {
-        let next = self
-            .inner
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .next();
+    ///
+    /// The lock is taken and the walk pulled detached: the pull runs the
+    /// caller's iterable, which may release the GIL, and a thread waiting on
+    /// the lock while attached would keep the puller from taking it back -
+    /// two threads calling `next()` on one walk would hang the process.
+    /// Each item is read attached, through `Pulled`.
+    fn pull(&self, py: Python<'_>) -> PyResult<Option<PyCandle>> {
+        let next = py.detach(|| {
+            self.inner
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .next()
+        });
         match next {
             Some(Ok(candle)) => Ok(Some(PyCandle::from_core(candle))),
             // A core refusal (an unsorted stream) or the sentinel standing in
@@ -442,10 +450,12 @@ impl PyCandleIterator {
 
     /// The options the walk buckets by.
     #[getter]
-    fn options(&self) -> PyCandleOptions {
+    fn options(&self, py: Python<'_>) -> PyCandleOptions {
+        // Waited on detached: another thread may hold the lock across a pull
+        // of the caller's iterable, which needs the GIL back to finish.
         PyCandleOptions::from_core(
             self.inner
-                .lock()
+                .lock_py_attached(py)
                 .unwrap_or_else(PoisonError::into_inner)
                 .options()
                 .clone(),
@@ -456,8 +466,8 @@ impl PyCandleIterator {
         slf
     }
 
-    fn __next__(&self) -> PyResult<Option<PyCandle>> {
-        self.pull()
+    fn __next__(&self, py: Python<'_>) -> PyResult<Option<PyCandle>> {
+        self.pull(py)
     }
 }
 
@@ -475,7 +485,7 @@ pub(crate) fn candles(
 ) -> PyResult<Vec<PyCandle>> {
     let walk = PyCandleIterator::over(books, candle_options_of(interval, timezone)?)?;
     let mut collected = Vec::new();
-    while let Some(candle) = walk.pull()? {
+    while let Some(candle) = walk.pull(books.py())? {
         collected.push(candle);
     }
     Ok(collected)

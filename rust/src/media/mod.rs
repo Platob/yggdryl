@@ -440,6 +440,10 @@ impl IOBase for Media {
         self.as_io_mut().pwrite(offset, bytes)
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> crate::Result<()> {
+        self.as_io_mut().create_bytes(bytes)
+    }
+
     fn size(&self) -> u64 {
         self.as_io().size()
     }

@@ -405,14 +405,14 @@ macro_rules! object_members {
             /// The last part of the path.
             #[getter]
             fn name(slf: &Bound<'_, Self>) -> PyResult<String> {
-                let base = slf.borrow();
+                let base = slf.try_borrow()?;
                 Ok(object_of(base.as_super())?.name().to_owned())
             }
 
             /// The parts, from the catalog's name down to this object's own.
             #[getter]
             fn path<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
-                let base = slf.borrow();
+                let base = slf.try_borrow()?;
                 let py = slf.py();
                 let object = object_of(base.as_super())?;
                 PyTuple::new(py, object.path().iter().map(|part| part.as_str()))
@@ -421,7 +421,7 @@ macro_rules! object_members {
             /// What the store says this object is, when it says anything.
             #[getter]
             fn description(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-                let base = slf.borrow();
+                let base = slf.try_borrow()?;
                 Ok(object_of(base.as_super())?.description().map(str::to_owned))
             }
 
@@ -429,7 +429,7 @@ macro_rules! object_members {
             /// epoch, when the store keeps that fact.
             #[getter]
             fn modified(slf: &Bound<'_, Self>) -> PyResult<Option<i64>> {
-                let base = slf.borrow();
+                let base = slf.try_borrow()?;
                 Ok(object_of(base.as_super())?.modified())
             }
 
@@ -438,7 +438,7 @@ macro_rules! object_members {
             /// earlier one by name.
             #[getter]
             fn properties<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyDict>> {
-                let base = slf.borrow();
+                let base = slf.try_borrow()?;
                 let properties = object_of(base.as_super())?
                     .properties()
                     .map_err(value_error)?;
@@ -457,7 +457,7 @@ macro_rules! object_members {
                 updates: Option<&Bound<'_, PyAny>>,
                 removes: Option<&Bound<'_, PyAny>>,
             ) -> PyResult<()> {
-                let base = slf.borrow();
+                let base = slf.try_borrow()?;
                 let updates = properties_from_args(updates, None)?;
                 let removes = match removes {
                     Some(value) => crate::enums::strings_from_iterable(value, "removes")?,
@@ -480,12 +480,12 @@ macro_rules! object_members {
             }
 
             fn __str__(slf: &Bound<'_, Self>) -> PyResult<String> {
-                let base = slf.borrow();
+                let base = slf.try_borrow()?;
                 path_text(base.as_super())
             }
 
             fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
-                let handle = slf.borrow();
+                let handle = slf.try_borrow()?;
                 let base = handle.as_super();
                 let implementation = Implementation::of_holder(base.inner()?).ok_or_else(no_object)?;
                 let path = PyString::new(slf.py(), &path_text(base)?).repr()?;
@@ -495,7 +495,7 @@ macro_rules! object_members {
             /// Two objects are equal when their descriptions are: the path,
             /// the location, what was stated.
             fn __eq__(slf: &Bound<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
-                let base = slf.borrow();
+                let base = slf.try_borrow()?;
                 let py = slf.py();
                 let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
                     return Ok(py.NotImplemented());
@@ -505,7 +505,7 @@ macro_rules! object_members {
             }
 
             fn __hash__(slf: &Bound<'_, Self>) -> PyResult<isize> {
-                let base = slf.borrow();
+                let base = slf.try_borrow()?;
                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
                 $access(base.as_super())?.hash(&mut hasher);
                 Ok(python_hash(hasher.finish()))
@@ -524,6 +524,7 @@ macro_rules! object_members {
 #[pyclass(
     name = "Catalog",
     module = "yggdryl._native",
+    frozen,
     extends = PyIOBase,
     subclass,
     skip_from_py_object
@@ -561,14 +562,14 @@ object_members!(PyCatalog, catalog_of, {
     /// to any depth.
     #[getter]
     fn namespace_levels(slf: &Bound<'_, Self>) -> PyResult<Option<usize>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         Ok(catalog_of(base.as_super())?.namespace_levels())
     }
 
     /// The namespaces one level down, as a lazy mapping view.
     #[getter]
     fn namespaces(slf: &Bound<'_, Self>) -> PyResult<PyNamespaces> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         Ok(PyNamespaces {
             parent: Parent::Catalog(catalog_of(base.as_super())?.clone()),
         })
@@ -577,7 +578,7 @@ object_members!(PyCatalog, catalog_of, {
     /// The tables one level down, as a lazy mapping view.
     #[getter]
     fn tables(slf: &Bound<'_, Self>) -> PyResult<PyTables> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         Ok(PyTables {
             parent: Parent::Catalog(catalog_of(base.as_super())?.clone()),
         })
@@ -586,7 +587,7 @@ object_members!(PyCatalog, catalog_of, {
     /// The children, lazily, in the store's order, each as the class its
     /// implementation names.
     fn children(slf: &Bound<'_, Self>) -> PyResult<PyObjects> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         Ok(PyObjects::new(
             catalog_of(base.as_super())?.children(),
             None,
@@ -596,7 +597,7 @@ object_members!(PyCatalog, catalog_of, {
 
     /// The child called `name`, one level down.
     fn get(slf: &Bound<'_, Self>, name: &str) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let object = catalog_of(base.as_super())?
             .get(name)
             .map_err(value_error)?;
@@ -606,7 +607,7 @@ object_members!(PyCatalog, catalog_of, {
     /// The object a path below the catalog names - dotted text or parts -
     /// descending one level per part.
     fn resolve(slf: &Bound<'_, Self>, path: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let path = object_path_from_value(path)?;
         let object = catalog_of(base.as_super())?
             .resolve(path)
@@ -617,7 +618,7 @@ object_members!(PyCatalog, catalog_of, {
     /// The table a path below the catalog names; a namespace there is the
     /// absence of a table.
     fn table(slf: &Bound<'_, Self>, path: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let path = object_path_from_value(path)?;
         let table = catalog_of(base.as_super())?
             .table(path)
@@ -628,7 +629,7 @@ object_members!(PyCatalog, catalog_of, {
     /// The namespace a path below the catalog names; a table there is the
     /// absence of a namespace.
     fn namespace(slf: &Bound<'_, Self>, path: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let path = object_path_from_value(path)?;
         let namespace = catalog_of(base.as_super())?
             .namespace(path)
@@ -644,7 +645,7 @@ object_members!(PyCatalog, catalog_of, {
         properties: Option<&Bound<'_, PyAny>>,
         keywords: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let properties = properties_from_args(properties, keywords)?;
         let namespace = catalog_of(base.as_super())?
             .create_namespace(name, &properties)
@@ -661,7 +662,7 @@ object_members!(PyCatalog, catalog_of, {
         properties: Option<&Bound<'_, PyAny>>,
         keywords: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let field = core_field_from_value(field)?;
         let properties = properties_from_args(properties, keywords)?;
         let table = catalog_of(base.as_super())?
@@ -675,6 +676,7 @@ object_members!(PyCatalog, catalog_of, {
 #[pyclass(
     name = "MemoryCatalog",
     module = "yggdryl._native",
+    frozen,
     extends = PyCatalog,
     skip_from_py_object
 )]
@@ -710,6 +712,7 @@ impl PyMemoryCatalog {
 #[pyclass(
     name = "FolderCatalog",
     module = "yggdryl._native",
+    frozen,
     extends = PyCatalog,
     skip_from_py_object
 )]
@@ -752,6 +755,7 @@ impl PyFolderCatalog {
 #[pyclass(
     name = "Namespace",
     module = "yggdryl._native",
+    frozen,
     extends = PyIOBase,
     subclass,
     skip_from_py_object
@@ -762,7 +766,7 @@ object_members!(PyNamespace, namespace_of, {
     /// The namespaces one level down, as a lazy mapping view.
     #[getter]
     fn namespaces(slf: &Bound<'_, Self>) -> PyResult<PyNamespaces> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         Ok(PyNamespaces {
             parent: Parent::Namespace(namespace_of(base.as_super())?.clone()),
         })
@@ -771,7 +775,7 @@ object_members!(PyNamespace, namespace_of, {
     /// The tables one level down, as a lazy mapping view.
     #[getter]
     fn tables(slf: &Bound<'_, Self>) -> PyResult<PyTables> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         Ok(PyTables {
             parent: Parent::Namespace(namespace_of(base.as_super())?.clone()),
         })
@@ -780,7 +784,7 @@ object_members!(PyNamespace, namespace_of, {
     /// The children, lazily, in the store's order, each as the class its
     /// implementation names.
     fn children(slf: &Bound<'_, Self>) -> PyResult<PyObjects> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         Ok(PyObjects::new(
             namespace_of(base.as_super())?.children(),
             None,
@@ -790,7 +794,7 @@ object_members!(PyNamespace, namespace_of, {
 
     /// The child called `name`, one level down.
     fn get(slf: &Bound<'_, Self>, name: &str) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let object = namespace_of(base.as_super())?
             .get(name)
             .map_err(value_error)?;
@@ -800,7 +804,7 @@ object_members!(PyNamespace, namespace_of, {
     /// The object a path below the namespace names - dotted text or parts -
     /// descending one level per part.
     fn resolve(slf: &Bound<'_, Self>, path: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let path = object_path_from_value(path)?;
         let object = namespace_of(base.as_super())?
             .resolve(path)
@@ -816,7 +820,7 @@ object_members!(PyNamespace, namespace_of, {
         properties: Option<&Bound<'_, PyAny>>,
         keywords: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let properties = properties_from_args(properties, keywords)?;
         let namespace = namespace_of(base.as_super())?
             .create_namespace(name, &properties)
@@ -833,7 +837,7 @@ object_members!(PyNamespace, namespace_of, {
         properties: Option<&Bound<'_, PyAny>>,
         keywords: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let field = core_field_from_value(field)?;
         let properties = properties_from_args(properties, keywords)?;
         let table = namespace_of(base.as_super())?
@@ -847,6 +851,7 @@ object_members!(PyNamespace, namespace_of, {
 #[pyclass(
     name = "MemoryNamespace",
     module = "yggdryl._native",
+    frozen,
     extends = PyNamespace,
     skip_from_py_object
 )]
@@ -885,6 +890,7 @@ impl PyMemoryNamespace {
 #[pyclass(
     name = "FolderNamespace",
     module = "yggdryl._native",
+    frozen,
     extends = PyNamespace,
     skip_from_py_object
 )]
@@ -929,6 +935,7 @@ impl PyFolderNamespace {
 #[pyclass(
     name = "Table",
     module = "yggdryl._native",
+    frozen,
     extends = PyIOBase,
     subclass,
     skip_from_py_object
@@ -939,7 +946,7 @@ object_members!(PyTable, table_of, {
     /// The row schema, with no row read: the declared field, else the
     /// stored one.
     fn field(slf: &Bound<'_, Self>) -> PyResult<PyField> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         table_of(base.as_super())?
             .field()
             .map(PyField::from_inner)
@@ -951,7 +958,7 @@ object_members!(PyTable, table_of, {
     /// table format.
     #[getter]
     fn storage(slf: &Bound<'_, Self>) -> PyResult<String> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         Ok(table_of(base.as_super())?.storage())
     }
 });
@@ -961,6 +968,7 @@ object_members!(PyTable, table_of, {
 #[pyclass(
     name = "MediaTable",
     module = "yggdryl._native",
+    frozen,
     extends = PyTable,
     skip_from_py_object
 )]
@@ -1058,7 +1066,12 @@ impl Parent {
 /// class its implementation names, and a missing name is a `KeyError`
 /// carrying the core's own message. Names may be dotted - `view["sales.eu"]`
 /// descends.
-#[pyclass(name = "Namespaces", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(
+    name = "Namespaces",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
 pub(crate) struct PyNamespaces {
     parent: Parent,
 }
@@ -1172,7 +1185,12 @@ impl PyNamespaces {
 /// as the class its implementation names, a missing name is a `KeyError`,
 /// names may be dotted, and the write helpers create the table on first
 /// write from the rows' own schema where the parent creates tables.
-#[pyclass(name = "Tables", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(
+    name = "Tables",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
 pub(crate) struct PyTables {
     parent: Parent,
 }
@@ -1597,7 +1615,7 @@ impl PyWarehouse {
 /// It starts with the memory catalog `local`, holding the folder namespaces
 /// `temporary`, `home` and `config`. Every method is static and takes the
 /// registry's lock for its own call.
-#[pyclass(name = "SystemWarehouse", module = "yggdryl._native")]
+#[pyclass(name = "SystemWarehouse", module = "yggdryl._native", frozen)]
 pub(crate) struct PySystemWarehouse;
 
 #[pymethods]

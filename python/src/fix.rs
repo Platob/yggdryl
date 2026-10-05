@@ -2631,7 +2631,12 @@ impl PyFixMsg {
 /// face - `parse_text_serie`, `lifecycle_serie`, `market_data_serie`,
 /// `messages_serie`, `serie_reader`, `book_serie`, `market_serie` - answering
 /// a native `SerieReader` that a write takes off the GIL.
-#[pyclass(name = "FixCodec", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(
+    name = "FixCodec",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
 pub(crate) struct PyFixCodec {
     inner: CoreFixCodec,
     registry: Arc<CoreFixRegistry>,
@@ -3170,7 +3175,7 @@ impl PyFixCodec {
     ) -> PyResult<PyFixMessages> {
         let pulled = Pulled::new(lines, |held| {
             let held = held.cast::<PyTextLine>().map_err(PyErr::from)?;
-            Ok(held.borrow().as_core().clone())
+            Ok(held.try_borrow()?.as_core().clone())
         })?;
         let failed = pulled.failed.clone();
         let inner = &self.inner;

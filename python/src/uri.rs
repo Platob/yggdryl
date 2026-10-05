@@ -210,7 +210,7 @@ fn hold_narrowed(slf: &Bound<'_, PyUri>, candidate: CoreUri) -> PyResult<()> {
     } else if object.is_instance_of::<PyUrl>() {
         CoreUrl::from_uri(candidate.clone()).map_err(value_error)?;
     }
-    slf.borrow_mut().inner = candidate;
+    slf.try_borrow_mut()?.inner = candidate;
     Ok(())
 }
 
@@ -223,7 +223,7 @@ fn edit_identifier(
     edit: impl FnOnce(&mut CoreUri) -> yggdryl::Result<()>,
 ) -> PyResult<()> {
     let mut candidate = {
-        let held = slf.borrow();
+        let held = slf.try_borrow()?;
         held.require_mutable()?;
         held.inner.clone()
     };
@@ -237,7 +237,7 @@ fn edit_identifier_if(
     edit: impl FnOnce(&mut CoreUri) -> bool,
 ) -> PyResult<bool> {
     let mut candidate = {
-        let held = slf.borrow();
+        let held = slf.try_borrow()?;
         held.require_mutable()?;
         held.inner.clone()
     };
@@ -722,7 +722,7 @@ impl PyUri {
         Ok(format!(
             "{}.from_str({:?})",
             slf.get_type().name()?,
-            slf.borrow().inner.to_string()
+            slf.try_borrow()?.inner.to_string()
         ))
     }
 
@@ -753,12 +753,12 @@ impl PyUri {
 
     fn __reduce__(slf: &Bound<'_, Self>) -> PyResult<(Py<PyAny>, (String,))> {
         let callable = slf.get_type().getattr("from_str")?.unbind();
-        let text = slf.borrow().inner.to_string();
+        let text = slf.try_borrow()?.inner.to_string();
         Ok((callable, (text,)))
     }
 
     fn __copy__(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
-        let text = slf.borrow().inner.to_string();
+        let text = slf.try_borrow()?.inner.to_string();
         Ok(slf.get_type().call_method1("from_str", (text,))?.unbind())
     }
 
@@ -780,6 +780,7 @@ impl PyUri {
 #[pyclass(
     name = "Url",
     module = "yggdryl._native",
+    frozen,
     extends = PyUri,
     skip_from_py_object
 )]
@@ -821,8 +822,8 @@ impl PyUrl {
 
     /// This location as the identifier it narrows.
     #[allow(clippy::wrong_self_convention)]
-    fn into_uri(slf: &Bound<'_, Self>) -> PyUri {
-        PyUri::from_core(slf.as_super().borrow().inner.clone())
+    fn into_uri(slf: &Bound<'_, Self>) -> PyResult<PyUri> {
+        Ok(PyUri::from_core(slf.as_super().try_borrow()?.inner.clone()))
     }
 
     // ---------------------------------------------------------------------
@@ -836,24 +837,26 @@ impl PyUrl {
 
     /// The final path component, as `pathlib.PurePath.name`.
     #[getter]
-    fn name(slf: &Bound<'_, Self>) -> String {
-        slf.as_super()
-            .borrow()
+    fn name(slf: &Bound<'_, Self>) -> PyResult<String> {
+        Ok(slf
+            .as_super()
+            .try_borrow()?
             .inner
             .file_name()
             .unwrap_or_default()
-            .to_string()
+            .to_string())
     }
 
     /// The final extension with its leading dot, as `PurePath.suffix`.
     #[getter]
-    fn suffix(slf: &Bound<'_, Self>) -> String {
-        slf.as_super()
-            .borrow()
+    fn suffix(slf: &Bound<'_, Self>) -> PyResult<String> {
+        Ok(slf
+            .as_super()
+            .try_borrow()?
             .inner
             .extension()
             .map(|extension| format!(".{extension}"))
-            .unwrap_or_default()
+            .unwrap_or_default())
     }
 
     /// Every extension with leading dots, as `PurePath.suffixes`.
@@ -861,7 +864,7 @@ impl PyUrl {
     fn suffixes<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
         let suffixes: Vec<String> = slf
             .as_super()
-            .borrow()
+            .try_borrow()?
             .inner
             .extensions()
             .map(|extension| format!(".{extension}"))
@@ -874,7 +877,7 @@ impl PyUrl {
     /// A location at the root is its own parent, which is what `pathlib` does.
     #[getter]
     fn parent(slf: &Bound<'_, Self>) -> PyResult<Py<Self>> {
-        let url = url_of(&slf.as_super().borrow())?;
+        let url = url_of(&*slf.as_super().try_borrow()?)?;
         let parent = url.parent().unwrap_or(url);
         url_object(slf.py(), parent)
     }
@@ -883,7 +886,7 @@ impl PyUrl {
     #[getter]
     fn parents<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
         let py = slf.py();
-        let parents: Vec<Py<Self>> = url_of(&slf.as_super().borrow())?
+        let parents: Vec<Py<Self>> = url_of(&*slf.as_super().try_borrow()?)?
             .parents()
             .map(|parent| url_object(py, parent))
             .collect::<PyResult<_>>()?;
@@ -896,7 +899,7 @@ impl PyUrl {
     /// system path, joined component by component with its own separators.
     #[pyo3(signature = (*others))]
     fn joinpath(slf: &Bound<'_, Self>, others: &Bound<'_, PyTuple>) -> PyResult<Py<Self>> {
-        let mut joined = url_of(&slf.as_super().borrow())?;
+        let mut joined = url_of(&*slf.as_super().try_borrow()?)?;
         for other in others {
             joined = join_url_component(&joined, &other)?;
         }
@@ -905,20 +908,20 @@ impl PyUrl {
 
     /// `url / "child"`, as `PurePath.__truediv__`.
     fn __truediv__(slf: &Bound<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<Py<Self>> {
-        let joined = join_url_component(&url_of(&slf.as_super().borrow())?, other)?;
+        let joined = join_url_component(&url_of(&*slf.as_super().try_borrow()?)?, other)?;
         url_object(slf.py(), joined)
     }
 
     /// This location with a different final component, as `with_name`.
     fn with_name(slf: &Bound<'_, Self>, value: &str) -> PyResult<Py<Self>> {
-        let mut renamed = url_of(&slf.as_super().borrow())?;
+        let mut renamed = url_of(&*slf.as_super().try_borrow()?)?;
         renamed.set_file_name(value).map_err(value_error)?;
         url_object(slf.py(), renamed)
     }
 
     /// This location with a different stem, as `with_stem`.
     fn with_stem(slf: &Bound<'_, Self>, value: &str) -> PyResult<Py<Self>> {
-        let mut renamed = url_of(&slf.as_super().borrow())?;
+        let mut renamed = url_of(&*slf.as_super().try_borrow()?)?;
         renamed.set_stem(value).map_err(value_error)?;
         url_object(slf.py(), renamed)
     }
@@ -927,7 +930,7 @@ impl PyUrl {
     ///
     /// The leading dot is optional, and an empty suffix removes the extension.
     fn with_suffix(slf: &Bound<'_, Self>, value: &str) -> PyResult<Py<Self>> {
-        let mut renamed = url_of(&slf.as_super().borrow())?;
+        let mut renamed = url_of(&*slf.as_super().try_borrow()?)?;
         let suffix = value.strip_prefix('.').unwrap_or(value);
         if suffix.is_empty() {
             renamed.remove_extension();
@@ -944,13 +947,19 @@ impl PyUrl {
     }
 
     /// The path in POSIX form, as `PurePath.as_posix`.
-    fn as_posix(slf: &Bound<'_, Self>) -> String {
-        slf.as_super().borrow().inner.path().as_str().to_string()
+    fn as_posix(slf: &Bound<'_, Self>) -> PyResult<String> {
+        Ok(slf
+            .as_super()
+            .try_borrow()?
+            .inner
+            .path()
+            .as_str()
+            .to_string())
     }
 
     /// The whole location as text, as `PurePath.as_uri`.
-    fn as_uri(slf: &Bound<'_, Self>) -> String {
-        slf.as_super().borrow().inner.to_string()
+    fn as_uri(slf: &Bound<'_, Self>) -> PyResult<String> {
+        Ok(slf.as_super().try_borrow()?.inner.to_string())
     }
 
     /// Return whether this location matches `pattern`, as `PurePath.match`.
@@ -959,24 +968,24 @@ impl PyUrl {
     /// separator is anchored at the path root.
     #[pyo3(name = "match")]
     fn matches(slf: &Bound<'_, Self>, pattern: &str) -> PyResult<bool> {
-        Ok(url_of(&slf.as_super().borrow())?.matches_glob(pattern))
+        Ok(url_of(&*slf.as_super().try_borrow()?)?.matches_glob(pattern))
     }
 
     /// Return whether the whole path matches, as `PurePath.full_match`.
     fn full_match(slf: &Bound<'_, Self>, pattern: &str) -> PyResult<bool> {
-        Ok(url_of(&slf.as_super().borrow())?.matches_glob(pattern))
+        Ok(url_of(&*slf.as_super().try_borrow()?)?.matches_glob(pattern))
     }
 
     /// Return whether this location is a glob pattern rather than one name.
     fn is_glob(slf: &Bound<'_, Self>) -> PyResult<bool> {
-        Ok(url_of(&slf.as_super().borrow())?.is_glob())
+        Ok(url_of(&*slf.as_super().try_borrow()?)?.is_glob())
     }
 
     /// Return whether the pattern crosses directory boundaries.
     ///
     /// A `**` segment is what makes a walk recurse rather than list one level.
     fn is_recursive_glob(slf: &Bound<'_, Self>) -> PyResult<bool> {
-        Ok(url_of(&slf.as_super().borrow())?.is_recursive_glob())
+        Ok(url_of(&*slf.as_super().try_borrow()?)?.is_recursive_glob())
     }
 
     /// Return whether `text` is a pattern rather than one plain name.
@@ -994,7 +1003,7 @@ impl PyUrl {
     /// rest, written relative to that root, which is what `full_match_under`
     /// takes. A location that is not a glob is its own root with no pattern.
     fn glob_parts(slf: &Bound<'_, Self>) -> PyResult<(Py<Self>, Option<String>)> {
-        let (root, pattern) = url_of(&slf.as_super().borrow())?
+        let (root, pattern) = url_of(&*slf.as_super().try_borrow()?)?
             .glob_parts()
             .map_err(value_error)?;
         Ok((url_object(slf.py(), root)?, pattern))
@@ -1010,7 +1019,7 @@ impl PyUrl {
         root: &Bound<'_, PyAny>,
         pattern: &str,
     ) -> PyResult<bool> {
-        Ok(url_of(&slf.as_super().borrow())?
+        Ok(url_of(&*slf.as_super().try_borrow()?)?
             .matches_glob_under(&core_url_from_value(root)?, pattern))
     }
 
@@ -1019,7 +1028,7 @@ impl PyUrl {
     /// Raises `ValueError` when this location is not below `other`, which is
     /// what `pathlib` does.
     fn relative_to(slf: &Bound<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<String> {
-        let value = url_of(&slf.as_super().borrow())?;
+        let value = url_of(&*slf.as_super().try_borrow()?)?;
         let root = core_url_from_value(other)?;
         value
             .segments_under(&root)
@@ -1031,36 +1040,36 @@ impl PyUrl {
 
     /// Return whether this location is below `other`, as `is_relative_to`.
     fn is_relative_to(slf: &Bound<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<bool> {
-        Ok(url_of(&slf.as_super().borrow())?
+        Ok(url_of(&*slf.as_super().try_borrow()?)?
             .segments_under(&core_url_from_value(other)?)
             .is_some())
     }
 
     /// Return whether something exists here now, as `Path.exists`.
     fn exists(slf: &Bound<'_, Self>) -> PyResult<bool> {
-        Ok(url_of(&slf.as_super().borrow())?.exists())
+        Ok(url_of(&*slf.as_super().try_borrow()?)?.exists())
     }
 
     /// Return whether this location is a directory, as `Path.is_dir`.
     fn is_dir(slf: &Bound<'_, Self>) -> PyResult<bool> {
-        Ok(url_of(&slf.as_super().borrow())?.is_dir())
+        Ok(url_of(&*slf.as_super().try_borrow()?)?.is_dir())
     }
 
     /// Return whether this location is a regular file, as `Path.is_file`.
     fn is_file(slf: &Bound<'_, Self>) -> PyResult<bool> {
-        Ok(url_of(&slf.as_super().borrow())?.is_file())
+        Ok(url_of(&*slf.as_super().try_borrow()?)?.is_file())
     }
 
     /// Return whether the name begins with a dot, so a listing may skip it.
     fn is_private(slf: &Bound<'_, Self>) -> PyResult<bool> {
-        Ok(url_of(&slf.as_super().borrow())?.is_private())
+        Ok(url_of(&*slf.as_super().try_borrow()?)?.is_private())
     }
 
     /// Return whether this location is on the local file system.
     ///
     /// Only a local URL converts to a path; every other scheme needs a client.
     fn is_local(slf: &Bound<'_, Self>) -> PyResult<bool> {
-        Ok(url_of(&slf.as_super().borrow())?.is_local())
+        Ok(url_of(&*slf.as_super().try_borrow()?)?.is_local())
     }
 
     /// The MIME type of the local entry this location addresses.
@@ -1071,7 +1080,7 @@ impl PyUrl {
     #[getter]
     fn local_mime_type(slf: &Bound<'_, Self>) -> PyResult<PyMimeType> {
         Ok(PyMimeType::from_core(
-            url_of(&slf.as_super().borrow())?.local_mime_type(),
+            url_of(&*slf.as_super().try_borrow()?)?.local_mime_type(),
         ))
     }
 
@@ -1080,13 +1089,13 @@ impl PyUrl {
     fn partitions<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
         PyTuple::new(
             slf.py(),
-            url_of(&slf.as_super().borrow())?.hive_partitions(),
+            url_of(&*slf.as_super().try_borrow()?)?.hive_partitions(),
         )
     }
 
     /// Return the value of one Hive partition column, when the path has it.
     fn partition(slf: &Bound<'_, Self>, column: &str) -> PyResult<Option<String>> {
-        Ok(url_of(&slf.as_super().borrow())?.hive_partition(column))
+        Ok(url_of(&*slf.as_super().try_borrow()?)?.hive_partition(column))
     }
 
     /// The Hive partition pairs this location spells out below `root`.
@@ -1098,19 +1107,19 @@ impl PyUrl {
         slf: &Bound<'py, Self>,
         root: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, PyTuple>> {
-        let pairs =
-            url_of(&slf.as_super().borrow())?.hive_partitions_under(&core_url_from_value(root)?);
+        let pairs = url_of(&*slf.as_super().try_borrow()?)?
+            .hive_partitions_under(&core_url_from_value(root)?);
         PyTuple::new(slf.py(), pairs)
     }
 
     /// Return whether any path segment is a `column=value` partition.
     fn is_partitioned(slf: &Bound<'_, Self>) -> PyResult<bool> {
-        Ok(url_of(&slf.as_super().borrow())?.is_hive_partitioned())
+        Ok(url_of(&*slf.as_super().try_borrow()?)?.is_hive_partitioned())
     }
 
     /// Extend this location with one `column=value` partition directory.
     fn with_partition(slf: &Bound<'_, Self>, column: &str, value: &str) -> PyResult<Py<Self>> {
-        let extended = url_of(&slf.as_super().borrow())?
+        let extended = url_of(&*slf.as_super().try_borrow()?)?
             .with_hive_partition(column, value)
             .map_err(value_error)?;
         url_object(slf.py(), extended)
@@ -1129,6 +1138,7 @@ impl PyUrl {
 #[pyclass(
     name = "Urn",
     module = "yggdryl._native",
+    frozen,
     extends = PyUri,
     skip_from_py_object
 )]
@@ -1164,20 +1174,22 @@ impl PyUrn {
 
     /// This name as the identifier it narrows.
     #[allow(clippy::wrong_self_convention)]
-    fn into_uri(slf: &Bound<'_, Self>) -> PyUri {
-        PyUri::from_core(slf.as_super().borrow().inner.clone())
+    fn into_uri(slf: &Bound<'_, Self>) -> PyResult<PyUri> {
+        Ok(PyUri::from_core(slf.as_super().try_borrow()?.inner.clone()))
     }
 
     /// The canonical lowercase namespace identifier.
     #[getter]
     fn namespace(slf: &Bound<'_, Self>) -> PyResult<String> {
-        Ok(urn_of(&slf.as_super().borrow())?.namespace().to_string())
+        Ok(urn_of(&*slf.as_super().try_borrow()?)?
+            .namespace()
+            .to_string())
     }
 
     /// The namespace-specific string, exactly as it was written.
     #[getter]
     fn namespace_specific(slf: &Bound<'_, Self>) -> PyResult<String> {
-        Ok(urn_of(&slf.as_super().borrow())?
+        Ok(urn_of(&*slf.as_super().try_borrow()?)?
             .namespace_specific()
             .to_string())
     }
@@ -1188,7 +1200,7 @@ impl PyUrn {
     /// separators are the ones after it, so `urn:lake:trades:2026:part.parquet`
     /// spells `lake/trades/2026/part.parquet`.
     fn locator_path(slf: &Bound<'_, Self>) -> PyResult<String> {
-        Ok(urn_of(&slf.as_super().borrow())?
+        Ok(urn_of(&*slf.as_super().try_borrow()?)?
             .locator_path()
             .map_err(value_error)?
             .as_str()
@@ -1197,7 +1209,7 @@ impl PyUrn {
 
     /// Resolve this name under `base`, answering where it is.
     fn resolve(slf: &Bound<'_, Self>, base: &Bound<'_, PyAny>) -> PyResult<Py<PyUrl>> {
-        let located = urn_of(&slf.as_super().borrow())?
+        let located = urn_of(&*slf.as_super().try_borrow()?)?
             .resolve(&core_url_from_value(base)?)
             .map_err(value_error)?;
         url_object(slf.py(), located)
@@ -1205,26 +1217,28 @@ impl PyUrn {
 
     #[getter]
     fn file_name(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(urn_of(&slf.as_super().borrow())?
+        Ok(urn_of(&*slf.as_super().try_borrow()?)?
             .file_name()
             .map(str::to_string))
     }
 
     #[getter]
     fn stem(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(urn_of(&slf.as_super().borrow())?.stem().map(str::to_string))
+        Ok(urn_of(&*slf.as_super().try_borrow()?)?
+            .stem()
+            .map(str::to_string))
     }
 
     #[getter]
     fn extension(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(urn_of(&slf.as_super().borrow())?
+        Ok(urn_of(&*slf.as_super().try_borrow()?)?
             .extension()
             .map(str::to_string))
     }
 
     #[getter]
     fn extensions<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
-        let urn = urn_of(&slf.as_super().borrow())?;
+        let urn = urn_of(&*slf.as_super().try_borrow()?)?;
         let extensions: Vec<&str> = urn.extensions().collect();
         PyTuple::new(slf.py(), extensions)
     }
@@ -1232,14 +1246,14 @@ impl PyUrn {
     #[getter]
     fn mime_type(slf: &Bound<'_, Self>) -> PyResult<PyMimeType> {
         Ok(PyMimeType::from_core(
-            urn_of(&slf.as_super().borrow())?.mime_type(),
+            urn_of(&*slf.as_super().try_borrow()?)?.mime_type(),
         ))
     }
 
     #[getter]
     fn media_type(slf: &Bound<'_, Self>) -> PyResult<PyMediaType> {
         Ok(PyMediaType::from_core(
-            urn_of(&slf.as_super().borrow())?.media_type(),
+            urn_of(&*slf.as_super().try_borrow()?)?.media_type(),
         ))
     }
 
@@ -1296,12 +1310,12 @@ fn edit_urn(
 ) -> PyResult<()> {
     let base = slf.as_super();
     let mut urn = {
-        let held = base.borrow();
+        let held = base.try_borrow()?;
         held.require_mutable()?;
         urn_of(&held)?
     };
     edit(&mut urn).map_err(value_error)?;
-    base.borrow_mut().inner = urn.into_uri();
+    base.try_borrow_mut()?.inner = urn.into_uri();
     Ok(())
 }
 
@@ -1318,6 +1332,7 @@ fn edit_urn(
 #[pyclass(
     name = "Arn",
     module = "yggdryl._native",
+    frozen,
     extends = PyUri,
     skip_from_py_object
 )]
@@ -1372,26 +1387,30 @@ impl PyArn {
 
     /// This name as the identifier it narrows.
     #[allow(clippy::wrong_self_convention)]
-    fn into_uri(slf: &Bound<'_, Self>) -> PyUri {
-        PyUri::from_core(slf.as_super().borrow().inner.clone())
+    fn into_uri(slf: &Bound<'_, Self>) -> PyResult<PyUri> {
+        Ok(PyUri::from_core(slf.as_super().try_borrow()?.inner.clone()))
     }
 
     /// The partition: `aws`, `aws-cn`, `aws-us-gov`, or another AWS names.
     #[getter]
     fn partition(slf: &Bound<'_, Self>) -> PyResult<String> {
-        Ok(arn_of(&slf.as_super().borrow())?.partition().to_string())
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
+            .partition()
+            .to_string())
     }
 
     /// The service namespace: `s3`, `iam`, `lambda`, and the rest.
     #[getter]
     fn service(slf: &Bound<'_, Self>) -> PyResult<String> {
-        Ok(arn_of(&slf.as_super().borrow())?.service().to_string())
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
+            .service()
+            .to_string())
     }
 
     /// The region, or `None` for a service that spans every region.
     #[getter]
     fn region(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(arn_of(&slf.as_super().borrow())?
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
             .region()
             .map(str::to_string))
     }
@@ -1399,7 +1418,7 @@ impl PyArn {
     /// The owning account, or `None` when the ARN names none.
     #[getter]
     fn account(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(arn_of(&slf.as_super().borrow())?
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
             .account()
             .map(str::to_string))
     }
@@ -1407,13 +1426,15 @@ impl PyArn {
     /// The resource field whole, its own `/` and `:` structure kept.
     #[getter]
     fn resource(slf: &Bound<'_, Self>) -> PyResult<String> {
-        Ok(arn_of(&slf.as_super().borrow())?.resource().to_string())
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
+            .resource()
+            .to_string())
     }
 
     /// The separator the resource field uses, if it carries one.
     #[getter]
     fn resource_separator(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(arn_of(&slf.as_super().borrow())?
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
             .resource_separator()
             .map(|separator| separator.to_string()))
     }
@@ -1425,7 +1446,7 @@ impl PyArn {
     /// is the bucket, which `bucket` is the door for.
     #[getter]
     fn resource_type(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(arn_of(&slf.as_super().borrow())?
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
             .resource_type()
             .map(str::to_string))
     }
@@ -1433,14 +1454,16 @@ impl PyArn {
     /// What follows the type, or the whole resource when it names no type.
     #[getter]
     fn resource_id(slf: &Bound<'_, Self>) -> PyResult<String> {
-        Ok(arn_of(&slf.as_super().borrow())?.resource_id().to_string())
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
+            .resource_id()
+            .to_string())
     }
 
     /// The container an ARN names: the bucket on Amazon S3, the table bucket
     /// on Amazon S3 Tables.
     #[getter]
     fn bucket(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(arn_of(&slf.as_super().borrow())?
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
             .bucket()
             .map(str::to_string))
     }
@@ -1448,39 +1471,43 @@ impl PyArn {
     /// The object key an Amazon S3 ARN names, below its bucket.
     #[getter]
     fn key(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(arn_of(&slf.as_super().borrow())?.key().map(str::to_string))
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
+            .key()
+            .map(str::to_string))
     }
 
     /// The table an Amazon S3 Tables ARN names, below its table bucket.
     #[getter]
     fn table(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(arn_of(&slf.as_super().borrow())?
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
             .table()
             .map(str::to_string))
     }
 
     #[getter]
     fn file_name(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(arn_of(&slf.as_super().borrow())?
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
             .file_name()
             .map(str::to_string))
     }
 
     #[getter]
     fn stem(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(arn_of(&slf.as_super().borrow())?.stem().map(str::to_string))
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
+            .stem()
+            .map(str::to_string))
     }
 
     #[getter]
     fn extension(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
-        Ok(arn_of(&slf.as_super().borrow())?
+        Ok(arn_of(&*slf.as_super().try_borrow()?)?
             .extension()
             .map(str::to_string))
     }
 
     #[getter]
     fn extensions<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
-        let arn = arn_of(&slf.as_super().borrow())?;
+        let arn = arn_of(&*slf.as_super().try_borrow()?)?;
         let extensions: Vec<&str> = arn.extensions().collect();
         PyTuple::new(slf.py(), extensions)
     }
@@ -1488,14 +1515,14 @@ impl PyArn {
     #[getter]
     fn mime_type(slf: &Bound<'_, Self>) -> PyResult<PyMimeType> {
         Ok(PyMimeType::from_core(
-            arn_of(&slf.as_super().borrow())?.mime_type(),
+            arn_of(&*slf.as_super().try_borrow()?)?.mime_type(),
         ))
     }
 
     #[getter]
     fn media_type(slf: &Bound<'_, Self>) -> PyResult<PyMediaType> {
         Ok(PyMediaType::from_core(
-            arn_of(&slf.as_super().borrow())?.media_type(),
+            arn_of(&*slf.as_super().try_borrow()?)?.media_type(),
         ))
     }
 
@@ -1552,12 +1579,12 @@ fn edit_arn(
 ) -> PyResult<()> {
     let base = slf.as_super();
     let mut arn = {
-        let held = base.borrow();
+        let held = base.try_borrow()?;
         held.require_mutable()?;
         arn_of(&held)?
     };
     edit(&mut arn).map_err(value_error)?;
-    base.borrow_mut().inner = arn.into_uri();
+    base.try_borrow_mut()?.inner = arn.into_uri();
     Ok(())
 }
 
@@ -1608,7 +1635,7 @@ impl PyUriPathIterator {
 /// `decode` chooses the text the view speaks. A decoding view answers with the
 /// text the escapes stand for and encodes what it is given; a raw view answers
 /// with the query's own bytes and refuses text the query syntax cannot carry.
-#[pyclass(name = "Parameters", module = "yggdryl._native")]
+#[pyclass(name = "Parameters", module = "yggdryl._native", frozen)]
 pub(crate) struct PyParameters {
     /// The identifier this view reads and writes through.
     ///

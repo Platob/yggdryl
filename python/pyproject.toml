@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.9,<2"]
+requires = ["maturin>=1.15,<2"]
 build-backend = "maturin"
 
 [project]
@@ -35,14 +35,25 @@ test = [
 
 [tool.maturin]
 bindings = "pyo3"
-# One stable-ABI extension serves every CPython from 3.11 on, so a platform
-# builds it once rather than once per interpreter. 3.11 is the floor because
-# the buffer protocol (`pyo3::buffer`) joined the limited API there. The
-# feature is conditional here rather than set in Cargo.toml so a 3.10
-# interpreter builds without it: maturin then compiles 3.10 an extension of
-# its own, where a feature set in the manifest would put the 3.11 build in a
+# Two stable-ABI families serve every CPython, so a platform builds once per
+# family rather than once per interpreter: abi3 from 3.11 for every
+# GIL-enabled CPython, and abi3t from 3.15 for GIL-enabled and free-threaded
+# CPython alike (PEP 803, `_native.abi3t.so`, tagged `cp315-abi3.abi3t`).
+# 3.11 is the abi3 floor because the buffer protocol (`pyo3::buffer`) joined
+# the limited API there, so 3.10 builds an extension of its own; a
+# free-threaded 3.14 has no stable ABI, so it builds a version-specific
+# extension too (`cp314-cp314t`), PyO3 ignoring abi3 there; PyO3 0.29 builds
+# for no free-threaded CPython below 3.14 (`pyo3-ffi`'s
+# `MIN_FREE_THREADED_VERSION`), so there is no `cp313-cp313t`. One maturin build
+# picks one family by the interpreter it targets, which is why the release
+# builds twice per platform (`.github/workflows/release.yml`). The features are
+# conditional here rather than set in Cargo.toml so a 3.10 interpreter builds
+# without them: a feature set in the manifest would put the 3.11 build in a
 # wheel tagged for 3.10.
-features = [{ feature = "pyo3/abi3-py311", python-version = ">=3.11" }]
+features = [
+  { feature = "pyo3/abi3-py311", python-version = ">=3.11" },
+  { feature = "pyo3/abi3t-py315", python-version = ">=3.15" },
+]
 # The `yggdryl` command ships in the same wheel as the extension module. maturin
 # copies this directory's `scripts/` into `yggdryl-<version>.data/scripts/`,
 # which an installer puts straight on PATH - so `pip install yggdryl` answers

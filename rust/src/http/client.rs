@@ -1104,6 +1104,10 @@ impl IOBase for Client {
         Err(is_a_directory(bytes.len(), "the HTTP client"))
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        Err(is_a_directory(bytes.len(), "the HTTP client"))
+    }
+
     fn size(&self) -> u64 {
         0
     }

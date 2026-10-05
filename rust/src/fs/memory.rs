@@ -380,6 +380,34 @@ impl FileSystem for MemoryFileSystem {
         )))
     }
 
+    /// The entry inserted under the one lock every operation takes, so the
+    /// path's absence and the insert are one step and two creators see one
+    /// succeed.
+    fn create_file(&self, path: &str, bytes: &[u8]) -> Result<()> {
+        let mut state = self.lock()?;
+        match info(&state, path).kind {
+            IOKind::Unknown => {}
+            kind => return Err(Error::conflict("file", kind.as_str(), path)),
+        }
+        validate_file_parent(&state, path)?;
+        let mut value = Vec::new();
+        value.try_reserve_exact(bytes.len()).map_err(|error| {
+            Error::Io(std::io::Error::other(format!(
+                "cannot allocate a {}-byte memory file: {error}",
+                bytes.len()
+            )))
+        })?;
+        value.extend_from_slice(bytes);
+        state.files.insert(
+            path.to_owned(),
+            Entry {
+                bytes: Arc::new(value),
+                mtime_ns: now_ns(),
+            },
+        );
+        Ok(())
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }

@@ -16,6 +16,8 @@ import http.client
 import io
 import json
 import pathlib
+import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -1188,3 +1190,71 @@ class TestRequestsInterop:
         )
         sent = [dict(entry["headers"]).get("authorization") for entry in server.requests]
         assert sent == ["Basic YWxpY2U6czNjcmV0"] * 2
+
+
+PAGES_TAKEN_SCRIPT = r"""
+import json
+import threading
+import time
+import urllib.parse
+
+from yggdryl.http import Server, Session
+
+
+def page(request):
+    # This process answers the walk's request: the handler takes the GIL,
+    # and sleeping releases it while the walk holds its lock.
+    time.sleep(0.2)
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(str(request.url)).query)
+    number = int(query.get("page", ["1"])[0])
+    headers = {"content-type": "application/json"}
+    if number < 3:
+        headers["link"] = f'</pages?page={number + 1}>; rel="next"'
+    return (200, headers, json.dumps({"data": [{"id": number}]}))
+
+
+with Server.bind() as server:
+    server.route("/pages", page)
+    pages = Session(str(server.url)).pages("/pages", records="data")
+    walked = []
+    taken = []
+
+    def walk():
+        for answer in pages:
+            walked.extend(row["id"] for row in answer.json()["data"])
+
+    def take():
+        time.sleep(0.05)
+        taken.extend(pages.into_arrow_reader().read_all().column("id").to_pylist())
+
+    threads = [threading.Thread(target=walk), threading.Thread(target=take)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert walked + taken == [1, 2, 3], (walked, taken)
+print("ok")
+"""
+
+
+def test_pages_taken_while_a_page_is_fetched_never_hold_the_gil_waiting() -> None:
+    """A page walk holds its lock across each page's request, and the request
+    may need the GIL - here the route this process serves runs a Python
+    handler that sleeps. ``into_arrow_reader`` waiting on that lock attached
+    would keep the handler from finishing, and the process would hang. One
+    thread walks the pages while another takes the rest; every page arrives
+    once. In a process of its own under a deadline, because the failure is a
+    hang.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", PAGES_TAKEN_SCRIPT],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as hung:
+        raise AssertionError("taking a page walk while a page was fetched hung") from hung
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().endswith("ok")

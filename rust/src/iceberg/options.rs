@@ -232,14 +232,13 @@ impl IcebergOptions {
         Self::default()
     }
 
-    /// The parallelism nothing configures: what the host offers, kept in 1..=8.
+    /// The parallelism nothing configures: the whole host,
+    /// [`std::thread::available_parallelism`].
     ///
     /// A machine that will not say how many threads it runs answers 1, which
     /// is the sequential path.
     pub fn default_read_parallelism() -> usize {
-        std::thread::available_parallelism()
-            .map_or(1, std::num::NonZeroUsize::get)
-            .clamp(1, 8)
+        std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
     }
 
     /// Return how many beaten commit attempts are retried. Default: 4.
@@ -300,10 +299,11 @@ impl IcebergOptions {
         self.target_file_size_bytes
     }
 
-    /// Return how many data files a scan decodes at once.
+    /// Return how many data files a scan decodes at once, and how many
+    /// manifests its plan reads at once.
     ///
-    /// Default: [`Self::default_read_parallelism`], the host's own
-    /// parallelism clamped to 1..=8. A value of 1 is the sequential path.
+    /// Default: [`Self::default_read_parallelism`], the whole host's
+    /// parallelism. A value of 1 is the sequential path.
     pub fn read_parallelism(&self) -> usize {
         self.read_parallelism
             .unwrap_or_else(Self::default_read_parallelism)
@@ -339,9 +339,9 @@ impl IcebergOptions {
 
     /// Return how many partition groups a commit writes at once.
     ///
-    /// Default: [`Self::read_parallelism`] as this value resolves it, so a
-    /// table that reads with four threads writes with four unless told
-    /// otherwise. A value of 1 writes the groups one after another on the
+    /// Default: [`Self::read_parallelism`] as this value resolves it - the
+    /// whole host where nothing configures either - so a table that reads
+    /// with four threads writes with four unless told otherwise. A value of 1 writes the groups one after another on the
     /// calling thread. Whatever the value, a commit's manifest lists the
     /// files in partition-group order, never in completion order. This is
     /// the table's own layer: a write stating

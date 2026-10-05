@@ -82,6 +82,31 @@ assert.equal(handle.append('MSFT'), 23)
 assert.ok(handle.readText().endsWith('!MSFT'))
 ```
 
+## Create a value only where none is
+
+`createBytes` writes the whole value only where the location holds none and
+answers the byte count as `writeBytes` does; a value already there throws an
+`Error` whose message names the location - `code: 'AlreadyExists'` on a handle
+bridged from a filesystem with `fromFs`, as its other typed failures - the
+stored bytes untouched. The
+refusal comes from the one write, so never guard it with `exists()`: of several
+creators racing for one location exactly one wins, on every store whose create
+is exclusive (local storage, S3, Azure, GCS, HTTP, a buffer - not a filesystem
+bound through the handler protocol).
+
+```javascript
+const assert = require('node:assert/strict')
+const { IOBase } = require('yggdryl')
+
+const handle = IOBase.fromBytes()
+assert.equal(handle.createBytes(Buffer.from('{"version":1}')), 13)
+assert.throws(
+  () => handle.createBytes(Buffer.from('{"version":2}')),
+  /got an existing/,
+)
+assert.equal(handle.readText(), '{"version":1}')
+```
+
 ## Stream bounded chunks and use a cursor
 
 `pstreamBytes(position, batchSize)` asks the core for one bounded chunk per

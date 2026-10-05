@@ -581,6 +581,49 @@ fn write_all_bytes_is_one_put_carrying_the_media_type() {
 }
 
 #[test]
+fn create_bytes_is_one_put_under_if_none_match_and_its_412_is_the_conflict() {
+    let (server, session) = fixture();
+    let mut request = leaf(&server, &session, "/claims/v1.json");
+
+    request.create_bytes(br#"{"v":1}"#).unwrap();
+
+    assert_eq!(methods(&server), ["PUT"]);
+    let recorded = &server.requests()[0];
+    assert_eq!(header(recorded, "if-none-match"), Some("*"));
+    assert_eq!(header(recorded, "content-type"), Some("application/json"));
+    assert_eq!(recorded.status.code(), 201);
+    assert_eq!(
+        server.resource("/claims/v1.json").unwrap().0,
+        br#"{"v":1}"#.to_vec()
+    );
+
+    // The second creator: one PUT, answered 412, and the value stands.
+    let mut other = leaf(&server, &session, "/claims/v1.json");
+    let error = other.create_bytes(b"{}").unwrap_err();
+    assert!(matches!(error, Error::Conflict { .. }), "{error}");
+    assert!(error.to_string().contains("/claims/v1.json"), "{error}");
+    assert_eq!(methods(&server), ["PUT", "PUT"]);
+    assert_eq!(server.requests()[1].status.code(), 412);
+    assert_eq!(
+        server.resource("/claims/v1.json").unwrap().0,
+        br#"{"v":1}"#.to_vec()
+    );
+}
+
+/// A create is not sent again after an attempt a server saw, whatever the
+/// method says: a second attempt after one that landed would read the
+/// create's own value as the conflict.
+#[test]
+fn create_bytes_is_not_retried_after_an_answer_a_put_would_retry() {
+    let (server, session) = fixture();
+    server.fail_status("/retried.json", 503, None, 1);
+    let mut request = leaf(&server, &session, "/retried.json");
+    let error = request.create_bytes(b"{}").unwrap_err();
+    assert!(!error.is_conflict(), "{error}");
+    assert_eq!(methods(&server), ["PUT"]);
+}
+
+#[test]
 fn clear_is_one_put_of_no_bytes() {
     let (server, session) = fixture();
     let mut request = leaf(&server, &session, "/data.bin");

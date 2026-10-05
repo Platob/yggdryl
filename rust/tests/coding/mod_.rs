@@ -30,7 +30,7 @@ impl yggdryl::IOMedia for SharedReads {
 }
 
 impl IOBase for SharedReads {
-    yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, uri, url, media_type,
+    yggdryl::delegate_iobase!(handle: create_bytes, pwrite, size, capacity, reserve, truncate, uri, url, media_type,
         set_media_type, flush, parent, child_by_path, ls, kind, clear, remove, is_atomic,
         is_tabular, is_io);
 
@@ -603,7 +603,7 @@ mod transport {
     }
 
     impl IOBase for Asked {
-        yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, uri, url,
+        yggdryl::delegate_iobase!(handle: create_bytes, pwrite, size, capacity, reserve, truncate, uri, url,
             media_type, set_media_type, flush, parent, child_by_path, ls, kind, clear, remove,
             is_atomic, is_tabular, is_io);
 
@@ -735,4 +735,18 @@ fn a_coding_over_a_folder_reads_its_leaves_as_their_own_names_say() {
     coded.close().unwrap();
 
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_create_encodes_once_onto_the_wrapped_handle_and_a_refused_one_writes_nothing() {
+    let mut handle = Coding::new(Buffer::new(), Codec::Gzip);
+    handle.create_bytes(PAYLOAD).unwrap();
+    let encoded = handle.handle().read_all_bytes().unwrap();
+    assert_eq!(Codec::Gzip.load(&encoded).unwrap(), PAYLOAD);
+    assert_eq!(handle.read_all_bytes().unwrap(), PAYLOAD);
+
+    let error = handle.create_bytes(b"other").unwrap_err();
+    assert!(error.is_conflict(), "{error}");
+    assert_eq!(handle.handle().read_all_bytes().unwrap(), encoded);
+    assert_eq!(handle.read_all_bytes().unwrap(), PAYLOAD);
 }

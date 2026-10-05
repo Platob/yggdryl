@@ -431,6 +431,11 @@ impl<H: IOBase> IOBase for Xmla<H> {
         self.handle.truncate(size)
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.invalidate();
+        self.handle.create_bytes(bytes)
+    }
+
     fn set_media_type(&mut self, media_type: crate::MediaType) {
         self.invalidate();
         self.handle.set_media_type(media_type);

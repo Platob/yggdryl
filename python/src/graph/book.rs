@@ -273,7 +273,7 @@ type BookSource = Box<dyn Iterator<Item = yggdryl::Result<CoreMarketData>> + Sen
 /// Books from a sorted stream of operations, one per book key and effective
 /// timestamp, pulling its items lazily from the caller's iterable. Yields
 /// `BookEvent`.
-#[pyclass(name = "BookIterator", module = "yggdryl._native")]
+#[pyclass(name = "BookIterator", module = "yggdryl._native", frozen)]
 pub(crate) struct PyBookIterator {
     inner: Mutex<CoreBookIterator<BookSource>>,
     failed: Failed,

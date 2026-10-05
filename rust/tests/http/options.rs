@@ -78,7 +78,10 @@ fn every_knob_has_its_documented_default() {
     assert_eq!(options.max_body_size(), 256 * 1024 * 1024);
     assert_eq!(options.stream_batch_size(), DEFAULT_STREAM_BATCH_SIZE);
     let parallelism = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
-    assert_eq!(options.concurrency(), parallelism.min(8));
+    assert_eq!(
+        options.concurrency(),
+        parallelism.clamp(1, HttpOptions::MAX_CONCURRENCY)
+    );
     assert!(options.concurrency() >= 1);
     assert_eq!(*options.pagination(), Pagination::Auto);
     assert_eq!(options.records(), None);
@@ -96,7 +99,14 @@ fn every_knob_has_its_documented_default() {
     assert_eq!(HttpOptions::DEFAULT_USER_AGENT, options.user_agent());
     assert_eq!(HttpOptions::DEFAULT_MAX_BODY_SIZE, options.max_body_size());
     assert_eq!(HttpOptions::DEFAULT_MAX_PAUSE, options.max_pause());
-    assert_eq!(HttpOptions::MAX_DEFAULT_CONCURRENCY, 8);
+    // The default is the whole host: no bound below the one every walk has.
+    assert_eq!(HttpOptions::MAX_CONCURRENCY, 256);
+    assert_eq!(
+        HttpOptions::default().concurrency(),
+        std::thread::available_parallelism()
+            .map_or(1, std::num::NonZero::get)
+            .min(HttpOptions::MAX_CONCURRENCY)
+    );
 }
 
 // --- setters -----------------------------------------------------------------

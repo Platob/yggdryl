@@ -29,6 +29,7 @@ Install and cross-language conventions are in `yggdryl`.
 | commit to a role, stored bytes | `LocalFile::new(p)?`, `LocalFolder::new(p)?`, `LocalPath::new(p)?` | `LocalFile(p)`, `LocalFolder(p)`, `LocalPath(p)` | n/a: one `IOBase` class |
 | well-known roots | `LocalFolder::temporary()? / home()? / config()?` | `LocalFolder.temporary() / home() / config()` | n/a |
 | whole read / write | `read_all_bytes()?`, `write_all_bytes(b)?` | `read_bytes()`, `read_text()`, `write_bytes(b)`, `write_text(s)` | `readBytes()`, `readText()`, `writeBytes(b)`, `writeText(s)` |
+| create only where nothing is (claim a location; one of N racing creators wins on local storage, the local and memory filesystems, ZIP, S3, Azure, GCS, HTTP, a buffer) | `create_bytes(b)?`; a value already there is `Error::Conflict`, left as it was | `create_bytes(b)` -> byte count; `FileExistsError` | `createBytes(b)` -> byte count; throws naming the location (`code: 'AlreadyExists'` on a `fromFs` handle) |
 | ranged read | `read_range_bytes(offset, len)?` | `read_range_bytes(offset, len)`, `read_range(o, n, cls=str)` | `readRangeBytes(offset, len)`, `readRange(o, n, { text: true })` |
 | positional write, append | `pwrite(o, b)?`, `append_bytes(b)?` -> offset | `pwrite(o, b)`, `append_bytes(b)`, `append(str_or_bytes)` | `pwrite(o, b)`, `appendBytes(b)`, `append(strOrBytes)` |
 | bounded chunks | `pstream_bytes(position, batch_size)?` | `pstream_bytes(position=0, batch_size=65536)` | `pstreamBytes(position?, batchSize?)` |

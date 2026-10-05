@@ -73,10 +73,12 @@
 //!
 //! # Scope
 //!
-//! Yggdryl supplies storage and publication. [`IcebergTable::open`] resolves
-//! `metadata/version-hint.text`, then falls back to the highest-numbered
-//! metadata document; a table whose current document a catalog service names
-//! is opened through a [`MetadataPointer`] instead
+//! Yggdryl supplies storage and publication. [`IcebergTable::open`] starts
+//! from `metadata/version-hint.text`, else the highest-numbered metadata
+//! document, and reads on to every newer version's document there is; a
+//! commit claims its version by creating that document exclusively
+//! ([`IOBase::create_bytes`]). A table whose current document a catalog
+//! service names is opened through a [`MetadataPointer`] instead
 //! ([`IcebergTable::open_pointed`]), which is how the Amazon S3 Tables
 //! catalog commits. [`IcebergTable::from_url`],
 //! [`IcebergTable::create_from_url`] and

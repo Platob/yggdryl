@@ -89,6 +89,8 @@ pub enum Call {
     Pwrite,
     /// [`IOBase::write_all_bytes`].
     WriteAllBytes,
+    /// [`IOBase::create_bytes`].
+    CreateBytes,
     /// [`IOBase::append_bytes`].
     AppendBytes,
     /// [`IOBase::reserve`].
@@ -165,6 +167,7 @@ impl Call {
         Self::ReadRangeDigest,
         Self::Pwrite,
         Self::WriteAllBytes,
+        Self::CreateBytes,
         Self::AppendBytes,
         Self::Reserve,
         Self::Truncate,
@@ -192,7 +195,7 @@ impl Call {
     ];
 
     /// How many distinct calls a tally holds.
-    pub const COUNT: usize = 32;
+    pub const COUNT: usize = 33;
 
     /// The method's name, spelled as the trait spells it.
     #[must_use]
@@ -206,6 +209,7 @@ impl Call {
             Self::ReadRangeDigest => "read_range_digest",
             Self::Pwrite => "pwrite",
             Self::WriteAllBytes => "write_all_bytes",
+            Self::CreateBytes => "create_bytes",
             Self::AppendBytes => "append_bytes",
             Self::Reserve => "reserve",
             Self::Truncate => "truncate",
@@ -245,6 +249,7 @@ impl Call {
             | Self::ReadRangeDigest => Group::Read,
             Self::Pwrite
             | Self::WriteAllBytes
+            | Self::CreateBytes
             | Self::AppendBytes
             | Self::Reserve
             | Self::Truncate
@@ -554,6 +559,10 @@ impl<H: IOBase> IOBase for Counted<H> {
 
     fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
         self.record_mut(Call::WriteAllBytes).write_all_bytes(bytes)
+    }
+
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.record_mut(Call::CreateBytes).create_bytes(bytes)
     }
 
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {

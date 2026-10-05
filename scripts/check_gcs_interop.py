@@ -21,7 +21,10 @@ and says so rather than implying more.
    the names whose separators the JSON API escapes into one segment;
 3. ``cargo test --features s3 --test interop s3::gcs::`` writes its own
    objects under ``from-rust/`` and reads back what the reference client wrote.
-   Its reading half prints ``SKIPPED`` when the external objects are missing,
+   It also creates two objects under ``ifGenerationMatch=0``, one insert and
+   one resumable session opened under it, and asserts that the emulator
+   refuses a second create of each with the first value standing. Its
+   reading half prints ``SKIPPED`` when the external objects are missing,
    and this driver fails on that word, so a skipped half can never read as a
    pass;
 4. the reference client reads back every object the Rust side wrote and asserts
@@ -61,8 +64,11 @@ FROM_RUST = "from-rust"
 FROM_REFERENCE = "from-google"
 PORT = 4499
 # Pinned: the emulator is a checking tool, and a moving one would make a
-# failure ambiguous between this crate and its next release.
-EMULATOR_VERSION = "1.52.2"
+# failure ambiguous between this crate and its next release. At least 1.55.0,
+# the first to hold a resumable session to the ``ifGenerationMatch`` its
+# initiating POST named, which the Rust half's create asserts; an earlier one
+# finalizes every session unconditioned.
+EMULATOR_VERSION = "1.56.1"
 
 # The names the reference client writes: the JSON API escapes every separator
 # into one path segment, which is where a hand-written client addresses the
@@ -100,7 +106,9 @@ def emulator_release_url() -> str:
 def provision_emulator() -> subprocess.Popen[bytes]:
     """Start `fake-gcs-server`, fetching the published build if it is not here."""
     name = "fake-gcs-server.exe" if platform.system() == "Windows" else "fake-gcs-server"
-    binary = EMULATOR_DIR / "bin" / name
+    # Kept under its version, so a bumped pin is fetched rather than served by
+    # the build an earlier run left here.
+    binary = EMULATOR_DIR / "bin" / EMULATOR_VERSION / name
     if not binary.exists():
         # The published build, not `go install`: building it from source pulls
         # the whole Google Cloud and OpenTelemetry module graph over the network

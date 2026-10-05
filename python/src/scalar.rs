@@ -39,7 +39,7 @@ use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{batch_to_pyarrow, core_root_field_from_value};
 use crate::timezone::core_timezone_from_value;
 use crate::uri::PyUri;
-use crate::{compare, value_error};
+use crate::{compare, u128_from_py, value_error};
 
 /// How deep a Python graph may nest before conversion refuses to recurse.
 const MAX_PYTHON_DEPTH: usize = 128;
@@ -677,7 +677,9 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         "u32" => payload()?.extract::<u32>().map(Scalar::from),
         "u64" => payload()?.extract::<u64>().map(Scalar::from),
         "i128" => payload()?.extract::<i128>().map(Scalar::from),
-        "u128" => payload()?.extract::<u128>().map(Scalar::from),
+        // Read by `u128_from_py`, so a negative payload is `OverflowError`
+        // on every wheel, as each narrower unsigned tag's is.
+        "u128" => u128_from_py(&payload()?).map(Scalar::from),
         "f16" => payload()?
             .extract::<u16>()
             .map(|bits| Scalar::from(Float16::from_f16(half::f16::from_bits(bits)))),

@@ -354,7 +354,7 @@ impl JsIcebergOptions {
     }
 
     /// How many data files a scan decodes at once. Default: the host's own
-    /// parallelism, kept in 1..=8.
+    /// parallelism, the whole host (`std::thread::available_parallelism`).
     #[napi(getter)]
     pub fn read_parallelism(&self) -> Result<u32> {
         u32::try_from(self.inner.read_parallelism())

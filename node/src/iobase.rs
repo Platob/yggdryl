@@ -1146,17 +1146,33 @@ impl JsIOBase {
     /// Replace what is here with `data`, as `fs.writeFileSync`.
     #[napi]
     pub fn write_bytes(&mut self, data: Uint8Array) -> Result<u32> {
+        let written = u32::try_from(data.len()).map_err(napi_error)?;
         self.inner.write_all_bytes(&data).map_err(napi_error)?;
-        u32::try_from(data.len()).map_err(napi_error)
+        Ok(written)
+    }
+
+    /// Write `data` as the whole value only where nothing is here yet, as
+    /// `fs.writeFileSync` with the `wx` flag: a value already here throws a
+    /// conflict naming the location and is left as it was. Of several
+    /// creators racing for one location exactly one returns, on every store
+    /// whose create is exclusive.
+    #[napi]
+    pub fn create_bytes(&mut self, data: Uint8Array) -> Result<u32> {
+        // The count is read before the create, so an input past the count's
+        // width is refused before anything lands.
+        let created = u32::try_from(data.len()).map_err(napi_error)?;
+        self.inner.create_bytes(&data).map_err(napi_error)?;
+        Ok(created)
     }
 
     /// Replace what is here with `text`, encoded as UTF-8.
     #[napi]
     pub fn write_text(&mut self, text: String) -> Result<u32> {
+        let written = u32::try_from(text.len()).map_err(napi_error)?;
         self.inner
             .write_all_bytes(text.as_bytes())
             .map_err(napi_error)?;
-        u32::try_from(text.len()).map_err(napi_error)
+        Ok(written)
     }
 
     /// Encode one native structured value through the inferred text codec.

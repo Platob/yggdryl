@@ -297,6 +297,10 @@ macro_rules! container_object_io {
                 Err(crate::iobase::not_atomic(self, "write_all_bytes"))
             }
 
+            fn create_bytes(&mut self, _bytes: &[u8]) -> Result<()> {
+                Err(crate::iobase::not_atomic(self, "create_bytes"))
+            }
+
             fn append_bytes(&mut self, _bytes: &[u8]) -> Result<u64> {
                 Err(crate::iobase::not_atomic(self, "append_bytes"))
             }

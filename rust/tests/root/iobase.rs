@@ -1065,3 +1065,159 @@ mod identity {
         );
     }
 }
+
+/// `IOBase::create_bytes`: the value written where nothing is, and the
+/// conflict - from the one attempt - where something already is.
+mod create {
+    use std::path::PathBuf;
+    use std::sync::{Arc, Barrier};
+
+    use yggdryl::fs::{FileSystem, FsFile, MemoryFileSystem};
+    use yggdryl::holder::Buffer;
+    use yggdryl::local::{LocalFile, LocalFolder};
+    use yggdryl::{Error, IOBase};
+
+    /// A fresh path under the temporary folder, nothing at it.
+    fn fresh(label: &str) -> PathBuf {
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+        root.push(format!("yggdryl-create-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        root.join("value.bin")
+    }
+
+    /// Remove what a local case left behind, through the abstraction.
+    fn cleanup(path: &std::path::Path) {
+        if let Some(parent) = path.parent()
+            && let Ok(mut folder) = LocalFolder::new(parent)
+        {
+            folder.remove(true).expect("a removable tree");
+        }
+    }
+
+    /// A memory filesystem with the parent of `bench/{label}.bin` in place.
+    fn memory_file(label: &str) -> (Arc<MemoryFileSystem>, FsFile) {
+        let memory = Arc::new(MemoryFileSystem::new());
+        memory
+            .create_dir("bench", false)
+            .expect("a writable memory root");
+        let file = FsFile::from_path(
+            Arc::clone(&memory) as Arc<dyn FileSystem>,
+            format!("bench/{label}.bin"),
+            None,
+        )
+        .expect("a valid location");
+        (memory, file)
+    }
+
+    #[test]
+    fn a_create_on_nothing_writes_and_publishes() {
+        let mut buffer = Buffer::new();
+        buffer
+            .create_bytes(b"AAPL,187.23")
+            .expect("an empty buffer");
+        assert_eq!(buffer.read_all_bytes().unwrap(), b"AAPL,187.23");
+
+        // A second handle on the location reads the value on return: no
+        // flush or close is left to the caller.
+        let path = fresh("publish");
+        LocalFile::new(&path)
+            .unwrap()
+            .create_bytes(b"AAPL,187.23")
+            .expect("nothing at the path, its parent created");
+        assert_eq!(std::fs::read(&path).unwrap(), b"AAPL,187.23");
+        assert_eq!(
+            LocalFile::new(&path).unwrap().read_all_bytes().unwrap(),
+            b"AAPL,187.23"
+        );
+        cleanup(&path);
+
+        let (memory, mut file) = memory_file("publish");
+        file.create_bytes(b"AAPL,187.23")
+            .expect("nothing at the path");
+        let other =
+            FsFile::from_path(memory as Arc<dyn FileSystem>, "bench/publish.bin", None).unwrap();
+        assert_eq!(other.read_all_bytes().unwrap(), b"AAPL,187.23");
+    }
+
+    #[test]
+    fn a_create_on_a_value_is_a_conflict_naming_the_location_and_leaving_the_value() {
+        fn refused(handle: &mut dyn IOBase, location: &str) {
+            let error = handle
+                .create_bytes(b"MSFT,410.10")
+                .expect_err("a value is already there");
+            assert!(matches!(error, Error::Conflict { .. }), "{error}");
+            assert!(error.is_conflict());
+            assert!(
+                error.to_string().contains(location),
+                "{error} names {location}"
+            );
+        }
+
+        let mut buffer = Buffer::from_bytes(b"AAPL,187.23".to_vec());
+        let identity = buffer.url().unwrap().to_string();
+        refused(&mut buffer, &identity);
+        assert_eq!(buffer.read_all_bytes().unwrap(), b"AAPL,187.23");
+
+        let path = fresh("conflict");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"AAPL,187.23").unwrap();
+        let mut local = LocalFile::new(&path).unwrap();
+        refused(&mut local, &path.display().to_string());
+        assert_eq!(std::fs::read(&path).unwrap(), b"AAPL,187.23");
+        // A handle that already mapped the file asks the path all the same.
+        local.open().unwrap();
+        refused(&mut local, &path.display().to_string());
+        assert_eq!(local.read_all_bytes().unwrap(), b"AAPL,187.23");
+        drop(local);
+        assert_eq!(std::fs::read(&path).unwrap(), b"AAPL,187.23");
+        cleanup(&path);
+
+        let (_memory, mut file) = memory_file("conflict");
+        file.write_all_bytes(b"AAPL,187.23").unwrap();
+        refused(&mut file, "bench/conflict.bin");
+        assert_eq!(file.read_all_bytes().unwrap(), b"AAPL,187.23");
+    }
+
+    #[test]
+    fn of_sixteen_racing_creators_of_one_local_path_exactly_one_succeeds() {
+        const CREATORS: usize = 16;
+        let path = fresh("race");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let barrier = Arc::new(Barrier::new(CREATORS));
+        let outcomes: Vec<(Vec<u8>, yggdryl::Result<()>)> = std::thread::scope(|scope| {
+            let creators: Vec<_> = (0..CREATORS)
+                .map(|creator| {
+                    let barrier = Arc::clone(&barrier);
+                    let path = &path;
+                    scope.spawn(move || {
+                        let payload = format!("creator-{creator:02}").into_bytes();
+                        let mut handle = LocalFile::new(path).unwrap();
+                        barrier.wait();
+                        let outcome = handle.create_bytes(&payload);
+                        (payload, outcome)
+                    })
+                })
+                .collect();
+            creators
+                .into_iter()
+                .map(|creator| creator.join().unwrap())
+                .collect()
+        });
+        let winners: Vec<&Vec<u8>> = outcomes
+            .iter()
+            .filter(|(_, outcome)| outcome.is_ok())
+            .map(|(payload, _)| payload)
+            .collect();
+        assert_eq!(winners.len(), 1, "exactly one creator wins");
+        for (_, outcome) in &outcomes {
+            if let Err(error) = outcome {
+                assert!(
+                    matches!(error, Error::Conflict { .. }),
+                    "every other creator is the conflict, got {error}"
+                );
+            }
+        }
+        assert_eq!(&std::fs::read(&path).unwrap(), winners[0]);
+        cleanup(&path);
+    }
+}

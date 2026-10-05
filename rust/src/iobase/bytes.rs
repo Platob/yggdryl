@@ -92,6 +92,8 @@ use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Uri, Url};
 /// which for `clear` and `remove` means truncating rather than reaching the
 /// resource. That is why the list below still names them: a wrapper drops them
 /// from the list only when it writes the pair itself, as `Cached` does above.
+/// [`IOBase::create_bytes`] has no default at all - only the store beneath
+/// can make a create exclusive - so a list names it or the wrapper writes it.
 ///
 /// ```
 /// use std::sync::atomic::{AtomicUsize, Ordering};
@@ -109,7 +111,7 @@ use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Uri, Url};
 /// }
 ///
 /// impl IOBase for Counted {
-///     yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve,
+///     yggdryl::delegate_iobase!(handle: pwrite, create_bytes, size, capacity, reserve,
 ///         truncate, uri, url, media_type, set_media_type, flush, parent, child_by_path,
 ///         ls, kind, clear, remove, is_atomic, is_tabular, is_io);
 ///
@@ -142,8 +144,8 @@ macro_rules! delegate_iobase {
     // request plan.
     ($handle:ident) => {
         $crate::delegate_iobase!(@methods $handle: pread, read_all_bytes, read_range_bytes,
-            read_digest, read_range_digest, write_all_bytes, append_bytes, applied_codec,
-            pstream_bytes, pwrite, size, capacity, reserve,
+            read_digest, read_range_digest, write_all_bytes, create_bytes, append_bytes,
+            applied_codec, pstream_bytes, pwrite, size, capacity, reserve,
             truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
             ls, kind, is_container, clear, remove, is_atomic, is_tabular, is_io);
     };
@@ -155,7 +157,7 @@ macro_rules! delegate_iobase {
     // mirroring the bytes underneath. The same list, named once instead of at
     // five call sites.
     ($handle:ident, except_lifecycle) => {
-        $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, size, capacity, reserve,
+        $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, create_bytes, size, capacity, reserve,
             truncate, uri, url, bound_location, mtime, media_type, set_media_type, applied_codec, flush, open, opened, close,
             parent, child_by_path, ls, kind, is_container);
     };
@@ -209,6 +211,12 @@ macro_rules! delegate_iobase {
     (@method $handle:ident, write_all_bytes) => {
         fn write_all_bytes(&mut self, bytes: &[u8]) -> $crate::Result<()> {
             $crate::IOBase::write_all_bytes(&mut self.$handle, bytes)
+        }
+    };
+
+    (@method $handle:ident, create_bytes) => {
+        fn create_bytes(&mut self, bytes: &[u8]) -> $crate::Result<()> {
+            $crate::IOBase::create_bytes(&mut self.$handle, bytes)
         }
     };
 
@@ -442,6 +450,10 @@ macro_rules! __delegate_resolved_iobase {
 
         fn write_all_bytes(&mut self, bytes: &[u8]) -> $crate::Result<()> {
             $crate::IOBase::write_all_bytes(self.$get_mut()?, bytes)
+        }
+
+        fn create_bytes(&mut self, bytes: &[u8]) -> $crate::Result<()> {
+            $crate::IOBase::create_bytes(self.$get_mut()?, bytes)
         }
 
         fn append_bytes(&mut self, bytes: &[u8]) -> $crate::Result<u64> {
@@ -788,6 +800,10 @@ impl IOBase for Box<dyn IOBase> {
 
     fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
         self.as_mut().write_all_bytes(bytes)
+    }
+
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.as_mut().create_bytes(bytes)
     }
 
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {

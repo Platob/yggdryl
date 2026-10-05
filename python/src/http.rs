@@ -16,6 +16,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::sync::MutexExt;
 use pyo3::types::{
     PyByteArray, PyBytes, PyDelta, PyDict, PyIterator, PyList, PyMapping, PyMemoryView, PyString,
     PyTuple,
@@ -88,7 +89,7 @@ fn session_from(value: &Bound<'_, PyAny>) -> PyResult<Session> {
             type_name(value)
         ))
     })?;
-    session_of(&handle.borrow())
+    session_of(&*handle.try_borrow()?)
 }
 
 /// Read the request out of any `Request` handle a caller passed.
@@ -99,7 +100,7 @@ fn request_from(value: &Bound<'_, PyAny>) -> PyResult<Request> {
             type_name(value)
         ))
     })?;
-    request_of(&handle.borrow())
+    request_of(&*handle.try_borrow()?)
 }
 
 fn type_name(value: &Bound<'_, PyAny>) -> String {
@@ -645,7 +646,13 @@ fn built(
 /// As a handle it is a container over its base URL: `session / "users"` is
 /// the `Request` for that resource, which reads and writes its bytes and
 /// records. Nothing is sent until a verb asks.
-#[pyclass(name = "Session", module = "yggdryl._native", extends = PyIOBase, skip_from_py_object)]
+#[pyclass(
+    name = "Session",
+    module = "yggdryl._native",
+    frozen,
+    extends = PyIOBase,
+    skip_from_py_object
+)]
 pub(crate) struct PySession;
 
 #[pymethods]
@@ -884,7 +891,7 @@ impl PySession {
         stream: bool,
     ) -> PyResult<Py<PyAny>> {
         let py = slf.py();
-        let session = session_of(slf.borrow().as_super())?;
+        let session = session_of(slf.try_borrow()?.as_super())?;
         let request = request_from(request)?;
         let response = py
             .detach(|| {
@@ -917,7 +924,7 @@ impl PySession {
         requests: &Bound<'_, PyAny>,
         concurrency: Option<usize>,
     ) -> PyResult<PyResponses> {
-        let session = session_of(slf.borrow().as_super())?;
+        let session = session_of(slf.try_borrow()?.as_super())?;
         let failure = Arc::new(Mutex::new(None));
         let source = Source {
             iterator: requests.try_iter()?.unbind(),
@@ -943,7 +950,7 @@ impl PySession {
         pagination: Option<&str>,
         records: Option<&str>,
     ) -> PyResult<PyPages> {
-        let session = session_of(slf.borrow().as_super())?;
+        let session = session_of(slf.try_borrow()?.as_super())?;
         let parts = Parts {
             params,
             headers,
@@ -961,7 +968,7 @@ impl PySession {
     #[getter]
     fn headers(slf: &Bound<'_, Self>) -> PyResult<PyHeaders> {
         Ok(PyHeaders::from_core(
-            session_of(slf.borrow().as_super())?
+            session_of(slf.try_borrow()?.as_super())?
                 .options()
                 .headers()
                 .clone(),
@@ -971,19 +978,23 @@ impl PySession {
     /// The whole-request timeout.
     #[getter]
     fn timeout(slf: &Bound<'_, Self>) -> PyResult<Duration> {
-        Ok(session_of(slf.borrow().as_super())?.options().timeout())
+        Ok(session_of(slf.try_borrow()?.as_super())?
+            .options()
+            .timeout())
     }
 
     /// How many requests `send_all` sends side by side.
     #[getter]
     fn concurrency(slf: &Bound<'_, Self>) -> PyResult<usize> {
-        Ok(session_of(slf.borrow().as_super())?.options().concurrency())
+        Ok(session_of(slf.try_borrow()?.as_super())?
+            .options()
+            .concurrency())
     }
 
     /// The client's request counters.
     #[getter]
     fn stats(slf: &Bound<'_, Self>) -> PyResult<Py<PyDict>> {
-        stats_dict(slf.py(), session_of(slf.borrow().as_super())?.stats())
+        stats_dict(slf.py(), session_of(slf.try_borrow()?.as_super())?.stats())
     }
 
     /// The cookies the jar holds, name to value.
@@ -991,7 +1002,7 @@ impl PySession {
     fn cookies(slf: &Bound<'_, Self>) -> PyResult<Py<PyDict>> {
         let py = slf.py();
         let jar = PyDict::new(py);
-        for cookie in session_of(slf.borrow().as_super())?.cookies() {
+        for cookie in session_of(slf.try_borrow()?.as_super())?.cookies() {
             jar.set_item(cookie.name, cookie.value)?;
         }
         Ok(jar.unbind())
@@ -999,7 +1010,7 @@ impl PySession {
 
     /// Store a cookie covering `domain` and every path below it.
     fn set_cookie(slf: &Bound<'_, Self>, name: &str, value: &str, domain: &str) -> PyResult<()> {
-        session_of(slf.borrow().as_super())?
+        session_of(slf.try_borrow()?.as_super())?
             .set_cookie(yggdryl::http::Cookie::new(name, value, domain));
         Ok(())
     }
@@ -1015,7 +1026,7 @@ impl PySession {
         parts: &Parts<'_, '_>,
         stream: bool,
     ) -> PyResult<Py<PyAny>> {
-        let session = session_of(slf.borrow().as_super())?;
+        let session = session_of(slf.try_borrow()?.as_super())?;
         let request = prepared(&session, method, url, parts)?;
         sent(slf.py(), &request, stream)
     }
@@ -1032,7 +1043,13 @@ pub(crate) fn http_session(py: Python<'_>) -> PyResult<Py<PyAny>> {
 /// As a handle it is that resource: `read_bytes` is one `GET`,
 /// `read_range_bytes` one ranged `GET`, `write_bytes` one `PUT`, `unlink`
 /// one `DELETE`, and a JSON, Parquet or paginated body reads as records.
-#[pyclass(name = "Request", module = "yggdryl._native", extends = PyIOBase, skip_from_py_object)]
+#[pyclass(
+    name = "Request",
+    module = "yggdryl._native",
+    frozen,
+    extends = PyIOBase,
+    skip_from_py_object
+)]
 pub(crate) struct PyRequest;
 
 #[pymethods]
@@ -1078,40 +1095,40 @@ impl PyRequest {
     /// The method, upper case.
     #[getter]
     fn method(slf: &Bound<'_, Self>) -> PyResult<&'static str> {
-        Ok(request_of(slf.borrow().as_super())?.method().as_str())
+        Ok(request_of(slf.try_borrow()?.as_super())?.method().as_str())
     }
 
     /// The request's own headers; the session's defaults join them on send.
     #[getter]
     fn headers(slf: &Bound<'_, Self>) -> PyResult<PyHeaders> {
         Ok(PyHeaders::from_core(
-            request_of(slf.borrow().as_super())?.headers().clone(),
+            request_of(slf.try_borrow()?.as_super())?.headers().clone(),
         ))
     }
 
     /// The body, as it will be sent.
     #[getter]
     fn body<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyBytes>> {
-        let request = request_of(slf.borrow().as_super())?;
+        let request = request_of(slf.try_borrow()?.as_super())?;
         Ok(PyBytes::new(slf.py(), request.body().as_bytes()))
     }
 
     /// The session this request sends on.
     #[getter]
     fn session(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
-        let session = request_of(slf.borrow().as_super())?.session().clone();
+        let session = request_of(slf.try_borrow()?.as_super())?.session().clone();
         describe(slf.py(), Holder::HttpSession(session))
     }
 
     /// Send, reading the whole body.
     fn send(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
-        let request = request_of(slf.borrow().as_super())?;
+        let request = request_of(slf.try_borrow()?.as_super())?;
         sent(slf.py(), &request, false)
     }
 
     /// Send, leaving the body on the wire as a resumable stream.
     fn stream(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
-        let request = request_of(slf.borrow().as_super())?;
+        let request = request_of(slf.try_borrow()?.as_super())?;
         sent(slf.py(), &request, true)
     }
 
@@ -1127,7 +1144,7 @@ impl PyRequest {
             records,
             ..Parts::default()
         };
-        let request = parts.apply(request_of(slf.borrow().as_super())?)?;
+        let request = parts.apply(request_of(slf.try_borrow()?.as_super())?)?;
         Ok(PyPages::from_core(request.pages()))
     }
 }
@@ -1147,14 +1164,14 @@ impl PyResponse {
         slf: &Bound<'_, Self>,
         work: impl FnOnce(&Response) -> yggdryl::Result<T> + Send,
     ) -> PyResult<T> {
-        let this = slf.borrow();
+        let this = slf.try_borrow()?;
         let response = response_of(this.as_super())?;
         slf.py().detach(|| work(response)).map_err(storage_error)
     }
 
     /// Read something the response already holds, without the network.
     fn read<T>(slf: &Bound<'_, Self>, read: impl FnOnce(&Response) -> T) -> PyResult<T> {
-        let this = slf.borrow();
+        let this = slf.try_borrow()?;
         Ok(read(response_of(this.as_super())?))
     }
 }
@@ -1403,7 +1420,7 @@ impl Chunks {
         if self.done {
             return Ok(None);
         }
-        let handle = self.response.bind(py).borrow();
+        let handle = self.response.bind(py).try_borrow()?;
         let response = response_of(handle.as_super())?;
         if !reads_off_the_wire(response) {
             drop(handle);
@@ -1434,7 +1451,7 @@ impl Chunks {
         if self.done {
             return Ok(None);
         }
-        let handle = self.response.bind(py).borrow();
+        let handle = self.response.bind(py).try_borrow()?;
         let response = response_of(handle.as_super())?;
         let chunk = if reads_off_the_wire(response) {
             // A whole chunk, as `requests` yields one: reads repeat until it
@@ -1567,7 +1584,7 @@ impl PyLineIterator {
 }
 
 /// The answers of `Session.send_all`, in request order.
-#[pyclass(name = "_ResponseIterator", module = "yggdryl._native")]
+#[pyclass(name = "_ResponseIterator", module = "yggdryl._native", frozen)]
 pub(crate) struct PyResponses {
     answers: Mutex<Box<dyn Iterator<Item = yggdryl::Result<Response>> + Send>>,
     /// What stopped the source, raised once the answers before it are out.
@@ -1625,7 +1642,13 @@ impl PyResponses {
 
 /// A body left on the wire: read forward, resumed from the delivered byte
 /// with a `Range` when the transfer is cut and the resource allows it.
-#[pyclass(name = "Stream", module = "yggdryl._native", extends = PyIOBase, skip_from_py_object)]
+#[pyclass(
+    name = "Stream",
+    module = "yggdryl._native",
+    frozen,
+    extends = PyIOBase,
+    skip_from_py_object
+)]
 pub(crate) struct PyStream;
 
 #[pymethods]
@@ -1633,26 +1656,26 @@ impl PyStream {
     /// Bytes handed to the caller so far: the resume cursor.
     #[getter]
     fn delivered(slf: &Bound<'_, Self>) -> PyResult<u64> {
-        Ok(stream_of(slf.borrow().as_super())?.delivered())
+        Ok(stream_of(slf.try_borrow()?.as_super())?.delivered())
     }
 
     /// The length the headers stated, or `None`.
     #[getter]
     fn total(slf: &Bound<'_, Self>) -> PyResult<Option<u64>> {
-        Ok(stream_of(slf.borrow().as_super())?.total())
+        Ok(stream_of(slf.try_borrow()?.as_super())?.total())
     }
 
     /// How many times the transfer was re-opened.
     #[getter]
     fn resumes(slf: &Bound<'_, Self>) -> PyResult<u32> {
-        Ok(stream_of(slf.borrow().as_super())?.resumes())
+        Ok(stream_of(slf.try_borrow()?.as_super())?.resumes())
     }
 
     /// The headers of the answer the stream reads.
     #[getter]
     fn headers(slf: &Bound<'_, Self>) -> PyResult<PyHeaders> {
         Ok(PyHeaders::from_core(
-            stream_of(slf.borrow().as_super())?.headers().clone(),
+            stream_of(slf.try_borrow()?.as_super())?.headers().clone(),
         ))
     }
 
@@ -1661,7 +1684,7 @@ impl PyStream {
     #[pyo3(signature = (size = -1))]
     fn read<'py>(slf: &Bound<'py, Self>, size: i64) -> PyResult<Bound<'py, PyBytes>> {
         let py = slf.py();
-        let this = slf.borrow();
+        let this = slf.try_borrow()?;
         let stream = stream_of(this.as_super())?;
         let bytes = py
             .detach(|| -> yggdryl::Result<Vec<u8>> {
@@ -1707,13 +1730,19 @@ impl PyPages {
         }
     }
 
-    fn held(&self) -> PyResult<MutexGuard<'_, Option<Pages>>> {
-        self.pages.lock().map_err(|_| poisoned("pages"))
+    /// The walk, its lock waited on detached: `__next__` holds it across a
+    /// page's request, which may need the GIL - a route this process serves,
+    /// a record logged through Python's `logging` - and a thread waiting on
+    /// it attached would keep that request from finishing.
+    fn held(&self, py: Python<'_>) -> PyResult<MutexGuard<'_, Option<Pages>>> {
+        self.pages
+            .lock_py_attached(py)
+            .map_err(|_| poisoned("pages"))
     }
 
     /// Take the walk out, for a conversion that consumes it.
-    fn take(&self) -> PyResult<Pages> {
-        self.held()?.take().ok_or_else(|| {
+    fn take(&self, py: Python<'_>) -> PyResult<Pages> {
+        self.held(py)?.take().ok_or_else(|| {
             PyValueError::new_err("these pages were already handed over to a reader")
         })
     }
@@ -1753,7 +1782,7 @@ impl PyPages {
         field: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<crate::serie::PySerieReader> {
         let field = field.map(crate::field::core_field_from_value).transpose()?;
-        let pages = self.take()?;
+        let pages = self.take(py)?;
         py.detach(|| pages.into_serie_reader(field.as_ref()))
             .map(crate::serie::PySerieReader::from)
             .map_err(storage_error)
@@ -1770,7 +1799,7 @@ impl PyPages {
         batch_row_size: usize,
     ) -> PyResult<Bound<'py, PyAny>> {
         let field = field.map(crate::field::core_field_from_value).transpose()?;
-        let pages = self.take()?;
+        let pages = self.take(py)?;
         let reader = py
             .detach(|| pages.into_arrow_reader(field.as_ref(), batch_row_size))
             .map_err(storage_error)?;
@@ -2171,7 +2200,7 @@ fn fault_of(value: &Bound<'_, PyAny>) -> PyResult<Fault> {
 /// `(status, headers, body)` tuple.
 fn answer_of(value: &Bound<'_, PyAny>) -> PyResult<Response> {
     if let Ok(handle) = value.cast::<PyIOBase>() {
-        let handle = handle.borrow();
+        let handle = handle.try_borrow()?;
         if let Holder::HttpResponse(response) = handle.inner()? {
             // The handler may answer the same object again, so the server
             // is handed what it writes - the status, the headers, the body
@@ -2426,7 +2455,7 @@ impl PyServer {
                 type_name(handle)
             ))
         })?;
-        let handle = handle.borrow();
+        let handle = handle.try_borrow()?;
         let inner = handle.inner()?;
         // A session or a request is mounted as itself, its state and its
         // role kept; a response and anything held in memory as a copy of its

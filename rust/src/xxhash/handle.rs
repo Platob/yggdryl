@@ -181,6 +181,21 @@ impl<H: IOBase> IOBase for Hashed<H> {
         Ok(written)
     }
 
+    /// Create through, and start the running digest over what was created.
+    ///
+    /// A value created where nothing was is the whole value, so its digest is
+    /// the bytes folded from the start; a refused create leaves the state as
+    /// it was, describing the value that stood.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        let mut running = self.running.lock().unwrap_or_else(PoisonError::into_inner);
+        self.handle.create_bytes(bytes)?;
+        let mut digester = self.algorithm.digester_with_seed(self.seed);
+        digester.write_bytes(bytes);
+        running.covered = bytes.len() as u64;
+        running.digester = Some(digester);
+        Ok(())
+    }
+
     /// Resize the value and drop the running digest.
     ///
     /// A truncation removes bytes the state has already folded in, and the

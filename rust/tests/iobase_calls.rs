@@ -404,6 +404,32 @@ fn a_write_is_one_call_and_a_transfer_is_one_stream() {
     );
 }
 
+/// A create is one call to the handle beneath, won or lost: the store's own
+/// exclusive attempt decides, and nothing is asked first.
+#[test]
+fn create_bytes_is_one_call_won_or_lost() {
+    use yggdryl::local::{LocalFile, LocalFolder};
+
+    let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+    root.push(format!("yggdryl-create-calls-{}", std::process::id()));
+    let path = root.join("claim.json");
+    let mut winner = Counted::new(LocalFile::new(&path).unwrap());
+    let calls = Arc::clone(winner.calls());
+    costs("a create that lands", &calls, "create_bytes=1", || {
+        winner
+            .create_bytes(b"{\"v\":1}")
+            .expect("nothing at the path");
+    });
+
+    let mut loser = Counted::new(LocalFile::new(&path).unwrap());
+    let calls = Arc::clone(loser.calls());
+    costs("a create that loses", &calls, "create_bytes=1", || {
+        assert!(loser.create_bytes(b"{}").unwrap_err().is_conflict());
+    });
+    drop((winner, loser));
+    LocalFolder::new(&root).unwrap().remove(true).unwrap();
+}
+
 /// What a move between two objects of one store costs in requests, and the
 /// two refusals that cost the open alone.
 #[cfg(feature = "s3")]
@@ -430,6 +456,28 @@ mod object_store {
             .iter()
             .map(|request| request.method.clone())
             .collect()
+    }
+
+    /// A create is one conditioned `PUT` whether it lands or loses: nothing
+    /// is asked first, and a lost race is answered by the store's `412`.
+    #[test]
+    fn create_bytes_is_one_put_won_or_lost() {
+        let store = FakeS3::start();
+        store.create_bucket("trades");
+        let mut winner = file(&store, "lake/claim.json");
+        store.clear_requests();
+        winner.create_bytes(b"{\"v\":1}").unwrap();
+        assert_eq!(methods(&store), ["PUT"]);
+
+        let mut loser = file(&store, "lake/claim.json");
+        store.clear_requests();
+        assert!(loser.create_bytes(b"{}").unwrap_err().is_conflict());
+        assert_eq!(methods(&store), ["PUT"]);
+        assert_eq!(store.requests()[0].status, 412);
+        assert_eq!(
+            store.get("trades", "lake/claim.json").as_deref(),
+            Some(&b"{\"v\":1}"[..])
+        );
     }
 
     #[test]
@@ -1127,6 +1175,35 @@ fn a_write_to_a_cold_cache_does_not_ask_for_a_length_first() {
         assert_eq!(cached.pwrite(3, b"two").expect("a write"), 3);
     });
     assert_eq!(cached.read_all_bytes().expect("a read"), b"onetwo");
+}
+
+/// A whole write through the cache is the handle's own whole write: one call
+/// beneath, every page dropped before it, and the length it wrote kept, so
+/// the read after it - one page the write filled exactly - is the fetch alone
+/// and asks for no length.
+#[test]
+fn a_whole_write_through_the_cache_is_the_handles_own() {
+    use yggdryl::holder::buffered::BufferedOptions;
+
+    let inner = source(b"stale value", "file:///lake/whole.bin");
+    let calls = Arc::clone(inner.calls());
+    let mut cached = inner.buffered(BufferedOptions::default().with_page_size(512));
+    assert_eq!(cached.read_all_bytes().expect("a read"), b"stale value");
+
+    let fresh = payload(512);
+    costs(
+        "a whole write through the cache",
+        &calls,
+        "write_all_bytes=1",
+        || {
+            cached.write_all_bytes(&fresh).expect("a write");
+        },
+    );
+    let mut probe = vec![0_u8; 512];
+    costs("the read after it", &calls, "pread=1", || {
+        assert_eq!(cached.pread(0, &mut probe).expect("a read"), 512);
+    });
+    assert_eq!(probe, fresh);
 }
 
 /// What an archive asks of the handle its members live in.

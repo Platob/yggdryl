@@ -366,6 +366,22 @@ impl IOBase for ZipLeaf {
         self.archive.flush()
     }
 
+    /// Create the member where the archive's index names none, streaming
+    /// the value in as [`IOBase::write_all_bytes`] does.
+    ///
+    /// The archive asks its index and writes the record under its one lock,
+    /// so two creators of one member through one archive see exactly one
+    /// succeed; the other is the [`Error::Conflict`] naming the member, the
+    /// member and this handle's view of it left as they were.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        let codec = self.write_codec()?;
+        self.archive.create_member_from(&self.name, bytes, codec)?;
+        self.plain = None;
+        self.dirty = false;
+        self.decoded_from = Decoded::Nothing;
+        self.archive.flush()
+    }
+
     /// Read the member whole, verifying the digest its record states.
     fn read_all_bytes(&self) -> Result<Vec<u8>> {
         if let Some(plain) = self.materialized() {

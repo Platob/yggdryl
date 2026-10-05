@@ -177,9 +177,16 @@ medium does the work before a byte is decoded.
     `separator`, `quote`, `escape`, `comment`, `header`, `null_values`,
     `trim`, `infer_row_size` - never a format argument. Compression and the
     charset are the handle's (`trades.csv.gz`, `;charset=windows-1252`).
-16. **Iceberg commits are snapshots.** `append` and metadata-only commits
-    rebase on a concurrent commit; `overwrite`, `merge` and `compact` report a
-    conflict instead. A merge keys on the identity partition columns plus
+16. **Iceberg commits are snapshots.** A commit's version document is
+    created exclusively (`IOBase::create_bytes`: `O_EXCL` on local storage,
+    `If-None-Match: *` on S3 and Azure, `ifGenerationMatch=0` on Google), so
+    of two writers publishing one version exactly one lands and the other is
+    told; `append` and metadata-only commits then rebase onto the winner,
+    `overwrite`, `merge` and `compact` report a conflict instead. Hammer a
+    table from as many threads as you like, one handle per thread; only a
+    filesystem bridged from outside the crate, or an HTTP origin ignoring
+    preconditions, is left to the best-effort check. A merge keys on the
+    identity partition columns plus
     `merge_by`, so a row only ever updates its own partition. A table is
     created from the partitioning its schema declares (`PARTITION:by`: `venue`,
     `days(ts)`, `minutes(ts, 15)`, `truncate(name, 4) as prefix`) unless

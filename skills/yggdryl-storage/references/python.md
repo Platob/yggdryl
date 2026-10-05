@@ -86,6 +86,34 @@ assert handle.append("MSFT") == 23
 assert handle.read_text().endswith("!MSFT")
 ```
 
+## Create a value only where none is
+
+`create_bytes` writes the whole value only where the location holds none and
+answers the byte count as `write_bytes` does; a value already there raises
+`FileExistsError` naming the location, the stored bytes untouched. The refusal
+comes from the one write, so never guard it with `exists()`: of several
+creators racing for one location exactly one wins, on every store whose create
+is exclusive (local storage, S3, Azure, GCS, HTTP, a buffer - not a bridged
+pyarrow filesystem).
+
+```python
+import pathlib
+import tempfile
+
+from yggdryl import IOBase
+
+with tempfile.TemporaryDirectory() as folder:
+    location = pathlib.Path(folder) / "v1.json"
+    assert IOBase(location).create_bytes(b'{"version":1}') == 13
+    try:
+        IOBase(location).create_bytes(b'{"version":2}')
+    except FileExistsError as conflict:
+        assert "v1.json" in str(conflict)
+    else:
+        raise AssertionError("a second create must be refused")
+    assert location.read_bytes() == b'{"version":1}'
+```
+
 ## Stream bounded chunks and use a cursor
 
 `pstream_bytes(position, batch_size)` yields owned chunks lazily (64 KiB by

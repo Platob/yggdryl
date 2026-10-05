@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use super::answer::S3Meta;
 use super::client::Client;
 use super::folder::S3Folder;
+use super::request::Precondition;
 use crate::holder::Holder;
 use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Url};
 
@@ -241,7 +242,7 @@ impl S3File {
         }
         let content_type = self.media_type().to_string();
         let size = stage.bytes.len() as u64;
-        let etag = self.upload(&stage.bytes, &content_type)?;
+        let etag = self.upload(&stage.bytes, &content_type, Precondition::None)?;
         if state.opened {
             if let Some(stage) = state.stage.as_mut() {
                 stage.dirty = false;
@@ -263,16 +264,28 @@ impl S3File {
     /// One `PUT` below the threshold. Above it, a multipart upload of
     /// `parts + 2` requests, which is what bounds the cost of a failure: a
     /// retried part re-sends one part rather than the whole object.
-    fn upload(&self, bytes: &[u8], content_type: &str) -> Result<Option<String>> {
+    ///
+    /// Under [`Precondition::Absent`] the one `PUT`, or the request that
+    /// completes the parts, carries the store's exclusive condition.
+    fn upload(
+        &self,
+        bytes: &[u8],
+        content_type: &str,
+        precondition: Precondition,
+    ) -> Result<Option<String>> {
         // A chunked upload of no chunks is not a thing any of the three will
         // complete, so an empty value is one write whatever the threshold says.
         if bytes.is_empty() || (bytes.len() as u64) < self.client.multipart_threshold() {
-            return self
-                .client
-                .put_object(&self.bucket, &self.key, bytes, Some(content_type));
+            return self.client.put_object(
+                &self.bucket,
+                &self.key,
+                bytes,
+                Some(content_type),
+                precondition,
+            );
         }
         self.client
-            .put_chunked(&self.bucket, &self.key, bytes, content_type)
+            .put_chunked(&self.bucket, &self.key, bytes, content_type, precondition)
     }
 
     /// Replace the whole object with the `length` bytes `source` yields.
@@ -312,11 +325,22 @@ impl S3File {
             if bytes.len() as u64 != length {
                 return Err(super::client::short_upload(length, bytes.len() as u64));
             }
-            self.client
-                .put_object(&self.bucket, &self.key, &bytes, Some(&content_type))?
+            self.client.put_object(
+                &self.bucket,
+                &self.key,
+                &bytes,
+                Some(&content_type),
+                Precondition::None,
+            )?
         } else {
-            self.client
-                .put_streamed(&self.bucket, &self.key, source, length, &content_type)?
+            self.client.put_streamed(
+                &self.bucket,
+                &self.key,
+                source,
+                length,
+                &content_type,
+                Precondition::None,
+            )?
         };
         // What went out is the store's, exactly as after a staged publish.
         if state.opened {
@@ -413,8 +437,13 @@ impl IOFile for S3File {
     fn clear_file(&mut self) -> Result<()> {
         self.discard()?;
         let content_type = self.media_type().to_string();
-        self.client
-            .put_object(&self.bucket, &self.key, &[], Some(&content_type))?;
+        self.client.put_object(
+            &self.bucket,
+            &self.key,
+            &[],
+            Some(&content_type),
+            Precondition::None,
+        )?;
         Ok(())
     }
 
@@ -619,6 +648,58 @@ impl IOBase for S3File {
             dirty: true,
         });
         self.publish(&mut state)
+    }
+
+    /// Create the object with one upload carrying the store's exclusive
+    /// condition - `If-None-Match: *` on Amazon S3 and Azure Blob Storage,
+    /// `ifGenerationMatch=0` on Google Cloud Storage - with nothing loaded
+    /// first.
+    ///
+    /// One `PUT` below the multipart threshold. Above it the condition rides
+    /// the request that publishes - S3's `CompleteMultipartUpload`, Azure's
+    /// `Put Block List`, Google's initiating `POST` - so a create that loses
+    /// stores nothing, its upload abandoned as any refused one is. The
+    /// store's own code for an object at the key - `412 PreconditionFailed`,
+    /// Google's `412 conditionNotMet`, Azure's `409 BlobAlreadyExists` or
+    /// `412 ConditionNotMet` - is the [`Error::Conflict`] naming the object,
+    /// which stays as it was; any other refusal is the store's
+    /// [`Error::Remote`]. An attempt the store may have acted on is never
+    /// sent again (the client's `send`), so a conflict is never the create's
+    /// own object read back; S3's `409 ConditionalRequestConflict` - another
+    /// conditional write in flight on the key, the store acting on neither -
+    /// earns one more `PUT` under the retry budget, a multipart create
+    /// abandoning its upload and sending the value again as a new one. A
+    /// create that lands supersedes what
+    /// this handle had staged; one refused forgets only what it knew of the
+    /// stored value, and keeps a write still waiting to publish.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        let mut state = self.state()?;
+        let content_type = self.media_type().to_string();
+        let etag = match self.upload(bytes, &content_type, Precondition::Absent) {
+            Ok(etag) => etag,
+            Err(error) => {
+                if state.stage.as_ref().is_some_and(|stage| !stage.dirty) {
+                    state.stage = None;
+                }
+                state.meta = None;
+                return Err(error);
+            }
+        };
+        if state.opened {
+            state.stage = Some(Stage {
+                bytes: bytes.to_vec(),
+                dirty: false,
+            });
+            state.meta = Some(Some(S3Meta {
+                size: bytes.len() as u64,
+                etag,
+                content_type: Some(content_type),
+            }));
+        } else {
+            state.stage = None;
+            state.meta = None;
+        }
+        Ok(())
     }
 
     /// Append after the current end, answering the offset the bytes start at.

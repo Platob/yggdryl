@@ -1222,6 +1222,119 @@ mod iceberg {
         .unwrap();
         assert_eq!(landed.map(|record| record.unwrap().len()).sum::<usize>(), 2);
     }
+
+    /// The ids of every row the table's current snapshot holds, ascending.
+    fn ids(table: &IcebergTable<LocalFolder>) -> Vec<i64> {
+        let mut ids: Vec<i64> = table
+            .scan(None)
+            .unwrap()
+            .flat_map(|batch| {
+                let batch = batch.unwrap();
+                batch
+                    .column_by_name("id")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .values()
+                    .to_vec()
+            })
+            .collect();
+        ids.sort_unstable();
+        ids
+    }
+
+    /// A table at version 3, two appends on top of the created document.
+    fn three_versions(path: &std::path::Path) -> IcebergTable<LocalFolder> {
+        let mut table = IcebergTable::create(
+            LocalFolder::new(path).unwrap(),
+            FormatVersion::V2,
+            schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table.commit_append(rows(&[1], &["A"], &["V"])).unwrap();
+        table.commit_append(rows(&[2], &["B"], &["V"])).unwrap();
+        assert_eq!(table.metadata_version().unwrap(), 3);
+        table
+    }
+
+    /// A hint names where an open starts, never where it ends: one a commit
+    /// has not replaced yet - or one a slower commit wrote last - is read
+    /// past to the newest document, whichever spelling it has.
+    #[test]
+    fn an_open_reads_past_a_hint_naming_an_older_version() {
+        let path = root("stale-hint");
+        let mut table = three_versions(&path);
+        let hint = path.join("metadata").join("version-hint.text");
+        std::fs::write(&hint, "1").unwrap();
+        let opened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(opened.metadata_version().unwrap(), 3);
+        assert_eq!(opened.metadata_file_name().unwrap(), "v3.metadata.json");
+        assert_eq!(ids(&opened), [1, 2]);
+
+        // A commit that switched the codec spelled its version the gzip way,
+        // and the walk reads that spelling too.
+        table
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property("write.metadata.compression-codec", "gzip")?;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(table.metadata_file_name().unwrap(), "v4.gz.metadata.json");
+        std::fs::write(&hint, "2").unwrap();
+        let opened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(opened.metadata_version().unwrap(), 4);
+        assert_eq!(opened.metadata_file_name().unwrap(), "v4.gz.metadata.json");
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// A next document that is empty or not yet whole is one a commit is
+    /// still writing - a local create names the file before its bytes land -
+    /// so an open ends before it, through the hint and through a listing
+    /// alike; and a commit that meets it has lost its version all the same,
+    /// so it is told once its budget is spent rather than writing over it.
+    #[test]
+    fn a_document_still_being_written_is_not_the_tables_yet() {
+        let path = root("in-flight-document");
+        let mut table = three_versions(&path);
+        let metadata = path.join("metadata");
+        let whole = std::fs::read(metadata.join("v3.metadata.json")).unwrap();
+        for written in [&whole[..0], &whole[..whole.len() / 2]] {
+            std::fs::write(metadata.join("v4.metadata.json"), written).unwrap();
+            let opened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+            assert_eq!(
+                opened.metadata_version().unwrap(),
+                3,
+                "{} bytes",
+                written.len()
+            );
+            assert_eq!(ids(&opened), [1, 2]);
+        }
+
+        // With no hint the listing settles on the newest name, which is
+        // still being written, and the one below it answers.
+        std::fs::remove_file(metadata.join("version-hint.text")).unwrap();
+        let opened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(opened.metadata_version().unwrap(), 3);
+
+        table.set_options(
+            IcebergOptions::new()
+                .with_commit_retries(2)
+                .with_commit_min_backoff_ms(0)
+                .with_commit_max_backoff_ms(0),
+        );
+        let error = table.commit_append(rows(&[3], &["C"], &["V"])).unwrap_err();
+        assert!(error.is_conflict(), "{error}");
+        assert!(error.to_string().contains("got beaten 3 times"), "{error}");
+        assert_eq!(table.metadata_version().unwrap(), 3);
+        assert_eq!(
+            std::fs::read(metadata.join("v4.metadata.json")).unwrap(),
+            &whole[..whole.len() / 2],
+            "the claim another writer holds is left as it is"
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
 }
 
 mod derived_columns {
@@ -1927,7 +2040,10 @@ mod located {
     /// states none, which `rust/tests/s3tables/catalog.rs` pins. The shared
     /// files are this test's own, so nothing of the operator's is read, and
     /// opening by location costs the store what an open costs: the version
-    /// hint and the current document, one `GetObject` each.
+    /// hint, the current document in both its spellings and the next
+    /// version's two spellings, which find nothing - one `GetObject` each,
+    /// the gzip spelling of the current document and the last two answered
+    /// `404`.
     #[cfg(feature = "s3")]
     #[test]
     fn a_table_on_an_object_store_states_what_the_store_did_not_read() {
@@ -1968,6 +2084,18 @@ mod located {
                 (
                     "GET".to_owned(),
                     Some("quotes/metadata/v1.metadata.json".to_owned())
+                ),
+                (
+                    "GET".to_owned(),
+                    Some("quotes/metadata/v1.gz.metadata.json".to_owned())
+                ),
+                (
+                    "GET".to_owned(),
+                    Some("quotes/metadata/v2.metadata.json".to_owned())
+                ),
+                (
+                    "GET".to_owned(),
+                    Some("quotes/metadata/v2.gz.metadata.json".to_owned())
                 ),
             ]
         );

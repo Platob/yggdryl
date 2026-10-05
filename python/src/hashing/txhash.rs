@@ -327,7 +327,12 @@ impl PyTxHash {
 /// The one-shot functions answer at microseconds with the default seed; this
 /// is the form for another resolution, a seed, an XXH3 secret carried in
 /// through a configured state, or an algorithm read from configuration.
-#[pyclass(name = "TxHasher", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(
+    name = "TxHasher",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
 #[derive(Clone)]
 pub(crate) struct PyTxHasher {
     inner: TxHasher,

@@ -574,3 +574,357 @@ mod protocol {
         );
     }
 }
+
+/// `IOBase::create_bytes` on an object: the exclusive condition each store
+/// reads, on the request that decides the object, and its refusal as the
+/// conflict that leaves the stored object as it was.
+mod create {
+    use crate::mod_::{BUCKET, file, file_on, file_on_with, options_for, payload, store};
+    use crate::server::Recorded;
+    use yggdryl::s3::Provider;
+    use yggdryl::{Error, IOBase};
+
+    const EVERY: [Provider; 3] = [Provider::Aws, Provider::Google, Provider::Azure];
+
+    fn header<'a>(request: &'a Recorded, name: &str) -> Option<&'a str> {
+        request
+            .headers
+            .iter()
+            .find(|(held, _)| held == name)
+            .map(|(_, value)| value.as_str())
+    }
+
+    fn query<'a>(request: &'a Recorded, name: &str) -> Option<&'a str> {
+        request
+            .query
+            .iter()
+            .find(|(held, _)| held == name)
+            .map(|(_, value)| value.as_str())
+    }
+
+    /// Whether `request` carries the exclusive condition `provider` reads,
+    /// and nothing of the other stores' spelling.
+    fn conditioned(provider: Provider, request: &Recorded) -> bool {
+        match provider {
+            Provider::Aws | Provider::Azure => {
+                header(request, "if-none-match") == Some("*")
+                    && query(request, "ifGenerationMatch").is_none()
+            }
+            Provider::Google => {
+                query(request, "ifGenerationMatch") == Some("0")
+                    && header(request, "if-none-match").is_none()
+            }
+        }
+    }
+
+    #[test]
+    fn a_create_is_one_request_carrying_the_condition_its_store_reads() {
+        let store = store();
+        for provider in EVERY {
+            let key = format!("lake/{}-claim.json", provider.service());
+            store.clear_requests();
+            file_on(&store, provider, &key)
+                .create_bytes(b"{\"version\":1}")
+                .expect("nothing at the key");
+            let sent = store.requests();
+            assert_eq!(sent.len(), 1, "one upload on {provider}");
+            let method = if provider == Provider::Google {
+                "POST"
+            } else {
+                "PUT"
+            };
+            assert_eq!(sent[0].method, method, "{provider}");
+            assert!(conditioned(provider, &sent[0]), "{provider}: {:?}", sent[0]);
+            assert_eq!(
+                store.get(BUCKET, &key).as_deref(),
+                Some(&b"{\"version\":1}"[..]),
+                "{provider}"
+            );
+
+            // The second creator loses with one request, and the object stands.
+            store.clear_requests();
+            let error = file_on(&store, provider, &key)
+                .create_bytes(b"{\"version\":2}")
+                .expect_err("an object is at the key");
+            assert!(
+                matches!(error, Error::Conflict { .. }),
+                "{provider}: {error}"
+            );
+            assert!(error.to_string().contains(&key), "{provider}: {error}");
+            let sent = store.requests();
+            assert_eq!(sent.len(), 1, "one refused upload on {provider}");
+            let refused = if provider == Provider::Azure {
+                409
+            } else {
+                412
+            };
+            assert_eq!(sent[0].status, refused, "{provider}");
+            assert_eq!(
+                store.get(BUCKET, &key).as_deref(),
+                Some(&b"{\"version\":1}"[..]),
+                "{provider}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_chunked_create_carries_the_condition_on_the_request_that_decides_the_object() {
+        let store = store();
+        let bytes = payload(6 * 1024 * 1024);
+        for provider in EVERY {
+            let key = format!("lake/{}-big.bin", provider.service());
+            let options = || {
+                options_for(&store, provider)
+                    .with_part_size(5 * 1024 * 1024)
+                    .with_multipart_threshold(1024 * 1024)
+            };
+            store.clear_requests();
+            file_on_with(provider, &key, options())
+                .create_bytes(&bytes)
+                .expect("nothing at the key");
+            let sent = store.requests();
+            // S3 completes the parts, Azure commits the block list, and
+            // Google's session holds the condition its initiating POST named.
+            let decides = |request: &Recorded| match provider {
+                Provider::Aws => request.method == "POST" && query(request, "uploadId").is_some(),
+                Provider::Azure => query(request, "comp") == Some("blocklist"),
+                Provider::Google => query(request, "uploadType") == Some("resumable"),
+            };
+            for request in &sent {
+                assert_eq!(
+                    conditioned(provider, request),
+                    decides(request),
+                    "{provider}: only the deciding request is conditioned: {request:?}"
+                );
+            }
+            assert_eq!(
+                sent.iter().filter(|request| decides(request)).count(),
+                1,
+                "{provider}"
+            );
+            assert_eq!(
+                store.get(BUCKET, &key).as_deref(),
+                Some(&bytes[..]),
+                "{provider}"
+            );
+
+            // A losing chunked create stores nothing and leaves no upload open.
+            let error = file_on_with(provider, &key, options())
+                .create_bytes(&payload(2 * 1024 * 1024))
+                .expect_err("an object is at the key");
+            assert!(error.is_conflict(), "{provider}: {error}");
+            assert_eq!(
+                store.get(BUCKET, &key).as_deref(),
+                Some(&bytes[..]),
+                "{provider}"
+            );
+            assert_eq!(store.open_uploads(), 0, "{provider}");
+        }
+    }
+
+    /// A create goes again only after an attempt the store cannot have acted
+    /// on: a throttle is retried, a server error is not, so a second attempt
+    /// never reads the create's own object as the conflict.
+    #[test]
+    fn a_create_is_retried_after_a_throttle_and_never_after_a_server_error() {
+        let store = store();
+        store.fail_next(503, "SlowDown", 1);
+        store.clear_requests();
+        file(&store, "lake/throttled.json")
+            .create_bytes(b"one")
+            .expect("the throttle is retried");
+        assert_eq!(store.request_count(), 2);
+
+        store.fail_next(500, "InternalError", 1);
+        store.clear_requests();
+        let error = file(&store, "lake/failed.json")
+            .create_bytes(b"one")
+            .expect_err("a server error ends the create");
+        assert!(!error.is_conflict(), "{error}");
+        assert_eq!(store.request_count(), 1);
+
+        // A replacing write retries the same server error, as it always did.
+        store.fail_next(500, "InternalError", 1);
+        store.clear_requests();
+        file(&store, "lake/failed.json")
+            .write_all_bytes(b"one")
+            .expect("a replacing write is retried");
+        assert_eq!(store.request_count(), 2);
+    }
+
+    /// An open handle that created keeps what it created; one that lost
+    /// forgets what it believed of the key and reads the stored value.
+    #[test]
+    fn a_handle_keeps_what_it_created_and_forgets_what_a_conflict_contradicts() {
+        let store = store();
+        let mut handle = file(&store, "lake/kept.json");
+        handle.open().unwrap();
+        assert_eq!(handle.size(), 0, "nothing is there yet");
+        handle.create_bytes(b"created").unwrap();
+        store.clear_requests();
+        assert_eq!(handle.read_all_bytes().unwrap(), b"created");
+        assert_eq!(handle.size(), 7);
+        assert_eq!(
+            store.request_count(),
+            0,
+            "an open handle holds what it created"
+        );
+
+        store.put(BUCKET, "lake/taken.json", b"theirs");
+        let mut loser = file(&store, "lake/taken.json");
+        loser.open().unwrap();
+        assert_eq!(loser.size(), 6);
+        assert!(loser.create_bytes(b"mine").unwrap_err().is_conflict());
+        assert_eq!(loser.read_all_bytes().unwrap(), b"theirs");
+    }
+
+    /// A `PutObject` Amazon S3 answers `409 ConditionalRequestConflict` met
+    /// another conditional write in flight on its key, and the store did not
+    /// act: the create is sent again and lands, never told an object is there.
+    #[test]
+    fn a_create_that_raced_another_conditional_write_is_sent_again() {
+        let store = store();
+        store.fail_next(409, "ConditionalRequestConflict", 1);
+        store.clear_requests();
+        file(&store, "lake/raced.json")
+            .create_bytes(b"one")
+            .expect("the race is sent again");
+        let sent = store.requests();
+        let seen: Vec<(&str, u16)> = sent
+            .iter()
+            .map(|request| (request.method.as_str(), request.status))
+            .collect();
+        assert_eq!(seen, [("PUT", 409), ("PUT", 200)]);
+        assert!(
+            sent.iter()
+                .all(|request| header(request, "if-none-match") == Some("*"))
+        );
+        assert_eq!(
+            store.get(BUCKET, "lake/raced.json").as_deref(),
+            Some(&b"one"[..])
+        );
+    }
+
+    /// The retry budget bounds the races a create is sent again after, and
+    /// the last one is what the store said - never a conflict, since no
+    /// object is at the key.
+    #[test]
+    fn a_create_that_keeps_racing_is_the_stores_own_refusal() {
+        let store = store();
+        store.fail_next(409, "ConditionalRequestConflict", 3);
+        store.clear_requests();
+        let error = file(&store, "lake/contended.json")
+            .create_bytes(b"one")
+            .expect_err("every attempt raced");
+        assert!(
+            matches!(
+                &error,
+                Error::Remote { status: 409, code, operation: "PutObject", .. }
+                    if code == "ConditionalRequestConflict"
+            ),
+            "{error:?}"
+        );
+        assert!(!error.is_conflict(), "{error}");
+        assert_eq!(store.request_count(), 3, "the default three attempts");
+        assert_eq!(store.get(BUCKET, "lake/contended.json"), None);
+    }
+
+    /// A completion that raced spends its upload - Amazon S3 has the whole
+    /// upload initiated again - so the create abandons it and uploads the
+    /// value once more as a new one, the condition on its completion again.
+    #[test]
+    fn a_chunked_create_that_raced_is_uploaded_again_as_a_new_upload() {
+        let store = store();
+        let bytes = payload(6 * 1024 * 1024);
+        let options = options_for(&store, Provider::Aws)
+            .with_part_size(5 * 1024 * 1024)
+            .with_multipart_threshold(1024 * 1024);
+        // The initiation and the two parts land; the completion races.
+        store.fail_after(3, 409, "ConditionalRequestConflict", 1);
+        store.clear_requests();
+        file_on_with(Provider::Aws, "lake/raced.bin", options)
+            .create_bytes(&bytes)
+            .expect("the upload is sent again");
+        let sent = store.requests();
+        let step = |request: &Recorded| match request.method.as_str() {
+            "POST" if query(request, "uploads").is_some() => "initiate",
+            "POST" => "complete",
+            "PUT" => "part",
+            "DELETE" => "abort",
+            other => panic!("an unexpected {other}"),
+        };
+        let steps: Vec<&str> = sent.iter().map(step).collect();
+        assert_eq!(
+            steps,
+            [
+                "initiate", "part", "part", "complete", "abort", "initiate", "part", "part",
+                "complete"
+            ]
+        );
+        let completions: Vec<&Recorded> = sent
+            .iter()
+            .filter(|request| step(request) == "complete")
+            .collect();
+        assert_eq!(completions[0].status, 409);
+        assert_eq!(completions[1].status, 200);
+        assert_ne!(
+            query(completions[0], "uploadId"),
+            query(completions[1], "uploadId"),
+            "the second completion is a new upload's"
+        );
+        assert!(
+            completions
+                .iter()
+                .all(|request| conditioned(Provider::Aws, request))
+        );
+        assert_eq!(
+            store.get(BUCKET, "lake/raced.bin").as_deref(),
+            Some(&bytes[..])
+        );
+        assert_eq!(store.open_uploads(), 0);
+    }
+
+    /// A create's refusal is the conflict only where the store's own code
+    /// says an object is at the key; any other `409` or `412` - a lease, a
+    /// rehydration - is what the store said, status and code, and its key
+    /// is no more taken than it was.
+    #[test]
+    fn a_refused_create_is_a_conflict_only_by_the_stores_own_code() {
+        let store = store();
+        let refusals = [
+            (Provider::Aws, 412, "PreconditionFailed", true),
+            (Provider::Google, 412, "conditionNotMet", true),
+            (Provider::Azure, 409, "BlobAlreadyExists", true),
+            (Provider::Azure, 412, "ConditionNotMet", true),
+            (Provider::Azure, 412, "LeaseIdMissing", false),
+            (Provider::Azure, 409, "BlobBeingRehydrated", false),
+            (Provider::Google, 409, "conflict", false),
+        ];
+        for (provider, status, code, conflict) in refusals {
+            let key = format!("lake/{}-{code}.json", provider.service());
+            store.fail_next(status, code, 1);
+            store.clear_requests();
+            let error = file_on(&store, provider, &key)
+                .create_bytes(b"{}")
+                .expect_err("an injected refusal");
+            assert_eq!(store.request_count(), 1, "{provider} {status} {code}");
+            if conflict {
+                assert!(
+                    matches!(error, Error::Conflict { .. }),
+                    "{provider} {status} {code}: {error}"
+                );
+                assert!(error.to_string().contains(&key), "{error}");
+            } else {
+                assert!(
+                    matches!(
+                        &error,
+                        Error::Remote { status: answered, code: named, .. }
+                            if *answered == status && named == code
+                    ),
+                    "{provider} {status} {code}: {error:?}"
+                );
+                assert!(!error.is_conflict(), "{error}");
+            }
+        }
+    }
+}

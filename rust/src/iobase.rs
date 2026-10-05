@@ -1010,13 +1010,15 @@ pub trait IOBase: Send + IOMedia {
     /// The writing half of the pair [`Self::read_all_bytes`] reads.
     ///
     /// A whole-value write is a *complete* operation, so it ends with
-    /// [`Self::flush`]: a handle that over-allocates - the memory-mapped
-    /// [`local::LocalFile`](crate::local::LocalFile) grows geometrically so appending
-    /// does not remap on every write - must not leave that slack visible to a
-    /// second handle on the same location, which would read the padding as
-    /// content. Positional [`Self::pwrite`] deliberately does not publish;
-    /// it is the primitive a larger operation is built from, and the operation
-    /// publishes when it finishes.
+    /// [`Self::flush`]: a handle that stages - the memory-mapped
+    /// [`local::LocalFile`](crate::local::LocalFile) grows geometrically under
+    /// `pwrite` so appending does not remap on every write - must not leave
+    /// that slack visible to a second handle on the same location, which
+    /// would read the padding as content; `LocalFile` replaces the file whole
+    /// through a private sibling and one rename, so a handle mapping the old
+    /// value keeps reading it. Positional [`Self::pwrite`] deliberately does
+    /// not publish; it is the primitive a larger operation is built from, and
+    /// the operation publishes when it finishes.
     ///
     /// # Errors
     ///
@@ -1026,6 +1028,47 @@ pub trait IOBase: Send + IOMedia {
         self.pwrite_all(0, bytes)?;
         self.flush()
     }
+
+    /// Write `bytes` as the complete value where nothing is.
+    ///
+    /// The creating half beside [`Self::write_all_bytes`], which replaces whatever
+    /// is there: this writes only where the location holds no value yet, and
+    /// refuses with [`Error::Conflict`] - expected nothing, got a value, at the
+    /// location - where one already is, leaving that value as it was. A complete
+    /// operation: it publishes on return, as `write_all_bytes` does. The refusal is
+    /// derived from the one attempt, never from a question asked first, so two
+    /// creators of one location see exactly one succeed on every backend whose
+    /// store honours an exclusive create: `create_new` (`O_EXCL`) on local storage
+    /// and the local filesystem, the archive's index under its lock for a ZIP
+    /// member (through one archive: two mounts of one archive file have two
+    /// indexes), `If-None-Match: *` on Amazon S3, Azure Blob Storage and an HTTP
+    /// resource, `ifGenerationMatch=0` on Google Cloud Storage, a buffer's own
+    /// emptiness in memory. A filesystem bridged from outside the crate asks for
+    /// the file's information and then writes, and an HTTP origin that ignores
+    /// preconditions overwrites: each says so where it is implemented.
+    ///
+    /// ```
+    /// use yggdryl::{Error, IOBase, holder::Buffer};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::new();
+    /// handle.create_bytes(b"AAPL,187.23")?;
+    /// assert_eq!(handle.read_all_bytes()?, b"AAPL,187.23");
+    ///
+    /// // The second creator loses, and the first value stands.
+    /// let refused = handle.create_bytes(b"MSFT,410.10");
+    /// assert!(matches!(refused, Err(Error::Conflict { .. })));
+    /// assert_eq!(handle.read_all_bytes()?, b"AAPL,187.23");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Conflict`] where the location already holds a value,
+    /// a container's refusal of a byte write where it is one, and the backing
+    /// store's write failure otherwise.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()>;
 
     /// Empty the resource's contents, keeping the resource itself.
     ///

@@ -51,6 +51,10 @@ impl IOBase for Counted {
         self.bytes.pwrite(offset, bytes)
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> yggdryl::Result<()> {
+        self.bytes.create_bytes(bytes)
+    }
+
     fn capacity(&self) -> u64 {
         self.bytes.capacity()
     }

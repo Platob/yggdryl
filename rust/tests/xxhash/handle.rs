@@ -35,7 +35,7 @@ mod xxhash {
         }
 
         impl IOBase for Counted {
-            yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, uri, url,
+            yggdryl::delegate_iobase!(handle: create_bytes, pwrite, size, capacity, reserve, truncate, uri, url,
                 media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
                 ls, kind, clear, remove, is_atomic, is_tabular, is_io);
 
@@ -44,6 +44,25 @@ mod xxhash {
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 self.handle.pread(offset, buffer)
             }
+        }
+
+        #[test]
+        fn a_create_starts_the_running_digest_and_a_refused_one_keeps_it() {
+            let mut handle = Hashed::new(Counted::new(), DigestAlgorithm::Xxh3);
+            handle.create_bytes(b"symbol,price\n").unwrap();
+            let expected = Some(xxh3(b"symbol,price\n"));
+            assert_eq!(
+                handle.read_digest(DigestAlgorithm::Xxh3).unwrap().as_u64(),
+                expected
+            );
+            assert_eq!(handle.handle().reads(), 0, "the create folded its bytes");
+
+            assert!(handle.create_bytes(b"other").unwrap_err().is_conflict());
+            assert_eq!(
+                handle.read_digest(DigestAlgorithm::Xxh3).unwrap().as_u64(),
+                expected
+            );
+            assert_eq!(handle.handle().reads(), 0);
         }
 
         #[test]

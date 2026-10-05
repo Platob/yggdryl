@@ -31,6 +31,45 @@ fn a_put_on_a_container_is_409() {
     assert_eq!(response.status(), Status::CONFLICT);
 }
 
+/// `PUT` under `If-None-Match: *` is a create: `201` where nothing is, `412`
+/// over a leaf - left as it was - or over a container, whose listing is a
+/// current representation; any other `If-None-Match` leaves the `PUT` as it is.
+#[test]
+fn a_put_under_if_none_match_star_creates_or_is_412() {
+    let server = served();
+    let put = |path: &str, body: &str, condition: &str| {
+        Request::put(&server.url_of(path).expect("url").to_string(), body)
+            .expect("request")
+            .with_header("If-None-Match", condition)
+            .expect("a valid header")
+            .send()
+            .expect("send")
+            .status()
+    };
+
+    assert_eq!(put("/claims/v1.json", "{\"v\":1}", "*"), Status::CREATED);
+    assert_eq!(
+        &*get(&server, "/claims/v1.json").bytes().expect("body"),
+        b"{\"v\":1}"
+    );
+
+    assert_eq!(
+        put("/claims/v1.json", "{}", "*"),
+        Status::PRECONDITION_FAILED
+    );
+    assert_eq!(put("/rows.json", "[]", "*"), Status::PRECONDITION_FAILED);
+    assert_eq!(
+        &*get(&server, "/claims/v1.json").bytes().expect("body"),
+        b"{\"v\":1}"
+    );
+    assert_eq!(&*get(&server, "/rows.json").bytes().expect("body"), ROWS);
+    assert_eq!(put("/dir", "x", "*"), Status::PRECONDITION_FAILED);
+
+    // A validator rather than the wildcard is no create: the PUT replaces.
+    assert_eq!(put("/rows.json", "[]", "\"other\""), Status::NO_CONTENT);
+    assert_eq!(&*get(&server, "/rows.json").bytes().expect("body"), b"[]");
+}
+
 #[test]
 fn a_range_past_the_end_is_416_naming_the_total() {
     let server = served();

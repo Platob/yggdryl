@@ -529,6 +529,34 @@ impl ZipArchive {
         source: impl Read,
         codec: Codec,
     ) -> Result<ZipEntry> {
+        self.put_member(path, source, codec, false)
+    }
+
+    /// Write `source` as a member where the index holds none, as
+    /// [`Self::write_member_from`] writes one.
+    ///
+    /// The index is asked under the lock the write then holds, so the
+    /// member's absence and its record are one step: of two creators of one
+    /// name through this archive, exactly one writes and the other is
+    /// refused with [`Error::Conflict`] naming the member, nothing written.
+    pub(crate) fn create_member_from(
+        &self,
+        path: &str,
+        source: impl Read,
+        codec: Codec,
+    ) -> Result<ZipEntry> {
+        self.put_member(path, source, codec, true)
+    }
+
+    /// The one member write: a replacement, or under `exclusive` a create
+    /// refused where the index names the member already.
+    fn put_member(
+        &self,
+        path: &str,
+        source: impl Read,
+        codec: Codec,
+        exclusive: bool,
+    ) -> Result<ZipEntry> {
         let name = name::resolve("", path)?;
         if name.is_empty() {
             return Err(Error::Io(std::io::Error::new(
@@ -555,6 +583,13 @@ impl ZipArchive {
         let index = Self::index_of(inner)?;
         let offset = index.directory_offset;
         let previous = index.entries.get(name.as_str()).cloned();
+        if exclusive && previous.is_some() {
+            return Err(Error::conflict(
+                "member",
+                "member",
+                self.member_url_text(&name),
+            ));
+        }
         let mut entry = ZipEntry::new(name, method, now_nanos()).with_header_offset(offset);
         // Replacing a member's bytes says nothing about the member: what the
         // record already stated about it is carried rather than reinvented.

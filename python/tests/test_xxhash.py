@@ -368,6 +368,18 @@ class TestDigest:
         with pytest.raises(ValueError, match="xxh3-64"):
             xxhash.Digest.from_int("xxh256", 1)
 
+    def test_a_value_no_digest_holds_is_one_exception_on_every_build(self) -> None:
+        # A digest is unsigned and at most 128 bits wide: a negative or wider
+        # integer is `OverflowError` whichever extension reads it - PyO3 alone
+        # says `ValueError` for the negative one on a version-specific 3.13+
+        # build - and a value that is no integer stays a `TypeError`.
+        for value in (-1, -(2**127), 2**128):
+            with pytest.raises(OverflowError):
+                xxhash.Digest.from_int("xxh64", value)
+        with pytest.raises(TypeError):
+            xxhash.Digest.from_int("xxh64", 1.5)  # type: ignore[arg-type]
+        assert int(xxhash.Digest.from_int("xxh3-128", 2**128 - 1)) == 2**128 - 1
+
     def test_pickle_and_copy_preserve_the_value(self) -> None:
         digest = xxhash.digest(PAYLOAD, "xxh3-128")
         assert pickle.loads(pickle.dumps(digest)) == digest

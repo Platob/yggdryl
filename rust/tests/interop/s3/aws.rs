@@ -7,8 +7,10 @@
 //! points them at - and cross-check with `boto3`, the reference client:
 //!
 //! 1. this half writes objects, prefixes, awkward keys, and a multipart
-//!    upload, and reads back what `boto3` wrote;
-//! 2. `scripts/check_s3_interop.py` drives it, and asserts from the Python
+//!    upload, creates objects under `If-None-Match: *` - one `PutObject`
+//!    and one multipart upload - that a second create loses, and reads
+//!    back what `boto3` wrote;
+//! 2. `scripts/check_object_interop.py` drives it, and asserts from the Python
 //!    side that every object this half wrote is exactly what it meant.
 //!
 //! Nothing runs without an endpoint. `YGGDRYL_S3_ENDPOINT` is what turns the
@@ -17,7 +19,7 @@
 //! skipped half can never read as a pass.
 
 use yggdryl::s3::{Credentials, Provider, S3Options};
-use yggdryl::{IOBase, IOKind};
+use yggdryl::{Error, IOBase, IOKind};
 
 /// The bucket both sides exchange through.
 const BUCKET: &str = "yggdryl-interop";
@@ -172,7 +174,7 @@ fn objects_boto3_wrote_are_readable_here() {
     if leaves.is_empty() {
         println!(
             "s3-interop: SKIPPED the external objects; nothing under {FROM_BOTO}/. Run \
-             `python scripts/check_s3_interop.py`"
+             `python scripts/check_object_interop.py`"
         );
         return;
     }
@@ -227,6 +229,72 @@ fn a_removal_here_is_a_removal_there() {
     assert!(tree.exists());
     tree.remove(true).expect("a recursive removal");
     assert!(!tree.exists());
+}
+
+/// `IOBase::create_bytes` against a store that evaluates the condition itself.
+///
+/// A create is one `PutObject` under `If-None-Match: *`, and above the
+/// multipart threshold the condition rides `CompleteMultipartUpload`, the
+/// request that decides the object. MinIO evaluates it on both
+/// (`checkPreconditionsPUT`), so each second create below is the store's own
+/// `412`, never a question this client asked first, and the parts of the
+/// losing upload are abandoned rather than published.
+#[test]
+fn a_second_create_of_an_object_is_a_conflict_and_the_first_stands() {
+    let Some(_) = endpoint() else {
+        println!("s3-interop: SKIPPED (set YGGDRYL_S3_ENDPOINT to run)");
+        return;
+    };
+    prefix("").create().expect("the exchange bucket");
+
+    let key = format!("{FROM_RUST}/created/claim.json");
+    // A store a developer keeps between runs still holds the last run's.
+    object(&key).remove(false).expect("a clean key");
+    object(&key)
+        .create_bytes(b"{\"version\":1}")
+        .expect("nothing at the key");
+    assert_eq!(
+        object(&key).read_all_bytes().expect("the object"),
+        b"{\"version\":1}"
+    );
+    let refused = object(&key)
+        .create_bytes(b"{\"version\":2}")
+        .expect_err("an object is at the key");
+    assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
+    assert!(refused.to_string().contains(&key), "{refused}");
+    assert_eq!(
+        object(&key).read_all_bytes().expect("the object"),
+        b"{\"version\":1}"
+    );
+
+    // In parts: three of 5 MiB at most, so the completion is what publishes.
+    let key = format!("{FROM_RUST}/created/multipart.bin");
+    let parted = || {
+        yggdryl::s3::file_at_with(
+            Provider::Aws,
+            BUCKET,
+            &key,
+            options()
+                .with_part_size(5 * 1024 * 1024)
+                .with_multipart_threshold(5 * 1024 * 1024),
+        )
+        .expect("an object handle")
+    };
+    let first: Vec<u8> = (0..12 * 1024 * 1024)
+        .map(|index| (index % 251) as u8)
+        .collect();
+    parted().remove(false).expect("a clean key");
+    let mut handle = parted();
+    handle.create_bytes(&first).expect("nothing at the key");
+    // Created, completed: a multipart upload and not one `PutObject`.
+    assert_eq!(handle.stats().posts, 2, "{:?}", handle.stats());
+    assert_eq!(parted().read_all_bytes().expect("the object"), first);
+
+    let refused = parted()
+        .create_bytes(&vec![b'n'; 6 * 1024 * 1024])
+        .expect_err("an object is at the key");
+    assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
+    assert_eq!(parted().read_all_bytes().expect("the object"), first);
 }
 
 /// The exchange key for the encryption cross-check: 32 fixed bytes.

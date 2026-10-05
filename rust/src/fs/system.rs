@@ -222,6 +222,24 @@ pub trait FileSystem: Send + Sync + Any {
         path: &str,
         metadata: Option<&OutputMetadata>,
     ) -> Result<Box<dyn ByteWriter>>;
+    /// Create one file holding `bytes` where the path holds nothing, refusing
+    /// with [`Error::Conflict`] where it holds a file or a directory and
+    /// leaving that as it was.
+    ///
+    /// The default is a bridged filesystem's best effort, and the one place a
+    /// create is not exclusive: it asks [`Self::file_info`] and then writes
+    /// through [`Self::open_output_stream`], so two creators racing between
+    /// the question and the write can both succeed, the later one's bytes
+    /// standing. A filesystem with an exclusive create of its own overrides
+    /// it - the local disk with `create_new` (`O_EXCL`), the memory
+    /// filesystem under its one lock.
+    fn create_file(&self, path: &str, bytes: &[u8]) -> Result<()> {
+        let info = self.file_info(path)?;
+        if info.kind != IOKind::Unknown {
+            return Err(Error::conflict("file", info.kind.as_str(), path));
+        }
+        super::FsFile::write_stream(self.open_output_stream(path, None)?, bytes)
+    }
     /// Borrow the concrete backend for a language binding.
     fn as_any(&self) -> &dyn Any;
 }

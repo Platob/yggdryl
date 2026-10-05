@@ -23,7 +23,7 @@ use crate::datatype::{arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::field::core_field_from_value;
 use crate::scalar::PyScalar;
 use crate::text::codec::PythonReader;
-use crate::value_error;
+use crate::{u128_from_py, value_error};
 
 /// Register this module's classes and functions on the native module.
 ///
@@ -227,8 +227,17 @@ impl PyDigest {
     }
 
     /// Build a digest from an algorithm and its native value.
+    ///
+    /// The value is read by [`u128_from_py`] rather than by the signature, so
+    /// a negative or too-wide one is `OverflowError` on every wheel and a
+    /// value that is no integer the `TypeError` it is.
     #[classmethod]
-    fn from_int(_cls: &Bound<'_, PyType>, algorithm: &str, value: u128) -> PyResult<Self> {
+    fn from_int(
+        _cls: &Bound<'_, PyType>,
+        algorithm: &str,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<Self> {
+        let value = u128_from_py(value)?;
         let algorithm = algorithm_from_str(algorithm)?;
         Ok(Self::from_core(Digest::new(algorithm, value)))
     }

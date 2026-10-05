@@ -334,25 +334,40 @@ fn table_metadata_state_is_read_only_through_complete_accessors() {
     assert_eq!(metadata.next_row_id(), fields::next_row_id(&metadata));
 }
 
-/// An Arrow filesystem that publishes one version hint and then reports that
-/// same write as failed.
+/// An Arrow filesystem that refuses the next write of the version hint,
+/// whichever door it takes - a create or an output stream - writing nothing.
 ///
-/// An object store can report an output-stream close failure after the bytes
-/// are already visible. This fixture makes that state deterministic without
-/// teaching the table about a test-only storage hook.
+/// A commit's document is the commit and its hint only where a read starts,
+/// so this pins that a hint the store refuses fails no commit.
 #[derive(Debug, Default)]
-struct PublishedHintFailure {
+struct RefusedHintWrite {
     inner: yggdryl::fs::MemoryFileSystem,
-    fail_next_hint: Arc<AtomicBool>,
+    refuse_next_hint: Arc<AtomicBool>,
 }
 
-impl PublishedHintFailure {
+impl RefusedHintWrite {
     fn arm(&self) {
-        self.fail_next_hint.store(true, Ordering::Relaxed);
+        self.refuse_next_hint.store(true, Ordering::Relaxed);
+    }
+
+    fn is_armed(&self) -> bool {
+        self.refuse_next_hint.load(Ordering::Relaxed)
+    }
+
+    /// Refuse a write of `path` where it is the hint and a refusal is armed.
+    fn write(&self, path: &str) -> yggdryl::Result<()> {
+        if path.ends_with("/version-hint.text")
+            && self.refuse_next_hint.swap(false, Ordering::Relaxed)
+        {
+            return Err(yggdryl::Error::Io(std::io::Error::other(
+                "injected refusal of the version hint write",
+            )));
+        }
+        Ok(())
     }
 }
 
-impl yggdryl::fs::FileSystem for PublishedHintFailure {
+impl yggdryl::fs::FileSystem for RefusedHintWrite {
     fn type_name(&self) -> &str {
         self.inner.type_name()
     }
@@ -417,15 +432,8 @@ impl yggdryl::fs::FileSystem for PublishedHintFailure {
         path: &str,
         metadata: Option<&OutputMetadata>,
     ) -> yggdryl::Result<Box<dyn ByteWriter>> {
-        let writer = self.inner.open_output_stream(path, metadata)?;
-        if path.ends_with("/version-hint.text") {
-            Ok(Box::new(PublishedHintWriter {
-                inner: writer,
-                fail_next_hint: Arc::clone(&self.fail_next_hint),
-            }))
-        } else {
-            Ok(writer)
-        }
+        self.write(path)?;
+        self.inner.open_output_stream(path, metadata)
     }
 
     fn open_append_stream(
@@ -436,59 +444,25 @@ impl yggdryl::fs::FileSystem for PublishedHintFailure {
         self.inner.open_append_stream(path, metadata)
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-struct PublishedHintWriter {
-    inner: Box<dyn ByteWriter>,
-    fail_next_hint: Arc<AtomicBool>,
-}
-
-impl ByteWriter for PublishedHintWriter {
-    fn write(&mut self, bytes: &[u8]) -> yggdryl::Result<usize> {
-        self.inner.write(bytes)
-    }
-
-    fn tell(&self) -> u64 {
-        self.inner.tell()
-    }
-
-    fn flush(&mut self) -> yggdryl::Result<()> {
-        self.inner.flush()
-    }
-
-    fn close(&mut self) -> yggdryl::Result<()> {
-        self.inner.close()?;
-        if self.fail_next_hint.swap(false, Ordering::Relaxed) {
-            return Err(yggdryl::Error::Io(std::io::Error::other(
-                "injected acknowledgement failure after publishing the version hint",
-            )));
-        }
-        Ok(())
-    }
-
-    fn closed(&self) -> bool {
-        self.inner.closed()
+    fn create_file(&self, path: &str, bytes: &[u8]) -> yggdryl::Result<()> {
+        self.write(path)?;
+        self.inner.create_file(path, bytes)
     }
 
     fn as_any(&self) -> &dyn Any {
         self
     }
-
-    fn into_any(self: Box<Self>) -> Box<dyn Any> {
-        self
-    }
 }
 
-/// A memory filesystem that lands one competing metadata document after a
-/// writer's version preflight but before its same-version collision listing.
+/// A memory filesystem that lands one competing metadata document at version
+/// 2 in the instant between a writer's look at the hint and its exclusive
+/// create of that version.
 ///
 /// The injected document is the attempted document with the loser's property
-/// replaced by the winner's. This isolates the race inside `commit_metadata`:
-/// the writer already passed `find_metadata`, yet its publication finds a
-/// valid competing document and must return through the retry gate.
+/// replaced by the winner's, created under the very name the writer is about
+/// to create, with the hint naming it. This isolates the race inside
+/// `commit_metadata`: the writer already passed `find_metadata`, yet its
+/// create finds the version taken and must return through the retry gate.
 #[derive(Debug, Default)]
 struct SameVersionWinner {
     inner: yggdryl::fs::MemoryFileSystem,
@@ -511,6 +485,34 @@ impl SameVersionWinner {
             position: 0,
             reason: reason.into(),
         }
+    }
+
+    /// Create the winner of `path` from the loser's attempted `bytes`, and
+    /// the hint naming it.
+    fn inject_winner(&self, path: &str, bytes: &[u8]) -> yggdryl::Result<()> {
+        let mut document: serde_json::Value = serde_json::from_slice(bytes)?;
+        let properties = document
+            .as_object_mut()
+            .and_then(|metadata| metadata.get_mut("properties"))
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| Self::invalid("expected generated metadata properties"))?;
+        if properties.remove("loser").is_none() {
+            return Err(Self::invalid(
+                "expected the attempted metadata to carry the loser's intent",
+            ));
+        }
+        properties.insert(
+            "winner".to_owned(),
+            serde_json::Value::String("visible".to_owned()),
+        );
+        let (directory, _) = path
+            .rsplit_once('/')
+            .ok_or_else(|| Self::invalid("expected a metadata directory"))?;
+        self.inner
+            .create_file(path, &serde_json::to_vec(&document)?)?;
+        write_filesystem_bytes(&self.inner, &format!("{directory}/version-hint.text"), b"2")?;
+        self.injections.fetch_add(1, Ordering::Relaxed);
+        Ok(())
     }
 }
 
@@ -579,19 +581,7 @@ impl yggdryl::fs::FileSystem for SameVersionWinner {
         path: &str,
         metadata: Option<&OutputMetadata>,
     ) -> yggdryl::Result<Box<dyn ByteWriter>> {
-        let writer = self.inner.open_output_stream(path, metadata)?;
-        if path.contains("/metadata/00002-") && path.ends_with(".metadata.json") {
-            Ok(Box::new(SameVersionWriter {
-                inner: writer,
-                filesystem: self.inner.clone(),
-                path: path.to_owned(),
-                bytes: Vec::new(),
-                armed: Arc::clone(&self.armed),
-                injections: Arc::clone(&self.injections),
-            }))
-        } else {
-            Ok(writer)
-        }
+        self.inner.open_output_stream(path, metadata)
     }
 
     fn open_append_stream(
@@ -602,92 +592,15 @@ impl yggdryl::fs::FileSystem for SameVersionWinner {
         self.inner.open_append_stream(path, metadata)
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-struct SameVersionWriter {
-    inner: Box<dyn ByteWriter>,
-    filesystem: yggdryl::fs::MemoryFileSystem,
-    path: String,
-    bytes: Vec<u8>,
-    armed: Arc<AtomicBool>,
-    injections: Arc<AtomicUsize>,
-}
-
-impl SameVersionWriter {
-    fn inject_winner(&self) -> yggdryl::Result<()> {
-        let mut document: serde_json::Value = serde_json::from_slice(&self.bytes)?;
-        let properties = document
-            .as_object_mut()
-            .and_then(|metadata| metadata.get_mut("properties"))
-            .and_then(serde_json::Value::as_object_mut)
-            .ok_or_else(|| SameVersionWinner::invalid("expected generated metadata properties"))?;
-        if properties.remove("loser").is_none() {
-            return Err(SameVersionWinner::invalid(
-                "expected the attempted metadata to carry the loser's intent",
-            ));
+    fn create_file(&self, path: &str, bytes: &[u8]) -> yggdryl::Result<()> {
+        if path.ends_with("/metadata/v2.metadata.json") && self.armed.swap(false, Ordering::Relaxed)
+        {
+            self.inject_winner(path, bytes)?;
         }
-        properties.insert(
-            "winner".to_owned(),
-            serde_json::Value::String("visible".to_owned()),
-        );
-
-        let (directory, candidate) = self
-            .path
-            .rsplit_once('/')
-            .ok_or_else(|| SameVersionWinner::invalid("expected a metadata directory"))?;
-        let first = "00002-00000000-0000-0000-0000-000000000000.metadata.json";
-        let second = "00002-ffffffff-ffff-ffff-ffff-ffffffffffff.metadata.json";
-        let competitor = if candidate == first { second } else { first };
-        write_filesystem_bytes(
-            &self.filesystem,
-            &format!("{directory}/{competitor}"),
-            &serde_json::to_vec(&document)?,
-        )?;
-        write_filesystem_bytes(
-            &self.filesystem,
-            &format!("{directory}/version-hint.text"),
-            b"2",
-        )?;
-        self.injections.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-    }
-}
-
-impl ByteWriter for SameVersionWriter {
-    fn write(&mut self, bytes: &[u8]) -> yggdryl::Result<usize> {
-        let written = self.inner.write(bytes)?;
-        self.bytes.extend_from_slice(&bytes[..written]);
-        Ok(written)
-    }
-
-    fn tell(&self) -> u64 {
-        self.inner.tell()
-    }
-
-    fn flush(&mut self) -> yggdryl::Result<()> {
-        self.inner.flush()
-    }
-
-    fn close(&mut self) -> yggdryl::Result<()> {
-        self.inner.close()?;
-        if self.armed.swap(false, Ordering::Relaxed) {
-            self.inject_winner()?;
-        }
-        Ok(())
-    }
-
-    fn closed(&self) -> bool {
-        self.inner.closed()
+        self.inner.create_file(path, bytes)
     }
 
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn into_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }
 }
@@ -739,12 +652,13 @@ fn listed_paths(folder: &yggdryl::fs::FsFolder) -> Vec<String> {
     paths
 }
 
-/// An Arrow filesystem that refuses the write of one versioned metadata
-/// document - `v{n}.metadata.json` - after the attempt before it landed.
+/// An Arrow filesystem that refuses the create of one versioned metadata
+/// document - `v{n}.metadata.json` - after every file it names landed.
 ///
-/// A store can refuse the second of two writes as well as the first; this
-/// makes it refuse exactly the one that is the commit's point of no return,
-/// so what a commit leaves behind when it fails just short of it is pinned.
+/// A store can refuse the last of a commit's writes as well as the first;
+/// this makes it refuse exactly the one that is the commit's point of no
+/// return, so what a commit leaves behind when it fails just short of it is
+/// pinned.
 #[derive(Debug, Default)]
 struct RefusedDocumentWrite {
     inner: yggdryl::fs::MemoryFileSystem,
@@ -822,16 +736,6 @@ impl yggdryl::fs::FileSystem for RefusedDocumentWrite {
         path: &str,
         metadata: Option<&OutputMetadata>,
     ) -> yggdryl::Result<Box<dyn ByteWriter>> {
-        let name = path.rsplit('/').next().unwrap_or(path);
-        if name.starts_with('v')
-            && name.ends_with(".metadata.json")
-            && self.refuse_next_document.swap(false, Ordering::Relaxed)
-        {
-            return Err(yggdryl::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                "the versioned document write is refused",
-            )));
-        }
         self.inner.open_output_stream(path, metadata)
     }
 
@@ -843,14 +747,28 @@ impl yggdryl::fs::FileSystem for RefusedDocumentWrite {
         self.inner.open_append_stream(path, metadata)
     }
 
+    fn create_file(&self, path: &str, bytes: &[u8]) -> yggdryl::Result<()> {
+        let name = path.rsplit('/').next().unwrap_or(path);
+        if name.starts_with('v')
+            && name.ends_with(".metadata.json")
+            && self.refuse_next_document.swap(false, Ordering::Relaxed)
+        {
+            return Err(yggdryl::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "the versioned document create is refused",
+            )));
+        }
+        self.inner.create_file(path, bytes)
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
 /// A memory filesystem that lands a competing metadata-only document at
-/// version 2 after a data commit's version preflight but before its
-/// same-version collision listing, and records every file the loser removes.
+/// version 2 between a data commit's look at the hint and its exclusive
+/// create of that version, and records every file the loser removes.
 ///
 /// The competitor is the version 1 document with a property added - a
 /// genuine other writer's commit, naming none of the loser's files - so the
@@ -871,6 +789,31 @@ impl MetadataOnlyWinner {
     fn removed(&self) -> Vec<String> {
         self.removed.lock().unwrap().clone()
     }
+}
+
+/// Create a metadata-only winner at `path`, version 2, from the version 1
+/// document beside it - that document with the property `winner` added - and
+/// the hint naming it.
+fn land_metadata_only_winner(filesystem: &dyn FileSystem, path: &str) -> yggdryl::Result<()> {
+    let (directory, _) = path
+        .rsplit_once('/')
+        .ok_or_else(|| SameVersionWinner::invalid("expected a metadata directory"))?;
+    let previous = read_filesystem_bytes(filesystem, &format!("{directory}/v1.metadata.json"))?;
+    let mut document: serde_json::Value = serde_json::from_slice(&previous)?;
+    let metadata = document
+        .as_object_mut()
+        .ok_or_else(|| SameVersionWinner::invalid("expected a metadata object"))?;
+    let properties = metadata
+        .entry("properties")
+        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()))
+        .as_object_mut()
+        .ok_or_else(|| SameVersionWinner::invalid("expected metadata properties"))?;
+    properties.insert(
+        "winner".to_owned(),
+        serde_json::Value::String("visible".to_owned()),
+    );
+    filesystem.create_file(path, &serde_json::to_vec(&document)?)?;
+    write_filesystem_bytes(filesystem, &format!("{directory}/version-hint.text"), b"2")
 }
 
 impl yggdryl::fs::FileSystem for MetadataOnlyWinner {
@@ -939,17 +882,7 @@ impl yggdryl::fs::FileSystem for MetadataOnlyWinner {
         path: &str,
         metadata: Option<&OutputMetadata>,
     ) -> yggdryl::Result<Box<dyn ByteWriter>> {
-        let writer = self.inner.open_output_stream(path, metadata)?;
-        if path.contains("/metadata/00002-") && path.ends_with(".metadata.json") {
-            Ok(Box::new(MetadataOnlyWriter {
-                inner: writer,
-                filesystem: self.inner.clone(),
-                path: path.to_owned(),
-                armed: Arc::clone(&self.armed),
-            }))
-        } else {
-            Ok(writer)
-        }
+        self.inner.open_output_stream(path, metadata)
     }
 
     fn open_append_stream(
@@ -960,82 +893,174 @@ impl yggdryl::fs::FileSystem for MetadataOnlyWinner {
         self.inner.open_append_stream(path, metadata)
     }
 
+    fn create_file(&self, path: &str, bytes: &[u8]) -> yggdryl::Result<()> {
+        if path.ends_with("/metadata/v2.metadata.json") && self.armed.swap(false, Ordering::Relaxed)
+        {
+            land_metadata_only_winner(&self.inner, path)?;
+        }
+        self.inner.create_file(path, bytes)
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
-struct MetadataOnlyWriter {
-    inner: Box<dyn ByteWriter>,
-    filesystem: yggdryl::fs::MemoryFileSystem,
-    path: String,
-    armed: Arc<AtomicBool>,
+/// A memory filesystem whose version hint reads as one replaced under the
+/// read: the size of the hint a commit removed, then no byte of the one it
+/// created in its place - `expected 1 bytes at offset 0, got 0`, what a
+/// reader on a store that sizes a file before it reads it meets between a
+/// commit's removal of the hint and its re-creation. It counts the listings
+/// of `metadata/`, and armed, it lands a metadata-only winner at version 2
+/// just before a commit's claim of it - every read the beaten commit then
+/// looks for the winner by, the hint and the listing, failing once.
+#[derive(Debug, Default)]
+struct ReplacedHint {
+    inner: yggdryl::fs::MemoryFileSystem,
+    failing_hint_reads: AtomicUsize,
+    failing_listings: AtomicUsize,
+    listings: AtomicUsize,
+    armed: AtomicBool,
 }
 
-impl MetadataOnlyWriter {
-    fn inject_winner(&self) -> yggdryl::Result<()> {
-        let (directory, _) = self
-            .path
-            .rsplit_once('/')
-            .ok_or_else(|| SameVersionWinner::invalid("expected a metadata directory"))?;
-        let previous =
-            read_filesystem_bytes(&self.filesystem, &format!("{directory}/v1.metadata.json"))?;
-        let mut document: serde_json::Value = serde_json::from_slice(&previous)?;
-        let metadata = document
-            .as_object_mut()
-            .ok_or_else(|| SameVersionWinner::invalid("expected a metadata object"))?;
-        let properties = metadata
-            .entry("properties")
-            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()))
-            .as_object_mut()
-            .ok_or_else(|| SameVersionWinner::invalid("expected metadata properties"))?;
-        properties.insert(
-            "winner".to_owned(),
-            serde_json::Value::String("visible".to_owned()),
-        );
-        write_filesystem_bytes(
-            &self.filesystem,
-            &format!("{directory}/00002-ffffffff-ffff-ffff-ffff-ffffffffffff.metadata.json"),
-            &serde_json::to_vec(&document)?,
-        )?;
-        write_filesystem_bytes(
-            &self.filesystem,
-            &format!("{directory}/version-hint.text"),
-            b"2",
+impl ReplacedHint {
+    /// Fail the next `count` reads of the hint.
+    fn fail_hint_reads(&self, count: usize) {
+        self.failing_hint_reads.store(count, Ordering::Relaxed);
+    }
+
+    fn arm(&self) {
+        self.armed.store(true, Ordering::Relaxed);
+    }
+
+    /// The listings taken so far.
+    fn listings(&self) -> usize {
+        self.listings.load(Ordering::Relaxed)
+    }
+
+    /// The failures armed and not yet met: hint reads, then listings.
+    fn pending(&self) -> (usize, usize) {
+        (
+            self.failing_hint_reads.load(Ordering::Relaxed),
+            self.failing_listings.load(Ordering::Relaxed),
         )
     }
-}
 
-impl ByteWriter for MetadataOnlyWriter {
-    fn write(&mut self, bytes: &[u8]) -> yggdryl::Result<usize> {
-        self.inner.write(bytes)
+    /// Spend one failure of `left`, answering whether there was one.
+    fn spend(left: &AtomicUsize) -> bool {
+        left.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |left| {
+            left.checked_sub(1)
+        })
+        .is_ok()
     }
 
-    fn tell(&self) -> u64 {
-        self.inner.tell()
-    }
-
-    fn flush(&mut self) -> yggdryl::Result<()> {
-        self.inner.flush()
-    }
-
-    fn close(&mut self) -> yggdryl::Result<()> {
-        self.inner.close()?;
-        if self.armed.swap(false, Ordering::Relaxed) {
-            self.inject_winner()?;
+    /// Fail a read of `path` where it is the hint and a failure is armed.
+    fn read(&self, path: &str) -> yggdryl::Result<()> {
+        if path.ends_with("/metadata/version-hint.text") && Self::spend(&self.failing_hint_reads) {
+            return Err(yggdryl::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "expected 1 bytes at offset 0, got 0",
+            )));
         }
         Ok(())
     }
+}
 
-    fn closed(&self) -> bool {
-        self.inner.closed()
+impl yggdryl::fs::FileSystem for ReplacedHint {
+    fn type_name(&self) -> &str {
+        self.inner.type_name()
+    }
+
+    fn equals(&self, other: &dyn FileSystem) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| std::ptr::eq(self, other))
+    }
+
+    fn normalize_path(&self, path: &str) -> yggdryl::Result<String> {
+        self.inner.normalize_path(path)
+    }
+
+    fn file_info(&self, path: &str) -> yggdryl::Result<FileInfo> {
+        self.inner.file_info(path)
+    }
+
+    fn list(&self, selector: &FileSelector) -> FileInfos {
+        self.listings.fetch_add(1, Ordering::Relaxed);
+        if Self::spend(&self.failing_listings) {
+            return FileInfos::failing(yggdryl::Error::Io(std::io::Error::other(
+                "the listing was cut short",
+            )));
+        }
+        self.inner.list(selector)
+    }
+
+    fn create_dir(&self, path: &str, recursive: bool) -> yggdryl::Result<()> {
+        self.inner.create_dir(path, recursive)
+    }
+
+    fn delete_dir(&self, path: &str) -> yggdryl::Result<()> {
+        self.inner.delete_dir(path)
+    }
+
+    fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> yggdryl::Result<()> {
+        self.inner.delete_dir_contents(path, missing_dir_ok)
+    }
+
+    fn delete_root_dir_contents(&self) -> yggdryl::Result<()> {
+        self.inner.delete_root_dir_contents()
+    }
+
+    fn delete_file(&self, path: &str) -> yggdryl::Result<()> {
+        self.inner.delete_file(path)
+    }
+
+    fn copy_file(&self, source: &str, target: &str) -> yggdryl::Result<()> {
+        self.inner.copy_file(source, target)
+    }
+
+    fn move_file(&self, source: &str, target: &str) -> yggdryl::Result<()> {
+        self.inner.move_file(source, target)
+    }
+
+    fn open_input_file(&self, path: &str) -> yggdryl::Result<Box<dyn RandomAccessReader>> {
+        self.read(path)?;
+        self.inner.open_input_file(path)
+    }
+
+    fn open_input_stream(&self, path: &str) -> yggdryl::Result<Box<dyn ByteReader>> {
+        self.read(path)?;
+        self.inner.open_input_stream(path)
+    }
+
+    fn open_output_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> yggdryl::Result<Box<dyn ByteWriter>> {
+        self.inner.open_output_stream(path, metadata)
+    }
+
+    fn open_append_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> yggdryl::Result<Box<dyn ByteWriter>> {
+        self.inner.open_append_stream(path, metadata)
+    }
+
+    fn create_file(&self, path: &str, bytes: &[u8]) -> yggdryl::Result<()> {
+        if path.ends_with("/metadata/v2.metadata.json") && self.armed.swap(false, Ordering::Relaxed)
+        {
+            land_metadata_only_winner(&self.inner, path)?;
+            self.failing_hint_reads.store(1, Ordering::Relaxed);
+            self.failing_listings.store(1, Ordering::Relaxed);
+        }
+        self.inner.create_file(path, bytes)
     }
 
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn into_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }
 }
@@ -2605,8 +2630,8 @@ mod tables {
 
         // `v{version}` is the only spelling a numeric hint resolves, so it is
         // the only one a catalog-free reader - Spark's Hadoop tables among
-        // them - can follow. The unique attempt each commit writes is the
-        // attempt and not the table, so nothing of it survives the commit.
+        // them - can follow, and the commit creates exactly it: the create is
+        // the claim, so no other file is written beside it.
         let mut names = std::fs::read_dir(path.join("metadata"))
             .unwrap()
             .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
@@ -5967,9 +5992,13 @@ fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
     let _ = std::fs::remove_dir_all(&path);
 }
 
+/// The document is the commit and the hint only where a read starts, so a
+/// hint the store refuses leaves the commit made: it answers `Ok`, the hint
+/// keeps naming the version before, and a fresh handle walks past it to the
+/// document the commit wrote.
 #[test]
-fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
-    let filesystem = Arc::new(PublishedHintFailure::default());
+fn a_refused_hint_write_leaves_the_commit_made() {
+    let filesystem = Arc::new(RefusedHintWrite::default());
     let folder =
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let mut table = IcebergTable::create(
@@ -5982,33 +6011,35 @@ fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
     let version = table.metadata_version().unwrap();
 
     filesystem.arm();
-    let error = table
+    table
         .commit_metadata_changes(|metadata| {
             metadata.set_property("owner", "desk")?;
             Ok(())
         })
-        .unwrap_err();
-    assert!(
-        error.to_string().contains("acknowledgement failure"),
-        "{error}"
-    );
-
-    // The error remains the backend's own answer, but in-memory state follows
-    // the same discovery result any fresh handle observes. Keeping the prior
-    // version here would make one object contradict the published table.
+        .unwrap();
+    assert!(!filesystem.is_armed(), "the hint write was refused");
     assert_eq!(table.metadata_version().unwrap(), version + 1);
     assert_eq!(table.metadata().unwrap().property("owner"), Some("desk"));
-    let reopened = IcebergTable::open(folder).unwrap();
     assert_eq!(
-        reopened.metadata_version().unwrap(),
-        table.metadata_version().unwrap()
+        read_filesystem_bytes(
+            filesystem.as_ref(),
+            "bucket/table/metadata/version-hint.text"
+        )
+        .unwrap(),
+        version.to_string().as_bytes(),
+        "the hint names the version before"
     );
+    let reopened = IcebergTable::open(folder).unwrap();
+    assert_eq!(reopened.metadata_version().unwrap(), version + 1);
     assert_eq!(reopened.metadata().unwrap().property("owner"), Some("desk"));
 }
 
+/// A data commit whose hint the store refuses keeps every file its document
+/// names - the data files, the manifest and the list - and a fresh handle
+/// reads its rows.
 #[test]
-fn a_reported_hint_failure_keeps_the_data_files_the_published_document_names() {
-    let filesystem = Arc::new(PublishedHintFailure::default());
+fn a_refused_hint_write_keeps_the_data_files_the_document_names() {
+    let filesystem = Arc::new(RefusedHintWrite::default());
     let folder =
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let schema = trade_schema();
@@ -6022,18 +6053,10 @@ fn a_reported_hint_failure_keeps_the_data_files_the_published_document_names() {
         &[Some("AAPL"), Some("MSFT")],
         &[Some("XNAS"), Some("XNYS")],
     );
-    let error = table
+    table
         .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
-        .unwrap_err();
-    assert!(
-        error.to_string().contains("acknowledgement failure"),
-        "{error}"
-    );
-
-    // The versioned document went out before the hint did, and it names the
-    // data files, the manifest and the list: from that point nothing is
-    // rolled back, whatever the hint write reports, because every fresh
-    // handle resolves the version to that document.
+        .unwrap();
+    assert!(!filesystem.is_armed(), "the hint write was refused");
     assert_eq!(table.metadata_version().unwrap(), version + 1);
     let files = table.data_files().unwrap();
     assert_eq!(files.len(), 2, "both data files stay");
@@ -6056,12 +6079,360 @@ fn a_reported_hint_failure_keeps_the_data_files_the_published_document_names() {
             .map(|row| row.0)
             .collect::<Vec<_>>(),
         [1, 2],
-        "the rows the published document names are read"
+        "the rows the document names are read"
     );
 }
 
+/// The document `metadata/v{version}.metadata.json` under `path` as JSON,
+/// with the property `name` set to `value`, gzipped: what a commit under
+/// the gzip codec would have written at that version.
+fn gzipped_variant(path: &std::path::Path, version: u32, name: &str, value: &str) -> Vec<u8> {
+    let plain = std::fs::read(path.join(format!("metadata/v{version}.metadata.json"))).unwrap();
+    let mut document: serde_json::Value = serde_json::from_slice(&plain).unwrap();
+    document["properties"][name] = serde_json::Value::String(value.to_owned());
+    yggdryl::gzip::dump(&serde_json::to_vec(&document).unwrap()).unwrap()
+}
+
+/// The names `metadata/` holds under `path`, sorted.
+fn metadata_names(path: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(path.join("metadata"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+/// A version has two names, and the create that claims one excludes only
+/// that one: a commit that lands `v2.metadata.json` beside a
+/// `v2.gz.metadata.json` another writer claimed under the gzip codec reads
+/// that spelling once, withdraws its own document and is beaten - so it
+/// rebases onto the gzip document and lands at version 3, that document its
+/// parent, and the version holds one document.
 #[test]
-fn a_refused_document_write_rolls_the_commit_back_with_its_attempt() {
+fn a_claim_beside_the_other_spelling_withdraws_and_rebases_onto_it() {
+    let path = root("other-spelling-claim");
+    let mut table = IcebergTable::create(
+        LocalFolder::new(&path).unwrap(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    table.set_options(
+        IcebergOptions::new()
+            .with_commit_retries(2)
+            .with_commit_min_backoff_ms(0)
+            .with_commit_max_backoff_ms(0),
+    );
+    // The other writer's claim of version 2, under the gzip codec; it has
+    // not written the hint yet, so the hint still names version 1 and the
+    // commit below claims version 2 without a look past it.
+    std::fs::write(
+        path.join("metadata/v2.gz.metadata.json"),
+        gzipped_variant(&path, 1, "write.metadata.compression-codec", "gzip"),
+    )
+    .unwrap();
+
+    table
+        .commit_metadata_changes(|metadata| {
+            metadata.set_property("owner", "desk")?;
+            Ok(())
+        })
+        .unwrap();
+    for opened in [
+        &table,
+        &IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap(),
+    ] {
+        assert_eq!(opened.metadata_version().unwrap(), 3);
+        assert_eq!(opened.metadata_file_name().unwrap(), "v3.gz.metadata.json");
+        let metadata = opened.metadata().unwrap();
+        assert_eq!(metadata.property("owner"), Some("desk"));
+        let parent = &metadata.metadata_log().last().unwrap().1;
+        assert!(
+            parent.ends_with("/metadata/v2.gz.metadata.json"),
+            "the other writer's document is the parent: {parent}"
+        );
+    }
+    assert_eq!(
+        metadata_names(&path),
+        [
+            "v1.metadata.json",
+            "v2.gz.metadata.json",
+            "v3.gz.metadata.json",
+            "version-hint.text"
+        ],
+        "the withdrawn claim is gone"
+    );
+    let _ = std::fs::remove_dir_all(&path);
+}
+
+/// A version both of whose spellings hold a whole document forked - two
+/// commits claimed it under two codecs - and a reader refuses it naming
+/// both, through the hint, past an older hint and through a listing alike,
+/// rather than choosing one by its own codec and dropping the other's
+/// commit. A commit that meets the fork waits for one claim to withdraw,
+/// and reports the fork once its budget is spent. A spelling still being
+/// written is no document yet, and forks nothing.
+#[test]
+fn a_version_held_under_both_spellings_is_refused_as_a_fork() {
+    let path = root("forked-version");
+    let mut table = IcebergTable::create(
+        LocalFolder::new(&path).unwrap(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    for owner in ["desk", "risk"] {
+        table
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property("owner", owner)?;
+                Ok(())
+            })
+            .unwrap();
+    }
+    let mut held = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+    assert_eq!(held.metadata_version().unwrap(), 3);
+    let hint = path.join("metadata/version-hint.text");
+    let gzipped = gzipped_variant(&path, 3, "owner", "ops");
+
+    // Half a gzip document is one still being written: no fork.
+    std::fs::write(
+        path.join("metadata/v3.gz.metadata.json"),
+        &gzipped[..gzipped.len() / 2],
+    )
+    .unwrap();
+    let opened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+    assert_eq!(opened.metadata_file_name().unwrap(), "v3.metadata.json");
+
+    std::fs::write(path.join("metadata/v3.gz.metadata.json"), &gzipped).unwrap();
+    for (case, text) in [
+        ("the hint", Some("3")),
+        ("an older hint", Some("2")),
+        ("a listing", None),
+    ] {
+        match text {
+            Some(text) => std::fs::write(&hint, text).unwrap(),
+            None => std::fs::remove_file(&hint).unwrap(),
+        }
+        let error = IcebergTable::open(LocalFolder::new(&path).unwrap())
+            .and_then(|table| table.metadata_version())
+            .unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains("v3.metadata.json")
+                && message.contains("v3.gz.metadata.json")
+                && message.contains("forked"),
+            "{case}: {message}"
+        );
+    }
+
+    // A commit holding version 3, its hint naming 2, walks into the fork,
+    // waits as a beaten attempt, and reports the fork itself once the
+    // budget is spent, holding what it held.
+    std::fs::write(&hint, "2").unwrap();
+    held.set_options(
+        IcebergOptions::new()
+            .with_commit_retries(2)
+            .with_commit_min_backoff_ms(0)
+            .with_commit_max_backoff_ms(0),
+    );
+    let error = held
+        .commit_metadata_changes(|metadata| {
+            metadata.set_property("owner", "late")?;
+            Ok(())
+        })
+        .unwrap_err();
+    assert!(error.to_string().contains("forked"), "{error}");
+    assert_eq!(held.metadata_version().unwrap(), 3);
+    let _ = std::fs::remove_dir_all(&path);
+}
+
+/// A create claims the one name `v1.metadata.json`, which cannot see a table
+/// laid out under another - another catalog's
+/// `00001-{uuid}.metadata.json`, a first document spelled
+/// `v1.gz.metadata.json`, a later version - so it lists `metadata/` once
+/// and refuses over any metadata document there, naming it and writing
+/// nothing, rather than hiding that table behind a hint of its own. A
+/// folder whose `metadata/` holds anything else is created in.
+#[test]
+fn a_create_over_any_metadata_document_is_refused() {
+    for planted in [
+        "00001-1b0f7a2e-6c8d-4a39-9f2e-2f0d6a5b8c41.metadata.json",
+        "v1.gz.metadata.json",
+        "v3.metadata.json",
+    ] {
+        let path = root("create-over-metadata");
+        let metadata = path.join("metadata");
+        std::fs::create_dir_all(&metadata).unwrap();
+        std::fs::write(metadata.join(planted), b"{}").unwrap();
+        let error = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .map(|_| ())
+        .unwrap_err();
+        assert!(error.is_conflict(), "{planted}: {error}");
+        assert!(error.to_string().contains(planted), "{planted}: {error}");
+        let names: Vec<String> = std::fs::read_dir(&metadata)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, [planted], "nothing is written beside it");
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    let path = root("create-over-other-files");
+    std::fs::create_dir_all(path.join("metadata")).unwrap();
+    std::fs::write(path.join("metadata").join("notes.txt"), b"desk").unwrap();
+    let table = IcebergTable::create(
+        LocalFolder::new(&path).unwrap(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    assert_eq!(table.metadata_version().unwrap(), 1);
+    let _ = std::fs::remove_dir_all(&path);
+}
+
+/// A hint is where an open starts, and one that does not read as a version
+/// is no hint: gone between a commit's removal and its re-creation, created
+/// and still empty, holding what no version spells, failing as a store that
+/// sizes a file before it reads it fails on one replaced in between, or
+/// naming a document still being written. Each open lists `metadata/` and
+/// answers the newest whole document; a hint naming one takes no listing.
+#[test]
+fn a_hint_that_reads_as_no_version_leaves_the_listing_to_answer() {
+    let filesystem = Arc::new(ReplacedHint::default());
+    let folder =
+        yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let mut table = IcebergTable::create(
+        folder.clone(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    for owner in ["desk", "risk"] {
+        table
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property("owner", owner)?;
+                Ok(())
+            })
+            .unwrap();
+    }
+    assert_eq!(table.metadata_version().unwrap(), 3);
+    let hint = "bucket/table/metadata/version-hint.text";
+    let opens_at_the_newest = |listed: bool, case: &str| {
+        let before = filesystem.listings();
+        let opened =
+            IcebergTable::open(folder.clone()).unwrap_or_else(|error| panic!("{case}: {error}"));
+        assert_eq!(opened.metadata_version().unwrap(), 3, "{case}");
+        assert_eq!(
+            opened.metadata_file_name().unwrap(),
+            "v3.metadata.json",
+            "{case}"
+        );
+        assert_eq!(
+            opened.metadata().unwrap().property("owner"),
+            Some("risk"),
+            "{case}"
+        );
+        assert_eq!(
+            filesystem.listings() - before,
+            usize::from(listed),
+            "{case}"
+        );
+    };
+
+    opens_at_the_newest(false, "the hint the last commit wrote");
+    filesystem.delete_file(hint).unwrap();
+    opens_at_the_newest(true, "no hint");
+    for (text, case) in [
+        (&b""[..], "an empty hint"),
+        (b"three", "a hint of no number"),
+        (b"v3\n", "a hint spelling a name"),
+        (b"-1", "a hint of no version"),
+    ] {
+        write_filesystem_bytes(filesystem.as_ref(), hint, text).unwrap();
+        opens_at_the_newest(true, case);
+    }
+    write_filesystem_bytes(filesystem.as_ref(), hint, b"3").unwrap();
+    filesystem.fail_hint_reads(1);
+    opens_at_the_newest(true, "a hint replaced under the read");
+    assert_eq!(filesystem.pending(), (0, 0));
+
+    // A hint naming a document still being written - empty, or not yet
+    // whole - leaves the listing to answer, which steps below that name.
+    let whole = read_filesystem_bytes(
+        filesystem.as_ref(),
+        "bucket/table/metadata/v3.metadata.json",
+    )
+    .unwrap();
+    write_filesystem_bytes(filesystem.as_ref(), hint, b"4").unwrap();
+    for (written, case) in [
+        (&whole[..0], "a hinted document still empty"),
+        (&whole[..whole.len() / 2], "a hinted document not yet whole"),
+    ] {
+        write_filesystem_bytes(
+            filesystem.as_ref(),
+            "bucket/table/metadata/v4.metadata.json",
+            written,
+        )
+        .unwrap();
+        opens_at_the_newest(true, case);
+    }
+}
+
+/// A commit whose claim is lost to a winner it cannot read yet - the hint
+/// replaced under its read and the listing cut short - is beaten all the
+/// same: it waits, looks again, finds the winner and rebases onto it, rather
+/// than reporting the version it lost.
+#[test]
+fn a_lost_claim_whose_winner_cannot_be_read_yet_waits_and_rebases() {
+    let filesystem = Arc::new(ReplacedHint::default());
+    let folder =
+        yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let mut table = IcebergTable::create(
+        folder.clone(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    table.set_options(
+        IcebergOptions::new()
+            .with_commit_retries(2)
+            .with_commit_min_backoff_ms(0)
+            .with_commit_max_backoff_ms(0),
+    );
+
+    filesystem.arm();
+    table
+        .commit_metadata_changes(|metadata| {
+            metadata.set_property("loser", "rebased")?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        filesystem.pending(),
+        (0, 0),
+        "the beaten commit's reading of the winner failed"
+    );
+    for opened in [&table, &IcebergTable::open(folder).unwrap()] {
+        assert_eq!(opened.metadata_version().unwrap(), 3);
+        let metadata = opened.metadata().unwrap();
+        assert_eq!(metadata.property("winner"), Some("visible"));
+        assert_eq!(metadata.property("loser"), Some("rebased"));
+    }
+}
+
+#[test]
+fn a_refused_document_create_rolls_the_commit_back_and_claims_nothing() {
     let filesystem = Arc::new(RefusedDocumentWrite::default());
     let folder =
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
@@ -6082,9 +6453,8 @@ fn a_refused_document_write_rolls_the_commit_back_with_its_attempt() {
     assert!(error.to_string().contains("refused"), "{error}");
 
     // Nothing durable named the commit's files, so all of them went - the
-    // data files, the manifest, the list - and so did the attempt that
-    // named them, which left in place would have claimed the version for
-    // good.
+    // data files, the manifest, the list - and the version's document was
+    // never created, so nothing claims the version.
     assert_eq!(table.metadata_version().unwrap(), version);
     assert!(table.current_snapshot().unwrap().is_none());
     let paths = listed_paths(&folder);
@@ -6097,8 +6467,10 @@ fn a_refused_document_write_rolls_the_commit_back_with_its_attempt() {
         "{paths:?}"
     );
     assert!(
-        paths.iter().all(|path| !path.contains("/00002-")),
-        "the attempt is removed with the files it named: {paths:?}"
+        paths
+            .iter()
+            .all(|path| !path.ends_with("/metadata/v2.metadata.json")),
+        "no document claims the version: {paths:?}"
     );
 
     // The version was not claimed: the next commit takes it.
@@ -6879,7 +7251,11 @@ fn options_resolve_explicitly_then_by_property_then_by_default() {
     assert_eq!(options.commit_max_backoff_ms(), 60_000);
     assert_eq!(options.commit_total_timeout_ms(), 1_800_000);
     assert_eq!(options.target_file_size_bytes(), 512 * 1024 * 1024);
-    assert!((1..=8).contains(&options.read_parallelism()));
+    // The whole host, with no bound of the crate's own.
+    assert_eq!(
+        options.read_parallelism(),
+        std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+    );
     assert_eq!(options.read_parallel_min_files(), 2);
     assert_eq!(options.read_parallel_min_file_size_bytes(), 64 * 1024);
 
@@ -7644,9 +8020,78 @@ mod datatype_coverage {
 
 mod concurrency {
     //! Real racing writers and a beaten merge.
+    //!
+    //! Nothing here serializes a writer: every version is claimed by an
+    //! exclusive create of its document, so of the threads racing for one
+    //! version exactly one lands it and the others are told, and what the
+    //! table holds afterwards is exactly what the commits that returned
+    //! wrote, in the order the snapshot log states.
+
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::sync::{Arc, Barrier};
 
     use super::*;
 
+    /// The retry budget a racing appender commits under: a thousand
+    /// attempts, 1 to 16 ms apart, inside ten minutes, so the budget is never
+    /// what ends a commit. Of `n` commits one writer is beaten at most once
+    /// per commit another writer lands, plus once per winner whose document
+    /// it met before that document was whole; the jittered waits keep two
+    /// beaten writers from meeting again in step.
+    fn racing() -> IcebergOptions {
+        IcebergOptions::new()
+            .with_commit_retries(1_000)
+            .with_commit_min_backoff_ms(1)
+            .with_commit_max_backoff_ms(16)
+            .with_commit_total_timeout_ms(600_000)
+    }
+
+    /// The table's snapshots from the first to the current one, walked from
+    /// the current snapshot back through each parent: the log a reader
+    /// trusts, read from the metadata alone.
+    fn chain(table: &IcebergTable<LocalFolder>) -> Vec<yggdryl::iceberg::Snapshot> {
+        let metadata = table.metadata().unwrap();
+        let by_id: BTreeMap<i64, &yggdryl::iceberg::Snapshot> = metadata
+            .snapshots()
+            .iter()
+            .map(|snapshot| (snapshot.snapshot_id, snapshot))
+            .collect();
+        let mut chain = Vec::new();
+        let mut next = table
+            .current_snapshot()
+            .unwrap()
+            .map(|snapshot| snapshot.snapshot_id);
+        while let Some(id) = next {
+            let snapshot = by_id[&id];
+            chain.push(snapshot.clone());
+            next = snapshot.parent_snapshot_id;
+        }
+        chain.reverse();
+        chain
+    }
+
+    /// Every id one snapshot of the table reads.
+    fn ids_at(table: &IcebergTable<LocalFolder>, snapshot_id: i64) -> BTreeSet<i64> {
+        collect(table.scan_at(snapshot_id, &[], None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect()
+    }
+
+    /// The `rows` rows of commit `commit`: ids `commit * 10 + row`, so a
+    /// row's id names the commit that wrote it.
+    fn batch(commit: i64, rows: i64) -> RecordBatch {
+        let ids: Vec<i64> = (0..rows).map(|row| commit * 10 + row).collect();
+        let symbols = vec![Some("S"); ids.len()];
+        let venues = vec![Some("V"); ids.len()];
+        trades(&ids, &symbols, &venues)
+    }
+
+    /// No lock serializes these writers, and none needs to: the old
+    /// protocol's unserialized document writes could land one over another,
+    /// which is why the test once held a lock around each commit; each
+    /// version is now claimed by an exclusive create, so a stale writer that
+    /// loses the claim is told and rebases.
     #[test]
     fn stale_threads_rebase_and_every_writer_lands() {
         let path = root("threads");
@@ -7660,27 +8105,21 @@ mod concurrency {
         .unwrap();
 
         // Every thread opens its handle at version 1, so every commit after
-        // the first is beaten and must rebase. The lock serializes only the
-        // publish - plain storage has no compare-and-swap, so unserialized
-        // metadata writes can tear, exactly as the commit documentation says -
-        // which leaves the part under test deterministic: stale handles,
-        // real threads, and the rebase that reconciles them.
-        let gate = std::sync::Arc::new(std::sync::Mutex::new(()));
-        let opened = std::sync::Arc::new(std::sync::Barrier::new(4));
+        // the first is beaten and must rebase.
+        let opened = Arc::new(Barrier::new(4));
         let handles: Vec<_> = (0..4)
             .map(|writer: i64| {
                 let path = path.clone();
-                let gate = std::sync::Arc::clone(&gate);
-                let opened = std::sync::Arc::clone(&opened);
+                let opened = Arc::clone(&opened);
                 std::thread::spawn(move || {
                     let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+                    table.set_options(racing());
                     opened.wait();
                     let batch = trades(
                         &[writer * 10, writer * 10 + 1],
                         &[Some("S"), Some("S")],
                         &[Some("V"), Some("V")],
                     );
-                    let _held = gate.lock().unwrap();
                     table
                         .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
                         .unwrap();
@@ -7700,6 +8139,466 @@ mod concurrency {
         assert_eq!(ids, [0, 1, 10, 11, 20, 21, 30, 31]);
         // Four commits landed on top of the created table.
         assert_eq!(reopened.metadata_version().unwrap(), 5);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// Eight writers, each holding version 1, append four times each with
+    /// nothing between them while two readers open the table over and over:
+    /// every row lands exactly once, every commit is one version, and the
+    /// snapshots chain one onto the next. No open fails - a reader meets the
+    /// hint between its removal and its re-creation, and documents still
+    /// being written, and reads past both - and each answers a whole
+    /// version: its snapshot holds the two rows of every commit up to it, it
+    /// is never older than the reader's open before it, and an open begun
+    /// after the last commit returned answers that commit.
+    #[test]
+    fn racing_appenders_each_land_every_commit_once_on_one_chain() {
+        const WRITERS: i64 = 8;
+        const COMMITS: i64 = 4;
+        const READERS: usize = 2;
+        let path = root("racing-appenders");
+        IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+
+        let done = Arc::new(AtomicBool::new(false));
+        let readers: Vec<_> = (0..READERS)
+            .map(|reader| {
+                let path = path.clone();
+                let done = Arc::clone(&done);
+                std::thread::spawn(move || {
+                    let mut seen: Vec<u32> = Vec::new();
+                    loop {
+                        // Read before the open, so the last open begins
+                        // after every writer returned.
+                        let last = done.load(Ordering::Acquire);
+                        let open = seen.len();
+                        let table = IcebergTable::open(LocalFolder::new(&path).unwrap())
+                            .unwrap_or_else(|error| panic!("reader {reader}, open {open}: {error}"));
+                        let version = table.metadata_version().unwrap();
+                        let rows = collect(table.scan(None).unwrap_or_else(|error| {
+                            panic!("reader {reader}, open {open} at version {version}: {error}")
+                        }))
+                        .len();
+                        assert_eq!(
+                            rows,
+                            2 * (version as usize - 1),
+                            "reader {reader}, open {open}: version {version} holds every commit up to it"
+                        );
+                        if let Some(previous) = seen.last() {
+                            assert!(
+                                version >= *previous,
+                                "reader {reader}, open {open}: version {version} after {previous}"
+                            );
+                        }
+                        seen.push(version);
+                        if last {
+                            return seen;
+                        }
+                    }
+                })
+            })
+            .collect();
+
+        let start = Arc::new(Barrier::new(WRITERS as usize));
+        let handles: Vec<_> = (0..WRITERS)
+            .map(|writer| {
+                let path = path.clone();
+                let start = Arc::clone(&start);
+                std::thread::spawn(move || {
+                    let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+                    table.set_options(racing());
+                    start.wait();
+                    for commit in 0..COMMITS {
+                        let rows = batch(writer * 10 + commit, 2);
+                        table
+                            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+                            .unwrap_or_else(|error| {
+                                panic!("writer {writer}, commit {commit}: {error}")
+                            });
+                    }
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        done.store(true, Ordering::Release);
+        let latest = 1 + (WRITERS * COMMITS) as u32;
+        for reader in readers {
+            let seen = reader.join().unwrap();
+            assert!(seen.iter().all(|version| (1..=latest).contains(version)));
+            assert_eq!(seen.last(), Some(&latest), "an open after the last commit");
+        }
+
+        let table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let mut ids: Vec<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        ids.sort_unstable();
+        let expected: Vec<i64> = (0..WRITERS)
+            .flat_map(|writer| (0..COMMITS).map(move |commit| writer * 10 + commit))
+            .flat_map(|commit| [commit * 10, commit * 10 + 1])
+            .collect();
+        assert_eq!(ids, expected, "every row lands exactly once");
+        assert_eq!(table.metadata_version().unwrap(), latest);
+
+        // The chain from the current snapshot back holds every snapshot the
+        // table has, each the child of the one before it, each one commit's
+        // two rows, in the order the snapshot log states.
+        let chain = chain(&table);
+        assert_eq!(chain.len(), (WRITERS * COMMITS) as usize);
+        assert_eq!(chain.len(), table.metadata().unwrap().snapshots().len());
+        assert_eq!(chain[0].parent_snapshot_id, None);
+        for (index, pair) in chain.windows(2).enumerate() {
+            assert_eq!(
+                pair[1].parent_snapshot_id,
+                Some(pair[0].snapshot_id),
+                "snapshot {} chains onto the one before it",
+                index + 1
+            );
+        }
+        for snapshot in &chain {
+            assert_eq!(snapshot.summary_value("operation"), Some("append"));
+            assert_eq!(snapshot.summary_value("added-records"), Some("2"));
+        }
+        let logged: Vec<i64> = table
+            .metadata()
+            .unwrap()
+            .snapshot_log()
+            .iter()
+            .map(|entry| entry.1)
+            .collect();
+        let chained: Vec<i64> = chain.iter().map(|snapshot| snapshot.snapshot_id).collect();
+        assert_eq!(logged, chained, "the snapshot log is the chain");
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// Appenders racing a writer that flips `write.metadata.compression-codec`
+    /// back and forth: the version after each flip is claimed under two
+    /// spellings at once, and each claim reads the other spelling before it
+    /// commits, so every commit lands exactly once, every version holds one
+    /// document, and the snapshots chain one onto the next.
+    #[test]
+    fn codec_flips_racing_appenders_leave_one_document_per_version() {
+        const APPENDERS: i64 = 4;
+        const APPENDS: i64 = 3;
+        const FLIPS: usize = 4;
+        let path = root("codec-flips");
+        IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+
+        let start = Arc::new(Barrier::new(APPENDERS as usize + 1));
+        let mut handles: Vec<_> = (0..APPENDERS)
+            .map(|appender| {
+                let path = path.clone();
+                let start = Arc::clone(&start);
+                std::thread::spawn(move || {
+                    let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+                    table.set_options(racing());
+                    start.wait();
+                    for append in 0..APPENDS {
+                        let rows = batch(appender * 10 + append, 2);
+                        table
+                            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+                            .unwrap_or_else(|error| {
+                                panic!("appender {appender}, append {append}: {error}")
+                            });
+                    }
+                })
+            })
+            .collect();
+        handles.push({
+            let path = path.clone();
+            let start = Arc::clone(&start);
+            std::thread::spawn(move || {
+                let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+                table.set_options(racing());
+                start.wait();
+                for flip in 0..FLIPS {
+                    let codec = if flip % 2 == 0 { "gzip" } else { "none" };
+                    table
+                        .commit_metadata_changes(|metadata| {
+                            metadata.set_property("write.metadata.compression-codec", codec)?;
+                            Ok(())
+                        })
+                        .unwrap_or_else(|error| panic!("flip {flip}: {error}"));
+                }
+            })
+        });
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let latest = 1 + (APPENDERS * APPENDS) as u32 + FLIPS as u32;
+        assert_eq!(table.metadata_version().unwrap(), latest);
+        let names: BTreeSet<String> = std::fs::read_dir(path.join("metadata"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".metadata.json"))
+            .collect();
+        for version in 1..=latest {
+            let spelled = [
+                format!("v{version}.metadata.json"),
+                format!("v{version}.gz.metadata.json"),
+            ]
+            .into_iter()
+            .filter(|name| names.contains(name))
+            .count();
+            assert_eq!(
+                spelled, 1,
+                "version {version} holds one document: {names:?}"
+            );
+        }
+        assert_eq!(names.len(), latest as usize, "{names:?}");
+        let mut ids: Vec<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        ids.sort_unstable();
+        let expected: Vec<i64> = (0..APPENDERS)
+            .flat_map(|appender| (0..APPENDS).map(move |append| appender * 10 + append))
+            .flat_map(|commit| [commit * 10, commit * 10 + 1])
+            .collect();
+        assert_eq!(ids, expected, "every row lands exactly once");
+        let chain = chain(&table);
+        assert_eq!(chain.len(), (APPENDERS * APPENDS) as usize);
+        for pair in chain.windows(2) {
+            assert_eq!(pair[1].parent_snapshot_id, Some(pair[0].snapshot_id));
+        }
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// Appends racing whole-table overwrites: every attempt either lands or
+    /// is a typed `CommitConflict`, and the rows the table holds are exactly
+    /// the replay of its snapshot log - an overwrite the one row set it
+    /// wrote, an append what was there and its own rows.
+    #[test]
+    fn appends_racing_overwrites_hold_what_the_snapshot_log_replays() {
+        const APPENDERS: i64 = 4;
+        const APPENDS: i64 = 3;
+        const OVERWRITERS: i64 = 2;
+        const OVERWRITES: i64 = 2;
+        let path = root("appends-racing-overwrites");
+        IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+
+        // An appender's commit is `100 + appender * 10 + append` and writes
+        // two rows; an overwrite's is `500 + overwriter * 10 + overwrite`
+        // and writes three, the same three on every attempt.
+        let start = Arc::new(Barrier::new((APPENDERS + OVERWRITERS) as usize));
+        let appenders: Vec<_> = (0..APPENDERS)
+            .map(|appender| {
+                let path = path.clone();
+                let start = Arc::clone(&start);
+                std::thread::spawn(move || {
+                    let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+                    table.set_options(racing());
+                    start.wait();
+                    for append in 0..APPENDS {
+                        let rows = batch(100 + appender * 10 + append, 2);
+                        table
+                            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+                            .unwrap_or_else(|error| {
+                                panic!("appender {appender}, append {append}: {error}")
+                            });
+                    }
+                })
+            })
+            .collect();
+
+        // An overwrite cannot rebase, so each attempt plans on a fresh
+        // handle and a beaten one reports its conflict after two short
+        // waits; the overwriter tries again until it lands, counting.
+        let overwriters: Vec<_> = (0..OVERWRITERS)
+            .map(|overwriter| {
+                let path = path.clone();
+                let start = Arc::clone(&start);
+                std::thread::spawn(move || {
+                    start.wait();
+                    let (mut attempts, mut landed, mut conflicts) = (0_u32, 0_u32, 0_u32);
+                    for overwrite in 0..OVERWRITES {
+                        loop {
+                            assert!(attempts < 10_000, "overwriter {overwriter} never lands");
+                            attempts += 1;
+                            let mut table =
+                                IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+                            table.set_options(racing().with_commit_retries(2));
+                            let rows = batch(500 + overwriter * 10 + overwrite, 3);
+                            match table.commit_overwrite(yggdryl::arrow::batch_reader(
+                                rows.schema(),
+                                [rows],
+                            )) {
+                                Ok(()) => {
+                                    landed += 1;
+                                    break;
+                                }
+                                Err(error)
+                                    if error.is_conflict()
+                                        && error.to_string().contains("got beaten") =>
+                                {
+                                    conflicts += 1;
+                                }
+                                Err(error) => {
+                                    panic!(
+                                        "overwriter {overwriter}, overwrite {overwrite}: {error}"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    (attempts, landed, conflicts)
+                })
+            })
+            .collect();
+        for handle in appenders {
+            handle.join().unwrap();
+        }
+        let mut landed_overwrites = 0;
+        for handle in overwriters {
+            let (attempts, landed, conflicts) = handle.join().unwrap();
+            println!("overwriter: {attempts} attempts, {landed} landed, {conflicts} conflicts");
+            assert_eq!(
+                landed + conflicts,
+                attempts,
+                "every attempt lands or conflicts"
+            );
+            landed_overwrites += landed;
+        }
+        assert!(landed_overwrites >= 1, "an overwrite landed");
+        assert_eq!(landed_overwrites, (OVERWRITERS * OVERWRITES) as u32);
+
+        // Replay the log the metadata states, snapshot by snapshot: an
+        // overwrite reads exactly the one commit's rows it wrote, an append
+        // reads everything before it and exactly one commit's rows more.
+        let table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let chain = chain(&table);
+        assert_eq!(
+            chain.len(),
+            (APPENDERS * APPENDS + OVERWRITERS * OVERWRITES) as usize,
+            "one snapshot per commit that landed"
+        );
+        let mut replayed: BTreeSet<i64> = BTreeSet::new();
+        let mut commits: Vec<i64> = Vec::new();
+        for snapshot in &chain {
+            let read = ids_at(&table, snapshot.snapshot_id);
+            let operation = snapshot.summary_value("operation");
+            let added: BTreeSet<i64> = match operation {
+                Some("append") => {
+                    assert!(replayed.is_subset(&read), "an append removes nothing");
+                    read.difference(&replayed).copied().collect()
+                }
+                Some("overwrite") => read.clone(),
+                other => panic!("unexpected operation {other:?}"),
+            };
+            let commit = *added.first().unwrap() / 10;
+            let expected_rows = if commit >= 500 { 3 } else { 2 };
+            assert_eq!(
+                added,
+                (0..expected_rows).map(|row| commit * 10 + row).collect(),
+                "snapshot {} adds one whole commit",
+                snapshot.snapshot_id
+            );
+            assert_eq!(
+                operation == Some("overwrite"),
+                commit >= 500,
+                "the operation the log states is the commit's"
+            );
+            let count = expected_rows.to_string();
+            assert_eq!(
+                snapshot.summary_value("added-records"),
+                Some(count.as_str())
+            );
+            replayed = match operation {
+                Some("overwrite") => added,
+                _ => replayed.union(&added).copied().collect(),
+            };
+            assert_eq!(read, replayed);
+            commits.push(commit);
+        }
+        commits.sort_unstable();
+        let mut expected: Vec<i64> = (0..APPENDERS)
+            .flat_map(|appender| (0..APPENDS).map(move |append| 100 + appender * 10 + append))
+            .chain((0..OVERWRITERS).flat_map(|overwriter| {
+                (0..OVERWRITES).map(move |overwrite| 500 + overwriter * 10 + overwrite)
+            }))
+            .collect();
+        expected.sort_unstable();
+        assert_eq!(commits, expected, "every commit that returned, once");
+        let current: BTreeSet<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        assert_eq!(current, replayed, "the table holds the replay");
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// Eight creators of one table in one empty folder: one creates it, the
+    /// other seven are told the version is taken, and the folder holds the
+    /// one document.
+    #[test]
+    fn racing_creators_make_one_table() {
+        const CREATORS: usize = 8;
+        let path = root("racing-creators");
+        let start = Arc::new(Barrier::new(CREATORS));
+        let handles: Vec<_> = (0..CREATORS)
+            .map(|_| {
+                let path = path.clone();
+                let start = Arc::clone(&start);
+                std::thread::spawn(move || {
+                    let folder = LocalFolder::new(&path).unwrap();
+                    start.wait();
+                    IcebergTable::create(
+                        folder,
+                        FormatVersion::V2,
+                        trade_schema(),
+                        PartitionSpec::unpartitioned(),
+                    )
+                    .map(|table| table.metadata().unwrap().table_uuid().to_owned())
+                })
+            })
+            .collect();
+        let outcomes: Vec<_> = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect();
+        let created: Vec<_> = outcomes
+            .iter()
+            .filter_map(|outcome| outcome.as_ref().ok())
+            .collect();
+        assert_eq!(created.len(), 1, "one creator wins");
+        for outcome in &outcomes {
+            if let Err(error) = outcome {
+                assert!(error.is_conflict(), "a loser is told: {error}");
+            }
+        }
+
+        let table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(table.metadata_version().unwrap(), 1);
+        assert_eq!(table.metadata().unwrap().table_uuid(), created[0].as_str());
+        let mut names = std::fs::read_dir(path.join("metadata"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        names.sort();
+        assert_eq!(names, ["v1.metadata.json", "version-hint.text"]);
+        let _ = std::fs::remove_dir_all(&path);
     }
 
     #[test]
@@ -8482,7 +9381,7 @@ mod isolation {
 
     impl IOBase for Recording {
         yggdryl::delegate_iobase!(inner: pread, read_all_bytes, read_range_bytes, pstream_bytes,
-            pwrite, size, capacity, reserve, truncate, uri, url, bound_location, mtime, media_type,
+            pwrite, create_bytes, size, capacity, reserve, truncate, uri, url, bound_location, mtime, media_type,
             set_media_type, flush, open, opened, close, parent, ls, kind, clear, remove,
             is_atomic, is_tabular, is_io);
 

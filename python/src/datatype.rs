@@ -27,7 +27,7 @@ use crate::parameters::{
 use crate::scalar::{PyScalar, from_py, pyarrow_scalar_into_array};
 use crate::{
     FieldKey, PyDifferenceIterator, compare, field_at_of, field_by_path_of, field_of,
-    normalize_index, one_field_key, value_error,
+    normalize_index, one_field_key, u128_from_py, value_error,
 };
 use yggdryl::ArrowCastOptions;
 
@@ -1719,9 +1719,13 @@ impl PyDataType {
     }
 
     /// The canonical hyphenated UUID a packed integer carries.
-    fn uuid_value(&self, packed: u128) -> PyResult<String> {
+    ///
+    /// The integer is read by [`u128_from_py`] rather than by the signature,
+    /// so a negative or too-wide one is `OverflowError` on every wheel and a
+    /// value that is no integer the `TypeError` it is.
+    fn uuid_value(&self, packed: &Bound<'_, PyAny>) -> PyResult<String> {
         self.inner
-            .uuid_value(packed)
+            .uuid_value(u128_from_py(packed)?)
             .map(|value| value.to_string())
             .map_err(value_error)
     }

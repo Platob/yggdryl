@@ -2034,6 +2034,10 @@ mod lazy_folder {
             Ok(bytes.len())
         }
 
+        fn create_bytes(&mut self, _bytes: &[u8]) -> Result<()> {
+            Ok(())
+        }
+
         fn size(&self) -> u64 {
             0
         }

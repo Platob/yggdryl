@@ -215,6 +215,48 @@ mod fs {
         reference_conformance(Arc::new(LocalFileSystem::new()), &root);
     }
 
+    /// `create_file` over both references: each overrides the trait's
+    /// default with an exclusive create of its own.
+    #[test]
+    fn both_references_create_a_file_exclusively() {
+        let temporary = TestDirectory::new();
+        let local_root = temporary.0.join("create").to_string_lossy().into_owned();
+        for (filesystem, root) in [
+            (
+                Arc::new(MemoryFileSystem::new()) as Arc<dyn FileSystem>,
+                "create".to_owned(),
+            ),
+            (
+                Arc::new(LocalFileSystem::new()) as Arc<dyn FileSystem>,
+                local_root,
+            ),
+        ] {
+            let name = filesystem.type_name().to_owned();
+            filesystem.create_dir(&root, true).unwrap();
+            let path = format!("{root}/value.bin");
+            filesystem.create_file(&path, b"AAPL").unwrap();
+            assert_eq!(read(filesystem.as_ref(), &path).unwrap(), b"AAPL", "{name}");
+
+            // A file, and a directory, are each the conflict, left as they were.
+            let error = filesystem.create_file(&path, b"MSFT").unwrap_err();
+            assert!(matches!(error, Error::Conflict { .. }), "{name}: {error}");
+            assert_eq!(read(filesystem.as_ref(), &path).unwrap(), b"AAPL", "{name}");
+            let error = filesystem.create_file(&root, b"MSFT").unwrap_err();
+            assert!(error.is_conflict(), "{name}: {error}");
+            assert_eq!(
+                filesystem.file_info(&root).unwrap().kind,
+                IOKind::Directory,
+                "{name}"
+            );
+
+            // A missing parent is the absence a caller repairs, not a create.
+            let error = filesystem
+                .create_file(&format!("{root}/missing/value.bin"), b"MSFT")
+                .unwrap_err();
+            assert!(error.is_absent(), "{name}: {error}");
+        }
+    }
+
     #[test]
     fn recursive_reference_listings_are_globally_sorted() {
         for filesystem in [

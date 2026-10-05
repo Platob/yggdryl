@@ -90,6 +90,7 @@ mod internal {
                 &[],
                 &schema(),
                 true,
+                1,
             )
             .unwrap_err();
             assert_unsupported(error, "delete manifest");
@@ -107,6 +108,7 @@ mod internal {
                 &[],
                 &schema(),
                 true,
+                1,
             )
             .unwrap_err();
             assert_unsupported(error, "delete manifest");
@@ -126,6 +128,7 @@ mod internal {
                 &[],
                 &schema(),
                 true,
+                1,
             )
             .unwrap();
             assert_eq!(planned, ScanPlan::default());
@@ -144,6 +147,7 @@ mod internal {
                 &[],
                 &schema(),
                 true,
+                1,
             )
             .unwrap_err()
             .to_string();
@@ -151,6 +155,42 @@ mod internal {
                 error.contains("expected partition spec id 0, got none"),
                 "{error}"
             );
+        }
+
+        #[test]
+        fn a_parallel_plan_reports_the_first_failure_in_plan_order() {
+            // Three manifests: the first two do not decode, the third cannot
+            // be reached. Read side by side, the plan still reports what a
+            // sequential plan meets first: the first manifest's decode.
+            let manifests: Vec<ManifestFile> = ["first", "second", "third"]
+                .into_iter()
+                .map(|name| ManifestFile {
+                    manifest_path: format_smolstr!("metadata/{name}.avro"),
+                    ..manifest(ManifestContent::Data)
+                })
+                .collect();
+            for threads in [1, 4] {
+                let error = plan(
+                    &manifests,
+                    &|_| Ok(PartitionSpec::unpartitioned()),
+                    &|path| {
+                        if path.contains("third") {
+                            Err(invalid(format_smolstr!("unreachable {path}")))
+                        } else {
+                            Ok(yggdryl::holder::Holder::from(
+                                yggdryl::holder::Buffer::from(path.as_bytes()),
+                            ))
+                        }
+                    },
+                    &[],
+                    &schema(),
+                    true,
+                    threads,
+                )
+                .unwrap_err()
+                .to_string();
+                assert!(!error.contains("unreachable"), "{threads}: {error}");
+            }
         }
 
         #[test]
@@ -1257,6 +1297,7 @@ mod internal {
                     &conjuncts(&schema, &filter).unwrap(),
                     &schema,
                     true,
+                    1,
                 )
                 .unwrap()
             };
@@ -1350,7 +1391,7 @@ mod iceberg {
 
     impl IOBase for Recording {
         yggdryl::delegate_iobase!(inner: pread, read_all_bytes, read_range_bytes, pstream_bytes,
-            pwrite, size, capacity, reserve, truncate, uri, url, bound_location, mtime, media_type,
+            pwrite, create_bytes, size, capacity, reserve, truncate, uri, url, bound_location, mtime, media_type,
             set_media_type, flush, open, opened, close, parent, ls, kind, clear, remove,
             is_atomic, is_tabular, is_io);
 
@@ -1547,6 +1588,75 @@ mod iceberg {
     }
 
     #[test]
+    fn a_parallel_scan_holds_a_file_ahead_of_the_cursor_to_its_read_ahead_and_releases_in_order() {
+        // Two files, each decoding to more batches than a worker may run ahead
+        // (sixteen of the default 65,536 rows): the second file's worker fills
+        // its channel and waits while the first is released, then drains. The
+        // rows come back whole and in plan order, so neither file was held
+        // decoded whole and no worker waited on a channel nobody reads.
+        let path = root("scan_read_ahead");
+        let mut schema = StructType::from_fields([DataType::Int64.required_field("id")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let arrow = schema.clone().into_arrow_schema().unwrap();
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let per_file = 17 * 65_536 + 1;
+        for base in [0_i64, 10_000_000] {
+            let batch = RecordBatch::try_new(
+                Arc::clone(&arrow),
+                vec![Arc::new(Int64Array::from_iter_values(
+                    base..base + per_file as i64,
+                ))],
+            )
+            .unwrap();
+            table
+                .commit_append(yggdryl::arrow::batch_reader(Arc::clone(&arrow), [batch]))
+                .unwrap();
+        }
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_read_parallelism(2)
+                .unwrap()
+                .with_read_parallel_min_files(1)
+                .with_read_parallel_min_file_size_bytes(0),
+        );
+        let mut batches = 0;
+        let mut ids = Vec::with_capacity(2 * per_file);
+        for batch in table.scan(None).unwrap() {
+            let batch = batch.unwrap();
+            batches += 1;
+            ids.extend(
+                batch
+                    .column_by_name("id")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .values()
+                    .iter()
+                    .copied(),
+            );
+        }
+        assert!(
+            batches > 2 * 16,
+            "each file decodes past the read-ahead: {batches} batches"
+        );
+        let expected: Vec<i64> = (0..per_file as i64)
+            .chain(10_000_000..10_000_000 + per_file as i64)
+            .collect();
+        assert_eq!(ids, expected, "every row once, in plan order");
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
     fn files_decoding_to_different_layouts_each_cast_and_project_in_one_scan() {
         let path = root("scan_layouts");
         let mut table = IcebergTable::create(
@@ -1623,5 +1733,78 @@ mod iceberg {
             }
         }
         let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// Six venues, six commits: six manifests, each listing one file.
+    fn six_manifests() -> (
+        Arc<crate::counting_filesystem::CountingFileSystem>,
+        yggdryl::fs::FsFolder,
+    ) {
+        let (filesystem, folder) = crate::counting_filesystem::counted_folder("plan-parallel");
+        let schema = schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            IcebergTable::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
+        for (id, venue) in ["XNAS", "XNYS", "XLON", "XPAR", "XETR", "XTKS"]
+            .into_iter()
+            .enumerate()
+        {
+            table
+                .commit_append(rows(&[id as i64], &["AAPL"], &[venue]))
+                .unwrap();
+        }
+        (filesystem, folder)
+    }
+
+    #[test]
+    fn a_plan_reads_each_kept_manifest_once_and_answers_the_same_at_every_parallelism() {
+        let (filesystem, folder) = six_manifests();
+        let planned = |threads: usize, filter: &str| {
+            let mut table = IcebergTable::open(folder.clone()).unwrap();
+            table.set_options(
+                IcebergOptions::new()
+                    .try_with_read_parallelism(threads)
+                    .unwrap(),
+            );
+            let mut plan = None;
+            let costs = filesystem.costs(|| {
+                plan = Some(if filter.is_empty() {
+                    table.plan(&[]).unwrap()
+                } else {
+                    table.plan_matching(filter).unwrap()
+                });
+            });
+            (plan.unwrap(), costs)
+        };
+
+        // Every manifest kept: each read exactly once, on one thread or four,
+        // and the same tasks in the same order.
+        let (sequential, sequential_costs) = planned(1, "");
+        let (parallel, parallel_costs) = planned(4, "");
+        assert_eq!(sequential.manifests_read, 6);
+        assert_eq!(sequential.tasks.len(), 6);
+        assert_eq!(parallel, sequential, "the plan is the sequential one");
+        assert_eq!(
+            parallel_costs, sequential_costs,
+            "a read is a read on any thread"
+        );
+        // The manifest list, then one read per manifest.
+        assert!(
+            sequential_costs.contains("open_input_stream=7"),
+            "{sequential_costs}"
+        );
+
+        // The summaries prune before anything is read: two manifests kept,
+        // two read, whatever the parallelism.
+        let (sequential, sequential_costs) = planned(1, "venue in ('XNYS', 'XETR')");
+        let (parallel, parallel_costs) = planned(4, "venue in ('XNYS', 'XETR')");
+        assert_eq!(sequential.manifests_read, 2);
+        assert_eq!(sequential.manifests_skipped(), 4);
+        assert_eq!(parallel, sequential);
+        assert_eq!(parallel_costs, sequential_costs);
+        assert!(
+            sequential_costs.contains("open_input_stream=3"),
+            "{sequential_costs}"
+        );
     }
 }

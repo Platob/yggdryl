@@ -617,9 +617,9 @@ pub(crate) fn create_layout(
 ///
 /// Writing the first metadata document is what creates every missing
 /// ancestor folder - nothing checks for them and nothing makes them in
-/// advance. Storage has no compare-and-swap, so two creators of one table
-/// converge on one document or one of them gets the typed conflict; neither
-/// replaces the other's table.
+/// advance. The first document is claimed by an exclusive create, so of two
+/// creators of one table exactly one creates it and the other gets the typed
+/// conflict; neither replaces the other's table.
 fn create_table(
     folder: &Holder,
     path: &[SmolStr],

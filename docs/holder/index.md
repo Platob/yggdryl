@@ -1395,10 +1395,13 @@ cargo bench --bench coding -- io_pstream
 
 Whole-value conveniences derive from `pread`/`pwrite`. The bindings spell them `read_bytes`/`read_text` and `write_bytes`/`write_text`; `read_range_bytes` and `append_bytes` keep the core name. `append_bytes`, like `write_all_bytes`, is a complete operation: it ends with a flush and publishes on return, on every backend - a remote object written, a memory-mapped `LocalFile`'s growth slack trimmed - with no `flush`/`close` left to the caller. Bare `pwrite` is the one call that stages without publishing. A log written through a handle is one such append per publish, so a handler over a remote store holds records back to a capacity ([Logging: Handlers](../logging.md#handlers)).
 
+`create_bytes` is the creating half beside `write_all_bytes`: it writes only where the location holds no value, publishes on return, and refuses with `Error::Conflict` - naming the location, the value left as it was - where one already is. The refusal comes from the one attempt, never from a question asked first, so of two creators of one location exactly one succeeds wherever the store has an exclusive create: a synced sibling hard-linked at the path on local storage and the local filesystem (`create_new`, `O_EXCL`, where the folder refuses a link), the archive's index under its lock for a [ZIP](#zip) member (through one archive: two mounts of one archive file have two indexes), `If-None-Match: *` on Amazon S3, Azure Blob Storage and an [HTTP](#http) resource, `ifGenerationMatch=0` on Google Cloud Storage, and a buffer's own emptiness in memory. Two creates are not exclusive: a filesystem bridged from a host runtime asks for the file's information and then writes, and an HTTP origin that ignores preconditions overwrites. A container refuses the bytes as its write does. Python answers the byte count as `write_bytes` does and raises the conflict as `FileExistsError`; JavaScript's `createBytes` answers the count and throws an `Error` whose message names the location - and, on a handle bridged from a filesystem (`fromFs`), whose `code` is `AlreadyExists`, as every typed filesystem failure there is.
+
 ```text
 fn read_all_bytes(&self) -> Result<Vec<u8>>
 fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>>   // clamped: past the end is empty
 fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()>
+fn create_bytes(&mut self, bytes: &[u8]) -> Result<()>                     // only where nothing is; else Error::Conflict
 fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64>                    // the offset the bytes landed at
 fn read_digest(&self, algorithm: DigestAlgorithm) -> Result<Digest>
 fn read_scalar(&self, field: Option<&Field>) -> Result<Scalar>              // JSON, YAML, TOML or XML by media type
@@ -1453,6 +1456,77 @@ fn write_scalar(&mut self, value: &Scalar) -> Result<()>
     // A range past the end yields what exists rather than throwing.
     assert.equal(handle.readRangeBytes(100, 4).length, 0)
     assert.equal(handle.readBytes().length, 20)
+    ```
+
+A create claims a location: the second creator's `Error::Conflict` is the answer, and the first value stands.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::local::{LocalFile, LocalFolder};
+    use yggdryl::{Error, IOBase};
+
+    let path = LocalFolder::temporary()?
+        .path()?
+        .join(format!("yggdryl-docs-create-{}", std::process::id()))
+        .join("v1.json");
+    let mut first = LocalFile::new(&path)?;
+    first.create_bytes(br#"{"version":1}"#)?;
+
+    // A second creator of the same path loses, whatever it holds.
+    let mut second = LocalFile::new(&path)?;
+    let refused = second.create_bytes(br#"{"version":2}"#);
+    assert!(matches!(refused, Err(Error::Conflict { .. })));
+    assert_eq!(second.read_all_bytes()?, br#"{"version":1}"#);
+
+    LocalFolder::new(path.parent().unwrap())?.remove(true)?;
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    with tempfile.TemporaryDirectory() as folder:
+        path = pathlib.Path(folder) / "v1.json"
+        assert IOBase(path).create_bytes(b'{"version":1}') == 13
+
+        # A second creator of the same path loses, whatever it holds.
+        second = IOBase(path)
+        try:
+            second.create_bytes(b'{"version":2}')
+        except FileExistsError as conflict:
+            assert "v1.json" in str(conflict)
+        else:
+            raise AssertionError("a second create must be refused")
+        assert second.read_bytes() == b'{"version":1}'
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-create-'))
+    const location = path.join(folder, 'v1.json')
+    assert.equal(new IOBase(location).createBytes(Buffer.from('{"version":1}')), 13)
+
+    // A second creator of the same path loses, whatever it holds.
+    const second = new IOBase(location)
+    assert.throws(
+      () => second.createBytes(Buffer.from('{"version":2}')),
+      /v1\.json.*got an existing/,
+    )
+    assert.equal(second.readText(), '{"version":1}')
+
+    fs.rmSync(folder, { recursive: true, force: true })
     ```
 
 ### Digests
@@ -3501,7 +3575,7 @@ Listings are sorted, and a recursive one stays out of `.git`, `.venv` and `.DS_S
 
 ### The mapping
 
-`size` is logical and `capacity` mapped; appends remap a logarithmic number of times, and `flush` / `close` unmap and publish the logical length. The mapping aliases the file, so another process truncating it raises SIGBUS.
+`size` is logical and `capacity` mapped; appends remap a logarithmic number of times, and `flush` / `close` unmap and publish the logical length. The mapping aliases the file, so a file shortened in place while another handle maps it raises SIGBUS in that handle. `write_all_bytes` and `clear` never shorten in place: each writes a private sibling (`.{name}.{pid}.{n}.tmp`) in the same folder, syncs it and renames it over the file the path names, a symbolic link followed to its file, so a handle that mapped the old file keeps reading it whole and one opened after reads the new value; a refused rename leaves the handle and the old value as they were. `create_bytes` writes and syncs a sibling and links it at the path in one step, so a reader or a crash finds no file or the whole value; its `AlreadyExists` is the conflict. An in-place `truncate` that shortens the file, and a `pwrite` past the end (an `append_bytes` too) whose flush trims the growth slack, can fault a concurrent reader. A handle's writes follow the path: before it writes or publishes, one `stat` asks which file the path names, and a file another handle replaced is let go, so the write lands where an in-place write would have. The new file a replace makes is owned by the writer, keeps the replaced file's mode on Unix, and leaves other hard links on the old value; a folder the writer may not create a file in refuses it. On Windows a live mapping can make the system refuse the rename, and a handle keeps its file until it closes.
 
 === "Rust"
 
@@ -3714,6 +3788,7 @@ trait FileSystem: Send + Sync {
     fn copy_file(&self, source: &str, target: &str) -> Result<()>;  // one native call, no client stream
     fn move_file(&self, source: &str, target: &str) -> Result<()>;
     fn open_input_file / open_input_stream / open_output_stream / open_append_stream
+    fn create_file(&self, path: &str, bytes: &[u8]) -> Result<()>;  // where nothing is, else Conflict; the default asks file_info then writes - not exclusive
 }
 FsFile::from_path(Arc<dyn FileSystem>, path, uri: Option<String>) -> Result<FsFile>   // FsFolder, FsPath alike
 ```
@@ -4212,6 +4287,7 @@ The request count is the contract, asserted by tests.
 | `size` on a closed handle | one `HEAD`; none while open | one `objects.get`; none while open | one `HEAD`; none while open |
 | a whole write | one `PUT` | one `multipart/related` `POST` | one `PUT` |
 | a large write | `parts + 2` | `chunks + 1` | `blocks + 1` |
+| an exclusive create (`create_bytes`), won or lost | one `PUT` with `If-None-Match: *`; a large one `parts + 2`, the condition on `CompleteMultipartUpload` and a lost upload aborted; one more `PUT` per `409 ConditionalRequestConflict` under the retry budget (a large one abandoned and sent again, `parts + 2` more); `412 PreconditionFailed` the conflict | one `POST` with `ifGenerationMatch=0`; a large one `chunks + 1`, the condition on the initiating `POST`; `412 conditionNotMet` the conflict | one `PUT` with `If-None-Match: *`; a large one `blocks + 1`, the condition on `Put Block List`; `409 BlobAlreadyExists` or `412 ConditionNotMet` the conflict |
 | an append | one `GET` and one write; no `GET` while open | the same | the same |
 | a removal | one `DELETE`, no probe | one `objects.delete` | one `DELETE` |
 | a move onto another object | five: one `HEAD` (the kind), one `GET` (the source), one `GET` (the target's old value, which a failed copy restores), one `PUT`, one `DELETE`; onto its own location one `HEAD` and the refusal; where the store refuses the `HEAD`, one bounded `GET` and the store's refusal | one `objects.get`, two `GET`s, one `multipart/related` `POST`, one `objects.delete` | one `HEAD`, two `GET`s, one `PUT`, one `DELETE` |
@@ -4961,7 +5037,7 @@ assert!(format!("{key:?}").contains("<redacted>"));
 
 ### Retries and failures
 
-A throttle, a 5xx or a failed connection is retried with a full-jitter wait from a token budget of 500 (`StatsSnapshot::retry_tokens`), honoring `Retry-After` up to thirty seconds; a refusal is not retried. A stream cut part way resumes from the byte it stopped at. Absence and conflict stay typed; everything else is `Error::Remote` with the store's own code.
+A throttle, a 5xx or a failed connection is retried with a full-jitter wait from a token budget of 500 (`StatsSnapshot::retry_tokens`), honoring `Retry-After` up to thirty seconds; a refusal is not retried. An exclusive create (`create_bytes`) goes again only after an attempt the store cannot have acted on - a connection never made, a `429` or `503` throttle, Amazon S3's `409 ConditionalRequestConflict` (another conditional write in flight on the key, the store acting on neither; a multipart create abandons its upload and uploads the value again as a new one) - so its conflict is never its own object read back; a `500` or a transfer cut after sending ends it with that failure. Its refusal is the conflict only by the store's own code for an object at the key - `412 PreconditionFailed`, Google's `412 conditionNotMet`, Azure's `409 BlobAlreadyExists` or `412 ConditionNotMet` - and any other `409` or `412` is the store's own error with its status and code. A stream cut part way resumes from the byte it stopped at. Absence and conflict stay typed; everything else is `Error::Remote` with the store's own code.
 
 ```rust
 use yggdryl::Error;
@@ -5129,6 +5205,7 @@ The request count is the contract, asserted by `rust/tests/http/request.rs` and 
 | `read_all_bytes`, `read_digest`, a `pstream_bytes` drain | one `GET`, plus one per resume |
 | `size`, `mtime`, `kind` while closed | one `HEAD`; none while open |
 | `write_all_bytes`, `clear` | one `PUT` |
+| `create_bytes`, won or lost | one `PUT` with `If-None-Match: *`; a `412` or `409` is `Error::Conflict` |
 | `append_bytes` | one `GET` and one `PUT` |
 | `pwrite` then `flush` | one `GET` and one `PUT` |
 | `remove` | one `DELETE`; a `404` is success |
@@ -5414,7 +5491,7 @@ The walk ends at a `has_more`/`hasMore` of `false` - a boolean, or text the [boo
 | `max_pause` | 30 s | the longest a `Retry-After` or a rate limit is waited for, a duration |
 | `max_body_size` | 256 MiB | what `send` holds in memory, a byte size |
 | `accept_encoding` | `gzip, deflate, zstd` | the codings asked for |
-| `concurrency` | the cores, at most 8 | the threads `send_all` sends on |
+| `concurrency` | every thread the host offers, at most 256 | the threads `send_all` sends on |
 | `pagination`, `records`, `page_limit` | `auto`, detected, none | the page walk |
 | `bearer_token`, `basic_auth` | none | a credential; `basic_auth` is `user:password` |
 | `header.<name>`, `headers.<name>` | none | one default header |
@@ -5466,6 +5543,7 @@ assert_eq!(sent.headers.get("x-desk"), Some("power"));
 | `GET`, `HEAD` | `200` with `Content-Type` and `Content-Encoding` from its media type, `Content-Length`, `Accept-Ranges: bytes`, a strong `ETag` (the XXH3-64 of its bytes) and `Last-Modified`; one `Range` is a `206`, past the end a `416`; `If-Range`, `If-None-Match` and `If-Modified-Since` are honoured; the body is never read whole - a child streams through `pstream_bytes`, the holder at the prefix one `read_range_bytes` per batch, ending the body where a write to it lands |
 | `GET` on a container | a JSON listing of `name`, `url`, `kind`, `size`, `media_type` |
 | `PUT` | `write_all_bytes`, `201` when the leaf was new, else `204`; `409` on a container |
+| `PUT` with `If-None-Match: *` | `create_bytes`: `201`, or `412` where a leaf or a container already is, the leaf left as it was |
 | `DELETE` | `remove`, `204`, or `404` when nothing was there |
 | `OPTIONS`, any other method | `204` or `405`, with `Allow` |
 
@@ -5845,7 +5923,7 @@ A request through a proxy speaks HTTP/1.1 whatever was asked. An origin QUIC can
 
 ### Retries, redirects and failures
 
-A `408`, `425`, `429`, `500`, `502`, `503` or `504` is retried only for an idempotent method (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`): a `POST` or `PATCH` the server may have acted on is sent once and its answer handed back. A transport failure is retried for an idempotent method, and for any method when no connection took the request (the name did not resolve, or every address refused or timed out while connecting). Retries draw a full-jitter backoff from the client's token budget of 500 (`StatsSnapshot::retry_tokens`) - shared by every host the client reaches, so a client's retry load stays bounded whatever fails - and a `Retry-After`, in delta seconds or as an HTTP-date, is waited out up to `max_pause`; a longer one ends the retries and hands the answer back. A pooled connection is probed before it is reused, and up to 64 idle connections per host are kept, so a parallel walk to one host reconnects nothing. Redirects are followed up to `max_redirects`: a `303`, and a `301` or `302` answering a `POST`, become a `GET` without the body; `307` and `308` keep both; to another origin no credential goes along - `Authorization`, `Proxy-Authorization`, the header a credential names, a `Cookie` the caller stated, what a `with_attempt_headers` hook would make - while the jar's own cookies for that origin do; each hop is one request and stays in `Response::history`. `Set-Cookie` lands in the session's jar and rides every later matching request (RFC 6265 domain and path matching, expiry); a `Domain` naming a public suffix (`com`, `co.uk`, `github.io`, by the Public Suffix List) is refused, so no origin sets a cookie its neighbours receive.
+A `408`, `425`, `429`, `500`, `502`, `503` or `504` is retried only for an idempotent method (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`): a `POST` or `PATCH` the server may have acted on is sent once and its answer handed back. The `PUT` of a `create_bytes` is declared non-idempotent, since a second attempt after one that landed would read the create's own value as the `412`. A transport failure is retried for an idempotent method, and for any method when no connection took the request (the name did not resolve, or every address refused or timed out while connecting). Retries draw a full-jitter backoff from the client's token budget of 500 (`StatsSnapshot::retry_tokens`) - shared by every host the client reaches, so a client's retry load stays bounded whatever fails - and a `Retry-After`, in delta seconds or as an HTTP-date, is waited out up to `max_pause`; a longer one ends the retries and hands the answer back. A pooled connection is probed before it is reused, and up to 64 idle connections per host are kept, so a parallel walk to one host reconnects nothing. Redirects are followed up to `max_redirects`: a `303`, and a `301` or `302` answering a `POST`, become a `GET` without the body; `307` and `308` keep both; to another origin no credential goes along - `Authorization`, `Proxy-Authorization`, the header a credential names, a `Cookie` the caller stated, what a `with_attempt_headers` hook would make - while the jar's own cookies for that origin do; each hop is one request and stays in `Response::history`. `Set-Cookie` lands in the session's jar and rides every later matching request (RFC 6265 domain and path matching, expiry); a `Domain` naming a public suffix (`com`, `co.uk`, `github.io`, by the Public Suffix List) is refused, so no origin sets a cookie its neighbours receive.
 
 A request states what the client cannot know of it, each on the `Request` and each read by the same retry rules:
 

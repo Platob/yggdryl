@@ -1582,13 +1582,14 @@ fn footer_metadata<H: IOBase + ?Sized>(
 /// microseconds, and a megabyte of pages decodes in a few milliseconds.
 const PARALLEL_READ_BYTES: u64 = 1024 * 1024;
 
-/// Batches one unit decodes ahead of the consumer before it waits.
+/// Batches one unit decodes ahead of the consumer before it waits - here a
+/// row group's decoder, and in an Iceberg scan a file's worker.
 ///
 /// Sixteen batches of the default 65,536 rows cover a row group of the
 /// million rows most writers cut, so decoders of later row groups rarely
 /// wait on the front one, and a single huge row group is held a bounded
 /// number of batches ahead rather than whole.
-const READ_AHEAD_BATCHES: usize = 16;
+pub(crate) const READ_AHEAD_BATCHES: usize = 16;
 
 /// One decoded batch, or the failure that ended a unit.
 type Decoded = std::result::Result<RecordBatch, ArrowError>;
@@ -2262,6 +2263,11 @@ impl<H: IOBase> IOBase for Parquet<H> {
     fn truncate(&mut self, size: u64) -> crate::Result<()> {
         self.invalidate_metadata();
         self.handle.truncate(size)
+    }
+
+    fn create_bytes(&mut self, bytes: &[u8]) -> crate::Result<()> {
+        self.invalidate_metadata();
+        self.handle.create_bytes(bytes)
     }
 
     /// Parquet is a record encoding, so this handle holds rows whatever media

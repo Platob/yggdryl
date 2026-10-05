@@ -140,7 +140,8 @@ impl FsFile {
         crate::ByteStream::from_fs_random_reader(reader, batch_size)
     }
 
-    fn write_stream(mut writer: Box<dyn ByteWriter>, bytes: &[u8]) -> Result<()> {
+    /// Write `bytes` through `writer` whole, then close it.
+    pub(super) fn write_stream(mut writer: Box<dyn ByteWriter>, bytes: &[u8]) -> Result<()> {
         let result = (|| {
             let mut written = 0;
             while written < bytes.len() {
@@ -305,6 +306,23 @@ impl IOBase for FsFile {
 
     fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
         Self::write_stream(self.output_for_write(None)?, bytes)
+    }
+
+    /// Create through [`FileSystem::create_file`], repairing a missing parent
+    /// once as a write does.
+    ///
+    /// The filesystem owns the exclusion: the local disk and the memory
+    /// filesystem create exclusively, and a filesystem bridged from outside
+    /// the crate takes the trait's default, which asks for the file's
+    /// information and then writes - the one create that is not exclusive.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        match self.filesystem().create_file(self.path(), bytes) {
+            Err(error) if error.is_absent() => {
+                self.create_parent_after_absence(error)?;
+                self.filesystem().create_file(self.path(), bytes)
+            }
+            result => result,
+        }
     }
 
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {

@@ -8,6 +8,17 @@
 use super::encryption::Encryption;
 use super::provider::Provider;
 
+/// What a write asks of the object already at its key.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Precondition {
+    /// Nothing: the write replaces whatever is there.
+    None,
+    /// No object at all: the store's exclusive create, which a write under
+    /// it loses - by the store's own code for an object at the key - where
+    /// an object already is.
+    Absent,
+}
+
 /// One request, before it is signed and sent.
 pub(crate) struct Request<'body> {
     pub(crate) method: &'static str,
@@ -28,6 +39,11 @@ pub(crate) struct Request<'body> {
     /// The whole URL, when the store handed one back and the endpoint has no
     /// say in it - which a resumable upload session is.
     pub(crate) url: Option<String>,
+    /// Whether this is an exclusive create, which the transport sends again
+    /// only after an attempt the store cannot have acted on: a second attempt
+    /// after one that landed would read the create's own object as the
+    /// conflict.
+    pub(crate) exclusive: bool,
 }
 
 impl<'body> Request<'body> {
@@ -47,6 +63,23 @@ impl<'body> Request<'body> {
             body: &[],
             target: None,
             url: None,
+            exclusive: false,
+        }
+    }
+
+    /// Ask `precondition` of the object at the key, in the spelling the
+    /// store reads: `If-None-Match: *` on Amazon S3 and Azure Blob Storage,
+    /// `ifGenerationMatch=0` on Google Cloud Storage.
+    pub(crate) fn conditioned(mut self, provider: Provider, precondition: Precondition) -> Self {
+        match precondition {
+            Precondition::None => self,
+            Precondition::Absent => {
+                self.exclusive = true;
+                match provider {
+                    Provider::Aws | Provider::Azure => self.header("if-none-match", "*"),
+                    Provider::Google => self.query("ifGenerationMatch", "0"),
+                }
+            }
         }
     }
 

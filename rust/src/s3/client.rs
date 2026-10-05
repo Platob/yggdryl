@@ -22,18 +22,19 @@ use std::time::{Duration, SystemTime};
 
 use base64::Engine as _;
 
-use super::answer::{ListPage, S3Meta};
+use super::answer::{ErrorBody, ListPage, S3Meta};
 use super::aws::xml;
 use super::encryption::Encryption;
 use super::options::S3Options;
 use super::provider::Provider;
-use super::request::Request;
+use super::request::{Precondition, Request};
 use crate::auth::variable;
 use crate::aws::sigv4::{self, Signer};
 use crate::aws::{Credentials, Session};
 use crate::boolean::bool_from_text;
 use crate::http::retry::{
-    self, RETRY_COST, RETRY_REFUND, RetryBudget, fresh_jitter, is_resumable, is_retryable_transport,
+    self, RETRY_COST, RETRY_REFUND, RetryBudget, fresh_jitter, is_resumable,
+    is_retryable_transport, is_unsent,
 };
 use crate::{Error, Result, Url};
 
@@ -788,6 +789,15 @@ impl Client {
     /// a throttle, a server-side error, or the one region redirect that
     /// corrects the signing region. Every attempt is counted, so a test reads
     /// the true number of round trips rather than the intended one.
+    ///
+    /// An exclusive create goes again only after an attempt the store cannot
+    /// have acted on: a transport failure that left it unsent, a throttle
+    /// (`429`, `503`), the region redirect, a refused key, and Amazon S3's
+    /// `409 ConditionalRequestConflict` on a `PutObject` - another conditional
+    /// write on the key was in flight, and the store documents the upload as
+    /// one to send again. Any other failure ends it as it is - a create whose
+    /// first attempt landed would read its own object as the conflict on the
+    /// second.
     fn send(&self, request: &Request<'_>) -> Result<Answer> {
         let mut attempt = 0;
         let mut redirected = false;
@@ -805,7 +815,12 @@ impl Client {
             let answer = match outcome {
                 Ok(answer) => answer,
                 Err(error) => {
-                    if is_retryable_transport(&error) && self.may_retry(attempt) {
+                    let retryable = if request.exclusive {
+                        is_unsent(&error)
+                    } else {
+                        is_retryable_transport(&error)
+                    };
+                    if retryable && self.may_retry(attempt) {
                         self.pause(attempt, None);
                         continue;
                     }
@@ -830,7 +845,13 @@ impl Client {
             if self.refresh_on_expiry(request, &headers, &answer, &mut refreshed)? {
                 continue;
             }
-            if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
+            let throttled = if request.exclusive {
+                matches!(answer.status, 429 | 503)
+                    || (request.operation == "PutObject" && self.raced(&answer))
+            } else {
+                answer.status >= 500 || answer.status == 429
+            };
+            if throttled && self.may_retry(attempt) {
                 self.pause(attempt, patient_pause(answer.header("retry-after")));
                 continue;
             }
@@ -1154,12 +1175,27 @@ impl Client {
     }
 
     /// Turn a non-2xx answer into the typed failure it means.
+    ///
+    /// A `404` is absence. An exclusive create's refusal is
+    /// [`Error::Conflict`] only where the store's own code says an object is
+    /// at the key ([`lost_create`]); every other answer - any other `409` or
+    /// `412` included, a lease held, a blob being rehydrated, a conditional
+    /// write that raced another - is [`Error::Remote`] with the status, code
+    /// and message the store gave, because a caller told an object is there
+    /// when none is would leave the key empty.
     fn failure(&self, request: &Request<'_>, answer: &Answer) -> Error {
         let path = self.location(request);
-        let body = match self.provider {
-            Provider::Aws | Provider::Azure => super::xml::parse_error(&answer.body),
-            Provider::Google => super::google::json::parse_error(&answer.body),
-        };
+        if answer.status == 404 {
+            return Error::absent(absent_kind(request), path);
+        }
+        let body = self.refusal(answer);
+        if request.exclusive
+            && body
+                .as_ref()
+                .is_some_and(|error| lost_create(self.provider, answer.status, &error.code))
+        {
+            return Error::conflict(absent_kind(request), absent_kind(request), path);
+        }
         let code = body.as_ref().map_or_else(
             || status_code_name(answer.status),
             |error| error.code.clone(),
@@ -1168,19 +1204,35 @@ impl Client {
             || format!("the store answered {}", answer.status),
             |error| error.message.clone(),
         );
-        match answer.status {
-            404 => Error::absent(absent_kind(request), path),
-            // A conditional write lost, which is what a create reports.
-            409 | 412 => Error::conflict(absent_kind(request), absent_kind(request), path),
-            _ => Error::remote(
-                self.provider.service(),
-                request.operation,
-                answer.status,
-                code,
-                message,
-                path,
-            ),
+        Error::remote(
+            self.provider.service(),
+            request.operation,
+            answer.status,
+            code,
+            message,
+            path,
+        )
+    }
+
+    /// The refusal document an answer carries, in its store's own shape:
+    /// the `<Error>` Amazon S3 and Azure Blob Storage share, Google's JSON.
+    fn refusal(&self, answer: &Answer) -> Option<ErrorBody> {
+        match self.provider {
+            Provider::Aws | Provider::Azure => super::xml::parse_error(&answer.body),
+            Provider::Google => super::google::json::parse_error(&answer.body),
         }
+    }
+
+    /// Whether Amazon S3 answered a conditional write that met another one
+    /// in flight on its key: `409 ConditionalRequestConflict`, which the
+    /// store answers before acting - the conditional-writes guide has a
+    /// `PutObject` sent again and a multipart upload initiated again.
+    fn raced(&self, answer: &Answer) -> bool {
+        matches!(self.provider, Provider::Aws)
+            && answer.status == 409
+            && self
+                .refusal(answer)
+                .is_some_and(|error| error.code == CONDITIONAL_REQUEST_CONFLICT)
     }
 
     /// The request that reads one object's bytes.
@@ -1546,19 +1598,23 @@ impl Client {
         }))
     }
 
-    /// Replace one object with `bytes`.
+    /// Replace one object with `bytes`, or under [`Precondition::Absent`]
+    /// create it where none is.
     ///
-    /// One `PUT`, and the entity tag the store answers with.
+    /// One `PUT` - Google's one `multipart/related` `POST` - and the entity
+    /// tag the store answers with.
     ///
     /// # Errors
     ///
-    /// Returns the store's refusal.
+    /// Returns the store's refusal: [`Error::Conflict`] for a create that
+    /// found an object at the key.
     pub(super) fn put_object(
         &self,
         bucket: &str,
         key: &str,
         bytes: &[u8],
         content_type: Option<&str>,
+        precondition: Precondition,
     ) -> Result<Option<String>> {
         let content_type = content_type.unwrap_or("application/octet-stream");
         // Google carries the object's metadata in the same request as its
@@ -1593,7 +1649,8 @@ impl Client {
         };
         request = self
             .common(request)
-            .storing(self.provider, self.encryption());
+            .storing(self.provider, self.encryption())
+            .conditioned(self.provider, precondition);
         if let (Provider::Aws, Some(class)) = (self.provider, self.options.aws().storage_class()) {
             request = request.header("x-amz-storage-class", class);
         }
@@ -1863,6 +1920,15 @@ impl Client {
     /// they share is the reason for doing it at all - a failure re-sends one
     /// chunk rather than the whole value.
     ///
+    /// A [`Precondition::Absent`] rides the request that decides the
+    /// object: S3's completion, Azure's block list, Google's initiating
+    /// `POST`, which the store holds the session to. A create that loses
+    /// stores nothing. A completion S3 answers `409
+    /// ConditionalRequestConflict` - another conditional write was in flight
+    /// on the key, and the store did not act - abandons that upload and sends
+    /// the whole value again as a new one, under the retry budget:
+    /// `2 * (parts + 2) + 1` requests for one race.
+    ///
     /// # Errors
     ///
     /// Returns the store's refusal. A failure part way through abandons what
@@ -1874,9 +1940,32 @@ impl Client {
         key: &str,
         bytes: &[u8],
         content_type: &str,
+        precondition: Precondition,
     ) -> Result<Option<String>> {
-        let mut source = std::io::Cursor::new(bytes);
-        self.put_streamed(bucket, key, &mut source, bytes.len() as u64, content_type)
+        let mut attempt = 1;
+        loop {
+            let mut source = std::io::Cursor::new(bytes);
+            match self.put_streamed(
+                bucket,
+                key,
+                &mut source,
+                bytes.len() as u64,
+                content_type,
+                precondition,
+            ) {
+                // Amazon S3 answers a completion that raced another
+                // conditional write before acting, and has the whole upload
+                // initiated again - the refused one was abandoned - which
+                // only a value in hand can be; it is paid for from the retry
+                // budget as one attempt.
+                Err(error) if is_raced(&error) && self.may_retry(attempt) => {
+                    self.stats.retries.fetch_add(1, Ordering::Relaxed);
+                    self.pause(attempt, None);
+                    attempt += 1;
+                }
+                outcome => return outcome,
+            }
+        }
     }
 
     /// Write one large object in chunks read from `source` as they go out.
@@ -1898,32 +1987,35 @@ impl Client {
         source: &mut dyn Read,
         length: u64,
         content_type: &str,
+        precondition: Precondition,
     ) -> Result<Option<String>> {
         let part_size = usize::try_from(self.part_size())
             .map_err(|_| crate::iobase::oversized(self.part_size()))?;
+        let upload = Upload {
+            bucket,
+            key,
+            length,
+            content_type,
+            part_size,
+            precondition,
+        };
         match self.provider {
-            Provider::Aws => {
-                self.put_multipart(bucket, key, source, length, content_type, part_size)
-            }
-            Provider::Google => {
-                self.put_resumable(bucket, key, source, length, content_type, part_size)
-            }
-            Provider::Azure => {
-                self.put_blocks(bucket, key, source, length, content_type, part_size)
-            }
+            Provider::Aws => self.put_multipart(&upload, source),
+            Provider::Google => self.put_resumable(&upload, source),
+            Provider::Azure => self.put_blocks(&upload, source),
         }
     }
 
     /// S3's shape: create, send numbered parts, complete from their tags.
-    fn put_multipart(
-        &self,
-        bucket: &str,
-        key: &str,
-        source: &mut dyn Read,
-        length: u64,
-        content_type: &str,
-        part_size: usize,
-    ) -> Result<Option<String>> {
+    fn put_multipart(&self, write: &Upload<'_>, source: &mut dyn Read) -> Result<Option<String>> {
+        let Upload {
+            bucket,
+            key,
+            length,
+            content_type,
+            part_size,
+            precondition,
+        } = *write;
         let upload = self.create_multipart(bucket, key, Some(content_type))?;
         let mut pending = Parts::new(source, length, part_size);
         let mut buffer = Vec::new();
@@ -1948,7 +2040,7 @@ impl Client {
             let _ = self.abort_multipart(bucket, key, &upload);
             return Err(error);
         }
-        match self.complete_multipart(bucket, key, &upload, &parts) {
+        match self.complete_multipart(bucket, key, &upload, &parts, precondition) {
             Ok(etag) => Ok(etag),
             Err(error) => {
                 let _ = self.abort_multipart(bucket, key, &upload);
@@ -1961,27 +2053,32 @@ impl Client {
     ///
     /// Every chunk but the last is a multiple of 256 KiB, which is the one
     /// framing rule the protocol has; the answer to the last one is the object.
-    fn put_resumable(
-        &self,
-        bucket: &str,
-        key: &str,
-        source: &mut dyn Read,
-        length: u64,
-        content_type: &str,
-        part_size: usize,
-    ) -> Result<Option<String>> {
+    ///
+    /// A precondition rides the initiating `POST`, as the API reads one: the
+    /// chunk requests that follow carry none of their own.
+    fn put_resumable(&self, write: &Upload<'_>, source: &mut dyn Read) -> Result<Option<String>> {
+        let Upload {
+            bucket,
+            key,
+            length,
+            content_type,
+            part_size,
+            precondition,
+        } = *write;
         let granularity =
             usize::try_from(super::google::dialect::CHUNK_GRANULARITY).unwrap_or(usize::MAX);
         let part_size = (part_size / granularity).max(1) * granularity;
         let total = length;
         let metadata = self.google_metadata(key, content_type)?;
-        let request = self.common(super::google::dialect::initiate_request(
-            bucket,
-            key,
-            metadata.as_bytes(),
-            content_type,
-            total,
-        ));
+        let request = self
+            .common(super::google::dialect::initiate_request(
+                bucket,
+                key,
+                metadata.as_bytes(),
+                content_type,
+                total,
+            ))
+            .conditioned(self.provider, precondition);
         let answer = self.send(&request)?;
         if answer.status >= 300 {
             return Err(self.failure(&request, &answer));
@@ -2011,8 +2108,13 @@ impl Client {
                     return Err(error);
                 }
             }
-            let request =
+            let mut request =
                 super::google::dialect::chunk_request(&session, bucket, key, &buffer, start, total);
+            // The session holds the create's condition and the store checks it
+            // again where the last chunk finalizes the object, so a chunk is
+            // the create's: sent again only where the store cannot have acted,
+            // and its `412 conditionNotMet` the conflict.
+            request.exclusive = precondition == Precondition::Absent;
             let answer = self.send(&request)?;
             // 308 is the store saying the chunk landed and more is expected;
             // it is the protocol's own use of the code, not a redirect.
@@ -2028,15 +2130,18 @@ impl Client {
     }
 
     /// Azure's shape: stage blocks under ids of one width, then commit them.
-    fn put_blocks(
-        &self,
-        bucket: &str,
-        key: &str,
-        source: &mut dyn Read,
-        length: u64,
-        content_type: &str,
-        part_size: usize,
-    ) -> Result<Option<String>> {
+    ///
+    /// A precondition rides the block list, the one request that decides the
+    /// blob: a staged block is no object.
+    fn put_blocks(&self, write: &Upload<'_>, source: &mut dyn Read) -> Result<Option<String>> {
+        let Upload {
+            bucket,
+            key,
+            length,
+            content_type,
+            part_size,
+            precondition,
+        } = *write;
         let mut pending = Parts::new(source, length, part_size);
         let mut buffer = Vec::new();
         let mut ids = Vec::new();
@@ -2065,6 +2170,7 @@ impl Client {
                 document.as_bytes(),
             ))
             .storing(self.provider, self.encryption())
+            .conditioned(self.provider, precondition)
             .header("x-ms-blob-content-type", content_type)
             .with_metadata(self.provider, self.options.default_metadata());
         if let Some(tier) = self.options.azure().access_tier() {
@@ -2143,7 +2249,9 @@ impl Client {
         })
     }
 
-    /// Complete a multipart upload from the parts it accepted.
+    /// Complete a multipart upload from the parts it accepted, under
+    /// `precondition`: the completion is what publishes the object, so it is
+    /// the request an exclusive create's `If-None-Match: *` rides.
     ///
     /// # Errors
     ///
@@ -2155,11 +2263,13 @@ impl Client {
         key: &str,
         upload: &str,
         parts: &[(u32, String)],
+        precondition: Precondition,
     ) -> Result<Option<String>> {
         let document = xml::render_complete_multipart(parts);
         let request = Request::new("POST", "CompleteMultipartUpload", bucket, key)
             .query("uploadId", upload)
             .header("content-type", "application/xml")
+            .conditioned(self.provider, precondition)
             .body(document.as_bytes());
         let answer = self.send(&request)?;
         if answer.status >= 300 {
@@ -2263,18 +2373,16 @@ impl Client {
         if answer.status < 300 {
             return Ok(());
         }
-        let code = match self.provider {
-            Provider::Aws | Provider::Azure => super::xml::parse_error(&answer.body),
-            Provider::Google => super::google::json::parse_error(&answer.body),
+        let code = self.refusal(&answer).map(|error| error.code);
+        match code.as_deref() {
+            Some("BucketAlreadyOwnedByYou" | "ContainerAlreadyExists" | "conflict") => Ok(()),
+            // The name is another account's bucket: the one existing bucket
+            // a create reports as found.
+            Some("BucketAlreadyExists") => {
+                Err(Error::conflict("bucket", "bucket", self.location(&request)))
+            }
+            _ => Err(self.failure(&request, &answer)),
         }
-        .map(|error| error.code);
-        if matches!(
-            code.as_deref(),
-            Some("BucketAlreadyOwnedByYou" | "ContainerAlreadyExists" | "conflict")
-        ) {
-            return Ok(());
-        }
-        Err(self.failure(&request, &answer))
     }
 
     /// Delete the bucket itself.
@@ -2294,6 +2402,19 @@ impl Client {
         }
         Err(self.failure(&request, &answer))
     }
+}
+
+/// What one chunked upload writes, whatever shape its store gives it.
+#[derive(Clone, Copy)]
+struct Upload<'write> {
+    bucket: &'write str,
+    key: &'write str,
+    /// What the source holds; a source ending before it is refused.
+    length: u64,
+    content_type: &'write str,
+    part_size: usize,
+    /// What the request that decides the object asks of the key.
+    precondition: Precondition,
 }
 
 /// The parts of one upload, read from its source one at a time.
@@ -2591,6 +2712,39 @@ fn absent_kind(request: &Request<'_>) -> &'static str {
     } else {
         "object"
     }
+}
+
+/// Amazon S3's code for a conditional write that met another one in flight
+/// on its key.
+const CONDITIONAL_REQUEST_CONFLICT: &str = "ConditionalRequestConflict";
+
+/// Whether a store's refusal of an exclusive create says an object is at the
+/// key, by the status and the code that store documents for it.
+///
+/// Amazon S3 answers `412 PreconditionFailed` where `If-None-Match: *` finds
+/// an object (the conditional-writes guide); Google Cloud Storage `412` with
+/// the reason `conditionNotMet` where `ifGenerationMatch=0` finds a live
+/// generation; Azure Blob Storage `409 BlobAlreadyExists`, or the `412
+/// ConditionNotMet` its conditional-headers reference gives every write whose
+/// `If-None-Match` is unmet. Nothing else is: a `409` or `412` with another
+/// code is about something other than the object's existence.
+fn lost_create(provider: Provider, status: u16, code: &str) -> bool {
+    matches!(
+        (provider, status, code),
+        (Provider::Aws, 412, "PreconditionFailed")
+            | (Provider::Google, 412, "conditionNotMet")
+            | (Provider::Azure, 409, "BlobAlreadyExists")
+            | (Provider::Azure, 412, "ConditionNotMet")
+    )
+}
+
+/// Whether `error` is Amazon S3's refusal of a conditional write that raced
+/// another one on its key, as [`Client::failure`] states it.
+fn is_raced(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::Remote { status: 409, code, .. } if code == CONDITIONAL_REQUEST_CONFLICT
+    )
 }
 
 /// A stable name for a status with no error document behind it.

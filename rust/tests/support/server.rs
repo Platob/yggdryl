@@ -408,7 +408,7 @@ impl Inner {
 
     /// Injected failure, then signature checks, then the operation.
     fn answer(&self, request: &mut Request, bucket: Option<&str>, key: Option<&str>) -> Response {
-        if let Some(failure) = self.injected_failure() {
+        if let Some(failure) = self.injected_failure(request) {
             return failure;
         }
         if self.unmounted(&request.path).is_none() {
@@ -464,7 +464,16 @@ impl Inner {
         }
     }
 
-    fn injected_failure(&self) -> Option<Response> {
+    /// The failure `fail_next` or `fail_after` injected, in the refusal
+    /// document of the request's own dialect: Google's JSON error, whose
+    /// first `reason` is the code, or the `<Error>` the other two share.
+    ///
+    /// An injected `409 ConditionalRequestConflict` on a
+    /// `CompleteMultipartUpload` also spends the upload, as the race it
+    /// stands for does: Amazon S3's conditional-writes guide has the whole
+    /// upload initiated again with `CreateMultipartUpload` after one, so a
+    /// client completing the same upload again is answered `NoSuchUpload`.
+    fn injected_failure(&self, request: &Request) -> Option<Response> {
         let mut store = self.store();
         let failure = store.failure.as_mut()?;
         if failure.skip > 0 {
@@ -472,11 +481,25 @@ impl Inner {
             return None;
         }
         failure.remaining -= 1;
-        let response = Response::error(failure.status, &failure.code, "Injected failure.", &[]);
+        let (status, code) = (failure.status, failure.code.clone());
         if failure.remaining == 0 {
             store.failure = None;
         }
-        Some(response)
+        let dialect = Dialect::of(request);
+        if dialect == Dialect::Aws
+            && status == 409
+            && code == "ConditionalRequestConflict"
+            && request.method == "POST"
+            && let Some(id) = request.query("uploadId")
+        {
+            store.uploads.remove(id);
+        }
+        Some(match dialect {
+            Dialect::Google => google_error(status, &code, "Injected failure."),
+            Dialect::Aws | Dialect::Azure => {
+                Response::error(status, &code, "Injected failure.", &[])
+            }
+        })
     }
 
     /// The `SigV4` header checks: shape of `Authorization`, presence of the
@@ -645,6 +668,9 @@ struct Staged {
     /// The chunks, in the order they are assembled: by zero-padded start
     /// offset for a resumable session, by block id for a staged blob.
     chunks: BTreeMap<String, Vec<u8>>,
+    /// Whether the session was opened under `ifGenerationMatch=0`, which
+    /// the object it finalizes is held to.
+    absent: bool,
 }
 
 impl Default for Store {
@@ -1066,6 +1092,11 @@ impl Store {
 
     /// Assemble the listed parts in part-number order. An unknown part or a
     /// wrong `ETag` is `400 InvalidPart` and leaves the upload open.
+    ///
+    /// `If-None-Match: *` uploads the object only if the key does not
+    /// already exist, else `412 Precondition Failed`, as the
+    /// `CompleteMultipartUpload` reference states; the upload stays open for
+    /// the caller to abort.
     fn complete_upload(&mut self, bucket: &str, key: &str, request: &Request) -> Response {
         let id = request.query("uploadId").unwrap_or("");
         let upload = self
@@ -1075,6 +1106,13 @@ impl Store {
         let Some(upload) = upload else {
             return no_such_upload();
         };
+        let exists = self
+            .buckets
+            .get(bucket)
+            .is_some_and(|objects| objects.contains_key(key));
+        if request.header("if-none-match") == Some("*") && exists {
+            return precondition_failed();
+        }
         let mut listed = parse_complete_parts(&request.body).unwrap_or_default();
         if listed.is_empty() {
             return malformed_xml();
@@ -3203,9 +3241,20 @@ impl Store {
     }
 
     /// `POST /upload/storage/v1/b/{bucket}/o` - a whole write, or a session.
+    ///
+    /// `ifGenerationMatch=0` makes the insert succeed only where no live
+    /// version of the object is, else `412` (`conditionNotMet`), as the
+    /// `objects.insert` reference and the request-preconditions page state.
+    /// A resumable upload reads the parameter on its initiating `POST` and
+    /// ignores it on the chunks, so the session keeps it and the object it
+    /// finalizes is held to it as well.
     fn google_insert(&mut self, bucket: &str, key: &str, request: &mut Request) -> Response {
         if !self.buckets.contains_key(bucket) {
             return google_error(404, "notFound", "The specified bucket does not exist.");
+        }
+        let absent = request.query("ifGenerationMatch") == Some("0");
+        if absent && self.google_exists(bucket, key) {
+            return google_condition_not_met();
         }
         match request.query("uploadType") {
             Some("resumable") => {
@@ -3218,6 +3267,7 @@ impl Store {
                         bucket: bucket.to_owned(),
                         key: key.to_owned(),
                         chunks: BTreeMap::new(),
+                        absent,
                     },
                 );
                 Response::new(200).with_header("Location", &location)
@@ -3236,6 +3286,13 @@ impl Store {
                 self.google_store(bucket, key, bytes, content_type)
             }
         }
+    }
+
+    /// Whether a live object is at the key.
+    fn google_exists(&self, bucket: &str, key: &str) -> bool {
+        self.buckets
+            .get(bucket)
+            .is_some_and(|objects| objects.contains_key(key))
     }
 
     /// Store one object and answer its resource.
@@ -3274,9 +3331,12 @@ impl Store {
             return Response::new(308)
                 .with_header("Range", &format!("bytes=0-{}", held.saturating_sub(1)));
         }
-        let (bucket, key) = (staged.bucket.clone(), staged.key.clone());
+        let (bucket, key, absent) = (staged.bucket.clone(), staged.key.clone(), staged.absent);
         let assembled: Vec<u8> = staged.chunks.values().flatten().copied().collect();
         self.staged.remove(session);
+        if absent && self.google_exists(&bucket, &key) {
+            return google_condition_not_met();
+        }
         self.google_store(&bucket, &key, assembled, None)
     }
 
@@ -3356,6 +3416,9 @@ impl Store {
                 if !self.buckets.contains_key(&container) {
                     return azure_error(404, "ContainerNotFound");
                 }
+                if azure_blob_exists(request, self.buckets.get(&container), &key) {
+                    return azure_error(409, "BlobAlreadyExists");
+                }
                 let bytes = std::mem::take(&mut request.body);
                 let content_type = request.header("content-type").map(str::to_owned);
                 let object = Object::new(bytes, content_type, Encryption::None);
@@ -3419,6 +3482,7 @@ impl Store {
                 bucket: container.to_owned(),
                 key: key.to_owned(),
                 chunks: BTreeMap::new(),
+                absent: false,
             });
         // Every id of one blob has to be the same length, which is exactly
         // what the service refuses when it is not.
@@ -3436,6 +3500,11 @@ impl Store {
         key: &str,
         request: &mut Request,
     ) -> Response {
+        // Refused before the list is read, so the staged blocks stay for the
+        // account's own rule to expire, as an uncommitted list's do.
+        if azure_blob_exists(request, self.buckets.get(container), key) {
+            return azure_error(409, "BlobAlreadyExists");
+        }
         let Some(staged) = self.staged.remove(&format!("{container}/{key}")) else {
             return azure_error(400, "InvalidBlockList");
         };
@@ -3621,6 +3690,32 @@ fn google_json(status: u16, document: &str) -> Response {
     Response::new(status)
         .with_header("Content-Type", "application/json; charset=UTF-8")
         .with_body(document.as_bytes().to_vec())
+}
+
+/// Google's refusal of an unmet precondition.
+fn google_condition_not_met() -> Response {
+    google_error(
+        412,
+        "conditionNotMet",
+        "At least one of the pre-conditions you specified did not hold.",
+    )
+}
+
+/// Whether an Azure write under `If-None-Match: *` finds its blob there.
+///
+/// The wildcard performs the operation only where the resource does not
+/// exist (the Blob service's conditional-headers reference); the service
+/// answers that refusal on `Put Blob` and `Put Block List` as `409
+/// BlobAlreadyExists`, and the conditional-headers reference's `412
+/// ConditionNotMet` for an unmet `If-None-Match` on a write is what the
+/// client reads as the same conflict.
+fn azure_blob_exists(
+    request: &Request,
+    objects: Option<&BTreeMap<String, Object>>,
+    key: &str,
+) -> bool {
+    request.header("if-none-match") == Some("*")
+        && objects.is_some_and(|objects| objects.contains_key(key))
 }
 
 /// An Azure refusal, which is the same `<Error>` document S3 answers.

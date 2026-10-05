@@ -577,7 +577,6 @@ class TestNested:
 
 
 pandas = pytest.importorskip("pandas")
-polars = pytest.importorskip("polars")
 
 
 def quote_table() -> pa.Table:
@@ -637,16 +636,15 @@ class TestFrom:
         assert len(Serie.from_(quote_table().to_pandas())) == 2
 
     def test_a_polars_frame_and_its_lazy_form_both_name_rows(self) -> None:
+        polars = pytest.importorskip("polars")
         frame = polars.from_arrow(quote_table())
         for source in (frame, frame.lazy()):
             assert len(Serie.from_(source)) == 2
 
     def test_a_series_is_one_column_in_either_library(self) -> None:
-        for series in (
-            pandas.Series([1, 2, 3], name="size"),
-            polars.Series("size", [1, 2, 3]),
-        ):
-            assert Serie.from_(series).as_py() == [1, 2, 3]
+        assert Serie.from_(pandas.Series([1, 2, 3], name="size")).as_py() == [1, 2, 3]
+        polars = pytest.importorskip("polars")
+        assert Serie.from_(polars.Series("size", [1, 2, 3])).as_py() == [1, 2, 3]
 
     def test_a_plain_numpy_array_is_one_column(self) -> None:
         column = Serie.from_(np.array([1.5, 2.5]))
@@ -722,8 +720,9 @@ class TestCrossings:
         held = Serie.from_(quote_table().to_batches()[0])
         assert held.into_arrow_batch().num_rows == 2
         assert held.into_pandas().shape == (2, 2)
-        assert held.into_polars().height == 2
         assert len(held) == 2
+        pytest.importorskip("polars")
+        assert held.into_polars().height == 2
 
     def test_a_stream_crosses_once_and_says_so(self) -> None:
         streamed = SerieReader.from_(quote_table())
@@ -1285,6 +1284,7 @@ class TestPyCapsule:
         exported = pa.RecordBatchReader.from_stream(SerieReader.from_(table)).read_all()
         assert exported.equals(table)
         assert buffer_locations(exported.column(0).chunk(0)) == buffer_locations(column)
+        polars = pytest.importorskip("polars")
         frame = polars.DataFrame(SerieReader.from_(table))
         assert frame["value"].to_list() == column.to_pylist()
         address, offset, length = frame["value"]._get_buffer_info()
@@ -1447,6 +1447,12 @@ def no_forced_switch() -> Iterator[None]:
         sys.setswitchinterval(interval)
 
 
+def gil_enabled() -> bool:
+    """Whether this interpreter runs Python under a GIL right now."""
+    is_gil_enabled: Callable[[], bool] = getattr(sys, "_is_gil_enabled", lambda: True)
+    return is_gil_enabled()
+
+
 def spun_during(operation: Callable[[], object]) -> int:
     """How far a second Python thread counts while `operation` runs."""
     count = 0
@@ -1486,10 +1492,21 @@ def test_a_whole_drain_releases_the_gil() -> None:
     assert spun_during(lambda: Serie.from_arrow_reader(table)) > 1_000
     held = Serie.from_(table).child("c0")
     assert held is not None
-    assert spun_during(held.as_py) == 0
+    if gil_enabled():
+        # Only a GIL can hold the spinner still; free-threaded, it never waits.
+        assert spun_during(held.as_py) == 0
 
 
 def test_a_long_cast_leaves_the_serie_writable_from_another_thread() -> None:
+    if not gil_enabled():
+        # The pin is the GIL serializing the writer against the clone the
+        # cast takes, so no write is ever refused. Free-threaded, a write can
+        # land on the instant the cast borrows the serie to clone it, or the
+        # cast on a write in progress, and one of the two raises
+        # `RuntimeError` - two threads using one serie at once, refused by
+        # contract and pinned by the test below - so `errors == []` is no
+        # premise there.
+        pytest.skip("the writer is serialized against the clone by the GIL")
     column = Serie.from_(pa.array(range(200_000), pa.int64()))
     target = Field("item", "float64")
     casting = threading.Event()
@@ -1523,6 +1540,74 @@ def test_a_long_cast_leaves_the_serie_writable_from_another_thread() -> None:
             writer.join()
     assert errors == []
     assert writes > 0
+
+
+def test_a_cast_racing_a_write_on_one_serie_refuses_with_runtime_error_and_never_panics() -> None:
+    # Two threads on one serie for about a second: one casting, one writing.
+    # Free-threaded, the two borrows of the one object meet, and the loser
+    # raises `RuntimeError` naming the borrow - never PyO3's `PanicException`,
+    # a `BaseException` no `except Exception` catches. Under a GIL they
+    # interleave and may never meet; the pin is the same either way.
+    column = Serie.from_(pa.array(range(100_000), pa.int64()))
+    target = Field("item", "float64")
+    start = threading.Barrier(2)
+    deadline = time.monotonic() + 1.0
+    errors: list[BaseException] = []
+    counts = {"cast": 0, "set": 0}
+
+    def cast() -> None:
+        start.wait()
+        while time.monotonic() < deadline:
+            try:
+                column.cast(target)
+                counts["cast"] += 1
+            except BaseException as error:  # noqa: BLE001 - every raise is the pin
+                errors.append(error)
+
+    def write() -> None:
+        start.wait()
+        while time.monotonic() < deadline:
+            try:
+                column.set(0, counts["set"])
+                counts["set"] += 1
+            except BaseException as error:  # noqa: BLE001 - every raise is the pin
+                errors.append(error)
+
+    threads = [threading.Thread(target=cast), threading.Thread(target=write)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert [error for error in errors if not isinstance(error, Exception)] == []
+    for error in errors:
+        assert isinstance(error, RuntimeError), repr(error)
+        assert "borrow" in str(error), repr(error)
+    assert counts["cast"] > 0
+    assert counts["set"] > 0
+    assert len(column) == 100_000
+
+
+def test_eight_threads_read_one_serie_at_once_and_each_read_answers_the_same() -> None:
+    # On a free-threaded interpreter the eight readers run truly in parallel
+    # over the one native column, each read a shared borrow; on a GIL build
+    # they interleave. Either way every read answers what one thread alone
+    # reads, and no borrow is refused.
+    column = Serie.from_(pa.array(range(64), pa.int64()))
+    expected = [column.scalar(index) for index in range(64)]
+    start = threading.Barrier(8)
+
+    def read() -> None:
+        start.wait()
+        for step in range(1_000):
+            assert len(column) == 64
+            index = step % 64
+            assert column.scalar(index) == expected[index]
+            if step % 100 == 0:
+                assert list(column) == expected
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for future in [pool.submit(read) for _ in range(8)]:
+            assert future.result() is None
 
 
 # Ordering, uniqueness and grouping - mirrors ``rust/tests/serie/order.rs``

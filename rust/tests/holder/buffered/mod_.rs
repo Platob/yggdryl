@@ -128,6 +128,21 @@ mod counted {
         (offset..offset + length).map(|index| index as u8).collect()
     }
 
+    /// A create drops every page first: the size a read learned while the
+    /// location held nothing would otherwise answer for the value created.
+    #[test]
+    fn a_create_drops_what_the_cache_learned_of_nothing() {
+        let mut handle = Buffered::new(counted(0), options(8));
+        assert!(handle.read_all_bytes().unwrap().is_empty());
+        handle.create_bytes(&expected(0, PAGE + 3)).unwrap();
+        assert_eq!(handle.read_all_bytes().unwrap(), expected(0, PAGE + 3));
+        assert!(handle.create_bytes(b"other").unwrap_err().is_conflict());
+        assert_eq!(
+            handle.read_range_bytes(PAGE as u64, 3).unwrap(),
+            expected(PAGE, 3)
+        );
+    }
+
     #[test]
     fn a_second_read_of_the_same_range_reaches_nothing() {
         let handle = Buffered::new(counted(4 * PAGE), options(8));

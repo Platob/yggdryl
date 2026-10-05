@@ -450,6 +450,10 @@ impl IOBase for Stream {
         Err(refuse_write())
     }
 
+    fn create_bytes(&mut self, _bytes: &[u8]) -> Result<()> {
+        Err(refuse_write())
+    }
+
     fn size(&self) -> u64 {
         self.total.unwrap_or_else(|| self.delivered())
     }

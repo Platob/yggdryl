@@ -11,6 +11,7 @@
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyIsADirectoryError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::sync::MutexExt;
 use pyo3::types::{
     PyBool, PyBytes, PyDict, PyDictMethods, PyFloat, PyInt, PyIterator, PyString, PyTuple, PyType,
 };
@@ -1568,7 +1569,7 @@ impl PyIOBase {
     /// Open a random-access native Arrow input file.
     fn open_input_file<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyAny>> {
         let py = slf.py();
-        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
+        if let Some((filesystem, path)) = slf.try_borrow()?.arrow_binding(py) {
             let filesystem = filesystem.bind(py);
             return filesystem
                 .call_method1("open_input_file", (&path,))
@@ -1596,7 +1597,7 @@ impl PyIOBase {
             Some(size) => kwargs.set_item("buffer_size", size)?,
             None => kwargs.set_item("buffer_size", py.None())?,
         }
-        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
+        if let Some((filesystem, path)) = slf.try_borrow()?.arrow_binding(py) {
             let filesystem = filesystem.bind(py);
             return filesystem
                 .call_method("open_input_stream", (&path,), Some(&kwargs))
@@ -1632,7 +1633,7 @@ impl PyIOBase {
             Some(metadata) => kwargs.set_item("metadata", metadata)?,
             None => kwargs.set_item("metadata", py.None())?,
         }
-        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
+        if let Some((filesystem, path)) = slf.try_borrow()?.arrow_binding(py) {
             let filesystem = filesystem.bind(py);
             return filesystem
                 .call_method("open_output_stream", (&path,), Some(&kwargs))
@@ -1652,7 +1653,7 @@ impl PyIOBase {
             .getattr("output_stream")?
             .call((stream,), Some(&kwargs))?;
         if let Err(error) = slf
-            .borrow_mut()
+            .try_borrow_mut()?
             .inner_mut()?
             .truncate(0)
             .map_err(crate::holder::fs::storage_error)
@@ -1685,7 +1686,7 @@ impl PyIOBase {
             Some(metadata) => kwargs.set_item("metadata", metadata)?,
             None => kwargs.set_item("metadata", py.None())?,
         }
-        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
+        if let Some((filesystem, path)) = slf.try_borrow()?.arrow_binding(py) {
             let filesystem = filesystem.bind(py);
             return filesystem
                 .call_method("open_append_stream", (&path,), Some(&kwargs))
@@ -1700,7 +1701,7 @@ impl PyIOBase {
         }
         kwargs.del_item("metadata")?;
         let position = {
-            let handle = slf.borrow();
+            let handle = slf.try_borrow()?;
             match handle.inner()?.bound_location() {
                 Some(bound) => bound
                     .filesystem()
@@ -1893,6 +1894,18 @@ impl PyIOBase {
         Ok(data.len())
     }
 
+    /// Write `data` as the whole value only where nothing is here yet, the
+    /// way `open(path, "xb")` does: a value already here raises
+    /// `FileExistsError` naming the location and is left as it was. Of
+    /// several creators racing for one location exactly one returns, on
+    /// every store whose create is exclusive.
+    fn create_bytes(&mut self, py: Python<'_>, data: &[u8]) -> PyResult<usize> {
+        let inner = self.inner_mut()?;
+        py.detach(|| inner.create_bytes(data))
+            .map_err(crate::holder::fs::storage_error)?;
+        Ok(data.len())
+    }
+
     /// Replace what is here with `text`, as `Path.write_text`.
     fn write_text(&mut self, py: Python<'_>, text: &str) -> PyResult<usize> {
         self.write_bytes(py, text.as_bytes())
@@ -1980,7 +1993,7 @@ impl PyIOBase {
         // A container streams its leaves: the core's one stream owns what it
         // reads, so the iterator holds it rather than listing again per chunk.
         {
-            let handle = slf.borrow();
+            let handle = slf.try_borrow()?;
             let inner = handle.inner()?;
             if inner.is_container() {
                 let stream = yggdryl::ByteStream::from_container(inner, position, batch_size)
@@ -1995,7 +2008,7 @@ impl PyIOBase {
                 });
             }
         }
-        if let Some(bound) = slf.borrow().inner()?.bound_location() {
+        if let Some(bound) = slf.try_borrow()?.inner()?.bound_location() {
             let mut reader = match bound.filesystem().open_input_file(bound.path()) {
                 Ok(reader) => reader,
                 Err(error) if error.is_absent() => {
@@ -2021,7 +2034,7 @@ impl PyIOBase {
         }
         // Validate through the core without touching the source.
         drop(
-            slf.borrow()
+            slf.try_borrow()?
                 .inner()?
                 .pstream_bytes(position, batch_size)
                 .map_err(crate::holder::fs::storage_error)?,
@@ -3636,7 +3649,7 @@ impl PyRecordIterator {
 ///
 /// The cursor holds the handle itself, so its reads and writes land on the
 /// same resource the handle addresses; the position is the cursor's own.
-#[pyclass(name = "IOCursor", module = "yggdryl._native")]
+#[pyclass(name = "IOCursor", module = "yggdryl._native", frozen)]
 pub(crate) struct PyIOCursor {
     handle: Py<PyIOBase>,
     position: std::sync::atomic::AtomicU64,
@@ -3663,19 +3676,28 @@ impl PyIOCursor {
         }
     }
 
+    /// The retained reader, its lock waited on detached: the reader may be a
+    /// `pyarrow.fs.PyFileSystem` handler's file, read under the lock, and a
+    /// handler may release the GIL - a thread waiting on the lock attached
+    /// would keep the reading thread from taking it back.
     fn reader(
         &self,
+        py: Python<'_>,
     ) -> PyResult<std::sync::MutexGuard<'_, Option<Box<dyn yggdryl::fs::RandomAccessReader>>>> {
         self.reader
-            .lock()
+            .lock_py_attached(py)
             .map_err(|_| PyValueError::new_err("cursor reader lock is poisoned"))
     }
 
+    /// The close failure, its lock waited on detached: `close` holds it
+    /// across the reader's close and the handle's flush, either of which may
+    /// run a Python handler.
     fn close_failure(
         &self,
+        py: Python<'_>,
     ) -> PyResult<std::sync::MutexGuard<'_, Option<crate::holder::fs::StickyFailure>>> {
         self.close_failure
-            .lock()
+            .lock_py_attached(py)
             .map_err(|_| PyValueError::new_err("cursor close lock is poisoned"))
     }
 
@@ -3685,7 +3707,7 @@ impl PyIOCursor {
         }
         let position = self.load();
         let bound = {
-            let handle = self.handle.borrow(py);
+            let handle = self.handle.try_borrow(py)?;
             handle.inner()?.bound_location().cloned()
         };
         let mut buffer = Vec::new();
@@ -3696,7 +3718,7 @@ impl PyIOCursor {
         })?;
         buffer.resize(wanted, 0);
         let read = if let Some(bound) = bound {
-            let mut slot = self.reader()?;
+            let mut slot = self.reader(py)?;
             if slot.is_none() {
                 let mut reader = bound
                     .filesystem()
@@ -3716,7 +3738,7 @@ impl PyIOCursor {
                 .map_err(crate::holder::fs::storage_error)?
         } else {
             self.handle
-                .borrow(py)
+                .try_borrow(py)?
                 .inner()?
                 .pread(position, &mut buffer)
                 .map_err(crate::holder::fs::storage_error)?
@@ -3751,10 +3773,10 @@ impl PyIOCursor {
     }
 
     fn write_slice(&self, py: Python<'_>, bytes: &[u8]) -> PyResult<u64> {
-        if let Some(mut reader) = self.reader()?.take() {
+        if let Some(mut reader) = self.reader(py)?.take() {
             reader.close().map_err(crate::holder::fs::storage_error)?;
         }
-        let mut handle = self.handle.borrow_mut(py);
+        let mut handle = self.handle.try_borrow_mut(py)?;
         let position = self.load();
         let offered = u64::try_from(bytes.len())
             .map_err(|_| PyValueError::new_err("write length exceeds u64::MAX"))?;
@@ -3807,9 +3829,9 @@ impl PyIOCursor {
     }
 
     #[setter]
-    fn set_position(&self, position: u64) -> PyResult<()> {
+    fn set_position(&self, py: Python<'_>, position: u64) -> PyResult<()> {
         self.require_open()?;
-        if let Some(reader) = self.reader()?.as_mut() {
+        if let Some(reader) = self.reader(py)?.as_mut() {
             reader
                 .seek(std::io::SeekFrom::Start(position))
                 .map_err(crate::holder::fs::storage_error)?;
@@ -3856,11 +3878,11 @@ impl PyIOCursor {
             }
         };
         let bound = {
-            let handle = self.handle.borrow(py);
+            let handle = self.handle.try_borrow(py)?;
             handle.inner()?.bound_location().cloned()
         };
         if let Some(bound) = bound {
-            let mut slot = self.reader()?;
+            let mut slot = self.reader(py)?;
             if slot.is_none() {
                 let mut reader = bound
                     .filesystem()
@@ -3884,7 +3906,7 @@ impl PyIOCursor {
         let origin = match whence {
             0 => 0,
             1 => self.load(),
-            2 => self.handle.borrow(py).inner()?.size(),
+            2 => self.handle.try_borrow(py)?.inner()?.size(),
             _ => {
                 return Err(PyValueError::new_err(
                     "whence must be 0 (start), 1 (current), or 2 (end)",
@@ -3940,7 +3962,7 @@ impl PyIOCursor {
     /// position, while a positional `read` of it reads nothing.
     #[pyo3(signature = (batch_size = 65536))]
     fn stream_bytes(slf: &Bound<'_, Self>, batch_size: usize) -> PyResult<PyByteIterator> {
-        let cursor = slf.borrow();
+        let cursor = slf.try_borrow()?;
         cursor.require_open()?;
         if batch_size == 0 {
             return Err(PyValueError::new_err(
@@ -4027,7 +4049,7 @@ impl PyIOCursor {
     fn flush(&self, py: Python<'_>) -> PyResult<()> {
         self.require_open()?;
         self.handle
-            .borrow_mut(py)
+            .try_borrow_mut(py)?
             .inner_mut()?
             .flush()
             .map_err(crate::holder::fs::storage_error)
@@ -4035,17 +4057,17 @@ impl PyIOCursor {
 
     /// Flush and close exactly once.
     fn close(&self, py: Python<'_>) -> PyResult<()> {
-        let mut close_failure = self.close_failure()?;
+        let mut close_failure = self.close_failure(py)?;
         if self.closed.swap(true, std::sync::atomic::Ordering::AcqRel) {
             return close_failure.as_ref().map_or(Ok(()), |failure| {
                 Err(crate::holder::fs::storage_error(failure.error()))
             });
         }
-        let reader_close = match self.reader()?.take() {
+        let reader_close = match self.reader(py)?.take() {
             Some(mut reader) => reader.close(),
             None => Ok(()),
         };
-        let flush = self.handle.borrow_mut(py).inner_mut()?.flush();
+        let flush = self.handle.try_borrow_mut(py)?.inner_mut()?.flush();
         let error = match (reader_close, flush) {
             (Err(error), _) | (_, Err(error)) => Some(error),
             (Ok(()), Ok(())) => None,
@@ -4125,7 +4147,7 @@ impl PyByteIterator {
         }
         let next = match &mut self.source {
             PyByteSource::Position { handle, position } => {
-                let handle = handle.borrow(py);
+                let handle = handle.try_borrow(py)?;
                 let mut stream = handle
                     .inner()?
                     .pstream_bytes(*position, self.batch_size)
@@ -4140,7 +4162,7 @@ impl PyByteIterator {
                 next
             }
             PyByteSource::Cursor(cursor) => {
-                let cursor = cursor.borrow(py);
+                let cursor = cursor.get();
                 match cursor.read_buffer(py, self.batch_size) {
                     Ok(bytes) if bytes.is_empty() => {
                         self.done = true;
@@ -4164,7 +4186,7 @@ impl PyByteIterator {
                     Ok(count) => {
                         bytes.truncate(count);
                         if let Some(cursor) = cursor {
-                            let cursor = cursor.borrow(py);
+                            let cursor = cursor.get();
                             cursor.store(cursor.load().saturating_add(count as u64));
                         }
                         Ok(Some(bytes))
@@ -4179,7 +4201,7 @@ impl PyByteIterator {
             PyByteSource::Stream { stream, cursor } => {
                 let next = stream.next().transpose();
                 if let (Ok(Some(bytes)), Some(cursor)) = (&next, cursor) {
-                    let cursor = cursor.borrow(py);
+                    let cursor = cursor.get();
                     cursor.store(cursor.load().saturating_add(bytes.len() as u64));
                 }
                 next

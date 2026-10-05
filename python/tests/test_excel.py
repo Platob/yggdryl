@@ -11,6 +11,8 @@ import copy
 import datetime
 import pathlib
 import pickle
+import subprocess
+import sys
 
 import pyarrow as pa
 import pytest
@@ -516,3 +518,122 @@ class TestWorkbook:
         with pytest.raises(ValueError, match="ZIP package"):
             Workbook.from_bytes(b"not a package at all")
         assert Workbook.from_bytes(b"").is_empty()
+
+
+PARSE_WHILE_READ_SCRIPT = r"""
+import threading
+import time
+
+import pyarrow as pa
+import pyarrow.fs as pafs
+
+from yggdryl import IOBase
+from yggdryl.excel import Workbook
+
+
+class Pausing(pafs.FileSystemHandler):
+    # Every open sleeps - releasing the GIL - while the workbook is locked.
+    def __init__(self, files):
+        self.files = files
+
+    def get_type_name(self):
+        return "pausing"
+
+    def normalize_path(self, path):
+        return path.strip("/")
+
+    def get_file_info(self, paths):
+        return [
+            pafs.FileInfo(key, pafs.FileType.File, size=len(self.files[key]))
+            if key in self.files
+            else pafs.FileInfo(key, pafs.FileType.NotFound)
+            for key in (path.strip("/") for path in paths)
+        ]
+
+    def get_file_info_selector(self, selector):
+        return []
+
+    def create_dir(self, path, recursive):
+        pass
+
+    def delete_dir(self, path):
+        pass
+
+    def delete_dir_contents(self, path, missing_dir_ok=False):
+        pass
+
+    def delete_root_dir_contents(self):
+        pass
+
+    def delete_file(self, path):
+        pass
+
+    def move(self, src, dest):
+        pass
+
+    def copy_file(self, src, dest):
+        pass
+
+    def open_input_stream(self, path):
+        time.sleep(0.05)
+        return pa.BufferReader(self.files[path.strip("/")])
+
+    def open_input_file(self, path):
+        time.sleep(0.05)
+        return pa.BufferReader(self.files[path.strip("/")])
+
+    def open_output_stream(self, path, metadata=None):
+        raise NotImplementedError(path)
+
+    def open_append_stream(self, path, metadata=None):
+        raise NotImplementedError(path)
+
+
+written = Workbook()
+for name in ("One", "Two"):
+    written.add_sheet(name)["A1"] = name
+filesystem = pafs.PyFileSystem(Pausing({"book.xlsx": bytes(written.into_bytes())}))
+workbook = Workbook.open(IOBase.from_fs(filesystem, "book.xlsx"))
+one = workbook.sheet("One")
+answers = []
+
+
+def parse():
+    answers.append(workbook.sheet("Two")["A1"].as_py())
+
+
+def read():
+    time.sleep(0.02)
+    answers.append((workbook.sheet_names, len(workbook), "Two" in workbook, one.name))
+
+
+threads = [threading.Thread(target=parse), threading.Thread(target=read)]
+for thread in threads:
+    thread.start()
+for thread in threads:
+    thread.join()
+assert sorted(answers, key=str) == [(["One", "Two"], 2, True, "One"), "Two"], answers
+print("ok")
+"""
+
+
+def test_a_sheet_parsed_over_a_python_filesystem_never_holds_the_gil_waiting() -> None:
+    """A sheet is parsed on first access under the workbook's lock, reading the
+    package through its handle - here a ``pyarrow.fs.PyFileSystem`` handler
+    that sleeps, releasing the GIL. A thread waiting on that lock attached -
+    the workbook's names, its length, a live sheet view - would keep the
+    parsing thread from taking the GIL back, and the process would hang. In a
+    process of its own under a deadline, because the failure is a hang.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", PARSE_WHILE_READ_SCRIPT],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as hung:
+        raise AssertionError("a read waiting on a sheet parse hung") from hung
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().endswith("ok")

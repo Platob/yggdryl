@@ -196,6 +196,11 @@ impl FileSystem for CountingFileSystem {
         self.inner.open_append_stream(path, metadata)
     }
 
+    fn create_file(&self, path: &str, bytes: &[u8]) -> Result<()> {
+        self.count("create_file");
+        self.inner.create_file(path, bytes)
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }

@@ -9,13 +9,14 @@ name: Release
 # preflight, so ordinary commits cost one small job.
 #
 # One job per platform builds everything that platform ships: the `yggdryl`
-# command, the wheels - one stable-ABI wheel for every CPython from 3.11 on,
-# and one for 3.10 - and, on the five platforms the npm package carries, the
-# Node.js module. The extension and the Node.js module link the
-# same core with the same features, so a platform compiles it once, and the
-# registries hear from this run only after every platform has built and
-# smoke-tested what it ships. A release is thirteen jobs; it was twenty while
-# each binding built its platforms in jobs of its own.
+# command, the wheels - a stable-ABI wheel for every GIL CPython from 3.11
+# on, one for 3.10, one for free-threaded 3.14 and a free-threaded stable-ABI
+# one for every CPython from 3.15 on - and, on the five platforms the npm
+# package carries, the Node.js module. The extension and the Node.js module
+# link the same core with the same features, so a platform compiles it once,
+# and the registries hear from this run only after every platform has built
+# and smoke-tested what it ships. A release is thirteen jobs; it was twenty
+# while each binding built its platforms in jobs of its own.
 #
 # Every publish is idempotent - a registry that already has the version is
 # skipped, never failed - so a run that died halfway is repaired by re-running
@@ -210,21 +211,38 @@ jobs:
           compression-level: 0
 
   build:
-    # One job per platform and libc, each building two wheels and, where
-    # `node` names the npm package's platform, the Node.js module. The
-    # extension targets the stable ABI from 3.11 (python/Cargo.toml), so
-    # maturin builds one `cp311-abi3` wheel that every CPython from 3.11 on
-    # loads, and a version-specific wheel for 3.10, which predates the buffer
-    # protocol's place in the limited API; Windows on ARM starts at 3.11, the
-    # first CPython published for it, so it builds the one. The interpreters
-    # are named bare so maturin resolves them from the manylinux and
-    # musllinux images on Linux and from the setup-python tool cache
-    # elsewhere. `pythons` is every CPython the wheels claim, and the smoke
-    # test installs them into each one; 3.12 is listed last so it is the
-    # default `python` the job's own scripts run under. `smoke: false` marks
-    # the target where PyArrow, the hard runtime dependency, publishes no
-    # wheel to install against; the build is still shipped so the platform
-    # works the day its stack does.
+    # One job per platform and libc, each building four wheels and, where
+    # `node` names the npm package's platform, the Node.js module:
+    #
+    #   - `cp310-cp310`: 3.10 predates the buffer protocol's place in the
+    #     limited API, so it gets a version-specific wheel. Windows on ARM
+    #     starts at 3.11, the first CPython published for it, and has none.
+    #   - `cp311-abi3`: the stable ABI from 3.11 (python/Cargo.toml), one
+    #     wheel every GIL CPython from 3.11 on loads.
+    #   - `cp314-cp314t`: a free-threaded CPython loads no `abi3` wheel, and
+    #     3.14 has no stable ABI of its own for one, so free-threaded 3.14
+    #     gets a version-specific wheel. Free threading starts there: CPython
+    #     declared it supported from 3.14 and PyO3 dropped 3.13t with it
+    #     (#5865), so every PyO3 that builds abi3t refuses a free-threaded
+    #     CPython below 3.14, and 3.12 has no free-threaded build at all
+    #     (PEP 703's first is 3.13); a GIL 3.12 or 3.13 loads `cp311-abi3`.
+    #   - `cp315-abi3.abi3t`: PEP 803's free-threaded stable ABI, one wheel
+    #     every CPython from 3.15 on loads, GIL or free-threaded.
+    #
+    # One maturin invocation builds one stable-ABI family, so the last two
+    # are a second build over `interpreters-ft` beside the first over
+    # `interpreters`. The interpreters are named bare so maturin resolves
+    # them from the manylinux and musllinux images on Linux and from the
+    # setup-python tool cache elsewhere. `pythons` is every CPython the
+    # wheels claim that PyArrow, the hard runtime dependency, publishes a
+    # wheel for, and the smoke test installs them into each one; 3.12 is
+    # listed last so it is the default `python` the job's own scripts run
+    # under. `pythons-extension` is the rest: CPython 3.15, for which PyArrow
+    # publishes no wheel on any platform yet, loads the extension module
+    # alone (scripts/check_wheel_smoke.py). `smoke: false` marks the target
+    # where PyArrow publishes no wheel at all, which loads the extension
+    # alone too; the build is still shipped so the platform works the day
+    # its stack does.
     #
     # A `musl` row smokes its wheels in musl CPythons from uv, run on the
     # glibc runner by the musl loader the row installs. Those rows once
@@ -285,12 +303,17 @@ jobs:
             triple: x86_64-unknown-linux-gnu
             manylinux: auto
             interpreters: 3.10 3.11
+            interpreters-ft: 3.14t 3.15
             pythons: |
               3.10
               3.11
               3.13
+              3.14t
               3.14
               3.12
+            pythons-extension: |
+              3.15t
+              3.15
             smoke: true
             node: linux-x64-gnu
           - label: manylinux-aarch64
@@ -299,12 +322,17 @@ jobs:
             triple: aarch64-unknown-linux-gnu
             manylinux: auto
             interpreters: 3.10 3.11
+            interpreters-ft: 3.14t 3.15
             pythons: |
               3.10
               3.11
               3.13
+              3.14t
               3.14
               3.12
+            pythons-extension: |
+              3.15t
+              3.15
             smoke: true
             node: linux-arm64-gnu
           - label: musllinux-x86_64
@@ -313,11 +341,16 @@ jobs:
             triple: x86_64-unknown-linux-musl
             manylinux: musllinux_1_2
             interpreters: 3.10 3.11
+            interpreters-ft: 3.14t 3.15
             pythons: |
               3.11
               3.13
+              3.14t
               3.14
               3.12
+            pythons-extension: |
+              3.15t
+              3.15
             smoke: true
             musl: true
           - label: musllinux-aarch64
@@ -326,11 +359,16 @@ jobs:
             triple: aarch64-unknown-linux-musl
             manylinux: musllinux_1_2
             interpreters: 3.10 3.11
+            interpreters-ft: 3.14t 3.15
             pythons: |
               3.11
               3.13
+              3.14t
               3.14
               3.12
+            pythons-extension: |
+              3.15t
+              3.15
             smoke: true
             musl: true
           - label: macos-x86_64
@@ -342,12 +380,17 @@ jobs:
             macos: "10.12"
             manylinux: auto
             interpreters: 3.10 3.11
+            interpreters-ft: 3.14t 3.15
             pythons: |
               3.10
               3.11
               3.13
+              3.14t
               3.14
               3.12
+            pythons-extension: |
+              3.15t
+              3.15
             smoke: true
             node: darwin-x64
           - label: macos-aarch64
@@ -357,12 +400,17 @@ jobs:
             macos: "11.0"
             manylinux: auto
             interpreters: 3.10 3.11
+            interpreters-ft: 3.14t 3.15
             pythons: |
               3.10
               3.11
               3.13
+              3.14t
               3.14
               3.12
+            pythons-extension: |
+              3.15t
+              3.15
             smoke: true
             node: darwin-arm64
           - label: windows-x64
@@ -371,12 +419,17 @@ jobs:
             triple: x86_64-pc-windows-msvc
             manylinux: auto
             interpreters: 3.10 3.11
+            interpreters-ft: 3.14t 3.15
             pythons: |
               3.10
               3.11
               3.13
+              3.14t
               3.14
               3.12
+            pythons-extension: |
+              3.15t
+              3.15
             smoke: true
             node: win32-x64
           - label: windows-arm64
@@ -385,17 +438,33 @@ jobs:
             triple: aarch64-pc-windows-msvc
             manylinux: auto
             interpreters: 3.11
+            interpreters-ft: 3.14t 3.15
             pythons: |
               3.11
               3.13
+              3.14t
               3.14
               3.12
+            pythons-extension: |
+              3.15t
+              3.15
             smoke: false
     steps:
       - uses: actions/checkout@v6
+      # 3.15 is a release candidate, which setup-python installs only when
+      # prereleases are allowed. A later entry comes first on PATH, so
+      # `pythons-extension` lists 3.15 after 3.15t and `pythons` 3.14 after
+      # 3.14t, and `python3.15` and `python3.14` are the GIL builds rather
+      # than names the free-threaded ones also install - what uv resolves a
+      # bare `3.14` to, since a request with no `t` takes either build and
+      # takes the first on PATH (the 0.1.20 rehearsal, where every smoke of
+      # 3.14 opened the free-threaded interpreter and refused it).
       - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.pythons }}
+          python-version: |
+            ${{ matrix.pythons-extension }}
+            ${{ matrix.pythons }}
+          allow-prereleases: true
       - uses: actions/setup-node@v6
         if: matrix.node
         with:
@@ -466,15 +535,33 @@ jobs:
           args: >-
             --release --locked --manifest-path python/Cargo.toml --out dist
             --interpreter ${{ matrix.interpreters }}
+      # The free-threaded stable ABI is another family than `abi3`, and one
+      # maturin invocation builds one, so the free-threaded wheels are a build
+      # of their own. It compiles the binding again and finds the core fresh
+      # where the build above left it; on Linux it runs in the same image,
+      # which reads the command the step above staged in the workspace.
+      - name: Build the free-threaded and abi3t wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.15.0
+          sccache: true
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: >-
+            --release --locked --manifest-path python/Cargo.toml --out dist
+            --interpreter ${{ matrix.interpreters-ft }}
       # A wheel that quietly lost the command is worse than a failed build, and
       # a wheel per CPython is what the stable ABI retired, so every row
-      # asserts what it shipped rather than trusting the step above: the one
-      # `cp311-abi3` wheel, a version-specific one per interpreter older than
-      # 3.11, and in each the command.
+      # asserts what it shipped rather than trusting the steps above: the
+      # `cp311-abi3` and `cp315-abi3.abi3t` wheels, `cp314-cp314t` where the
+      # row builds free-threaded 3.14, a version-specific one per interpreter
+      # older than 3.11, in each the command, and in the abi3t wheel the
+      # extension under the name every 3.15 and later loads it by.
       - name: The wheels are the ones the row owes, and carry the command
         shell: bash
         env:
           INTERPRETERS: ${{ matrix.interpreters }}
+          INTERPRETERS_FT: ${{ matrix.interpreters-ft }}
         run: |
           python - <<'EOF'
           import glob
@@ -488,9 +575,11 @@ jobs:
               for version in os.environ["INTERPRETERS"].split()
               if tuple(map(int, version.split("."))) < (3, 11)
           ]
-          expected = {"cp311-abi3"} | {
+          expected = {"cp311-abi3", "cp315-abi3.abi3t"} | {
               f"cp{version.replace('.', '')}-cp{version.replace('.', '')}" for version in older
           }
+          if "3.14t" in os.environ["INTERPRETERS_FT"].split():
+              expected.add("cp314-cp314t")
           # `yggdryl-<version>-<python tag>-<abi tag>-<platform tag>.whl`
           built = [os.path.basename(wheel).split("-")[2:4] for wheel in wheels]
           assert sorted("-".join(tags) for tags in built) == sorted(expected), (
@@ -508,6 +597,15 @@ jobs:
                   (".data/scripts/yggdryl", ".data/scripts/yggdryl.exe")
               ), f"{wheel} carries {scripts}"
               print(f"{wheel} carries {scripts[0]}")
+          abi3t, = [wheel for wheel in wheels if "-cp315-abi3.abi3t-" in wheel]
+          extension = "yggdryl/_native.pyd" if os.name == "nt" else "yggdryl/_native.abi3t.so"
+          modules = [
+              name
+              for name in zipfile.ZipFile(abi3t).namelist()
+              if name.startswith("yggdryl/_native") and name.endswith((".so", ".pyd"))
+          ]
+          assert modules == [extension], f"{abi3t} holds {modules}, not {extension}"
+          print(f"{abi3t} holds {extension}")
           EOF
       # musl's loader refuses an initial-exec thread-local in a module it
       # opens with `dlopen`, and what holds one is its relocations: the five
@@ -515,8 +613,8 @@ jobs:
       # musllinux extensions carried for mimalloc's thread-locals. The
       # `STATIC_TLS` flag is no evidence - x86_64's GNU ld writes it beside
       # them and the aarch64 image's writes none. The smoke test below
-      # imports the stable-ABI wheel; this reads every wheel's extension,
-      # the 3.10 one the smoke test cannot import included.
+      # imports the other wheels; this reads every wheel's extension, the
+      # 3.10 one the smoke test cannot import included.
       - name: The musl extensions hold no initial-exec thread-local
         if: matrix.musl
         shell: bash
@@ -533,42 +631,58 @@ jobs:
       # Every CPython the wheels claim installs one and runs the smoke test in
       # an environment of its own: 3.10 its version-specific wheel, 3.11 to
       # 3.14 the one stable-ABI wheel, which is what proves that wheel loads
-      # on interpreters newer than the one that built it. On the macOS x86_64
-      # row each is a self-contained x86_64 CPython from uv under Rosetta 2,
-      # because the x64 ones setup-python installs do not start there. On a
-      # musl row each is a musl CPython from uv, started by the musl loader
-      # installed first and held to musl by its own `HOST_GNU_TYPE`; PyArrow
-      # publishes musllinux wheels from 20.0 on, so the whole smoke test runs
-      # there.
+      # on interpreters newer than the one that built it, free-threaded 3.14
+      # its own wheel. Each 3.15 in `pythons-extension` installs the abi3t
+      # wheel by name and no PyArrow, so the script loads the extension
+      # module alone, says what it skipped, and on 3.15t asserts the GIL
+      # stays off; a row with `smoke: false` runs that half alone. Each
+      # interpreter is asserted to be the version and the build its name
+      # says. On the macOS x86_64 row each is a self-contained x86_64 CPython
+      # from uv under Rosetta 2, because the x64 ones setup-python installs
+      # do not start there. On a musl row each is a musl CPython from uv,
+      # started by the musl loader installed first and held to musl by its
+      # own `HOST_GNU_TYPE`; PyArrow publishes musllinux wheels from 20.0 on,
+      # so the whole smoke test runs there.
       - name: Install the musl loader
-        if: matrix.smoke && matrix.musl
+        if: matrix.musl
         run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends musl
       - name: Smoke test the wheels
-        if: matrix.smoke
         shell: bash
         run: |
           python -m pip install uv
-          for version in $(printf '%s' "${{ matrix.pythons }}" | sort -V); do
-            spec=$version
+          # A fresh environment for `$1` (`3.14`, `3.14t`), its interpreter in
+          # `$python`.
+          environment() {
+            local version=$1 spec=$1
             if [ "${{ matrix.rosetta }}" = true ]; then
               spec="cpython-$version-macos-x86_64-none"
             elif [ "${{ matrix.musl }}" = true ]; then
               spec="cpython-$version-linux-${{ matrix.target }}-musl"
             fi
-            venv="$RUNNER_TEMP/smoke-$version"
+            local venv="$RUNNER_TEMP/smoke-$version"
             uv venv --seed --python "$spec" "$venv"
             python="$venv/bin/python"
             [ -x "$python" ] || python="$venv/Scripts/python.exe"
-            "$python" -c "import platform, sys; print(sys.version, platform.machine()); assert '%d.%d' % sys.version_info[:2] == '$version'"
+            "$python" -c "import platform, sys, sysconfig; print(sys.version, platform.machine()); free = 't' if sysconfig.get_config_var('Py_GIL_DISABLED') == 1 else ''; assert '%d.%d%s' % (*sys.version_info[:2], free) == '$version'"
             if [ "${{ matrix.rosetta }}" = true ]; then
               "$python" -c 'import platform; assert platform.machine() == "x86_64", platform.machine()'
             fi
             if [ "${{ matrix.musl }}" = true ]; then
               "$python" -c 'import sysconfig; host = sysconfig.get_config_var("HOST_GNU_TYPE"); assert host.endswith("-musl"), host'
             fi
-            "$python" -m pip install "pyarrow>=18" "typing_extensions>=4.4" --only-binary ":all:"
-            "$python" -m pip install --no-index --find-links dist yggdryl
-            "$python" scripts/check_wheel_smoke.py
+          }
+          if [ "${{ matrix.smoke }}" = true ]; then
+            for version in $(printf '%s' "${{ matrix.pythons }}" | sort -V); do
+              environment "$version"
+              "$python" -m pip install "pyarrow>=18" "typing_extensions>=4.4" --only-binary ":all:"
+              "$python" -m pip install --no-index --find-links dist yggdryl
+              "$python" scripts/check_wheel_smoke.py
+            done
+          fi
+          for version in $(printf '%s' "${{ matrix.pythons-extension }}" | sort -V); do
+            environment "$version"
+            "$python" -m pip install --no-deps dist/yggdryl-*-cp315-abi3.abi3t-*.whl
+            "$python" scripts/check_wheel_smoke.py --extension-only
           done
       # Each platform builds and tests its own native module; the npm package
       # ships every one of them, and the generated loader picks the matching

@@ -145,23 +145,65 @@ gives them back. It imports `yggdryl` from the environment and never
 source tree beside it - install a wheel first, which `maturin develop` also
 satisfies.
 
+It runs in one of two halves, and the caller says which. With no flag it runs
+all of it: the Iceberg round trip and the table served over XMLA by the
+`yggdryl` command the wheel installed. Under `--extension-only` it loads the installed
+`yggdryl/_native*` extension module alone - `import yggdryl` imports PyArrow -
+parses a datatype through it, finds the command beside the interpreter, and
+prints one `SKIPPED` line naming what did not run and why. On a free-threaded
+interpreter both halves assert the GIL is still off once the extension is
+loaded, because an extension that does not declare itself safe without the GIL
+turns it back on with nothing worse than a warning.
+
+Every platform ships four wheels, Windows arm64 the last three:
+
+| Wheel | Loaded by | Smoked |
+| --- | --- | --- |
+| `cp310-cp310` | CPython 3.10 | whole, but not on musllinux |
+| `cp311-abi3` | every GIL CPython from 3.11 | whole, on 3.11 to 3.14 |
+| `cp314-cp314t` | free-threaded CPython 3.14 | whole, on 3.14t |
+| `cp315-abi3.abi3t` | every CPython from 3.15, GIL or free-threaded | the extension alone, on 3.15 and 3.15t |
+
+A free-threaded CPython loads no `abi3` wheel, so 3.14t has a wheel of its
+own, and from 3.15 PEP 803's free-threaded stable ABI serves both builds; one
+maturin invocation builds one stable-ABI family, so the last two are a second
+build. Free threading starts at 3.14: CPython declared it supported there and
+PyO3 dropped the experimental 3.13t with it (PyO3 #5865), so every PyO3 that
+builds abi3t refuses a free-threaded CPython below 3.14 (`pyo3-ffi`'s
+`MIN_FREE_THREADED_VERSION`); 3.12 has no free-threaded build at all (PEP 703's
+first is 3.13), and the abi3t wheel is 3.15's - no earlier CPython loads it -
+so a GIL-enabled 3.12 or 3.13 loads the `cp311-abi3` wheel and a free-threaded
+3.13 has none. PyArrow publishes a wheel for 3.14t on every platform it
+publishes for at all and for 3.15 on none yet, which is why 3.15 runs the extension-only half
+under `--extension-only` - the row's statement, never the environment's, so a
+lane owing the whole smoke fails on a missing or broken PyArrow, and the day
+PyArrow ships a cp315 wheel the row drops the flag.
+
 The release runs it against every wheel it is about to publish that a runner can
-import - each stable-ABI wheel but the Windows arm64 one, which has no PyArrow
-wheel to run against, and each CPython 3.10 wheel but the two musllinux ones,
-whose extension the release reads for initial-exec thread-locals instead - and
-CI's Python lane runs it against the wheel that job builds, under both PyArrow
-versions the binding supports. It lived in a `release.yml` heredoc until a
-renamed module reached 0.1.9 and stopped the release there, which is why it is a
-file both sides share. That release stopped quietly - the wheels failed, the two
-jobs below them were skipped rather than failed, and the version reached
-crates.io and npm without reaching PyPI or growing a tag. It was finished four
-commits later, from the tree `main` held by then, so 0.1.9's wheel is not built
-from the tree its crate and its npm package are: one number came to name two
-libraries, which is the whole reason the rules below exist. A release that was
-going to publish and did not now files an issue naming what each registry holds,
-and `preflight` refuses a branch push that would publish a version some registry
-already carries - the tag is what pins a tree, so a half-published version is
-finished from the commit it was built at.
+load: the whole of it on each CPython PyArrow has a wheel for, and the extension
+alone on 3.15 and 3.15t. Four wheels are never loaded - the Windows arm64
+`cp311-abi3` and `cp314-cp314t` ones, whose platform PyArrow publishes no wheel
+for (that row loads its abi3t extension on 3.15 and 3.15t alone), and the two
+musllinux CPython 3.10 ones, whose extension the release reads for initial-exec
+thread-locals instead. CI's Python lane runs it against the wheel that job
+builds, under both PyArrow versions the binding supports, and CI's free-threaded
+lane builds the `cp314-cp314t` and `cp315-abi3.abi3t` wheels, runs the script
+and the whole suite on 3.14t - `polars` publishes no free-threaded wheel, so its
+suites skip there and nowhere else - and loads the abi3t extension on both 3.15
+builds.
+
+The script lived in a `release.yml` heredoc until a renamed module reached 0.1.9
+and stopped the release there, which is why it is a file both sides share. That
+release stopped quietly - the wheels failed, the two jobs below them were
+skipped rather than failed, and the version reached crates.io and npm without
+reaching PyPI or growing a tag. It was finished four commits later, from the
+tree `main` held by then, so 0.1.9's wheel is not built from the tree its crate
+and its npm package are: one number came to name two libraries, which is the
+whole reason the rules below exist. A release that was going to publish and did
+not now files an issue naming what each registry holds, and `preflight` refuses
+a branch push that would publish a version some registry already carries - the
+tag is what pins a tree, so a half-published version is finished from the commit
+it was built at.
 
 ## Exchange formats meet an outside implementation
 

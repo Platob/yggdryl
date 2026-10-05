@@ -19,6 +19,9 @@ Smoke what you changed while you are changing it, then push and let CI run the m
     .venv/bin/python -m maturin develop
     .venv/bin/python -m pytest
     .venv/bin/python -m mypy --strict yggdryl tests/typing_bindings.py tests/typing_fields.py
+    # free threading: the same suite on a free-threaded 3.14 (no polars wheel there)
+    .venv-ft/bin/python -m maturin develop
+    .venv-ft/bin/python -m pytest
     ```
 
 === "JavaScript"
