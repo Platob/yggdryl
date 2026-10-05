@@ -1,6 +1,6 @@
 ---
 name: yggdryl-expressions
-description: Parse, bind and evaluate yggdryl expressions - Term, Filter, Selector, Plan, Expression, FieldPath - over rows, Arrow batches and streams, and push where/select into record reads. Use when writing a where or select clause or an SQL-like plan (insert into, upsert ... by, delete from, execute), filtering or projecting Arrow data (apply_arrow_reader / applyArrowReader, apply_arrow_batch / applyArrowBatch, apply_records / applyRecords), binding parameters, pruning by statistics (Bounds, statistics_prune), partition_split, user-defined functions, derived (TRANSFORM:expression) columns or nested field paths. Covers Rust, Python and Node.js.
+description: Parse, bind and evaluate yggdryl expressions - Term, Filter, Selector, Plan, Expression, FieldPath - over rows, Arrow batches and streams, and push where/select into record reads. Use when writing a where or select clause or an SQL-like plan (insert into, upsert ... by, delete from, joins - left/semi/anti join ... using/on - execute), filtering or projecting Arrow data (apply_arrow_reader / applyArrowReader, apply_arrow_batch / applyArrowBatch, apply_records / applyRecords), bucketing time (time_bucket, the epoch periods years ... minutes(x, n)), binding parameters, pruning by statistics (Bounds, statistics_prune), partition_split, user-defined functions, derived (TRANSFORM:expression) columns or nested field paths. Covers Rust, Python and Node.js.
 ---
 
 # Yggdryl expressions
@@ -51,20 +51,23 @@ reader, statistics, or media pushdown).
 | split partition / row halves | `bound.partition_split()` -> `Residual` | `bound.partition_split()` -> `(answerable, remaining)` | `bound.partitionSplit()` -> `{ answerable, remaining }` |
 | push into a record read | `options.with_filter(f)?.with_select(s)?` + `read_arrow_reader(&options)` | `read_arrow_reader(filter=f, select=s)` | `readArrowReader({ filter: f, select: s })` |
 | run a plan on storage | `plan.execute()?` (paths resolve in `SystemWarehouse`), `plan.execute_in(&warehouse)?` | `plan.execute()`, `plan.execute_in(warehouse)` | `plan.execute()`, `plan.executeIn(warehouse)` |
-| name a source | `from 'file:///x.csv'`, `from /lake/x.csv` (unquoted after `from`/`into`), `from lake.eu.trades` (a registered table) | the same text | the same text |
+| name a source | `from 'file:///x.csv'`, `from /lake/x.csv` (unquoted after `from`/`into`/`join`), `from lake.eu.trades` (a registered table) | the same text | the same text |
+| join in a plan | `"select * from t left join v using (id)".parse::<Plan>()?`, `Plan::new().read_from(t).join(JoinKind::Left, v, "id")?`, `plan.joins()` | `Plan("select * from t left join v using (id)")` (text only: no builder, no `joins`) | `new Plan('select * from t left join v using (id)')` (text only) |
+| bucket or count an instant | `"time_bucket('15 minutes', ts) as b, minutes(ts, 15) as q".parse::<Selector>()?` | `Selector("time_bucket('15 minutes', ts) as b")` | `new Selector("time_bucket('15 minutes', ts) as b")` |
+| partition or window by a period | `field.with_partition_by(["minutes(ts, 15)".parse()?])?`, `serie.window_by("time_bucket('15 minutes', ts)", false)?` | `field.with_partition_by(["minutes(ts, 15)"])`, `serie.window_by(...)` | `field.withPartitionBy(['minutes(ts, 15)'])`, `serie.windowBy(...)` |
 | resolve a path | `FieldPath::from_str(p)?`, `apply_scalar(&root, &v)` | `FieldPath(p)` | `new FieldPath(p)` |
 | register a function | `register_function(Arc::new(f))?` | `@user_defined_function(namespace=...)` | not bound (parses, bind refuses) |
 | store a derivation on a schema | `sel.into_field(&root)?`, `Selector::from_field(&f)` | `sel.into_field(root)`, `Selector.from_field(f)` | `sel.intoField(root)`, `Selector.fromField(f)` |
 | recompute stored derivations | `stored.as_transform().apply_arrow_batch(&b)?` | `stored.transform.apply_arrow_batch(b)` | not bound |
-| see what runs | `bound.explain()` | `bound.explain()` | `bound.explain()` |
+| see what runs | `bound.explain()`, a plan `Expression::from(plan).explain()` | `bound.explain()`, `plan.explain()` | `bound.explain()`, `plan.explain()` |
 | canonical text / document | `to_string()`, `into_json()?`, `from_json(s)?` | `str(x)`, `into_json()`, `from_json(s)` | `toString()`, `intoJson()`, `fromJson(s)` |
 
 `x` is any clause: `Filter`, `Selector`, `Plan` or `Expression`, with two
 exceptions: a `Plan`'s output schema is `plan.field_from(root)` /
 `plan.fieldFrom(root)` (Rust also `apply_datatype`), never `apply_field`; and
-a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
-`Expression::from(plan)` for `apply_arrow_batch`, `apply_records` or
-`apply_field`.
+a Rust `Plan` answers only `apply_arrow_reader`, `execute` and `execute_in` -
+convert with `Expression::from(plan)` for `apply_arrow_batch`,
+`apply_records`, `apply_field` or `explain`.
 
 ## Rules for fast, correct use
 
@@ -94,12 +97,15 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
    | a projection of bare columns | arrays reordered, no buffer touched |
    | `offset`, `limit` | slice views over the batches they cross |
    | `order by` | the stream collected once, one sort, one `take` |
+   | `join` | each source read whole and held, the stream probed batch by batch |
    | any of the above from JavaScript | copied through Arrow IPC in and out |
 
-5. **`order by` is the only section that collects.** `limit` and `offset` are
-   slices; `execute` pushes them into the read when nothing orders, as the
-   record options' `max_row_size` and `row_offset`. Filter first and order
-   only when the answer needs it.
+5. **`order by` is the only section that collects the stream.** `limit` and
+   `offset` are slices; `execute` pushes them into the read when nothing
+   orders, as the record options' `max_row_size` and `row_offset`. Filter
+   first and order only when the answer needs it. A `join` holds its source
+   whole: keep the joined source the smaller side and narrow it first
+   (`join (select ... where ...) using (k)`).
 6. **Statistics answer `false` only when no row can match.** `true` means
    "must read", never "matches"; a user function is unknown to statistics, so
    it forces a row read and never a wrong skip.
@@ -135,8 +141,24 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
     column nor `DIGEST:` holder (`yggdryl-hashing`). Keep the source columns in
     the selector: the stored field is what the recompute reads.
 13. **DuckDB names the vocabulary**: `* exclude (...)`, `unnest`/`explode`,
-    `in`, `between`, `is null`, `case when`, `asc`/`desc nulls first`. Joins,
-    aggregates, windows and regexes are refused, not emulated.
+    `in`, `between`, `is null`, `case when`, `asc`/`desc nulls first`,
+    `time_bucket`, `left`/`semi`/`anti join ... using`. Aggregates, window
+    functions, `group by` and regexes are refused, not emulated.
+14. **A join runs in the plan, never in the read.** `execute` (or
+    `apply_arrow_reader` on the left stream) joins each source left to right
+    as `Serie::join_with` does (`yggdryl-arrow`); only the first join's
+    `key in (<distinct build keys>)` (one key, `inner`/`right`/`semi`, at most
+    10,000 keys) and, unless a join is `right` or `full`, the left-only
+    `where` conjuncts reach the left read.
+    Record options hold no join (`set_plan` / `options.plan` refuse it at
+    `$.join`), and `field_from` refuses a join whose right side is a bare
+    target at `$.join` - typing never reads a source.
+15. **Bucket with `time_bucket`, count with an epoch period.** `year`,
+    `month`, `day`, `hour` read a calendar field; `years` ... `minutes(x, n)`
+    count `int32` periods since 1970 and `time_bucket(width, x)` floors keeping
+    `x`'s datatype. The periods and `time_bucket` are monotone, so a range on
+    `x` prunes a predicate on them, and they are the keys `PARTITION:by` and
+    `window_by` take; a calendar part is not monotone and stays opaque.
 
 ## Pitfalls
 
@@ -158,6 +180,9 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
 | JS `bound.matches(Scalar.from({ a: 1 }))` | `bound.matches(Scalar.from([1]))` - a row is a sequence in schema order |
 | reading `statistics_prune(...) == true` as "the file matches" | it means "cannot rule out"; only `false` skips |
 | registering a function from JavaScript | register in Rust or Python; JS parses `ns.fn(x)` and refuses it at bind |
+| `join v on t.venue = v.mic` with `t`, `v` as table aliases | `join v on venue = mic` (left term over the rows so far, right over the source) or `using (venue)`: a path names a column, so `t.venue` is column `t`'s child |
+| `time_bucket('15m', ts)` (refused: a minute or a month) | `'15 minutes'`, `'15min'`, `'900s'`, `'PT15M'` |
+| `month(ts)` as a partition or bucket key (repeats every year) | `months(ts)` - months since 1970 - or a fixed width such as `time_bucket('1 week', ts)` |
 
 ## Language references
 
@@ -175,13 +200,15 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
 - Selectors, `* exclude`, declared columns: https://platob.github.io/yggdryl/expression/selectors/
 - Filters and pushdown levels: https://platob.github.io/yggdryl/expression/filters/
 - User functions: https://platob.github.io/yggdryl/expression/functions/
+- Calendar parts, epoch periods, `time_bucket`: https://platob.github.io/yggdryl/expression/functions/#calendar-parts-and-epoch-periods
 - Plans, verbs, locations, `execute`: https://platob.github.io/yggdryl/expression/plans/
+- Joins in a plan: https://platob.github.io/yggdryl/expression/plans/#joins
 - Evaluation tiers, statistics, Iceberg scans: https://platob.github.io/yggdryl/expression/evaluate/
 - Paths: https://platob.github.io/yggdryl/types/paths/
 - Record options and partition pruning: https://platob.github.io/yggdryl/media/#options,
   https://platob.github.io/yggdryl/holder/#pruning-and-filtering
 - Sibling skills: `yggdryl-records` (where the pushed-down read runs),
   `yggdryl-types` (the `Field` a clause binds against),
-  `yggdryl-arrow` (`BatchReader`, `Serie`, casts; references/cast-rules.md
-  for the cast `Field::apply_arrow_batch` runs),
+  `yggdryl-arrow` (`BatchReader`, `Serie`, casts, `join_with`, `window_by`;
+  references/cast-rules.md for the cast `Field::apply_arrow_batch` runs),
   `yggdryl-hashing` (`stable_hash`, the `DIGEST:` holders its `digest` view fills).

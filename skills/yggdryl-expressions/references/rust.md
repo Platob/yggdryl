@@ -334,6 +334,107 @@ assert_eq!(built.to_string(), "select id, name where id > 1 limit 10");
 std::fs::remove_dir_all(&root)?;
 ```
 
+## Join sources in a plan
+
+A `join` clause after `from` joins each source in turn, as `Serie::join_with`
+does: the source is read whole and held, the left stream probed; `using`
+keys are coalesced. Only the first join's keys and the left-only `where`
+reach the left read, so a `where` or `order by` may name a right column.
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, StringArray};
+use yggdryl::expression::{Plan, Target};
+use yggdryl::{Expression, JoinKind, Url};
+
+let root = std::env::temp_dir().join(format!("ygg-skill-expr-join-{}", std::process::id()));
+std::fs::create_dir_all(&root)?;
+let trades = Url::from_path(root.join("trades.arrow"))?;
+let venues = Url::from_path(root.join("venues.arrow"))?;
+let stored = [
+    (&trades, RecordBatch::try_from_iter([
+        ("id", Arc::new(Int64Array::from(vec![1_i64, 2, 3])) as ArrayRef),
+        ("venue", Arc::new(StringArray::from(vec!["XNAS", "XPAR", "XLON"])) as ArrayRef),
+    ])?),
+    (&venues, RecordBatch::try_from_iter([
+        ("venue", Arc::new(StringArray::from(vec!["XNAS", "XPAR"])) as ArrayRef),
+        ("city", Arc::new(StringArray::from(vec!["New York", "Paris"])) as ArrayRef),
+    ])?),
+];
+for (url, batch) in stored {
+    let write: Plan = format!("insert overwrite '{url}'").parse()?;
+    for written in write.apply_arrow_reader(yggdryl::arrow::batch_reader(batch.schema(), [batch]))? {
+        written?;
+    }
+}
+
+let joined: Plan = format!("select id, city from '{trades}' left join '{venues}' using (venue) order by id").parse()?;
+assert_eq!(joined.joins()[0].how(), JoinKind::Left);
+let mut cities = Vec::new();
+for batch in joined.execute()? {
+    let batch = batch?;
+    let column = batch.column(1).as_any().downcast_ref::<StringArray>().ok_or("utf8")?;
+    cities.extend(column.iter().map(|city| city.map(str::to_owned)));
+}
+assert_eq!(cities, [Some("New York".to_owned()), Some("Paris".to_owned()), None]);
+assert!(Expression::from(joined).explain().contains("left join"));
+
+// The rows no venue matches.
+let unmatched: Plan = format!("select id from '{trades}' anti join '{venues}' using (venue)").parse()?;
+let mut ids = Vec::new();
+for batch in unmatched.execute()? {
+    let batch = batch?;
+    ids.extend(batch.column(0).as_any().downcast_ref::<Int64Array>().ok_or("int64")?.values().iter().copied());
+}
+assert_eq!(ids, [3]);
+
+// Built section by section; a bare `join` prints as `inner join`.
+let built = Plan::new().read_from(Target::parse("trades")?).join(JoinKind::Anti, Target::parse("halted")?, "id")?;
+assert_eq!(built.to_string(), "select * from trades anti join halted using (id)");
+assert_eq!("select * from t join v on venue = mic".parse::<Plan>()?.to_string(), "select * from t inner join v on venue = mic");
+std::fs::remove_dir_all(&root)?;
+```
+
+## Bucket time and prune through the bucket
+
+`time_bucket(width, x)` floors an instant keeping its datatype; the epoch
+periods `years` ... `minutes(x, n)` count `int32` periods since 1970. Both are
+monotone, so a footer's range on `x` prunes a predicate on them.
+
+```rust
+use yggdryl::expression::{Bounds, Term};
+use yggdryl::{DataType, Scalar, Selector, StructType, TimeUnit, Timezone};
+
+let ns = DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?;
+let schema = DataType::from(StructType::from_fields([ns.clone().required_field("ts")])?).required_field("rows");
+
+let selector: Selector = "time_bucket('15 minutes', ts) as bucket, minutes(ts, 15) as q, years(ts) as y".parse()?;
+let published = selector.apply_field(&schema)?;
+assert_eq!(published.fields()[0].dtype(), &ns);
+assert_eq!(published.fields()[1].dtype(), &DataType::Int32);
+// `'15m'` is a minute or a month, so refused; `minutes` always writes its step.
+assert!("time_bucket('15m', ts)".parse::<Selector>()?.apply_field(&schema).is_err());
+assert!("minutes(ts)".parse::<Selector>().is_err());
+
+// 2024-01-01T00:14:59.999999999Z: bucket 00:00, quarter hour 1_893_408, year 54.
+let at = |count| Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC);
+let start = 1_704_067_200_000_000_000_i64;
+let answered = selector.apply_scalar(&schema, &Scalar::from_sequence([at(start + 899_999_999_999)?]))?;
+let cells = answered.as_sequence().ok_or("a row")?;
+assert_eq!(cells[0], at(start)?);
+assert_eq!(cells[1], Scalar::from(1_893_408));
+assert_eq!(cells[2], Scalar::from(54));
+
+// A file holding 00:00 to 00:29:59.999999999 spans the buckets 00:00 and 00:15;
+// `false` proves no row matches and skips it, `true` only fails to rule it out.
+let bounds = Bounds::new(Some(10)).with_column("ts", Some(at(start)?), Some(at(start + 1_799_999_999_999)?), Some(0));
+let may_match = |text: &str| -> yggdryl::Result<bool> { Ok(text.parse::<Term>()?.bind(&schema)?.statistics_prune(&bounds)) };
+assert!(!may_match("time_bucket('15 minutes', ts) = '2024-01-01T00:30:00Z'")?);
+assert!(!may_match("minutes(ts, 15) > 1893409")?);
+assert!(may_match("time_bucket('15 minutes', ts) = '2024-01-01T00:15:00Z'")?);
+```
+
 ## Address a nested value by path
 
 A `FieldPath` is parsed once at its boundary and applied many times; quoting
@@ -494,9 +595,9 @@ assert!("price > 1".parse::<Expression>().is_err(), "an Expression names its cla
 - `Plan::execute` needs the `parquet` feature to read `.parquet` sources and
   `s3` for object-store URLs.
 - `statistics_prune` returning `true` means "must read", never "matches".
-- A `Plan` answers only `apply_arrow_reader`, `execute`, `field_from` and
-  `apply_datatype`; `Expression::from(plan)` reaches `apply_arrow_batch`,
-  `apply_records` and `apply_field`.
+- A `Plan` answers only `apply_arrow_reader`, `execute`, `execute_in`,
+  `field_from` and `apply_datatype`; `Expression::from(plan)` reaches
+  `apply_arrow_batch`, `apply_records`, `apply_field` and `explain`.
 - `bind_with` ignores an entry no `:name` reads; compare the keys against
   `parameters()` when a typo must fail.
 - An untyped `9.5` literal against a `decimal` column shares no type with

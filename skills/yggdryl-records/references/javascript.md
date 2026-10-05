@@ -363,6 +363,32 @@ assert.deepEqual(Workbook.open(file).sheetNames, ['Trades', 'Copy'])
 fs.rmSync(root, { recursive: true, force: true })
 ```
 
+## XML for Analysis: a rowset document as records
+
+A `.xmla` handle writes the `xsd:schema` and one `<row>` per row, a null cell an absent element, and reads it back with no declaration; the bare `root` rowset a client saved has no schema, so its read declares the `field`. Choosing another envelope is Rust-only (`XmlaOptions`).
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const { Field, IOBase, fields } = require('yggdryl')
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
+const handle = new IOBase(path.join(root, 'trades.xmla'))
+handle.overwriteRecords([{ id: 1n, symbol: 'AAPL' }, { id: 2n, symbol: null }])
+assert.ok(handle.readBytes().toString().includes('<row><id>2</id></row>'))
+assert.deepEqual([...handle.readRecords()], [{ id: 1n, symbol: 'AAPL' }, { id: 2n, symbol: null }])
+
+const bare = new IOBase(path.join(root, 'saved.xmla'))
+bare.writeBytes(Buffer.from('<root><row><id>1</id></row></root>'))
+assert.throws(() => bare.readArrowField(), /carries no schema/)
+const field = fields.struct('row', [new Field('id', 'int64', false), Field.from('symbol: utf8')], { nullable: false })
+assert.deepEqual([...bare.readRecords({ field })], [{ id: 1n, symbol: null }])
+
+fs.rmSync(root, { recursive: true, force: true })
+```
+
 ## Read a log file as typed rows
 
 A `.log`/`.txt` handle reads one record per line (or per framed chain with `framing`): the fifteen event columns, `body`, then one column per named `rowheader` capture, typed by `autotype` (on by default).
@@ -391,6 +417,30 @@ assert.deepEqual(rows.map((row) => row.seqnum), [1n, 3n])
 // One-off: the same property in the options object, no TextOptions value.
 const levels = new IOBase(source).readArrowReader({ rowheader: '^\\[(?<level>[A-Z]+)\\] ' })
 assert.deepEqual(levels.intoTable().schema.fields.slice(-2).map((field) => field.name), ['body', 'level'])
+
+fs.rmSync(root, { recursive: true, force: true })
+```
+
+## Read log lines as values, not rows
+
+`readTextLines` answers each line as a `TextLine` - its `body` past the row header, the header's `captures`, its place (`seqnum`) and the `key=value` entries its body states, resolved on first ask - with no Arrow built. It reads every line; `filter` and `select` belong to the record reads.
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const { IOBase } = require('yggdryl')
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
+const source = path.join(root, 'app.log')
+fs.writeFileSync(source, '[INFO] SYMBOL=AAPL|QTY=100\n[WARN] SYMBOL=MSFT|QTY=5\n')
+
+const lines = [...new IOBase(source).readTextLines({ rowheader: '^\\[(?<level>[A-Z]+)\\] ' })]
+assert.deepEqual(lines.map((line) => line.body), ['SYMBOL=AAPL|QTY=100', 'SYMBOL=MSFT|QTY=5'])
+assert.deepEqual(lines[1].captures, ['WARN'])
+assert.equal(lines[1].seqnum, 1n)
+assert.equal(lines[1].getEntryByPath('SYMBOL').value, 'MSFT')
 
 fs.rmSync(root, { recursive: true, force: true })
 ```
@@ -484,6 +534,48 @@ assert.equal([...lake.childrenWhere({ year: '2024' })].length, 1)
 fs.rmSync(root, { recursive: true, force: true })
 ```
 
+## Overwrite some partitions, keep the rest
+
+An overwrite of a partitioned folder replaces the partitions its rows reach plus those its `filter` pins; every other leaf is kept, so a source with no row replaces nothing outside a pinned scope. `clear()` is what empties. An Iceberg table follows the same rule (`overwriteWhere`, below).
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const arrow = require('apache-arrow')
+const { Field, IOBase, MimeType, RecordOptions, fields } = require('yggdryl')
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
+fs.mkdirSync(path.join(root, 'year=2024'))
+const schema = fields.struct('row', [new Field('price', 'int64', false), new Field('year', 'int32', false)], {
+  nullable: false,
+})
+const rows = (prices, years) =>
+  new arrow.Table({
+    price: arrow.vectorFromArray(prices, new arrow.Int64()),
+    year: arrow.vectorFromArray(years, new arrow.Int32()),
+  })
+const lake = new IOBase(root)
+const options = RecordOptions.forMimeType(MimeType.ARROW_STREAM).withField(schema)
+const count = () => lake.readArrowReader(options).intoTable().numRows
+lake.overwriteArrowTable(rows([10n, 20n], [2024, 2025]), options)
+
+// Only 2024 is reached, so 2025 keeps its row.
+lake.overwriteArrowTable(rows([30n], [2024]), options)
+assert.equal(count(), 2)
+
+// A pinned scope is replaced whatever the rows reach: no row empties 2025.
+lake.overwriteArrowTable(rows([], []), options, { filter: 'year = 2025' })
+assert.equal(count(), 1)
+
+// clear() empties the folder and keeps it.
+lake.clear()
+assert.equal([...lake.ls(true, false)].length, 0)
+
+fs.rmSync(root, { recursive: true, force: true })
+```
+
 ## Derive a partition column from another column
 
 `PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `withPartitionBy` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata. The field views have no `applyArrowBatch`: the root's `Selector` computes the derived column.
@@ -545,6 +637,48 @@ assert.equal(table.scanAt(first).intoTable().numRows, 3) // time travel
 // The folder is also an ordinary record handle: filter and select push down.
 const pushed = new IOBase(root).readArrowReader({ select: ['id'], filter: "venue = 'XNYS'" })
 assert.equal(pushed.intoTable().numRows, 1)
+
+fs.rmSync(path.dirname(root), { recursive: true, force: true })
+```
+
+## Iceberg: replace a partition, tag, expire, compact
+
+`overwrite` replaces the partitions its rows reach; `overwriteWhere` the partitions its pairs name, whatever the rows reach (`null`: the whole table). A tag or branch keeps reading its snapshot (`scanRef`); `expireSnapshots` drops snapshots retention no longer keeps, never a ref's or the current one; `compact()` merges a partition's undersized files (format v2 and below). `scanWhere`, `mergeWhere` and `setOptions` complete the set; snapshot ids are `bigint`.
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const arrow = require('apache-arrow')
+const { Field, fields, iceberg } = require('yggdryl')
+
+const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-')), 'trades')
+const schema = fields.struct('row', [new Field('id', 'int64', false), Field.from('venue: utf8')], { nullable: false })
+const rows = (ids, venues) =>
+  new arrow.Table({
+    id: arrow.vectorFromArray(ids, new arrow.Int64()),
+    venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
+  })
+
+const table = iceberg.IcebergTable.create(root, schema, ['venue'])
+table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+table.createTag('v1', table.currentSnapshot.snapshotId)
+
+// Only XNAS is reached, so XNYS keeps its row.
+table.overwrite(rows([3n], ['XNAS']))
+const second = table.currentSnapshot.snapshotId
+assert.equal(table.scan().intoTable().numRows, 2)
+// A named partition is replaced whatever the rows reach: no row empties it.
+table.overwriteWhere({ venue: 'XNYS' }, [])
+assert.equal(table.scanWhere({ venue: 'XNYS' }).intoTable().numRows, 0)
+assert.equal(table.scanRef('v1').intoTable().numRows, 2) // the tag still reads its snapshot
+
+assert.equal(table.inspectHistory().intoTable().numRows, 3)
+assert.deepEqual(table.expireSnapshots(1, undefined, [second]), [second])
+table.append(rows([4n], ['XNAS']))
+const compaction = table.compact()
+assert.deepEqual([compaction.filesBefore, compaction.filesAfter], [2, 1])
 
 fs.rmSync(path.dirname(root), { recursive: true, force: true })
 ```

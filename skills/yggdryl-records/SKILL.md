@@ -1,6 +1,6 @@
 ---
 name: yggdryl-records
-description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC/Feather, Parquet, Avro, CSV/TSV, Excel workbooks (.xlsx, one worksheet as records and the Workbook/Sheet/Cell random-access model), plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_serie / write_serie / overwrite_serie / append_serie / merge_serie (a Serie, ChunkedSerie or SerieReader as one SerieSource), read_arrow_field / row_size (a file's schema or row count without reading it), pandas or polars frames to and from a file (read_polars_frame, overwrite_pandas_frame, scan_polars), RecordOptions (field, safe, select, filter, merge_by, max_row_size, row_offset, commit_batch_num, num_threads, plan), TextOptions rowheader, iceberg IcebergTable create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
+description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC/Feather, Parquet, Avro, CSV/TSV, Excel workbooks (.xlsx, one worksheet as records and the Workbook/Sheet/Cell random-access model), XML for Analysis rowsets (.xmla), plain-text logs (as rows, or as TextLine values through read_text_lines), Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert), partition-scoped overwrite and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_serie / write_serie / overwrite_serie / append_serie / merge_serie (a Serie, ChunkedSerie or SerieReader as one SerieSource), read_arrow_field / row_size (a file's schema or row count without reading it), pandas or polars frames to and from a file (read_polars_frame, overwrite_pandas_frame, scan_polars), RecordOptions (field, safe, select, filter, merge_by, max_row_size, row_offset, commit_batch_num, num_threads, plan), TextOptions rowheader, iceberg IcebergTable create/append/merge/scan, overwrite_where / scan_where, tags and branches (create_tag, scan_ref), expire_snapshots, compact, inspect_history, partition pruning, which partitions an overwrite replaces (and clear to empty), or picking an encoding by suffix. Covers Rust, Python and Node.js.
 ---
 
 # Records
@@ -41,24 +41,31 @@ medium does the work before a byte is decoded.
 | one setting for one call | `options.clone().with_select(["id"])?.with_filter("id > 3")?` | `read_arrow_reader(select=["id"], filter="id > 3")` | `readArrowReader({ select: ['id'], filter: 'id > 3' })` |
 | sections as one plan | `options.with_plan("select id where x > 1 limit 5")?` | `options.plan = "select ..."` | `options.withPlan('select ...')` |
 | Parquet page codec | `options.set_parquet_compression_name("zstd(3)")?`, `ParquetOptions::new().with_compression(..)` | `compression="zstd(3)"` | `{ compression: 'zstd(3)' }`, `withCompression` |
-| Parquet footer statistics | `read_parquet_statistics()?` | `read_parquet_statistics()` | `readParquetStatistics()` |
+| Parquet footer statistics | `read_parquet_statistics()?` (its `split_offsets()`, `null_count("id")`), `read_parquet_geospatial_statistics("geom")?` | `read_parquet_statistics()`, `read_parquet_split_offsets()`, `read_parquet_null_count("id")`, `read_parquet_geospatial_statistics("geom")` | `readParquetStatistics()`, `readParquetGeospatialStatistics('geom')` |
 | Avro bytes with a reader schema | `avro::read_container_resolved(&h, &schema)?` | `avro.loads(data, reader_schema=...)` | `avro.loads(data, { readerSchema })` |
+| Avro blocks one at a time, a single-object datum | `avro::read_blocks(&h)?`, `avro::into_single_object_vec(&schema, &value)?`, `avro::from_single_object_slice(&bytes, &schema)?` | `avro.blocks(data)` (`count`, `rows()`), `avro.dumps_single(v, schema)`, `avro.loads_single(b, schema)` | `avro.blocks(data)` (`count`, `rows()`), `avro.dumpsSingle(v, schema)`, `avro.loadsSingle(b, schema)` |
+| an XML for Analysis rowset (`.xmla`, `application/xmla+xml`) | the doors above on a `.xmla` name or `MimeType::XMLA`; `xmla::{Xmla, XmlaOptions}` for the envelope (`with_method`, `without_envelope`, `with_content`) | the doors above on `IOBase("trades.xmla")` (the envelope options are Rust only) | the doors above on `new IOBase('trades.xmla')` (the envelope options are Rust only) |
 | Excel worksheet, header row and range on a `.xlsx` handle | `options.set_excel_sheet(Some("Trades"))?`, `set_header(false)?`, `set_excel_range(Some("A2:D".parse()?))?` | `read_arrow_reader(sheet="Trades", header=False, range="A2:D")` | `readArrowReader({ sheet: 'Trades', header: false, range: 'A2:D' })` |
 | any cell of a workbook, a sheet as a column set | `Workbook::open(h)?.sheet_mut("Trades")?.set_cell("B2".parse()?, 2.5)?`, `sheet.into_serie(Some(&field), true, Default::default())?`, `Sheet::from_serie("Notes", &serie, true)?` | `Workbook.open(p)["Trades"]["B2"]`, `sheet["B2"] = 2.5`, `sheet.into_serie(field)`, `Sheet.from_serie("Notes", table)` | `Workbook.open(p).sheet('Trades').cell('B2')`, `sheet.setCell('B2', 2.5)`, `sheet.intoSerie(field)`, `Sheet.fromSerie('Notes', table)` |
 | log lines as typed rows | `handle.into_text_with(TextOptions)` | `IOBase(p).into_text(TextOptions())`, or `read_arrow_reader(rowheader=...)` | `new IOBase(p).intoText(opts)`, or `readArrowReader({ rowheader })` |
+| log lines as `TextLine` values - body, captures, `key=value` entries, no Arrow | `handle.into_text_with(o).read_text_lines()?`, `text::read_text_lines(&h, &o)?`; `line.body()`, `capture(0)`, `seqnum()?`, `get_entry_by_path(&path)` | `read_text_lines(rowheader=...)` -> `TextLine`: `body`, `captures`, `seqnum`, `get_entry_by_path("k")` | `readTextLines({ rowheader })` -> `TextLine`: `body`, `captures`, `seqnum`, `getEntryByPath('k')` |
 | a CSV dialect for one call | `options.set_csv_separator(b';')?`, `set_csv_quote(None)?`, `set_header(false)?`, `set_csv_null_values(["NA"])?`, `set_csv_trim(true)?`, `set_csv_comment(Some(b'#'))?`, `set_csv_infer_row_size(64)?` | `read_records(separator=";")`, `quote=None`, `header=False`, `null_values=["NA"]`, `trim=True`, `comment="#"`, `infer_row_size=64` | `readRecords({ separator: ';' })`, `{ quote: null, header: false, nullValues: ['NA'], trim: true, comment: '#', inferRowSize: 64 }` |
 | CSV options in hand | `CsvOptions::new().with_separator(b';')?`, `RecordOptions::for_mime_type(&MimeType::CSV)?` | `RecordOptions("trades.csv")`, `options.separator = ";"` | `RecordOptions.from('trades.csv').withSeparator(';')` |
 | a TSV | `CsvOptions::tsv()`, or a `.tsv` name | `IOBase("trades.tsv")`, `RecordOptions("trades.tsv")` | `new IOBase('trades.tsv')`, `RecordOptions.from('trades.tsv')` |
 | a compressed CSV | `Holder::local("trades.csv.gz")?.into_declared_media()` | `IOBase("trades.csv.gz")` | `new IOBase('trades.csv.gz')` |
 | write a partitioned folder | `Holder::folder(&root)?.overwrite_arrow_reader(r, &options)?` | `IOBase(dir).overwrite_arrow_batch(b, options=o)` | `new IOBase(dir).overwriteArrowTable(t, options)` |
 | leaves of one partition | `children_where(&[("year", "2024")], false)?` | `children_where({"year": "2024"})` | `childrenWhere({ year: '2024' })` |
+| replace some partitions, keep the rest - or empty all | `overwrite_arrow_reader(r, &options)?` replaces the partitions its rows reach, `options.with_filter("year = 2025")?` also those it pins; `clear()?` empties | `overwrite_arrow_table(t, options=o, filter="year = 2025")`, `clear()` | `overwriteArrowTable(t, options, { filter: 'year = 2025' })`, `clear()` |
 | derived partition column | `root.with_partition_by(["year(event) as year".parse()?])?`, `root.as_transform().apply_arrow_batch(&b)?` | `root.with_partition_by(["year(event) as year"])`, `root.transform.apply_arrow_batch(b)` | `root.withPartitionBy(['year(event) as year'])`, `Selector.fromField(root).applyArrowBatch(b)` |
 | Iceberg table | `IcebergTable::create(LocalFolder::new(p)?, FormatVersion::V2, schema, PartitionSpec::from_schema(1, &schema)?)?` | `IcebergTable.create(IOBase(p), schema, ["venue", "minutes(ts, 15)"])` | `iceberg.IcebergTable.create(p, schema, ['venue', 'minutes(ts, 15)'])` |
 | Iceberg table by its location alone - a folder any backend holds, or `s3tables://<bucket>/<namespace>/<table>` (a table's ARN to open one) | `IcebergTable::from_url(location, &props)?`, `::create_from_url(location, &props, None, schema, None)?`, `::open_or_create_from_url(..)?` - version and spec left out are the schema's own | `IcebergTable(location, **props)`, `IcebergTable.create(location, schema, ["venue"], **props)`, `.open_or_create(..)` | `iceberg.IcebergTable.open(location, props)`, `.create(location, schema, ['venue'], undefined, props)`, `.openOrCreate(..)` |
 | Iceberg catalog (a warehouse folder) | `IcebergCatalog::bound("lake", holder)`, `catalog.namespaces().create("nyc", &props)?`, `catalog.tables().create("nyc.taxis", &schema, &props)?` | `IcebergCatalog("lake", root)`, `catalog.namespaces.create("nyc")`, `catalog.tables.create("nyc.taxis", schema)` | `new iceberg.IcebergCatalog('lake', root)`, `catalog.namespaces().create('nyc')`, `catalog.tables().create('nyc.taxis', schema)` |
 | Iceberg write | `commit_append(r)?`, `commit_overwrite`, `commit_merge(r, &sel, safe)?`; through the record doors one commit when the source ends, `with_num_threads(n)` for the partition groups at once | `append(t)`, `overwrite`, `merge(t, ["id"])` | `append(t)`, `overwrite`, `merge(t, ['id'])` |
 | Iceberg filtered scan | `scan_matching("px > 1", None)?`, `plan_matching(..)?` | `scan_matching("px > 1")`, `plan_matching(..)` | `scanMatching('px > 1')`, `planMatching(..)` |
+| Iceberg partition scope (pairs) | `scan_where(&[("venue", "XNAS")], None)?`, `commit_overwrite_where(&[("venue", "XNAS")], r)?` (`&[]`: the whole table), `commit_merge_where(..)` | `scan_where({"venue": "XNAS"})`, `overwrite_where({"venue": "XNAS"}, rows)` (`None`: the whole table), `merge_where(..)` | `scanWhere({ venue: 'XNAS' })`, `overwriteWhere({ venue: 'XNAS' }, rows)` (`null`: the whole table), `mergeWhere(..)` |
 | Iceberg time travel | `scan_at(snapshot_id, &[], None)?` | `scan_at(snapshot_id)` | `scanAt(snapshotId)` |
+| Iceberg tags and branches | `create_tag("v1", id)?`, `create_branch`, `scan_ref("v1", &[], None)?`, `snapshot_by_ref`, `fast_forward_branch`, `remove_snapshot_ref` | `create_tag("v1", id)`, `create_branch`, `scan_ref("v1")`, `snapshot_by_ref`, `fast_forward`, `remove_ref` | `createTag('v1', id)`, `createBranch`, `scanRef('v1')`, `snapshotByRef`, `fastForward`, `removeRef` |
+| Iceberg maintenance | `expire_snapshots(Some(ms), None, &ids)?`, `compact()?` -> `Compaction`, `inspect_history()?`, `inspect_snapshots()?`, `inspect_files()?`, `set_options(IcebergOptions)` | `expire_snapshots(older_than_ms, retain_last, snapshot_ids)`, `compact()`, `inspect_history()`, `inspect_snapshots()`, `inspect_files()`, `set_options(..)` | `expireSnapshots(olderThanMs, retainLast, snapshotIds)`, `compact()`, `inspectHistory()`, `inspectSnapshots()`, `inspectFiles()`, `setOptions(..)` |
 | Iceberg schema change | `SchemaUpdate::from_metadata(..)?` + `update_schema(&update)?` | `update_schema().add_column("", f).commit()` | `updateSchema().addColumn('', f).commit()` |
 | a column description a catalog shows (the Iceberg `doc`) | `field.set_description("..")?` before `create`; `update.update_doc(path, "..")` on a stored table | `field.set_description("..")`; `update_schema().update_doc(path, "..").commit()` | `field.setDescription('..')`; `updateSchema().updateDoc(path, '..').commit()` |
 | lazy engine scan | - | `scan_polars()`, `scan_arrow()` | - |
@@ -104,7 +111,8 @@ medium does the work before a byte is decoded.
    `kind()` - are methods, never properties: call them.
 7. **The name picks the encoding and the outer coding.** `.arrows` (IPC
    stream), `.arrow`/`.feather`/`.ipc` (IPC file), `.parquet`, `.avro`,
-   `.csv`, `.tsv`, `.xlsx` (one worksheet of a workbook), `.txt`/`.log`, a table folder;
+   `.csv`, `.tsv`, `.xlsx` (one worksheet of a workbook), `.xmla` (an XML
+   for Analysis rowset, parsed whole into one batch), `.txt`/`.log`, a table folder;
    `.gz`, `.zz`, `.zst` wrap the bytes. Parquet and a workbook compress
    internally, so `.parquet.gz` and `.xlsx.gz` are refused before a byte is
    written - set `compression` on Parquet instead. A glob's suffix names the
@@ -198,6 +206,14 @@ medium does the work before a byte is decoded.
     refuses a required column the rows lack, by path, while an Iceberg table
     computes the columns its own schema derives). The first batch to reach a
     leaf performs the write's operation; later ones append.
+18. **An overwrite replaces only what it reaches.** On a partitioned folder
+    or Iceberg table it replaces the partitions its rows fall in plus those
+    its `filter` pins - an equality on a partition column, as Iceberg's
+    `overwrite_where` pairs are - and keeps every other partition, so a
+    source with no row replaces nothing outside a pinned scope; an
+    unpartitioned folder or table is one partition, replaced whole.
+    `clear()` is what empties; on a table, `overwrite_where` with no filter
+    replaces the whole table with the rows it is given.
 
 ## Pitfalls
 
@@ -239,6 +255,10 @@ medium does the work before a byte is decoded.
   are keyword-only (`options=`).
 - Reading one leaf of a partitioned folder and expecting the partition
   columns: they live in the path; read the folder.
+- Overwriting a partitioned folder or Iceberg table to replace all of it:
+  partitions the new rows do not reach keep their old rows. Pin the scope
+  with a `filter=` equality on a partition column (`year = 2025`) or
+  `overwrite_where`, or `clear()` first.
 - Reusing an `IcebergTable` object after writing through another handle: it
   caches metadata; open the table again.
 - Collecting a Parquet read to count rows or learn the schema: `row_size`
@@ -273,7 +293,7 @@ medium does the work before a byte is decoded.
 
 ## Language references
 
-- `references/rust.md` - read for Rust: traits to import, `RecordOptions` builders, batch readers, `IcebergTable`.
+- `references/rust.md` - read for Rust: traits to import, `RecordOptions` builders, batch readers, `TextLine`, `IcebergTable` and its maintenance.
 - `references/python.md` - read for Python: keyword properties, pyarrow readers, dataclass rows, lazy scans.
 - `references/javascript.md` - read for Node.js: property objects, Arrow JS tables, `bigint`, copied IPC.
 - `references/formats.md` - per-encoding table: media type and suffix, settings, pushdown, feature gate, limits.
@@ -281,9 +301,10 @@ medium does the work before a byte is decoded.
 ## Deeper
 
 - Records surface (signatures, pushdown, limits, append and merge, commit cadence, lazy scans): https://platob.github.io/yggdryl/holder/#records
+- What an overwrite replaces, append and merge: https://platob.github.io/yggdryl/holder/#append-and-merge, https://platob.github.io/yggdryl/media/iceberg/#write
 - Partitions (pruning, partition columns, derived columns): https://platob.github.io/yggdryl/holder/#partitions
 - Media overview and options: https://platob.github.io/yggdryl/media/
-- Per format: https://platob.github.io/yggdryl/media/ipc/, https://platob.github.io/yggdryl/media/parquet/, https://platob.github.io/yggdryl/media/avro/, https://platob.github.io/yggdryl/media/excel/, https://platob.github.io/yggdryl/media/csv/, https://platob.github.io/yggdryl/media/text/, https://platob.github.io/yggdryl/media/iceberg/
+- Per format: https://platob.github.io/yggdryl/media/ipc/, https://platob.github.io/yggdryl/media/parquet/, https://platob.github.io/yggdryl/media/avro/, https://platob.github.io/yggdryl/media/excel/, https://platob.github.io/yggdryl/media/csv/, https://platob.github.io/yggdryl/media/text/, https://platob.github.io/yggdryl/media/xmla/, https://platob.github.io/yggdryl/media/iceberg/
 - Required columns and the cast rule: https://platob.github.io/yggdryl/types/cast/
 - Plans and write verbs: https://platob.github.io/yggdryl/expression/plans/
 - Sibling skills: `yggdryl-storage` (handles, backends, codings), `yggdryl-arrow` (`Serie`, `SerieReader`, casts), `yggdryl-expressions` (filter/select grammar, `Plan`), `yggdryl-uri` (hive paths, globs), `yggdryl-types` (fields, dataclasses), `yggdryl-documents` (JSON/YAML/TOML/XML).

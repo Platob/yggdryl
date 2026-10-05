@@ -249,6 +249,76 @@ const built = new Plan().withSelect('id, name').withSource('raw').withFilter('id
 assert.equal(built.toString(), 'select id, name from raw where id > 1 limit 10')
 ```
 
+## Join sources in a plan
+
+A `join` clause after `from` joins each source in turn: the source is read
+whole and held, the left stream probed, `using` keys coalesced. Only the
+first join's keys and the left-only `where` reach the left read. Joins are
+spelled in text; `Plan` has no join builder in JavaScript.
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const { pathToFileURL } = require('node:url')
+const arrow = require('apache-arrow')
+const { Plan } = require('yggdryl')
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
+try {
+  const trades = pathToFileURL(path.join(root, 'trades.arrow')).href
+  const venues = pathToFileURL(path.join(root, 'venues.arrow')).href
+  new Plan(`insert overwrite '${trades}'`).applyArrowBatch(new arrow.Table({
+    id: arrow.vectorFromArray([1n, 2n, 3n], new arrow.Int64()),
+    venue: arrow.vectorFromArray(['XNAS', 'XPAR', 'XLON'], new arrow.Utf8()),
+  }).batches[0])
+  new Plan(`insert overwrite '${venues}'`).applyArrowBatch(new arrow.Table({
+    venue: arrow.vectorFromArray(['XNAS', 'XPAR'], new arrow.Utf8()),
+    city: arrow.vectorFromArray(['New York', 'Paris'], new arrow.Utf8()),
+  }).batches[0])
+
+  const joined = new Plan(`select id, city from '${trades}' left join '${venues}' using (venue) order by id`)
+  assert.deepEqual([...joined.execute().intoTable().getChild('city')], ['New York', 'Paris', null])
+  assert.ok(joined.explain().includes('left join'))
+  const unmatched = new Plan(`select id from '${trades}' anti join '${venues}' using (venue)`)
+  assert.deepEqual([...unmatched.execute().intoTable().getChild('id')], [3n])
+} finally {
+  fs.rmSync(root, { recursive: true, force: true })
+}
+
+// A bare `join` prints as `inner join`.
+assert.equal(new Plan('select * from t join v on venue = mic').toString(), 'select * from t inner join v on venue = mic')
+```
+
+## Bucket time
+
+`time_bucket(width, x)` floors an instant keeping its datatype; the epoch
+periods `years` ... `minutes(x, n)` count `int32` periods since 1970. Both
+are monotone, so a pushed-down range on the instant prunes through them
+(`Bounds` is Rust and Python only).
+
+```javascript
+const assert = require('node:assert/strict')
+const { DataType, Field, Scalar, Selector, expressionVocabularies } = require('yggdryl')
+
+const root = new Field('rows', 'struct<ts:timestamp(us)>', false)
+const selector = new Selector("time_bucket('15 minutes', ts) as bucket, minutes(ts, 15) as q, years(ts) as y")
+const published = selector.applyField(root)
+assert.equal(String(published.dtype.getFieldAt(0).dtype), String(root.dtype.getFieldAt(0).dtype))
+assert.equal(String(published.dtype.getFieldAt(1).dtype), 'int32')
+assert.throws(() => new Selector("time_bucket('15m', ts)").applyField(root), /15m/)
+assert.ok(expressionVocabularies().functions.includes('time_bucket'))
+
+// 2024-01-01T00:14:59: bucket 00:00, quarter hour 1_893_408, year 54.
+const ts = new DataType('timestamp(us)')
+const row = Scalar.from([ts.scalar(1_704_068_099_000_000n)])
+const [bucket, q, y] = selector.bind(root).applyRow(row).asJs()
+assert.deepEqual(bucket, ts.scalar(1_704_067_200_000_000n).asJs())
+assert.equal(q, 1_893_408)
+assert.equal(y, 54)
+```
+
 ## Address a nested value by path
 
 `FieldPath` parses and renders the path grammar - child, position, key,

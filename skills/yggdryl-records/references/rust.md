@@ -432,6 +432,39 @@ let reopened = Workbook::from_bytes(workbook.into_bytes()?)?;
 assert_eq!(reopened.sheet_names(), ["Trades", "Copy"]);
 ```
 
+## XML for Analysis: a rowset document as records
+
+A `.xmla` handle (`MimeType::XMLA`) writes the `xsd:schema` and one `<row>` per row inside an `ExecuteResponse`, a null cell an absent element, and reads it back with no declaration; the bare `root` rowset a client saved has no schema, so its read declares the `field`. `yggdryl::xmla::XmlaOptions` picks another envelope.
+
+```rust
+use yggdryl::holder::Buffer;
+use yggdryl::media::IORecordOptions;
+use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, StructType};
+
+let field = DataType::from(StructType::from_fields([
+    DataType::Int64.required_field("id"),
+    DataType::utf8().nullable_field("symbol"),
+])?)
+.required_field("row");
+let mut handle = Buffer::new().with_media_type(MimeType::XMLA.into());
+let options = handle.record_options()?.with_field(field.clone());
+handle.overwrite_records(
+    [
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]),
+        Scalar::from_sequence([Scalar::from(2_i64), Scalar::Null]),
+    ],
+    &options,
+)?;
+assert!(String::from_utf8(handle.read_all_bytes()?)?.contains("<row><id>2</id></row>"));
+assert_eq!(handle.read_arrow_field(&handle.record_options()?)?.fields().len(), 2);
+
+let bare = Buffer::from_bytes(b"<root><row><id>1</id></row></root>".to_vec()).with_media_type(MimeType::XMLA.into());
+let refused = bare.read_arrow_field(&bare.record_options()?).unwrap_err();
+assert!(refused.to_string().contains("carries no schema"), "{refused}");
+let records = bare.read_serie(Some(&bare.record_options()?.with_field(field)))?.next().expect("one batch")?;
+assert_eq!(records.child("symbol").expect("a symbol column").scalar(0)?, Scalar::Null);
+```
+
 ## Read a log file as typed rows
 
 `into_text_with(TextOptions)` reads one record per line (or per framed chain with `framing`): the fifteen event columns, `body`, then one column per named `rowheader` capture, typed by `autotype`.
@@ -456,6 +489,28 @@ let body = records.child("body").expect("the body column");
 let id = records.child("id").expect("a capture column");
 assert_eq!(body.scalar(0)?, Scalar::from("first\n detail A"));
 assert_eq!(id.scalar(1)?, Scalar::from(9_i64));
+```
+
+## Read log lines as values, not rows
+
+`read_text_lines` answers each line as a `TextLine` - its `body` past the row header, the header's `captures`, its place (`seqnum`) and the `key=value` entries its body states, resolved on first ask - with no Arrow built. It reads every line; `where` and `select` belong to the record reads.
+
+```rust
+use yggdryl::holder::Buffer;
+use yggdryl::text::TextOptions;
+use yggdryl::{FieldPath, IOBase as _, Url};
+
+let source = Buffer::from_bytes(b"[INFO] SYMBOL=AAPL|QTY=100\n[WARN] SYMBOL=MSFT|QTY=5\n".to_vec())
+    .with_media_type(Url::from_str("file:///app.log")?.media_type());
+let mut options = TextOptions::new();
+options.set_rowheader(Some(r"^\[(?<level>[A-Z]+)\] "))?;
+let lines = source.into_text_with(options).read_text_lines()?.collect::<yggdryl::Result<Vec<_>>>()?;
+
+assert_eq!(lines[0].body(), "SYMBOL=AAPL|QTY=100");
+assert_eq!(lines[1].capture(0), Some("WARN"));
+assert_eq!(lines[1].seqnum()?, 1);
+let symbol = lines[1].get_entry_by_path(&FieldPath::from_str("SYMBOL")?).expect("a SYMBOL entry");
+assert_eq!(symbol.value(), "MSFT");
 ```
 
 ## CSV and TSV: the dialect on the options
@@ -575,6 +630,58 @@ assert_eq!((restored.num_rows(), restored.num_columns()), (2, 3));
 let _ = std::fs::remove_dir_all(&root);
 ```
 
+## Overwrite some partitions, keep the rest
+
+An overwrite of a partitioned folder replaces the partitions its rows reach plus those its `filter` pins; every other leaf is kept, so a source with no row replaces nothing outside a pinned scope. `clear()` is what empties. An Iceberg table follows the same rule (`commit_overwrite_where`, below).
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{Int32Array, Int64Array, RecordBatch};
+use yggdryl::holder::Holder;
+use yggdryl::local::LocalFolder;
+use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::{arrow, DataType, IOBase, IOMedia, MimeType, StructType};
+
+let root = LocalFolder::temporary()?.path()?.join("yggdryl-skill-records-overwrite-scope");
+let _ = std::fs::remove_dir_all(&root);
+std::fs::create_dir_all(root.join("year=2024"))?;
+
+let schema = DataType::from(StructType::from_fields([
+    DataType::Int64.required_field("price"),
+    DataType::Int32.required_field("year"),
+])?)
+.required_field("row");
+let arrow_schema = schema.clone().into_arrow_schema()?;
+let rows = |prices: Vec<i64>, years: Vec<i32>| {
+    let batch = RecordBatch::try_new(
+        Arc::clone(&arrow_schema),
+        vec![Arc::new(Int64Array::from(prices)), Arc::new(Int32Array::from(years))],
+    )
+    .expect("a batch matching the root");
+    arrow::batch_reader(batch.schema(), [batch])
+};
+let count = |reader: arrow::BatchReader| reader.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<usize, _>>();
+
+let mut lake = Holder::folder(&root)?;
+let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(schema);
+lake.overwrite_arrow_reader(rows(vec![10, 20], vec![2024, 2025]), &options)?;
+
+// Only 2024 is reached, so 2025 keeps its row.
+lake.overwrite_arrow_reader(rows(vec![30], vec![2024]), &options)?;
+assert_eq!(count(lake.read_arrow_reader(&options)?)?, 2);
+
+// A pinned scope is replaced whatever the rows reach: no row empties 2025.
+let scoped = options.clone().with_filter("year = 2025")?;
+lake.overwrite_arrow_reader(arrow::batch_reader(Arc::clone(&arrow_schema), []), &scoped)?;
+assert_eq!(count(lake.read_arrow_reader(&options)?)?, 1);
+
+// clear empties the folder and keeps it.
+lake.clear()?;
+assert_eq!(lake.ls(true, false).count(), 0);
+let _ = std::fs::remove_dir_all(&root);
+```
+
 ## Derive a partition column from another column
 
 `PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `with_partition_by` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata; `apply_arrow_batch` on the transform view of the root fills it where absent or all null and leaves values alone. A write only casts, so fill the column through `root.as_transform().apply_arrow_batch` before a partitioned write: a required derived column the rows lack is refused by path, a nullable one lands null.
@@ -651,6 +758,60 @@ assert_eq!(count(table.scan_at(first, &[], None)?)?, 3); // time travel
 
 let reopened = IcebergTable::open(LocalFolder::new(&path)?)?;
 assert_eq!(reopened.current_snapshot()?.expect("a snapshot").operation(), "overwrite");
+let _ = std::fs::remove_dir_all(&path);
+```
+
+## Iceberg: replace a partition, tag, expire, compact
+
+`commit_overwrite` replaces the partitions its rows reach; `commit_overwrite_where` the partitions its pairs name, whatever the rows reach (`&[]`: the whole table). A tag or branch keeps reading its snapshot (`scan_ref`); `expire_snapshots` drops snapshots retention no longer keeps, never a ref's or the current one; `compact` merges a partition's undersized files (format v2 and below). Signatures: the rustdoc of `IcebergTable` (`cargo doc -p yggdryl --features iceberg --open`; a default-feature build has no `IcebergTable`); the format page: https://platob.github.io/yggdryl/media/iceberg/#write
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{Int64Array, RecordBatch, StringArray};
+use yggdryl::iceberg::{assign_field_ids, FormatVersion, IcebergTable, PartitionSpec};
+use yggdryl::local::LocalFolder;
+use yggdryl::{arrow, DataType, StructType};
+
+let mut schema = DataType::from(StructType::from_fields([
+    DataType::Int64.required_field("id"),
+    DataType::utf8().nullable_field("venue"),
+])?)
+.required_field("row");
+assign_field_ids(&mut schema, 1)?;
+let arrow_schema = schema.clone().into_arrow_schema()?;
+let rows = |ids: Vec<i64>, venues: Vec<&str>| {
+    let batch = RecordBatch::try_new(
+        Arc::clone(&arrow_schema),
+        vec![Arc::new(Int64Array::from(ids)), Arc::new(StringArray::from(venues))],
+    )
+    .expect("a batch matching the schema");
+    arrow::batch_reader(batch.schema(), [batch])
+};
+let count = |reader: arrow::BatchReader| reader.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<usize, _>>();
+
+let path = LocalFolder::temporary()?.path()?.join("yggdryl-skill-records-iceberg-maintenance");
+let _ = std::fs::remove_dir_all(&path);
+let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
+let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema, spec)?;
+table.commit_append(rows(vec![1, 2], vec!["XNAS", "XNYS"]))?;
+let first = table.current_snapshot()?.expect("a snapshot").snapshot_id;
+table.create_tag("v1", first)?;
+
+// Only XNAS is reached, so XNYS keeps its row.
+table.commit_overwrite(rows(vec![3], vec!["XNAS"]))?;
+let second = table.current_snapshot()?.expect("a snapshot").snapshot_id;
+assert_eq!(count(table.scan(None)?)?, 2);
+// A named partition is replaced whatever the rows reach: no row empties it.
+table.commit_overwrite_where(&[("venue", "XNYS")], arrow::batch_reader(Arc::clone(&arrow_schema), []))?;
+assert_eq!(count(table.scan_where(&[("venue", "XNYS")], None)?)?, 0);
+assert_eq!(count(table.scan_ref("v1", &[], None)?)?, 2); // the tag still reads its snapshot
+
+assert_eq!(count(table.inspect_history()?)?, 3);
+assert_eq!(table.expire_snapshots(Some(0), None, &[second])?, [second]);
+table.commit_append(rows(vec![4], vec!["XNAS"]))?;
+let compaction = table.compact()?;
+assert_eq!((compaction.files_before, compaction.files_after), (2, 1));
 let _ = std::fs::remove_dir_all(&path);
 ```
 

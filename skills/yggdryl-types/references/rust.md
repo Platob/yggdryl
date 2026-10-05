@@ -359,6 +359,12 @@ assert_eq!(
     DataType::Timezone.scalar("Asia/Calcutta")?,
     DataType::Timezone.scalar("Asia/Kolkata")?,
 );
+
+// An interval is months, days and nanoseconds in one of three layouts.
+assert_eq!(DataType::from_str("interval day")?, DataType::interval(TimeUnit::DayTime)?);
+let span = Scalar::interval(1, 2, 3, TimeUnit::MonthDayNano)?;
+assert_eq!(span.dtype()?, DataType::interval(TimeUnit::MonthDayNano)?);
+assert!(Scalar::interval(1, 0, 0, TimeUnit::DayTime).is_err()); // no months in day_time
 ```
 
 ## Strings, bytes, codes and identifiers
@@ -370,7 +376,7 @@ digit that closes, a listed prefix - is its rank (`CodeValue::rank`), which a
 merge decides by and nothing refuses.
 
 ```rust
-use yggdryl::{Ccy, CodeValue, Country, DataType, IdType, Isin, Mic, Scalar, Str, Uuid};
+use yggdryl::{Ccy, Cfi, CodeValue, Country, DataType, IdType, Isin, Mic, Scalar, Str, Uuid, Version};
 
 let bounded = DataType::sized_ascii(4)?;
 let usd = bounded.scalar("USD")?;
@@ -404,6 +410,15 @@ assert!(!Country::new("XX")?.is_listed() && Ccy::none().is_none() && Mic::none()
 assert_eq!(DataType::forex().code_width(), Some(7));
 assert_eq!(DataType::forex().scalar("eurusd")?, DataType::forex().scalar("EUR-USD")?);
 assert!(DataType::forex().scalar("EUR/EUR").is_err());
+// A CFI is read against ISO 10962's grid (Rust only); a merge refines one by another.
+assert!(Cfi::is_classified("ESVUFR") && !Cfi::is_classified("ESZUFR"));
+let shares = Cfi::category_of('E').and_then(|category| category.group('S'));
+assert_eq!(shares.map(|group| group.name()), Some("Common/ordinary shares"));
+assert_eq!(Cfi::refined("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
+
+// A version parses, canonicalizes and orders itself: `5.0SP2` is `5.0.2`, and `5.0.2 < 5.0.10`.
+assert_eq!(DataType::Version.scalar("5.0SP2")?, Scalar::from(Version::new(5, 0, Some("2"))));
+assert!(Version::new(5, 0, Some("2")) < Version::new(5, 0, Some("10")));
 
 let text = "01912d68-783e-7c9a-b1f2-0123456789ab";
 let id = DataType::uuid().scalar(text)?;
@@ -414,7 +429,44 @@ assert_eq!(
 );
 ```
 
-## Enums: side, marketdatakind, state, timeinforce
+## Geometry and geography over WKB
+
+Both columns hold Well-Known Binary, read whole once at the value door; the
+datatype is the reading - a CRS (`None` is `OGC:CRS84`) and, on a geography
+alone, an edge algorithm (`None` is spherical). Text is refused: `wkb` renders
+WKT, it never parses it. Depth:
+[geospatial](https://platob.github.io/yggdryl/types/geospatial/).
+
+```rust
+use yggdryl::{DataType, EdgeAlgorithm, Field, Geometry, Scalar, wkb};
+
+// A little-endian XY point: byte order 1, type code 1, then x and y.
+let mut point = vec![1_u8, 1, 0, 0, 0];
+point.extend(10.0_f64.to_le_bytes());
+point.extend(20.0_f64.to_le_bytes());
+
+let shape = Field::new("shape", DataType::geometry(Some("EPSG:3857"))?, true);
+assert_eq!(shape.dtype().to_string(), "geometry(\"EPSG:3857\")");
+let value = shape.scalar(point.clone())?;
+assert!(matches!(value, Scalar::Geometry(_)));
+assert_eq!(value.as_wkb(), Some(point.as_slice()));
+assert_eq!(wkb::into_wkt(&point)?, "POINT (10 20)");
+assert!(shape.scalar("POINT (10 20)").is_err()); // no WKT parser
+assert!(shape.scalar(point[..5].to_vec()).is_err()); // truncated WKB
+
+let region = DataType::geography(None, Some(EdgeAlgorithm::Vincenty))?;
+assert_eq!(region.to_string(), "geography(\"OGC:CRS84\",\"vincenty\")");
+let DataType::Geography(parameters) = &region else { panic!("a geography") };
+assert_eq!((parameters.crs(), parameters.algorithm()), ("OGC:CRS84", Some(EdgeAlgorithm::Vincenty)));
+assert!(DataType::geometry(Some("")).is_err()); // absence is `None`
+
+// The value is its own leaf, and the bytes are the identity.
+assert_eq!(Geometry::new(point.clone())?.as_bytes(), point.as_slice());
+assert_eq!(region.scalar(point.clone())?, value); // one payload, two readings, one value
+assert_ne!(value, Scalar::from(point));          // a plain byte value is another
+```
+
+## Enums: side, marketdatakind, marketdatatype, state, timeinforce
 
 `side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
 `enum` family: each member is a code in a column - `uint8` for `side`,
@@ -425,7 +477,7 @@ its vocabulary has. A side is never absent - `UNKN` (code 0) is unstated. A side
 and never written.
 
 ```rust
-use yggdryl::{DataType, MarketDataKind, Scalar, Side, State, TimeInForce};
+use yggdryl::{DataType, MarketDataKind, MarketDataType, Scalar, Side, State, TimeInForce};
 
 // A side reads its stored name, FIX's wire code or the specification's name.
 assert_eq!(Side::from_spelling("1"), Some(Side::Buy));
@@ -451,9 +503,16 @@ assert_eq!(TimeInForce::from_spelling("0"), Some(TimeInForce::Day));
 assert_eq!(TimeInForce::from_fix("Z"), TimeInForce::Other, "a venue's own value");
 assert_eq!((TimeInForce::GoodTillCancel.code(), TimeInForce::GoodTillCancel.fix_code()), (2, Some("1")));
 assert_eq!(DataType::timeinforce().scalar("IOC")?, Scalar::TimeInForce(TimeInForce::ImmediateOrCancel));
+
+// What type of its kind an element is, read off the FIX field that types it.
+assert_eq!(MarketDataType::from_fix(40, "2"), Some(MarketDataType::OrdLimit));
+assert_eq!(MarketDataType::OrdLimit.fix_code(), Some((40, "2")));
+assert_eq!(MarketDataType::from_fix(828, "999"), Some(MarketDataType::TrdOther), "the set's catch-all");
+assert_eq!(MarketDataType::from_fix(54, "1"), None, "a tag that types nothing");
+assert_eq!(MarketDataType::fix_tags_of("AE", MarketDataKind::Trade), [856, 828, 40]);
 ```
 
-## Nested values: serie, map, union, dictionary
+## Nested values: serie, map, union, dictionary, run-end
 
 Every nested constructor takes its child fields. A map value is built with
 `from_mapping`; a union value is `[type_id, payload]` and a bare payload enters
@@ -482,6 +541,44 @@ assert_eq!(payload.scalar("hi")?, Scalar::from_sequence([Scalar::from(1_i64), Sc
 let codes = Field::new("codes", DataType::dictionary(DataType::Int16, DataType::utf8())?, true);
 assert_eq!(codes.scalar("AAPL")?.dtype()?, DataType::utf8());
 assert!(DataType::dictionary(DataType::utf8(), DataType::utf8()).is_err()); // integer keys only
+
+// Run-end encoding: required int16/int32/int64 run ends beside the values.
+let runs = DataType::run_end_encoded(
+    Field::new("run_ends", DataType::Int32, false),
+    Field::new("values", DataType::utf8(), true),
+)?;
+assert_eq!(runs.id(), DataTypeId::RunEndEncoded);
+```
+
+## The Parquet variant
+
+Bare `variant` is one semi-structured value as the Parquet Variant binary
+encoding (version 1): a `metadata` dictionary and a `value` payload. Casting
+into the column encodes, casting out decodes; `variant(a:T, ...)` with members
+is the dense-union sugar instead. The encode and decode doors are Rust only.
+Depth: [variant](https://platob.github.io/yggdryl/types/variant/).
+
+```rust
+use yggdryl::{DataType, DataTypeId, Scalar, VARIANT_EXTENSION_NAME, Variant};
+
+assert_eq!(DataType::from_str("variant")?, DataType::variant());
+assert_eq!(DataType::from_str("variant(only:int64)")?.id(), DataTypeId::Union);
+
+let quote = Scalar::from_struct([("symbol", Scalar::from("AAPL")), ("size", Scalar::from(100_i64))])?;
+let variant = Variant::encode(&quote)?;
+assert_eq!(variant.scalar()?, quote);
+assert_eq!(Variant::new(variant.metadata().to_vec(), variant.value().to_vec())?, variant);
+
+// The value door encodes; a cast out of the variant decodes.
+assert_eq!(DataType::Variant.scalar(quote.clone())?, Scalar::Variant(variant));
+assert_eq!(DataType::Int64.scalar(DataType::Variant.scalar(7_i32)?)?, Scalar::from(7_i64));
+
+// A bare null is absence; the encoded null is a value a required column holds.
+let required = DataType::Variant.required_field("payload");
+assert!(required.scalar(Scalar::Null).is_err());
+assert!(required.scalar(DataType::Variant.scalar(Scalar::Null)?).is_ok());
+let arrow = required.into_arrow_field()?;
+assert_eq!(arrow.extension_type_name(), Some(VARIANT_EXTENSION_NAME));
 ```
 
 ## Edit a schema in place

@@ -327,6 +327,33 @@ workbook.write_into(path)
 assert Workbook.open(path).sheet_names == ["Trades", "Copy"]
 ```
 
+## XML for Analysis: a rowset document as records
+
+A `.xmla` handle writes the `xsd:schema` and one `<row>` per row, a null cell an absent element, and reads it back with no declaration; the bare `root` rowset a client saved has no schema, so its read declares the `field`. Choosing another envelope is Rust-only (`XmlaOptions`).
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow as pa
+import pytest
+
+from yggdryl import IOBase
+
+root = pathlib.Path(tempfile.mkdtemp())
+handle = IOBase(root / "trades.xmla")
+handle.overwrite_records([{"id": 1, "symbol": "AAPL"}, {"id": 2, "symbol": None}])
+assert "<row><id>2</id></row>" in handle.read_bytes().decode()
+assert list(handle.read_records()) == [{"id": 1, "symbol": "AAPL"}, {"id": 2, "symbol": None}]
+
+bare = IOBase(root / "saved.xmla")
+bare.write_bytes(b"<root><row><id>1</id></row></root>")
+with pytest.raises(ValueError, match="carries no schema"):
+    bare.read_arrow_field()
+schema = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("symbol", pa.string())])
+assert list(bare.read_records(field=schema)) == [{"id": 1, "symbol": None}]
+```
+
 ## Read a log file as typed rows
 
 A `.log`/`.txt` handle reads one record per line (or per framed chain with `framing`): the fifteen event columns, `body`, then one column per named `rowheader` capture, typed by `autotype` (on by default).
@@ -354,6 +381,27 @@ with tempfile.TemporaryDirectory() as directory:
     # One-off: the same property by name on the read, no TextOptions object.
     levels = IOBase(source).read_arrow_reader(rowheader=r"^\[(?<level>[A-Z]+)\] ")
     assert levels.schema.names[-2:] == ["body", "level"]
+```
+
+## Read log lines as values, not rows
+
+`read_text_lines` answers each line as a `TextLine` - its `body` past the row header, the header's `captures`, its place (`seqnum`) and the `key=value` entries its body states, resolved on first ask - with no Arrow built. It reads every line; `filter` and `select` belong to the record reads.
+
+```python
+import pathlib
+import tempfile
+
+from yggdryl import IOBase
+
+with tempfile.TemporaryDirectory() as directory:
+    source = pathlib.Path(directory) / "app.log"
+    source.write_bytes(b"[INFO] SYMBOL=AAPL|QTY=100\n[WARN] SYMBOL=MSFT|QTY=5\n")
+
+    lines = list(IOBase(source).read_text_lines(rowheader=r"^\[(?<level>[A-Z]+)\] "))
+    assert [line.body for line in lines] == ["SYMBOL=AAPL|QTY=100", "SYMBOL=MSFT|QTY=5"]
+    assert lines[1].captures == ("WARN",)
+    assert lines[1].seqnum == 1
+    assert lines[1].get_entry_by_path("SYMBOL").value == "MSFT"
 ```
 
 ## CSV and TSV: the dialect by name
@@ -445,6 +493,41 @@ assert [child.partitions for child in lake.children_where({"year": "2024"})] == 
 ]
 ```
 
+## Overwrite some partitions, keep the rest
+
+An overwrite of a partitioned folder replaces the partitions its rows reach plus those its `filter` pins; every other leaf is kept, so a source with no row replaces nothing outside a pinned scope. `clear()` is what empties. An Iceberg table follows the same rule (`overwrite_where`, below).
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow as pa
+
+from yggdryl import IOBase, RecordOptions
+
+root = pathlib.Path(tempfile.mkdtemp())
+(root / "year=2024").mkdir()
+schema = pa.schema([pa.field("price", pa.int64(), nullable=False), pa.field("year", pa.int32(), nullable=False)])
+rows = lambda prices, years: pa.table({"price": prices, "year": years}, schema=schema)
+lake = IOBase(root)
+options = RecordOptions("part.arrows")
+options.field = schema
+count = lambda: lake.read_arrow_reader(options=options).read_all().num_rows
+lake.overwrite_arrow_table(rows([10, 20], [2024, 2025]), options=options)
+
+# Only 2024 is reached, so 2025 keeps its row.
+lake.overwrite_arrow_table(rows([30], [2024]), options=options)
+assert count() == 2
+
+# A pinned scope is replaced whatever the rows reach: no row empties 2025.
+lake.overwrite_arrow_table(rows([], []), options=options, filter="year = 2025")
+assert count() == 1
+
+# clear() empties the folder and keeps it.
+lake.clear()
+assert list(lake.iterdir()) == [] and lake.is_dir()
+```
+
 ## Derive a partition column from another column
 
 `PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `with_partition_by` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata; `apply_arrow_batch` on the transform view of the root fills it where absent or all null and leaves values alone. A write only casts, so fill the column through `root.transform.apply_arrow_batch` before a partitioned write: a required derived column the rows lack is refused by path, a nullable one lands null.
@@ -500,6 +583,41 @@ assert table.scan_at(first).read_all().num_rows == 3  # time travel
 # The folder is also an ordinary record handle: filter and select push down.
 reopened = IOBase(root.url.into_path())
 assert reopened.read_arrow_reader(select=["id"], filter="venue = 'XNYS'").read_all().num_rows == 1
+```
+
+## Iceberg: replace a partition, tag, expire, compact
+
+`overwrite` replaces the partitions its rows reach; `overwrite_where` the partitions its pairs name, whatever the rows reach (`None`: the whole table). A tag or branch keeps reading its snapshot (`scan_ref`); `expire_snapshots` drops snapshots retention no longer keeps, never a ref's or the current one; `compact()` merges a partition's undersized files (format v2 and below). `scan_where`, `merge_where` and `set_options(IcebergOptions(...))` complete the set.
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow as pa
+
+from yggdryl import IOBase
+from yggdryl.iceberg import IcebergTable
+
+schema = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("venue", pa.string())])
+rows = lambda ids, venues: pa.table({"id": ids, "venue": venues}, schema=schema)
+table = IcebergTable.create(IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades"), schema, ["venue"])
+table.append(rows([1, 2], ["XNAS", "XNYS"]))
+table.create_tag("v1", table.current_snapshot.snapshot_id)
+
+# Only XNAS is reached, so XNYS keeps its row.
+table.overwrite(rows([3], ["XNAS"]))
+second = table.current_snapshot.snapshot_id
+assert sorted(table.scan().read_all().column("id").to_pylist()) == [2, 3]
+# A named partition is replaced whatever the rows reach: no row empties it.
+table.overwrite_where({"venue": "XNYS"}, [])
+assert table.scan_where({"venue": "XNYS"}).read_all().num_rows == 0
+assert table.scan_ref("v1").read_all().num_rows == 2  # the tag still reads its snapshot
+
+assert table.inspect_history().read_all().num_rows == 3
+assert table.expire_snapshots(0, snapshot_ids=[second]) == [second]
+table.append(rows([4], ["XNAS"]))
+compaction = table.compact()
+assert (compaction.files_before, compaction.files_after) == (2, 1)
 ```
 
 ## Evolve an Iceberg schema

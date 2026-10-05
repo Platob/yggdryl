@@ -1,6 +1,6 @@
 ---
 name: yggdryl-types
-description: Declare yggdryl types and values in Rust, Python and Node.js - parse DataType expressions (Arrow, SQL, Hive, Spark, Iceberg, FIX spellings), build and edit Field schemas (non-null Struct root, metadata, PARQUET:field_id, comment, protocol views, FIELD:enum) and read values through DataType.scalar / Field.scalar into Scalar. Use when choosing a column type (decimal, timestamp/datetime64 zone, string or bytes leaf, uuid, geometry/geography WKB, ccy/isin/forex codes, the side, marketdatakind and state enums, an enumerated StringEnum column, serie/map/union), declaring a schema (Field::new, Field(...), new Field, yggdryl.int64 / fields.int64, @scalar dataclasses, into_field / intoField), adding, replacing or removing a column (set_field, remove_field, unnest_fields), an Arrow/pyarrow schema in or out (from_arrow_schema), converting values (Scalar.from_ / Scalar.from, as_py / asJs) or merging, diffing and walking schemas by path.
+description: Declare yggdryl types and values in Rust, Python and Node.js - parse DataType expressions (Arrow, SQL, Hive, Spark, Iceberg, FIX spellings), build and edit Field schemas (non-null Struct root, metadata, PARQUET:field_id, comment, protocol views, FIELD:enum) and read values through DataType.scalar / Field.scalar into Scalar. Use when choosing a column type (decimal, timestamp/datetime64 zone, interval, string or bytes leaf, uuid, version, geometry/geography WKB with a CRS and edge algorithm, the Parquet variant, ccy/isin/forex/cfi codes and CFI classification, the side, marketdatakind, marketdatatype, state and timeinforce enums and their FIX wire values, an enumerated StringEnum column, serie/map/union/run-end), declaring a schema (Field::new, Field(...), new Field, yggdryl.int64 / fields.int64, @scalar dataclasses, into_field / intoField, a struct from regex captures with from_regex), adding, replacing or removing a column (set_field, remove_field, unnest_fields), an Arrow/pyarrow schema in or out (from_arrow_schema), converting values (Scalar.from_ / Scalar.from, as_py / asJs) or merging, diffing and walking schemas by path.
 ---
 
 # Types: DataType, Field, Scalar
@@ -29,11 +29,17 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | decimal by precision | `DataType::decimal(18, 4)?` | `DataType.decimal(18, 4)` | `fields.decimal(name, 18, 4)` (no `DataType.decimal`) |
 | time width by unit | `DataType::time(TimeUnit::Millisecond)?` | `DataType.time("ms")` | `DataType.time('ms')` |
 | zoned instant | `DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?` | `DataType('datetime64(ns,"UTC")')`, `yggdryl.datetime64(name, "ns", "UTC")` | `fields.datetime64(name, 'ns', 'UTC')` |
+| calendar span (interval) | `DataType::interval(TimeUnit::DayTime)?`, `Scalar::interval(months, days, nanos, unit)?` | `yggdryl.interval(name, "day_time")`, `DataType("interval day")`; a value enters and reads back as its components (`[months, days, nanos]` for `month_day_nano`, a pair for `day_time`, one number for `year_month`), the `Interval` constructor is Rust only | `fields.interval(name, 'day_time')`, `new DataType('interval day')`; a value enters and reads back as its components the same way, the constructor is Rust only |
 | string / bytes leaf | `DataType::sized_utf8(32)?`, `fixed_ascii(4)?`, `fixed_binary(16)?` | `DataType.string(charset=, bound=)`, `DataType.fixed_ascii(4)`, `DataType.bytes(bound=16)` | `DataType.string({ charset, max })`, `DataType.fixedAscii(4)`, `DataType.bytes({ max: 16 })` |
+| geometry / geography (WKB) | `DataType::geometry(Some("EPSG:3857"))?`, `DataType::geography(None, Some(EdgeAlgorithm::Vincenty))?`, `value.as_wkb()`; `Geometry::new(wkb)?`, `yggdryl::wkb::into_wkt` | `DataType.geometry(crs)`, `DataType.geography(crs, algorithm)`, `yggdryl.geometry(name, crs)`, `dtype.crs`, `dtype.edge_algorithm`; a value is `bytes`, the `Geometry` value and the `wkb` reader are Rust only | `DataType.geometry(crs)`, `DataType.geography(crs, algorithm)`, `fields.geometry(name, crs)`; a value is its bytes, the `Geometry` value and the `wkb` reader are Rust only |
+| Parquet variant (semi-structured) | `DataType::variant()`, `DataType::Variant.scalar(v)?`, `Variant::encode(&v)?` / `variant.scalar()?` | `DataType.variant()`, `yggdryl.variant(name)`, `DataType("variant").scalar(v).as_py()`; encode/decode doors Rust only | `DataType.variant()`, `fields.variant(name)`, `new DataType('variant').scalar(v).asJs()`; encode/decode doors Rust only |
+| version column | `DataType::Version.scalar("5.0SP2")?`, `Version::new(5, 0, Some("2"))` | `yggdryl.version(name)`, `Version(5, 0, 2)`, `Version.from_str("5.0SP2")` | `fields.version(name)`, `new Version(5, 0, 2)`, `Version.fromStr('5.0SP2')` |
 | one field | `Field::new("px", dtype, false)`, `dtype.required_field("px")` | `Field("px", "float64", nullable=False)`, `yggdryl.float64("px", nullable=False)` | `new Field('px', 'float64', false)`, `fields.float64('px', { nullable: false })` |
 | field with metadata | `Field::from_parts(name, dtype, nullable, [(k, v)])?` | `Field(name, dtype, metadata={k: v})` | `new Field(name, dtype, nullable, { k: v })` |
 | parse a field | `Field::from_str("px float64 NOT NULL")?` | `Field.from_str(...)` | `Field.from(...)` |
 | a schema | `DataType::from(StructType::from_fields([..])?).required_field("row")` | `yggdryl.struct("row", [..], nullable=False)` | `fields.struct('row', [..], { nullable: false })` |
+| a struct from a regex's named captures (no row read) | `DataType::from_regex(r"id=(?<id>\d+)", true)?` | `DataType.from_regex(regex, autotype=True)` | `DataType.fromRegex(regex, autotype)` |
+| run-end encoded column | `DataType::run_end_encoded(Field::new("run_ends", DataType::Int32, false), values)?` | `yggdryl.run_end_encoded(name, run_ends, values)` | `fields.runEndEncoded(name, runEnds, values)` |
 | schema from a class | `StructType` + typed leaves (`Int64Field::unit`) | `@scalar` class, `Class.into_field()`, `field(obj)` | `static get intoStructField()`, `intoField(Class)` |
 | check a schema root | `root.validate_struct_root()?` | `root.validate_struct_root()` | no `validateStructRoot`: check `f.dtype.id === 'struct' && !f.nullable` (only `intoField(Class)` checks a class's `intoStructField`) |
 | a non-record as a record (a struct answers itself) | `dtype.is_struct()`; `dtype.into_struct_type()?` (`struct<value: ..>`, the child nullable), `field.into_struct_field()?` (a required `row` over the field unchanged), `value.into_struct_scalar()` (`{value: ..}`) | Rust only | Rust only |
@@ -49,9 +55,11 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | raw metadata | `insert_metadata(k, v)?`, `get_metadata(k)` | `field.metadata[k] = v` | `field.set(k, v)`, `field.get(k)` |
 | reserved properties | `set_parquet_field_id(17)`, `set_comment(..)?` | `set_parquet_field_id(17)`, `set_comment(..)` | `setParquetFieldId(17)`, `setComment(..)` |
 | one protocol's keys | `as_iceberg_mut().insert("doc", ..)?` | `field.iceberg["doc"] = ..` | `field.iceberg.set('doc', ..)` |
-| a registered enum (`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`) | `DataType::Side.scalar("BUYS")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()`, `TimeInForce::from_fix("0")` | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")`, `TimeInForce.from_fix("0")` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object), `timeInForceFromFix('0')` |
+| a registered enum (`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`) | `DataType::Side.scalar("BUYS")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()`, `description()` | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")`, `.description` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object; no `description`) |
+| an enum member from a FIX wire value | `MarketDataType::from_fix(40, "2")`, `.fix_code()`, `MarketDataType::fix_tags_of("AE", kind)`, `TimeInForce::from_fix("1")` | `MarketDataType.from_fix(40, "2")`, `.fix_code`, `MarketDataType.fix_tags_of("AE", kind)`, `TimeInForce.from_fix("1")` | `marketDataTypeFromFix(40, '2')`, `marketDataTypeFixCode('ORDLIMIT')`, `timeInForceFromFix('1')`, `timeInForceFixCode('GTC')`; `fix_tags` / `fix_tags_of` are Rust and Python only |
 | a free enum spelling (`order fill`, `Part-Filled`, `pending cxl`) | `State::from_spelling("order fill")` - read by its words once the exact vocabularies miss, cached | `State.from_spelling("order fill")`, `DataType("state").scalar(...)` | `new DataType('state').scalar('order fill')` |
 | a registered code's validity (`isin`, `cusip`, `sedol`, `figi`, `country`, `ccy`, `mic`, `cfi`) | `code.rank()`, `code.is_real()` (`CodeValue`), `IdType::Isin.rank(text)`, `Isin::rank_of(text)`, `Isin::is_closed`, `Isin::is_listed_prefix`, `Isin::NONE`, `Country::is_listed`, `Ccy::is_none`, `Mic::is_none` | Rust only: a value of the right shape is accepted whatever its rank | Rust only |
+| a CFI's ISO 10962 classification | `Cfi::is_classified(code)`, `Cfi::is_detailed(code)`, `Cfi::category_of('E')` then `.group('S')`, `Cfi::refined(lead, other)`, `Cfi::coarse('E', Some('S'))` | Rust only: a `cfi` value is held at its shape | Rust only |
 | an enumerated column (`FIELD:enum`) | `StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?` + `Field::new("side", DataType::fixed_ascii(4)?, false).try_with_string_enum(&side)?`; `string_enum()?`; `StringEnum::from_logical_name("ccy")?` | `StringEnum("Side", {"BUY": "B", "SELL": "S"})` + `field.set_string_enum(side)`; `field.string_enum`; `StringEnum.from_logical_name("ccy")`; `yggdryl.enums.Ccy` / `Country` bases | `new StringEnum('Side', { BUY: 'B', SELL: 'S' })` + `field.setStringEnum(side)`; `field.stringEnum`; `StringEnum.fromLogicalName('ccy')` |
 | compare, diff | `equals(&o, true)`, `show_diffs(&o, true, false)` | `equals(o, with_metadata=False)`, `show_diffs(o)` | `equals(o, false)`, `showDiffs(o)` |
 | merge two schemas | `a.merge_with(&b, true)?` | `a.merge_with(b)` | `a.mergeWith(b)` |
@@ -225,7 +233,18 @@ string and byte leaves, the legacy `list` words - is in
   any integer column casting in and a code naming no member refused, which a value reads as the member -
   Python's `IntEnum` (`Side.BUYS`), JavaScript's name (`'BUYS'`), Rust's variant
   (`Side::Buy`). Text reads through the vocabulary (`"1"` is FIX's `BUYS`); a
-  `marketdatakind` code is an integer, never the text `"10"`.
+  `marketdatakind` code is an integer, never the text `"10"`. A
+  `marketdatatype` wire value is no spelling - `2` is `ORDLIMIT` only under
+  `OrdType(40)` - so read it with `from_fix(tag, wire)`; a wire value no
+  member names is its set's catch-all (`ORDOTHER`, `TimeInForce`'s `OTHER`),
+  and a tag that types nothing answers none.
+- A `geometry` / `geography` value is Well-Known Binary bytes, read whole once
+  at the value door: text is refused (there is no WKT parser - `wkb::into_wkt`
+  only renders), an empty CRS is refused (omit it for `OGC:CRS84`), and a
+  geometry given an edge algorithm is refused. The same payload under both
+  types is one value; a plain byte value is another.
+- An interval value has no text spelling (`PT90S` is a duration) and restates
+  no count across units: a month is no count of days.
 - `forex` is a code, not a string: one pair `CCY/CCY` of two distinct ISO 4217
   currencies, however a feed spells it; a digital-asset ticker is a `ccy` but no
   leg, so `BTC/USDT` is no `forex`. A symbol with a tenor or a RIC
@@ -282,18 +301,26 @@ string and byte leaves, the legacy `list` words - is in
 - Families: [numeric](https://platob.github.io/yggdryl/types/numeric/),
   [decimal](https://platob.github.io/yggdryl/types/numeric/decimal/),
   [temporal](https://platob.github.io/yggdryl/types/temporal/),
+  [interval](https://platob.github.io/yggdryl/types/temporal/interval/),
   [time zone](https://platob.github.io/yggdryl/types/temporal/timezone/),
   [strings & bytes](https://platob.github.io/yggdryl/types/text/),
-  [string](https://platob.github.io/yggdryl/types/text/string/),
+  [string](https://platob.github.io/yggdryl/types/text/string/)
+  (and its [regex captures](https://platob.github.io/yggdryl/types/text/string/#regex-captures)),
   [codes](https://platob.github.io/yggdryl/types/codes/),
+  [CFI](https://platob.github.io/yggdryl/types/codes/cfi/),
   [forex](https://platob.github.io/yggdryl/types/codes/forex/),
   [enums](https://platob.github.io/yggdryl/types/enum/),
   [side](https://platob.github.io/yggdryl/types/enum/side/),
   [market data kind](https://platob.github.io/yggdryl/types/enum/marketdatakind/),
+  [market data type](https://platob.github.io/yggdryl/types/enum/marketdatatype/),
   [state](https://platob.github.io/yggdryl/types/enum/state/),
+  [time in force](https://platob.github.io/yggdryl/types/enum/timeinforce/),
   [nested](https://platob.github.io/yggdryl/types/nested/),
   [union](https://platob.github.io/yggdryl/types/nested/union/),
+  [run-end](https://platob.github.io/yggdryl/types/nested/runend/),
   [geospatial](https://platob.github.io/yggdryl/types/geospatial/)
+  ([geometry](https://platob.github.io/yggdryl/types/geospatial/geometry/),
+  [geography](https://platob.github.io/yggdryl/types/geospatial/geography/))
 - Single types: [UUID](https://platob.github.io/yggdryl/types/uuid/),
   [Version](https://platob.github.io/yggdryl/types/version/),
   [media types](https://platob.github.io/yggdryl/types/mediatype/),

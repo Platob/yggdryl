@@ -324,6 +324,10 @@ day = DataType("date32").scalar("1970-01-02")
 assert day.count == 1 and day.as_py() == dt.date(1970, 1, 2)
 assert DataType("time64(us)").scalar(dt.time(1, 2, 3)).as_py() == dt.time(1, 2, 3)
 assert DataType("timezone").scalar("Asia/Calcutta").as_py() == "Asia/Kolkata"
+
+# An interval is months, days and nanoseconds in one of three layouts.
+assert DataType("interval day") == DataType("interval(day_time)")
+assert str(DataType("interval")) == "interval(month_day_nano)"
 ```
 
 ## Strings, bytes, codes and identifiers
@@ -338,7 +342,7 @@ import uuid
 
 import pytest
 
-from yggdryl import DataType, Scalar
+from yggdryl import DataType, Scalar, Version
 
 bounded = DataType("sized_ascii(4)")
 assert bounded.scalar("USD").as_py() == "USD"
@@ -363,6 +367,10 @@ with pytest.raises(ValueError):
 assert DataType("forex").code_width == 7
 assert DataType("forex").scalar("eurusd").as_py() == "EUR/USD"
 
+# A version parses, canonicalizes and orders itself: `5.0SP2` is `5.0.2`, and `5.0.2 < 5.0.10`.
+assert DataType("version").scalar("5.0SP2").as_py() == Version(5, 0, 2) == Version.from_str("5.0.2")
+assert Version(5, 0, 2) < Version(5, 0, 10)
+
 text = "01912d68-783e-7c9a-b1f2-0123456789ab"
 column = DataType("uuid")
 assert column.scalar(uuid.UUID(text)) == column.scalar(text.upper())
@@ -370,7 +378,45 @@ assert Scalar.from_(uuid.UUID(text)).kind == "string"  # undeclared: text
 assert DataType("binary(2)").scalar(b"\x01\x02").as_py() == b"\x01\x02"
 ```
 
-## Enums: side, marketdatakind, state, timeinforce
+## Geometry and geography over WKB
+
+Both columns hold Well-Known Binary `bytes`, read whole once at the value
+door; the datatype is the reading - a CRS (`None` is `OGC:CRS84`) and, on a
+geography alone, an edge algorithm (`None` is spherical). Text is refused:
+there is no WKT parser. The `Geometry` value and the `wkb` reader are Rust
+only. Depth: [geospatial](https://platob.github.io/yggdryl/types/geospatial/).
+
+```python
+import struct
+
+import pytest
+
+import yggdryl
+from yggdryl import DataType
+
+# A little-endian XY point: byte order 1, type code 1, then x and y.
+point = b"\x01\x01\x00\x00\x00" + struct.pack("<dd", 10.0, 20.0)
+
+shape = yggdryl.geometry("shape", "EPSG:3857")
+assert str(shape.dtype) == 'geometry("EPSG:3857")'
+assert (shape.dtype.crs, shape.dtype.edge_algorithm) == ("EPSG:3857", None)
+value = shape.scalar(point)
+assert (value.kind, value.family) == ("geometry", "geospatial")
+assert value.as_py() == point                            # WKB bytes both ways
+with pytest.raises(ValueError):
+    shape.scalar("POINT (10 20)")                        # no WKT parser
+with pytest.raises(ValueError):
+    shape.scalar(point[:5])                              # truncated WKB
+
+region = DataType.geography(algorithm="vincenty")
+assert str(region) == 'geography("OGC:CRS84","vincenty")'
+assert region.has_default_crs and region.edge_algorithm == "vincenty"
+assert DataType.geography().edge_algorithm == "spherical"
+with pytest.raises(ValueError, match="expected a coordinate reference system"):
+    DataType.geometry("")                                # absence is None
+```
+
+## Enums: side, marketdatakind, marketdatatype, state, timeinforce
 
 `side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
 `enum` family: each member is a code in a column - `uint8` for `side`,
@@ -385,7 +431,7 @@ still read and never written.
 
 ```python
 import yggdryl
-from yggdryl import DataType, MarketDataKind, Side, State, TimeInForce
+from yggdryl import DataType, MarketDataKind, MarketDataType, Side, State, TimeInForce
 
 # A side reads its stored name, FIX's wire code, the specification's name or its code.
 side = yggdryl.side("side", nullable=False)
@@ -411,9 +457,16 @@ assert State.UPDATED.is_live()
 assert DataType("timeinforce").scalar("0").as_py() is TimeInForce.DAY
 assert TimeInForce.from_fix("Z") is TimeInForce.OTHER   # a venue's own value
 assert (int(TimeInForce.GTC), TimeInForce.GTC.fix_code) == (2, "1")
+
+# What type of its kind an element is, read off the FIX field that types it.
+assert MarketDataType.from_fix(40, "2") is MarketDataType.ORDLIMIT
+assert MarketDataType.ORDLIMIT.fix_code == (40, "2")
+assert MarketDataType.from_fix(828, "999") is MarketDataType.TRDOTHER   # the set's catch-all
+assert MarketDataType.from_fix(54, "1") is None                         # a tag that types nothing
+assert MarketDataType.fix_tags_of("AE", MarketDataKind.TRAD) == (856, 828, 40)
 ```
 
-## Nested values: serie, map, union, dictionary
+## Nested values: serie, map, union, dictionary, run-end
 
 Each nested factory takes its child fields; a union value is `[type_id,
 payload]` and a bare payload enters the one member that accepts it.
@@ -437,6 +490,33 @@ assert payload.scalar([1, "hi"]).as_py() == [1, "hi"]
 codes = yggdryl.dictionary("codes", "int16", "utf8")
 assert codes.scalar("AAPL").dtype.id == "utf8"         # the decoded value
 assert yggdryl.fixed_size_serie("xy", yggdryl.float64("item"), 2).dtype.id == "fixed_size_serie"
+
+# Run-end encoding: required int16/int32/int64 run ends beside the values.
+runs = yggdryl.run_end_encoded("runs", yggdryl.int32("run_ends", nullable=False), yggdryl.utf8("values"))
+assert runs.dtype.id == "run_end_encoded"
+```
+
+## The Parquet variant
+
+Bare `variant` is one semi-structured value as the Parquet Variant binary
+encoding: casting into the column encodes, casting out decodes, and a value
+crosses to Python as what its bytes hold. `variant(a:T, ...)` with members is
+the dense-union sugar instead; the encode and decode doors are Rust only.
+Depth: [variant](https://platob.github.io/yggdryl/types/variant/).
+
+```python
+import yggdryl
+from yggdryl import DataType, Scalar
+
+assert DataType("variant") == DataType.variant()
+assert DataType("variant(only:int64)").id == "union"    # members: union sugar
+
+payload = yggdryl.variant("payload", nullable=False)
+assert payload.dtype.id == "variant" and payload.dtype.kind == "nested"
+held = DataType("variant").scalar(Scalar.from_struct({"symbol": "AAPL", "size": 100}))
+assert held.kind == "variant"
+assert held.as_py() == {"size": 100, "symbol": "AAPL"}
+assert DataType("int64").scalar(DataType("variant").scalar(7)).as_py() == 7  # decoded
 ```
 
 ## Edit a schema in place

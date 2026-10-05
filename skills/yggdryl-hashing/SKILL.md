@@ -1,6 +1,6 @@
 ---
 name: yggdryl-hashing
-description: Digest bytes, handles, values and Arrow rows with yggdryl's xxHash (XXH32, XXH64, XXH3-64, XXH3-128) and couple digests with instants as TxHash. Use when hashing bytes or a file (xxh3, read_digest / readDigest), streaming a resumable state (Xxh3, write_bytes / writeBytes), seeding XXH3 or giving it a secret, computing a cross-language stable_hash / stableHash of a value, declaring DIGEST:role=holder row-digest columns and filling them (apply_arrow_batch / applyArrowBatch, row_digests), building TxHash / TxHasher values, sortable UUIDv7 keys (into_uuid / intoUuid) or DIGEST:time coupled holders. Covers Rust, Python and Node.js.
+description: Digest bytes, handles, values and Arrow rows with yggdryl's xxHash (XXH32, XXH64, XXH3-64, XXH3-128) and couple digests with instants as TxHash. Use when hashing bytes or a file (xxh3, read_digest / readDigest), streaming a resumable state (Xxh3, write_bytes / writeBytes), seeding XXH3 or giving it a secret, computing a cross-language stable_hash / stableHash of a value, declaring DIGEST:role=holder row-digest columns (DIGEST:by, DIGEST:algorithm) and filling them (apply_arrow_batch / applyArrowBatch, row_digests, column_digests), building TxHash / TxHasher values and coupled columns (row_txhashes, compose / decompose), sortable UUIDv7 keys (into_uuid / intoUuid) or DIGEST:time coupled holders. Covers Rust, Python and Node.js.
 ---
 
 # Yggdryl hashing
@@ -41,6 +41,8 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
 | value digest, any algorithm | `scalar.digest(alg)` | `scalar.digest("xxh64")` | `scalar.digest('xxh64')` |
 | feed a value into a state | `state.write_scalar(&v)` | `state.write_scalar(v)` | `state.writeScalar(v)` |
 | declare a holder column | `f.as_digest_mut().set_holder()?`, `set_by(["a"])?` | `f.digest.set_holder()`, `f.digest.by = ["a"]` | `f.digest.set('role', 'holder')`, `f.digest.by = ['a']` |
+| pin a holder's algorithm (holder storage must fit its width) | `f.as_digest_mut().set_algorithm(DigestAlgorithm::Xxh64)?` | `f.digest.algorithm = "xxh64"` | `f.digest.set('algorithm', 'xxh64')` |
+| what a row digest reads by default | `root.digest_field_names()` | `root.digest_field_names` | `root.digestFieldNames()` |
 | fill holders, seedless | `root.as_digest().apply_arrow_batch(&b)?` | `root.digest.apply_arrow_batch(b)` | `new xxhash.Xxh3().applyArrowBatch(root, b)` |
 | fill holders, seeded / forced | `state.apply_arrow_batch(&root, b, force)?` | `state.apply_arrow_batch(root, b, force=True)` | `state.applyArrowBatch(root, b, true)` |
 | digest every row / cell | `xxhash::arrow::row_digests(&b, alg)?`, `column_digests(a, &f, alg)?` | `xxhash.row_digests(b)`, `column_digests(a, f)` | not bound |
@@ -48,7 +50,7 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
 | configure unit, seed, secret once | `TxHasher::new_in(unit, alg)?.with_seed(7)`, `from_digester` | `txhash.TxHasher("xxh64", unit="s", seed=7)`, `from_state` | `new txhash.TxHasher('xxh64', 's', 7n)`, `fromState` |
 | read an instant | `txhash::unix_from_scalar(&v, unit)?` | `txhash.unix_of(v, unit="us")` | `txhash.unixOf(v, 'us')` |
 | sortable UUIDv7 | `value.into_uuid()?`, `into_sequenced_uuid(seq, seed)?` | `value.into_uuid()`, `into_sequenced_uuid(seq, seed)` | `value.intoUuid()`, `intoSequencedUuid(seq, seed)` |
-| coupled column | `txhash::arrow::row_txhashes(&b, &t, unit, alg)?`, `compose`, `decompose` | `txhash.row_txhashes(b, t)`, `compose`, `decompose` | not bound |
+| coupled column | `txhash::arrow::row_txhashes(&b, &t, unit, alg)?`, `column_txhashes`, `compose`, `decompose`; seeded `hasher.row_txhashes(&b, &t)?` | `txhash.row_txhashes(b, t)`, `column_txhashes`, `compose`, `decompose`; seeded `hasher.row_txhashes(b, t)` | not bound |
 | coupled holder | `set_time("event")?`, `set_unit(TimeUnit::Second)?` | `f.digest.time = "event"`, `f.digest.unit = "s"` | metadata `'DIGEST:time'`, `'DIGEST:unit'` + `TxHasher.applyArrowBatch` |
 | parse and render | `Digest::from_str`, `TxHash::from_str`, `from_bytes`, `into_bytes` | `xxhash.Digest(s)`, `TxHash(s)`, `from_bytes`, `bytes(x)` | `Digest.from(s)`, `TxHash.from(s)`, `fromBytes`, `bytes()` |
 
@@ -153,7 +155,9 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
   https://platob.github.io/yggdryl/hashing/#encoding
 - Holders and row digests: https://platob.github.io/yggdryl/hashing/#digest-holders-and-row-digests
 - TxHash, UUIDv7, instants, TxHasher: https://platob.github.io/yggdryl/hashing/#txhash-values,
-  https://platob.github.io/yggdryl/hashing/#order-and-uuidv7-projection
+  https://platob.github.io/yggdryl/hashing/#order-and-uuidv7-projection,
+  https://platob.github.io/yggdryl/hashing/#instants,
+  https://platob.github.io/yggdryl/hashing/#txhasher
 - Coupled columns and holders: https://platob.github.io/yggdryl/hashing/#coupled-columns,
   https://platob.github.io/yggdryl/hashing/#coupled-holders
 - Every edge: https://platob.github.io/yggdryl/hashing/#edges; measured costs:
@@ -162,7 +166,6 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
 - Sibling skills: `yggdryl-storage` (the `IOBase` handles `read_digest`
   streams), `yggdryl-types` (`Scalar`, `Field` metadata),
   `yggdryl-expressions` (`Field.apply_arrow_batch`, the cast; the `transform`
-  view, the derived columns a digest reads),
-  `yggdryl-arrow` (batches and readers), `yggdryl-market-data` (event
-  identities built on `TxHash` and UUIDv7), `yggdryl-expressions`
-  (`stable_hash` of a plan as a cache key).
+  view, the derived columns a digest reads; `stable_hash` of a plan as a
+  cache key), `yggdryl-arrow` (batches and readers), `yggdryl-market-data`
+  (event identities built on `TxHash` and UUIDv7).

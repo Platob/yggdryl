@@ -164,7 +164,7 @@ Not spellings: `json`, `jsonb`.
 | `map(field("entries",...),keys_sorted=false)` | `map<K,V>`, `MAP<K, V>`; sorted keys: `map<K,V,keys_sorted=true>` (there is no `sorted_map<...>` spelling) |
 | `union(dense,0=field(...),...)` | `variant(a:T,b:U)` (dense, ids from 0), `dense_union(a:T)`, `sparse_union(a:T)`, `union(sparse,0=a:T)` |
 | `dictionary(K,V)` | `dict<K,V>`, `dictionary<K,V>`; `K` one of the eight integers |
-| `run_end_encoded(field("run_ends",...),field("values",...))` | `run_end_encoded(int32, utf8)`; run ends `int16`/`int32`/`int64` only |
+| `run_end_encoded(field("run_ends",...),field("values",...))` | `run_end_encoded(int32, utf8)`, `runend<int32,utf8>`, `ree<int32,utf8>`; run ends `int16`/`int32`/`int64` only, required |
 
 The `list` words (`list`, `list_view`, `large_list`, `large_list_view`,
 `fixed_size_list`) are `DataTypeId::LEGACY_NAMES`: every door still reads

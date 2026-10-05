@@ -244,6 +244,74 @@ built = Plan().with_select("id, name").with_source("raw").with_filter("id > 1").
 assert str(built) == "select id, name from raw where id > 1 limit 10"
 ```
 
+## Join sources in a plan
+
+A `join` clause after `from` joins each source in turn: the source is read
+whole and held, the left stream probed, `using` keys coalesced. Only the
+first join's keys and the left-only `where` reach the left read. Joins are
+spelled in text; `Plan` has no join builder in Python.
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow as pa
+
+from yggdryl import Plan
+
+with tempfile.TemporaryDirectory() as root:
+    trades = (pathlib.Path(root) / "trades.arrow").as_uri()
+    venues = (pathlib.Path(root) / "venues.arrow").as_uri()
+    Plan(f"insert overwrite '{trades}'").apply_arrow_batch(
+        pa.record_batch({"id": pa.array([1, 2, 3], pa.int64()), "venue": ["XNAS", "XPAR", "XLON"]})
+    )
+    Plan(f"insert overwrite '{venues}'").apply_arrow_batch(
+        pa.record_batch({"venue": ["XNAS", "XPAR"], "city": ["New York", "Paris"]})
+    )
+
+    joined = Plan(f"select id, city from '{trades}' left join '{venues}' using (venue) order by id")
+    assert joined.execute().read_all().column("city").to_pylist() == ["New York", "Paris", None]
+    assert "left join" in joined.explain()
+    unmatched = Plan(f"select id from '{trades}' anti join '{venues}' using (venue)")
+    assert unmatched.execute().read_all().column("id").to_pylist() == [3]
+
+# A bare `join` prints as `inner join`.
+assert str(Plan("select * from t join v on venue = mic")) == "select * from t inner join v on venue = mic"
+```
+
+## Bucket time and prune through the bucket
+
+`time_bucket(width, x)` floors an instant keeping its datatype; the epoch
+periods `years` ... `minutes(x, n)` count `int32` periods since 1970. Both are
+monotone, so a file's range on `x` prunes a predicate on them.
+
+```python
+import datetime
+
+import pyarrow as pa
+
+from yggdryl import Bounds, DataType, Field, Selector, Term
+from yggdryl.expression import FUNCTIONS
+
+root = Field("rows", "struct<ts:timestamp(us)>", False)
+selector = Selector("time_bucket('15 minutes', ts) as bucket, minutes(ts, 15) as q, years(ts) as y")
+published = selector.apply_field(root)
+assert published.dtype["bucket"].dtype == root.dtype["ts"].dtype
+assert published.dtype["q"].dtype == DataType("int32")
+assert "time_bucket" in FUNCTIONS and "minutes" in FUNCTIONS
+
+stamps = [datetime.datetime(2024, 1, 1, 0, 14, 59), datetime.datetime(2024, 1, 1, 0, 15)]
+shaped = selector.apply_arrow_batch(pa.record_batch({"ts": pa.array(stamps, pa.timestamp("us"))}))
+assert shaped.column("bucket").to_pylist() == [datetime.datetime(2024, 1, 1), datetime.datetime(2024, 1, 1, 0, 15)]
+assert shaped.column("q").to_pylist() == [1_893_408, 1_893_409]
+assert shaped.column("y").to_pylist() == [54, 54]
+
+# A file holding 00:00 to 00:29:59 is skipped for any later quarter hour.
+bounds = Bounds(rows=10).with_column("ts", datetime.datetime(2024, 1, 1), datetime.datetime(2024, 1, 1, 0, 29, 59), 0)
+assert not Term("minutes(ts, 15) > 1893409").bind(root).statistics_prune(bounds)
+assert Term("minutes(ts, 15) = 1893409").bind(root).statistics_prune(bounds)
+```
+
 ## Address a nested value by path
 
 `FieldPath` parses and renders the path grammar - child, position, key,

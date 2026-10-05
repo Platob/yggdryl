@@ -277,6 +277,10 @@ assert.ok(ms.asJs() instanceof Date)
 assert.throws(() => new DataType('date32').scalar(new Date(0)))
 assert.equal(new DataType('date32').scalar('1970-01-02').count, 1n)
 assert.equal(fields.timezone('tz').scalar('Asia/Calcutta').asJs(), 'Asia/Kolkata')
+
+// An interval is months, days and nanoseconds in one of three layouts.
+assert.equal(fields.interval('tenor', 'day_time').dtype.toString(), 'interval(day_time)')
+assert.ok(new DataType('interval day').equals(fields.interval('tenor', 'day_time').dtype))
 ```
 
 ## Strings, bytes, codes and identifiers
@@ -288,7 +292,7 @@ value.
 
 ```javascript
 const assert = require('node:assert/strict')
-const { DataType, Scalar } = require('yggdryl')
+const { DataType, Scalar, Version } = require('yggdryl')
 
 const bounded = DataType.from('sized_ascii(4)')
 assert.equal(bounded.scalar('USD').asJs(), 'USD')
@@ -309,13 +313,53 @@ assert.throws(() => new DataType('isin').scalar('US037833100'))   // eleven char
 assert.equal(new DataType('forex').codeWidth, 7)
 assert.equal(new DataType('forex').scalar('eurusd').asJs(), 'EUR/USD')
 
+// A version parses, canonicalizes and orders itself: `5.0SP2` is `5.0.2`, and `5.0.2 < 5.0.10`.
+assert.ok(new DataType('version').scalar('5.0SP2').asJs().equals(new Version(5, 0, 2)))
+assert.equal(Version.fromStr('5.0SP2').toString(), '5.0.2')
+assert.ok(new Version(5, 0, 2).compare(new Version(5, 0, 10)) < 0)
+
 const text = '01912d68-783e-7c9a-b1f2-0123456789ab'
 const uuid = new DataType('uuid')
 assert.equal(uuid.scalar(text.toUpperCase()).asJs(), text)
 assert.deepEqual([...DataType.from('binary(2)').scalar(Buffer.from([1, 2])).asJs()], [1, 2])
 ```
 
-## Enums: side, marketdatakind, state, timeinforce
+## Geometry and geography over WKB
+
+Both columns hold Well-Known Binary, read whole once at the value door; the
+datatype is the reading - a CRS (omitted is `OGC:CRS84`) and, on a geography
+alone, an edge algorithm (omitted is spherical). Text is refused: there is no
+WKT parser. Reading the CRS back is Rust and Python; JavaScript reads the
+canonical spelling. Depth:
+[geospatial](https://platob.github.io/yggdryl/types/geospatial/).
+
+```javascript
+const assert = require('node:assert/strict')
+const { DataType, fields } = require('yggdryl')
+
+// A little-endian XY point: byte order 1, type code 1, then x and y.
+const point = Buffer.alloc(21)
+point[0] = 1
+point[1] = 1
+point.writeDoubleLE(10, 5)
+point.writeDoubleLE(20, 13)
+
+const shape = fields.geometry('shape', 'EPSG:3857')
+assert.equal(shape.dtype.toString(), 'geometry("EPSG:3857")')
+const value = shape.scalar(point)
+assert.equal(value.kind, 'geometry')
+assert.equal(value.family, 'geospatial')
+assert.deepEqual(Buffer.from(value.asJs()), point)          // WKB bytes both ways
+assert.throws(() => shape.scalar('POINT (10 20)'))           // no WKT parser
+assert.throws(() => shape.scalar(point.subarray(0, 5)))      // truncated WKB
+
+const region = fields.geography('region', 'OGC:CRS84', 'vincenty', { nullable: false })
+assert.equal(region.dtype.toString(), 'geography("OGC:CRS84","vincenty")')
+assert.ok(DataType.geography().equals(new DataType('geography')))
+assert.throws(() => DataType.geometry(''), /expected a coordinate reference system/)
+```
+
+## Enums: side, marketdatakind, marketdatatype, state, timeinforce
 
 `side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
 `enum` family: each member is a code in a column - `uint8` for `side`,
@@ -328,7 +372,16 @@ side is never absent - `UNKN` (code 0) is unstated.
 
 ```javascript
 const assert = require('node:assert/strict')
-const { DataType, MarketDataKind, Side, TimeInForce, fields, timeInForceFromFix } = require('yggdryl')
+const {
+  DataType,
+  MarketDataKind,
+  Side,
+  TimeInForce,
+  fields,
+  marketDataTypeFixCode,
+  marketDataTypeFromFix,
+  timeInForceFromFix,
+} = require('yggdryl')
 
 // A side reads its stored name, FIX's wire code or its code.
 const side = fields.side('side', { nullable: false })
@@ -349,9 +402,15 @@ assert.equal(new DataType('state').scalar('UPDATED').asJs(), 'UPDATED')
 assert.equal(fields.timeinforce('tif').scalar('0').asJs(), 'DAY')
 assert.equal(timeInForceFromFix('Z'), 'OTHER', "a venue's own value")
 assert.equal(TimeInForce.GTC, 2)
+
+// What type of its kind an element is, read off the FIX field that types it.
+assert.equal(marketDataTypeFromFix(40, '2'), 'ORDLIMIT')
+assert.deepEqual(marketDataTypeFixCode('ORDLIMIT'), { tag: 40, wire: '2' })
+assert.equal(marketDataTypeFromFix(828, '999'), 'TRDOTHER')   // the set's catch-all
+assert.equal(marketDataTypeFromFix(54, '1'), null)            // a tag that types nothing
 ```
 
-## Nested values: serie, map, union, dictionary
+## Nested values: serie, map, union, dictionary, run-end
 
 Each nested factory takes its child fields; a union value reads as
 `[typeId, payload]` and a bare payload enters the one member that accepts it.
@@ -378,6 +437,33 @@ assert.equal(codes.scalar('AAPL').dtype.toString(), 'utf8')   // decoded value
 const xy = fields.fixedSizeSerie('xy', fields.float64('item'), 2)
 assert.equal(xy.scalar([1.5, 2.5]).length, 2)
 assert.throws(() => xy.scalar([1, 2]), /expected float64, got i64/)   // integral Numbers
+
+// Run-end encoding: required int16/int32/int64 run ends beside the values.
+const runs = fields.runEndEncoded('runs', fields.int32('run_ends', { nullable: false }), fields.utf8('values'))
+assert.equal(runs.dtype.id, 'run_end_encoded')
+```
+
+## The Parquet variant
+
+Bare `variant` is one semi-structured value as the Parquet Variant binary
+encoding: casting into the column encodes, casting out decodes, and a value
+crosses to JavaScript as what its bytes hold. `variant(a:T, ...)` with members
+is the dense-union sugar instead; the encode and decode doors are Rust only.
+Depth: [variant](https://platob.github.io/yggdryl/types/variant/).
+
+```javascript
+const assert = require('node:assert/strict')
+const { DataType, Scalar, fields } = require('yggdryl')
+
+assert.ok(new DataType('variant').equals(DataType.variant()))
+assert.equal(DataType.from('variant(only:int64)').id, 'union')   // members: union sugar
+
+const payload = fields.variant('payload', { nullable: false })
+assert.equal(payload.dtype.kind, 'nested')
+const held = new DataType('variant').scalar(Scalar.from({ symbol: 'AAPL', size: 100 }))
+assert.equal(held.kind, 'variant')
+assert.deepEqual(held.asJs(), { size: 100, symbol: 'AAPL' })
+assert.equal(new DataType('int32').scalar(new DataType('variant').scalar(7)).asJs(), 7)   // decoded
 ```
 
 ## Edit a schema in place

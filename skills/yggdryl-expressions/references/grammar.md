@@ -14,6 +14,7 @@ disagree, the rule wins. Every alias reads; one canonical text prints, and
 | `ccy, size * 2 as doubled` | `Selector` | `select` optional for a `Selector` |
 | `select ccy` | `Selector`, `Expression` (a `select` clause) | a lone clause is never a one-section plan |
 | `select a from t where b > 1 limit 5` | `Plan`, `Expression` (a plan) | |
+| `select * from t left join v using (id)` | `Plan`, `Expression` (a plan) | joins are plan sections, never terms |
 | `where a > 1; select b` | `Expression` (a sequence) | steps run in order |
 | `a > 1` read as `Expression` | refused | an `Expression` must open with `select`, `where`, `create`, `insert`, `upsert`, `delete` or `from` |
 
@@ -21,8 +22,11 @@ disagree, the rule wins. Every alias reads; one canonical text prints, and
 
 ```text
 expression  := plan (";" plan)*
-plan        := [create] [write] ["select" selector] ["from" source] ["where" expr]
+plan        := [create] [write] ["select" selector] ["from" source] (join)* ["where" expr]
                ["order" "by" orders] ["limit" n] ["offset" n]   -- limit/offset either order, printed limit first
+join        := [kind] "join" source ("using" "(" ident, ... ")" | "on" expr "=" expr ("and" expr "=" expr)*)
+kind        := "inner" | "left" ["outer"] | "right" ["outer"] | "full" ["outer"] | "outer" | "semi" | "anti"
+                                                                 -- bare `join` is inner, `outer` is full
 create      := "create" ["table" | "view"] [target] "(" selector ")" ["with" properties]
 write       := verb [target] [("by" | "on") "(" selector ")"]  -- keys only after upsert
 target      := location ["with" "(" name "=" "'value'", ... ")"]
@@ -44,8 +48,9 @@ orders      := expr ["asc" | "desc"] ["nulls" ("first" | "last")] ("," ...)*
 | write verb | `insert into t` | where the shaped stream goes; no target = the handle the plan is given to |
 | `select` | `select id, price * 2 as doubled` | `select *` when absent |
 | `from` | `from 'file:///lake/t.parquet'`, `from lake.raw.t`, `from (select ...)` | what `execute` reads; a nested plan runs first |
-| `where` | `where price > 0` | pushed into the read |
-| `order by` | `order by id desc nulls first, ccy` | the one section that collects; stable sort |
+| `join` | `left join v using (id)`, `join v on venue = mic and desk = desk`, `anti join (select id from h) using (id)` | left to right, each source read whole and held, the stream probed batch by batch; `using` keys coalesced, a colliding right name suffixed `_right`; the first join's `key in (<distinct build keys>)` pushed into the left read for one key, `inner`/`right`/`semi`, at most 10,000 keys ([Joins](https://platob.github.io/yggdryl/expression/plans/#joins)) |
+| `where` | `where price > 0` | pushed into the read; after a join only its left-only conjuncts, and none under a `right` or `full` join - the rest runs over the joined rows, so it may name a right column |
+| `order by` | `order by id desc nulls first, ccy` | the one section that collects the stream; stable sort |
 | `limit` / `offset` | `limit 10 offset 5` | slice views; pushed into the read when nothing orders |
 
 ## Write verbs
@@ -59,7 +64,7 @@ orders      := expr ["asc" | "desc"] ["nulls" ("first" | "last")] ("," ...)*
 
 Target properties: `media_type`, `codec`, `safe`, `batch_row_size`,
 `batch_byte_size`, `commit_batch_num`, `num_threads`, `max_row_size`,
-`max_byte_size`, plus what a holder reads - `t with (media_type = 'text/csv', batch_row_size = '1024')`.
+`row_offset`, `max_byte_size`, plus what a holder reads - `t with (media_type = 'text/csv', batch_row_size = '1024')`.
 
 ## Terms
 
@@ -119,15 +124,31 @@ A doubled quote inside a quoted name is that quote: `"say ""hi"""` is `say "hi"`
 Refused: `a, *`, a trailing `*,`, `* exclude ()`, `select` inside a projection
 list, `unnest` inside a term, a `where`, an `order by`, a key or a `create`.
 
-## Functions (closed set of 20)
+## Functions (closed set of 28)
+
+Aliases in parentheses read and print as the canonical name.
 
 | Group | Functions |
 | --- | --- |
-| text | `lower`, `upper`, `length`, `substring` (1-based), `trim`, `starts_with`, `ends_with`, `contains`, `concat` |
-| temporal | `year`, `month`, `day`, `hour`, `truncate` (fixed units only - no calendar months) |
-| null handling | `coalesce`, `if_null` |
-| nested | `size`, `get`, `slice`, `unnest` (alias `explode`) |
+| text | `lower` (`lcase`), `upper` (`ucase`), `length` (`len`, `char_length`, `character_length`), `substring` (`substr`; 1-based), `trim` (`btrim`), `starts_with` (`startswith`), `ends_with` (`endswith`), `contains` (`strpos_contains`), `concat` |
+| calendar parts | `year`, `month`, `day` (`dayofmonth`), `hour` - a field read off the date |
+| epoch periods | `years`, `quarters`, `months`, `weeks` (Monday-start), `days` (a `date32`), `hours`, `minutes(x, n)` - `int32` whole periods since 1970, floored (`years('1969-12-31')` is -1); `minutes` always writes its step `n` (1 to 4294967295) |
+| floors | `truncate` (`trunc`, `date_trunc`; fixed units only - no calendar months), `time_bucket(width, x)` - `x` floored to the width, its datatype, unit and zone kept |
+| null handling | `coalesce`, `if_null` (`ifnull`, `nvl`, `isnull`) |
+| nested | `size` (`cardinality`), `get`, `slice` (`array_slice`), `unnest` (`explode`) |
 | user-defined | `namespace.name(args)` - registered with a signature; never pushed to statistics |
+
+`time_bucket` width is a constant: text - `'15 minutes'`, `'30s'`, `'1.5h'`,
+`'900s'`, `'1 week'`, ISO 8601 `'PT15M'`, a clock `'00:15:00'` - or a
+`duration` literal; units `ns`, `us`, `ms`, `s`/`sec`, `min`, `h`/`hr`, `d`,
+`w` and their long forms. `'15m'` is refused (a minute or a month), as are a
+calendar, zero, negative, column-held or finer-than-`x` width and a sub-day
+width over a date. Buckets start at DuckDB's origin, Monday 2000-01-03 (UTC
+for a zoned value, the wall clock for a naive one), so a width dividing a day
+lines up with the epoch. Epoch periods and `time_bucket` are monotone: a range
+on `x` prunes a predicate on them, and they are the keys `PARTITION:by` and
+`window_by` take. A sub-day period over a date is refused; a period past
+`int32` is null.
 
 `FUNCTIONS`, `COMPARISONS`, `VERBS` (Python `yggdryl.expression`) and
 `expressionVocabularies()` (JavaScript) list the live vocabulary.
@@ -144,19 +165,23 @@ list, `unnest` inside a term, a `where`, an `order by`, a key or a `create`.
 | floats | IEEE totalOrder: `nan = nan`, `nan` sorts above everything |
 | text order | code point, no collation |
 | names | ASCII case-insensitive; one name in two cases is an ambiguity error |
-| limits | nesting shares the schema grammar's limit (32); at most 100,000 nodes |
+| join keys | `on` takes `=` conjuncts only, its left term bound against the rows so far and its right against the source; a path names a column, never a table alias (`t.id` is column `t`'s child `id`) |
+| limits | nesting at most 32 levels (`expression::RECURSION_LIMIT`, its own - the schema grammar's is 64), a `from (plan)` counting against it; at most 100,000 nodes (`NODE_LIMIT`) |
 
 ## Refused and reserved
 
 | Refused | Because |
 | --- | --- |
-| subqueries in `where`, joins, aggregates, windows, `group by`, `having`, `union` | one relation; `from (plan)` is the only nesting |
+| subqueries in `where`, aggregates, window functions, `group by`, `having`, `union` | a second relation enters only as `from (plan)` or a [`join`](https://platob.github.io/yggdryl/expression/plans/#joins) clause |
+| a join inside a term | a join is a plan section |
 | regex (`~`, `rlike`, `similar to`) | no regex engine |
 | `element_at` | ambiguous base; use `get` |
 | per-row `like` pattern | refused at bind |
 | `\|\|` as or, `&&` as and | one operator, one meaning |
 | a session timezone | meaning would depend on the evaluator |
-| `//`, `->`, `->>`, `date_diff`, `concat_ws`, hex literals | reserved: parse errors today |
+| `//`, `->`, `->>`, `date_diff`, `concat_ws`, `strip_prefix`, `strip_suffix`, hex literals | reserved: parse errors today |
 
-Depth: https://platob.github.io/yggdryl/expression/grammar/ and
+Depth: https://platob.github.io/yggdryl/expression/grammar/,
+https://platob.github.io/yggdryl/expression/plans/#joins,
+https://platob.github.io/yggdryl/expression/functions/#calendar-parts-and-epoch-periods and
 https://platob.github.io/yggdryl/types/paths/
