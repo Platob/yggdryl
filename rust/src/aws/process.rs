@@ -148,7 +148,7 @@ pub mod internals {
     ///
     /// # Errors
     ///
-    /// What [`super::run_with`] refuses.
+    /// What `run_with` refuses.
     pub fn run_with(command: &str, timeout: Option<Duration>) -> crate::Result<Credentials> {
         super::run_with(command, timeout)
     }

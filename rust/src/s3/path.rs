@@ -370,7 +370,7 @@ impl IOBase for S3Path {
     }
 
     /// The resolved handle's size; `0` where nothing is, and `0` with a
-    /// warning where the store refused to say what is ([`Self::heard`]).
+    /// warning where the store refused to say what is (`heard`).
     fn size(&self) -> u64 {
         self.heard(self.with_resolved(0, |handle| handle.size()), 0)
     }
@@ -429,7 +429,7 @@ impl IOBase for S3Path {
 
     /// The role this location has; `Unknown` where nothing is, and
     /// `Unknown` with a warning where the store refused to say what is
-    /// ([`Self::heard`]).
+    /// (`heard`).
     fn kind(&self) -> IOKind {
         self.heard(self.current_kind(), IOKind::Unknown)
     }

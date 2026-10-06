@@ -196,7 +196,7 @@ pub mod internals {
     ///
     /// # Errors
     ///
-    /// What [`super::uri`] refuses.
+    /// What `uri` refuses.
     pub fn uri(pairs: &[(&str, &str)]) -> crate::Result<Option<String>> {
         super::uri(&crate::auth::Environment::Given(
             pairs

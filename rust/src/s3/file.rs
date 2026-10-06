@@ -442,7 +442,7 @@ impl IOFile for S3File {
 
     /// Whether the object is there: `false` where the store says it is not,
     /// and `false` with a warning where the store refused to say
-    /// ([`Self::heard`]).
+    /// (`heard`).
     fn file_exists(&self) -> bool {
         let meta = self.state().and_then(|mut state| self.meta(&mut state));
         self.heard(meta).is_some()
@@ -763,7 +763,7 @@ impl IOBase for S3File {
 
     /// The object's byte length: cached while open, otherwise one `HEAD`;
     /// `0` where no object is, and `0` with a warning where the store refused
-    /// the `HEAD` ([`Self::heard`]).
+    /// the `HEAD` (`heard`).
     fn size(&self) -> u64 {
         let mut state = match self.state() {
             Ok(state) => state,

@@ -815,7 +815,7 @@ impl Session {
 
     /// The configuration file read: what was stated, else `AWS_CONFIG_FILE`,
     /// else `config` under [`Self::directory`] - each expanded as
-    /// [`Self::expand`] does. An empty `AWS_CONFIG_FILE` names no file at
+    /// `expand` does. An empty `AWS_CONFIG_FILE` names no file at
     /// all, so none is read, rather than the one under the directory.
     pub fn config_file(&self) -> Option<PathBuf> {
         self.shared_file(
@@ -827,7 +827,7 @@ impl Session {
 
     /// The credentials file read: what was stated, else
     /// `AWS_SHARED_CREDENTIALS_FILE`, else `credentials` under
-    /// [`Self::directory`] - each expanded as [`Self::expand`] does. An
+    /// [`Self::directory`] - each expanded as `expand` does. An
     /// empty `AWS_SHARED_CREDENTIALS_FILE` names no file at all, so none is
     /// read, rather than the one under the directory.
     pub fn credentials_file(&self) -> Option<PathBuf> {
@@ -1284,7 +1284,7 @@ impl Session {
 
     /// The PEM bundle of trusted certificate authorities: what was stated,
     /// else `AWS_CA_BUNDLE`, else the profile's `ca_bundle`; a configured
-    /// one expanded as [`Self::expand`] does.
+    /// one expanded as `expand` does.
     pub fn ca_bundle(&self) -> Option<PathBuf> {
         self.inner.knobs.ca_bundle.clone().or_else(|| {
             self.variable("AWS_CA_BUNDLE")
