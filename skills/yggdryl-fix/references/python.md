@@ -75,11 +75,12 @@ from yggdryl import Field
 field = Field("OrderQty", "decimal128(20, 8)")
 field.fix.tag = 38
 field.fix.names = ["Qty", "Quantity"]
-field.fix.branches = ["Venue", "desk"]
+field.fix.sources = ["Venue", "desk"]
 
 assert field.fix.tag == 38
 assert field.metadata["FIX:names"] == '["Qty","Quantity"]'
-assert field.fix.branches == ["desk", "venue"]
+assert field.fix.sources == ["desk", "venue"]
+assert field.metadata["FIX:sources"] == '["desk","venue"]'
 # Derived on every read from the tag and the folded name, never stored.
 spelled = Field("order_qty", "int64")
 spelled.fix.tag = 38
@@ -549,7 +550,7 @@ assert report.curruuid in execution.srcuuids
 assert (report.crosscode, execution.crosscode) == ("10:1:O-9", "8:1:E-1")
 
 [quote] = codec.parse_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|")
-assert (quote.msgcat, quote.side, quote.crosscode) == (MarketDataKind.QUOT, Side.UNKN, "14:0:Q1")
+assert (quote.msgcat, quote.side, quote.crosscode) == (MarketDataKind.QUOT, Side.UKNW, "14:0:Q1")
 # Both legs on the one message, each in its currency; neither is the quote's own price.
 assert quote.price is None
 assert quote.bidpx is not None and quote.bidpx.as_py() == Decimal(99)
@@ -682,10 +683,11 @@ reader did instead.
 import pathlib
 import tempfile
 
+from yggdryl import PluginSide
 from yggdryl.fix import FixRegistry
 
 cblock = """<?xml version="1.0" encoding="US-ASCII"?>
-<cplugin-configuration fix-version="4.4">
+<cplugin-configuration fix-version="4.4" type="com.ullink.SellSideFIXCPluginCBlock">
   <vocabulary><vocabulary-tag name="4" alt="AdvSide" type="char" /></vocabulary>
   <maps><map name="ADVSIDE"><entries><entry key="{name}" value="B" /></entries></map></maps>
 </cplugin-configuration>
@@ -697,7 +699,9 @@ with tempfile.TemporaryDirectory() as directory:
     (folder / "broken.cfb").write_text("<cplugin-configuration><vocabulary>")
 
     venue, roots = FixRegistry.from_cfb_file(folder / "alpha.cfb", "venue")
-    assert venue.field(4).fix.branches == ["venue"] and roots == []
+    assert venue.field(4).fix.sources == ["venue"] and roots == []
+    # The catalog records the source once: its file and its plugin's role.
+    assert venue.sources() == [{"id": "venue", "file": "alpha.cfb", "pluginside": PluginSide.SELL}]
 
     # A folder holds the .cfb files directly inside it, a glob what it matches.
     registry = FixRegistry()
@@ -712,13 +716,14 @@ with tempfile.TemporaryDirectory() as directory:
     globbed.add_cfb_files(folder / "*.cfb")
     assert globbed == registry
     # Ascending URL order, each file stamped with its stem.
-    assert registry.field(4).fix.branches == ["alpha", "beta"]
+    assert registry.field(4).fix.sources == ["alpha", "beta"]
+    assert [entry["id"] for entry in registry.sources()] == ["alpha", "beta"]
     # A code set only widens: the held name wins a shared value.
     [code] = registry.codeset_of(registry.field(4))
     assert (code["value"], code["name"], code["aliases"]) == ("B", "buy", ["venue_buy"])
 
     registry.merge_with(venue)
-    assert registry.field(4).fix.branches == ["alpha", "beta", "venue"]
+    assert registry.field(4).fix.sources == ["alpha", "beta", "venue"]
 ```
 
 ## Gotchas in Python

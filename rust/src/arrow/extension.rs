@@ -102,6 +102,7 @@ marker_extension! {
     MarketDataTypeType => MarketDataType,
     SideType => Side,
     TimeInForceType => TimeInForce,
+    PluginSideType => PluginSide,
     CountryType => Country,
     CcyType => Ccy,
     MicType => Mic,

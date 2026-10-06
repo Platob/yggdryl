@@ -96,19 +96,19 @@
     ]
   },
   "kpi": {
-    "fields": 6271,
+    "fields": 6272,
     "groups": 581,
-    "enumFields": 2029,
-    "codesets": 738,
-    "codes": 7934,
+    "enumFields": 2030,
+    "codesets": 739,
+    "codes": 7937,
     "aliases": 56,
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 150,
+    "columns": 151,
     "memberships": 0,
     "dialects": 0,
-    "datatypes": 28,
+    "datatypes": 29,
     "dtypes": [
       [
         "int32",
@@ -204,6 +204,10 @@
       ],
       [
         "marketdatatype",
+        1
+      ],
+      [
+        "pluginside",
         1
       ],
       [
@@ -79031,7 +79035,7 @@
         "metadata": {
           "FIX:tag": "65003",
           "FIX:transient": "false",
-          "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and of the side an order or an execution takes, 10:1:ORD-1, side 0 on one of side UNKN and on every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its chain's once followed.",
+          "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and of the side an order or an execution takes, 10:1:ORD-1, side 0 on one of side UKNW and on every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its chain's once followed.",
           "display": "Cross Code"
         },
         "name": "crosscode",
@@ -79224,7 +79228,7 @@
         "metadata": {
           "FIX:codeset": "msgcatcodeset",
           "FIX:tag": "65016",
-          "description": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word.",
+          "description": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UKNW where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word.",
           "display": "Market Data Kind"
         },
         "name": "marketdatakind",
@@ -79238,7 +79242,7 @@
           "FIX:codeset": "marketdatatypecodeset",
           "FIX:tag": "65017",
           "FIX:transient": "false",
-          "description": "The type of its kind the message is, as the member of the marketdatatype enum: its order type from OrdType, its quote type from QuoteType, its trade type from TrdType, its book entry type from MDEntryType - the field its kind names first, each value read through the dictionary's FIX:marketdatatype where it maps one - UNKN where none is stated; a row stating one is the row's word.",
+          "description": "The type of its kind the message is, as the member of the marketdatatype enum: its order type from OrdType, its quote type from QuoteType, its trade type from TrdType, its book entry type from MDEntryType - the field its kind names first, each value read through the dictionary's FIX:marketdatatype where it maps one - UKNW where none is stated; a row stating one is the row's word.",
           "display": "Market Data Type"
         },
         "name": "marketdatatype",
@@ -79300,10 +79304,23 @@
       },
       {
         "dtype": {
+          "type": "pluginside"
+        },
+        "metadata": {
+          "FIX:codeset": "msgpluginsidecodeset",
+          "FIX:tag": "65041",
+          "description": "The role of the FIX plugin whose session produced the message: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, and independent of Side(54).",
+          "display": "Message Plugin Side"
+        },
+        "name": "msgpluginside",
+        "nullable": false
+      },
+      {
+        "dtype": {
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65041",
+          "FIX:tag": "65042",
           "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
           "display": "Message Originator"
         },
@@ -79315,7 +79332,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65042",
+          "FIX:tag": "65043",
           "description": "The message context a bridge handled the message in, as its own log names it.",
           "display": "Message Context ID"
         },
@@ -79327,7 +79344,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65043",
+          "FIX:tag": "65044",
           "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
           "display": "Message Session ID"
         },
@@ -79339,7 +79356,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65044",
+          "FIX:tag": "65045",
           "FIX:transient": "false",
           "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
           "display": "Message Session Event ID"
@@ -79352,7 +79369,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65045",
+          "FIX:tag": "65046",
           "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
           "display": "Conversation ID"
         },
@@ -79364,7 +79381,7 @@
           "type": "forex"
         },
         "metadata": {
-          "FIX:tag": "65046",
+          "FIX:tag": "65047",
           "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other replaces its type's answer, the base key.",
           "display": "Forex Code"
         },
@@ -79376,7 +79393,7 @@
           "type": "bbg"
         },
         "metadata": {
-          "FIX:tag": "65047",
+          "FIX:tag": "65048",
           "description": "The normalized Bloomberg identifier the message identifies.",
           "display": "Bloomberg Code"
         },
@@ -79388,7 +79405,7 @@
           "type": "figi"
         },
         "metadata": {
-          "FIX:tag": "65048",
+          "FIX:tag": "65049",
           "description": "The normalized FIGI the message identifies.",
           "display": "FIGI Code"
         },
@@ -79400,7 +79417,7 @@
           "type": "url"
         },
         "metadata": {
-          "FIX:tag": "65049",
+          "FIX:tag": "65050",
           "FIX:transient": "false",
           "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
           "display": "Source URL"
@@ -248887,7 +248904,7 @@
       "codes": [
         {
           "doc": "No type stated.",
-          "name": "UNKN",
+          "name": "UKNW",
           "value": "0"
         },
         {
@@ -252655,7 +252672,7 @@
       "codes": [
         {
           "doc": "No published category: a message type the dictionary does not file.",
-          "name": "UNKN",
+          "name": "UKNW",
           "value": "0"
         },
         {
@@ -252800,6 +252817,26 @@
         }
       ],
       "name": "msgdirectioncodeset"
+    },
+    {
+      "codes": [
+        {
+          "doc": "No plugin role found, or one no member names.",
+          "name": "UKNW",
+          "value": "0"
+        },
+        {
+          "doc": "A Buy-Side plugin: it originates orders and cancels and receives execution reports.",
+          "name": "BUYS",
+          "value": "1"
+        },
+        {
+          "doc": "A Sell-Side plugin: it receives orders and cancels and answers with execution reports.",
+          "name": "SELL",
+          "value": "2"
+        }
+      ],
+      "name": "msgpluginsidecodeset"
     },
     {
       "codes": [
@@ -278505,7 +278542,7 @@
         "t": 65003,
         "n": "Cross Code",
         "y": "utf8",
-        "x": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and of the side an order or an execution takes, 10:1:ORD-1, side 0 on one of side UNKN and on every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its chain's once followed."
+        "x": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and of the side an order or an execution takes, 10:1:ORD-1, side 0 on one of side UKNW and on every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its chain's once followed."
       },
       {
         "c": "currhashcode",
@@ -278596,14 +278633,14 @@
         "t": 65016,
         "n": "Market Data Kind",
         "y": "marketdatakind",
-        "x": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word."
+        "x": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UKNW where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word."
       },
       {
         "c": "marketdatatype",
         "t": 65017,
         "n": "Market Data Type",
         "y": "marketdatatype",
-        "x": "The type of its kind the message is, as the member of the marketdatatype enum: its order type from OrdType, its quote type from QuoteType, its trade type from TrdType, its book entry type from MDEntryType - the field its kind names first, each value read through the dictionary's FIX:marketdatatype where it maps one - UNKN where none is stated; a row stating one is the row's word."
+        "x": "The type of its kind the message is, as the member of the marketdatatype enum: its order type from OrdType, its quote type from QuoteType, its trade type from TrdType, its book entry type from MDEntryType - the field its kind names first, each value read through the dictionary's FIX:marketdatatype where it maps one - UKNW where none is stated; a row stating one is the row's word."
       },
       {
         "c": "price",
@@ -278977,36 +279014,43 @@
         "x": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived."
       },
       {
-        "c": "msgoriginator",
+        "c": "msgpluginside",
         "t": 65041,
+        "n": "Message Plugin Side",
+        "y": "pluginside",
+        "x": "The role of the FIX plugin whose session produced the message: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, and independent of Side(54)."
+      },
+      {
+        "c": "msgoriginator",
+        "t": 65042,
         "n": "Message Originator",
         "y": "utf8",
         "x": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content."
       },
       {
         "c": "msgctxid",
-        "t": 65042,
+        "t": 65043,
         "n": "Message Context ID",
         "y": "utf8",
         "x": "The message context a bridge handled the message in, as its own log names it."
       },
       {
         "c": "msgsessionid",
-        "t": 65043,
+        "t": 65044,
         "n": "Message Session ID",
         "y": "utf8",
         "x": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself."
       },
       {
         "c": "msgsesseventid",
-        "t": 65044,
+        "t": 65045,
         "n": "Message Session Event ID",
         "y": "utf8",
         "x": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on."
       },
       {
         "c": "conversationid",
-        "t": 65045,
+        "t": 65046,
         "n": "Conversation ID",
         "y": "utf8",
         "x": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content."
@@ -279020,21 +279064,21 @@
       },
       {
         "c": "forexcode",
-        "t": 65046,
+        "t": 65047,
         "n": "Forex Code",
         "y": "forex",
         "x": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other replaces its type's answer, the base key."
       },
       {
         "c": "bloombergcode",
-        "t": 65047,
+        "t": 65048,
         "n": "Bloomberg Code",
         "y": "bbg",
         "x": "The normalized Bloomberg identifier the message identifies."
       },
       {
         "c": "figicode",
-        "t": 65048,
+        "t": 65049,
         "n": "FIGI Code",
         "y": "figi",
         "x": "The normalized FIGI the message identifies."
@@ -279783,6 +279827,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -280056,7 +280101,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "FILLED",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
         "currency": "XXX",
@@ -280110,6 +280155,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -280466,7 +280512,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": "41.25",
         "stoppx": null,
         "currency": "XXX",
@@ -280520,6 +280566,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -283401,7 +283448,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
         "currency": "XXX",
@@ -283409,7 +283456,7 @@
         "displayqty": null,
         "hiddenqty": null,
         "unit": "",
-        "side": "UNKN",
+        "side": "UKNW",
         "securityids": {},
         "isincode": null,
         "cficode": null,
@@ -283455,6 +283502,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -283702,7 +283750,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "ACTIVE",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
         "currency": "XXX",
@@ -283710,7 +283758,7 @@
         "displayqty": null,
         "hiddenqty": null,
         "unit": "",
-        "side": "UNKN",
+        "side": "UKNW",
         "securityids": {},
         "isincode": null,
         "cficode": null,
@@ -283756,6 +283804,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -283937,7 +283986,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
         "currency": "XXX",
@@ -283945,7 +283994,7 @@
         "displayqty": null,
         "hiddenqty": null,
         "unit": "",
-        "side": "UNKN",
+        "side": "UKNW",
         "securityids": {},
         "isincode": null,
         "cficode": null,
@@ -283991,6 +284040,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -284105,7 +284155,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
         "currency": "XXX",
@@ -284113,7 +284163,7 @@
         "displayqty": null,
         "hiddenqty": null,
         "unit": "",
-        "side": "UNKN",
+        "side": "UKNW",
         "securityids": {},
         "isincode": null,
         "cficode": null,
@@ -284159,6 +284209,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -284303,7 +284354,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "REJECTED",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
         "currency": "XXX",
@@ -284311,7 +284362,7 @@
         "displayqty": null,
         "hiddenqty": null,
         "unit": "",
-        "side": "UNKN",
+        "side": "UKNW",
         "securityids": {},
         "isincode": null,
         "cficode": null,
@@ -284357,6 +284408,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -284619,6 +284671,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -284867,7 +284920,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": "10.5",
         "stoppx": null,
         "currency": "USD",
@@ -284921,6 +284974,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -285155,7 +285209,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
         "currency": "USD",
@@ -285209,6 +285263,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -285537,7 +285592,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
         "currency": "GBP",
@@ -285545,7 +285600,7 @@
         "displayqty": null,
         "hiddenqty": null,
         "unit": "",
-        "side": "UNKN",
+        "side": "UKNW",
         "securityids": {},
         "isincode": "GB00BN7SWP63",
         "cficode": null,
@@ -285591,6 +285646,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -285848,7 +285904,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": "41.25",
         "stoppx": null,
         "currency": "XXX",
@@ -285902,6 +285958,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -286071,7 +286128,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
         "currency": "XXX",
@@ -286125,6 +286182,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -286283,7 +286341,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
         "currency": "XXX",
@@ -286337,6 +286395,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -286486,7 +286545,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
         "currency": "XXX",
@@ -286540,6 +286599,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -286700,7 +286760,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
         "currency": "XXX",
@@ -286708,7 +286768,7 @@
         "displayqty": null,
         "hiddenqty": null,
         "unit": "",
-        "side": "UNKN",
+        "side": "UKNW",
         "securityids": {},
         "isincode": null,
         "cficode": null,
@@ -286754,6 +286814,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,
@@ -286929,7 +286990,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
-        "marketdatatype": "UNKN",
+        "marketdatatype": "UKNW",
         "price": "10.5",
         "stoppx": null,
         "currency": "XXX",
@@ -286983,6 +287044,7 @@
       },
       "capture": {
         "msgpluginid": null,
+        "msgpluginside": "UKNW",
         "msgctxid": null,
         "msgsessionid": null,
         "msgsesseventid": null,

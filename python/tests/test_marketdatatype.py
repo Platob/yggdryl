@@ -16,7 +16,7 @@ from yggdryl.fix import FixRegistry
 
 
 def test_the_members_group_by_the_code_set_they_type() -> None:
-    assert MarketDataType.UNKN == 0
+    assert MarketDataType.UKNW == 0
     assert MarketDataType.ORDMKT == 101 and MarketDataType.ORDLIMIT == 102
     assert MarketDataType.ORDOTHER == 199
     assert MarketDataType.QUOTRAD == 201 and MarketDataType.QUOOTHER == 299
@@ -63,7 +63,7 @@ def test_a_fix_wire_value_reads_and_answers_back() -> None:
     # types nothing as none.
     assert MarketDataType.from_fix(828, "999") is MarketDataType.TRDOTHER
     assert MarketDataType.from_fix(54, "1") is None
-    assert MarketDataType.UNKN.fix_code is None
+    assert MarketDataType.UKNW.fix_code is None
     assert MarketDataType.ORDOTHER.fix_code is None
     for member in MarketDataType:
         pair = member.fix_code
@@ -146,6 +146,6 @@ def test_a_field_maps_its_wire_values_onto_members() -> None:
 
 def test_a_leaf_answers_the_member_it_is_typed_as() -> None:
     order = yggdryl.graph.OrderEvent(1, crosscode="O-1")
-    assert order.marketdatatype is MarketDataType.UNKN
+    assert order.marketdatatype is MarketDataType.UKNW
     typed = yggdryl.graph.OrderEvent(1, crosscode="O-1", marketdatatype=MarketDataType.ORDLIMIT)
     assert typed.marketdatatype is MarketDataType.ORDLIMIT

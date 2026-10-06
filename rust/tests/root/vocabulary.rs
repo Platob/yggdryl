@@ -191,6 +191,7 @@ mod logical {
             ("marketdatakind", DataType::MarketDataKind),
             ("marketdatatype", DataType::MarketDataType),
             ("timeinforce", DataType::TimeInForce),
+            ("pluginside", DataType::PluginSide),
             ("unit", DataType::Unit),
             ("forex", DataType::Forex),
             ("language", DataType::fixed_ascii(2).unwrap()),

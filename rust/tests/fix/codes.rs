@@ -248,9 +248,9 @@ fn one_set_is_named_once_however_many_fields_read_by_it() {
     other.as_fix_mut().set_codeset("unitcodeset").unwrap();
     registry.insert(other).unwrap();
 
-    // The set named here, beside the crate's MsgCat, state and market data
-    // type sets.
-    assert_eq!(registry.codesets().len(), 4);
+    // The set named here, beside the crate's MsgCat, state, market data
+    // type and plugin side sets.
+    assert_eq!(registry.codesets().len(), 5);
     for tag in [996, 999] {
         let set = registry
             .codeset_of(registry.field_by_tag(tag).unwrap())
@@ -345,15 +345,15 @@ fn a_field_keeps_the_set_it_reads_by_when_another_dictionary_names_another() {
     assert_eq!(set.code_value("Sell"), Some("2"));
     // The incoming name is still a set of its own: a name is an identity,
     // and folding its members into another does not retire it.
-    assert_eq!(held.codesets().len(), 5);
+    assert_eq!(held.codesets().len(), 6);
     assert!(held.get_codeset("venuecodeset").is_some());
 }
 
 #[test]
 fn a_dictionary_holding_only_the_crate_set_reads_back_equal() {
-    // The crate's MsgCat and state vocabularies are registry-owned like
-    // every other set, so even a fresh dictionary persists those two
-    // intrinsic sets.
+    // The crate's MsgCat, state, market data type and plugin side
+    // vocabularies are registry-owned like every other set, so even a
+    // fresh dictionary persists those four intrinsic sets.
     let path = LocalFolder::temporary()
         .unwrap()
         .path()
@@ -362,7 +362,7 @@ fn a_dictionary_holding_only_the_crate_set_reads_back_equal() {
     let _ = std::fs::remove_dir_all(&path);
     let mut root = Holder::local(path.clone()).unwrap();
     let registry = FixRegistry::new();
-    assert_eq!(registry.codesets().len(), 3);
+    assert_eq!(registry.codesets().len(), 4);
     registry.commit(root.as_io_mut()).unwrap();
     assert_eq!(FixRegistry::from_handle(root.as_io()).unwrap(), registry);
 
@@ -426,6 +426,78 @@ fn the_state_set_is_the_crates_own_and_refuses_every_change() {
     );
 }
 
+/// The plugin side set is rendered from the enum - every member, its stored
+/// name, its code and its description - and no door changes it: a
+/// replacement, a widening and a removal are each refused naming the set.
+#[test]
+fn the_plugin_side_set_is_the_crates_own_and_refuses_every_change() {
+    let mut registry = FixRegistry::new();
+    let held = registry
+        .codeset("msgpluginsidecodeset")
+        .expect("the intrinsic set");
+    assert_eq!(held.codes().count(), yggdryl::PluginSide::ALL.len());
+    assert_eq!(held.code_name("0"), Some("UKNW"));
+    assert_eq!(held.code_name("1"), Some("BUYS"));
+    assert_eq!(held.code_value("SELL"), Some("2"));
+    assert_eq!(
+        held.codes()
+            .map(|code| FixCode::from(code.unwrap())
+                .description()
+                .map(str::to_owned))
+            .collect::<Vec<_>>(),
+        yggdryl::PluginSide::ALL
+            .iter()
+            .map(|side| Some(side.description().to_owned()))
+            .collect::<Vec<_>>()
+    );
+    // The crate's own field reads by it.
+    let field = registry
+        .field_by_name("msgpluginside")
+        .expect("the crate field");
+    assert_eq!(field.as_fix().codeset(), Some("msgpluginsidecodeset"));
+
+    let refusals = [
+        registry
+            .set_codeset("msgpluginsidecodeset", &[FixCode::new("BUYS", "1")])
+            .unwrap_err(),
+        registry
+            .set_codeset("MsgPluginSideCodeSet", &[FixCode::new("BUYS", "1")])
+            .unwrap_err(),
+        registry
+            .merge_codeset("msgpluginsidecodeset", &[FixCode::new("MIDL", "3")])
+            .unwrap_err(),
+        registry
+            .merge_codeset("msgpluginsidecodeset", &[FixCode::new("BUYS", "7")])
+            .unwrap_err(),
+        registry.remove_codeset("msgpluginsidecodeset").unwrap_err(),
+    ];
+    for refused in refusals {
+        assert!(
+            refused.to_string().contains("the fixed plugin side codes"),
+            "{refused}"
+        );
+    }
+    // The canonical document merged back is no change at all.
+    let canonical: Vec<FixCode> = yggdryl::PluginSide::ALL
+        .iter()
+        .map(|side| {
+            FixCode::new(side.as_str(), side.code().to_string())
+                .with_description(side.description())
+        })
+        .collect();
+    registry
+        .merge_codeset("msgpluginsidecodeset", &canonical)
+        .expect("the unchanged set");
+    assert_eq!(
+        registry
+            .codeset("msgpluginsidecodeset")
+            .unwrap()
+            .codes()
+            .count(),
+        3
+    );
+}
+
 #[test]
 fn a_name_no_store_can_file_is_refused_before_anything_is_written() {
     let mut registry = FixRegistry::new();
@@ -433,7 +505,7 @@ fn a_name_no_store_can_file_is_refused_before_anything_is_written() {
         let refused = registry.set_codeset(name, &[FixCode::new("Buy", "1")]);
         assert!(refused.is_err() || name.is_empty(), "{name:?}");
     }
-    assert_eq!(registry.codesets().len(), 3);
+    assert_eq!(registry.codesets().len(), 4);
 }
 
 mod party_source {

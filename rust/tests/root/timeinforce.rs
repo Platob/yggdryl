@@ -125,6 +125,35 @@ fn a_spelling_reads_as_one_member_and_a_stranger_is_refused() {
     );
 }
 
+/// `UKNW` is the zero member's four-letter spelling, and `UNKN`, the
+/// spelling it was stored under before, names no time in force at any
+/// door, so a document written under it is rebuilt by its writer, never
+/// read back as the member; a stored column holds the code `0` and reads
+/// unchanged.
+#[test]
+fn the_retired_spelling_unkn_names_no_time_in_force() {
+    assert_eq!(
+        TimeInForce::from_spelling("UKNW"),
+        Some(TimeInForce::Unknown)
+    );
+    assert_eq!(
+        TimeInForce::from_spelling("uknw"),
+        Some(TimeInForce::Unknown)
+    );
+    for spelling in ["UNKN", "unkn", "Unkn"] {
+        assert_eq!(TimeInForce::from_spelling(spelling), None, "{spelling}");
+        let refused = TimeInForce::read(spelling).unwrap_err().to_string();
+        assert!(refused.contains("timeinforce"), "{refused}");
+        assert!(refused.contains(spelling), "{refused}");
+    }
+    assert!(serde_json::from_str::<TimeInForce>("\"UNKN\"").is_err());
+    assert_eq!(
+        serde_json::from_str::<TimeInForce>("\"UKNW\"").unwrap(),
+        TimeInForce::Unknown
+    );
+    assert!(DataType::TimeInForce.scalar(Scalar::from("UNKN")).is_err());
+}
+
 /// A text column lands as the codes its spellings name, and the column
 /// renders back as the stored names.
 #[test]

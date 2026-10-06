@@ -19,10 +19,10 @@ use crate::{
     DateType, DecimalType, DurationType, EnumType, FigiType, Float16Type, Float32Type, Float64Type,
     ForexType, GeographyType, GeometryType, Int8Type, Int16Type, Int32Type, Int64Type,
     IntervalType, IsinType, MappingType, MarketDataKindType, MarketDataTypeType, MediaTypeType,
-    MicType, MimeTypeType, NullType, RicType, RunEndType, SedolType, SerieType, SideType,
-    StateType, StringType, StructType, TimeInForceType, TimeType, TimezoneType, UInt8Type,
-    UInt16Type, UInt32Type, UInt64Type, UnionType, UnitType, UriType, UuidType, VariantType,
-    VersionType,
+    MicType, MimeTypeType, NullType, PluginSideType, RicType, RunEndType, SedolType, SerieType,
+    SideType, StateType, StringType, StructType, TimeInForceType, TimeType, TimezoneType,
+    UInt8Type, UInt16Type, UInt32Type, UInt64Type, UnionType, UnitType, UriType, UuidType,
+    VariantType, VersionType,
 };
 use crate::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -1622,6 +1622,7 @@ field_leaves! {
     [MarketDataKind] => MarketDataKindField / MarketDataKindType,
     [MarketDataType] => MarketDataTypeField / MarketDataTypeType,
     [TimeInForce] => TimeInForceField / TimeInForceType,
+    [PluginSide] => PluginSideField / PluginSideType,
     [Uuid] => UuidField / UuidType,
     [Version] => VersionField / VersionType,
     [Url, Urn] => UriField / UriType,

@@ -1,6 +1,6 @@
 """The pyarrow extension types of the datatypes Arrow cannot state alone.
 
-Every `yggdryl.*` name the core writes - the twelve codes, the five enum
+Every `yggdryl.*` name the core writes - the twelve codes, the six enum
 leaves, the fixed decimals, the string and bytes documents, the version, URL,
 URN, timezone, MIME and media types - is registered with pyarrow when
 `yggdryl` is imported, from the one list the core keeps

@@ -49,7 +49,7 @@ class TestBookEvent:
         assert book.currunix == CLOCK and book.crosscode == "3:0:IBM"
         assert book.marketdatakind is MarketDataKind.BOOK
         # A book states no side of its own.
-        assert book.side is Side.UNKN
+        assert book.side is Side.UKNW
         assert book.alive == [] and book.deltas == []
         assert book.alive_on(Side.BUYS) == [] and book.alive_on("SELL") == []
         # A book a caller builds holds its sides, empty or not.
@@ -202,7 +202,7 @@ class TestBookEvent:
         assert [entry.crosscode for entry in bids] == ["10:1:B-2", "10:1:B-1", "10:1:B-M"]
         assert [entry.crosscode for entry in book.alive_on("SELL")] == ["10:2:A-1"]
         # A side that is neither a bid nor an ask holds nothing.
-        assert book.alive_on(Side.UNKN) == []
+        assert book.alive_on(Side.UKNW) == []
         # `alive` is the bid side's entries, then the ask side's.
         assert book.alive == [*bids, *book.alive_on(Side.SELL)]
         with pytest.raises(ValueError):
@@ -214,7 +214,7 @@ class TestBookEvent:
         two_sided = graph.QuoteEvent(
             CLOCK, crosscode="Q-1", ticker="IBM", bidpx=D("99"), bidqty=2, askpx=D("101"), askqty=3, state="NEW"
         )
-        assert two_sided.crosscode == "14:0:Q-1" and two_sided.side is Side.UNKN
+        assert two_sided.crosscode == "14:0:Q-1" and two_sided.side is Side.UKNW
         book = graph.BookEvent(CLOCK, "IBM").with_operations([two_sided])
         assert [entry.crosscode for entry in book.alive_on(Side.BUYS)] == ["14:0:Q-1"]
         assert [entry.crosscode for entry in book.alive_on(Side.SELL)] == ["14:0:Q-1"]

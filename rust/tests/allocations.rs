@@ -604,7 +604,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
     trade.as_fix_mut().set_tag(5_001).expect("a static tag");
     trade
         .as_fix_mut()
-        .set_branches([VENUE])
+        .set_sources([VENUE])
         .expect("a static membership");
     trade
         .as_fix_mut()
@@ -761,7 +761,7 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
     trade.as_fix_mut().set_tag(5_001).expect("a static tag");
     trade
         .as_fix_mut()
-        .set_branches([VENUE])
+        .set_sources([VENUE])
         .expect("a static membership");
     let root = StructType::from_fields([symbol, trade, DataType::utf8().nullable_field("9999")])
         .map(DataType::from)
@@ -5857,7 +5857,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 53] = [
+    let seeds: [(DataTypeId, Scalar); 54] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -5912,6 +5912,7 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::State, Scalar::from("NEW")),
         (DataTypeId::MarketDataKind, Scalar::from("ORDR")),
         (DataTypeId::TimeInForce, Scalar::from("DAY")),
+        (DataTypeId::PluginSide, Scalar::from("BUYS")),
         (DataTypeId::MarketDataType, Scalar::from("ORDLIMIT")),
         (DataTypeId::Unit, Scalar::from("Shares")),
         (
@@ -7940,6 +7941,15 @@ struct StageCosts {
 /// for the refusal it then dropped - so a datetime field costs a parse
 /// nothing, and no other stage moved.
 ///
+/// The fixed row then gained `msgpluginside` (65041), the role of the
+/// plugin whose session produced the message - a required `pluginside`
+/// column the codec stamps on every message it builds, `UKNW` under no
+/// source. Each landing rose by the five a `uint8` column holding no null
+/// costs to lay out - the bridge row's to 1505, a frame's to 1485, the
+/// packed frame's to 1523 - and each batch by the one array it gathers
+/// more, to 211; no parse, `into_row`, digest or lifecycle moved, the
+/// column being a stamp read off the codec and no key of the line.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
@@ -7948,8 +7958,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 543,
             into_row: 88,
-            landing: 1500,
-            batch: 210,
+            landing: 1505,
+            batch: 211,
             digest: 1,
             lifecycle: 10,
         },
@@ -7960,8 +7970,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 212,
             into_row: 64,
-            landing: 1480,
-            batch: 210,
+            landing: 1485,
+            batch: 211,
             digest: 1,
             lifecycle: 10,
         },
@@ -7972,8 +7982,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 1016,
             into_row: 250,
-            landing: 1518,
-            batch: 210,
+            landing: 1523,
+            batch: 211,
             digest: 1,
             lifecycle: 10,
         },

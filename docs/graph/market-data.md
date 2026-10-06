@@ -178,7 +178,7 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
 | Key | Rule |
 | --- | --- |
 | Verbs | each enum answers `ALL`, `name`, `display`, `datatype`, `nullable`, `field`, `fields`, `of_name` (any case), `fact` (what an element states, nothing if none), `record` (states a cell back: null clears it, unreadable leaves it unchanged); `ElementColumn` and `EventColumn` also `description`, each taking its trait: `Element`/`Event`/`Market`/`Operation` |
-| Nullability | never null: `currunix`, `seqnum` (the first place is `0`), `curruuid`, `crossuuid`, `crosscode` (the empty text where the element names none), `currhashcode`, `crosshashcode`, `marketdatakind`, `marketdatatype`, `currency`, `unit`, `side` - a type stated as none is `UNKN`, and a side stated as none is the cell `UNKN` (code `0`); every other column is null where nothing is stated (an empty market code, serie or map, an absent instant); `state` also admits null - no neutral member for an empty cell |
+| Nullability | never null: `currunix`, `seqnum` (the first place is `0`), `curruuid`, `crossuuid`, `crosscode` (the empty text where the element names none), `currhashcode`, `crosshashcode`, `marketdatakind`, `marketdatatype`, `currency`, `unit`, `side` - a type stated as none is `UKNW`, and a side stated as none is the cell `UKNW` (code `0`); every other column is null where nothing is stated (an empty market code, serie or map, an absent instant); `state` also admits null - no neutral member for an empty cell |
 | `execunix` | when the element last executed: a market fact, so an undated leaf states it too and a text line, which is an event and no market element, states none ([Market](market.md#contract)) |
 | `isincode` | a projection of `securityids`: `fact` is the value of its `isin` identifier, and `record` fills an absent `isin` base key and ignores a disagreeing one - the strict door is the [row reader](#arrow) |
 | Order | `ALL` is the canonical order `fields()` and event-native schemas use; a FIX row holds the same columns through the crate's own fields, each at its datatype, in protocol-oriented time/identity bands rather than reordered around `ALL` |
@@ -223,7 +223,7 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
     ElementColumn::CrossCode.record(&mut again, &code);
     MarketColumn::Side.record(&mut again, &side);
     assert_eq!((again.get_crosscode(), again.get_side()), ("10:1:O-1001", Side::Buy));
-    // Nothing stated is a null, except a side: stated as none, it is UNKN.
+    // Nothing stated is a null, except a side: stated as none, it is UKNW.
     assert_eq!(EventColumn::PrevUuid.fact(&order), None);
     assert_eq!(MarketColumn::Price.fact(&order), None);
     assert_eq!(MarketColumn::Side.fact(&OrderEvent::at(1)), Some(Scalar::from(Side::Unknown)));

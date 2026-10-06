@@ -2,7 +2,7 @@ import { Side, fields, type SideField, type SideName } from '..'
 
 const code: number = Side.BUYS
 const name: SideName = 'SELL'
-const unknown: 0 = Side.UNKN
+const unknown: 0 = Side.UKNW
 const field: SideField = fields.side('side', { nullable: false })
 
 // @ts-expect-error a member is read-only

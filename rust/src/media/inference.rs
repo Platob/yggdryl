@@ -245,6 +245,7 @@ impl Scalar {
             Self::MarketDataKind(_) => Ok(DataType::MarketDataKind),
             Self::MarketDataType(_) => Ok(DataType::MarketDataType),
             Self::TimeInForce(_) => Ok(DataType::TimeInForce),
+            Self::PluginSide(_) => Ok(DataType::PluginSide),
             Self::Isin(_) => Ok(DataType::Isin),
             Self::Cusip(_) => Ok(DataType::Cusip),
             Self::Sedol(_) => Ok(DataType::Sedol),

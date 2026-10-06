@@ -113,6 +113,7 @@ mod parallel;
 pub mod parquet;
 mod parser;
 mod path;
+pub mod pluginside;
 mod pretty;
 pub mod protocol;
 mod regex;
@@ -194,17 +195,18 @@ pub use fix::{
     FXRATES_TAG_NAME, FixAnomaly, FixCapture, FixCode, FixCodeSet, FixCodeValue, FixCodec,
     FixCodes, FixCommit, FixDedup, FixDirection, FixDirectionEntry, FixDirections, FixDrop,
     FixEntry, FixFailure, FixFieldIter, FixHeader, FixId, FixIdMapKind, FixIdSource, FixIdSources,
-    FixKey, FixLifted, FixMerge, FixMessages, FixMsg, FixPatterns, FixRegistry, FixSpellings,
-    HIDDENQTY_TAG_NAME, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, MARKETDATAKIND_TAG_NAME,
-    MARKETDATATYPE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCTXID_TAG_NAME,
-    MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME,
-    MSGSESSIONID_TAG_NAME, ORDQTY_TAG_NAME, PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME,
-    PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME,
-    SNAPUNIX_TAG_NAME, SOH, SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME,
-    STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG_NAME, TICKER_TAG_NAME,
-    TRADABLE_TAG_NAME, ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, Words, fix_column_of, fix_column_tags,
-    fix_crate_fields, fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document,
-    into_fix_document, is_crate_tag, is_derived_tag,
+    FixKey, FixLifted, FixMerge, FixMessages, FixMsg, FixPatterns, FixRegistry, FixSource,
+    FixSpellings, HIDDENQTY_TAG_NAME, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME,
+    MARKETDATAKIND_TAG_NAME, MARKETDATATYPE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME,
+    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME,
+    MSGPLUGINSIDE_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, ORDQTY_TAG_NAME,
+    PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
+    RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH,
+    SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS,
+    STANDARD_TRAILER_TAGS, STATE_TAG_NAME, TICKER_TAG_NAME, TRADABLE_TAG_NAME, ULBRIDGE_ROWHEADER,
+    UNIT_TAG_NAME, Words, fix_column_of, fix_column_tags, fix_crate_fields, fix_schema,
+    fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document, is_crate_tag,
+    is_derived_tag,
 };
 pub use hostname::HOSTNAME;
 pub use int256::{i256, u256};
@@ -313,6 +315,7 @@ pub use mic::*;
 pub(crate) use mime_type::MIMETYPE_EXTENSION_NAME;
 pub use mime_type::MimeTypeType;
 pub(crate) use parser::{fold_digest, folds_equal, normalized};
+pub use pluginside::*;
 pub use pretty::Pretty;
 pub use ric::*;
 pub use runend::*;

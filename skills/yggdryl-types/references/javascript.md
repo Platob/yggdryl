@@ -315,26 +315,35 @@ assert.equal(uuid.scalar(text.toUpperCase()).asJs(), text)
 assert.deepEqual([...DataType.from('binary(2)').scalar(Buffer.from([1, 2])).asJs()], [1, 2])
 ```
 
-## Enums: side, marketdatakind, state, timeinforce
+## Enums: side, marketdatakind, state, timeinforce, pluginside
 
-`side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
-`enum` family: each member is a code in a column - `uint8` for `side`,
-`marketdatakind` and `timeinforce`, `uint16` for `state` and `marketdatatype` -
-and its stored name in text. A value answers the name; `Side`,
-`MarketDataKind`, `MarketDataType`, `State` and `TimeInForce` at the package
-root are frozen name-to-code objects. A side's name is a four-letter code (`BUYS`, `SELL`, `SSHT`); the stored
+`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` and
+`pluginside` are the `enum` family: each member is a code in a column - `uint8`
+for `side`, `marketdatakind`, `timeinforce` and `pluginside`, `uint16` for
+`state` and `marketdatatype` - and its stored name in text. A value answers the
+name; `Side`, `MarketDataKind`, `MarketDataType`, `State`, `TimeInForce` and
+`PluginSide` at the package root are frozen name-to-code objects. A side's name is a four-letter code (`BUYS`, `SELL`, `SSHT`); the stored
 names before the codes (`BUY`, `SSHORT`, ...) are still read and never written. A
-side is never absent - `UNKN` (code 0) is unstated.
+side is never absent - `UKNW` (code 0) is unstated.
 
 ```javascript
 const assert = require('node:assert/strict')
-const { DataType, MarketDataKind, Side, TimeInForce, fields, timeInForceFromFix } = require('yggdryl')
+const {
+  DataType,
+  MarketDataKind,
+  PluginSide,
+  Side,
+  TimeInForce,
+  fields,
+  pluginSideFromPluginType,
+  timeInForceFromFix,
+} = require('yggdryl')
 
 // A side reads its stored name, FIX's wire code or its code.
 const side = fields.side('side', { nullable: false })
 assert.deepEqual([side.scalar('BUYS').asJs(), side.scalar('1').asJs(), side.scalar(2).asJs()], ['BUYS', 'BUYS', 'SELL'])
 assert.equal(side.scalar('BUY').asJs(), 'BUYS', 'an earlier stored name is read, never written')
-assert.deepEqual([Side.UNKN, Side.BUYS, Side.SELL], [0, 1, 2])
+assert.deepEqual([Side.UKNW, Side.BUYS, Side.SELL], [0, 1, 2])
 assert.ok(Object.isFrozen(Side))
 assert.deepEqual([side.dtype.kind, side.dtype.toString()], ['enum', 'side'])
 
@@ -349,6 +358,12 @@ assert.equal(new DataType('state').scalar('UPDATED').asJs(), 'UPDATED')
 assert.equal(fields.timeinforce('tif').scalar('0').asJs(), 'DAY')
 assert.equal(timeInForceFromFix('Z'), 'OTHER', "a venue's own value")
 assert.equal(TimeInForce.GTC, 2)
+
+// A FIX plugin's role, read off a CBlock's plugin class; no `Side`, though
+// `BUYS` and `SELL` are spelled alike.
+assert.equal(pluginSideFromPluginType('x.SellSideFIXCPluginCBlock'), 'SELL')
+assert.equal(new DataType('pluginside').scalar('buy-side').asJs(), 'BUYS')
+assert.equal(PluginSide.SELL, 2)
 ```
 
 ## Nested values: serie, map, union, dictionary

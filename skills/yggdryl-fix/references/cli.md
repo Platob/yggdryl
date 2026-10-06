@@ -33,7 +33,7 @@ A field key is a decimal tag or a name folded like every lookup (`Desk_Value`,
 `deskvalue`, `DeskValue` are one key); a named category's key is its definition
 name. A decimal key is always a tag, never an identity; a path such as
 `Parties[0].PartyID` is not a key. `--dialect` filters a `list` by the
-`FIX:branches` membership and changes no resolution.
+`FIX:sources` membership and changes no resolution.
 
 ## Create, update, delete
 
@@ -54,7 +54,7 @@ yggdryl fix --root scratch/catalog fields create DeskValue int32 --tag 5001 --di
 | `--identifiers MEMBER` | components: repeat per direct scalar identifier (name, alias or tag) |
 | `--codes NAME` | scalar fields: the code set the field reads by; the set must already exist |
 | `--directions JSON` | tag 385: its `FIX:directions` rules |
-| `--dialect NAME` | membership stamped in `FIX:branches`; repeat for several |
+| `--dialect NAME` | membership stamped in `FIX:sources`, its `sources.json` entry created where none is; repeat for several |
 | `--description TEXT`, `--required` | definition metadata; non-null definition |
 | `--input FILE` | one complete native `Field` JSON document instead of the positional name, type and flags |
 
@@ -91,7 +91,8 @@ yggdryl fix --root scratch/catalog codesets write sidecodeset --merge --codes '[
 
 `write` replaces a set; `--merge` folds by wire value and keeps every spelling
 as an alias. `codesets delete` refuses a set a field still reads by and names
-that field. The crate-owned `msgcatcodeset` and `statecodeset` are immutable.
+that field. The crate-owned `msgcatcodeset`, `marketdatatypecodeset`,
+`statecodeset` and `msgpluginsidecodeset` are immutable.
 
 ## Ingest, sync, schema, check, diff
 
@@ -112,7 +113,7 @@ yggdryl fix --root config/fix diff ../desk/config/fix --annotate
 | `ingest PATH...` | folds the CBlocks one or more files, folders or glob patterns hold into all three categories, in one staged dictionary and one commit |
 | `sync DIR` | always folds another dictionary folder into this one; no `--dialect`, and a `.cfb` is refused naming `ingest` |
 | `schema` | renders the fixed capture row (`fix_schema`); `--rowheader` prepends the typed captures a row header yields; `--out` writes native JSON |
-| `check` | validates relationships and code sets; exits nonzero on an error finding |
+| `check` | validates relationships, code sets and the `sources.json` catalog (an id no entry holds fails, an entry nothing names is a note); exits nonzero on an error finding |
 | `diff DIR` | compares definitions and metadata against another catalog; read-only |
 
 `ingest` takes one or more `.cfb` files, folders or glob patterns - a folder
@@ -121,8 +122,10 @@ named; quote a glob (`'cblocks/*.cfb'`, `'cblocks/**/*.cfb'`) to have the core
 walk it, or let the shell expand one; either way every file parses side by
 side and folds into one staged dictionary in ascending URL order. Without `--dialect` each
 file's own stem names its dialect (`MSFIX44.cfb` stamps `msfix44`, `Morgan
-Stanley.cfb` stamps `morgan stanley`; a stem opening with no ASCII letter or
-carrying a comma stamps nothing). Where two files type one tag two ways, the
+Stanley.cfb` stamps `morgan stanley`; a stem opening with no ASCII letter,
+or holding a quote, a backslash or a control character, stamps nothing). The dialect's `sources.json` entry records the file's name
+and the role the root's `type` names - `BUYS` for a `BuySideFIXCPluginCBlock`,
+`SELL` for a `SellSideFIXCPluginCBlock`, `UKNW` for neither. Where two files type one tag two ways, the
 first-sorting file's declaration is held: the later one folds under it,
 counted as restated, where it states another precision of the held datatype
 (a CBlock's `float` against a `decimal128`, its `string` against a `ccy`), and
@@ -174,7 +177,9 @@ with.
   refuses absence.
 - A second field on a held tag under another name is a new definition beside
   the holder; the bare tag keeps answering the first holder, and neither
-  learns the other's name. A field named by nothing but its tag is unnamed:
+  learns the other's name - unless that name is a third field's canonical
+  name, which the declaration then merges into, the tag staying with its
+  holder. A field named by nothing but its tag is unnamed:
   another file's field on that tag folds into it, and the first to name the
   tag names it.
 - The stored tree is generated: prefer these commands (or `FixRegistry.commit`)

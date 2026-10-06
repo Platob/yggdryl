@@ -35,7 +35,7 @@ and the ids its dictionary follows, each with its parents, and learns instrument
 Nothing chains unasked.
 
 The dictionary is data, not code: the committed FIX Latest dictionary
-(fields, 181 messages, 738 code sets, every tag FIX 4.0 to 5.0 SP2 declared) is
+(fields, 181 messages, 739 code sets, every tag FIX 4.0 to 5.0 SP2 declared) is
 the `config/fix` folder of the yggdryl repository, generated and committed,
 ~14 MB, **not shipped** in the crate, wheel or npm package. Load it by path, or
 point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
@@ -53,8 +53,10 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | a field's code set | `registry.codeset_of(field)`, `set_codeset(name, &[FixCode])?` | `codeset_of(field)`, `set_codeset(name, [{...}])` | `codesetOf(field)`, `setCodeset(name, [...])` |
 | persist a dictionary | `registry.commit(&mut folder)?` | `registry.commit(path)` | `registry.commit(path)` |
 | read a venue CBlock (`.cfb`) | `FixRegistry::from_cfb_file(&LocalFile::new(path)?, Some("venue"))?` | `FixRegistry.from_cfb_file(path, "venue")` | `fix.FixRegistry.fromCfbFile(path, 'venue')` |
+| the sources a dictionary was built from | `field.as_fix().sources()`, `registry.sources()`, `get_source("venue")`, `add_source(FixSource::new("venue")?)` | `field.fix.sources`, `registry.sources()`, `get_source("venue")`, `add_source("venue", file=..., pluginside=...)` | `field.fix.sources`, `registry.sources()`, `addSource('venue', { file, pluginside })` |
 | fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `registry.add_cfb_files(&[Holder::local("cblocks")?], None)?` (a file, a folder or a glob each), `merge_with(&other)?` - each answering a `FixMerge` | `registry.add_cfb_file(path)`, `add_cfb_files(folder)` or `add_cfb_files(folder / "*.cfb")` - answering a `dict` | not bound (`yggdryl fix ingest`) |
 | a codec for a run | `FixCodec::new(Arc::new(registry)).with_threads(4)` | `FixCodec(registry, threads=4)` | `new fix.FixCodec(registry, { threads: 4 })` |
+| read under one source, stamping its plugin's role | `.with_source("venue")?`, then `msg.msgpluginside()` | `FixCodec(r, source="venue")`, then `msg.msgpluginside` | `{ source: 'venue' }`, then `msg.capture().msgpluginside` |
 | read only some types | `.with_include_msgtypes(["D", "8"])` | `FixCodec(r, include_msgtypes=[...])` | `{ includeMsgtypes: [...] }` |
 | sniff a line's type, no dictionary | `FixCodec::infer_msgtype_bytes(bytes)` | `FixCodec.infer_msgtype_bytes(bytes)` | `fix.FixCodec.inferMsgtypeBytes(buffer)` |
 | decode one captured line | `codec.parse_line(bytes)?` (iterator) | `codec.parse_line(bytes)` | `codec.parseLine(buffer)` |
@@ -159,7 +161,10 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     holds, and answers `written`/`removed`; never hand-edit the generated
     shards, and state a code set before the field that names it. A fold
     (`add_cfb_file`, `add_cfb_files`, `merge_with`) keeps every declaration the
-    dictionary already holds. A datatype a source states at another precision
+    dictionary already holds, stamps each source's id in `FIX:sources` (a JSON
+    array of lowercase ids) and records what is known of the source once, in
+    the registry's sources catalog (`sources.json` in a store): the file and
+    the `PluginSide` its CBlock root's `type` names. A datatype a source states at another precision
     of the stored one - unbounded text against anything, any two numbers, an
     integer against an enum, a date against a datetime (a CBlock's `float`
     against `decimal128`, `string` against `ccy`) - folds under it and is
@@ -178,9 +183,15 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     tag a held field answers, as its own or as an alternate, folds into that
     field, and the first name to arrive on its tag names it. A field on a held
     tag under another name stands beside the holder, and neither learns the
-    other's name. `add_cfb_file` and `merge_with` refuse whole only where
-    nothing is left to keep (malformed XML or JSON, a source whose own catalog
-    does not validate); `add_cfb_files` folds each file as one mutation, so
+    other's name, unless that name is a third field's canonical name, which
+    it merges into, the tag staying with its holder. A message member is the
+    field it reads before the name it carries. A component or group stating
+    a held definition's structure - its members in order, each tag and the
+    field it reads - is that definition: the held name wins, each member's
+    nullability relaxes and the sources union; two definitions the
+    dictionary held as they were stay two. `add_cfb_file` and
+    `merge_with` refuse whole only where nothing is left to keep (malformed
+    XML or JSON, a source whose own catalog does not validate); `add_cfb_files` folds each file as one mutation, so
     such a file is left out alone and named in `failed` while the rest fold,
     and `is_clean()` means `dropped` and `failed` are both empty. What a
     CBlock states that the reader cannot keep is dropped, or kept another way
@@ -305,7 +316,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   `10:1:A1`, an execution `8:1:E-1`, a quote `14:0:Q1` whatever side it
   states. Only an order or an execution states its side there; every other
   message stores side `0`. A quote stating a bid and an offer is one message
-  of side `UNKN`, no `price` of its own, its `bidpx`/`bidqty` and
+  of side `UKNW`, no `price` of its own, its `bidpx`/`bidqty` and
   `askpx`/`askqty` the two legs; one stating `Side(54)` tags the leg it
   quotes. A derived execution is chained under its `ExecID(17)` as given
   (`8:1:E-1`), else `TradeID=<TradeID(1003)>`. Count messages after the

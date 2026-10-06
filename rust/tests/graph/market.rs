@@ -867,7 +867,7 @@ fn book_crosscode_is_the_isin_else_the_ticker_else_the_default() {
 }
 
 /// Without `overwrite` a setter fills only a fact the element states
-/// nothing under - `None`, `UNKN`, a currency or unit of none, an empty map -
+/// nothing under - `None`, `UKNW`, a currency or unit of none, an empty map -
 /// and with it states the value, `None` clearing; an equal value changes
 /// nothing either way.
 #[test]

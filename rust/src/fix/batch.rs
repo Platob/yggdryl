@@ -369,6 +369,9 @@ impl FixCodec {
     /// source's schema, its entries rebuilt from projected columns and the
     /// [`FIXENTRIES_COLUMN`](super::FIXENTRIES_COLUMN) where the schema carries it.
     /// [The capture's own cells](FixMsg::carried) travel with the rebuilt message.
+    /// Its `msgpluginside` is the row's own cell where the schema holds the
+    /// column, and the role of [the source this codec reads
+    /// under](Self::with_source) - `UKNW` under none - where it does not.
     /// Recorded event identities survive; emitted wire may reorder or normalize
     /// represented content. No source line is parsed again.
     /// One thread holds one batch at a time. Several threads retain bounded
@@ -403,13 +406,19 @@ impl FixCodec {
             Err(error) => (DataType::Null.required_field(ROOT_NAME), Some(error)),
         };
         let root = Resolved::of(Arc::new(schema.clone()));
+        let pluginside = self.pluginside();
         let read = crate::parallel::ordered(
             StructRows::over(source, root, refused.is_some()),
             self.threads(),
             self.chunk(),
             move |held: Result<(Arc<Serie>, usize)>| {
                 let message = held.and_then(|(records, row)| {
-                    FixMsg::from_landed_row(Arc::clone(&registry), &schema, &records.scalar(row)?)
+                    FixMsg::from_landed_row(
+                        Arc::clone(&registry),
+                        &schema,
+                        &records.scalar(row)?,
+                        pluginside,
+                    )
                 });
                 match message {
                     Ok(message) => Some(Ok(message)),

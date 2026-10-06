@@ -66,7 +66,7 @@ test('an order event reads every fact back typed', () => {
   // A buying order's price and quantity are its side's bid facts.
   assert.equal(event.bidpx, '101')
   assert.equal(event.bidqty, '5')
-  assert.equal(event.marketdatatype, 'UNKN')
+  assert.equal(event.marketdatatype, 'UKNW')
   assert.equal(event.ticker, 'ACME')
   assert.deepEqual(event.metadata, {})
   assert.deepEqual(event.fxrates, {})

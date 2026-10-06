@@ -135,6 +135,7 @@ impl JsDataType {
             "marketdatakind" => CoreDataType::MarketDataKind,
             "marketdatatype" => CoreDataType::MarketDataType,
             "timeinforce" => CoreDataType::TimeInForce,
+            "pluginside" => CoreDataType::PluginSide,
             "unit" => CoreDataType::Unit,
             "ric" => CoreDataType::Ric,
             "uuid" => CoreDataType::uuid(),

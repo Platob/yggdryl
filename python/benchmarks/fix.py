@@ -73,17 +73,18 @@ def _vendor_registry() -> FixRegistry:
         tag = 5000 + offset
         field = Field(f"Venue{offset}", "utf8")
         field.fix.tag = tag
-        field.fix.branches = [VENDOR_DIALECT]
+        field.fix.sources = [VENDOR_DIALECT]
         field.fix.names = [f"VenueAlias{offset}"]
         fields.append(field)
     registry.add_fields(fields)
+    registry.add_source(VENDOR_DIALECT, file=f"{VENDOR_DIALECT}.cfb", pluginside="SELL")
     return registry
 
 
 TWO_DIALECTS = _vendor_registry()
 TAGGED = Field("TradeID", "utf8")
 TAGGED.fix.tag = 5001
-TAGGED.fix.branches = [VENDOR_DIALECT]
+TAGGED.fix.sources = [VENDOR_DIALECT]
 SYMBOL_ID = SEED_REGISTRY.field_by_tag(55).fix.id
 assert SYMBOL_ID is not None
 VENDOR_ID = TWO_DIALECTS.field_by_tag(5001).fix.id
@@ -172,12 +173,12 @@ def _standard_hit_over_two_dialects() -> object:
     return TWO_DIALECTS.get_field_by_tag(55)
 
 
-def _field_branches() -> object:
-    return TAGGED.fix.branches
+def _field_sources() -> object:
+    return TAGGED.fix.sources
 
 
-def _field_has_branch() -> object:
-    return TAGGED.fix.has_branch(VENDOR_DIALECT)
+def _field_has_source() -> object:
+    return TAGGED.fix.has_source(VENDOR_DIALECT)
 
 
 def _field_id() -> object:
@@ -186,6 +187,14 @@ def _field_id() -> object:
 
 def _registry_dialects() -> object:
     return TWO_DIALECTS.dialects()
+
+
+def _registry_sources() -> object:
+    return TWO_DIALECTS.sources()
+
+
+def _registry_get_source() -> object:
+    return TWO_DIALECTS.get_source(VENDOR_DIALECT)
 
 
 def _message_get_by_tag() -> object:
@@ -313,6 +322,10 @@ def _msgtype_msgcat() -> object:
 
 def _message_msgcat() -> object:
     return PARSED.msgcat
+
+
+def _message_msgpluginside() -> object:
+    return PARSED.msgpluginside
 
 
 def _codec_snapshot_ns() -> object:
@@ -446,10 +459,12 @@ def main() -> None:
             _standard_hit_over_two_dialects,
             args.iterations,
         )
-        _measure("field.fix.branches", _field_branches, args.iterations)
-        _measure("field.fix.has_branch", _field_has_branch, args.iterations)
+        _measure("field.fix.sources", _field_sources, args.iterations)
+        _measure("field.fix.has_source", _field_has_source, args.iterations)
         _measure("field.fix.id", _field_id, args.iterations)
         _measure("registry dialects", _registry_dialects, args.iterations)
+        _measure("registry sources", _registry_sources, args.iterations)
+        _measure("registry get_source", _registry_get_source, args.iterations)
         _measure("message get_by_tag", _message_get_by_tag, args.iterations)
         _measure("message get_by_id", _message_get_by_id, args.iterations)
         _measure("message get_by_name", _message_get_by_name, args.iterations)
@@ -484,6 +499,7 @@ def main() -> None:
         _measure("field.fix.msgcat", _field_msgcat, args.iterations)
         _measure("MsgType.msgcat", _msgtype_msgcat, args.iterations)
         _measure("FixMsg.msgcat", _message_msgcat, args.iterations)
+        _measure("FixMsg.msgpluginside", _message_msgpluginside, args.iterations)
         _measure("FixCodec.snapshot_ns", _codec_snapshot_ns, args.iterations)
         _measure("MsgType.identifier_values", _identifier_values, args.iterations)
         _measure("identifiers native set crossing", _identifiers_set, args.iterations)

@@ -16,6 +16,7 @@ import pyarrow.fs  # type: ignore[import-untyped]
 
 from .marketdatakind import MarketDataKind
 from .marketdatatype import MarketDataType
+from .pluginside import PluginSide
 from .side import Side
 from .state import State
 from .timeinforce import TimeInForce
@@ -153,6 +154,11 @@ class FixCode(TypedDict):
     description: str | None
     aliases: list[str]
     group: str | None
+
+class FixSource(TypedDict):
+    id: str
+    file: str | None
+    pluginside: PluginSide
 
 class MimeType:
     OCTET_STREAM: ClassVar[MimeType]
@@ -1311,7 +1317,7 @@ class Scalar:
         "sized_cp1252",
         "country", "ccy", "mic", "cfi", "isin",
         "cusip", "sedol", "bbg", "ric", "figi", "forex", "side", "state",
-        "marketdatakind", "marketdatatype", "timeinforce", "unit",
+        "marketdatakind", "marketdatatype", "timeinforce", "pluginside", "unit",
         "uuid", "version", "timezone", "mimetype", "mediatype", "url", "urn",
         "bytes", "large_binary", "binary_view", "large_binary_view",
         "fixed_binary", "sized_binary",
@@ -1877,11 +1883,11 @@ class ProtocolField:
     # The typed `FIX:` vocabulary, answered only by `field.fix`; every other
     # protocol's view raises `TypeError` naming its own scheme.
     @property
-    def branches(self) -> list[str]: ...
-    @branches.setter
-    def branches(self, branches: Iterable[str]) -> None: ...
-    def add_branch(self, dialect: str) -> None: ...
-    def has_branch(self, dialect: str) -> bool: ...
+    def sources(self) -> list[str]: ...
+    @sources.setter
+    def sources(self, sources: Iterable[str]) -> None: ...
+    def add_source(self, source: str) -> None: ...
+    def has_source(self, source: str) -> bool: ...
     @property
     def id(self) -> int | None: ...
     # `tag`, `counter` and every alternate in `tags` are positive `i32`
@@ -7197,8 +7203,11 @@ class FixRegistry:
     loaded dictionary may supply itself. ``len`` counts the scalar fields,
     the components and the groups; iteration walks the scalars. A store
     writes the crate's own definitions like any other and reads a stored
-    copy past. What a dictionary contributed is ``FIX:branches`` on each
-    field it touched, listed by ``dialects``; no lookup consults it.
+    copy past. What a source contributed is ``FIX:sources`` on each field it
+    touched, listed by ``dialects``; no lookup consults it. What is known of
+    a source - the file it was read from, its plugin's role - is held once
+    in the catalog ``sources`` walks, which a store writes as
+    ``sources.json``.
     """
 
     def __init__(self) -> None: ...
@@ -7291,6 +7300,16 @@ class FixRegistry:
     def remove(self, key: int | str) -> Field | None: ...
     def remove_by_id(self, id: int) -> Field | None: ...
     def dialects(self) -> list[str]: ...
+    def sources(self) -> list[FixSource]: ...
+    def get_source(self, id: str) -> FixSource | None: ...
+    def add_source(
+        self,
+        id: str,
+        *,
+        file: str | None = None,
+        pluginside: PluginSide | int | str | None = None,
+    ) -> bool: ...
+    def remove_source(self, id: str) -> FixSource | None: ...
     def get(self, key: int | str, default: object = None, /) -> object: ...
     def __getitem__(self, key: int | str, /) -> Field: ...
     def __contains__(self, key: object, /) -> bool: ...
@@ -7379,6 +7398,8 @@ class FixCapture:
 
     @property
     def msgpluginid(self) -> str | None: ...
+    @property
+    def msgpluginside(self) -> PluginSide: ...
     @property
     def msgctxid(self) -> str | None: ...
     @property
@@ -7485,6 +7506,8 @@ class FixMsg:
     def header(self) -> FixHeader: ...
     @property
     def msgcat(self) -> MarketDataKind: ...
+    @property
+    def msgpluginside(self) -> PluginSide: ...
     @property
     def strikeprice(self) -> Scalar | None: ...
     def capture(self) -> FixCapture: ...
@@ -7695,6 +7718,13 @@ class FixCodec:
     codec pins no version: a row states one in its ``beginstring`` capture,
     else the line implies it.
 
+    ``source`` names the entry of the dictionary's sources catalog the run
+    reads under, resolved once as the codec opens - an id the catalog does
+    not hold is a ``ValueError`` - and every message built is stamped with
+    its plugin's role as ``msgpluginside``, a capture or a row cell named
+    ``msgpluginside`` being the row's word over it; with none named every
+    message is ``PluginSide.UKNW``.
+
     ``default_sending_time`` is the ``SendingTime`` a genuinely new message
     takes when it states no valid one and nothing it was read with dates it,
     neither a capture reaching tag 52 nor the ``currunix`` of the line it
@@ -7723,6 +7753,7 @@ class FixCodec:
         capture_names: Sequence[str] | None = None,
         null_values: Sequence[str] | None = None,
         direction: str | None = None,
+        source: str | None = None,
         batch_byte_size: int | None = None,
         batch_row_size: int | None = None,
         include_msgtypes: Sequence[str] | None = None,
@@ -7747,6 +7778,8 @@ class FixCodec:
     def null_values(self) -> list[str]: ...
     @property
     def direction(self) -> str | None: ...
+    @property
+    def source(self) -> str | None: ...
     @property
     def batch_byte_size(self) -> int: ...
     @property
@@ -7784,6 +7817,7 @@ class FixCodec:
         capture_names: Sequence[str] | None = None,
         null_values: Sequence[str] | None = None,
         direction: str | None = None,
+        source: str | None = None,
         batch_byte_size: int | None = None,
         batch_row_size: int | None = None,
         include_msgtypes: Sequence[str] | None = None,
@@ -7935,6 +7969,9 @@ def marketdatatype_fix_tags_of(msgtype: str, kind: int) -> list[int]: ...
 def timeinforce_members() -> list[tuple[str, int, str, str | None]]: ...
 def timeinforce_from_spelling(spelling: str) -> int | None: ...
 def timeinforce_from_fix(wire: str) -> int: ...
+def pluginside_members() -> list[tuple[str, int, str]]: ...
+def pluginside_from_spelling(spelling: str) -> int | None: ...
+def pluginside_from_plugin_type(class_: str) -> int: ...
 def side_members() -> list[tuple[str, int, str, str | None, list[bool]]]: ...
 def side_from_spelling(spelling: str) -> int | None: ...
 

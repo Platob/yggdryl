@@ -326,6 +326,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "identifiers",
             "partyids",
             "msgpluginid",
+            "msgpluginside",
             "msgoriginator",
             "msgctxid",
             "msgsessionid",
@@ -381,6 +382,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("Identifiers"),
             Some("Party IDs"),
             Some("Message Plugin ID"),
+            Some("Message Plugin Side"),
             Some("Message Originator"),
             Some("Message Context ID"),
             Some("Message Session ID"),
@@ -499,7 +501,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(id, FixId::of(tag, field.name()).unwrap(), "tag and name");
         assert!(yggdryl::is_crate_tag(tag));
         assert_eq!(
-            view.branches().count(),
+            view.sources().count(),
             0,
             "{} is no dictionary's",
             field.name()
@@ -507,7 +509,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
     assert_eq!(yggdryl::CROSSCODE_TAG_NAME.0, 65_003);
-    assert_eq!(yggdryl::MSGSESSEVENTID_TAG_NAME, (65_044, "msgsesseventid"));
+    assert_eq!(yggdryl::MSGSESSEVENTID_TAG_NAME, (65_045, "msgsesseventid"));
     assert_eq!(
         [
             yggdryl::FIGICODE_TAG_NAME,
@@ -515,9 +517,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::FOREXCODE_TAG_NAME
         ],
         [
-            (65_048, "figicode"),
-            (65_049, "sourceurl"),
-            (65_046, "forexcode")
+            (65_049, "figicode"),
+            (65_050, "sourceurl"),
+            (65_047, "forexcode")
         ]
     );
     assert_eq!(
@@ -525,7 +527,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::MSGORIGINATOR_TAG_NAME,
             yggdryl::CONVERSATIONID_TAG_NAME,
         ],
-        [(65_041, "msgoriginator"), (65_045, "conversationid")]
+        [(65_042, "msgoriginator"), (65_046, "conversationid")]
     );
     assert_eq!(
         [
@@ -550,7 +552,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         [
             (65_003, "crosscode"),
             (65_035, "metadata"),
-            (65_050, "fixmsg"),
+            (65_051, "fixmsg"),
             (65_006, "srcuuids"),
             (65_015, "state"),
             (65_010, "exprunix")

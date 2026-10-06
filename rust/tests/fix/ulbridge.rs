@@ -44,7 +44,7 @@ mod dataset {
     /// How many executions the parse splits off the capture: one per
     /// execution report reporting a fill - 52 bridge rows and 4 frames - and
     /// one for the trade capture, whose one side states no `Side(54)`: an
-    /// execution of side `UNKN`, said as a warning, never a lost fill.
+    /// execution of side `UKNW`, said as a warning, never a lost fill.
     const SPLIT: usize = 57;
 
     fn registry() -> Arc<FixRegistry> {
@@ -549,7 +549,7 @@ mod dataset {
         // dated by its line. Under the one instant every line shared, they
         // were two deliveries, one of them a twin the window dropped; at
         // their own instants they are seven deliveries and no twin. One more
-        // is the execution of side `UNKN` the trade capture splits off.
+        // is the execution of side `UKNW` the trade capture splits off.
         assert_eq!(direct.len(), 39);
         assert_eq!(
             direct
@@ -1422,7 +1422,7 @@ mod dataset {
         // shared one instant because each typeless row is now dated by its
         // own line, one per fill (A12), every hop's execution of one fill
         // folded onto one, and the trade capture's execution of side
-        // `UNKNOWN` - less the three twins its window yields once, and the
+        // `UKNW` - less the three twins its window yields once, and the
         // sorted door expands those.
         let walked = codec
             .lifecycle(messages)
@@ -1447,7 +1447,7 @@ mod dataset {
         // bridge rows no market data holds. Nothing is refused: the trade is no market
         // data itself, since a trade's fills are the executions its parse
         // splits off - and its single side states no `Side(54)`, so that
-        // execution is of side `UNKN`.
+        // execution is of side `UKNW`.
         assert!(refused.is_empty(), "{refused:?}");
         assert_eq!(operations.len(), 21);
         // The two a walk remembering nothing answers beside them each repeat
@@ -1583,7 +1583,7 @@ mod dataset {
             assert!(!delta.get_state().is_live());
         }
         // The one instant no order states is the trade capture's, which its
-        // execution of side `UNKN` alone touched: the book of that instant
+        // execution of side `UKNW` alone touched: the book of that instant
         // states that execution alone.
         let alone: Vec<&yggdryl::graph::BookEvent> = books
             .iter()
@@ -1712,8 +1712,11 @@ mod dataset {
         // so it no longer feeds its two sides' digests. It moved again when
         // a book came to be keyed by its instrument's ISIN and to hold it as
         // its `isin` security identifier: the book's stored cross code reads
-        // `3:0:TW0002454006` and its digest feeds that identifier.
-        assert_eq!(last.get_currhashcode(), 9_341_042_899_919_963_577);
+        // `3:0:TW0002454006` and its digest feeds that identifier. It moved
+        // again when the zero member of a side came to be spelled `UKNW`:
+        // the book's own side, stated as none, feeds `UKNW` where it fed
+        // `UNKN`, while both deltas, `SELL`, kept their identities.
+        assert_eq!(last.get_currhashcode(), 16_024_858_079_062_078_841);
 
         // No leaf keys a typed fact, save the one the NOVN delivery's hops
         // disagree on: its rows state two `OMSDEALERORDERID` values, the

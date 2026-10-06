@@ -417,11 +417,11 @@ export declare class BookEvent {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -1707,11 +1707,11 @@ export declare class Execution {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -1975,11 +1975,11 @@ export declare class ExecutionEvent {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -2903,7 +2903,12 @@ export declare class FixCodec {
    * unstated; `isinRegistry` is the `IsinRegistry` every `lifecycle`
    * learns into and fills from, shared so a walk run after another starts
    * from what the first learned, each walk learning into its own when
-   * unstated.
+   * unstated; `source` is the id of the dictionary's source the codec
+   * reads under, whose catalog entry's plugin side every message it
+   * builds states as its `msgpluginside` - a row-header capture or a row
+   * cell named `msgpluginside` being the row's word over it - resolved
+   * once and refused when the catalog holds no such id, `UKNW` on every
+   * message when unstated.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /**
@@ -2934,6 +2939,12 @@ export declare class FixCodec {
    * or `null` where no pin fills silence.
    */
   get direction(): string | null
+  /**
+   * The source this codec reads under, folded: the dictionary's
+   * catalog entry whose plugin side every message it builds states as
+   * its `msgpluginside`; `null` where none was named.
+   */
+  get source(): string | null
   /**
    * The raw bytes one Arrow batch targets.
    *
@@ -3307,7 +3318,7 @@ export declare class FixMsg {
   /**
    * The business category the message's type files under, as the
    * `marketdatakind` member's stored name - `ORDR`, `QUOT`, `EXEC`,
-   * `TRAD`, `BOOK` - and `UNKN` where it files none.
+   * `TRAD`, `BOOK` - and `UKNW` where it files none.
    */
   get msgcat(): string
   /**
@@ -3478,12 +3489,12 @@ export declare class FixMsg {
   get unit(): string
   /**
    * The type of its kind the message is, as the `marketdatatype` member's
-   * stored name: `UNKN` where none.
+   * stored name: `UKNW` where none.
    */
   get marketdatatype(): string
   /**
    * The side, as the `side` member's four-letter code: the one stated, else
-   * `UNKN` - never `null`.
+   * `UKNW` - never `null`.
    */
   get side(): string
   /** The currency; `XXX` where none is stated. */
@@ -3638,7 +3649,7 @@ export declare class FixMsg {
    *
    * A key reaching no field and no child, or a value the field refuses,
    * throws the core's refusal and leaves the message as it was. So does a
-   * key reaching the capture's own column - `sourceurl` (65049), by tag
+   * key reaching the capture's own column - `sourceurl` (65050), by tag
    * or by name: a message holds no fact for it, and a row child would put
    * it on the wire.
    */
@@ -3808,11 +3819,14 @@ export declare class FixRegistry {
    * Read an Ullink `CBlock` into a dictionary, with what it declared.
    *
    * Answers the dictionary and the message roots the file spelled out, in
-   * the order it spelled them. `dialect` is the membership every field,
+   * the order it spelled them. `dialect` is the source id every field,
    * group, component and message the file produces is stamped with, on
-   * its `FIX:branches` - standard tags included, since membership means
-   * the dictionary speaks it; with none named nothing is stamped. A
-   * dialect that is empty or carries a comma is refused.
+   * its `FIX:sources` - standard tags included, since membership means
+   * the dictionary speaks it - and the registry holds its catalog entry:
+   * the file's name and the plugin side the root's `type` states. With
+   * none named nothing is stamped and no entry is made. A dialect that is
+   * empty or holds a quote, a backslash or a control character is
+   * refused.
    *
    * A file this cannot be read from throws the native sentence whole: the
    * byte the reader stopped at, what was expected, what arrived, and the
@@ -4075,14 +4089,35 @@ export declare class FixRegistry {
    */
   removeCodeset(name: string): Array<FixCode> | null
   /**
-   * The distinct dictionaries any field or definition names on its
-   * `FIX:branches`, sorted.
+   * The distinct source ids any field or definition names on its
+   * `FIX:sources`, folded, sorted.
    *
    * Membership is provenance and this is its listing; nothing resolves
-   * through it. A registry holding only the specification's own fields
-   * answers an empty array.
+   * through it. The ids fields state, not the catalog `sources()`
+   * answers: an entry no field names is not listed here, and an id no
+   * entry holds is. A registry holding only the specification's own
+   * fields answers an empty array.
    */
   dialects(): Array<string>
+  /**
+   * The sources catalog, in id order: one plain object per source this
+   * dictionary was built from - a `CBlock` folded in, a dialect a
+   * definition was created under - holding what is known of it once,
+   * `{ id, file?, pluginside }`. A store writes it as `sources.json`.
+   */
+  sources(): Array<FixSourceView>
+  /**
+   * Record one source in the catalog, answering whether it arrived.
+   *
+   * `id` is held to the id grammar - a non-empty word holding no quote,
+   * backslash or control character - and folded to ASCII lowercase. An id
+   * already held, under the same fold, keeps its entry and takes only
+   * what it lacked: a file where it stated none, a plugin side where it
+   * stated `UKNW`; two stated sides that disagree keep the held one.
+   * Nothing here touches a field: a field names its sources itself, on
+   * `field.fix.sources`.
+   */
+  addSource(id: string, options?: FixSourceOptions | undefined | null): boolean
   /**
    * Every field, lazily: the scalar fields in ascending identifier order,
    * then the components and the groups in the catalog's name order.
@@ -4104,8 +4139,9 @@ export declare class FixRegistry {
   /** A one-line summary: the dictionary itself is reached by iterating it. */
   toString(): string
   /**
-   * A complete native catalog snapshot: the fields, the components and
-   * the groups.
+   * A complete native catalog snapshot: the code sets, the sources
+   * catalog where it holds an entry, the fields, the components and the
+   * groups.
    */
   toJSON(): any
   /** Load a complete native catalog snapshot. */
@@ -5990,11 +6026,11 @@ export declare class MarketData {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -6589,11 +6625,11 @@ export declare class Order {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -6857,11 +6893,11 @@ export declare class OrderEvent {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -7321,30 +7357,32 @@ export declare class ProtocolField {
    */
   removeTerm(): string | null
   /**
-   * The dictionaries that contributed this field, on the `fix` view.
+   * The sources that contributed this field, on the `fix` view.
    *
-   * `FIX:branches` read as an array: sorted, ASCII lowercase, and empty
+   * `FIX:sources` read as an array: sorted, ASCII lowercase, and empty
    * where the field states none - every field the specification alone
-   * defines. Membership is provenance a caller filters on; no lookup
-   * consults it. Assigning an array replaces the list - folded once,
-   * deduplicated, sorted - and an empty array removes the property; a
-   * name that is empty or carries a comma is refused and the field is
-   * left unchanged.
+   * defines. Each id names an entry of the registry's sources catalog
+   * (`FixRegistry.sources()`), where the file behind it is recorded once.
+   * Membership is provenance a caller filters on; no lookup consults it.
+   * Assigning an array replaces the list - folded once, deduplicated,
+   * sorted - and an empty array removes the property; an id that is
+   * empty or holds a quote, a backslash or a control character is
+   * refused and the field is left unchanged.
    */
-  get branches(): Array<string>
-  /** Record the dictionaries that contributed this field. */
-  set branches(values: Array<string>)
+  get sources(): Array<string>
+  /** Record the sources that contributed this field. */
+  set sources(values: Array<string>)
   /**
-   * Add one dictionary to those that contributed this field.
+   * Add one source to those that contributed this field.
    *
-   * Idempotent under the fold: a name already listed is listed once.
+   * Idempotent under the fold: an id already listed is listed once.
    */
-  addBranch(name: string): void
+  addSource(id: string): void
   /**
-   * Whether `name` is one of the dictionaries that contributed this
-   * field, ASCII case folded.
+   * Whether `id` is one of the sources that contributed this field,
+   * under the crate's one fold.
    */
-  hasBranch(name: string): boolean
+  hasSource(id: string): boolean
   /**
    * This field's identity, on the `fix` view.
    *
@@ -7608,11 +7646,11 @@ export declare class Quote {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -7876,11 +7914,11 @@ export declare class QuoteEvent {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -9417,11 +9455,11 @@ export declare class SnapshotEvent {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -10558,11 +10596,11 @@ export declare class TradeEvent {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -11872,6 +11910,16 @@ export interface FixCaptureView {
    * it.
    */
   msgpluginid: string | null
+  /**
+   * The role of the FIX plugin whose session produced the message, as
+   * the `pluginside` member's stored name: `BUYS` for a Buy-Side plugin,
+   * `SELL` for a Sell-Side one, `UKNW` where the codec read under no
+   * source or one stating no role - never `null`. The codec stamps it from
+   * the source it reads under (`FixCodec`'s `source`), and a row-header
+   * capture or a row cell named `msgpluginside` is the row's word over
+   * it; also `byTag(65041)`.
+   */
+  msgpluginside: string
   /** The message context a bridge handled the line in. */
   msgctxid: string | null
   /** The session instance a bridge handled the line on. */
@@ -11880,19 +11928,19 @@ export interface FixCaptureView {
    * The session event the message was delivered as - `MsgType`,
    * `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
    * `8:e7256476:9effef3e6a:1094` - where all four are stated; also
-   * `byTag(65043)`.
+   * `byTag(65045)`.
    */
   msgsesseventid: string | null
   /**
    * The plugin the message came into a bridge through, as the bridge's
    * log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-   * (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65040)`.
+   * (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65042)`.
    */
   msgoriginator: string | null
   /**
    * The conversation a bridge filed the message under - a
    * `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
-   * of its log line; also `byTag(65044)`.
+   * of its log line; also `byTag(65046)`.
    */
   conversationid: string | null
 }
@@ -12001,6 +12049,14 @@ export interface FixCodecOptions {
    * learned; each walk learns into its own, starting empty, when unstated.
    */
   isinRegistry?: IsinRegistry
+  /**
+   * The id of the dictionary's source this codec reads under, folded:
+   * the catalog entry (`FixRegistry.sources()`) whose plugin side every
+   * message the codec builds states as its `msgpluginside`, resolved
+   * once here and refused when the catalog holds no such id; `UKNW` on
+   * every message when unstated.
+   */
+  source?: string
 }
 
 /**
@@ -12050,7 +12106,7 @@ export interface FixCommitReport {
  * instrument codes (`isincode`, `bloombergcode`, `figicode`, `forexcode`,
  * `miccode`) and the market and operation facts a message names - each a
  * fact no FIX dictionary publishes, at the datatype its graph column names,
- * numbered contiguously from `65001` through `fixmsg` (`65050`). The strike
+ * numbered contiguously from `65001` through `fixmsg` (`65051`). The strike
  * price is the dictionary's `StrikePrice(202)`, no crate field, and a
  * bridge's own identifier keys are no crate field either: they arrive as
  * unmapped entries and are read for the identifier name they end with.
@@ -12246,6 +12302,43 @@ export declare function fixSchemaCarrying(carrier: Field, read: Field): Field
  * groups - each by the counter tag naming it - and the frame.
  */
 export declare function fixSchemaTags(): Array<number>
+
+/** What `addSource` records beside the id: each left out states nothing. */
+export interface FixSourceOptions {
+  /** The file the source was read from, as it was named. */
+  file?: string
+  /**
+   * The role of the source's plugin: a `PluginSide` member's stored name
+   * in any case, the role's own name - `BuySide`, `sell-side` - or its
+   * code, what `PluginSide.BUYS` holds.
+   */
+  pluginside?: string | number
+}
+
+/**
+ * One entry of a dictionary's sources catalog, as the plain object
+ * JavaScript reads: what a `FIX:sources` id names, recorded once.
+ *
+ * The keys are the entry a store writes in `sources.json` - `file` left out
+ * where none is known, `pluginside` always stated.
+ */
+export interface FixSourceView {
+  /**
+   * The id, folded to ASCII lowercase: what a field's `FIX:sources`
+   * states.
+   */
+  id: string
+  /**
+   * The file the source was read from, as it was named - `venue.cfb` -
+   * where one is known.
+   */
+  file?: string
+  /**
+   * The role of the source's plugin, as the `pluginside` member's stored
+   * name: `BUYS`, `SELL`, or `UKNW` where the source states none.
+   */
+  pluginside: string
+}
 
 /**
  * One `{ wire, timeinforce }` pair of a FIX field's `timeinforces`: the
@@ -12642,7 +12735,7 @@ export interface MarketDataKindMember {
 
 /**
  * The FIX field and wire value the member `name` stands for, or `null` for
- * `UNKN` and a catch-all; throws on a name that is no member.
+ * `UKNW` and a catch-all; throws on a name that is no member.
  */
 export declare function marketDataTypeFixCode(name: string): MarketDataTypeFixCode | null
 
@@ -12734,6 +12827,24 @@ export interface PlanOrder {
   nulls: 'first' | 'last'
 }
 
+/**
+ * The role one plugin class names, as its stored name: a `CBlock` root's
+ * `type`, whose last `.`-separated segment, folded, holding `buyside` is
+ * `BUYS`, holding `sellside` is `SELL`, and anything else `UKNW`. Never
+ * throws.
+ */
+export declare function pluginSideFromPluginType(pluginType: string): string
+
+/**
+ * One member of the core's plugin-side enum: its stored name, the code a
+ * `pluginside` column stores, and what it means.
+ */
+export interface PluginSideMember {
+  name: string
+  code: number
+  description: string
+}
+
 /** What one predicate let a scan leave alone. */
 export interface ScanPlanCounts {
   /** Data files the scan will open. */
@@ -12759,7 +12870,7 @@ export interface SheetOptions {
 /**
  * One member of the core's side enum - FIX's `Side(54)`: its four-letter code,
  * the code a `side` column stores, what it means, its one-character FIX
- * code (`null` for `UNKN`), and whether it is a bid or an ask.
+ * code (`null` for `UKNW`), and whether it is a bid or an ask.
  */
 export interface SideMember {
   name: string
@@ -12857,7 +12968,7 @@ export interface StringParametersInput {
 
 /**
  * The `TimeInForce(59)` wire value the member `name` stands for, or `null`
- * for `UNKN` and `OTHER`; throws on a name that is no member.
+ * for `UKNW` and `OTHER`; throws on a name that is no member.
  */
 export declare function timeInForceFixCode(name: string): string | null
 

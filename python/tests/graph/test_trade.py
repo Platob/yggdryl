@@ -38,7 +38,7 @@ def test_from_parts_of_two_executions() -> None:
     assert sorted(execution.crosscode for execution in executions) == ["8:1:BUY-1", "8:2:SELL-1"]
     assert made.is_execution
     assert made.marketdatakind is MarketDataKind.TRAD
-    assert made.side is Side.UNKN
+    assert made.side is Side.UKNW
 
 
 def test_any_dated_operation_or_market_data_roots_a_trade() -> None:

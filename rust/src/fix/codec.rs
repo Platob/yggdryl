@@ -76,7 +76,7 @@ use crate::isin_registry::IsinTable;
 use crate::logging::warning::warned;
 use crate::mime_type::line;
 use crate::text::{TextBytes, TextEntries, TextEntry, TextLine, TextOptions};
-use crate::{Error, Field, IsinRegistry, Result, Scalar, Version};
+use crate::{Error, Field, IsinRegistry, PluginSide, Result, Scalar, Version};
 
 use super::build::{BEGINSTRING_COLUMN, Builder, Fill, FixPair, RowExtras, root_name, version_of};
 use super::{FixMessages, FixMsg, FixRegistry};
@@ -484,6 +484,12 @@ pub struct FixCodec {
     direction: Option<SmolStr>,
     /// The registry's reading of tag 385, its rules compiled once.
     msgdirection: Arc<super::MsgDirection>,
+    /// The source this run reads under, folded - an entry of the
+    /// registry's catalog - and none where the caller named none.
+    source: Option<SmolStr>,
+    /// The role of that source's plugin, stamped on every message built:
+    /// the entry's, and `UKNW` where no source was named.
+    pluginside: PluginSide,
     /// The message types this run reads, resolved to their wire codes, and
     /// the ones it refuses. Empty inclusions read every type the exclusions
     /// leave; `exclude_stated` remembers whether the refusals are this
@@ -699,6 +705,8 @@ impl FixCodec {
                 .collect(),
             direction,
             msgdirection: Arc::new(msgdirection),
+            source: None,
+            pluginside: PluginSide::Unknown,
             include_msgtypes: Arc::from([]),
             exclude_msgtypes: DEFAULT_REFUSED_MSGTYPES
                 .iter()
@@ -920,6 +928,38 @@ impl FixCodec {
         };
         self.direction = Some(SmolStr::new(code));
         Ok(self)
+    }
+
+    /// Reads under one source of the dictionary: the catalog entry `id`
+    /// names ([`FixRegistry::get_source`], folded), resolved once here,
+    /// whose plugin's role every message this codec builds - on the line,
+    /// row, byte and batch doors alike, the FIX rows [`Self::messages`]
+    /// rebuilds and every reader composed over it included - states as its
+    /// `msgpluginside`. A row-header capture or a row cell named
+    /// `msgpluginside` - a line spelling the crate tag `65041` itself
+    /// included, as every crate tag a line spells is the row's word, and
+    /// the cell a FIX row carries - is the row's word over the stamp. A
+    /// codec told no source stamps `UKNW`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Absent`] naming the id when the catalog holds no
+    /// such source.
+    pub fn with_source(mut self, id: &str) -> Result<Self> {
+        let source = self
+            .registry
+            .get_source(id)
+            .ok_or_else(|| Error::absent("FIX source", id))?;
+        self.pluginside = source.pluginside();
+        self.source = Some(SmolStr::new(source.id()));
+        Ok(self)
+    }
+
+    /// The source this codec reads under, folded; `None` where none was
+    /// named.
+    #[must_use]
+    pub fn source(&self) -> Option<&str> {
+        self.source.as_deref()
     }
 
     /// Sets the raw bytes one Arrow batch of messages targets.
@@ -1194,6 +1234,13 @@ impl FixCodec {
             return 0;
         }
         self.official_time_delay_ms.saturating_mul(1_000_000)
+    }
+
+    /// The role of the source's plugin every message this run builds is
+    /// stamped with: the entry's under [`Self::with_source`], `UKNW` under
+    /// none.
+    pub(super) const fn pluginside(&self) -> PluginSide {
+        self.pluginside
     }
 
     /// The deduplication window as the nanosecond span a `currunix` is
@@ -2891,6 +2938,7 @@ impl FixCodec {
             carrier.as_ref().or(self.default_sending_time.as_ref()),
             extras.source,
             self.official_time_delay_ns(),
+            self.pluginside,
         )?;
         Ok(super::enrich::enrich(
             &self.registry,

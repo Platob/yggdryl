@@ -3,7 +3,7 @@
 ``Side`` is the core's enum member for member - its four-letter code as its
 name, ``BUYS``, ``SSHT``, and the integer code a ``side`` column stores - built
 once at import from the native table, so nothing here lists a member or decides
-which side takes the bid. ``UNKN`` is ``0`` and the seventeen sides FIX's
+which side takes the bid. ``UKNW`` is ``0`` and the seventeen sides FIX's
 ``Side(54)`` names follow in the order of their wire characters, ``1``..``9``
 then ``A``..``H``.
 """
@@ -35,7 +35,7 @@ class _Sided(enum.IntEnum):
     @property
     def fix_code(self) -> str | None:
         """The ``Side(54)`` wire character - ``1``..``9`` then ``A``..``H`` -
-        or ``None`` for ``UNKN``, which no message carries."""
+        or ``None`` for ``UKNW``, which no message carries."""
 
         return _FACTS[self.value][1]
 

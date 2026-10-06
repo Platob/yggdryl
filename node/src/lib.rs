@@ -57,6 +57,8 @@ mod marketdatakind;
 #[allow(dead_code)]
 mod marketdatatype;
 #[allow(dead_code)]
+mod pluginside;
+#[allow(dead_code)]
 mod side;
 #[allow(dead_code)]
 mod state;

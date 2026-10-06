@@ -69,7 +69,7 @@ class _Kinded(enum.IntEnum):
     @property
     def fix_code(self) -> tuple[int, str] | None:
         """The FIX field and wire value this member stands for - ``(40, "2")``
-        for ``ORDLIMIT`` - or ``None`` for ``UNKN`` and a catch-all."""
+        for ``ORDLIMIT`` - or ``None`` for ``UKNW`` and a catch-all."""
 
         return marketdatatype_fix_code(self.value)
 

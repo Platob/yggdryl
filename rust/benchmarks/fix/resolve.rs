@@ -209,11 +209,11 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let vendor_alias = format!("VendorAlias{dialect_middle:05}");
     let vendor_id = FixId::of(vendor_tag, &vendor_name).expect("a vendor identifier");
     let vendor = mixed.field(vendor_id).expect("the venue field by its id");
-    assert!(vendor.as_fix().has_branch(venue));
-    assert!(!mixed.field(55).unwrap().as_fix().has_branch(venue));
+    assert!(vendor.as_fix().has_source(venue));
+    assert!(!mixed.field(55).unwrap().as_fix().has_source(venue));
     assert_eq!(mixed.dialects(), [venue.to_owned()]);
-    group.bench_function("has_branch_vendor", |bencher| {
-        bencher.iter(|| black_box(vendor).as_fix().has_branch(black_box(venue)));
+    group.bench_function("has_source_vendor", |bencher| {
+        bencher.iter(|| black_box(vendor).as_fix().has_source(black_box(venue)));
     });
     group.bench_function("id_hit_vendor", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_id(black_box(vendor_id)));

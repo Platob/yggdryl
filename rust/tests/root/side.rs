@@ -19,7 +19,7 @@ fn strict() -> ArrowCastOptions {
 /// stored under before the codes - read, never written - and the name the
 /// specification gives it, in the order of the codes.
 const SIDES: [(Option<char>, &str, &str, &str, Side); 18] = [
-    (None, "UNKN", "UNKNOWN", "Unknown", Side::Unknown),
+    (None, "UKNW", "UNKNOWN", "Unknown", Side::Unknown),
     (Some('1'), "BUYS", "BUY", "Buy", Side::Buy),
     (Some('2'), "SELL", "SELL", "Sell", Side::Sell),
     (Some('3'), "BUYM", "BUYMINUS", "BuyMinus", Side::BuyMinus),
@@ -81,6 +81,34 @@ fn a_code_or_a_spelling_that_names_no_side_is_refused_by_name() {
     // answer the wrong side for one of the two vocabularies.
     assert_eq!(Side::from_spelling("10"), None);
     assert_eq!(Side::from_spelling("17"), None);
+}
+
+/// `UKNW` is the zero member's four-letter spelling, and `UNKN`, the
+/// spelling it was stored under before, names no side at any door - the
+/// stored name, the folded alias table and the word patterns alike - so a
+/// document written under it is rebuilt by its writer, never read back as
+/// the member; a stored column holds the code `0` and reads unchanged.
+#[test]
+fn the_retired_spelling_unkn_names_no_side() {
+    assert_eq!(Side::from_spelling("UKNW"), Some(Side::Unknown));
+    assert_eq!(Side::from_spelling("uknw"), Some(Side::Unknown));
+    assert_eq!(Side::from_spelling("Unknown"), Some(Side::Unknown));
+    for spelling in ["UNKN", "unkn", "Unkn"] {
+        assert_eq!(Side::from_spelling(spelling), None, "{spelling}");
+        let refused = Side::read(spelling).unwrap_err().to_string();
+        assert!(refused.contains("side"), "{refused}");
+        assert!(refused.contains(spelling), "{refused}");
+    }
+    assert!(serde_json::from_str::<Side>("\"UNKN\"").is_err());
+    assert_eq!(
+        serde_json::from_str::<Side>("\"UKNW\"").unwrap(),
+        Side::Unknown
+    );
+    assert!(DataType::Side.scalar(Scalar::from("UNKN")).is_err());
+    assert_eq!(
+        DataType::Side.scalar(Scalar::from("UKNW")).unwrap(),
+        Scalar::Side(Side::Unknown)
+    );
 }
 
 #[test]
@@ -214,14 +242,14 @@ fn a_side_stated_as_none_merges_to_the_other_and_anything_stated_stands() {
 #[test]
 fn a_side_serializes_as_its_stored_name_and_reads_back_by_code_or_spelling() {
     assert_eq!(serde_json::to_string(&Side::SShort).unwrap(), "\"SSHT\"");
-    assert_eq!(serde_json::to_string(&Side::Unknown).unwrap(), "\"UNKN\"");
+    assert_eq!(serde_json::to_string(&Side::Unknown).unwrap(), "\"UKNW\"");
     // Every vocabulary reads back - the name stored before the codes
     // included - and so does the stored code, through a borrowed and an
     // owned door.
     for (spelling, side) in [
         ("\"SSHT\"", Side::SShort),
         ("\"SSHORT\"", Side::SShort),
-        ("\"UNKN\"", Side::Unknown),
+        ("\"UKNW\"", Side::Unknown),
         ("\"5\"", Side::SShort),
         ("5", Side::SShort),
         ("\"sell_short\"", Side::SShort),
@@ -510,7 +538,7 @@ fn a_side_filters_and_casts_by_its_member_in_an_expression() {
 
 #[test]
 fn the_canonical_default_is_the_side_stated_as_none() {
-    // A closed vocabulary with no empty member: its default is `UNKN`,
+    // A closed vocabulary with no empty member: its default is `UKNW`,
     // code zero as every enum leaf's, so a named row leaving out a required
     // side defaults at the value door rather than failing on the empty text.
     assert_eq!(
@@ -540,7 +568,7 @@ fn the_canonical_default_is_the_side_stated_as_none() {
 #[test]
 fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     // A row whose line does not say a side has none, and the crate already
-    // spells "no answer" one way: `UNKN` is what a value that must state a
+    // spells "no answer" one way: `UKNW` is what a value that must state a
     // side states where none was said, as a state's `UNKNOWN` is, and
     // never what a column says for an absent one.
     assert!(Side::ALL.contains(&Side::Unknown));

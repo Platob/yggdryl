@@ -67,33 +67,49 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     // document reads and writes and are outside this tally. No manifest:
     // a dictionary is one namespace, and what each dialect contributed
     // travels on the field it contributed to.
-    // Seven documents and four roots: the store's own field shard, the
+    // Eight documents and four roots: the store's own field shard, the
     // crate's block on its own shard, its `metadata` group and its `fixmsg`
     // component - a store states the whole row, so the crate's three
     // documents are written beside the store's one - plus the built-in
-    // market data type, MsgCat and state vocabularies. The three category roots and `codesets/` are each reached
+    // market data type, MsgCat, plugin side and state vocabularies. The three category roots and `codesets/` are each reached
     // once for pruning. Each intrinsic set adds one document lookup and no
-    // root lookup; reading still resolves exactly four roots.
+    // root lookup. The sources catalog, `sources.json` at the root, is
+    // one more resolution each way whatever the registry holds: a write
+    // publishes it where the registry holds an entry and otherwise reads
+    // its digest once to know whether a stale one is there to remove, and
+    // a read resolves it because an absent document is no source. So a
+    // write resolves thirteen and a read five.
     assert_eq!(
         registry
             .codesets()
             .map(|set| set.name())
             .collect::<Vec<_>>(),
-        ["marketdatatypecodeset", "msgcatcodeset", "statecodeset"],
+        [
+            "marketdatatypecodeset",
+            "msgcatcodeset",
+            "msgpluginsidecodeset",
+            "statecodeset"
+        ],
     );
     costs(
-        "seven documents, four roots",
+        "eight documents, four roots, the sources catalog",
         &calls,
-        "child_by_path=11",
+        "child_by_path=13",
         || {
             registry.commit(&mut folder).unwrap();
         },
     );
-    // And four on the way back: the code sets are read before the fields,
-    // because a field naming a set the dictionary does not hold is refused.
-    costs("four roots", &calls, "child_by_path=4", || {
-        assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
-    });
+    // And five on the way back: the code sets and the sources catalog are
+    // read before the fields, because a field naming a set the dictionary
+    // does not hold is refused.
+    costs(
+        "four roots, the sources catalog",
+        &calls,
+        "child_by_path=5",
+        || {
+            assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
+        },
+    );
     folder.remove(true).unwrap();
 }
 

@@ -258,6 +258,7 @@ function createFields(DataType, Field, native) {
     marketdatatype: simple('marketdatatype'),
     side: simple('side'),
     timeinforce: simple('timeinforce'),
+    pluginside: simple('pluginside'),
 
     serie: serie('serie'),
     serieView: serie('serie_view'),

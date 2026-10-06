@@ -302,7 +302,7 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 | --- | --- |
 | Live set, twins | elements still alive (a live state, not past expiration) share the cross identity, and a chain is keyed by that identity and its [`marketdatakind`](../types/enum/marketdatakind.md) - an element joins only a chain of its own kind, by its cross code, a base code or a shared name, so an order and an execution under one cross code are two chains and a fill never restates, follows or ends its order; an arrival under a live identity - or (if dead) under the type and value of one of a live element's `get_identifiers()`, whatever its source, or under the value one of its own identifiers replaced - a parent identifier's value, joined under its base ([Parentage](identifier.md#parentage)) - is yielded as `with_previous` of the live one, live until it isn't, then retiring; one arriving under the identity the live element *arrived* under is yielded [`restating`](#restating) it instead, a twin taking the chain's metadata and identifiers as a follower does; and one arriving under the identity a statement the chain moved past *at the live element's own instant* arrived under is yielded restating that statement - the same identity again - while the chain stays where it moved: the walk keeps those statements until the chain moves to a later instant, the only place a sorted walk reads another statement of them; a chain a step ends keeps that step and the statements it moved past at the step's instant the same way, each restated where it arrives again and the chain staying ended, until the walk reads a later instant |
 | Sides | an order's or an execution's stored cross code states its [side](market.md#sides-and-cross-codes) (`10:1:O-7` to buy, `10:2:O-7` to sell), so a buy and a sell under one identifier are two chains, and a name is alive on each side apart: an arrival joins a live element of its own side it shares a name with. A quote's chain is keyed by no side - its code states `0` - and a name it goes by is alive on the leg its latest statement tags, so a bid and an offer going by one `MDEntryID` are two entries |
-| No side | an element stating `UNKN` joins the one side alive under its base cross code (a live order's or execution's code without its `{kind}:{side}:` prefix), else the one side alive under the first name it shares with a live element - taking that chain's side and code; where both sides of that name are alive, it starts a chain of its own |
+| No side | an element stating `UKNW` joins the one side alive under its base cross code (a live order's or execution's code without its `{kind}:{side}:` prefix), else the one side alive under the first name it shares with a live element - taking that chain's side and code; where both sides of that name are alive, it starts a chain of its own |
 | `UPDATED` | a `NEW` stated over a live element that is new-like - [`State::is_new_like`](../types/enum/state.md): acknowledged or working (rank 20 or 30), or `UPDATED`, `REPLACED`, `RESTATED`, `AMENDED` - is yielded `UPDATED` (`3004`, rank 30), read before following folds the state, so later progress folds over it; a `PENDING_NEW` followed by `NEW` stays `NEW` |
 | Creation | every element leaves stating `creaunix`: one stating none takes its chain's - the earliest the fold kept - or, starting a chain, its own instant; a stated one is never replaced, and no identity moves, since no instant is digested |
 | One cross element | a chain whose first element states no cross code stands under that element's identity, and every element of it after the first carries that identity as its `crossuuid` - one joining by a name, an `UPDATED`, a twin, the `EXPIRED` the walk emits and a follower stating a code of its own alike - stated after its last finalize, since a finalize derives an element's own |
@@ -430,7 +430,7 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
     T = 1_700_000_000_000_000_000
     SECOND = 1_000_000_000
 
-    def event(second: int, order: str, state: str, side: str = "UNKN") -> graph.OrderEvent:
+    def event(second: int, order: str, state: str, side: str = "UKNW") -> graph.OrderEvent:
         return graph.OrderEvent(T + second * SECOND, crosscode=order, state=state, side=side)
 
     # Unsorted: one report logged twice, and O-1001 reopened after its fill.
@@ -505,7 +505,7 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 
     const T = 1_700_000_000_000_000_000n
     const SECOND = 1_000_000_000n
-    const event = (second, order, state, side = 'UNKN') => new graph.OrderEvent(T + second * SECOND, {
+    const event = (second, order, state, side = 'UKNW') => new graph.OrderEvent(T + second * SECOND, {
       crosscode: order, state, side,
     })
 

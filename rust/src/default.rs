@@ -259,6 +259,7 @@ pub(crate) fn nesting_exceeds(
         | DataType::MarketDataKind
         | DataType::MarketDataType
         | DataType::TimeInForce
+        | DataType::PluginSide
         | DataType::Unit
         | DataType::Forex
         | DataType::Uuid
@@ -370,6 +371,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::MarketDataKind
             | DataType::MarketDataType
             | DataType::TimeInForce
+            | DataType::PluginSide
             | DataType::Unit
             | DataType::Forex
             | DataType::Uuid

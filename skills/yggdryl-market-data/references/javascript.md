@@ -78,7 +78,7 @@ const quote = new graph.QuoteEvent(T, {
   askqty: 100,
   askccy: 'USD',
 })
-assert.deepEqual([quote.side, quote.crosscode], ['UNKN', '14:0:Q-7'])
+assert.deepEqual([quote.side, quote.crosscode], ['UKNW', '14:0:Q-7'])
 assert.deepEqual([quote.askpx, quote.askqty, quote.marketdatakind], ['189.52', '100', 'QUOT'])
 
 // An offer: tagged `SELL`, its price is its ask leg; a quote's code stays under side 0.
@@ -142,7 +142,7 @@ const { graph } = require('yggdryl')
 
 const T = 1_700_000_000_000_000_000n
 const SECOND = 1_000_000_000n
-const event = (second, order, state, side = 'UNKN') =>
+const event = (second, order, state, side = 'UKNW') =>
   new graph.OrderEvent(T + second * SECOND, { crosscode: order, state, side })
 const walk = (items, sorted = true) => [...new graph.EventIterator(items, sorted)].map((value) => value.asOrderEvent())
 
@@ -587,7 +587,7 @@ assert.equal(typeof book.serve, 'function')
   zero), never a `Number` - `{ price: 189.5 }` is refused at `$.price` (`got f64`).
   `fxrates` takes and answers `{ EUR: '1.1' }`.
 - `crosscode` answers the stored code `{kind}:{side}:{base}`: `'10:1:O-1001'`
-  for a buy order (kind 10, side 1), `'10:0:O-1001'` for `'UNKN'`, and a
+  for a buy order (kind 10, side 1), `'10:0:O-1001'` for `'UKNW'`, and a
   quote, a trade, a book or a snapshot control carries side `0` whatever side
   it states.
   `side` is never `null`; an Arrow column stores the code (`Side.BUYS`,
