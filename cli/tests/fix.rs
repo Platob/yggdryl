@@ -1086,8 +1086,8 @@ fn the_plugin_side_is_a_schema_column_an_intrinsic_set_and_clean_under_check() {
         r#"[{"file":"ms_fix44.cfb","id":"ms_fix44","pluginside":"SELL"}]"#
     );
 
-    // The schema lists the column after the plugin id, with its tag and
-    // display, at the terminal and as JSON.
+    // The schema lists the column after the plugin id; the strike moves its
+    // tag to 65042, at the terminal and as JSON.
     let schema = output_text(&workspace.success(&["schema"]));
     let plugin = schema
         .lines()
@@ -1101,7 +1101,7 @@ fn the_plugin_side_is_a_schema_column_an_intrinsic_set_and_clean_under_check() {
     let line = schema.lines().nth(side).unwrap();
     assert!(
         line.contains("pluginside")
-            && line.contains("65041")
+            && line.contains("65042")
             && line.contains("Message Plugin Side"),
         "{line}"
     );
