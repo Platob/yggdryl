@@ -65,8 +65,8 @@ use crate::uuid::Uuid;
 use crate::value::Children;
 use crate::version::Version;
 use crate::{
-    Bbg, Ccy, Cfi, Country, Cusip, Figi, Forex, Isin, MarketDataKind, MarketDataType, Mic, Ric,
-    Sedol, Side, State, TimeInForce, Unit, decimal,
+    Bbg, Ccy, Cfi, Country, Cusip, Figi, Forex, Isin, MarketDataKind, MarketDataType, Mic,
+    PluginSide, Ric, Sedol, Side, State, TimeInForce, Unit, decimal,
 };
 use crate::{
     DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
@@ -227,6 +227,8 @@ pub enum Scalar {
     MarketDataType(MarketDataType),
     /// How long an order stands.
     TimeInForce(TimeInForce),
+    /// The role of a FIX plugin.
+    PluginSide(PluginSide),
     /// ISO 6166 securities identification number.
     Isin(Isin),
     /// CUSIP securities identifier.
@@ -719,6 +721,8 @@ impl<'de> Deserialize<'de> for Scalar {
             MarketDataType(SmolStr),
             #[serde(rename = "timeinforce")]
             TimeInForce(SmolStr),
+            #[serde(rename = "pluginside")]
+            PluginSide(SmolStr),
             Uuid(SmolStr),
             Version(Version),
             Timezone(SmolStr),
@@ -846,6 +850,9 @@ impl<'de> Deserialize<'de> for Scalar {
                 .map_err(D::Error::custom),
             StructuralWire::TimeInForce(value) => crate::TimeInForce::read(&value)
                 .map(Self::TimeInForce)
+                .map_err(D::Error::custom),
+            StructuralWire::PluginSide(value) => crate::PluginSide::read(&value)
+                .map(Self::PluginSide)
                 .map_err(D::Error::custom),
             StructuralWire::Uuid(value) => Uuid::from_bytes(value.as_bytes())
                 .map(Self::Uuid)
@@ -1095,6 +1102,7 @@ impl Ord for Scalar {
             }
             Self::Side(left) => same_kind!(Self::Side(right) => left.cmp(right)),
             Self::TimeInForce(left) => same_kind!(Self::TimeInForce(right) => left.cmp(right)),
+            Self::PluginSide(left) => same_kind!(Self::PluginSide(right) => left.cmp(right)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
             Self::Timezone(left) => same_kind!(Self::Timezone(right) => left.cmp(right)),
@@ -1203,6 +1211,7 @@ impl Hash for Scalar {
             Self::MarketDataType(value) => value.hash(state),
             Self::Side(value) => value.hash(state),
             Self::TimeInForce(value) => value.hash(state),
+            Self::PluginSide(value) => value.hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
             Self::Timezone(value) => value.hash(state),
@@ -1302,6 +1311,7 @@ macro_rules! enum_scalars {
             | $crate::Scalar::MarketDataType(_)
             | $crate::Scalar::Side(_)
             | $crate::Scalar::TimeInForce(_)
+            | $crate::Scalar::PluginSide(_)
     };
 }
 
@@ -1441,6 +1451,7 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Side(_) => 29,
         Scalar::MarketDataType(_) => 30,
         Scalar::TimeInForce(_) => 31,
+        Scalar::PluginSide(_) => 32,
     }
 }
 
@@ -1510,6 +1521,7 @@ impl Scalar {
             Self::MarketDataKind(_) => DataTypeId::MarketDataKind,
             Self::MarketDataType(_) => DataTypeId::MarketDataType,
             Self::TimeInForce(_) => DataTypeId::TimeInForce,
+            Self::PluginSide(_) => DataTypeId::PluginSide,
             Self::Isin(_) => DataTypeId::Isin,
             Self::Cusip(_) => DataTypeId::Cusip,
             Self::Sedol(_) => DataTypeId::Sedol,
@@ -1594,6 +1606,7 @@ impl Scalar {
             Self::MarketDataKind(_) => DataTypeId::MarketDataKind.as_str(),
             Self::MarketDataType(_) => DataTypeId::MarketDataType.as_str(),
             Self::TimeInForce(_) => DataTypeId::TimeInForce.as_str(),
+            Self::PluginSide(_) => DataTypeId::PluginSide.as_str(),
             Self::Isin(_) => DataTypeId::Isin.as_str(),
             Self::Cusip(_) => DataTypeId::Cusip.as_str(),
             Self::Sedol(_) => DataTypeId::Sedol.as_str(),
@@ -1904,6 +1917,7 @@ impl Scalar {
             Self::MarketDataType(held) => Some(held.code()),
             Self::Side(held) => Some(u16::from(held.code())),
             Self::TimeInForce(held) => Some(u16::from(held.code())),
+            Self::PluginSide(held) => Some(u16::from(held.code())),
             _ => None,
         }
     }
@@ -1917,6 +1931,7 @@ impl Scalar {
             Self::MarketDataType(held) => Some(held.as_str()),
             Self::Side(held) => Some(held.as_str()),
             Self::TimeInForce(held) => Some(held.as_str()),
+            Self::PluginSide(held) => Some(held.as_str()),
             _ => None,
         }
     }
@@ -2199,6 +2214,7 @@ impl Scalar {
             | Self::State(_)
             | Self::MarketDataKind(_)
             | Self::TimeInForce(_)
+            | Self::PluginSide(_)
             | Self::MarketDataType(_)
             | Self::Isin(_)
             | Self::Cusip(_)

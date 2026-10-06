@@ -36,12 +36,14 @@ Hold these facts:
   `crossuuid` the chain every incarnation shares, from the cross code.
 - **A side is never null; it keys an order's and an execution's chain.**
   `Side` and `MarketDataKind` are `uint8` enums; an element stating no side
-  holds `UNKN` (code 0). A cross code is stored as `{kind}:{side}:{base}` - a
+  holds `UKNW` (code 0). A cross code is stored as `{kind}:{side}:{base}` - a
   buy order `O-1001` is `10:1:O-1001` - and only an order and an execution
   state their side there (`MarketDataKind::is_sided`, Rust-only), so the two
   sides of one order identifier are two chains. Every other kind stores side
   `0` whatever side it states: a quote (`14:0:Q-7`), a trade (`21:0:T-1`), a
-  book (`3:0:AAPL`), a snapshot control.
+  book (`3:0:AAPL`), a snapshot control. A `PluginSide` (`BUYS`, `SELL`) is no
+  side: it is the role of the FIX plugin a capture came through, a FIX
+  message's `msgpluginside`, and no market element states it.
 - **A quote is one element holding two legs.** Its bid is `bidpx`/`bidqty`/
   `bidccy`, its ask `askpx`/`askqty`/`askccy`, and its `side` is a tag: a
   quote stating a side and a `price`/`quantity` states the leg that side
@@ -289,7 +291,7 @@ Hold these facts:
   admitting them back. An undated `Order` or a `BookEvent` is refused - by
   `BookIterator` at `$.operation.kind`, by `with_operations`/`add_operations`
   at `$.operations[i].kind`. An order or a quote resting on neither the bid
-  nor the ask (an order of side `UNKN`, a quote stating no leg, a leg sized zero) is
+  nor the ask (an order of side `UKNW`, a quote stating no leg, a leg sized zero) is
   placed nowhere, with a warning, and still counts as the book's delta.
 - A delta book (`is_complete` false) answers `alive`, `alive_on` and
   `limits` empty and `depth`/`imbalance` as none, and `with_operations`/
@@ -303,7 +305,7 @@ Hold these facts:
   sorted (it collects to sort); only `BookIterator` notices a regression, and
   leaves it out with a warning.
 - A trade is built only through `TradeEvent.from_parts`: at least one
-  execution, each on any side - `UNKN` included - at the root's instant,
+  execution, each on any side - `UKNW` included - at the root's instant,
   one ticker, distinct cross codes.
 - A lift names an identifier by its key, and keys are lower case:
   `identifiers['clordid']`, never `['FIX:ClOrdID']` (that reads null).
@@ -405,7 +407,7 @@ Read the one for the language you write; recipes appear in the same order in eac
 - `MarketData`, columns, Arrow row, views: https://platob.github.io/yggdryl/graph/market-data/
 - Candles, buckets and zones, the candle row: https://platob.github.io/yggdryl/graph/candle/
 - The book display, `yggdryl market serve`, the routes, the components: https://platob.github.io/yggdryl/graph/serve/
-- `Side`, `MarketDataKind`, `MarketDataType` and `TimeInForce`: https://platob.github.io/yggdryl/types/enum/
+- `Side`, `MarketDataKind`, `MarketDataType`, `TimeInForce` and `PluginSide`: https://platob.github.io/yggdryl/types/enum/
 - Sibling skills: `yggdryl-fix` (FIX captures into market data and books),
   `yggdryl-expressions` (the `Plan` a view is), `yggdryl-records` (persisting
   `marketdata` batches), `yggdryl-arrow` (`BatchReader`, casts),

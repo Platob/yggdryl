@@ -72,7 +72,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     } else {
         venue_dialect(DIALECT_FIELDS)
     };
-    let mixed_root = scratch("two-branches");
+    let mixed_root = scratch("two-sources");
     let mut mixed_folder = LocalFolder::new(&mixed_root).expect("a local folder");
     mixed.commit(&mut mixed_folder).expect("the shards written");
     let reloaded = FixRegistry::from_handle(&mixed_folder).expect("the shards read back");
@@ -82,14 +82,14 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .field(5_000)
             .expect("the first venue field")
             .as_fix()
-            .has_branch(super::venue())
+            .has_source(super::venue())
     );
     assert_eq!(reloaded.dialects(), mixed.dialects());
     group.throughput(Throughput::Elements(u64::try_from(mixed.len()).unwrap()));
     group.bench_function("from_handle_two_dialects", |bencher| {
         bencher.iter(|| black_box(FixRegistry::from_handle(black_box(&mixed_folder)).unwrap()));
     });
-    let mixed_target = scratch("two-branches-write");
+    let mixed_target = scratch("two-sources-write");
     let mut mixed_target_folder = LocalFolder::new(&mixed_target).expect("a local folder");
     group.bench_function("write_into_two_dialects", |bencher| {
         bencher.iter(|| {

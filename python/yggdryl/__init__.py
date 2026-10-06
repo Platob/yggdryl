@@ -220,6 +220,7 @@ from .marketdatakind import MarketDataKind, MarketDataKindField, marketdatakind
 from .marketdatatype import MarketDataType, MarketDataTypeField, marketdatatype
 from .side import Side, SideField, side
 from .timeinforce import TimeInForce, TimeInForceField, timeinforce
+from .pluginside import PluginSide, PluginSideField, pluginside
 from .serie import (
     ChunkedSerie,
     FixedSizeSerieField,
@@ -386,6 +387,8 @@ __all__ = [
     "Parameters",
     "Parquet",
     "Plan",
+    "PluginSide",
+    "PluginSideField",
     "ProtocolField",
     "PythonMetadata",
     "RecordOptions",
@@ -539,6 +542,7 @@ __all__ = [
     "mimetype",
     "nested",
     "null",
+    "pluginside",
     "ric",
     "run_end_encoded",
     "scalar",

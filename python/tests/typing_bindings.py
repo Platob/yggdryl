@@ -42,6 +42,7 @@ from yggdryl import (
     MimeType,
     Parameters,
     Plan,
+    PluginSide,
     ProtocolField,
     PythonMetadata,
     RecordOptions,
@@ -93,6 +94,7 @@ from yggdryl._native import (
     FixEntryTuple,
     FixMessages,
     FixParentSource,
+    FixSource,
     IOCursor,
     Listing,
     MarketLeaf,
@@ -1447,15 +1449,19 @@ tif_wire: TimeInForce = TimeInForce.from_fix("1")
 tif_code: str | None = TimeInForce.GTC.fix_code
 tif_description: str = TimeInForce.GTC.description
 tif_field: yggdryl.TimeInForceField = yggdryl.timeinforce("tif", nullable=False)
+role_member: PluginSide | None = PluginSide.from_spelling("SellSide")
+role_from_type: PluginSide = PluginSide.from_plugin_type("x.BuySideFIXCPluginCBlock")
+role_description: str = PluginSide.SELL.description
+role_field: yggdryl.PluginSideField = yggdryl.pluginside("pluginside", nullable=False)
 fix_names: list[str] = fix_field.fix.names
 fix_field.fix.parents = ["ParentOrderID", "origorderid"]
 fix_parents: list[str] = fix_field.fix.parents
 fix_field.fix.parents = []
 fix_description: str | None = fix_field.fix.description
-fix_field.fix.branches = ["cme", "Bloomberg"]
-fix_field.fix.add_branch("ice")
-fix_branches: list[str] = fix_field.fix.branches
-fix_has_branch: bool = fix_field.fix.has_branch("BLOOMBERG")
+fix_field.fix.sources = ["cme", "Bloomberg"]
+fix_field.fix.add_source("ice")
+fix_sources: list[str] = fix_field.fix.sources
+fix_has_source: bool = fix_field.fix.has_source("BLOOMBERG")
 fix_id: int | None = fix_field.fix.id
 
 python_field: Field = Field("Quote", "int64", nullable=False)
@@ -1485,7 +1491,7 @@ python_from_type: PythonMetadata = PythonMetadata.from_type(Field, "class")
 
 fix_vendor: Field = Field("TradeID", "utf8")
 fix_vendor.fix.tag = 5001
-fix_vendor.fix.branches = ["cme"]
+fix_vendor.fix.sources = ["cme"]
 fix_vendor_id: int | None = fix_vendor.fix.id
 
 fix_registry: fix.FixRegistry = fix.FixRegistry()
@@ -1494,6 +1500,16 @@ fix_registry_tif_sources: list[tuple[int, str, TimeInForce]] = fix_registry.time
 fix_registry_parent_sources: list[FixParentSource] = fix_registry.parent_sources()
 fix_registry_parents: list[str] = fix_registry.parents_of("orderid")
 fix_registry_parent_of: tuple[str, int] | None = fix_registry.parent_of("origorderid")
+fix_registry_added_source: bool = fix_registry.add_source(
+    "venue", file="venue.cfb", pluginside=PluginSide.SELL
+)
+fix_registry_sources: list[FixSource] = fix_registry.sources()
+fix_registry_source: FixSource | None = fix_registry.get_source("VENUE")
+fix_registry_source_side: PluginSide | None = (
+    None if fix_registry_source is None else fix_registry_source["pluginside"]
+)
+fix_registry_removed_source: FixSource | None = fix_registry.remove_source("venue")
+assert fix_registry_added_source and fix_registry_source_side is PluginSide.SELL
 assert fix_parents == ["parentorderid", "origorderid"] and fix_registry_parents == ["parentorderid", "origorderid"]
 assert fix_registry_parent_of == ("orderid", 1) and isinstance(fix_registry_parent_sources, list)
 fix_registry_from_fields: fix.FixRegistry = fix.FixRegistry.from_fields([fix_field])
@@ -1569,6 +1585,7 @@ fix_message_header: fix.FixHeader = fix_message.header()
 fix_message_capture: fix.FixCapture = fix_message.capture()
 fix_message_text: str | None = fix_message.text
 fix_message_msgcat: MarketDataKind = fix_message.msgcat
+fix_message_msgpluginside: PluginSide = fix_message.msgpluginside
 fix_message_strikeprice: Scalar | None = fix_message.strikeprice
 fix_message_metadata: dict[str, str] = fix_message.metadata
 fix_message_curruuid: Scalar = fix_message.curruuid
@@ -1633,6 +1650,7 @@ fix_header_possdupflag: bool | None = fix_message_header.possdupflag
 fix_header_msgdirection: str | None = fix_message_header.msgdirection
 
 fix_capture_msgpluginid: str | None = fix_message_capture.msgpluginid
+fix_capture_msgpluginside: PluginSide = fix_message_capture.msgpluginside
 fix_capture_msgctxid: str | None = fix_message_capture.msgctxid
 fix_capture_msgsessionid: str | None = fix_message_capture.msgsessionid
 fix_capture_msgsesseventid: str | None = fix_message_capture.msgsesseventid
@@ -1685,6 +1703,7 @@ fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     payload_column="line",
     null_values=["<none>"],
     direction="R",
+    source=None,
     batch_byte_size=1 << 20,
     snapshot_ns=1_000_000_000,
     sorted_lifecycle=True,
@@ -1696,6 +1715,7 @@ fix_reader_separator: int | None = fix_reader_pinned.separator
 fix_reader_payload_column: str = fix_reader_pinned.payload_column
 fix_reader_null_values: list[str] = fix_reader_pinned.null_values
 fix_reader_direction: str | None = fix_reader_pinned.direction
+fix_reader_source: str | None = fix_reader_pinned.source
 fix_reader_batch_byte_size: int = fix_reader_pinned.batch_byte_size
 fix_reader_snapshot_ns: int | None = fix_reader_pinned.snapshot_ns
 fix_reader_sorted_lifecycle: bool = fix_reader_pinned.sorted_lifecycle
@@ -1890,7 +1910,7 @@ fix.FixRegistry.install_env(fix_registry_from_fields)
 fix_env_codec: fix.FixCodec = fix.FixCodec.from_env(default_sending_time=None, sorted_lifecycle=False)
 
 assert fix_tag == 38 and fix_tags and fix_names and fix_description
-assert fix_branches == ["bloomberg", "cme", "ice"] and fix_has_branch
+assert fix_sources == ["bloomberg", "cme", "ice"] and fix_has_source
 assert fix_dialects
 assert fix_id is not None and fix_vendor_id is not None
 assert fix_direction_code == "S"

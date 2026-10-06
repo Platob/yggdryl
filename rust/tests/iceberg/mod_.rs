@@ -947,6 +947,9 @@ impl ReplacedHint {
     }
 
     /// Spend one failure of `left`, answering whether there was one.
+    // `fetch_update` is the spelling the declared MSRV, Rust 1.94, knows;
+    // its rename `try_update` came later.
+    #[allow(deprecated)]
     fn spend(left: &AtomicUsize) -> bool {
         left.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |left| {
             left.checked_sub(1)

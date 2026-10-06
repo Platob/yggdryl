@@ -77,7 +77,7 @@ impl MarketKind {
     /// execution `EXEC`, a trade `TRAD`, and a book and a snapshot
     /// control `BOOK`. A FIX message states its own - the category its
     /// dictionary files it under ([`FixMsg::msgcat`](crate::FixMsg::msgcat)) -
-    /// so the kind alone answers `UNKN` for it.
+    /// so the kind alone answers `UKNW` for it.
     ///
     /// ```
     /// use yggdryl::MarketDataKind;

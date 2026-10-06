@@ -8,9 +8,10 @@
 //! [`DataType`].
 //!
 //! Some names resolve to their own datatype: `ccy`, `country`, `mic`,
-//! `cfi`, `side`, `timeinforce`, and `unit` are registered codes, carrying an
-//! identity as well as their storage width, and `state` is the lifecycle
-//! enum.
+//! `cfi` and `unit` are registered codes, carrying an identity as well as
+//! their storage width, and `side`, `state`, `marketdatakind`,
+//! `marketdatatype`, `timeinforce` and `pluginside` are the enum leaves,
+//! each the code of a member of its closed set.
 //!
 //! The vocabulary follows the FIX Latest datatype table, plus `mic` -
 //! ISO 10383's name for what FIX calls `Exchange`. The dictionary generator
@@ -128,14 +129,16 @@ impl DataType {
         ("bbg", DataType::Bbg),
         ("ric", DataType::Ric),
         ("figi", DataType::Figi),
-        // The enum leaves - a side, a state and a market data kind, each the
-        // int32 code of a member of a closed set - and how long an order
-        // stands. None is a word the Arrow or SQL grammar owns.
+        // The enum leaves - a side, a state, a market data kind and type,
+        // how long an order stands and a plugin's role, each the code of a
+        // member of a closed set at the `uint8` or `uint16` width the leaf
+        // stores. None is a word the Arrow or SQL grammar owns.
         ("side", DataType::Side),
         ("state", DataType::State),
         ("marketdatakind", DataType::MarketDataKind),
         ("marketdatatype", DataType::MarketDataType),
         ("timeinforce", DataType::TimeInForce),
+        ("pluginside", DataType::PluginSide),
         // The unit a quantity is stated in: FIX's `UnitOfMeasure(996)`.
         ("unit", DataType::Unit),
         // The currency pair a foreign exchange instrument is: two legs of

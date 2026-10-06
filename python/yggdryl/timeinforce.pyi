@@ -11,7 +11,7 @@ from ._common import MetadataInput
 from ._typing import TypedField
 
 class TimeInForce(enum.IntEnum):
-    UNKN = 0
+    UKNW = 0
     DAY = 1
     GTC = 2
     OPG = 3

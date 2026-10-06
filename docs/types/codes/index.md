@@ -527,8 +527,8 @@ an optional four-character `FIX:msgcat`, which `MsgType::msgcat` reads as the
 stays intact; message definitions have no generic datatype or code field
 helper. A fixed row carries that member in its `marketdatakind`-typed `msgcat`
 column at crate tag 65016, and five normalized identifier columns:
-`isincode(65021)`, `forexcode(65046)`, `bloombergcode(65047)`,
-`figicode(65048)` and `miccode(65022)` ([the crate's own
+`isincode(65021)`, `forexcode(65047)`, `bloombergcode(65048)`,
+`figicode(65049)` and `miccode(65022)` ([the crate's own
 columns](../../fix/capture.md#the-crates-own-columns)). A CUSIP or a SEDOL is
 one more security identifier of its own type, with no column of its own, and
 `CFICode(461)` is the standard classification field, so no crate column

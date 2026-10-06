@@ -6,9 +6,9 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 89 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the twelve [codes](codes/index.md), the five [enums](enum/index.md) |
+| Owns | 90 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the twelve [codes](codes/index.md), the six [enums](enum/index.md) |
 | Parses | Arrow, SQL, Hive, Spark, Iceberg, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
-| Identity | `id()`, `kind()`: 90 ids, 13 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
+| Identity | `id()`, `kind()`: 92 ids, 13 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
@@ -172,7 +172,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, and the codes `unit` and `forex`, each resolving to its own [code](codes/index.md), and `side`, `state`, `marketdatakind`, `marketdatatype` and `timeinforce` to the [Side](enum/side.md), [State](enum/state.md), [MarketDataKind](enum/marketdatakind.md), [MarketDataType](enum/marketdatatype.md) and [TimeInForce](enum/timeinforce.md) enums; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
+The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, and the codes `unit` and `forex`, each resolving to its own [code](codes/index.md), and `side`, `state`, `marketdatakind`, `marketdatatype`, `timeinforce` and `pluginside` to the [Side](enum/side.md), [State](enum/state.md), [MarketDataKind](enum/marketdatakind.md), [MarketDataType](enum/marketdatatype.md), [TimeInForce](enum/timeinforce.md) and [PluginSide](enum/pluginside.md) enums; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
@@ -417,12 +417,12 @@ A datatype Arrow cannot state alone rides an extension name, one per datatype id
 (`DataTypeId::arrow_extension_name`): `arrow.uuid`, `arrow.parquet.variant`, `geoarrow.wkb`,
 `yggdryl.string` for every string leaf but plain `utf8`, `large_utf8` and `utf8_view`,
 `yggdryl.bytes` for `sized_binary` and `large_binary_view`, and `yggdryl.<name>` for the fixed
-decimals, the version, URL, URN, timezone, MIME and media types, the five enum leaves and the
-twelve codes - thirty names in all, `DataTypeId::arrow_extension_names()`. The name over the
+decimals, the version, URL, URN, timezone, MIME and media types, the six enum leaves and the
+twelve codes - thirty-one names in all, `DataTypeId::arrow_extension_names()`. The name over the
 storage its datatype lays out reads back as that datatype, a dictionary of it included; over any
 other storage it is a foreign field wearing the name and reads as its storage.
 
-- Rust: each parameter-free datatype marker - `CcyType`, `StateType`, `UuidType` and the twenty
+- Rust: each parameter-free datatype marker - `CcyType`, `StateType`, `UuidType` and the twenty-one
   beside them - and the `StringType` and `BytesType` leaves that ride a document implement
   arrow-rs's `ExtensionType`, every method answering as the field import does. The fixed decimals,
   the URL and the URN have no marker of their own; `Field::from_arrow_field` reads them.

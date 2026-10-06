@@ -1,0 +1,20 @@
+{
+  "codes": [
+    {
+      "doc": "No plugin role found, or one no member names.",
+      "name": "UKNW",
+      "value": "0"
+    },
+    {
+      "doc": "A Buy-Side plugin: it originates orders and cancels and receives execution reports.",
+      "name": "BUYS",
+      "value": "1"
+    },
+    {
+      "doc": "A Sell-Side plugin: it receives orders and cancels and answers with execution reports.",
+      "name": "SELL",
+      "value": "2"
+    }
+  ],
+  "name": "msgpluginsidecodeset"
+}

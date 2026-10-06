@@ -805,8 +805,10 @@ def test_partition_vocabulary_is_refused_on_another_protocols_view() -> None:
         field.partition.term
     with pytest.raises(AttributeError):
         field.partition.transform  # type: ignore[attr-defined]
-    with pytest.raises(AttributeError):
-        field.partition.sources  # type: ignore[attr-defined]
+    # Nor sources of its own: `sources` is the fix view's, which every other
+    # view refuses naming its own scheme.
+    with pytest.raises(TypeError, match="fix property, and this is a partition view"):
+        field.partition.sources
     # `apply_arrow_batch` is the one verb the declaring protocols answer, so
     # the digest view takes it while the transform vocabulary stays refused.
     with pytest.raises(TypeError):

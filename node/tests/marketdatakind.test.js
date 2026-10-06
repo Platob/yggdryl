@@ -12,7 +12,7 @@ test('MarketDataKind is the core enum, member for member, in code order', () => 
   assert.ok(Object.isFrozen(MarketDataKind))
   const codes = Object.values(MarketDataKind)
   assert.deepEqual(codes, Array.from({ length: 26 }, (_, index) => index))
-  assert.equal(MarketDataKind.UNKN, 0)
+  assert.equal(MarketDataKind.UKNW, 0)
   assert.equal(MarketDataKind.BOOK, 3)
   assert.equal(MarketDataKind.EXEC, 8)
   assert.equal(MarketDataKind.ORDR, 10)

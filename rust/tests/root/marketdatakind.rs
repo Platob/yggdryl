@@ -23,7 +23,7 @@ fn strict() -> ArrowCastOptions {
 /// The MsgCat code set and the four batch categories after it: every member
 /// with its code and its four-letter name.
 const MEMBERS: [(MarketDataKind, u8, &str); 26] = [
-    (MarketDataKind::Unknown, 0, "UNKN"),
+    (MarketDataKind::Unknown, 0, "UKNW"),
     (MarketDataKind::Account, 1, "ACCT"),
     (MarketDataKind::Allocation, 2, "ALLO"),
     (MarketDataKind::Book, 3, "BOOK"),
@@ -70,6 +70,43 @@ fn a_code_or_a_spelling_that_names_no_kind_is_refused_by_name() {
     // A stored code is an integer and never text.
     assert_eq!(MarketDataKind::from_spelling("10"), None);
     assert_eq!(MarketDataKind::from_spelling("ORDER_X"), None);
+}
+
+/// `UKNW` is the zero member's four-letter spelling, and `UNKN`, the
+/// spelling it was stored under before, names no kind at any door, so a
+/// dictionary whose `msgcatcodeset` still names it is rebuilt, never read
+/// back as the member; a stored column holds the code `0` and reads
+/// unchanged.
+#[test]
+fn the_retired_spelling_unkn_names_no_kind() {
+    assert_eq!(
+        MarketDataKind::from_spelling("UKNW"),
+        Some(MarketDataKind::Unknown)
+    );
+    assert_eq!(
+        MarketDataKind::from_spelling("uknw"),
+        Some(MarketDataKind::Unknown)
+    );
+    assert_eq!(
+        MarketDataKind::from_spelling("Unknown"),
+        Some(MarketDataKind::Unknown)
+    );
+    for spelling in ["UNKN", "unkn", "Unkn"] {
+        assert_eq!(MarketDataKind::from_spelling(spelling), None, "{spelling}");
+        let refused = MarketDataKind::read(spelling).unwrap_err().to_string();
+        assert!(refused.contains("marketdatakind"), "{refused}");
+        assert!(refused.contains(spelling), "{refused}");
+    }
+    assert!(serde_json::from_str::<MarketDataKind>("\"UNKN\"").is_err());
+    assert_eq!(
+        serde_json::from_str::<MarketDataKind>("\"UKNW\"").unwrap(),
+        MarketDataKind::Unknown
+    );
+    assert!(
+        DataType::MarketDataKind
+            .scalar(Scalar::from("UNKN"))
+            .is_err()
+    );
 }
 
 #[test]
@@ -149,7 +186,7 @@ fn only_orders_and_executions_are_sided_and_each_batch_names_its_item() {
             MarketDataKind::Book,
         ),
         (
-            "UNKN",
+            "UKNW",
             MarketDataKind::Unknown,
             false,
             false,
@@ -258,7 +295,7 @@ fn a_kind_answers_its_code_in_any_case_and_its_folded_word() {
         ("MKST", MarketDataKind::MarketStructure),
         ("market_structure", MarketDataKind::MarketStructure),
         ("Market Structure", MarketDataKind::MarketStructure),
-        ("UNKN", MarketDataKind::Unknown),
+        ("UKNW", MarketDataKind::Unknown),
         ("unknown", MarketDataKind::Unknown),
     ] {
         assert_eq!(

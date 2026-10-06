@@ -54,7 +54,7 @@ const REPEATS: usize = crate::bench_profile::corpus(8, 1);
 ///
 /// It is the 94 messages the capture carries plus the 57 executions its
 /// parse splits off: one per report that reports a fill, and one of side
-/// `UNKNOWN` off the trade capture's side, which states no `Side(54)` (A12).
+/// `UKNW` off the trade capture's side, which states no `Side(54)` (A12).
 const MESSAGES: usize = 94 + 57;
 
 /// The text options a bridge log is read under: the bridge's own row

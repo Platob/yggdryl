@@ -162,7 +162,7 @@ test('the market facts cross as plain values', () => {
   // The stored cross code is the kind, the side, then the base.
   assert.equal(event.crosscode, '10:1:O-1')
   assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1', side: 'SELL' }).crosscode, '10:2:O-1')
-  assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).side, 'UNKN')
+  assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).side, 'UKNW')
   assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).crosscode, '10:0:O-1', 'a side nobody stated is 0')
   assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).isincode, null)
 })

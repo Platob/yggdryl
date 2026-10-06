@@ -34,7 +34,7 @@
     "metadata": {
       "FIX:tag": "65003",
       "FIX:transient": "false",
-      "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and of the side an order or an execution takes, 10:1:ORD-1, side 0 on one of side UNKN and on every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its chain's once followed.",
+      "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and of the side an order or an execution takes, 10:1:ORD-1, side 0 on one of side UKNW and on every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its chain's once followed.",
       "display": "Cross Code"
     }
   },
@@ -227,7 +227,7 @@
     "metadata": {
       "FIX:codeset": "msgcatcodeset",
       "FIX:tag": "65016",
-      "description": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word.",
+      "description": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UKNW where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word.",
       "display": "Market Data Kind"
     }
   },
@@ -241,7 +241,7 @@
       "FIX:codeset": "marketdatatypecodeset",
       "FIX:tag": "65017",
       "FIX:transient": "false",
-      "description": "The type of its kind the message is, as the member of the marketdatatype enum: its order type from OrdType, its quote type from QuoteType, its trade type from TrdType, its book entry type from MDEntryType - the field its kind names first, each value read through the dictionary's FIX:marketdatatype where it maps one - UNKN where none is stated; a row stating one is the row's word.",
+      "description": "The type of its kind the message is, as the member of the marketdatatype enum: its order type from OrdType, its quote type from QuoteType, its trade type from TrdType, its book entry type from MDEntryType - the field its kind names first, each value read through the dictionary's FIX:marketdatatype where it maps one - UKNW where none is stated; a row stating one is the row's word.",
       "display": "Market Data Type"
     }
   },
@@ -300,13 +300,26 @@
     }
   },
   {
+    "name": "msgpluginside",
+    "dtype": {
+      "type": "pluginside"
+    },
+    "nullable": false,
+    "metadata": {
+      "FIX:codeset": "msgpluginsidecodeset",
+      "FIX:tag": "65041",
+      "description": "The role of the FIX plugin whose session produced the message: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, and independent of Side(54).",
+      "display": "Message Plugin Side"
+    }
+  },
+  {
     "name": "msgoriginator",
     "dtype": {
       "type": "string"
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65041",
+      "FIX:tag": "65042",
       "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
       "display": "Message Originator"
     }
@@ -318,7 +331,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65042",
+      "FIX:tag": "65043",
       "description": "The message context a bridge handled the message in, as its own log names it.",
       "display": "Message Context ID"
     }
@@ -330,7 +343,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65043",
+      "FIX:tag": "65044",
       "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
       "display": "Message Session ID"
     }
@@ -342,7 +355,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65044",
+      "FIX:tag": "65045",
       "FIX:transient": "false",
       "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
       "display": "Message Session Event ID"
@@ -355,7 +368,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65045",
+      "FIX:tag": "65046",
       "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
       "display": "Conversation ID"
     }
@@ -367,7 +380,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65046",
+      "FIX:tag": "65047",
       "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other replaces its type's answer, the base key.",
       "display": "Forex Code"
     }
@@ -379,7 +392,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65047",
+      "FIX:tag": "65048",
       "description": "The normalized Bloomberg identifier the message identifies.",
       "display": "Bloomberg Code"
     }
@@ -391,7 +404,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65048",
+      "FIX:tag": "65049",
       "description": "The normalized FIGI the message identifies.",
       "display": "FIGI Code"
     }
@@ -403,7 +416,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65049",
+      "FIX:tag": "65050",
       "FIX:transient": "false",
       "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
       "display": "Source URL"

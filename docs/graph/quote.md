@@ -86,7 +86,7 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
         askpx=Decimal("189.52"),
         askqty=100,
     )
-    assert (quote.side, quote.price) == (Side.UNKN, None)
+    assert (quote.side, quote.price) == (Side.UKNW, None)
     assert quote.crosscode == "14:0:Q-7", "a quote, stored under side 0"
     assert not quote.is_execution
 
@@ -125,7 +125,7 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
     const quote = new graph.QuoteEvent(T, {
       crosscode: 'Q-7', ticker: 'AAPL', bidpx: '189.48', bidqty: 300, askpx: '189.52', askqty: 100,
     })
-    assert.equal(quote.side, 'UNKN')
+    assert.equal(quote.side, 'UKNW')
     assert.equal(quote.price, null)
     assert.equal(quote.crosscode, '14:0:Q-7', 'a quote, stored under side 0')
     assert.equal(quote.isExecution, false)

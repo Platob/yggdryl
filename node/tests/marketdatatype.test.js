@@ -25,7 +25,7 @@ test('MarketDataType is the core enum, member for member, in code order', () => 
     codes,
     [...codes].sort((a, b) => a - b),
   )
-  assert.equal(MarketDataType.UNKN, 0)
+  assert.equal(MarketDataType.UKNW, 0)
   assert.equal(MarketDataType.ORDMKT, 101)
   assert.equal(MarketDataType.ORDLIMIT, 102)
   assert.equal(MarketDataType.ORDOTHER, 199)
@@ -77,7 +77,7 @@ test('the FIX reading redirects to the core', () => {
     assert.equal(marketDataTypeFixCode(other), null)
   }
   assert.deepEqual(marketDataTypeFixCode('ORDLIMIT'), { tag: 40, wire: '2' })
-  assert.equal(marketDataTypeFixCode('UNKN'), null)
+  assert.equal(marketDataTypeFixCode('UKNW'), null)
   assert.throws(() => marketDataTypeFixCode('nope'), /marketdatatype/)
 })
 
@@ -111,8 +111,8 @@ test('a FIX message and a graph leaf answer the type of their kind', () => {
   const codec = new fix.FixCodec(new fix.FixRegistry(), { excludeMsgtypes: [] })
   const line = (extra) => Buffer.from(`8=FIX.4.4|35=D|55=X|54=1|38=1|${extra}10=0|`)
   assert.equal(codec.parseFixLine(line('40=2|')).marketdatatype, 'ORDLIMIT')
-  assert.equal(codec.parseFixLine(line('')).marketdatatype, 'UNKN')
-  assert.equal(new graph.OrderEvent(1, { crosscode: 'O' }).marketdatatype, 'UNKN')
+  assert.equal(codec.parseFixLine(line('')).marketdatatype, 'UKNW')
+  assert.equal(new graph.OrderEvent(1, { crosscode: 'O' }).marketdatatype, 'UKNW')
   assert.equal('ordtype' in new graph.OrderEvent(1, { crosscode: 'O' }), false)
   assert.ok(enums.marketColumns.includes('marketdatatype'))
 })

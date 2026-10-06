@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{Field, FixCategory, FixCommit, FixKey, FixRegistry, Result};
+use yggdryl::{Field, FixCategory, FixCommit, FixKey, FixRegistry, FixSource, Result};
 
 use crate::style;
 
@@ -118,17 +118,17 @@ fn row(field: &Field) -> Vec<String> {
         tag,
         field.name().to_owned(),
         field.dtype().to_string(),
-        view.branches().collect::<Vec<_>>().join(", "),
+        view.sources().collect::<Vec<_>>().join(", "),
         view.description().unwrap_or_default().to_owned(),
     ]
 }
 
 /// The header every listing shares.
-const COLUMNS: [&str; 5] = ["tag", "name", "type", "dialects", "description"];
+const COLUMNS: [&str; 5] = ["tag", "name", "type", "sources", "description"];
 
 /// Lists the fields whose name or tag contains `filter`.
 ///
-/// `dialect` keeps only the definitions whose `FIX:branches` membership
+/// `dialect` keeps only the definitions whose `FIX:sources` membership
 /// names that dictionary; it is a filter on provenance and changes nothing
 /// about how a key resolves.
 pub fn list(
@@ -143,7 +143,7 @@ pub fn list(
     let mut matched = 0_usize;
     for field in store.registry().definitions(category) {
         if let Some(dialect) = dialect
-            && !field.as_fix().has_branch(dialect)
+            && !field.as_fix().has_source(dialect)
         {
             continue;
         }
@@ -200,9 +200,9 @@ pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Resu
     );
     style::entry("type", &field.dtype().to_string());
     style::entry("nullable", if field.is_nullable() { "yes" } else { "no" });
-    let dialects: Vec<&str> = view.branches().collect();
-    if !dialects.is_empty() {
-        style::entry("dialects", &dialects.join(", "));
+    let sources: Vec<&str> = view.sources().collect();
+    if !sources.is_empty() {
+        style::entry("sources", &sources.join(", "));
     }
     if let Some(described) = view.description() {
         style::entry("description", described);
@@ -340,7 +340,9 @@ pub fn resolve<'registry>(
 /// registry's when the identity is taken by something else.
 pub fn create(store: &mut Store, category: FixCategory, field: Field) -> Result<()> {
     let name = field.name().to_owned();
+    let sources = sources_of(&field);
     store.registry_mut().create_definition(category, field)?;
+    record_sources(store, &sources)?;
     style::good(&format!("created {category}/{name}"));
     Ok(())
 }
@@ -348,8 +350,25 @@ pub fn create(store: &mut Store, category: FixCategory, field: Field) -> Result<
 /// Replaces an existing definition, refusing absence atomically.
 pub fn update(store: &mut Store, category: FixCategory, field: Field) -> Result<()> {
     let name = field.name().to_owned();
+    let sources = sources_of(&field);
     store.registry_mut().update_definition(category, field)?;
+    record_sources(store, &sources)?;
     style::good(&format!("updated {category}/{name}"));
+    Ok(())
+}
+
+/// The source ids a definition names, owned, so the catalog can take them
+/// once the definition has landed.
+fn sources_of(field: &Field) -> Vec<String> {
+    field.as_fix().sources().map(str::to_owned).collect()
+}
+
+/// Holds the sources catalog to the ids a definition just stated, so no id
+/// a definition names dangles: an entry already held keeps what it states.
+fn record_sources(store: &mut Store, sources: &[String]) -> Result<()> {
+    for id in sources {
+        store.registry_mut().add_source(FixSource::new(id)?);
+    }
     Ok(())
 }
 

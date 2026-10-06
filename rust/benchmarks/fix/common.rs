@@ -32,7 +32,7 @@ fn vendored(count: usize) -> Vec<Field> {
             field.as_fix_mut().set_tag(tag).expect("a generated tag");
             field
                 .as_fix_mut()
-                .set_branches([venue])
+                .set_sources([venue])
                 .expect("a generated membership");
             field
                 .as_fix_mut()

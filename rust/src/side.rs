@@ -29,7 +29,7 @@ enum_leaf! {
     /// ```
     pub enum Side: u8, kind = "side", extension = SIDE_EXTENSION_NAME, aliases = side_aliases {
         #[default]
-        Unknown = 0 as "UNKN": "A side stated as none, which a merge takes the other side over.",
+        Unknown = 0 as "UKNW": "A side stated as none, which a merge takes the other side over.",
         Buy = 1 as "BUYS": "Buy.",
         Sell = 2 as "SELL": "Sell.",
         BuyMinus = 3 as "BUYM": "Buy minus.",
@@ -250,10 +250,10 @@ static SIDE_NAMES: &[(&str, Side)] = &[
     ("subs", Side::Subscr),
     ("subscr", Side::Subscr),
     ("subscribe", Side::Subscr),
+    ("uknw", Side::Unknown),
     ("undi", Side::Undisc),
     ("undisc", Side::Undisc),
     ("undisclosed", Side::Undisc),
-    ("unkn", Side::Unknown),
     ("unknown", Side::Unknown),
 ];
 

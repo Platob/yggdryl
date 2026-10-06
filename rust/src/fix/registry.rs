@@ -20,6 +20,7 @@ use std::sync::{Arc, OnceLock};
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::source::FixSource;
 use super::{FixId, FixKey};
 use crate::folds_equal;
 use crate::xxhash::Xxh64;
@@ -451,7 +452,8 @@ enum Route {
     /// The tag the field at this position holds under no name of its own:
     /// rule 3, the holder taking the arrival's name.
     Unnamed(usize),
-    /// A tag another field holds under another name: rule 5, beside it.
+    /// A tag another field holds under another name, the arrival's own name
+    /// no field's canonical name: rule 5, beside it.
     Beside,
     /// A name the field at this position answers to: rule 4.
     Named(usize),
@@ -674,6 +676,13 @@ pub struct FixRegistry {
     /// them; ordered because the store, the snapshot and the hash all read
     /// them in one order.
     pub(super) codesets: BTreeMap<SmolStr, Arc<str>>,
+    /// The [sources](super::source) this dictionary was built from, by id:
+    /// one entry per id a field's `FIX:sources` names, holding what is known
+    /// of the source - the file it was read from - once rather than on every
+    /// field. Ordered because the store, the snapshot and the hash all read
+    /// them in one order; part of equality and of the hash, as the code
+    /// sets are.
+    pub(super) sources: BTreeMap<SmolStr, FixSource>,
     ids: Index<FixId>,
     /// A canonical tag, and the first field that held it: a bare wire tag
     /// answers that field, and a later field on the same tag under another
@@ -773,6 +782,7 @@ impl FixRegistry {
             fields: Vec::new(),
             catalog: super::catalog::Catalog::default(),
             codesets: BTreeMap::new(),
+            sources: BTreeMap::new(),
             ids: Index::default(),
             tags: Index::default(),
             alternate_tags: Index::default(),
@@ -806,6 +816,12 @@ impl FixRegistry {
         if let Some(document) = super::crated::marketdatatype_codeset() {
             registry.codesets.insert(
                 SmolStr::new_static(super::crated::MARKETDATATYPE_CODESET_NAME),
+                document,
+            );
+        }
+        if let Some(document) = super::crated::msgpluginside_codeset() {
+            registry.codesets.insert(
+                SmolStr::new_static(super::crated::MSGPLUGINSIDE_CODESET_NAME),
                 document,
             );
         }
@@ -1106,25 +1122,121 @@ impl FixRegistry {
         self.get_field(key).is_some()
     }
 
-    /// Every dialect any field or named definition names as a contributor,
-    /// folded, sorted, each once.
+    /// Every source id any field or named definition names in its
+    /// `FIX:sources`, folded, sorted, each once.
     ///
     /// Membership is provenance and this is its listing; nothing resolves
-    /// through it. A registry holding only the specification's own fields
-    /// answers nothing.
+    /// through it. The ids a field states, not the [catalog](Self::sources)
+    /// the registry holds: an entry no field names is not listed here, and
+    /// an id no entry holds is. A registry holding only the specification's
+    /// own fields answers nothing.
     pub fn dialects(&self) -> Vec<String> {
         let mut held: BTreeSet<String> = BTreeSet::new();
         for field in &self.fields {
-            for dialect in field.as_fix().branches() {
-                held.insert(dialect.to_owned());
+            for source in field.as_fix().sources() {
+                held.insert(source.to_owned());
             }
         }
         for field in self.catalog.all() {
-            for dialect in field.field.as_fix().branches() {
-                held.insert(dialect.to_owned());
+            for source in field.field.as_fix().sources() {
+                held.insert(source.to_owned());
             }
         }
         held.into_iter().collect()
+    }
+
+    /// Walks the sources catalog, in id order.
+    ///
+    /// One entry per source this dictionary was built from - a `.cfb` folded
+    /// in, a dialect a definition was created under - holding what is known
+    /// of it once: the id a field's `FIX:sources` names, the file it was
+    /// read from and the role of its plugin. A store writes the catalog as
+    /// `sources.json`.
+    pub fn sources(&self) -> impl ExactSizeIterator<Item = &FixSource> {
+        self.sources.values()
+    }
+
+    /// The source held under `id`, or nothing.
+    ///
+    /// One id is one entry under the crate's fold - the fold a field's list
+    /// is deduplicated under and [`FixField::has_source`](crate::FixField::has_source)
+    /// reads by - so the catalog and a field agree on which spellings are
+    /// one source: `VENUE` and `ve_nue` both reach `venue`.
+    #[must_use]
+    pub fn get_source(&self, id: &str) -> Option<&FixSource> {
+        // The stored key is the folded id and a field states it folded, so
+        // the exact hit is the ordinary one; a caller spelling it otherwise
+        // pays one scan of a catalog a few dozen entries long.
+        self.sources.get(id).or_else(|| {
+            self.sources
+                .values()
+                .find(|source| folds_equal(source.id(), id))
+        })
+    }
+
+    /// Records one source in the catalog, answering whether it arrived.
+    ///
+    /// An id already held (under the fold [`Self::get_source`] reads by,
+    /// so the catalog holds one entry per id however it is spelled) keeps
+    /// its entry and takes only what it lacked: a file where it stated
+    /// none, a plugin role where it stated `UKNW`; two stated roles that
+    /// disagree keep the held one, logged at warn. Nothing here touches a field, since a field names its sources
+    /// itself, so an entry may stand that no field names, and `yggdryl fix
+    /// check` is what says so.
+    pub fn add_source(&mut self, source: FixSource) -> bool {
+        let held = self.get_source(&source.id).map(|held| held.id.clone());
+        match held {
+            Some(key) => {
+                if let Some(held) = self.sources.get_mut(&key) {
+                    if held.file.is_none() {
+                        held.file = source.file;
+                    }
+                    if held.pluginside == crate::PluginSide::Unknown {
+                        held.pluginside = source.pluginside;
+                    } else if source.pluginside != crate::PluginSide::Unknown
+                        && source.pluginside != held.pluginside
+                    {
+                        log::warn!(
+                            "FIX source {key:?} states plugin side {}, keeping the held {}",
+                            source.pluginside,
+                            held.pluginside
+                        );
+                    }
+                }
+                false
+            }
+            None => {
+                self.sources.insert(source.id.clone(), source);
+                true
+            }
+        }
+    }
+
+    /// Removes the source held under `id`, folded, answering the entry, or
+    /// nothing where none is held.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Conflict`] naming the first field or definition
+    /// that still names the id, because a field may not be left naming an
+    /// entry the catalog does not hold.
+    pub fn remove_source(&mut self, id: &str) -> Result<Option<FixSource>> {
+        let Some(key) = self.get_source(id).map(|source| source.id.clone()) else {
+            return Ok(None);
+        };
+        let named = self
+            .fields
+            .iter()
+            .chain(self.catalog.all().map(|entry| entry.field.as_field()))
+            .find(|field| field.as_fix().has_source(&key));
+        if let Some(field) = named {
+            return Err(Error::conflict(
+                "FIX source no field names",
+                "one a field names",
+                format_smolstr!("{key:?} on {:?}", field.name()),
+            ));
+        }
+        Ok(self.sources.remove(&key))
     }
 
     /// Adds a field, replacing only an equal identity, under the stored
@@ -1434,11 +1546,13 @@ impl FixRegistry {
     ///    arriving on its tag - where no field answers that name already -
     ///    and every member reading it under the digits reads it under the
     ///    name.
-    /// 4. Otherwise a name that folds to a stored field's canonical name or
-    ///    to one of its aliases merges *into* that field: the same field
-    ///    spelled with another tag. Folding is the crate's one fold, the one
-    ///    every name lookup resolves by: ASCII case, and the `_`, `-` and
-    ///    space separators, so `party_id` is a spelling of `PartyID`. The
+    /// 4. Otherwise a name that folds to a stored field's canonical name -
+    ///    or, where no field holds the arrival's tag, to one of its aliases -
+    ///    merges *into* that field: the same field spelled with another tag,
+    ///    a tag a field of another name holds staying with that field.
+    ///    Folding is the crate's one fold, the one every name lookup resolves
+    ///    by: ASCII case, and the `_`, `-` and space separators, so
+    ///    `party_id` is a spelling of `PartyID`. The
     ///    stored field keeps its identity, its name and its nullability;
     ///    aliases and alternate tags are the union, the stored ones first,
     ///    deduplicated under the same fold; the incoming name joins the
@@ -1567,9 +1681,10 @@ impl FixRegistry {
     /// [`Self::add_field`] folds one - a stored identity or a stored name
     /// merges, anything else inserts - every named definition folds as
     /// [`Self::insert`] folds one, its members appended to the stored
-    /// definition of its name rather than replacing them. The dialects that
-    /// contributed a field travel with it and union onto the stored one, so
-    /// a merged registry says which dictionaries spoke each field.
+    /// definition of its name rather than replacing them. The sources that
+    /// contributed a field travel with it and union onto the stored one, and
+    /// the other dictionary's sources catalog unions onto this one's, so a
+    /// merged registry says which sources spoke each field.
     ///
     /// Aliases accumulate rather than replace, because reading a second
     /// source is not a statement that the first one's names were wrong, and
@@ -1602,13 +1717,36 @@ impl FixRegistry {
     /// passed over, and a code set that will not fold into the one held. Two
     /// references under one member name to two groups or two components on
     /// one counter are one member read two ways: the members the incoming
-    /// target declares fold into the held target under these same rules, so
-    /// a group one dialect split for one message still widens the group the
-    /// dictionary reads there. A group held under its name on another counter
-    /// is another group: it arrives named for its counter, `dealers_7101`,
-    /// and a member reading it stands beside the held member under that
-    /// counter's suffix. A definition whose fold refuses rather than passing
-    /// a member over is passed over whole, every write it made undone.
+    /// target declares - as the source states it, whichever of the two folds
+    /// first - fold into the held target under these same rules, so a group
+    /// one dialect split for one message still widens the group the
+    /// dictionary reads there. A member is the field it reads before the name
+    /// it carries: an incoming member reading another field than the held
+    /// member of its name is the held member reading that field where one
+    /// does, and a member of its own beside the held ones, `{name}2`,
+    /// otherwise - two tags are two tags on the wire - so a spelling two
+    /// tags share passes nothing over whichever source folds first. A group
+    /// held under its name on another counter is another group: it arrives
+    /// named for its counter, `dealers_7101`, and a member reading it stands
+    /// beside the held member under that counter's suffix. A definition whose
+    /// fold refuses rather than passing a member over is passed over whole,
+    /// every write it made undone.
+    ///
+    /// **One structure is one definition.** Once every definition of the
+    /// source folded by name, each pair of components or groups of one
+    /// structure the fold made - an arrival stating a held definition's
+    /// structure, or a held definition the fold widened into another's -
+    /// folds into a held one, the first in name order the fold widened else
+    /// the first in name order: its members relaxed to the more permissive
+    /// nullability, both sources listed, every reference to the other
+    /// rewritten. Two definitions held as they were stay two, and so do two
+    /// one source brought unless a definition held before the fold states
+    /// their structure, which both fold into. A definition folded away is a name the dictionary
+    /// no longer holds, so a source stating that name with fewer members than
+    /// the structure it folded into - the source whose fold folded it away
+    /// included - lands it again when it folds again, read by no member
+    /// already folded, and a fold widening it once more files the structure
+    /// under it in turn.
     ///
     /// Answers the [`FixMerge`]: the scalars added and merged, and what was
     /// passed over.
@@ -1734,6 +1872,12 @@ impl FixRegistry {
             ..FixMerge::default()
         };
         self.merge_codesets(other, &mut merge.dropped);
+        // The sources catalog beside the vocabularies, for the same reason:
+        // a field the fold keeps names its sources, and the entry each id
+        // names has to be here by then.
+        for source in other.sources.values() {
+            self.add_source(source.clone());
+        }
         // How a member of the other dictionary's definitions reads each field
         // the scalar fold did not keep under the identity the member names: a
         // field merged by its name alone now answers under the held identity,
@@ -1942,12 +2086,16 @@ impl FixRegistry {
     /// The one call an ingest takes, and a parse in front of
     /// [`Self::merge_with`]: the file's vocabulary folds the way any source
     /// folds, and every field, group, component and message it produces
-    /// carries the dialect's name in `FIX:branches`, which is what the merge
-    /// unions onto whatever this dictionary already held.
+    /// carries the dialect's id in `FIX:sources`, the parse holding the
+    /// dialect's entry - its id and the file's name - in its sources
+    /// catalog, which is what the merge unions onto whatever this dictionary
+    /// already held.
     ///
     /// `dialect` names the dictionary, and the file names it when the caller
     /// does not: with none supplied the handle's own stem stands in, where it
-    /// reads as a name: non-empty and opening with a letter. The FIX version
+    /// reads as a source id - opening with an ASCII letter and holding no
+    /// quote, backslash or control character - and nothing stands in where it
+    /// does not. The FIX version
     /// the file's root declares is not carried: the version a capture is read
     /// at is the row's own `beginstring` where the transport states one, else
     /// what the line implies.
@@ -1959,8 +2107,8 @@ impl FixRegistry {
     /// # Errors
     ///
     /// Returns what [`Self::from_cfb_file`] and [`Self::merge_with`] return,
-    /// and the membership refusal when the supplied name is empty or carries
-    /// a comma.
+    /// and the id grammar's refusal when the supplied name is empty or holds
+    /// a quote, a backslash or a control character.
     pub fn add_cfb_file(&mut self, handle: &dyn IOBase, dialect: Option<&str>) -> Result<FixMerge> {
         let stem = super::cfb::stem_dialect(handle);
         let (parsed, _) = Self::from_cfb_file(handle, dialect.or(stem.as_deref()))?;
@@ -2266,8 +2414,20 @@ impl FixRegistry {
             {
                 return Ok(Route::Unnamed(holder));
             }
-            // A held tag under another name is a field of its own.
-            return Ok(Route::Beside);
+            // A held tag under another name is a field of its own - unless
+            // a third field is canonically named so. A canonical name
+            // reaches one field, so an arrival on a tag another field holds,
+            // under a name a third field holds as its own, is that field
+            // spelled with another number - rule 4, read before rule 5 - and
+            // never a field beside the holder of the tag, which could not be
+            // named; the number stays with its holder
+            // ([`Self::merge_named`]). A name another field holds only as an
+            // alias is not this case: the arrival stands beside the holder
+            // of its tag under its own name, and the alias stays where it is.
+            return Ok(match self.canonical_position_by_name(field.name()) {
+                Some(named) => Route::Named(named),
+                None => Route::Beside,
+            });
         }
         // A held name under another tag is the same field spelled with
         // another number - save the other spelling a parent field was only
@@ -2769,6 +2929,7 @@ impl PartialEq for FixRegistry {
             && self.iter().eq(other.iter())
             && self.catalog == other.catalog
             && self.codesets == other.codesets
+            && self.sources == other.sources
     }
 }
 
@@ -3260,6 +3421,7 @@ impl Clone for FixRegistry {
             fields: self.fields.clone(),
             catalog: self.catalog.clone(),
             codesets: self.codesets.clone(),
+            sources: self.sources.clone(),
             ids: self.ids.clone(),
             tags: self.tags.clone(),
             alternate_tags: self.alternate_tags.clone(),
@@ -3294,6 +3456,12 @@ impl Hash for FixRegistry {
         for (name, document) in &self.codesets {
             name.hash(state);
             document.hash(state);
+        }
+        // The sources the fields name: an entry states what the id on a
+        // field does not, so two dictionaries whose entries differ are two.
+        self.sources.len().hash(state);
+        for source in self.sources.values() {
+            source.hash(state);
         }
         for category in [crate::FixCategory::Components, crate::FixCategory::Groups] {
             category.hash(state);

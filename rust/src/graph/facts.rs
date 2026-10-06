@@ -12,12 +12,12 @@
 //! slim holder and convert to its view by a move, never a copy.
 //!
 //! `Default` states nothing: a price and a quantity of nothing in no currency
-//! (`XXX`), no unit, a side of `UNKN`, no identifiers, a `UNKNOWN`
+//! (`XXX`), no unit, a side of `UKNW`, no identifiers, a `UNKNOWN`
 //! state at the epoch, and the nil identity until [`Element::finalize`]
 //! derives one from the facts.
 //!
 //! Each holder also carries the [`MarketDataKind`] of the leaf that holds
-//! it, stamped by that leaf - `UNKN` until one does. The kind is what
+//! it, stamped by that leaf - `UKNW` until one does. The kind is what
 //! decides whether the cross code carries the side ([`MarketDataKind::is_sided`]):
 //! only an order's and an execution's does - a quote holds both its legs
 //! and states its side as a tag - and so whether a side moved withdraws the

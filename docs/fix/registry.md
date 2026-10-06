@@ -29,12 +29,12 @@
 | Planning | Message identity, contextual counter lookup, group layouts and identifier selection are compiled before parsing rows |
 | Mutation | A refusal leaves every category and index unchanged; metadata edits refresh referenced occurrences atomically |
 | Identity spelling | A case-only replacement preserves the stored canonical name; an identity or referenced datatype change is refused |
-| Membership | `FIX:branches` lists the dialects that contributed a field - provenance a caller filters on; no lookup consults it, and a message root the codec builds carries none |
+| Membership | `FIX:sources` lists the ids of the sources that contributed a field, and the registry's [sources catalog](#membership) holds one `FixSource` per id - the file it was read from and its plugin's [`PluginSide`](../types/enum/pluginside.md) - provenance a caller filters on; no lookup consults it, and a message root the codec builds carries none |
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
-| Snapshot | `into_json` / `from_json` preserve the vocabularies and the three categories - `{codesets, fields, components, groups}` and no other key, the sets leading so a reader holds them before it meets a field naming one - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 49 definitions, tags 65001 to 65049: 48 scalar fields and the sorted Map group `metadata(65035)`. Eighteen are derived (`is_derived_tag`) and never registered; `new()` registers the other 31 - 30 scalar fields and `metadata` - beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 32 scalar fields and one group: 33 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
-| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 32 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
+| Snapshot | `into_json` / `from_json` preserve the vocabularies, the sources catalog and the three categories - `{codesets, sources, fields, components, groups}` and no other key, `sources` stated only where the catalog holds an entry, the sets leading so a reader holds them before it meets a field naming one - with each field's membership inside its metadata; stable hashes include that complete state, the catalog among it |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 50 definitions, tags 65001 to 65050: 49 scalar fields and the sorted Map group `metadata(65035)`. Eighteen are derived (`is_derived_tag`) and never registered; `new()` registers the other 32 - 31 scalar fields and `metadata` - beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 33 scalar fields and one group: 34 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
+| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 33 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
 
 ## Use
 
@@ -374,10 +374,11 @@ The identity is the pair, so `add_field`, `add_fields` and `merge_with` decide b
 | The same tag under the same folded name | The same field | Update: `merge_with` unions its tags, aliases, membership and the rest |
 | The same folded name under another tag | The same field spelled with another number | Merges into the holder, which gains the tag as an alternate - unless another field already answers that tag, in which case the tag is left out with a debug log - and the incoming name as an alias unless it is the canonical one; no second field |
 | The same tag under another name | A new field | Registered under its own id beside the holder; the bare tag keeps answering the first holder, the newcomer is reached by its name or its id, and neither learns the other's name |
+| The same tag under a name a third field holds as its canonical name | That third field spelled with another number | Merges into the field the name names, as the second row does; the tag stays with its holder and is not learned as an alternate, and every member reading the arrival reads that field. A name the third field holds only as an alias is not this row: the arrival stands beside the holder of its tag, and the alias stays where it is |
 | The same tag, one side named by nothing but its decimal tag | The same field, unnamed | An unnamed arrival merges into the field answering its tag - as its own or as an alternate - whatever that field is called, except the other half of a pair the source itself linked: an arrival naming the holder's own tag among its alternates is two fields. An unnamed holder takes the arrival's name where no field answers that name already, and every member reading it under the digits reads it under the name |
 | Neither | A new field | Inserted as it arrived |
 
-A name is what identifies a field to a reader, so a new name on a held tag is a new thing a dialect defined over a tag it reused; a tag is what identifies a field on the wire, so a held name on a new tag is the same thing spelled with another number. A decimal name is no name: a field named `541` - a CBlock tag declaring no `alt` - is a tag a file did not say the name of, so it folds into whatever answers its tag, as its own or as an alternate, and the first file naming the tag names it, rather than standing beside a numbered twin of itself; `insert` stays strict and files it beside the holder. One of this crate's own tags is every dictionary's already and is skipped, counted as neither added nor merged. Two identities digesting to one id is a typed conflict on insert, and every id hit is rechecked against the tag and the fold before it counts.
+A name is what identifies a field to a reader, so a new name on a held tag is a new thing a dialect defined over a tag it reused; a tag is what identifies a field on the wire, so a held name on a new tag is the same thing spelled with another number - and so is a held name on a held tag, a dialect that numbered `MaturityDate2` with `MaturityDate`'s 541: a canonical name reaches one field, so the arrival is that field, never a field beside the holder of 541 that could not be named. A decimal name is no name: a field named `541` - a CBlock tag declaring no `alt` - is a tag a file did not say the name of, so it folds into whatever answers its tag, as its own or as an alternate, and the first file naming the tag names it, rather than standing beside a numbered twin of itself; `insert` stays strict and files it beside the holder. One of this crate's own tags is every dictionary's already and is skipped, counted as neither added nor merged. Two identities digesting to one id is a typed conflict on insert, and every id hit is rechecked against the tag and the fold before it counts.
 
 === "Rust"
 
@@ -391,21 +392,21 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
     // The same folded name under another tag: one field, one more number.
     let mut spelled = DataType::utf8().nullable_field("symbol");
     spelled.as_fix_mut().set_tag(9055)?;
-    spelled.as_fix_mut().set_branches(["blp"])?;
+    spelled.as_fix_mut().set_sources(["blp"])?;
     assert!(!registry.add_field(spelled)?, "merged");
     let holder = registry.field_by_tag(9055)?;
     assert_eq!(holder.name(), "Symbol");
     assert_eq!(holder.as_fix().tags()?, [9055]);
-    assert_eq!(holder.as_fix().branches().collect::<Vec<_>>(), ["blp"]);
+    assert_eq!(holder.as_fix().sources().collect::<Vec<_>>(), ["blp"]);
 
     // The same tag under another name: a second field beside the holder.
     let mut venue = DataType::utf8().nullable_field("VenueSymbol");
     venue.as_fix_mut().set_tag(55)?;
-    venue.as_fix_mut().set_branches(["xnas"])?;
+    venue.as_fix_mut().set_sources(["xnas"])?;
     assert!(registry.add_field(venue)?, "added");
     assert_eq!(registry.field_by_tag(55)?.name(), "Symbol", "the bare tag answers the holder");
     assert_eq!(registry.field_by_tag(55)?.as_fix().names().count(), 0, "neither learns the other's name");
-    assert!(!registry.field_by_tag(55)?.as_fix().has_branch("xnas"));
+    assert!(!registry.field_by_tag(55)?.as_fix().has_source("xnas"));
     let newcomer = registry.field_by_id(FixId::of(55, "venue_symbol")?)?;
     assert_eq!(newcomer.name(), "VenueSymbol");
     assert_eq!(registry.field_by_name("VenueSymbol")?.name(), "VenueSymbol", "reached by its own name");
@@ -441,21 +442,21 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
     # The same folded name under another tag: one field, one more number.
     spelled = Field("symbol", "utf8")
     spelled.fix.tag = 9055
-    spelled.fix.branches = ["blp"]
+    spelled.fix.sources = ["blp"]
     assert registry.add_field(spelled) is False, "merged"
     holder = registry.field_by_tag(9055)
     assert holder.name == "Symbol"
     assert holder.fix.tags == [9055]
-    assert holder.fix.branches == ["blp"]
+    assert holder.fix.sources == ["blp"]
 
     # The same tag under another name: a second field beside the holder.
     venue = Field("VenueSymbol", "utf8")
     venue.fix.tag = 55
-    venue.fix.branches = ["xnas"]
+    venue.fix.sources = ["xnas"]
     assert registry.add_field(venue) is True, "added"
     assert registry.field_by_tag(55).name == "Symbol", "the bare tag answers the holder"
     assert registry.field_by_tag(55).fix.names == [], "neither learns the other's name"
-    assert not registry.field_by_tag(55).fix.has_branch("xnas")
+    assert not registry.field_by_tag(55).fix.has_source("xnas")
     assert registry.field_by_id(venue.fix.id).name == "VenueSymbol"
     assert registry.field_by_name("venue_symbol").name == "VenueSymbol", "reached by its own name"
     assert registry.dialects() == ["blp", "xnas"]
@@ -490,21 +491,21 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
     // The same folded name under another tag: one field, one more number.
     const spelled = Field.from('symbol: utf8')
     spelled.fix.tag = 9055
-    spelled.fix.branches = ['blp']
+    spelled.fix.sources = ['blp']
     assert.equal(registry.addField(spelled), false, 'merged')
     const holder = registry.fieldByTag(9055)
     assert.equal(holder.name, 'Symbol')
     assert.deepEqual(holder.fix.tags, [9055])
-    assert.deepEqual(holder.fix.branches, ['blp'])
+    assert.deepEqual(holder.fix.sources, ['blp'])
 
     // The same tag under another name: a second field beside the holder.
     const venue = Field.from('VenueSymbol: utf8')
     venue.fix.tag = 55
-    venue.fix.branches = ['xnas']
+    venue.fix.sources = ['xnas']
     assert.equal(registry.addField(venue), true, 'added')
     assert.equal(registry.fieldByTag(55).name, 'Symbol', 'the bare tag answers the holder')
     assert.deepEqual(registry.fieldByTag(55).fix.names, [], "neither learns the other's name")
-    assert.equal(registry.fieldByTag(55).fix.hasBranch('xnas'), false)
+    assert.equal(registry.fieldByTag(55).fix.hasSource('xnas'), false)
     assert.equal(registry.fieldById(venue.fix.id).name, 'VenueSymbol')
     assert.equal(registry.fieldByName('venue_symbol').name, 'VenueSymbol', 'reached by its own name')
     assert.deepEqual(registry.dialects(), ['blp', 'xnas'])
@@ -528,17 +529,108 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
 
 ### Membership
 
-A dictionary is a membership, not a namespace: what it contributed is recorded on the field it contributed to, as `FIX:branches` - a comma-separated list of dialect names, each held to the membership grammar (non-empty, no comma), folded to ASCII lowercase, deduplicated under the fold and kept sorted, so two registries built from the same dictionaries in any order hash alike. An empty list removes the key, which is what every field the specification alone defines states: the shipped `config/fix` carries none. Membership is provenance a caller filters on; resolution never consults it, and a message root the codec builds carries none.
+A dictionary is a membership, not a namespace: what a source contributed is recorded on the field it contributed to, as `FIX:sources` - a compact JSON array of source ids, `["blp","xnas"]`, each held to the id grammar (a non-empty word holding no quote, backslash or control character), folded to ASCII lowercase, deduplicated under the fold and kept sorted, so two registries built from the same sources in any order hash alike. An empty list removes the key, which is what every field the specification alone defines states: the shipped `config/fix` carries none. Membership is provenance a caller filters on; resolution never consults it, and a message root the codec builds carries none.
+
+What is known of a source is recorded once, in the registry's sources catalog rather than on every field: one `FixSource` per id - the id, the file it was read from where one is known, and the role of its plugin, a [`PluginSide`](../types/enum/pluginside.md) that is `UKNW` where the source states none. A [store](store.md#membership) writes the catalog as `sources.json`. A field names its sources itself, so a field may name an id the catalog does not hold and the catalog may hold an entry no field names; [`yggdryl fix check`](cli.md#schema-check-and-diff) fails the first and notes the second.
 
 | Rust | Python | JavaScript | Answer |
 | --- | --- | --- | --- |
-| `FixField::branches()` | `field.fix.branches` | `field.fix.branches` | The dialects that contributed the field, sorted, lowercase; empty when absent |
-| `FixField::has_branch(name)` | `field.fix.has_branch(name)` | `field.fix.hasBranch(name)` | Whether one dialect is among them, ASCII case folded |
-| `FixFieldMut::set_branches([..])` | `field.fix.branches = [..]` | `field.fix.branches = [..]` | Replace the list; a name that is empty or carries a comma is refused |
-| `FixFieldMut::add_branch(name)` | `field.fix.add_branch(name)` | `field.fix.addBranch(name)` | Add one, idempotent under the fold |
-| `FixRegistry::dialects()` | `registry.dialects()` | `registry.dialects()` | The distinct names any field or named definition carries, sorted |
+| `FixField::sources()` | `field.fix.sources` | `field.fix.sources` | The ids of the sources that contributed the field, sorted, lowercase; empty when absent |
+| `FixField::has_source(id)` | `field.fix.has_source(id)` | `field.fix.hasSource(id)` | Whether one source is among them, under the crate's fold |
+| `FixFieldMut::set_sources([..])` | `field.fix.sources = [..]` | `field.fix.sources = [..]` | Replace the list; an id that is empty or holds a quote, a backslash or a control character is refused, naming `FIX:sources` |
+| `FixFieldMut::add_source(id)` | `field.fix.add_source(id)` | `field.fix.addSource(id)` | Add one, idempotent under the fold |
+| `FixRegistry::dialects()` | `registry.dialects()` | `registry.dialects()` | The distinct ids any field or named definition names, sorted - what the fields state, not the catalog |
+| `FixRegistry::sources()` | `registry.sources()` | `registry.sources()` | The catalog in id order: `FixSource` values in Rust, `{"id", "file", "pluginside"}` records in Python (`file` `None` where none is known, `pluginside` a `PluginSide` member), `{ id, file, pluginside }` objects in JavaScript (`file` left out where none is known, `pluginside` the member's stored name) |
+| `FixRegistry::get_source(id)` | `registry.get_source(id)` | not bound | The entry `id` names under the fold - `VENUE` and `ve_nue` both reach `venue` - or none |
+| `FixRegistry::add_source(FixSource::new(id)?.with_file(..).with_pluginside(..))` | `registry.add_source(id, *, file=None, pluginside=None)` | `registry.addSource(id, { file, pluginside })` | Record one entry, answering whether it arrived; an id already held keeps its entry and takes only what it lacked - a file where it stated none, a role where it stated `UKNW` - and a role disagreeing with a stated one keeps the held one, logged at warn |
+| `FixRegistry::remove_source(id)` | `registry.remove_source(id)` | not bound | Remove the entry and answer it; refused as a conflict naming the first field or definition still naming the id |
 
-`merge_with` on a field unions the two lists; `FixRegistry::merge_with`, `add_fields` and `add_cfb_file` carry that union onto whatever the registry already held, so a merged registry says which dictionaries spoke each field.
+`merge_with` on a field unions the two lists; `FixRegistry::merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` carry that union onto whatever the registry already held and fold the other side's catalog through `add_source`, so a merged registry says which sources spoke each field and what is known of each.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, FixRegistry, FixSource, PluginSide};
+
+    let mut registry = FixRegistry::new();
+    let mut venue = DataType::utf8().nullable_field("VenueTag");
+    venue.as_fix_mut().set_tag(20001)?;
+    venue.as_fix_mut().set_sources(["Venue"])?;
+    registry.insert(venue)?;
+    // The field names its source; the catalog records what is known of it, once.
+    assert_eq!(registry.dialects(), ["venue"]);
+    assert!(registry.get_source("venue").is_none());
+
+    let entry = FixSource::new("VENUE")?
+        .with_file("venue.cfb")
+        .with_pluginside(PluginSide::SellSide);
+    assert!(registry.add_source(entry), "arrived");
+    let held = registry.get_source("Venue").expect("one entry under the fold");
+    assert_eq!(
+        (held.id(), held.file(), held.pluginside()),
+        ("venue", Some("venue.cfb"), PluginSide::SellSide)
+    );
+
+    // A held id keeps its entry and takes only what it lacked.
+    assert!(!registry.add_source(FixSource::new("venue")?.with_pluginside(PluginSide::BuySide)));
+    assert_eq!(registry.get_source("venue").map(FixSource::pluginside), Some(PluginSide::SellSide));
+    // An entry a field still names stays.
+    assert!(registry.remove_source("venue").is_err());
+    assert_eq!(registry.sources().len(), 1);
+    ```
+
+=== "Python"
+
+    ```python
+    import pytest
+
+    from yggdryl import Field, PluginSide
+    from yggdryl.fix import FixRegistry
+
+    registry = FixRegistry()
+    venue = Field("VenueTag", "utf8")
+    venue.fix.tag = 20001
+    venue.fix.sources = ["Venue"]
+    registry.insert(venue)
+    # The field names its source; the catalog records what is known of it, once.
+    assert registry.dialects() == ["venue"]
+    assert registry.get_source("venue") is None
+
+    assert registry.add_source("VENUE", file="venue.cfb", pluginside="SELL") is True
+    entry = {"id": "venue", "file": "venue.cfb", "pluginside": PluginSide.SELL}
+    assert registry.get_source("Venue") == entry
+
+    # A held id keeps its entry and takes only what it lacked.
+    assert registry.add_source("venue", pluginside=PluginSide.BUYS) is False
+    assert registry.sources() == [entry]
+    # An entry a field still names stays.
+    with pytest.raises(ValueError):
+        registry.remove_source("venue")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, fix } = require('yggdryl')
+
+    const registry = new fix.FixRegistry()
+    const venue = Field.from('VenueTag: utf8')
+    venue.fix.tag = 20001
+    venue.fix.sources = ['Venue']
+    registry.insert(venue)
+    // The field names its source; the catalog records what is known of it, once.
+    assert.deepEqual(registry.dialects(), ['venue'])
+    assert.deepEqual(registry.sources(), [])
+
+    assert.equal(registry.addSource('VENUE', { file: 'venue.cfb', pluginside: 'SELL' }), true)
+    const entry = { id: 'venue', file: 'venue.cfb', pluginside: 'SELL' }
+    assert.deepEqual(registry.sources(), [entry])
+
+    // A held id keeps its entry and takes only what it lacked.
+    assert.equal(registry.addSource('venue', { pluginside: 'BUYS' }), false)
+    assert.deepEqual(registry.sources(), [entry])
+    ```
 
 ## Accessors
 
@@ -646,11 +738,11 @@ Python registries are mutable and unhashable; `stable_hash()` explicitly compute
 
 ## A field names the code set it reads by
 
-A vocabulary belongs to the dictionary rather than to one field. The specification names each set - `SideCodeSet`, `SecurityIDSourceCodeSet` - and names it from as many fields as draw on it, so the registry holds the members once under that name and a scalar's `FIX:codeset` states only which set it reads by. The committed source dictionary holds 735 sets read by 2,027 fields; the registry adds its builtin `msgcatcodeset`, `marketdatatypecodeset` and `statecodeset`, so a live default registry holds 738. One time-unit set is read by 103 fields alone; `SecurityIDSource(22)` and `UnderlyingSecurityIDSource(305)` are two of the 36 fields that read `securityidsourcecodeset`, and a code named, aliased or documented once is named for every one of them.
+A vocabulary belongs to the dictionary rather than to one field. The specification names each set - `SideCodeSet`, `SecurityIDSourceCodeSet` - and names it from as many fields as draw on it, so the registry holds the members once under that name and a scalar's `FIX:codeset` states only which set it reads by. The committed source dictionary holds 735 sets read by 2,027 fields; the registry adds its builtin `msgcatcodeset`, `marketdatatypecodeset`, `statecodeset` and `msgpluginsidecodeset`, so a live default registry holds 739. One time-unit set is read by 103 fields alone; `SecurityIDSource(22)` and `UnderlyingSecurityIDSource(305)` are two of the 36 fields that read `securityidsourcecodeset`, and a code named, aliased or documented once is named for every one of them.
 
 The set is stated first, because a registry refuses a field whose `FIX:codeset` names a set it does not hold - at `insert`, `update`, `from_fields`, `from_json` and a [store](store.md) load alike. Taking one away runs the other way: `remove_codeset`, and `set_codeset` with an empty list, refuse while a held field still reads by that name, naming the field.
 
-`marketdatatypecodeset`, `msgcatcodeset` and `statecodeset` are intrinsic rather than ordinary mutable vocabularies: the first names every [MarketDataType](../types/enum/marketdatatype.md) member - its stored name, the `uint16` code a `marketdatatype` column stores and what it means - the second every [MarketDataKind](../types/enum/marketdatakind.md) member - its four-letter category, the `uint8` code a `msgcat` column stores and what it stands for - the third every [State](../types/enum/state.md) member - its stored name, the `uint16` code a `state` column stores as the value, and what it means - and all three are fixed by the crate. Reinstalling the same canonical document is idempotent; replacing, widening, removing, or loading a conflicting document is refused. A custom `MsgType` may still select any symbolic category already in `msgcatcodeset`.
+`marketdatatypecodeset`, `msgcatcodeset`, `statecodeset` and `msgpluginsidecodeset` are intrinsic rather than ordinary mutable vocabularies: the first names every [MarketDataType](../types/enum/marketdatatype.md) member - its stored name, the `uint16` code a `marketdatatype` column stores and what it means - the second every [MarketDataKind](../types/enum/marketdatakind.md) member - its four-letter category, the `uint8` code a `msgcat` column stores and what it stands for - the third every [State](../types/enum/state.md) member - its stored name, the `uint16` code a `state` column stores as the value, and what it means - the fourth every [PluginSide](../types/enum/pluginside.md) member - `UKNW`, `BUYS` and `SELL`, the `uint8` code a `msgpluginside` column stores and what each role does - and all four are fixed by the crate. Reinstalling the same canonical document is idempotent; replacing, widening, removing, or loading a conflicting document is refused. A custom `MsgType` may still select any symbolic category already in `msgcatcodeset`.
 
 === "Rust"
 
@@ -678,7 +770,7 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
     assert_eq!(set.codes().count(), 2);
     assert_eq!(
         registry.codesets().map(|set| set.name()).collect::<Vec<_>>(),
-        ["marketdatatypecodeset", "msgcatcodeset", "sidecodeset", "statecodeset"],
+        ["marketdatatypecodeset", "msgcatcodeset", "msgpluginsidecodeset", "sidecodeset", "statecodeset"],
     );
     ```
 
@@ -701,7 +793,13 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
 
     # The field carries the name; the dictionary answers the members.
     assert registry.field(54).fix.codeset == "sidecodeset"
-    assert registry.codeset_names() == ["marketdatatypecodeset", "msgcatcodeset", "sidecodeset", "statecodeset"]
+    assert registry.codeset_names() == [
+        "marketdatatypecodeset",
+        "msgcatcodeset",
+        "msgpluginsidecodeset",
+        "sidecodeset",
+        "statecodeset",
+    ]
     members = registry.codeset_of(registry.field(54))
     assert members == registry.codeset("sidecodeset")
     assert [code["name"] for code in members] == ["Buy", "Sell"]
@@ -728,7 +826,13 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
 
     // The field carries the name; the dictionary answers the members.
     assert.equal(registry.field(54).fix.codeset, 'sidecodeset')
-    assert.deepEqual(registry.codesetNames(), ['marketdatatypecodeset', 'msgcatcodeset', 'sidecodeset', 'statecodeset'])
+    assert.deepEqual(registry.codesetNames(), [
+      'marketdatatypecodeset',
+      'msgcatcodeset',
+      'msgpluginsidecodeset',
+      'sidecodeset',
+      'statecodeset',
+    ])
     const set = registry.codesetOf(registry.field(54))
     assert.equal(set.name, 'sidecodeset')
     assert.equal(registry.codeValue('sidecodeset', 'sold'), '2')
@@ -1107,7 +1211,7 @@ A message states what type of its kind it is - a limit order, a tradeable quote,
 | Lookup | `FixRegistry::marketdatatype_of(tag, wire)`: this dictionary's mapping first, then the crate's own `MarketDataType::from_fix` - a value no member names reading as its set's catch-all - and `None` for a field that types nothing; Python `marketdatatype_of`, JavaScript `marketdatatypeOf` |
 | Compiled | `FixRegistry::marketdatatype_sources() -> &[(i32, SmolStr, MarketDataType)]`, every field's pairs beside its tag, compiled once and forgotten by every change to the fields; Python `marketdatatype_sources()`, Rust and Python only |
 | Any field | the mapping is not limited to the eight typing fields: a dialect's own field may state it too, though a parse reads first the fields its message type or kind names ([`fix_tags_of`](../types/enum/marketdatatype.md#fix)) |
-| Parse | a [message](message.md) states its `marketdatatype` as it is built, through its registry's `marketdatatype_of` over the first of its `fix_tags_of(msgtype, kind)` it states, then any other field the registry maps, `UNKN` where it states none |
+| Parse | a [message](message.md) states its `marketdatatype` as it is built, through its registry's `marketdatatype_of` over the first of its `fix_tags_of(msgtype, kind)` it states, then any other field the registry maps, `UKNW` where it states none |
 | Book entries | a `W` or `X` entry is a bid, an offer or a trade by the member `marketdatatype_of(269, ..)` reads its `MDEntryType(269)` as - `BOOKBID`, `BOOKOFFER`, `BOOKTRADE` - so a mapping on `MDEntryType` books a venue's own entry type; any other member excludes the entry ([Message](message.md#market-data)) |
 
 === "Rust"
@@ -1214,7 +1318,7 @@ How long an order stands is a [`TimeInForce`](../types/enum/timeinforce.md) memb
 | Metadata | Merge rule |
 | --- | --- |
 | `FIX:tag` | Must agree; identity is not merged |
-| `FIX:branches` | Union, folded, sorted: every dictionary that contributed either side |
+| `FIX:sources` | Union, folded, sorted: every source that contributed either side |
 | `FIX:tags` | Combine alternate tags under collision validation |
 | `FIX:codeset` | The stored name wins: a field keeps the set it already reads by, and the incoming field's set has already been folded into it, so the field is never moved to a vocabulary holding less than the one it read by |
 | `FIX:directions` | Incoming wins whole: a rule table is one statement, and two tables have no order between them |
@@ -1226,7 +1330,7 @@ How long an order stands is a [`TimeInForce`](../types/enum/timeinforce.md) memb
 
 ## Folding a second source in
 
-Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as one native fold each, staged and adopted whole: nothing lands until the whole call has folded, a datatype the source states at another precision of the stored one folds under it, and a contradiction is passed over rather than ending the fold - see below for which is which. `FixRegistry::from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and the code sets its fields read by - a CBlock names no set of its own, so each is filed under the name the field supplies, `hedgecurrencycodeset` for `HedgeCurrency` - and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:branches`; `None` stamps nothing. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
+Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as one native fold each, staged and adopted whole: nothing lands until the whole call has folded, a datatype the source states at another precision of the stored one folds under it, and a contradiction is passed over rather than ending the fold - see below for which is which. `FixRegistry::from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and the code sets its fields read by - a CBlock names no set of its own, so each is filed under the name the field supplies, `hedgecurrencycodeset` for `HedgeCurrency` - and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:sources`, recording the catalog entry `dialect` names - the file's name, and the role the root element's `type` attribute names, a [`PluginSide`](../types/enum/pluginside.md) read by `PluginSide::from_plugin_type`; `None` stamps nothing and records no entry, the role read past with it. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
 
 A `vocabulary-tag`'s `alt` names its tag where it names only that tag. A dialect that spells one `alt` over two tags - `TRTN_FX_TradeCapture` declares `HedgeCurrency` for the currency a hedge settles in and again for the one it is quoted in - has given a name to neither, and a tag whose `alt` is another tag's own decimal has done the same to that tag's identity. The file's other statement of what a tag is called is read first: a `normalization-binding` spelling one of them by a name of its own names it - `LEGLASTSPOTRATE` for a tag 5190 whose `alt` repeats tag 637's `LegLastPx` - and the contended spelling, then one tag's alone, stays with that tag. A tag the bindings leave unnamed too falls back to its own decimal, the name a tag declaring no `alt` takes as well, and keeps the declared spelling as `display`, so every tag is left named and nothing the file said is lost. A field named by its own decimal is unnamed, and the [fold](#what-one-namespace-means-for-a-field-that-arrives) reads it so: a later file naming that tag names the field, and the members of both files read one field. Contention is decided by the key the spelling's catalog name, below, is indexed under, which folds case and drops `_`, `-` and space, so `Hedge_Currency` and `Hedge Currency` contend with `HedgeCurrency`. Two tags sharing a spelling record each other's tag among their alternate tags and so stay reachable as a pair; three record nothing, because an alternate identifier names one field. A `normalization-binding` cannot spell a contended name back onto one of them, and a `map` naming one decodes neither. The spelling survives where the file made it unambiguous: a `tag-constraint` binds one tag, so the message root, the component and the group each carry it, and a reader resolving a key against the message it arrived in - a bridge row's `MSGTYPE`, and the repeating group the key sits in - reaches the tag the file meant.
 
@@ -1236,11 +1340,11 @@ A CBlock spelling - a `vocabulary-tag`'s `alt`, a normalization's `tag-name`, an
 
 A `map` decodes a tag's values into the code set its field reads by, one `entry` per code, oriented the way the map's name says. An entry whose key or value is empty, blank, `none` or `null` - trimmed, under the crate's one fold of case, `_`, `-` and space - states no code: it is skipped, never enters the set and never claims a name, and the skipped entries are named in one warning per file and code set, listing up to 16 of them and then `and N more`. A second name for a value already held is an alias of it; an entry whose name another code already claims - by a lookup, or by the rule rendering holds names to - is dropped, so one entry costs that entry rather than the whole map. A held code named or valued by such a word is kept, because the value is a fact about the wire: `EncryptMethod(98)` `0` is `None`, and `NONE` is a wire value `SecurityType(167)` and `DateRollConvention` state.
 
-`merge_with` combines another registry under the [fold table](#what-one-namespace-means-for-a-field-that-arrives), its code sets folded first, its named definitions folded member by member and each field's membership unioned - the sets lead because a field keeps the set it already reads by, so the members the other dictionary states have to be in that set by the time the field is folded, and a merge therefore widens a vocabulary and never narrows one; `add_fields` folds a scalar field iterable the same way and answers its `(added, merged)` pair. `add_cfb_file(handle, dialect)` parses a CBlock and merges it, stamping the dialect - or, with none supplied, the file's stem where it reads as a name: opening with an ASCII letter and carrying no comma, its percent escapes decoded, so `Morgan Stanley.cfb` stamps `morgan stanley` - on everything the file produced; a supplied name that is empty or carries a comma is refused.
+`merge_with` combines another registry under the [fold table](#what-one-namespace-means-for-a-field-that-arrives), its code sets folded first, its named definitions folded member by member and each field's membership unioned - the sets lead because a field keeps the set it already reads by, so the members the other dictionary states have to be in that set by the time the field is folded, and a merge therefore widens a vocabulary and never narrows one; `add_fields` folds a scalar field iterable the same way and answers its `(added, merged)` pair. `add_cfb_file(handle, dialect)` parses a CBlock and merges it, stamping the dialect - or, with none supplied, the file's stem where it reads as an id: opening with an ASCII letter and holding no quote, backslash or control character, its percent escapes decoded, so `Morgan Stanley.cfb` stamps `morgan stanley`, while a stem that does not stamps nothing - on everything the file produced and recording its catalog entry; a supplied id that is empty or holds a quote, a backslash or a control character is refused.
 
 `add_cfb_files` is the plural, and it **takes the locations alone**: each is a [`Holder`](../holder/index.md), and what it is decides what it holds. A **glob** - `cblocks/*.cfb`, `cblocks/**/*.cfb`, `**/venue-*.cfb` - holds every file its pattern matches, walked exactly as [`IOBase::glob`](../holder/index.md) walks it: `*` inside one name, `**` across folders, private entries never matched, a container it matches passed by. A **folder** holds the `.cfb` files directly inside it, the suffix in any case. A **file** holds itself, whatever it is named, and a location where nothing is holds nothing. So a folder of counterparty files is `registry.add_cfb_files(&[Holder::local("cblocks")?], None)?`, several locations are one call - one fold, one resolution - and a file reached twice folds once. Python's plural is `add_cfb_files(location, dialect=None)`, `location` a path, a URL or an `IOBase` that is a file, a folder or a glob. **Files fold in ascending URL order** whatever order they were listed in, because the fold's precedence is its input order and a listing's sequence is not a caller's to see: it varies with how a pattern decomposed and with the backend beneath. So where two files disagree about one tag **the first-sorting file's declaration is held**, the later one is passed over, and `cblocks/`, `cblocks/*.cfb` and `**/*.cfb` over the same files all answer the same dictionary. **Files parse on every core, and fold on one:** a parse reads nothing but its own bytes, so the files are read in order and parsed side by side, at most one file per thread in hand; each parsed file then folds into the one staged dictionary in URL order, and the catalog resolves once for all of them - a hundred files cost one resolution, not a hundred. `dialect` is resolved per file: a name supplied here stamps every file with it, and none lets each file's own stem stand in, which is what globbing a folder of counterparty files is for - `cblocks/*.cfb` with none supplied stamps `msfix44` and `blpfix44` from `MSFIX44.cfb` and `BLPFIX44.cfb`'s own stems.
 
-`add_json_file(handle)` is the same door for a [JSON snapshot](store.md) and takes no dialect, because a snapshot is the crate's own format and every field and definition in it already carries the `FIX:branches` its writer meant.
+`add_json_file(handle)` is the same door for a [JSON snapshot](store.md) and takes no dialect, because a snapshot is the crate's own format and every field and definition in it already carries the `FIX:sources` its writer meant, and its `sources` array folds into the catalog through `add_source`.
 
 `merge_with`, `add_cfb_file`, `add_cfb_files` and `add_json_file` each answer a `FixMerge`, [below](#what-a-source-says-otherwise-than-the-dictionary-is-passed-over): `sources` counts the dictionaries or files folded - the file count is a fact only the plural calls hold, since an empty match and a match whose files all merged into stored fields both answer zero `added` and `merged` - `added` and `merged` the scalar fields over every source, `restated` among the merged those whose source declared another precision of the stored datatype and folded under it, `dropped` what was passed over in the order the fold met it, `failed` the files `add_cfb_files` left out whole - one `FixFailure` each, its `source` URL and the `reason` it was left out over, displayed `{source}: {reason}` - and `is_clean()` whether `dropped` and `failed` are both empty. `merge_with`, `add_cfb_file` and `add_json_file` are one mutation each: what leaves nothing to keep - a file that will not parse, an incoming dictionary whose own catalog does not validate - leaves the dictionary exactly as it was, and the refusal names the source.
 
@@ -1252,11 +1356,13 @@ A `vocabulary-tag` types itself with one of eight words - `string`, `char`, `int
 
 The document crosses the charset boundary once, before the XML reader sees a byte, in the charset it states: a byte-order mark, else the declaration's `encoding`, else UTF-8. Real exports declare `US-ASCII`, `UTF-8` and `ISO-8859-1`, so an `é` in a `description` is the character rather than a refusal of the file; an all-ASCII document is borrowed, and a refusal's byte is a position in the decoded text, the document's own wherever it was ASCII. Bytes the declared charset cannot read are transcribed - every valid run kept, a stray byte read as the Windows-1252 character it is - and a charset the crate has no table for is read as UTF-8, each with one warning. An attribute is one attribute: one the reader cannot split into a key and a quoted value is dropped and the element keeps the rest, one whose value will not unescape - `S&P 500`, an HTML entity - keeps the value as the file spelled it, one an element states twice is read once, the first statement standing, and a bare `&` in a description's text is the character.
 
-Each drop is a `log` record at warn level carrying the located sentence a refusal would have, then what the reader did about it: `invalid cfb expression at byte N: line L, column C: expected X, got Y in "<element ...>"; <consequence>` - the byte the reader had reached, the line and column it falls on, what was expected, what arrived and the element quoted as the file spells it, then, after the semicolon, the consequence: `the declaration is dropped`, `the tag is typed string, which every FIX datatype is on the wire`, `the value is kept as the file spelled it`, `the attribute is dropped and the element keeps the rest`, `the constraint is dropped and the message keeps its other members`, `the constraint declares the tag as text, named by its digits`, `the group is dropped and the message keeps the rest`, `the member is dropped and the message keeps the rest`, `the tag keeps no code set`, `an entry spelling nothing states no code, so each is skipped`. The last is one record per code set however many maps and entries it covers - `tag 39 "OrdStatus", code set ordstatuscodeset: 1 map entry spelling none, null or nothing: "ORDSTATUS" key "none" value "8"; an entry spelling nothing states no code, so each is skipped` - its list bounded at 16 entries, then `and N more`. A parse reading a located file prefixes the file's name, and one stamping a dialect the dialect - `venue.cfb [venue] invalid cfb expression at byte 204: ...` - which names the file among the many a glob reads side by side. A drop the core raised rather than the grammar - a description or a spelling that cannot be stored, two declarations of one tag - carries the core's own sentence behind the declaration that asked for it. Every quoted span is bounded, so a warning never grows with the file.
+Each drop is a `log` record at warn level carrying the located sentence a refusal would have, then what the reader did about it: `invalid cfb expression at byte N: line L, column C: expected X, got Y in "<element ...>"; <consequence>` - the byte the reader had reached, the line and column it falls on, what was expected, what arrived and the element quoted as the file spells it, then, after the semicolon, the consequence: `the declaration is dropped`, `the tag is typed string, which every FIX datatype is on the wire`, `the value is kept as the file spelled it`, `the attribute is dropped and the element keeps the rest`, `the constraint is dropped and the message keeps its other members`, `the constraint declares the tag as text, named by its digits`, `the group is dropped and the message keeps the rest`, `the member is dropped and the message keeps the rest`, `the message is dropped and every field it declared kept`, `the tag keeps no code set`, `an entry spelling nothing states no code, so each is skipped`. The last is one record per code set however many maps and entries it covers - `tag 39 "OrdStatus", code set ordstatuscodeset: 1 map entry spelling none, null or nothing: "ORDSTATUS" key "none" value "8"; an entry spelling nothing states no code, so each is skipped` - its list bounded at 16 entries, then `and N more`. A parse reading a located file prefixes the file's name, and one stamping a dialect the dialect - `venue.cfb [venue] invalid cfb expression at byte 204: ...` - which names the file among the many a glob reads side by side. A drop the core raised rather than the grammar - a description or a spelling that cannot be stored, two declarations of one tag - carries the core's own sentence behind the declaration that asked for it. Every quoted span is bounded, so a warning never grows with the file.
 
-What the file states twice is not a drop. A type its listing and one of its bindings both declare, a grammar bound under a wire type another grammar already bound, and a member the held message already carries are each what a dialect looks like: the declarations fold, the members union - the held ones first in their order, then every member only the later declaration states - and the fold is a `log` record at info level rather than a warning. A second grammar-binding of one wire type folds into the first under the [merge rules](#what-a-source-says-otherwise-than-the-dictionary-is-passed-over): two references to one group on one counter fold their members together, a group on another counter stands beside, and each member that still disagrees is dropped with a warning - `message "D", bound again: <reason>; the member is dropped and the message keeps the rest` - while the rest of the binding folds. A group or component the first binding shares with another message is widened for both, as a fold across dialects widens it, and the splits the second binding wrote that nothing reads once it folded are taken back. Warn stays reserved for what is actually lost.
+A message whose grammar states a NumInGroup counter beside the nested grammar that counter opens is the vendor's contradiction, not a fold's: the message is dropped with every field it declared kept, every other message still binds, and the warning names the line and column of its `grammar-binding`.
 
-A CBlock that binds a group or a component under a name this parse already registered, with other members than the one already there, is naming a second definition rather than restating the first: the split reads under `{name}_{message}`, `message` the name the message is catalogued under - tag 35's own code-set name lower-cased (`underlying_newordersingle`), or, where nothing names the type, `message` and the wire value's own bytes in hex (`underlying_message4145`). A message declaring one name in several shapes - its parties at the root and again inside its legs, or two bindings of the type stating it two ways - takes a split per shape in declaration order, `{name}_{message}`, then `{name}_{message}_2`, `_3`. Two messages that bind one group or component alike share the one definition. The split never touches the member's own name: a message's row still reads `underlyings` whichever definition its `FIX:group` or `FIX:component` reference names. A message the catalog will not hold takes back the groups and components its walk wrote, so no definition is left that nothing reads.
+What the file states twice is not a drop. A type its listing and one of its bindings both declare, a grammar bound under a wire type another grammar already bound, and a member the held message already carries are each what a dialect looks like: the declarations fold, the members union - the held ones first in their order, then every member only the later declaration states - and the fold is a `log` record at info level rather than a warning. A second grammar-binding of one wire type folds into the first under the [merge rules](#what-a-source-says-otherwise-than-the-dictionary-is-passed-over): two references to one group on one counter fold their members together, a group on another counter stands beside, and each member that still disagrees is dropped with a warning - `message "D", bound again: <reason>; the member is dropped and the message keeps the rest` - while the rest of the binding folds. A group or component the first binding shares with another message is widened for both, as a fold across dialects widens it, and the splits the second binding wrote that nothing reads once it folded are taken back. A definition the second binding widened into the structure of another the file already registered is that definition: the widened one keeps its name and the other folds into it, whichever of the two messages the file binds first. Warn stays reserved for what is actually lost.
+
+A CBlock that binds a group or a component structurally alike to one this parse already registered - the same members in the same order, each its tag and the field it reads, a nested group its counter over the same structure - has declared that definition, whatever it named it and however it stated it: the member names, a `required`, the `rg-name`'s spelling, a description and the sources are no part of the structure, so the held definition's name and spelling hold, a member one grammar requires and another does not is nullable in it - whichever of the two a message states first, every member of the message reading the definition as it is once the message is read - and the later grammar's member reads the held definition under the member name its own grammar gave it. One it binds under a name already registered with other members, alike to nothing held, is naming a second definition rather than restating the first: the split reads under `{name}_{message}`, `message` the name the message is catalogued under - tag 35's own code-set name lower-cased (`underlying_newordersingle`), or, where nothing names the type, `message` and the wire value's own bytes in hex (`underlying_message4145`). A message declaring one name in several shapes - its parties at the root and again inside its legs, or two bindings of the type stating it two ways - takes a split per shape in declaration order, `{name}_{message}`, then `{name}_{message}_2`, `_3`. Two messages that bind one group or component alike share the one definition. The split never touches the member's own name: a message's row still reads `underlyings` whichever definition its `FIX:group` or `FIX:component` reference names. A message the catalog will not hold takes back the groups and components its walk wrote, so no definition is left that nothing reads.
 
 ### What a source says otherwise than the dictionary is passed over
 
@@ -1267,7 +1373,7 @@ A fold of another source is not all-or-nothing the way a single [`insert`](#inse
 3. a member a held definition already declares in another shape;
 4. a group whose counter this dictionary holds as a contradiction of a count, or whose counter the fold itself passed over, or which disagrees with the group held under its name on that group's own counter - a group on another counter stands beside, below - together with every member that reads that group;
 5. a member reading a field the fold passed over, which nothing here now answers to under the identity it named;
-6. a code set that does not fold - a document that does not parse, or one that would rewrite a set this crate owns, `msgcatcodeset` or `statecodeset` - named by the set and the field that reads by it: the held set stays as it was;
+6. a code set that does not fold - a document that does not parse, or one that would rewrite a set this crate owns, `msgcatcodeset`, `marketdatatypecodeset`, `statecodeset` or `msgpluginsidecodeset` - named by the set and the field that reads by it: the held set stays as it was;
 7. a definition whose fold refuses rather than passing a member over: one definition is one mutation, so it is passed over whole, every write its fold made undone. A definition that arrives new and goes takes the source's members reading it along - a group's always, a component's where nothing held answers its name.
 
 A datatype at another precision of the stored one is no contradiction: the field folds under the stored declaration - membership, aliases and code set included - and is counted in `FixMerge::restated`. Every FIX datatype derives from String and the numeric families state no width, so unbounded text restates anything, whichever side holds it; the integer, floating and decimal families restate each other; an integer restates an enum leaf; the byte layouts restate one another; a date restates a datetime whatever the zone; and one time width restates another. A CBlock's `float` against a stored `decimal128(38, 18)`, its `string` against `ccy`, `mic`, `side`, `binary` or `fixed_ascii(8)`, its `integer` against `int64` and its `utc-date` against a zone-less date each fold under the held declaration; a `boolean` against a stored `int32`, a time of day against an instant, `ccy` against `mic`, or two bounded strings of different bounds contradict.
@@ -1352,7 +1458,9 @@ A time of day against an instant is the contradiction two FIX spellings of one f
 
 Node has no binding over these folds; a JavaScript reader runs [the CLI](cli.md) instead.
 
-Two references under one member name to two groups or two components are one member read two ways rather than a conflict: a dialect that split a group or a component differently for one message - one file drawing `Parties` from one component, another from a second, on the same counter - has still named one member, so the incoming target's members fold into the held target under these same rules, recursively; a group held under its name and counter that a source draws from another component widens the held component the same way. Two groups the fold meets on different counters are not this case: two counters are two tags on the wire, so they are two definitions, and the incoming group stands beside the held one under `{name}_{counter}` - a venue's `dealers` on counter 7101 is `dealers_7101` beside the held `dealers` - while a message member reading it stands beside the held member as `{member}_{counter}` rather than being passed over - once per counter, so a member already standing there reading that group is that member again, and folding one source twice adds nothing the second time.
+Two references under one member name to two groups or two components are one member read two ways rather than a conflict: a dialect that split a group or a component differently for one message - one file drawing `Parties` from one component, another from a second, on the same counter - has still named one member, so the incoming target's members - as the source states that target, whichever of the two folds first - fold into the held target under these same rules, recursively; a group held under its name and counter that a source draws from another component widens the held component the same way. Two groups the fold meets on different counters are not this case: two counters are two tags on the wire, so they are two definitions, and the incoming group stands beside the held one under `{name}_{counter}` - a venue's `dealers` on counter 7101 is `dealers_7101` beside the held `dealers` - while a message member reading it stands beside the held member as `{member}_{counter}` rather than being passed over - once per counter, so a member already standing there reading that group is that member again, and folding one source twice adds nothing the second time. An incoming member no held member answers to by name, reading a group on a counter a held member already reads, is that member read another way - a dialect naming the group after its own `rg-name` - and folds into it rather than standing beside it as a second member of one counter. A member is the field it reads before the name it carries: an incoming member reading another field than the held member of its name - a spelling two tags share, `Urgency` over 61 in one file and over 9252 in another - is the held member reading that field where one does, and a member of its own beside the held ones under `{name}2` otherwise, two tags being two tags on the wire; so nothing is passed over, and the message reads every tag either file states, whichever file folds first.
+
+One structure is one definition. Every definition of the source folds by name first, under the rules above. Once every one has, each pair of definitions of one structure the fold made - the same members in the same order, each its tag and the field it reads, a nested group its counter over the same structure, whatever either is named - folds into one: an arrival stating the structure of a definition the dictionary held before the fold, or a held definition the fold widened until it states another's. The definition kept is one the dictionary held - the first in name order that the fold widened, else the first in name order - so a name a source's merge by name widened keeps answering for its structure, and folding the same source again changes nothing. It is relaxed to the more permissive nullability of each member, its own nullability staying as held, lists both sources, and every member and group that read the other reads it. A split one dialect took for a message folds this way: the fold widens the group that message reads by the split's members, the split then states its structure, and it folds into it - so two dialects stating one group, one requiring a member the other does not, fold to one group with the member nullable. Two definitions the dictionary held as they were stay two, and so do two one source brought unless a definition held before the fold states their structure, which both fold into: a dictionary stating two definitions of one structure - FIX Latest's `InstrmtLegSecList` beside `SecLstUpdRelSymsLeg` - states two, and a dictionary folded into an empty one is that dictionary. Which name a structure is filed under, and the order of its members, are the first source's, as every name a fold keeps is; a component stating no member states no structure and folds into none. A definition folded away is a name the dictionary no longer holds, so a source stating that name with fewer members than the structure it folded into - the source whose fold folded it away included - lands its narrower definition under the name again when it folds again, read by no member already folded, and the fold after that changes nothing: a file reading `RoutingIDs` as 217 alone and `Routes` as 216 and 217, folded where another file held `RoutingIDs` as 216 and 217 and `Routes` as 216, widens `Routes` into `RoutingIDs`' structure and folds `RoutingIDs` into it, and folding that file again lands its one-member `RoutingIDs` once more. Where a dictionary holds `LegA` and `LegB` alike as tag 600 alone and one fold widens both by 601, `LegB` folds into `LegA`, and folding the first dictionary again lands its one-member `LegB`. A fold widening that name again makes the pair anew, and the name kept is then the one that fold widened - `LegB` - so while the two sources alternate, the two names take turns.
 
 A group's counter is read through the same rewrite as its members: a counter that merged by name onto a field held under another tag - `NoRegulatoryTradeIDs` on 20001 folding onto 1907 - counts the held group, which then folds.
 
@@ -1507,7 +1615,7 @@ Every door fills tag 385 from that reading where the wire states none - `parse_l
 - A field-reference occurrence may vary name and nullability, but may not introduce independent metadata overrides.
 - Identifier declarations resolve only direct scalar members; an ambiguous spelling, nested selection, duplicate target or malformed list is a located atomic refusal, including raw stored metadata at intake.
 - A string lookup is a name or a dotted path, colon included; an id is an integer spelled only through `FixKey::Id` in Rust and `field_by_id` / `get_by_id` in the bindings, and a bare integer anywhere else is a tag.
-- `FIX:branches` is never an argument: no lookup, definition or message-type accessor takes a dialect, and the only filter on membership is the one a caller writes over `branches()`.
+- `FIX:sources` is never an argument: no lookup, definition or message-type accessor takes a source, and the only filter on membership is the one a caller writes over `sources()`. A codec reads under one source ([`FixCodec::with_source`](capture.md#the-crates-own-columns)) for the plugin role it stamps, and resolves nothing through it.
 - Generic scalar iteration and size exclude named definitions. Use the explicit category iterators to walk the catalog.
 
 ## Commands

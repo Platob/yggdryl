@@ -8,7 +8,7 @@ use crate::typed::define_field_types;
 enum_leaf! {
     /// How long an order stands: `DAY`, `GTC`, `IOC`, `FOK` and the rest of
     /// FIX's `TimeInForce(59)` code set, one member per wire value in wire
-    /// order, beside `UNKN` for none stated and `OTHER` for a venue's own
+    /// order, beside `UKNW` for none stated and `OTHER` for a venue's own
     /// value no member names.
     ///
     /// [`Self::from_fix`] reads a wire value and [`Self::fix_code`] answers
@@ -35,7 +35,7 @@ enum_leaf! {
     #[non_exhaustive]
     pub enum TimeInForce: u8, kind = "timeinforce", extension = TIMEINFORCE_EXTENSION_NAME, aliases = timeinforce_aliases {
         #[default]
-        Unknown = 0 as "UNKN": "No time in force stated.",
+        Unknown = 0 as "UKNW": "No time in force stated.",
         Day = 1 as "DAY": "Good for the trading day.",
         GoodTillCancel = 2 as "GTC": "Good till canceled.",
         AtTheOpening = 3 as "OPG": "At the opening.",
@@ -64,7 +64,7 @@ impl TimeInForce {
     }
 
     /// The `TimeInForce(59)` wire value this member stands for - `"1"` for
-    /// `GTC` - or `None` for `UNKN` and `OTHER`, which stand for no one
+    /// `GTC` - or `None` for `UKNW` and `OTHER`, which stand for no one
     /// value.
     #[must_use]
     pub fn fix_code(self) -> Option<&'static str> {

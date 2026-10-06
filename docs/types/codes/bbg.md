@@ -238,7 +238,7 @@ An identifier has no neutral member, so the empty text is refused at the value d
 - No vocabulary: `StringEnum::from_logical_name("bbg")` answers an enum of no members, and no Python code class declares it.
 - Nothing partial about it, so [`merge_with`](index.md#the-code-family-value) keeps this identifier.
 - A `bbg` and a [`ric`](ric.md) of the same bytes are two values: the identity leads, then the text.
-- FIX names the company rather than the type: `SecurityIDSource(22)=A` is the security identifier type `bloomberg` in a [FIX capture](index.md#fix-message-definitions), and the crate tag for its normalized column is `bloombergcode(65047)`; source `S` lifts a valid [FIGI](figi.md) instead.
+- FIX names the company rather than the type: `SecurityIDSource(22)=A` is the security identifier type `bloomberg` in a [FIX capture](index.md#fix-message-definitions), and the crate tag for its normalized column is `bloombergcode(65048)`; source `S` lifts a valid [FIGI](figi.md) instead.
 
 ## Commands
 

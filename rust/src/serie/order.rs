@@ -146,6 +146,7 @@ pub(crate) fn stored_order_is_value_order(dtype: &DataType) -> bool {
         | DataType::Side
         | DataType::State
         | DataType::TimeInForce
+        | DataType::PluginSide
         | DataType::MarketDataKind
         | DataType::MarketDataType
         | DataType::Uuid
@@ -584,7 +585,8 @@ macro_rules! primitive {
             Serie::UInt8($column)
             | Serie::Side($column)
             | Serie::MarketDataKind($column)
-            | Serie::TimeInForce($column) => Some($answer),
+            | Serie::TimeInForce($column)
+            | Serie::PluginSide($column) => Some($answer),
             Serie::UInt16($column) | Serie::State($column) | Serie::MarketDataType($column) => {
                 Some($answer)
             }
@@ -642,7 +644,8 @@ macro_rules! primitive_mut {
             Serie::UInt8(held)
             | Serie::Side(held)
             | Serie::MarketDataKind(held)
-            | Serie::TimeInForce(held) => {
+            | Serie::TimeInForce(held)
+            | Serie::PluginSide(held) => {
                 let $column = Arc::make_mut(held);
                 Some($answer)
             }

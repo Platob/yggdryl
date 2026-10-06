@@ -1316,7 +1316,7 @@ fn a_stream_of_every_shape_costs_nothing_between_messages() {
     // answers, the two wildcards and the error among them, and the
     // statistics line - is one `unknown` row, never one per plugin it named
     // and never none - and 57 more: the execution the parse splits off each
-    // execution report of a fill (A12), and the one of side `UNKN` the
+    // execution report of a fill (A12), and the one of side `UKNW` the
     // trade capture, stating no `Side(54)`, splits off.
     assert_eq!(messages.len(), 94 + 57, "the corpus");
     let forward: Vec<FixMsg> = messages.to_vec();

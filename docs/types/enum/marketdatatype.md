@@ -1,6 +1,6 @@
 # MarketDataType
 
-What type of its kind a market element is - how an order is priced, what a quote commits to, what kind of trade was reported, what a book entry is, what a trade report, a quote request, a mass cancel or a market data request asks for - as an enum of one hundred and eighteen members, stored as the `uint16` code of its member. The hundreds of the code name the FIX code set it types: `1xx` `OrdType(40)`, `2xx` `QuoteType(537)`, `3xx` `TrdType(828)`, `4xx` `MDEntryType(269)`, `5xx` `TradeReportType(856)`, `6xx` `QuoteRequestType(303)`, `7xx` `MassCancelRequestType(530)`, `8xx` `SubscriptionRequestType(263)`, each closing with an `OTHER` catch-all at `x99`, and `UNKN` at `0`. It is the second column of every [market data row](../../graph/market-data.md), after the [`marketdatakind`](marketdatakind.md) it types within.
+What type of its kind a market element is - how an order is priced, what a quote commits to, what kind of trade was reported, what a book entry is, what a trade report, a quote request, a mass cancel or a market data request asks for - as an enum of one hundred and eighteen members, stored as the `uint16` code of its member. The hundreds of the code name the FIX code set it types: `1xx` `OrdType(40)`, `2xx` `QuoteType(537)`, `3xx` `TrdType(828)`, `4xx` `MDEntryType(269)`, `5xx` `TradeReportType(856)`, `6xx` `QuoteRequestType(303)`, `7xx` `MassCancelRequestType(530)`, `8xx` `SubscriptionRequestType(263)`, each closing with an `OTHER` catch-all at `x99`, and `UKNW` at `0`. It is the second column of every [market data row](../../graph/market-data.md), after the [`marketdatakind`](marketdatakind.md) it types within.
 
 ## Contract
 
@@ -221,7 +221,7 @@ The code groups by the FIX set it types; the stored name is what a column render
 
 | Code | Stored name | FIX value | FIX name | Description |
 | ---: | --- | --- | --- | --- |
-| `0` | `UNKN` | - | - | No type stated |
+| `0` | `UKNW` | - | - | No type stated |
 | `101` | `ORDMKT` | `OrdType(40)` = `1` | `market` | Market order |
 | `102` | `ORDLIMIT` | `OrdType(40)` = `2` | `limit` | Limit order |
 | `103` | `ORDSTOP` | `OrdType(40)` = `3` | `stop` | Stop, or stop loss, order |
@@ -381,7 +381,7 @@ The code groups by the FIX set it types; the stored name is what a column render
     const codes = Object.values(MarketDataType)
     assert.equal(codes.length, 118)
     assert.deepEqual(codes, [...codes].sort((a, b) => a - b))
-    assert.equal(MarketDataType.UNKN, 0)
+    assert.equal(MarketDataType.UKNW, 0)
     assert.equal(MarketDataType.BOOKBID, 400)
     assert.equal(MarketDataType.BOOKOTHER, 499)
     assert.equal(MarketDataType.MDROTHER, 899)
@@ -390,7 +390,7 @@ The code groups by the FIX set it types; the stored name is what a column render
 
 ## FIX
 
-A member stands for at most one FIX value: `from_fix(tag, wire)` reads it, `fix_code()` answers it back, and `UNKN` and the eight catch-alls answer none. A wire value no member names reads as the catch-all of the set its field draws from - `ORDOTHER` for an `OrdType(40)` - and a field that types nothing reads as none. `fix_tags(kind)` names the fields that type an element of one [`MarketDataKind`](marketdatakind.md), its own first: an order's `OrdType(40)`; a quote's `QuoteType(537)`, then `OrdType(40)`; an execution's or a trade's `TrdType(828)`, then `OrdType(40)`; every other element's `MDEntryType(269)`, `TrdType(828)`, `QuoteType(537)`, `OrdType(40)`. `MARKETDATATYPE_FIX_TAGS` is the eight, `[40, 537, 828, 269, 856, 303, 530, 263]`.
+A member stands for at most one FIX value: `from_fix(tag, wire)` reads it, `fix_code()` answers it back, and `UKNW` and the eight catch-alls answer none. A wire value no member names reads as the catch-all of the set its field draws from - `ORDOTHER` for an `OrdType(40)` - and a field that types nothing reads as none. `fix_tags(kind)` names the fields that type an element of one [`MarketDataKind`](marketdatakind.md), its own first: an order's `OrdType(40)`; a quote's `QuoteType(537)`, then `OrdType(40)`; an execution's or a trade's `TrdType(828)`, then `OrdType(40)`; every other element's `MDEntryType(269)`, `TrdType(828)`, `QuoteType(537)`, `OrdType(40)`. `MARKETDATATYPE_FIX_TAGS` is the eight, `[40, 537, 828, 269, 856, 303, 530, 263]`.
 
 A message type may name its own fields before its kind's: `fix_tags_of(msgtype, kind)` answers the message type's rule where `MARKETDATATYPE_MSGTYPE_RULES` states one, else `fix_tags(kind)`.
 
@@ -470,7 +470,8 @@ A [FIX message](../../fix/message.md) states its type as it is parsed, reading t
 - A spelling that names no type, or an integer that is the code of none -> refused naming `marketdatatype`, never stored; a value that names none leaves a nullable column null under `safe`.
 - A stored code is an integer, never text: `"102"` is no spelling, `102` is `ORDLIMIT`. A wire value is no spelling either: `2` is a limit order only under `OrdType(40)`, which `from_fix` reads.
 - The stored name folds case only; the FIX name folds the way every name in this crate folds, ASCII case insensitive with `_`, `-` and spaces ignored. A FIX name two sets share - `Counter` - reaches neither.
-- The default value is `UNKN`, code `0`: a stated value, not an absence - what an element no typing field names is. An empty text cell entering the column is null ([Cast](../cast.md#empty-text)), and a required column refuses it.
+- The default value is `UKNW`, code `0`: a stated value, not an absence - what an element no typing field names is. An empty text cell entering the column is null ([Cast](../cast.md#empty-text)), and a required column refuses it.
+- `UKNW` is the zero member's spelling as of this release, in the intrinsic `marketdatatypecodeset` the FIX dictionary renders from this enum too; `UNKN`, its spelling before, names no type. A `marketdatatype` column stores the code, so a stored `0` reads as `UKNW` unchanged; a text column or a document that spells `UNKN` is rebuilt by its writer, never reinterpreted, and a dictionary whose `codesets/marketdatatypecodeset.json` still names it is refused at load until that document is removed and written again ([Store](../../fix/store.md#edges)). No identity moves with the spelling: an element's digest feeds its type only where it states one, so a type of `UKNW` is fed to no digest.
 - The codes leave gaps where FIX's own values do - `TrdType(828)` `13` has no member and reads as `TRDOTHER` - because a code is the set's value plus its hundreds, never renumbered.
 - JSON, TOML, YAML and XML write a type as its stored name, and the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under the type's own identifier, so a type, a [kind](marketdatakind.md) and an integer of one code are three values.
 - The type is not the kind: `ORDLIMIT` may be stated on an execution that reports a limit order's fill, and `fix_tags_of` is what says which field a message type or its kind reads first.

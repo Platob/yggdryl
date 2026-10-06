@@ -23,7 +23,7 @@ const {
 test('TimeInForce is the core enum, member for member, in code order', () => {
   assert.ok(Object.isFrozen(TimeInForce))
   assert.deepEqual(TimeInForce, {
-    UNKN: 0,
+    UKNW: 0,
     DAY: 1,
     GTC: 2,
     OPG: 3,
@@ -78,7 +78,7 @@ test('the FIX reading redirects to the core', () => {
   assert.equal(timeInForceFromFix('Z'), 'OTHER')
   assert.equal(timeInForceFixCode('GTC'), '1')
   assert.equal(timeInForceFixCode('GFM'), 'C')
-  assert.equal(timeInForceFixCode('UNKN'), null)
+  assert.equal(timeInForceFixCode('UKNW'), null)
   assert.equal(timeInForceFixCode('OTHER'), null)
   assert.throws(() => timeInForceFixCode('nope'), /timeinforce/)
 })

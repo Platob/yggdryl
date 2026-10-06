@@ -2298,55 +2298,57 @@ impl PyProtocolField {
             .map(str::to_owned))
     }
 
-    /// The dictionaries that contributed this field, on the `fix` view.
+    /// The sources that contributed this field, on the `fix` view.
     ///
-    /// `FIX:branches` read as a list: folded to ASCII lowercase, sorted, and
-    /// empty when the specification alone defines the field. Membership is
-    /// provenance a caller filters on; no lookup consults it. Assigning a
-    /// sequence of names stores them deduplicated under the fold, and an
-    /// empty one removes the property; a name that is empty or carries a
-    /// comma is a `ValueError` that leaves the field unchanged.
+    /// `FIX:sources` read as a list: each id folded to ASCII lowercase,
+    /// sorted, and empty when the specification alone defines the field.
+    /// Membership is provenance a caller filters on; no lookup consults it,
+    /// and each id names an entry of the registry's catalog
+    /// (`FixRegistry.sources`). Assigning a sequence of ids stores them
+    /// deduplicated under the fold, and an empty one removes the property;
+    /// an id that is empty or holds a quote, a backslash or a control
+    /// character is a `ValueError` that leaves the field unchanged.
     #[getter]
-    fn branches(&self, py: Python<'_>) -> PyResult<Vec<String>> {
-        self.require_fix("branches")?;
+    fn sources(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        self.require_fix("sources")?;
         let field = self.borrow_field(py)?;
-        Ok(field.inner.as_fix().branches().map(str::to_owned).collect())
+        Ok(field.inner.as_fix().sources().map(str::to_owned).collect())
     }
 
     #[setter]
-    fn set_branches(&self, dialects: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_fix("branches")?;
+    fn set_sources(&self, sources: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("sources")?;
         let mut parsed = Vec::new();
-        for value in dialects.try_iter()? {
+        for value in sources.try_iter()? {
             parsed.push(value?.extract::<String>()?);
         }
-        let mut field = self.borrow_field_mut(dialects.py())?;
+        let mut field = self.borrow_field_mut(sources.py())?;
         field
             .inner
             .as_fix_mut()
-            .set_branches(parsed)
+            .set_sources(parsed)
             .map_err(value_error)
     }
 
-    /// Add one dictionary to those that contributed this field.
+    /// Add one source to those that contributed this field.
     ///
-    /// Idempotent under the fold: a name already listed is listed once.
-    fn add_branch(&self, py: Python<'_>, dialect: &str) -> PyResult<()> {
-        self.require_fix("branches")?;
+    /// Idempotent under the fold: an id already listed is listed once.
+    fn add_source(&self, py: Python<'_>, source: &str) -> PyResult<()> {
+        self.require_fix("sources")?;
         let mut field = self.borrow_field_mut(py)?;
         field
             .inner
             .as_fix_mut()
-            .add_branch(dialect)
+            .add_source(source)
             .map_err(value_error)
     }
 
-    /// Whether `dialect` is one of the dictionaries that contributed this
-    /// field, ASCII case folded.
-    fn has_branch(&self, py: Python<'_>, dialect: &str) -> PyResult<bool> {
-        self.require_fix("branches")?;
+    /// Whether `source` is one of the sources that contributed this field,
+    /// under the crate's fold.
+    fn has_source(&self, py: Python<'_>, source: &str) -> PyResult<bool> {
+        self.require_fix("sources")?;
         let field = self.borrow_field(py)?;
-        Ok(field.inner.as_fix().has_branch(dialect))
+        Ok(field.inner.as_fix().has_source(source))
     }
 
     /// This field's identity, on the `fix` view.
