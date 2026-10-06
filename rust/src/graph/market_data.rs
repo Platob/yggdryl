@@ -69,7 +69,7 @@ impl MarketData {
     #[must_use]
     pub fn marketdatakind(&self) -> crate::MarketDataKind {
         match self {
-            Self::Fix(message) => message.msgcat(),
+            Self::Fix(message) => message.marketdatakind(),
             other => other.kind().marketdatakind(),
         }
     }
@@ -347,7 +347,7 @@ impl Market for MarketData {
         delegate_by_variant!(self, set_side, side, overwrite);
     }
     fn marketdatakind(&self) -> crate::MarketDataKind {
-        self.kind().marketdatakind()
+        MarketData::marketdatakind(self)
     }
     fn get_marketdatatype(&self) -> crate::MarketDataType {
         delegate_by_variant!(self, get_marketdatatype)

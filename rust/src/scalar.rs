@@ -65,8 +65,8 @@ use crate::uuid::Uuid;
 use crate::value::Children;
 use crate::version::Version;
 use crate::{
-    Bbg, Ccy, Cfi, Country, Cusip, Figi, Forex, Isin, MarketDataKind, MarketDataType, Mic, Ric,
-    Sedol, Side, State, TimeInForce, Unit, decimal,
+    Bbg, Bic, Ccy, Cfi, Country, Cusip, Dti, Elf, Figi, Fisn, Forex, Isin, Lei, MarketDataKind,
+    MarketDataType, Mic, Ric, Sedol, Side, State, TimeInForce, Unit, decimal,
 };
 use crate::{
     DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
@@ -314,6 +314,16 @@ pub enum Scalar {
     Ric(Ric),
     /// ISO 4217 currency pair.
     Forex(Forex),
+    /// ISO 17442 legal entity identifier.
+    Lei(Lei),
+    /// ISO 9362 business identifier code.
+    Bic(Bic),
+    /// ISO 20275 entity legal form code.
+    Elf(Elf),
+    /// ISO 24165 digital token identifier.
+    Dti(Dti),
+    /// ISO 18774 financial instrument short name.
+    Fisn(Fisn),
 }
 
 const _: () = assert!(std::mem::size_of::<Scalar>() == 48);
@@ -761,6 +771,11 @@ impl<'de> Deserialize<'de> for Scalar {
             Unit(SmolStr),
             Ric(SmolStr),
             Forex(SmolStr),
+            Lei(SmolStr),
+            Bic(SmolStr),
+            Elf(SmolStr),
+            Dti(SmolStr),
+            Fisn(SmolStr),
         }
 
         match StructuralWire::deserialize(deserializer)? {
@@ -820,6 +835,21 @@ impl<'de> Deserialize<'de> for Scalar {
                 .map_err(D::Error::custom),
             StructuralWire::Forex(value) => crate::Forex::new(value)
                 .map(Self::Forex)
+                .map_err(D::Error::custom),
+            StructuralWire::Lei(value) => crate::Lei::new(value)
+                .map(Self::Lei)
+                .map_err(D::Error::custom),
+            StructuralWire::Bic(value) => crate::Bic::new(value)
+                .map(Self::Bic)
+                .map_err(D::Error::custom),
+            StructuralWire::Elf(value) => crate::Elf::new(value)
+                .map(Self::Elf)
+                .map_err(D::Error::custom),
+            StructuralWire::Dti(value) => crate::Dti::new(value)
+                .map(Self::Dti)
+                .map_err(D::Error::custom),
+            StructuralWire::Fisn(value) => crate::Fisn::new(value)
+                .map(Self::Fisn)
                 .map_err(D::Error::custom),
             StructuralWire::Figi(value) => crate::Figi::new(value)
                 .map(Self::Figi)
@@ -1084,7 +1114,12 @@ impl Ord for Scalar {
             | Self::Ric(_)
             | Self::Figi(_)
             | Self::Unit(_)
-            | Self::Forex(_) => code_key(self).cmp(&code_key(other)),
+            | Self::Forex(_)
+            | Self::Lei(_)
+            | Self::Bic(_)
+            | Self::Elf(_)
+            | Self::Dti(_)
+            | Self::Fisn(_) => code_key(self).cmp(&code_key(other)),
             // An enum member orders by its code: a state's is its rank.
             Self::State(left) => same_kind!(Self::State(right) => left.cmp(right)),
             Self::MarketDataKind(left) => {
@@ -1197,7 +1232,12 @@ impl Hash for Scalar {
             | Self::Ric(_)
             | Self::Figi(_)
             | Self::Unit(_)
-            | Self::Forex(_) => code_key(self).hash(state),
+            | Self::Forex(_)
+            | Self::Lei(_)
+            | Self::Bic(_)
+            | Self::Elf(_)
+            | Self::Dti(_)
+            | Self::Fisn(_) => code_key(self).hash(state),
             Self::State(value) => value.hash(state),
             Self::MarketDataKind(value) => value.hash(state),
             Self::MarketDataType(value) => value.hash(state),
@@ -1289,6 +1329,11 @@ macro_rules! code_scalars {
             | $crate::Scalar::Figi(_)
             | $crate::Scalar::Unit(_)
             | $crate::Scalar::Forex(_)
+            | $crate::Scalar::Lei(_)
+            | $crate::Scalar::Bic(_)
+            | $crate::Scalar::Elf(_)
+            | $crate::Scalar::Dti(_)
+            | $crate::Scalar::Fisn(_)
     };
 }
 
@@ -1419,7 +1464,12 @@ const fn value_rank(value: &Scalar) -> u8 {
         | Scalar::Ric(_)
         | Scalar::Figi(_)
         | Scalar::Unit(_)
-        | Scalar::Forex(_) => 18,
+        | Scalar::Forex(_)
+        | Scalar::Lei(_)
+        | Scalar::Bic(_)
+        | Scalar::Elf(_)
+        | Scalar::Dti(_)
+        | Scalar::Fisn(_) => 18,
         Scalar::Version(_) => 19,
         Scalar::Url(_) => 20,
         Scalar::Timezone(_) => 21,
@@ -1516,6 +1566,11 @@ impl Scalar {
             Self::Bbg(_) => DataTypeId::Bbg,
             Self::Ric(_) => DataTypeId::Ric,
             Self::Forex(_) => DataTypeId::Forex,
+            Self::Lei(_) => DataTypeId::Lei,
+            Self::Bic(_) => DataTypeId::Bic,
+            Self::Elf(_) => DataTypeId::Elf,
+            Self::Dti(_) => DataTypeId::Dti,
+            Self::Fisn(_) => DataTypeId::Fisn,
             Self::Figi(_) => DataTypeId::Figi,
             Self::Unit(_) => DataTypeId::Unit,
             Self::Uuid(_) => DataTypeId::Uuid,
@@ -1600,6 +1655,11 @@ impl Scalar {
             Self::Bbg(_) => DataTypeId::Bbg.as_str(),
             Self::Ric(_) => DataTypeId::Ric.as_str(),
             Self::Forex(_) => DataTypeId::Forex.as_str(),
+            Self::Lei(_) => DataTypeId::Lei.as_str(),
+            Self::Bic(_) => DataTypeId::Bic.as_str(),
+            Self::Elf(_) => DataTypeId::Elf.as_str(),
+            Self::Dti(_) => DataTypeId::Dti.as_str(),
+            Self::Fisn(_) => DataTypeId::Fisn.as_str(),
             Self::Figi(_) => DataTypeId::Figi.as_str(),
             Self::Unit(_) => DataTypeId::Unit.as_str(),
             Self::Uuid(_) => "uuid",
@@ -1947,6 +2007,11 @@ impl Scalar {
             Self::Bbg(value) => Some(value.storage()),
             Self::Ric(value) => Some(value.storage()),
             Self::Forex(value) => Some(value.storage()),
+            Self::Lei(value) => Some(value.storage()),
+            Self::Bic(value) => Some(value.storage()),
+            Self::Elf(value) => Some(value.storage()),
+            Self::Dti(value) => Some(value.storage()),
+            Self::Fisn(value) => Some(value.storage()),
             Self::Figi(value) => Some(value.storage()),
             Self::Unit(value) => Some(value.storage()),
             _ => None,
@@ -2208,6 +2273,11 @@ impl Scalar {
             | Self::Figi(_)
             | Self::Unit(_)
             | Self::Forex(_)
+            | Self::Lei(_)
+            | Self::Bic(_)
+            | Self::Elf(_)
+            | Self::Dti(_)
+            | Self::Fisn(_)
             | Self::Uuid(_)
             | Self::Version(_)
             | Self::Url(_)

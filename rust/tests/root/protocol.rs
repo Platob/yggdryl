@@ -1330,3 +1330,64 @@ mod nested {
         assert!(row.with_partition_fields(&["line.price"]).is_err());
     }
 }
+
+mod field_properties {
+    use yggdryl::{DataType, Error, Field, Representation};
+
+    #[test]
+    fn field_properties_state_bits_on_an_integer_column_and_value_by_absence() {
+        let mut digest = DataType::UInt64.required_field("digest");
+        assert_eq!(
+            digest.as_field_properties().representation(),
+            Representation::Value
+        );
+
+        digest
+            .as_field_properties_mut()
+            .set_representation(Representation::Bits)
+            .unwrap();
+        assert_eq!(digest.get_metadata("FIELD:representation"), Some("bits"));
+        assert_eq!(
+            digest.as_field_properties().representation(),
+            Representation::Bits
+        );
+
+        // The declaration crosses the schema grammar and Arrow as it was.
+        assert_eq!(Field::from_str(&digest.to_string()).unwrap(), digest);
+        let arrow = digest.clone().into_arrow_field().unwrap();
+        assert_eq!(
+            arrow
+                .metadata()
+                .get("FIELD:representation")
+                .map(String::as_str),
+            Some("bits")
+        );
+        let back = Field::from_arrow_field(&arrow).unwrap();
+        assert_eq!(
+            back.as_field_properties().representation(),
+            Representation::Bits
+        );
+
+        // Its absence is the value: stating the value removes the key.
+        digest
+            .as_field_properties_mut()
+            .set_representation(Representation::Value)
+            .unwrap();
+        assert!(!digest.has_metadata("FIELD:representation"));
+
+        // Bits on a column that is no integer is refused naming the key and
+        // the datatype, and the field is left as it was.
+        let mut text = DataType::utf8().required_field("text");
+        let before = text.clone();
+        let error = text
+            .as_field_properties_mut()
+            .set_representation(Representation::Bits)
+            .unwrap_err();
+        assert!(
+            matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIELD:representation"),
+            "{error}"
+        );
+        assert!(error.to_string().contains("utf8"), "{error}");
+        assert_eq!(text, before);
+    }
+}

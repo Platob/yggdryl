@@ -224,7 +224,7 @@ A role is what a location turns out to be. A backend implements one trait per ro
 
 ```text
 trait IOPath   { fn path_url(&self) -> &Url;   fn is_folder(&self) -> bool;   fn is_file(&self) -> bool; }
-trait IOFolder { fn folder_url(&self) -> &Url; fn folder_exists(&self) -> bool;
+trait IOFolder { fn folder_url(&self) -> &Url; fn has_folder(&self) -> bool;
                  fn create_folder(&self) -> Result<()>;
                  fn list_folder(&self, recursive: bool, include_private: bool) -> Listing;
                  fn delete_folder(&mut self) -> Result<()>; }
@@ -232,7 +232,7 @@ trait IOFile   { fn file_url(&self) -> &Url;   fn file_exists(&self) -> bool;
                  fn clear_file(&mut self) -> Result<()>;  fn delete_file(&mut self) -> Result<()>; }
 ```
 
-Everything else is pre-implemented: a folder holds no bytes of its own - `pread` reads nothing and `size` is zero - [streams its leaves](#streams-and-cursors), refuses byte writes, is created by `truncate(0)` and answers `inode/directory`; a file lists nothing and refuses a child; a path answers `Directory`, `File` or `Unknown` by looking.
+Everything else is pre-implemented: a folder holds no bytes of its own - `pread` reads nothing and `size` is zero - [streams its leaves](#streams-and-cursors), refuses byte writes, is created by `truncate(0)` and answers `inode/directory`; a file lists nothing and refuses a child; a path answers `Directory`, `File` or `Unknown` by looking; and a folder or a path over a glob exists while its pattern selects an entry (`folder_exists`, `path_exists`), its listing read up to the first match.
 
 === "Rust"
 
@@ -610,7 +610,7 @@ Constructing touches nothing, a read of something absent is empty, and a write c
 | `Unknown` | location that does not exist yet |
 | `Table`, `Namespace`, `Catalog` | containers a table format adds |
 
-Rust asks `is_container`, `is_leaf`, `is_known`; the bindings `exists`, `is_dir`, `is_file`.
+Rust asks `is_container`, `is_leaf`, `is_known`; the bindings `exists`, `is_dir`, `is_file`. `is_dir` is the role - a glob or `lake/` is a container by its spelling, asked of nothing, and a removed folder still answers it - and `exists` is presence: a glob is there while its pattern selects an entry, its listing read up to the first match. A `Url`'s `exists` is pathlib's literal answer.
 
 ### Bytes or rows
 
@@ -1692,10 +1692,11 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     read_arrow_field(&self, options: &RecordOptions) -> Result<Field>
     row_size(&self) -> Result<u64>          // whole media; projection and limits never change it
     column_size(&self) -> Result<usize>
+    merge_by(&self) -> Result<Selector>     // the key a merge naming none matches on; empty but on an Iceberg table
 
     overwrite_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>   // the one required hook
     append_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>
-    merge_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>       // needs merge_by
+    merge_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>       // needs merge_by, or the destination's own
 
     overwrite|append|merge_arrow_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<IOResult>
     overwrite|append|merge_records(&mut self, records, options: &RecordOptions) -> Result<IOResult>
@@ -2238,7 +2239,7 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
 
 ### Append and merge
 
-Overwrite replaces - a leaf whole, a partitioned folder or table only the partitions its rows reach and the ones its `where` pins, every other partition's leaves kept, so an overwrite with no row touches nothing outside that scope - append keeps the stored rows, merge updates matching `merge_by` keys and adds the rest. A folder holds each commit's rows split by partition under the process spill bound and writes every leaf it reaches once. Keys use Arrow's row format: null matches null and the last arrival wins. Merge holds only the stored side in memory.
+Overwrite replaces - a leaf whole, a partitioned folder or table only the partitions its rows reach and the ones its `where` pins, every other partition's leaves kept, so an overwrite with no row touches nothing outside that scope - append keeps the stored rows, merge updates matching `merge_by` keys - or, naming none, the destination's own (`merge_by()`: [an Iceberg table's](../media/iceberg.md#the-merge-key) identity partition columns then identifier columns), refused where it states none - and adds the rest. A folder holds each commit's rows split by partition under the process spill bound and writes every leaf it reaches once. Keys use Arrow's row format: null matches null and the last arrival wins. Merge holds only the stored side in memory.
 
 === "Rust"
 
@@ -2381,7 +2382,7 @@ Overwrite replaces - a leaf whole, a partitioned folder or table only the partit
 
 Whatever the cadence, an overwrite's first commit replaces and every later one appends - per partition where the destination is partitioned: the first commit reaching a partition replaces it, and a partition no row reaches is not touched, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a paced stream keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement. Whatever holds a cadence between publications - a leaf's, a write session's, an Iceberg table's partition holds - is held under the process [spill bound](../types/serie.md#spilling-to-disk), the heaviest batches spilled first, so a cadence of any size costs that bound in memory; `commit_batch_num` paces a stream whose rows would outgrow the spill folder.
 
-A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/iceberg.md). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
+A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/iceberg.md). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set. Its commits into an Iceberg table go through the table it locates off the handle, so a closed table handle is closed again after each commit and reads them on its next verb, and a handle held open across the session keeps the view it opened with until it closes.
 
 ### Write results
 
@@ -2644,6 +2645,13 @@ Python listings are `pathlib`-style (`iterdir`, `glob`, `rglob`); JavaScript's a
     assert_eq!(lake.glob("year=2024/**/*.parquet", false)?.count(), 1);
     assert_eq!(lake.glob("**/*.parquet", false)?.count(), 2);
 
+    // A glob location is a container by its spelling, and there while it
+    // selects an entry.
+    let years = lake.child_by_path("year=*")?;
+    assert!(years.is_container() && years.exists());
+    let csv = lake.child_by_path("*.csv")?;
+    assert!(csv.is_container() && !csv.exists());
+
     // Partition filters select the leaves to overwrite or upsert.
     let selected: Vec<_> = lake
         .children_where(&[("year", "2024")], false)?
@@ -2676,6 +2684,11 @@ Python listings are `pathlib`-style (`iterdir`, `glob`, `rglob`); JavaScript's a
     assert len(list(lake.glob("year=2024/**/*.parquet"))) == 1
     assert len(list(lake.rglob("*.parquet"))) == 2
 
+    # A glob location is a container by its spelling, and there while it
+    # selects an entry.
+    assert (lake / "year=*").is_dir() and (lake / "year=*").exists()
+    assert (lake / "*.csv").is_dir() and not (lake / "*.csv").exists()
+
     selected = list(lake.children_where({"year": "2024"}))
     assert len(selected) == 1
     assert selected[0].partitions == (("year", "2024"), ("month", "01"))
@@ -2702,6 +2715,12 @@ Python listings are `pathlib`-style (`iterdir`, `glob`, `rglob`); JavaScript's a
     // A fixed prefix is descended, not listed and filtered.
     assert.equal([...lake.glob('year=2024/**/*.parquet')].length, 1)
     assert.equal([...lake.rglob('*.parquet')].length, 2)
+
+    // A glob location is a container by its spelling, and there while it
+    // selects an entry.
+    assert.ok(lake.joinpath(['year=*']).isDir() && lake.joinpath(['year=*']).exists())
+    assert.ok(lake.joinpath(['*.csv']).isDir())
+    assert.equal(lake.joinpath(['*.csv']).exists(), false)
 
     // Partition filters select the leaves to overwrite or upsert.
     const selected = [...lake.childrenWhere({ year: '2024' })]
@@ -4281,6 +4300,8 @@ The request count is the contract, asserted by tests.
 | building a handle, resolving a child, a media type or a partition | none | none | none |
 | resolving a `lake/` location | none | none | none |
 | resolving any other location | one single-key listing, or two | the same | the same |
+| `exists` on a `lake/` location | one single-key listing; a bucket root one `HEAD` | the same | the same |
+| `exists` on a glob | its listing up to the first match, one request per 1000 entries | the same | the same |
 | a ranged read | one ranged `GET` | one ranged `GET` with `alt=media` | one `GET` with `x-ms-range` |
 | a whole read, stream drain or digest | one `GET` | one `GET` | one `GET` |
 | the size of a listed object | none | none | none |

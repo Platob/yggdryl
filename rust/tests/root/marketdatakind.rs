@@ -661,7 +661,13 @@ mod internal {
     #[test]
     fn a_stored_side_is_the_side_of_a_sided_kind_alone() {
         for kind in MarketDataKind::ALL {
-            for side in [Side::Unknown, Side::Buy, Side::Sell, Side::SShort] {
+            for side in [
+                Side::Unknown,
+                Side::Buy,
+                Side::Sell,
+                Side::SShort,
+                Side::Both,
+            ] {
                 let expected = if kind.is_sided() { side } else { Side::Unknown };
                 assert_eq!(stored_side(*kind, side), expected, "{kind:?} {side:?}");
             }
@@ -681,5 +687,12 @@ mod internal {
         );
         assert_eq!(stored_side(MarketDataKind::Trade, Side::Buy), Side::Unknown);
         assert_eq!(stored_side(MarketDataKind::Book, Side::Sell), Side::Unknown);
+        // Both sides at once is a quote's or a book's, which states side 0.
+        assert_eq!(
+            stored_side(MarketDataKind::Quotation, Side::Both),
+            Side::Unknown
+        );
+        assert_eq!(stored_side(MarketDataKind::Book, Side::Both), Side::Unknown);
+        assert_eq!(stored_side(MarketDataKind::Order, Side::Both), Side::Both);
     }
 }

@@ -660,6 +660,10 @@ assert_eq!(
 
 // Engine rewrites and canonical defaults come from the same core.
 assert_eq!(DataType::UInt8.into_scheme_compat(&Scheme::SPARK)?, DataType::Int16);
+// A column stating its bits is exchanged as the signed integer of its width, not widened.
+let mut digest = DataType::UInt64.required_field("digest");
+digest.as_field_properties_mut().set_representation(yggdryl::Representation::Bits)?;
+assert_eq!(digest.into_scheme_compat(&Scheme::ICEBERG)?.dtype(), &DataType::Int64);
 assert_eq!(DataType::utf8().default_value()?, yggdryl::Scalar::from(""));
 ```
 

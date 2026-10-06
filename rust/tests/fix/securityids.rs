@@ -142,6 +142,9 @@ fn another_instruments_code_behind_a_namespace_states_nothing() {
         "OMS_UnderlyingISIN=US0378331005",
         "FIX.LegISIN=US0378331005",
         "firm.x.ContraCUSIP=037833100",
+        // The wire's own underlying group states no security of this
+        // instrument either.
+        "711=1|311=AAPL|309=US0378331005|305=4",
     ] {
         let line = format!("8=FIX.4.4|35=D|11=A1|55=AAPL|{entry}|10=0|");
         let held = parsed(line.as_bytes());
@@ -152,6 +155,16 @@ fn another_instruments_code_behind_a_namespace_states_nothing() {
             anomalies(&held)
         );
     }
+}
+
+/// SIX's source spelling `X-SWX-VALOR` names the Valor number, and its
+/// symbol is the exchange symbol: each a type of this instrument's own.
+#[test]
+fn a_vendors_source_spelling_and_a_six_symbol_name_this_instruments_own_types() {
+    let held =
+        parsed(b"8=FIX.4.4|35=D|11=A1|55=HOLN|22=X-SWX-VALOR|48=1221405|SIXSymbol=HOLN|10=0|");
+    assert_eq!(ids(&held), ["exchsymb=HOLN", "valor=1221405"]);
+    assert!(anomalies(&held).is_empty(), "{:?}", anomalies(&held));
 }
 
 #[test]

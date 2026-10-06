@@ -798,7 +798,10 @@ streaming codec `reader`/`writer`, `reader_at`/`writer_at`, the
 - `media_type`, `codec`, `parent`, `opened`, `closed` are
   properties; `size()`, `kind()`, `exists()`, `is_dir()`, `is_file()` are methods.
 - A folder handle keeps answering `is_dir()` after `remove()`; the parent's
-  listing is what shows it gone.
+  listing is what shows it gone. `is_dir()` is the role, `exists()` is
+  presence: a glob (`lake / "year=*"`) is a directory by its spelling and
+  exists while it selects an entry, and `Url.exists()` is pathlib's literal
+  answer.
 - `IOBase.from_uri(uri, options=, **properties)` is the native store under
   the properties given, as `IOBase(uri)` is under none - an object-store
   URL's query read by the core as the store's properties beneath the ones

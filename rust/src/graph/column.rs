@@ -251,7 +251,13 @@ impl EventColumn {
                 Scalar::Uuid(uuid) => Some(*uuid),
                 _ => None,
             }),
-            Self::SeqNum => event.set_seqnum(value.as_u64().unwrap_or(0)),
+            // The place read through its column's own value door, as the
+            // digests are, so a table's `decimal(20, 0)` states the place
+            // it stored; a null or a cell the door refuses is the first
+            // place.
+            Self::SeqNum => {
+                event.set_seqnum(super::element_column::whole_u64(value).unwrap_or(0));
+            }
             Self::State => event.set_state(match value {
                 Scalar::State(state) => *state,
                 other => <State as crate::EnumValue>::from_scalar_value(other).unwrap_or_default(),

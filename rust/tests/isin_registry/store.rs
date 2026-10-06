@@ -61,7 +61,10 @@ fn a_leaf_store_loads_and_commits_only_where_the_table_moved() {
         "a clean commit"
     );
     registry
-        .merge(entry(HOLCIM, &[(IdType::Ric, "HOLN.S")]))
+        .merge(
+            entry(HOLCIM, &[(IdType::Ric, "HOLN.S")])
+                .with_underlyingisin(Some(Isin::new(APPLE).unwrap())),
+        )
         .unwrap();
     registry.merge(entry(APPLE, &[])).unwrap();
     assert!(registry.is_dirty());
@@ -209,7 +212,10 @@ fn a_folder_store_is_laid_out_by_the_first_dirty_commit_and_read_back_whole() {
     assert!(registry.is_empty() && !registry.is_dirty());
     assert!(!root.exists(), "nothing is laid out before a commit");
     registry
-        .merge(entry(HOLCIM, &[(IdType::Ric, "HOLN.S")]))
+        .merge(
+            entry(HOLCIM, &[(IdType::Ric, "HOLN.S")])
+                .with_underlyingisin(Some(Isin::new(APPLE).unwrap())),
+        )
         .unwrap();
     registry.merge(entry(APPLE, &[])).unwrap();
     assert_eq!(registry.commit().unwrap().written_rows, 2);
@@ -317,7 +323,10 @@ fn an_iceberg_table_store_is_replaced_in_one_snapshot_and_emptied_as_one() {
     let mut registry = IsinRegistry::from_holder(table()).unwrap();
     assert!(registry.is_empty() && !registry.is_dirty());
     registry
-        .merge(entry(HOLCIM, &[(IdType::Ric, "HOLN.S")]))
+        .merge(
+            entry(HOLCIM, &[(IdType::Ric, "HOLN.S")])
+                .with_underlyingisin(Some(Isin::new(APPLE).unwrap())),
+        )
         .unwrap();
     registry.merge(entry(APPLE, &[])).unwrap();
     assert_eq!(registry.commit().unwrap().written_rows, 2);

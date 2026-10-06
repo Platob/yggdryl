@@ -1600,6 +1600,84 @@ fn an_execution_is_recorded_among_the_deltas_and_a_trade_is_pruned() {
     assert_eq!(book.get_execunix(), Some(11));
 }
 
+/// A book reads what it holds by kind, borrowing every entry: the orders
+/// resting on it, and the orders, quotes and executions among its deltas -
+/// three readings partitioning the deltas, which hold nothing else - an
+/// order placed at the instant being the one entry its resting and its
+/// delta reading both borrow.
+#[test]
+fn a_book_reads_its_resting_orders_and_its_deltas_by_kind() {
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([
+        operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
+        operation("order", "IBM", "O-2", 1, "Sell", "101", 2, "New"),
+        operation("quote", "IBM", "Q-1", 1, "Buy", "99", 2, "New"),
+    ])
+    .unwrap();
+    book.add_operations([
+        operation("order", "IBM", "O-1", 2, "Buy", "100", 2, "Canceled"),
+        operation("execution", "IBM", "E-1", 2, "Sell", "101", 1, "Filled"),
+        operation("quote", "IBM", "Q-2", 2, "Sell", "102", 3, "New"),
+        operation("order", "IBM", "O-3", 2, "Buy", "100", 1, "New"),
+    ])
+    .unwrap();
+    // Resting: the orders alive, the bid side's then the ask side's.
+    let resting: Vec<&str> = book.ordlive().map(Element::get_crosscode).collect();
+    assert_eq!(resting, ["10:1:O-3", "10:2:O-2"]);
+    // Changed: the orders the instant applied, in the order applied, the
+    // cancel - resting nowhere now - included.
+    let changed: Vec<(&str, State)> = book
+        .orddelta()
+        .map(|order| (order.get_crosscode(), *order.get_state()))
+        .collect();
+    assert_eq!(
+        changed,
+        [("10:1:O-1", State::Canceled), ("10:1:O-3", State::New)]
+    );
+    let quotes: Vec<&str> = book.quotes().map(Element::get_crosscode).collect();
+    assert_eq!(quotes, ["14:0:Q-2"]);
+    let executions: Vec<&str> = book.executions().map(Element::get_crosscode).collect();
+    assert_eq!(executions, ["8:2:E-1"]);
+    // A quote resting since the instant before is alive, not a delta.
+    assert!(codes(book.alive()).contains(&"14:0:Q-1"));
+    // The three readings partition the deltas, which hold nothing else.
+    assert_eq!(
+        book.orddelta().count() + book.quotes().count() + book.executions().count(),
+        book.deltas().len()
+    );
+    // An order placed at the instant is the one entry both readings borrow.
+    let placed = book.orddelta().last().expect("O-3 is among the deltas");
+    assert!(book.ordlive().any(|order| std::ptr::eq(order, placed)));
+}
+
+/// A book a walk emits as its deltas alone states the orders its instant
+/// changed and none resting; rebuilt over the book before it, it rests
+/// every live order and replays the same changed ones.
+#[test]
+fn a_delta_book_states_its_changed_orders_and_no_resting_one() {
+    let books = BookIterator::new(
+        vec![
+            operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
+            operation("order", "IBM", "O-2", 2, "Buy", "99", 2, "New"),
+        ]
+        .into_iter(),
+        0,
+    )
+    .unwrap()
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
+    assert!(!books[1].is_complete());
+    assert_eq!(books[1].ordlive().count(), 0);
+    let changed: Vec<&str> = books[1].orddelta().map(Element::get_crosscode).collect();
+    assert_eq!(changed, ["10:1:O-2"]);
+    let rebuilt = whole(&books);
+    let resting: Vec<&str> = rebuilt[1].ordlive().map(Element::get_crosscode).collect();
+    assert_eq!(resting, ["10:1:O-1", "10:1:O-2"]);
+    // Rebuilding replays the deltas: the changed orders are the delta book's.
+    let replayed: Vec<&str> = rebuilt[1].orddelta().map(Element::get_crosscode).collect();
+    assert_eq!(replayed, changed);
+}
+
 #[test]
 fn expiry_precedes_an_equal_time_source_and_an_execution_never_enters_live_expiry() {
     let mut live = operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New");
@@ -3150,6 +3228,9 @@ fn a_two_sided_quote_rests_on_both_sides_as_one_entry() {
         book.alive_on(Side::Sell).next().unwrap(),
     );
     assert!(std::ptr::eq(bid, ask), "one entry on both sides");
+    assert_eq!(bid.get_side(), Side::Both, "a two-sided quote holds both");
+    assert_eq!(book.get_side(), Side::Both);
+    assert_eq!(book.alive_on(Side::Both).len(), 0);
     assert_eq!(codes(book.alive()), ["14:0:Q-1"]);
     assert_eq!(codes(book.deltas()), ["14:0:Q-1"]);
     assert_eq!(
@@ -3184,6 +3265,65 @@ fn a_two_sided_quote_rests_on_both_sides_as_one_entry() {
     assert_eq!(**read, book);
     assert_eq!(codes(read.alive_on(Side::Buy)), ["14:0:Q-1"]);
     assert_eq!(codes(read.alive_on(Side::Sell)), ["14:0:Q-1"]);
+}
+
+/// A book holds both sides: every book states `BOTH` - built empty, keyed,
+/// walked - and its stored cross code side `0`; a side set on it is stated
+/// again as `BOTH` by the next finalize, moving no price and no level.
+#[test]
+fn a_book_holds_both_sides_whatever_it_is_set_to() {
+    let book = BookEvent::new(1, "ACME");
+    assert_eq!(book.get_side(), Side::Both);
+    assert_eq!(book.get_crosscode(), "3:0:ACME");
+    let keyed = BookEvent::keyed(1, "KEY");
+    assert_eq!(keyed.get_side(), Side::Both);
+    assert_eq!(keyed.get_crosscode(), "3:0:KEY");
+
+    let books = BookIterator::new(
+        vec![
+            operation("order", "ACME", "B-1", 1, "Buy", "99", 2, "New"),
+            operation("order", "ACME", "A-1", 1, "Sell", "101", 3, "New"),
+        ]
+        .into_iter(),
+        0,
+    )
+    .unwrap()
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
+    assert_eq!(books.len(), 1);
+    assert_eq!(books[0].get_side(), Side::Both);
+    assert_eq!(books[0].get_crosscode(), "3:0:ACME");
+
+    let mut book = BookEvent::new(1, "ACME");
+    book.add_operations([
+        operation("order", "ACME", "B-1", 1, "Buy", "99", 2, "New"),
+        operation("order", "ACME", "A-1", 1, "Sell", "101", 3, "New"),
+    ])
+    .unwrap();
+    let price = book.get_price();
+    let limits = (
+        book.limits(Side::Buy).collect::<Vec<_>>(),
+        book.limits(Side::Sell).collect::<Vec<_>>(),
+    );
+    assert_eq!(book.get_side(), Side::Both);
+    book.set_side(Side::Buy, true);
+    assert_eq!(book.get_crosscode(), "3:0:ACME");
+    book.finalize();
+    assert_eq!(book.get_side(), Side::Both);
+    assert_eq!(book.get_price(), price);
+    assert_eq!(
+        (book.get_bidpx(), book.get_askpx()),
+        (Some(decimal("99")), Some(decimal("101")))
+    );
+    assert_eq!(
+        (
+            book.limits(Side::Buy).collect::<Vec<_>>(),
+            book.limits(Side::Sell).collect::<Vec<_>>(),
+        ),
+        limits
+    );
+    assert_eq!(book.alive_on(Side::Both).len(), 0);
+    assert_eq!(book.alive().count(), 2);
 }
 
 /// A quote follower stating one leg with a zero quantity withdraws that

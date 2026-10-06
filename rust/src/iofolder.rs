@@ -16,8 +16,9 @@ pub trait IOFolder: IOBase {
     /// The container's location.
     fn folder_url(&self) -> &Url;
 
-    /// Return whether the container exists yet.
-    fn folder_exists(&self) -> bool;
+    /// Return whether the container itself is there now - the one existence
+    /// question a backend answers about its own store.
+    fn has_folder(&self) -> bool;
 
     /// Create the container and every missing parent.
     ///
@@ -54,6 +55,19 @@ pub trait IOFolder: IOBase {
     ///
     /// Returns the backing store's delete failure.
     fn delete_folder(&mut self) -> Result<()>;
+
+    /// Return whether the container exists yet, a glob location whether its
+    /// pattern selects an entry.
+    ///
+    /// A pattern is the set [`Self::folder_ls`] expands it into, so it is
+    /// there exactly when that listing yields one entry, the walk stopping at
+    /// the first; any other location is [`Self::has_folder`]'s answer.
+    fn folder_exists(&self) -> bool {
+        if self.folder_url().is_glob() {
+            return crate::iobase::selects_any(self);
+        }
+        self.has_folder()
+    }
 
     /// Remove every child, keeping the container - a container's `clear`.
     ///

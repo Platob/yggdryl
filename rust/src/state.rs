@@ -36,7 +36,7 @@ enum_leaf! {
     /// | `10` | `1000`-`1099` | asked for, not yet acknowledged |
     /// | `20` | `2000`-`2099` | acknowledged, not yet working |
     /// | `30` | `3000`-`3099` | working |
-    /// | `40` | `4000`-`4099` | working, and something has happened |
+    /// | `40` | `4000`-`4099` | working, and something has happened - or acknowledged and awaiting its next step |
     /// | `50` | `5000`-`5099` | halted, and able to resume |
     /// | `60` | `6000`-`6099` | a change is outstanding |
     /// | `70` | `7000`-`7099` | changed, and the new thing carries on |
@@ -79,9 +79,6 @@ enum_leaf! {
         PendingNew = 1001 as "PENDING_NEW": "A new order asked for and not yet acknowledged: FIX `PendingNew`, and what a `NewOrderSingle` asks for.",
         Queued = 1002 as "QUEUED": "Waiting its turn.",
         Received = 1003 as "RECEIVED": "Received, not yet processed: an execution, allocation, confirmation or affirmation the counterparty has and has not yet answered.",
-        PendingVerification = 1004 as "PENDING_VERIFICATION": "A trade report waiting on its verification.",
-        PendingAllocation = 1005 as "PENDING_ALLOCATION": "An allocation asked for and not yet made.",
-        PendingApproval = 1006 as "PENDING_APPROVAL": "A give-up or take-up waiting on its approval.",
         Accepted = 2000 as "ACCEPTED": "Accepted, not yet working: FIX `AcceptedForBidding`, an accepted trade report, quote or mass action.",
         New = 2001 as "NEW": "Acknowledged by the venue as a new order.",
         Starting = 2002 as "STARTING": "About to start.",
@@ -98,6 +95,9 @@ enum_leaf! {
         TradeCorrect = 4003 as "TRADE_CORRECT": "A correction of a trade reported before.",
         TradeCancel = 4004 as "TRADE_CANCEL": "A cancellation of a trade reported before.",
         TradeInClearingHold = 4005 as "TRADE_IN_CLEARING_HOLD": "A trade held before clearing.",
+        PendingVerification = 4006 as "PENDING_VERIFICATION": "A trade report accepted, its verification outstanding.",
+        PendingAllocation = 4007 as "PENDING_ALLOCATION": "An allocation acknowledged, the allocation itself outstanding.",
+        PendingApproval = 4008 as "PENDING_APPROVAL": "A give-up or take-up acknowledged, its approval outstanding.",
         Paused = 5000 as "PAUSED": "Halted by its owner.",
         Stopped = 5001 as "STOPPED": "Stopped, and able to resume.",
         Suspended = 5002 as "SUSPENDED": "Suspended by the venue.",
@@ -124,6 +124,7 @@ enum_leaf! {
         Cleared = 8010 as "CLEARED": "Cleared.",
         Settled = 8011 as "SETTLED": "Settled.",
         Claimed = 8012 as "CLAIMED": "An allocation claimed.",
+        Approved = 8013 as "APPROVED": "Approved: a give-up or take-up its counterparty approved, or anything else that waited on an approval.",
         Canceled = 9000 as "CANCELED": "Cancelled by someone.",
         Reversed = 9001 as "REVERSED": "An allocation reversed.",
         Removed = 9002 as "REMOVED": "A quote removed from the market.",

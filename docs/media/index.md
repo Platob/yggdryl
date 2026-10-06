@@ -118,7 +118,7 @@ A folder, a location ending in `/` and a glob read as the one table their leaves
 
 ## Write
 
-Every write states its intent: `overwrite_*` replaces the stored rows, `append_*` keeps them and adds its own after them, and `merge_*` updates the rows whose `merge_by` key matches and appends the rest. `overwrite_records`, `append_records` and `merge_records` write native rows; the `*_arrow_reader` and `*_arrow_batch` twins - and `*_arrow_table` in the bindings - write Arrow batches, streamed and never collected; and `overwrite_serie`, `append_serie` and `merge_serie` - `write_serie` with the mode named - write a held `Serie`, a `ChunkedSerie` or a `SerieReader` as the batches it already is ([Writing a serie to a handle](../types/serie.md#writing-a-serie-to-a-handle)), absent options being the handle's own. Every one of them answers an `IOResult` - the rows it read, wrote and skipped ([Write results](../holder/index.md#write-results)).
+Every write states its intent: `overwrite_*` replaces the stored rows, `append_*` keeps them and adds its own after them, and `merge_*` updates the rows whose key matches - the options' `merge_by`, else the destination's own ([an Iceberg table's](iceberg.md#the-merge-key)) - and appends the rest. `overwrite_records`, `append_records` and `merge_records` write native rows; the `*_arrow_reader` and `*_arrow_batch` twins - and `*_arrow_table` in the bindings - write Arrow batches, streamed and never collected; and `overwrite_serie`, `append_serie` and `merge_serie` - `write_serie` with the mode named - write a held `Serie`, a `ChunkedSerie` or a `SerieReader` as the batches it already is ([Writing a serie to a handle](../types/serie.md#writing-a-serie-to-a-handle)), absent options being the handle's own. Every one of them answers an `IOResult` - the rows it read, wrote and skipped ([Write results](../holder/index.md#write-results)).
 
 === "Rust"
 
@@ -233,6 +233,7 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
 | Write setting | Unset | Set |
 | --- | --- | --- |
 | `commit_batch_num` | the destination's own cadence: a leaf, a plain folder and an Iceberg table publish once, when the source ends - the table holding every partition's rows under the process [spill bound](../types/serie.md#spilling-to-disk) until then, so an overwrite of any length is one atomic snapshot | a publication every `N` whole batches, then the remainder; `0` is refused before the source is pulled ([Commit cadence](../holder/index.md#commit-cadence)) |
+| `merge_by` | on a merge, the destination's own key: an Iceberg table's identity partition columns, then its identifier columns; a leaf, a folder or a table stating none refuses a merge naming `$.merge_by` before the source is pulled | the match key, a stored column or a computed term per projection; overwrite and append refuse it |
 | `num_threads` | the destination's own answer: an Iceberg table's `write.parallelism`, else its `read.parallelism`, else every thread the host offers | the most parts a write of several parts runs at once - an Iceberg commit's [partition groups](iceberg.md#write) - while a leaf of one file is written on the thread that writes it and reads nothing from it; `0` is refused naming `$.num_threads` before the source is pulled |
 
 === "Rust"

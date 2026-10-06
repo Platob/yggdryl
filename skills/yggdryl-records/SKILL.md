@@ -56,7 +56,7 @@ medium does the work before a byte is decoded.
 | Iceberg table | `IcebergTable::create(LocalFolder::new(p)?, FormatVersion::V2, schema, PartitionSpec::from_schema(1, &schema)?)?` | `IcebergTable.create(IOBase(p), schema, ["venue", "minutes(ts, 15)"])` | `iceberg.IcebergTable.create(p, schema, ['venue', 'minutes(ts, 15)'])` |
 | Iceberg table by its location alone - a folder any backend holds, or `s3tables://<bucket>/<namespace>/<table>` (a table's ARN to open one) | `IcebergTable::from_url(location, &props)?`, `::create_from_url(location, &props, None, schema, None)?`, `::open_or_create_from_url(..)?` - version and spec left out are the schema's own | `IcebergTable(location, **props)`, `IcebergTable.create(location, schema, ["venue"], **props)`, `.open_or_create(..)` | `iceberg.IcebergTable.open(location, props)`, `.create(location, schema, ['venue'], undefined, props)`, `.openOrCreate(..)` |
 | Iceberg catalog (a warehouse folder) | `IcebergCatalog::bound("lake", holder)`, `catalog.namespaces().create("nyc", &props)?`, `catalog.tables().create("nyc.taxis", &schema, &props)?` | `IcebergCatalog("lake", root)`, `catalog.namespaces.create("nyc")`, `catalog.tables.create("nyc.taxis", schema)` | `new iceberg.IcebergCatalog('lake', root)`, `catalog.namespaces().create('nyc')`, `catalog.tables().create('nyc.taxis', schema)` |
-| Iceberg write | `commit_append(r)?`, `commit_overwrite`, `commit_merge(r, &sel, safe)?`; through the record doors one commit when the source ends, `with_num_threads(n)` for the partition groups at once | `append(t)`, `overwrite`, `merge(t, ["id"])` | `append(t)`, `overwrite`, `merge(t, ['id'])` |
+| Iceberg write | `commit_append(r)?`, `commit_overwrite`, `commit_merge(r, &sel, safe)?` (`Selector::all()` the table's own key); through the record doors one commit when the source ends, `with_num_threads(n)` for the partition groups at once | `append(t)`, `overwrite`, `merge(t, ["id"])`, `merge(t)` keyed by the table's identifier columns | `append(t)`, `overwrite`, `merge(t, ['id'])`, `merge(t)` keyed by the table's identifier columns |
 | Iceberg filtered scan | `scan_matching("px > 1", None)?`, `plan_matching(..)?` | `scan_matching("px > 1")`, `plan_matching(..)` | `scanMatching('px > 1')`, `planMatching(..)` |
 | Iceberg time travel | `scan_at(snapshot_id, &[], None)?` | `scan_at(snapshot_id)` | `scanAt(snapshotId)` |
 | Iceberg schema change | `SchemaUpdate::from_metadata(..)?` + `update_schema(&update)?` | `update_schema().add_column("", f).commit()` | `updateSchema().addColumn('', f).commit()` |
@@ -86,9 +86,14 @@ medium does the work before a byte is decoded.
    so a bad value vanishes silently. Pass `safe=False` / `{ safe: false }` /
    `.with_safe(false)` (or declare the column `not null`) when an unconvertible
    value must be refused.
-4. **`merge_by` is required for merge.** Keys use Arrow's row format: null
-   matches null and the last arrival wins. Merge holds only the stored side in
-   memory; `merge_by` absent is a refusal, never an overwrite.
+4. **`merge_by` is required for merge, unless the destination states its
+   own key.** An Iceberg table does - its identity partition columns, then the
+   columns its schema's `identifier-field-ids` names (`IOMedia::merge_by`) -
+   so a merge naming none matches on that, and with no identifier replaces
+   the partitions its rows fall in. A leaf, a folder, or a table stating
+   neither refuses `merge_by` absent before the source is pulled - never an
+   overwrite. Keys use Arrow's row format: null matches null and the last
+   arrival wins. Merge holds only the stored side in memory.
 5. **Bound memory with `commit_batch_num`.** It counts whole batches, never
    cutting one: `N` publishes every `N` batches and the committed prefix
    survives a later failure; `0` is refused before any input is pulled. Unset
@@ -186,8 +191,9 @@ medium does the work before a byte is decoded.
     table from as many threads as you like, one handle per thread; only a
     filesystem bridged from outside the crate, or an HTTP origin ignoring
     preconditions, is left to the best-effort check. A merge keys on the
-    identity partition columns plus
-    `merge_by`, so a row only ever updates its own partition. A table is
+    identity partition columns plus `merge_by` - else the table's identifier
+    columns (`merge(t)` / `table.merge(rows)` with no key) - so a row only
+    ever updates its own partition. A table is
     created from the partitioning its schema declares (`PARTITION:by`: `venue`,
     `days(ts)`, `minutes(ts, 15)`, `truncate(name, 4) as prefix`) unless
     `partition_by` / `partitionBy` states entries, or `[]` / `null` states
@@ -209,8 +215,10 @@ medium does the work before a byte is decoded.
 
 - Reading then filtering in the host (`[r for r in rows if r["id"] > 3]`,
   `table.filter(...)`) - pass `filter="id > 3"` so the medium prunes.
-- `merge_*` with no `merge_by` - it raises; pass `merge_by=["id"]` /
-  `{ mergeBy: ['id'] }` / `with_merge_by(["id"])?`.
+- `merge_*` with no `merge_by` on a leaf, a folder or a table stating no
+  key - it raises; pass `merge_by=["id"]` / `{ mergeBy: ['id'] }` /
+  `with_merge_by(["id"])?`, or state the table's `identifier-field-ids`.
+  A table folder opened as a plain `IOBase` states no key; open it as a table.
 - Naming a file `trades.parquet.gz` - refused ("parquet compresses"); use
   `compression="zstd(3)"` on a plain `.parquet`.
 - Naming a workbook `trades.xlsx.gz` - refused ("expected an uncompressed xlsx

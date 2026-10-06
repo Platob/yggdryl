@@ -1312,6 +1312,7 @@ class Scalar:
         "country", "ccy", "mic", "cfi", "isin",
         "cusip", "sedol", "bbg", "ric", "figi", "forex", "side", "state",
         "marketdatakind", "marketdatatype", "timeinforce", "unit",
+        "lei", "bic", "elf", "dti", "fisn",
         "uuid", "version", "timezone", "mimetype", "mediatype", "url", "urn",
         "bytes", "large_binary", "binary_view", "large_binary_view",
         "fixed_binary", "sized_binary",
@@ -2007,6 +2008,14 @@ class ProtocolField:
     @term.setter
     def term(self, term: Term | str | None) -> None: ...
     def remove_term(self) -> str | None: ...
+    # The typed `FIELD:` vocabulary, answered only by `field.field_properties`:
+    # what a same-width integer of the other signedness carries into this
+    # integer column; assigning "value" or `None` removes the declaration,
+    # and "bits" on a column that is no integer raises ValueError.
+    @property
+    def representation(self) -> Representation: ...
+    @representation.setter
+    def representation(self, representation: Representation | None) -> None: ...
     # The typed `PYTHON:` vocabulary, answered only by `field.python`.
     @property
     def class_metadata(self) -> PythonMetadata | None: ...
@@ -6195,7 +6204,7 @@ class IcebergTable(Table):
     def merge(
         self,
         batches: IcebergRows,
-        merge_by: SelectorLike,
+        merge_by: SelectorLike | None | EllipsisType = ...,
         *,
         safe: bool = True,
         options: IcebergOptions | None = None,
@@ -6205,7 +6214,7 @@ class IcebergTable(Table):
         self,
         filters: Mapping[str, str] | Iterable[tuple[str, str]] | None,
         batches: IcebergRows,
-        merge_by: SelectorLike,
+        merge_by: SelectorLike | None | EllipsisType = ...,
         *,
         safe: bool = True,
         options: IcebergOptions | None = None,
@@ -7057,8 +7066,8 @@ class IsinRegistry:
 
     Each row holds the instrument's ``isin``, ``updunix`` (when the statement
     that last moved it happened, a stamp), detailed ``cficode``, its
-    ``countrycode`` of issue, its ``forexcode`` pair, the ``miccode`` its
-    listing facts belong to, its ``ticker`` and trading ``currency`` and one
+    ``countrycode`` of issue, its ``forexcode`` pair, the ``underlyingisin``
+    it is written on, the ``miccode`` its listing facts belong to, its ``ticker`` and trading ``currency`` and one
     code per ``SecurityIDSource(22)`` type but the ISIN. A lifecycle learns
     into it - keyed by a stated real ISIN - and fills from it what a message
     leaves unsaid, a parse fills derived identifiers from it, and a valid
@@ -7071,6 +7080,11 @@ class IsinRegistry:
     __hash__: ClassVar[None]  # type: ignore[assignment]
 
     def __init__(self, max_instruments: int = 16384) -> None: ...
+    @staticmethod
+    def field() -> Field:
+        """The registry's row: the required struct ``isinregistry`` of
+        forty-one columns every row is laid out as, what a table holding the
+        registry is created from."""
     @staticmethod
     def from_url(location: object, max_instruments: int = 16384, **properties: str) -> IsinRegistry:
         """A registry bound to the store a URL or path names and loaded from it: an Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an object store; a store holding nothing yet an empty first run."""
@@ -7147,7 +7161,7 @@ class MsgType:
     @property
     def value(self) -> str: ...
     @property
-    def msgcat(self) -> MarketDataKind | None: ...
+    def marketdatakind(self) -> MarketDataKind | None: ...
     @property
     def field(self) -> Field: ...
     def get_group_by_tag(self, tag: int) -> Field | None: ...
@@ -7484,9 +7498,9 @@ class FixMsg:
     def market_data(self) -> list[MarketData]: ...
     def header(self) -> FixHeader: ...
     @property
-    def msgcat(self) -> MarketDataKind: ...
+    def marketdatakind(self) -> MarketDataKind: ...
     @property
-    def strikeprice(self) -> Scalar | None: ...
+    def strikepx(self) -> Scalar | None: ...
     def capture(self) -> FixCapture: ...
     @property
     def text(self) -> str | None: ...
@@ -9105,8 +9119,30 @@ class BookEvent:
         ...
     @property
     def deltas(self) -> list[MarketData]:
-        """The orders and quotes applied since the book before this one, in the
-        order applied across both sides."""
+        """Every event of the book's instant since the book before this one, in
+        the order applied across both sides: the orders and quotes applied, and
+        the executions recorded, which rest on no side."""
+        ...
+    @property
+    def ordlive(self) -> list[OrderEvent]:
+        """The orders resting on the book, in ``alive``'s order: the bid side's
+        best first, then the ask side's. Empty on a book stating its deltas
+        alone."""
+        ...
+    @property
+    def orddelta(self) -> list[OrderEvent]:
+        """The orders among ``deltas``, in the order applied: every order the
+        book's instant placed, changed or ended."""
+        ...
+    @property
+    def quotes(self) -> list[QuoteEvent]:
+        """The quotes among ``deltas``, in the order applied; a quote resting
+        since an earlier instant is ``alive``'s and not here."""
+        ...
+    @property
+    def executions(self) -> list[ExecutionEvent]:
+        """The executions among ``deltas``, in the order applied: recorded at
+        the book's instant, resting on no side."""
         ...
     def limits(self, side: Side | int | str) -> list[Scalar]:
         """One limit struct per level of the side ``side`` takes, best first.
@@ -9482,7 +9518,7 @@ class BookIterator(Iterator[BookEvent]):
     error. A book is whole at a snapshot tick - every grid tick when
     ``snapshot_millis`` is positive, and a snapshot input - and states its
     deltas alone otherwise. ``filter``, a predicate over the ``marketdata``
-    row bound once, narrows what the walk folds; ``None`` keeps every booked
+    row bound once, narrows what the walk folds; ``None`` keeps every recorded
     input.
     """
 

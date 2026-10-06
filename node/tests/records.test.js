@@ -27,6 +27,7 @@ const {
   SerieReader,
   TextOptions,
   fields,
+  iceberg,
 } = require('yggdryl')
 
 function scratch() {
@@ -1499,4 +1500,65 @@ test('a structured document is written whole: overwrite alone, its field the one
     { id: 2, symbol: 'MSFT' },
   ])
   assert.deepEqual(serieRows(document.readSerie({ field: ids })).map((row) => row.id), [1, 2])
+})
+
+test('a merge naming no key takes the destination own, and a leaf refuses it before a pull', async (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const venues = (ids, names) =>
+    new arrow.Table({
+      id: arrow.vectorFromArray(ids, new arrow.Int64()),
+      venue: arrow.vectorFromArray(names, new arrow.Utf8()),
+    })
+  // A table keyed by `id`, the identifier column its schema states.
+  const schema = iceberg.assignFieldIds(
+    fields.struct('row', [Field.from('id: int64 not null'), Field.from('venue: utf8')], {
+      nullable: false,
+    }),
+  )
+  schema.set('ICEBERG:identifier-field-ids', '1')
+  const table = iceberg.IcebergTable.create(path.join(root, 'keyed'), schema)
+  table.append(venues([1n, 2n], ['XNAS', 'XNYS']))
+  const handle = IOBase.from(table.intoTable())
+  const stored = () => {
+    const read = handle.readArrowReader().intoTable()
+    return new Map(
+      [...read.getChild('id')].map((id, index) => [id, read.getChild('venue').get(index)]),
+    )
+  }
+
+  // The serie verb, rows pulled asynchronously, and rows pulled through the
+  // session a cadence opens all key by `id`.
+  handle.mergeSerie(venues([2n], ['XASE']))
+  await handle.mergeRecords(
+    (async function* () {
+      yield { id: 3n, venue: 'XLON' }
+    })(),
+  )
+  await handle.mergeRecords(
+    (async function* () {
+      yield { id: 3n, venue: 'XPAR' }
+    })(),
+    { commitBatchNum: 1 },
+  )
+  assert.deepEqual(
+    stored(),
+    new Map([
+      [1n, 'XNAS'],
+      [2n, 'XASE'],
+      [3n, 'XPAR'],
+    ]),
+  )
+
+  // A leaf states no key, so the same call is refused before a row is pulled.
+  const leaf = IOBase.fromBytes()
+  leaf.mediaType = MimeType.ARROW_STREAM
+  let pulled = 0
+  async function* records() {
+    pulled += 1
+    yield { id: 1n, venue: 'XNAS' }
+  }
+  assert.throws(() => leaf.mergeRecords(records()), /merge_by/)
+  assert.equal(pulled, 0)
+  assert.equal(leaf.size(), 0)
 })

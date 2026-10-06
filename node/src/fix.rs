@@ -1469,15 +1469,15 @@ impl JsFixMsg {
     /// `marketdatakind` member's stored name - `ORDR`, `QUOT`, `EXEC`,
     /// `TRAD`, `BOOK` - and `UNKN` where it files none.
     #[napi(getter)]
-    pub fn msgcat(&self) -> &'static str {
-        self.inner.msgcat().as_str()
+    pub fn marketdatakind(&self) -> &'static str {
+        self.inner.marketdatakind().as_str()
     }
 
     /// The option strike price the message identifies - `StrikePrice(202)`
     /// read off the dictionary field - as decimal text, or `null`.
     #[napi(getter)]
-    pub fn strikeprice(&self) -> Option<String> {
-        self.inner.strikeprice().map(|held| held.to_string())
+    pub fn strikepx(&self) -> Option<String> {
+        self.inner.strikepx().map(|held| held.to_string())
     }
 
     /// This message's own `UUIDv7` identity, ordered by millisecond and
@@ -3382,7 +3382,7 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// `msgsessionid` - and the `msgsesseventid` the session and the context
 /// join to with the message type and sequence; the capture's own column,
 /// `sourceurl`, which whoever read the line states on the row and no message
-/// holds; the `msgcat` the message type files under; the normalized
+/// holds; the `marketdatakind` the message type files under; the normalized
 /// instrument codes (`isincode`, `bloombergcode`, `figicode`, `forexcode`,
 /// `miccode`) and the market and operation facts a message names - each a
 /// fact no FIX dictionary publishes, at the datatype its graph column names,

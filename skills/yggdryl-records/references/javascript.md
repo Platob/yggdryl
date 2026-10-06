@@ -508,7 +508,7 @@ assert.deepEqual([...filled.getChild('year')], [2024, 2025])
 
 ## Iceberg: create, append, upsert, scan
 
-A table is a folder; no catalog is required. Scans are `BatchReader`s planned from metadata; `merge` keys are the identity partition columns plus `mergeBy`.
+A table is a folder; no catalog is required. Scans are `BatchReader`s planned from metadata; `merge` keys are the identity partition columns plus `mergeBy`, else - `mergeBy` left out or `null` - the columns the schema's `identifier-field-ids` names.
 
 ```javascript
 const assert = require('node:assert/strict')

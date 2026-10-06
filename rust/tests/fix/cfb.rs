@@ -1014,6 +1014,16 @@ fn a_warning_quotes_the_element_and_the_content_it_read() {
             "the declaration is dropped",
         ),
         (
+            // The one tag parser the crate has is strict: a signed spelling
+            // the writer never emits is no tag here either.
+            r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary><vocabulary-tag name="+35" alt="MsgType" type="string" /></vocabulary>
+</cplugin-configuration>"#,
+            vec!["a decimal tag", "\"+35\""],
+            "the declaration is dropped",
+        ),
+        (
             r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
 	<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" /></vocabulary>

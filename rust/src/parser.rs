@@ -884,6 +884,11 @@ impl fmt::Display for DataType {
             | D::TimeInForce
             | D::Unit
             | D::Forex
+            | D::Lei
+            | D::Bic
+            | D::Elf
+            | D::Dti
+            | D::Fisn
             | D::Decimal
             | D::BigDecimal
             | D::Uuid

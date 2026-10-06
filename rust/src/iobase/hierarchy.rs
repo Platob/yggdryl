@@ -135,6 +135,18 @@ pub(crate) fn container_is_tabular(handle: &(impl IOBase + ?Sized)) -> bool {
     }
 }
 
+/// Answer whether a pattern location selects anything, listing no further
+/// than its first match.
+///
+/// A glob names the set its listing expands it into
+/// ([`IOFolder::folder_ls`](crate::IOFolder::folder_ls)), so it is there
+/// exactly when that listing yields an entry - the listing `iterdir` answers
+/// and a read of the pattern walks, private names left out. A listing
+/// failure answers `false`, as every existence predicate reads a refusal.
+pub(crate) fn selects_any(handle: &(impl IOBase + ?Sized)) -> bool {
+    matches!(handle.ls(false, false).next(), Some(Ok(_)))
+}
+
 /// Report a resource that cannot contain children.
 pub(super) fn no_children(url: Option<&Url>, name: &str) -> Error {
     Error::Io(std::io::Error::new(

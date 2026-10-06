@@ -114,7 +114,7 @@ pub enum DataTypeId {
     FixedBinary = 0x45,
     /// Bytes under a declared maximum.
     SizedBinary = 0x46,
-    // Text: 0x50..0x6f
+    // Text: 0x50..0x69
     /// Any length of UTF-8 with 32-bit offsets.
     Utf8String = 0x51,
     /// UTF-8 with 64-bit offsets.
@@ -164,7 +164,22 @@ pub enum DataTypeId {
     MimeType = 0x67,
     /// A MIME type with its charset and content codings.
     MediaType = 0x68,
-    // Code: 0x70..0x7f
+    // Code: 0x6a..0x7f. The family opened at 0x70 and took the text range's
+    // tail, 0x6a..0x6f, which no leaf ever held, when its own bytes ran out;
+    // no leaf moved.
+    /// ISO 17442: a legal entity identifier, twenty ASCII bytes closed by
+    /// two ISO 7064 MOD 97-10 check digits.
+    Lei = 0x6b,
+    /// ISO 9362: a business identifier code, eight or eleven ASCII bytes.
+    Bic = 0x6c,
+    /// ISO 20275: an entity legal form code, four ASCII bytes.
+    Elf = 0x6d,
+    /// ISO 24165: a digital token identifier, nine ASCII bytes closed by an
+    /// ISO 7064 MOD 31,30 check character.
+    Dti = 0x6e,
+    /// ISO 18774: a financial instrument short name, an issuer and an
+    /// instrument description, at most thirty-five ASCII bytes.
+    Fisn = 0x6f,
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country = 0x71,
     /// A currency code: ISO 4217's three letters or a digital-asset ticker,
@@ -174,9 +189,9 @@ pub enum DataTypeId {
     Mic = 0x73,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
     Cfi = 0x74,
-    // 0x75 was `side` while a side was a code, and 0x77 `timeinforce`; each
-    // is an enum leaf now, at 0xc3 and 0xc5, and a retired number is never
-    // reused.
+    // 0x75 was `side`, 0x76 `state` and 0x77 `timeinforce` while each was a
+    // code; each is an enum leaf now, at 0xc3, 0xc1 and 0xc5, and a retired
+    // number is never reused.
     /// ISO 6166: a securities identification number, twelve ASCII bytes.
     Isin = 0x78,
     /// CUSIP: a North American securities identifier, nine ASCII bytes.
@@ -249,7 +264,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 91] = [
+    pub const ALL: [Self; 96] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -309,6 +324,11 @@ impl DataTypeId {
         Self::Timezone,
         Self::MimeType,
         Self::MediaType,
+        Self::Lei,
+        Self::Bic,
+        Self::Elf,
+        Self::Dti,
+        Self::Fisn,
         Self::Country,
         Self::Ccy,
         Self::Mic,
@@ -397,6 +417,11 @@ impl DataTypeId {
             Self::Bbg => "bbg",
             Self::Ric => "ric",
             Self::Forex => "forex",
+            Self::Lei => "lei",
+            Self::Bic => "bic",
+            Self::Elf => "elf",
+            Self::Dti => "dti",
+            Self::Fisn => "fisn",
             Self::Figi => "figi",
             Self::Side => "side",
             Self::State => "state",
@@ -582,6 +607,11 @@ impl DataTypeId {
             Self::Bbg => crate::BBG_EXTENSION_NAME,
             Self::Unit => crate::UNIT_EXTENSION_NAME,
             Self::Forex => crate::FOREX_EXTENSION_NAME,
+            Self::Lei => crate::LEI_EXTENSION_NAME,
+            Self::Bic => crate::BIC_EXTENSION_NAME,
+            Self::Elf => crate::ELF_EXTENSION_NAME,
+            Self::Dti => crate::DTI_EXTENSION_NAME,
+            Self::Fisn => crate::FISN_EXTENSION_NAME,
             _ => return None,
         })
     }
@@ -768,14 +798,17 @@ impl DataTypeId {
     /// Return the most bytes one registered code's value may be.
     ///
     /// The number each standard fixes: two for a country, four for a market
-    /// identifier, six for a classification, seven for a SEDOL or a currency
-    /// pair, nine for a CUSIP, twelve for an ISIN,
-    /// and thirty-two for a Bloomberg identifier - the one whose width is
-    /// only a bound, because a ticker, a market and a yellow key have no
-    /// fixed length between them - and for a unit and a RIC, which take the
-    /// same bound. A currency is a bound too: eight, ISO 4217's three letters
-    /// or a digital-asset ticker past them. It is a maximum, not a layout - a
-    /// code stores as the text it is - and it is what the value rule holds a
+    /// identifier or an entity legal form, six for a classification, seven
+    /// for a SEDOL or a currency pair, nine for a CUSIP or a digital token
+    /// identifier, eleven for a business identifier code, twelve for an ISIN
+    /// or a FIGI, twenty for a legal entity identifier, thirty-two for a
+    /// Bloomberg identifier - a bound, because a ticker, a market and a
+    /// yellow key have no fixed length between them - and for a unit and a
+    /// RIC, which take the same bound, and thirty-five for a financial
+    /// instrument short name, a bound for the same reason. A currency is a
+    /// bound too: eight, ISO 4217's three letters or a digital-asset ticker
+    /// past them. It is a maximum, not a layout - a code stores as the text
+    /// it is - and it is what the value rule holds a
     /// cell to and what [`crate::DataType::ascii_packed`] pads into. Each
     /// number is its code file's own constant, read here.
     ///
@@ -788,6 +821,11 @@ impl DataTypeId {
             Self::Cfi => Some(crate::CFI_WIDTH),
             Self::Sedol => Some(crate::SEDOL_WIDTH),
             Self::Forex => Some(crate::FOREX_WIDTH),
+            Self::Lei => Some(crate::LEI_WIDTH),
+            Self::Bic => Some(crate::BIC_WIDTH),
+            Self::Elf => Some(crate::ELF_WIDTH),
+            Self::Dti => Some(crate::DTI_WIDTH),
+            Self::Fisn => Some(crate::FISN_WIDTH),
             Self::Cusip => Some(crate::CUSIP_WIDTH),
             Self::Isin => Some(crate::ISIN_WIDTH),
             Self::Figi => Some(crate::FIGI_WIDTH),

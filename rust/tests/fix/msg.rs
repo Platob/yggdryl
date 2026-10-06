@@ -2202,7 +2202,7 @@ fn a_fix_message_and_its_typed_twin_complete_alike() {
     let (_, reader) = reader();
     for line in CORPUS {
         let message = reader.sole_line(line.as_bytes()).expect("a message");
-        let twin = match message.msgcat() {
+        let twin = match message.marketdatakind() {
             MarketDataKind::Order => typed_twin(OrderEvent::at(0), &message, line),
             MarketDataKind::Quotation => typed_twin(QuoteEvent::at(0), &message, line),
             MarketDataKind::Execution => typed_twin(ExecutionEvent::at(0), &message, line),
@@ -3210,11 +3210,11 @@ mod settled_market {
         let category = |code: &str| {
             registry
                 .get_msgtype(code)
-                .and_then(|held| held.msgcat())
+                .and_then(|held| held.marketdatakind())
                 .unwrap_or(MarketDataKind::Unknown)
         };
         let mut order = parsed("8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=10|10=0|");
-        assert_eq!(order.msgcat(), MarketDataKind::Order);
+        assert_eq!(order.marketdatakind(), MarketDataKind::Order);
         assert_eq!(
             order.get_by_tag(yggdryl::MARKETDATAKIND_TAG_NAME.0),
             Some(Scalar::MarketDataKind(MarketDataKind::Order))
@@ -3237,25 +3237,25 @@ mod settled_market {
             &Scalar::from_sequence(cells),
         )
         .unwrap();
-        assert_eq!(stated.msgcat(), MarketDataKind::Book);
+        assert_eq!(stated.marketdatakind(), MarketDataKind::Book);
         // A written type derives its own.
         order.set(35, Scalar::from("S")).unwrap();
-        assert_eq!(order.msgcat(), category("S"));
-        assert_ne!(order.msgcat(), MarketDataKind::Order);
+        assert_eq!(order.marketdatakind(), category("S"));
+        assert_ne!(order.marketdatakind(), MarketDataKind::Order);
         // An execution report of no fill is its order's report, whatever
         // category its type files it under.
         order.set(35, Scalar::from("8")).unwrap();
         assert_eq!(category("8"), MarketDataKind::Execution);
-        assert_eq!(order.msgcat(), MarketDataKind::Order);
+        assert_eq!(order.marketdatakind(), MarketDataKind::Order);
         order.set(117, Scalar::from("Q-1")).unwrap();
         assert_eq!(
-            order.msgcat(),
+            order.marketdatakind(),
             MarketDataKind::Quotation,
             "its quote's, naming one"
         );
         order.set(150, Scalar::from("F")).unwrap();
         assert_eq!(
-            order.msgcat(),
+            order.marketdatakind(),
             MarketDataKind::Execution,
             "a fill's report states its fill"
         );
@@ -3329,4 +3329,96 @@ mod settled_market {
             );
         }
     }
+}
+
+/// A row states a message's identity by its digests and its place: a cell
+/// its column cannot read as the `uint64` it is - a widened column holding
+/// a fraction, a text - refuses the row by name rather than reading as
+/// zero, because a zero digest is another message's delivery, which the
+/// lifecycle folds the message into.
+#[test]
+fn a_row_stating_a_digest_its_column_cannot_read_is_refused_by_name() {
+    let (registry, reader) = reader();
+    let message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|")
+        .unwrap();
+    // The fixed row with the content digest widened, as a table with no
+    // unsigned type stores it, to a scale that can hold a fraction beside
+    // the twenty digits.
+    let mut schema = fix_schema(&registry, "fix").unwrap();
+    let name = yggdryl::CURRHASHCODE_TAG_NAME.1;
+    let widened = DataType::decimal128(22, 2).unwrap().nullable_field(name);
+    schema.set_field(name, widened).unwrap();
+    let at = schema.index_of(name).expect("a currhashcode column");
+    let row = message.into_row(&schema).unwrap();
+    // Whole, the digest reads back as the number it was.
+    let read = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(read.get_currhashcode(), message.get_currhashcode());
+    assert_ne!(read.get_currhashcode(), 0);
+    // With a fraction, the row is refused by its column.
+    let cells = row.as_sequence().expect("a row");
+    let broken = Scalar::from_sequence(cells.iter().enumerate().map(|(index, cell)| {
+        if index == at {
+            Scalar::decimal128(150, 2)
+        } else {
+            cell.clone()
+        }
+    }));
+    let error = FixMsg::from_row(Arc::clone(&registry), &schema, &broken)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("$.currhashcode"), "{error}");
+    assert!(error.contains("uint64"), "{error}");
+}
+
+/// A table with no unsigned type may store a digest as the `long` of its
+/// width, so a row reads an `int64` digest cell as its bits; the place is a
+/// count, read by value alone, so a negative one refuses the row by name.
+#[test]
+fn a_row_reads_a_long_digest_as_its_bits_and_refuses_a_negative_place() {
+    let (registry, reader) = reader();
+    let message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|")
+        .unwrap();
+    // The fixed row as a table of longs lays it out, stating nothing.
+    let mut schema = fix_schema(&registry, "fix").unwrap();
+    for name in [yggdryl::CURRHASHCODE_TAG_NAME.1, yggdryl::SEQNUM_TAG_NAME.1] {
+        let mut long = schema.get_field(name).expect("an identity column").clone();
+        long.set_dtype(DataType::Int64).unwrap();
+        schema.set_field(name, long).unwrap();
+    }
+    let digest_at = schema
+        .index_of(yggdryl::CURRHASHCODE_TAG_NAME.1)
+        .expect("a currhashcode column");
+    let place_at = schema
+        .index_of(yggdryl::SEQNUM_TAG_NAME.1)
+        .expect("a seqnum column");
+    let fixed = fix_schema(&registry, "fix").unwrap();
+    let row = message.into_row(&fixed).unwrap();
+    let cells = |digest: Scalar, place: Scalar| {
+        Scalar::from_sequence(row.as_sequence().expect("a row").iter().enumerate().map(
+            |(index, cell)| match index {
+                index if index == digest_at => digest.clone(),
+                index if index == place_at => place.clone(),
+                _ => cell.clone(),
+            },
+        ))
+    };
+
+    let read = FixMsg::from_row(
+        Arc::clone(&registry),
+        &schema,
+        &cells(Scalar::from(-1_i64), Scalar::from(0_i64)),
+    )
+    .unwrap();
+    assert_eq!(read.get_currhashcode(), u64::MAX);
+
+    let error = FixMsg::from_row(
+        Arc::clone(&registry),
+        &schema,
+        &cells(Scalar::from(-1_i64), Scalar::from(-1_i64)),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("$.seqnum"), "{error}");
 }

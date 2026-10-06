@@ -362,6 +362,10 @@ impl IOMedia for Table {
         IOMedia::record_options(self.as_media())
     }
 
+    fn merge_by(&self) -> Result<crate::Selector> {
+        IOMedia::merge_by(self.as_media())
+    }
+
     #[cfg(feature = "parquet")]
     fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
         IOMedia::read_parquet_statistics(self.as_media())

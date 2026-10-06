@@ -24,10 +24,10 @@ An enum is not a [code](../codes/index.md). A code is an identity over a publish
 
 | Page | Vocabulary | Members | Storage | Arrow extension |
 | --- | --- | ---: | --- | --- |
-| [State](state.md) | What state one thing is in, from asked for to ended, over FIX and a scheduler | 61 | `uint16` | `yggdryl.state` |
+| [State](state.md) | What state one thing is in, from asked for to ended, over FIX and a scheduler | 62 | `uint16` | `yggdryl.state` |
 | [MarketDataKind](marketdatakind.md) | What kind of market data an element is: FIX's MsgCat code set | 26 | `uint8` | `yggdryl.marketdatakind` |
 | [MarketDataType](marketdatatype.md) | What type of its kind a market element is: FIX's `OrdType(40)`, `QuoteType(537)`, `TrdType(828)`, `MDEntryType(269)`, `TradeReportType(856)`, `QuoteRequestType(303)`, `MassCancelRequestType(530)` and `SubscriptionRequestType(263)` values | 118 | `uint16` | `yggdryl.marketdatatype` |
-| [Side](side.md) | Which side of the market a trade took: FIX `Side(54)` | 18 | `uint8` | `yggdryl.side` |
+| [Side](side.md) | Which side of the market a trade took: FIX `Side(54)`, and both sides at once | 19 | `uint8` | `yggdryl.side` |
 | [TimeInForce](timeinforce.md) | How long an order stands: FIX `TimeInForce(59)` | 15 | `uint8` | `yggdryl.timeinforce` |
 
 ## A spelling reads by its words
@@ -71,7 +71,7 @@ Every enum reads a spelling its exact vocabularies - the stored name, a wire cod
 
 ## Enum facts in the bindings
 
-One rule for every enum value a binding answers, wherever it comes from - a `Scalar`, a column read back, or a getter answering an enum fact: `state`, `side`, `marketdatakind` and `marketdatatype` on every [market data](../../graph/market-data.md) leaf, `timeinforce` on every [operation](../../graph/operation.md), and a [FIX message](../../fix/message.md)'s `msgcat`, `marketdatatype` and `timeinforce`. Python answers the member of the enum's `IntEnum` - `yggdryl.State`, `yggdryl.MarketDataKind`, `yggdryl.MarketDataType`, `yggdryl.Side`, `yggdryl.TimeInForce` - which is the code it stores and renders as its name. JavaScript answers the member's name, and the frozen object of the same name maps it to the code a column stores. Either binding takes a member, its code or any spelling the enum reads wherever it takes one.
+One rule for every enum value a binding answers, wherever it comes from - a `Scalar`, a column read back, or a getter answering an enum fact: `state`, `side`, `marketdatakind` and `marketdatatype` on every [market data](../../graph/market-data.md) leaf, `timeinforce` on every [operation](../../graph/operation.md), and a [FIX message](../../fix/message.md)'s `marketdatakind`, `marketdatatype` and `timeinforce`. Python answers the member of the enum's `IntEnum` - `yggdryl.State`, `yggdryl.MarketDataKind`, `yggdryl.MarketDataType`, `yggdryl.Side`, `yggdryl.TimeInForce` - which is the code it stores and renders as its name. JavaScript answers the member's name, and the frozen object of the same name maps it to the code a column stores. Either binding takes a member, its code or any spelling the enum reads wherever it takes one.
 
 === "Rust"
 

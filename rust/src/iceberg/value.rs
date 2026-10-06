@@ -225,44 +225,40 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
 /// widths are checked here before delegating. A malformed external bound is
 /// unknown rather than a synthetic value a planner could prune against.
 fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
-    let primitive = match dtype {
-        DataType::Boolean if matches!(bytes, [0] | [1]) => OfficialPrimitiveType::Boolean,
-        held if (matches!(held, DataType::Int32) || held.is_enum()) && bytes.len() == 4 => {
-            OfficialPrimitiveType::Int
+    // Which types have a bound is `is_portable`'s word, the primitive is
+    // the one mapping's spelled the official way, and only the wire width
+    // a bound is read at is this reader's own: a decimal's bound stays
+    // unknown, as it always has, so the pruner declines rather than
+    // trusting a bound whose encoding two writers may spell apart.
+    if !is_portable(dtype) {
+        return None;
+    }
+    let primitive = super::PrimitiveType::from_dtype(dtype)
+        .ok()?
+        .into_official()
+        .ok()?;
+    let well_formed = match &primitive {
+        OfficialPrimitiveType::Boolean => matches!(bytes, [0] | [1]),
+        OfficialPrimitiveType::Int | OfficialPrimitiveType::Date | OfficialPrimitiveType::Float => {
+            bytes.len() == 4
         }
-        DataType::Date32 if bytes.len() == 4 => OfficialPrimitiveType::Date,
-        DataType::Int64 if matches!(bytes.len(), 4 | 8) => OfficialPrimitiveType::Long,
-        DataType::Float32 if bytes.len() == 4 => OfficialPrimitiveType::Float,
-        DataType::Float64 if matches!(bytes.len(), 4 | 8) => OfficialPrimitiveType::Double,
-        DataType::Time64(TimeUnit::Microsecond) if bytes.len() == 8 => OfficialPrimitiveType::Time,
-        DataType::DateTime64 {
-            unit: TimeUnit::Microsecond,
-            timezone,
-        } if bytes.len() == 8 && timezone.is_naive() => OfficialPrimitiveType::Timestamp,
-        DataType::DateTime64 {
-            unit: TimeUnit::Microsecond,
-            ..
-        } if bytes.len() == 8 => OfficialPrimitiveType::Timestamptz,
-        DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone,
-        } if bytes.len() == 8 && timezone.is_naive() => OfficialPrimitiveType::TimestampNs,
-        DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            ..
-        } if bytes.len() == 8 => OfficialPrimitiveType::TimestamptzNs,
-        text if is_text_string(text) => OfficialPrimitiveType::String,
-        code if code.is_code() => OfficialPrimitiveType::String,
-        DataType::Uuid => OfficialPrimitiveType::Uuid,
-        crate::bytes_dtypes!() => match dtype.bytes_parameters()?.fixed() {
-            None => OfficialPrimitiveType::Binary,
-            Some(width) if usize::try_from(width).ok() == Some(bytes.len()) => {
-                OfficialPrimitiveType::Fixed(u64::from(width))
-            }
-            Some(_) => return None,
-        },
-        _ => return None,
+        OfficialPrimitiveType::Long | OfficialPrimitiveType::Double => {
+            matches!(bytes.len(), 4 | 8)
+        }
+        OfficialPrimitiveType::Time
+        | OfficialPrimitiveType::Timestamp
+        | OfficialPrimitiveType::Timestamptz
+        | OfficialPrimitiveType::TimestampNs
+        | OfficialPrimitiveType::TimestamptzNs => bytes.len() == 8,
+        OfficialPrimitiveType::Fixed(width) => u64::try_from(bytes.len()).ok() == Some(*width),
+        OfficialPrimitiveType::String
+        | OfficialPrimitiveType::Uuid
+        | OfficialPrimitiveType::Binary => true,
+        OfficialPrimitiveType::Decimal { .. } => false,
     };
+    if !well_formed {
+        return None;
+    }
     let datum = OfficialDatum::try_from_bytes(bytes, primitive).ok()?;
     // Treat invalid external NaN bounds as unknown. A planner may use an
     // unknown bound only conservatively; admitting NaN here could prove a file

@@ -153,6 +153,15 @@ fn stated_spec(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<Option<
     spec_from_value(value, schema).map(Some)
 }
 
+/// The key a merge names: `...` (left out) and `None` name none, which the
+/// core reads as the table's own key, and anything else is a selector.
+fn merge_key_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::Selector> {
+    if value.is(value.py().Ellipsis()) {
+        return Ok(yggdryl::Selector::all());
+    }
+    crate::expression::selector_from_value(value)
+}
+
 /// The spec a handle root is created under: the one stated, else the
 /// schema's own `PARTITION:by` declaration.
 fn declared_spec(stated: Option<PartitionSpec>, schema: &CoreField) -> PyResult<PartitionSpec> {
@@ -1584,25 +1593,31 @@ impl PyIcebergTable {
     /// the files whose recorded bounds can hold an incoming key are read and
     /// rewritten - a file that is not read keeps every row it had, however
     /// coarse the statistics are - so the write costs the files it can
-    /// actually change rather than the whole table. Matching on no column at
-    /// all is a plain overwrite, because every row would then match every row.
+    /// actually change rather than the whole table.
+    ///
+    /// `merge_by` left out, or `None`, matches on the table's own key: its
+    /// identity partition columns, then the columns its schema's
+    /// `identifier-field-ids` name. A partitioned table stating no
+    /// identifier replaces the partitions the rows fall in, and an
+    /// unpartitioned one stating none is refused naming `$.merge_by`.
     ///
     /// `safe` is the cast strictness the incoming batches are held to: the
     /// default refuses a value the table's column cannot hold rather than
     /// storing a silently wrapped one.
-    #[pyo3(signature = (batches, merge_by, *, safe = true, options = None, **properties))]
+    #[pyo3(signature = (batches, merge_by = ellipsis(), *, safe = true, options = None, **properties))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
     fn merge(
         slf: &Bound<'_, Self>,
         batches: &Bound<'_, PyAny>,
-        merge_by: &Bound<'_, PyAny>,
+        merge_by: Py<PyAny>,
         safe: bool,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
+        let keys = merge_key_from_value(merge_by.bind(slf.py()))?;
         let mut base = base_mut(slf)?;
         let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
-        let keys = crate::expression::selector_from_value(merge_by)?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
         with_call_options(table, resolved, |table| {
             table
@@ -1616,24 +1631,25 @@ impl PyIcebergTable {
     ///
     /// The filters narrow which stored files the merge may touch at all, and
     /// the key bounds narrow that further, so an upsert into one partition
-    /// reads one partition. Everything else - the match rule, `safe`, the
-    /// refusal to rebase after a lost commit - is exactly
-    /// [`merge`](Self::merge).
-    #[pyo3(signature = (filters, batches, merge_by, *, safe = true, options = None, **properties))]
+    /// reads one partition. Everything else - the match rule, the table's
+    /// own key where `merge_by` is left out, `safe`, the refusal to rebase
+    /// after a lost commit - is exactly [`merge`](Self::merge).
+    #[pyo3(signature = (filters, batches, merge_by = ellipsis(), *, safe = true, options = None, **properties))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
     fn merge_where(
         slf: &Bound<'_, Self>,
         filters: Option<&Bound<'_, PyAny>>,
         batches: &Bound<'_, PyAny>,
-        merge_by: &Bound<'_, PyAny>,
+        merge_by: Py<PyAny>,
         safe: bool,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
+        let keys = merge_key_from_value(merge_by.bind(slf.py()))?;
         let mut base = base_mut(slf)?;
         let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
-        let keys = crate::expression::selector_from_value(merge_by)?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
         with_call_options(table, resolved, |table| {
             table

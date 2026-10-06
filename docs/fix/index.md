@@ -20,9 +20,9 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Lifecycle](lifecycle.md) | `FixCodec::lifecycle` and the [graph](../graph/event.md#lifecycle-walk)'s one walk: chains named by the cross code, their creation and history, twins folded, and grid snapshots across a stream |
 | [CLI](cli.md) | `yggdryl`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 
-`MsgType(35)` has a `msgcat(65016)` companion in the fixed row: the
+`MsgType(35)` has a `marketdatakind(65016)` companion in the fixed row: the
 [`MarketDataKind`](../types/enum/marketdatakind.md) member the dictionary
-files the type under, stored as its `int32` code. Each committed message
+files the type under, stored as its `uint8` code. Each committed message
 component carries its four-character `FIX:msgcat` metadata, and the builtin
 `msgcatcodeset` names every member the row may store (`UNKN=0`, `BOOK=3`,
 `EXEC=8`, `ORDR=10`, `QUOT=14`, `TRAD=21`, `ORDB=22`, and so on); the
@@ -31,7 +31,7 @@ holds. The normalized
 instrument columns are `isincode(65021)`, `forexcode(65046)`,
 `bloombergcode(65047)`, `figicode(65048)` and `miccode(65022)` - the first
 four views of the message's security identifiers, the last its market -
-beside the strike, the dictionary's own `StrikePrice(202)`; CFI remains standard `CFICode(461)`,
+beside the strike, the dictionary's own `StrikePrice(202)` (the column keeps that name; the accessor is Rust `FixMsg::strikepx`, Python `msg.strikepx`, JavaScript `msg.strikepx`, the spelling the `px`/`price` words reach `StrikePrice(202)` by); CFI remains standard `CFICode(461)`,
 and a CUSIP or a SEDOL is one more security identifier of its own type,
 in the message's `securityids`.
 
@@ -40,9 +40,9 @@ The protocol view exposes the category beside the message type: Rust
 `field.fix.msgcat`, each the four-character text. Set it with Rust
 `field.as_fix_mut().set_msgcat("ORDR")?` or the corresponding Python/JavaScript
 property. The closed category set includes `ORDR`, `QUOT`, `EXEC`, `TRAD`,
-`BOOK` and the batches `ORDB`, `QUOB`, `EXEB` and `TRDB`; `MsgType::msgcat` answers the definition's member - Rust
+`BOOK` and the batches `ORDB`, `QUOB`, `EXEB` and `TRDB`; `MsgType::marketdatakind` answers the definition's member - Rust
 `Option<MarketDataKind>`, Python the `MarketDataKind` member or `None`,
-JavaScript its name or `null` - and `FixMsg::msgcat` the message's own, which
+JavaScript its name or `null` - and `Market::marketdatakind` (Python and JavaScript `marketdatakind`) the message's own, which
 a [market data leaf](message.md#market-data) states again as its
 `marketdatakind`.
 
@@ -217,7 +217,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `field_ref` / `fieldRef` | `FIX:field` | name | scalar field reference in a definition |
 | `group` | `FIX:group` | name | group reference in a definition |
 | `msgtype` | `FIX:msgtype` | text | complete case-sensitive wire code on a message Struct |
-| `msgcat` | `FIX:msgcat` | four-character symbolic code | business-category metadata on a message definition; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat`. The crate row projects it through `msgcatcodeset` into the separate `msgcat(65016)` field, a `MarketDataKind` member |
+| `msgcat` | `FIX:msgcat` | four-character symbolic code | business-category metadata on a message definition; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat`. The crate row projects it through `msgcatcodeset` into the separate `marketdatakind(65016)` field, a `MarketDataKind` member |
 | `directions` | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults; see [Registry](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) |
 
 ## A message type is filed under one category
@@ -260,11 +260,11 @@ The committed dictionary files every standard message type under one [`MarketDat
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
-    assert_eq!(registry.msgtype("D")?.msgcat(), Some(MarketDataKind::Order));
-    assert_eq!(registry.msgtype("E")?.msgcat(), Some(MarketDataKind::OrderBatch));
-    assert_eq!(registry.msgtype("i")?.msgcat(), Some(MarketDataKind::QuoteBatch));
-    assert_eq!(registry.msgtype("DC")?.msgcat(), Some(MarketDataKind::TradeBatch));
-    assert_eq!(registry.msgtype("BU")?.msgcat(), Some(MarketDataKind::MarketStructure));
+    assert_eq!(registry.msgtype("D")?.marketdatakind(), Some(MarketDataKind::Order));
+    assert_eq!(registry.msgtype("E")?.marketdatakind(), Some(MarketDataKind::OrderBatch));
+    assert_eq!(registry.msgtype("i")?.marketdatakind(), Some(MarketDataKind::QuoteBatch));
+    assert_eq!(registry.msgtype("DC")?.marketdatakind(), Some(MarketDataKind::TradeBatch));
+    assert_eq!(registry.msgtype("BU")?.marketdatakind(), Some(MarketDataKind::MarketStructure));
     ```
 
 === "Python"
@@ -276,10 +276,10 @@ The committed dictionary files every standard message type under one [`MarketDat
     from yggdryl.fix import FixRegistry
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
-    assert registry.msgtype("D").msgcat is MarketDataKind.ORDR
-    assert registry.msgtype("E").msgcat is MarketDataKind.ORDB
-    assert registry.msgtype("i").msgcat is MarketDataKind.QUOB
-    assert registry.msgtype("AW").msgcat is MarketDataKind.POSN
+    assert registry.msgtype("D").marketdatakind is MarketDataKind.ORDR
+    assert registry.msgtype("E").marketdatakind is MarketDataKind.ORDB
+    assert registry.msgtype("i").marketdatakind is MarketDataKind.QUOB
+    assert registry.msgtype("AW").marketdatakind is MarketDataKind.POSN
     ```
 
 === "JavaScript"
@@ -290,9 +290,9 @@ The committed dictionary files every standard message type under one [`MarketDat
     const { fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-    assert.equal(registry.msgtype('D').msgcat, 'ORDR')
-    assert.equal(registry.msgtype('E').msgcat, 'ORDB')
-    assert.equal(registry.msgtype('DC').msgcat, 'TRDB')
+    assert.equal(registry.msgtype('D').marketdatakind, 'ORDR')
+    assert.equal(registry.msgtype('E').marketdatakind, 'ORDB')
+    assert.equal(registry.msgtype('DC').marketdatakind, 'TRDB')
     ```
 
 ## Identity is a tag and a name

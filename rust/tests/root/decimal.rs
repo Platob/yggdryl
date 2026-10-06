@@ -4,6 +4,33 @@ use super::typed;
 
 #[cfg(feature = "internals")]
 mod internal {
+    mod parameters {
+        //! The one narrowing of a foreign schema's decimal parameters.
+
+        use yggdryl::internals::decimal::decimal_parameters;
+
+        #[test]
+        fn a_foreign_precision_and_scale_narrow_to_the_leaf_s_widths_or_name_what_does_not_fit() {
+            // Narrowing only: what fits the widths is answered whatever
+            // `DataType::decimal` would then say of it.
+            assert_eq!(decimal_parameters(38_u32, 18_u32), Ok((38, 18)));
+            assert_eq!(decimal_parameters(0_i64, -128_i64), Ok((0, -128)));
+            let refused = decimal_parameters(256_i64, 0_i64).unwrap_err();
+            assert!(
+                refused.contains("precision fitting u8, got 256"),
+                "{refused}"
+            );
+            let refused = decimal_parameters(-1_i64, 0_i64).unwrap_err();
+            assert!(refused.contains("precision"), "{refused}");
+            assert!(refused.contains("-1"), "{refused}");
+            let refused = decimal_parameters(10_u32, 128_u32).unwrap_err();
+            assert!(refused.contains("scale fitting i8, got 128"), "{refused}");
+            // The precision is read first.
+            let refused = decimal_parameters(300_i64, 300_i64).unwrap_err();
+            assert!(refused.contains("precision"), "{refused}");
+        }
+    }
+
     mod reading {
         use yggdryl::internals::decimal::from_decimal_text;
         use yggdryl::{DataType, Scalar};

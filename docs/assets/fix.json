@@ -100,7 +100,7 @@
     "groups": 581,
     "enumFields": 2029,
     "codesets": 738,
-    "codes": 7934,
+    "codes": 7935,
     "aliases": 56,
     "alternates": 0,
     "messages": 181,
@@ -269440,21 +269440,6 @@
           "value": "1003"
         },
         {
-          "doc": "A trade report waiting on its verification.",
-          "name": "PENDING_VERIFICATION",
-          "value": "1004"
-        },
-        {
-          "doc": "An allocation asked for and not yet made.",
-          "name": "PENDING_ALLOCATION",
-          "value": "1005"
-        },
-        {
-          "doc": "A give-up or take-up waiting on its approval.",
-          "name": "PENDING_APPROVAL",
-          "value": "1006"
-        },
-        {
           "doc": "Accepted, not yet working: FIX `AcceptedForBidding`, an accepted trade report, quote or mass action.",
           "name": "ACCEPTED",
           "value": "2000"
@@ -269533,6 +269518,21 @@
           "doc": "A trade held before clearing.",
           "name": "TRADE_IN_CLEARING_HOLD",
           "value": "4005"
+        },
+        {
+          "doc": "A trade report accepted, its verification outstanding.",
+          "name": "PENDING_VERIFICATION",
+          "value": "4006"
+        },
+        {
+          "doc": "An allocation acknowledged, the allocation itself outstanding.",
+          "name": "PENDING_ALLOCATION",
+          "value": "4007"
+        },
+        {
+          "doc": "A give-up or take-up acknowledged, its approval outstanding.",
+          "name": "PENDING_APPROVAL",
+          "value": "4008"
         },
         {
           "doc": "Halted by its owner.",
@@ -269663,6 +269663,11 @@
           "doc": "An allocation claimed.",
           "name": "CLAIMED",
           "value": "8012"
+        },
+        {
+          "doc": "Approved: a give-up or take-up its counterparty approved, or anything else that waited on an approval.",
+          "name": "APPROVED",
+          "value": "8013"
         },
         {
           "doc": "Cancelled by someone.",
@@ -279729,6 +279734,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "ORDLIMIT",
         "price": "10.5",
         "stoppx": null,
@@ -280056,6 +280062,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "FILLED",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UNKN",
         "price": null,
         "stoppx": null,
@@ -280466,6 +280473,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UNKN",
         "price": "41.25",
         "stoppx": null,
@@ -283401,6 +283409,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
+        "marketdatakind": "BOOK",
         "marketdatatype": "UNKN",
         "price": null,
         "stoppx": null,
@@ -283702,6 +283711,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "ACTIVE",
+        "marketdatakind": "QUOT",
         "marketdatatype": "UNKN",
         "price": null,
         "stoppx": null,
@@ -283710,7 +283720,7 @@
         "displayqty": null,
         "hiddenqty": null,
         "unit": "",
-        "side": "UNKN",
+        "side": "BOTH",
         "securityids": {},
         "isincode": null,
         "cficode": null,
@@ -283937,6 +283947,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
+        "marketdatakind": "SESS",
         "marketdatatype": "UNKN",
         "price": null,
         "stoppx": null,
@@ -284105,6 +284116,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
+        "marketdatakind": "SESS",
         "marketdatatype": "UNKN",
         "price": null,
         "stoppx": null,
@@ -284303,6 +284315,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "REJECTED",
+        "marketdatakind": "SESS",
         "marketdatatype": "UNKN",
         "price": null,
         "stoppx": null,
@@ -284565,6 +284578,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_REPLACE",
+        "marketdatakind": "ORDR",
         "marketdatatype": "ORDLIMIT",
         "price": "10.75",
         "stoppx": null,
@@ -284867,6 +284881,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UNKN",
         "price": "10.5",
         "stoppx": null,
@@ -285155,6 +285170,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UNKN",
         "price": null,
         "stoppx": null,
@@ -285537,6 +285553,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
+        "marketdatakind": "SECU",
         "marketdatatype": "UNKN",
         "price": null,
         "stoppx": null,
@@ -285848,6 +285865,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
+        "marketdatakind": "UNKN",
         "marketdatatype": "UNKN",
         "price": "41.25",
         "stoppx": null,
@@ -286071,6 +286089,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UNKN",
         "price": null,
         "stoppx": null,
@@ -286283,6 +286302,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UNKN",
         "price": null,
         "stoppx": null,
@@ -286486,6 +286506,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UNKN",
         "price": null,
         "stoppx": null,
@@ -286700,6 +286721,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
+        "marketdatakind": "UNKN",
         "marketdatatype": "UNKN",
         "price": null,
         "stoppx": null,
@@ -286929,6 +286951,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UNKN",
         "price": "10.5",
         "stoppx": null,

@@ -7,11 +7,16 @@ import {
   type BytesField,
   type BigDecimalField,
   type BbgField,
+  type BicField,
   type CcyField,
   type DecimalField,
   type DecimalWidthField,
+  type DtiField,
+  type ElfField,
   type FigiField,
+  type FisnField,
   type ForexField,
+  type LeiField,
   type MarketDataKindField,
   type SideField,
   type FixedAsciiField,
@@ -120,6 +125,21 @@ const ricId: 'ric' = ric.dtype.id
 const ricKind: 'code' = ric.dtype.kind
 // A RIC has no neutral member, so a default is what a nullable column holds.
 const nullableRic: string | null = fields.ric('ric').defaultJSValue()
+// The reference-data codes are codes too, each its own identifier.
+const lei: LeiField = fields.lei('lei', { nullable: false })
+const leiId: 'lei' = lei.dtype.id
+const leiKind: 'code' = lei.dtype.kind
+const bic: BicField = fields.bic('bic', { nullable: false })
+const bicId: 'bic' = bic.dtype.id
+const elf: ElfField = fields.elf('elf', { nullable: false })
+const elfId: 'elf' = elf.dtype.id
+const dti: DtiField = fields.dti('dti', { nullable: false })
+const dtiId: 'dti' = dti.dtype.id
+const fisn: FisnField = fields.fisn('fisn', { nullable: false })
+const fisnId: 'fisn' = fisn.dtype.id
+const fisnKind: 'code' = fisn.dtype.kind
+const nullableLei: string | null = fields.lei('lei').defaultJSValue()
+void [lei, leiId, leiKind, bic, bicId, elf, elfId, dti, dtiId, fisn, fisnId, fisnKind, nullableLei]
 const note: AsciiField = fields.ascii('note', { nullable: false })
 const noteId: 'ascii' = note.dtype.id
 const noteKind: 'text' = note.dtype.kind

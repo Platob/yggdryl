@@ -14,13 +14,13 @@ run; its `parse_*` readers turn captured bytes into `FixMsg` values - a market
 event (identity, clocks, state, side, price...) over a content row typed by the
 dictionary. Every message projects onto one fixed row, `fix_schema(registry)`,
 decided from the dictionary alone, so a whole capture streams as Arrow batches.
-Each message states its `msgcat` - the `MarketDataKind` its type files under
+Each message states its `marketdatakind` - the `MarketDataKind` its type files under
 (`ORDR`, `QUOT`, `EXEC`, `TRAD`, `BOOK`, the batches `ORDB`, `QUOB`, `TRDB`,
 ...) - and the parse splits what it reports once: an execution report is its
 order's report (`ORDR`, `QUOT` naming a `QuoteID`), a filling one adds its
 `EXEC` message, a trade one execution per side, a batch one message per
 entry. A quote is one message holding both its legs. A lifecycle chains
-within one `msgcat`, so a fill never follows its order.
+within one `marketdatakind`, so a fill never follows its order.
 
 Hold two speeds apart. **Decoding is per message**: each frame is parsed on its
 own, in parallel (`threads`), answers in input order, and never reads another
@@ -29,7 +29,7 @@ order, so a report and the execution split off it are places 0 and 1.
 **Lifecycle is the only cross-message stage**: `lifecycle` collects a finite
 capture, sorts it by event time, folds duplicate deliveries, places each
 message by content among the messages of its instant (a content repeated
-there keeps its place), chains it to the live one of its order within its own `msgcat` (`crossuuid`,
+there keeps its place), chains it to the live one of its order within its own `marketdatakind` (`crossuuid`,
 `prevuuid`; an order and an execution under one cross code are two chains), takes every bridge `metadata` key of the chain it does not state
 and the ids its dictionary follows, each with its parents, and learns instrument associations.
 Nothing chains unasked.
@@ -63,7 +63,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | decode text-reader lines | `codec.parse_text_lines(lines)` | `codec.parse_text_lines(lines)` | `codec.parseTextLines(lines)` |
 | a capture's batches to FIX rows | `codec.parse_text_arrow_reader(reader)?` | `codec.parse_text_arrow_reader(reader)` | `codec.parseTextArrowReader(reader)` |
 | read a fact | `msg.by_tag(55)?`, `by_name`, `by_path`, `header()`, `get_side()` | `msg.by_tag(55)`, `by_path(...)`, `header()`, `msg.side` | `msg.byTag(55)`, `byPath(...)`, `header()`, `msg.side` |
-| the category, the strike | `msg.msgcat()`, `msg.strikeprice()` | `msg.msgcat`, `msg.strikeprice` | `msg.msgcat`, `msg.strikeprice` |
+| the category, the strike | `msg.marketdatakind()` (`Market`), `msg.strikepx()` | `msg.marketdatakind`, `msg.strikepx` | `msg.marketdatakind`, `msg.strikepx` |
 | the type, how long it stands | `msg.get_marketdatatype()`, `msg.get_timeinforce()` (`Operation`) | `msg.marketdatatype`, `msg.timeinforce` (the `IntEnum` members) | `msg.marketdatatype`, `msg.timeinforce` (the member names) |
 | the parents of an identifier | `registry.parents_of(&IdType::ClOrdId)`, `parent_of(&kind)`, `parent_sources()`; `field.as_fix_mut().set_parents(..)?` | `registry.parents_of("clordid")`, `parent_of("origclordid")`, `field.fix.parents` | `registry.parentsOf('clordid')`, `parentOf('origclordid')`, `field.fix.parents` |
 | a venue's own values onto members | `field.as_fix_mut().set_marketdatatypes(..)?`, `set_timeinforces(&[("D", TimeInForce::Day)])?`; `registry.marketdatatype_of(tag, wire)`, `timeinforce_of(tag, wire)` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [("D", "DAY")]`; `registry.marketdatatype_of`, `timeinforce_of` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [{ wire: 'D', timeinforce: 'DAY' }]`; `registry.marketdatatypeOf`, `timeinforceOf` |
@@ -145,15 +145,17 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    `fix_column_of(&schema, 35)` in Rust. Columns are the dictionary's folded
    names; the tag stays on each column's `FIX:tag`. Two captures under one
    dictionary share one schema exactly.
-9. A capture's own columns (`url`, `rownum`, a `thread` of your own...) follow the
+9. A capture's own columns (`url`, `rownum`, `loglevel`, a `thread` of your own...) follow the
    element, event, market and operation columns every row opens with; a column named after a FIX field fills that field where the frame
    stated none; `beginstring` and `msgdirection` columns are per-row
    parameters. An `mtime` capture dates the line - its messages' `recdunix`
    and the sending clock of any stating no `SendingTime(52)` - read under the
    text options' `timezone`; a `timestamp` capture of your own dates nothing.
    `ULBRIDGE_ROWHEADER` captures `mtime`, so it dates every line it matches
-   (set `timezone` to the bridge's local zone); the thread that wrote a
-   line and the level it was logged at are matched and lifted into no column.
+   (set `timezone` to the bridge's local zone), and `msgthreadid` and
+   `loglevel`, the capture's own columns: on the text row, carried in front
+   of a FIX row, filling no field. Hand the codec `options.capture_names`
+   rather than a spelled list: a line answers its captures by position.
 10. Store and reload a dictionary through `commit`/`from_handle` (or `yggdryl fix`).
     `commit` writes only documents that changed, prunes what no definition
     holds, and answers `written`/`removed`; never hand-edit the generated
@@ -236,6 +238,13 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 
 ## Pitfalls
 
+- An Iceberg table widens the two `uint64` digests to `decimal(20, 0)` unless
+  the fixed row's `currhashcode` and `crosshashcode` columns state
+  `FIELD:representation=bits` before `into_scheme_compat`: then each is a
+  `long` holding the digest's bits, written through the value door and read
+  back by `messages` as the digest. A row's `int64` digest cell is read as
+  its bits whatever its schema says; `seqnum` is a count and a negative one
+  refuses the row.
 - An alias stating another value than its field is **not** a second child: it
   is an anomaly kept in `msg.metadata` (never on the wire), and one stating
   the same value leaves nothing. Bridge spellings the dictionary names are
@@ -300,7 +309,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   44...), the market facts (`side`, `price`...) and the crate's own columns are
   typed, but every other key is unmapped - it lands in `metadata` under its raw
   spelling: no code names, no groups, no `fixentries`.
-- A message's `crosscode` is stored `{kind}:{side}:{base}` - `msgcat` code, side
+- A message's `crosscode` is stored `{kind}:{side}:{base}` - `marketdatakind` code, side
   code, then the code as the message names it: an order `A1` buying is
   `10:1:A1`, an execution `8:1:E-1`, a quote `14:0:Q1` whatever side it
   states. Only an order or an execution states its side there; every other
@@ -380,8 +389,10 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   registry- or caller-derived code reads back stated). Write `securityids` for
   a round trip that keeps sources.
 - Instrument learning is the lifecycle's, never the parse's: each walk learns
-  every message's ISIN - the one key - CFI code, country of issue, market,
-  ticker, currency, pair and security codes into an `IsinRegistry`, a valid
+  every message's ISIN - the one key - CFI code, country of issue, the
+  underlying it is written on (`UnderlyingSecurityID(309)`, a bridge's
+  `UnderlyingISIN`; lifted into no `securityids`), market, ticker, currency,
+  pair and security codes into an `IsinRegistry`, a valid
   stated value filling and replacing whatever the time, and fills what later
   messages of that instrument leave unsaid - `derived` identifiers, the
   ticker, the CFI code and the currency as market facts - never the wire,

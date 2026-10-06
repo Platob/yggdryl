@@ -68,7 +68,8 @@ assert_eq!(order.get_curruuid(), Uuid::from_v8(u128::from(order.get_currhashcode
 let event: OrderEvent = order.at(T);
 assert!(!event.is_after(&event));
 
-// A two-sided quote: its bid and ask are its two legs, and it tags no side.
+// A two-sided quote: its bid and ask are its two legs, and tagging neither it
+// holds both sides, `BOTH`.
 let mut quote = QuoteEvent::at(T);
 quote.set_crosscode("Q-7".to_owned());
 quote.set_ticker(Some("AAPL".into()), true);
@@ -79,7 +80,7 @@ quote.set_askpx(Some("189.52".parse()?), true);
 quote.set_askqty(Some(Decimal::from_int(100)), true);
 quote.set_askccy(Some(Ccy::new("USD")?), true);
 quote.finalize();
-assert_eq!((quote.get_side(), quote.get_crosscode()), (Side::Unknown, "14:0:Q-7"));
+assert_eq!((quote.get_side(), quote.get_crosscode()), (Side::Both, "14:0:Q-7"));
 assert_eq!(quote.kind().marketdatakind(), MarketDataKind::Quotation);
 
 // An offer: tagged `SELL`, its price is its ask leg; a quote's code stays under side 0.
@@ -463,10 +464,12 @@ assert!(BookIterator::new([undated].into_iter(), 0)?.next().expect("one result")
 ## Read a book
 
 A complete book answers each side as its `limits` (one per price, best
-first, the unpriced market level last) and its entries as `alive_on(side)`;
-every book answers the readings of the first level that can trade:
-`best_price`, `best_quantity`, the `bidpx`/`askpx` it states, `spread`; a
-complete one `depth` and `imbalance` too. A book built by hand is complete.
+first, the unpriced market level last) and its entries as `alive_on(side)`,
+the orders resting as `ordlive`; every book answers the readings of the first
+level that can trade: `best_price`, `best_quantity`, the `bidpx`/`askpx` it
+states, `spread`; a complete one `depth` and `imbalance` too. Its deltas read
+by kind as `orddelta`, `quotes` and `executions`, which partition them. A
+book built by hand is complete.
 
 ```rust
 use yggdryl::graph::{BookEvent, Element, Market, MarketData, Operation, OrderEvent};
@@ -514,6 +517,10 @@ assert!(book.is_complete());
 assert_eq!((book.alive().count(), book.alive_on(Side::Buy).len(), book.alive_on(Side::Sell).len()), (5, 4, 1));
 // The deltas are the five orders, in the order applied.
 assert_eq!(book.deltas().map(Element::get_crosscode).collect::<Vec<_>>(), ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:2:A-1", "10:1:MKT"]);
+// By kind: the orders resting in book order - the bids best first and the
+// market order last, then the offer - and every delta an order.
+assert_eq!(book.ordlive().map(Element::get_crosscode).collect::<Vec<_>>(), ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:1:MKT", "10:2:A-1"]);
+assert_eq!((book.orddelta().count(), book.quotes().count(), book.executions().count()), (book.deltas().len(), 0, 0));
 ```
 
 ## Replace a scope with a snapshot
@@ -603,7 +610,8 @@ assert_eq!(rows(MarketData::apply_view(&lifecycle, &[], stream()?)?.collect::<Re
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `book_arrow_reader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries, a trade entry (`269=2`) recorded as the
+execution it is - and
 `MarketData::from_arrow_reader` reads the books back. A `W` full refresh is a
 snapshot input, so its book is complete; the `X` after it states its delta.
 
@@ -802,8 +810,9 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
   `Result<BookEvent>`; `with_filter(filter)` binds an expression over the
   `marketdata` row once, refusing a column the row does not carry. An `Err`
   item is a source's own failure or a value no book folds (an undated order, a
-  `BookEvent`); every input `MarketDataKind::is_booked` refuses - an
-  execution, a trade, a batch - is pruned in silence. An operation dated before
+  `BookEvent`); an execution is recorded among its book's deltas, and every
+  input `MarketDataKind::is_recorded` refuses - a trade, a batch - is pruned
+  in silence. An operation dated before
   its book and a group the book refuses are left out with a `log` warning, and
   an order or a quote resting on neither side is placed nowhere with one, yet
   still counts as the book's delta.

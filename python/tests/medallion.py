@@ -42,7 +42,7 @@ from collections.abc import Iterable
 from typing import Any
 
 import yggdryl
-from yggdryl import Catalog, Field, IOBase, IOResult, Table, TextOptions
+from yggdryl import Catalog, Field, IOBase, IOResult, IsinRegistry, Table, TextOptions
 from yggdryl.fix import ULBRIDGE_ROWHEADER, FixCodec, FixRegistry
 from yggdryl.graph import MarketData
 from yggdryl.iceberg import IcebergCatalog
@@ -150,6 +150,29 @@ def stored_rows(table: Table, start: dt.datetime, end: dt.datetime) -> yggdryl.S
     return table.read_serie(select="* exclude (partunix)", filter=window_filter(start, end))
 
 
+def instruments(silver: Catalog) -> IsinRegistry:
+    """The registry of the instruments the pipeline meets, bound to
+    `silver.record_keeping.instruments`: the table opened as it is or created
+    from the registry's own row, unpartitioned, so the registry loads what an
+    earlier run committed and commits what this run's lifecycle learns. Hand
+    it to the codec (`FixCodec(..., isin_registry=...)`) and commit it after
+    the lifecycle stage (`commit_instruments`)."""
+    namespace = silver.namespaces.open_or_create(NAMESPACE)
+    row = yggdryl.iceberg.assign_field_ids(
+        unnumbered(IsinRegistry.field().into_scheme_compat("iceberg"))
+    )
+    table = namespace.tables.open_or_create("instruments", row, **TABLE_PROPERTIES)
+    return IsinRegistry.from_url(table.url)
+
+
+def commit_instruments(registry: IsinRegistry) -> IOResult:
+    """What the lifecycle learned of the instruments it met, to the table the
+    registry is bound to - `silver.record_keeping.instruments` - as one
+    snapshot replacing every row, only where the registry moved: a run that
+    learned nothing new writes nothing."""
+    return registry.commit()
+
+
 def parse_log_messages(
     bronze: Catalog,
     logs: IOBase | str,
@@ -231,6 +254,7 @@ def parse_executions(silver: Catalog, start: dt.datetime, end: dt.datetime) -> I
 STAGES = (
     "log_messages",
     "fix_messages",
+    "instruments",
     "books",
     "orders",
     "quotes",
@@ -247,22 +271,33 @@ def run(
     end: dt.datetime,
 ) -> dict[str, IOResult]:
     """Every stage over one window, in the diagram's order: what each wrote,
-    keyed by the stage's target table under its catalog."""
-    return {
+    keyed by the stage's target table under its catalog. The codec's own
+    registry, where it holds one bound to a table (`instruments`), is
+    committed right after the lifecycle that learned into it."""
+    written = {
         "bronze.log_messages": parse_log_messages(bronze, logs, start, end),
         "bronze.fix_messages": parse_fix_messages_raw(bronze, codec, start, end),
         "silver.fix_messages": parse_fix_messages_refined(bronze, silver, codec, start, end),
-        "silver.books": parse_books(silver, codec, start, end),
-        "silver.orders": parse_orders(silver, start, end),
-        "silver.quotes": parse_quotes(silver, start, end),
-        "silver.executions": parse_executions(silver, start, end),
     }
+    registry = codec.isin_registry
+    if registry is not None:
+        written["silver.instruments"] = commit_instruments(registry)
+    written.update(
+        {
+            "silver.books": parse_books(silver, codec, start, end),
+            "silver.orders": parse_orders(silver, start, end),
+            "silver.quotes": parse_quotes(silver, start, end),
+            "silver.executions": parse_executions(silver, start, end),
+        }
+    )
+    return written
 
 
 STAGES_OF = {
     "bronze.log_messages": lambda bronze, silver, codec, logs, start, end: parse_log_messages(bronze, logs, start, end),
     "bronze.fix_messages": lambda bronze, silver, codec, logs, start, end: parse_fix_messages_raw(bronze, codec, start, end),
     "silver.fix_messages": lambda bronze, silver, codec, logs, start, end: parse_fix_messages_refined(bronze, silver, codec, start, end),
+    "silver.instruments": lambda bronze, silver, codec, logs, start, end: commit_instruments(codec.isin_registry),
     "silver.books": lambda bronze, silver, codec, logs, start, end: parse_books(silver, codec, start, end),
     "silver.orders": lambda bronze, silver, codec, logs, start, end: parse_orders(silver, start, end),
     "silver.quotes": lambda bronze, silver, codec, logs, start, end: parse_quotes(silver, start, end),

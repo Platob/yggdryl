@@ -613,8 +613,19 @@ impl MarketFacts {
     /// element states its side as a tag over the legs it holds, so moving
     /// the tag withdraws no leg ([`Self::tag_moved`]). Then the side it
     /// takes quotes the price and quantity where it states none, and they
-    /// fill from what that side quotes.
+    /// fill from what that side quotes. A book's side moves nothing but its
+    /// cross code's prefix: its legs are its sides' best levels, which the
+    /// book settles.
     fn side_moved(&mut self, before: Side) {
+        // A book's legs are its sides' best levels, which the book settles:
+        // its side, `BOTH`, quotes and moves nothing. A book message's entry
+        // passes through this kind before it is refiled as the quote it is,
+        // and the side it tags quotes its price onto that leg as any tag
+        // does.
+        if self.kind == MarketDataKind::Book && self.side == Side::Both {
+            self.reprefix();
+            return;
+        }
         if self.kind.is_sided() {
             self.side_left(before);
         } else {

@@ -132,7 +132,7 @@ impl IOFolder for ZipNode {
     ///
     /// The archive root exists exactly when the archive has bytes; every other
     /// prefix exists when a record names it or a member continues it.
-    fn folder_exists(&self) -> bool {
+    fn has_folder(&self) -> bool {
         if self.is_root() {
             return self.archive.size() > 0;
         }

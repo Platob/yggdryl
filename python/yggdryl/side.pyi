@@ -28,6 +28,7 @@ class Side(enum.IntEnum):
     LEND = 15
     BORR = 16
     SELU = 17
+    BOTH = 99
     @property
     def description(self) -> str: ...
     @property

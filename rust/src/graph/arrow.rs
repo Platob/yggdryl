@@ -73,7 +73,8 @@ use crate::serie::{
 };
 use crate::{
     ArrowCastOptions, Ccy, Cfi, CodeValue, DataType, Decimal, Error, Field, Limit, MarketDataKind,
-    Mic, Result, Serie, SerieReader, Side, State, StructType, TimeInForce, Unit, Uuid,
+    Mic, Representation, Result, Serie, SerieReader, Side, State, StructType, TimeInForce, Unit,
+    Uuid,
 };
 use crate::{IdKey, IdType, Identifier, Identifiers};
 
@@ -360,6 +361,19 @@ enum Role {
     Read,
     /// A nested operation row.
     Operation,
+    /// A nested operation row of the read root: its facts' nullability,
+    /// its digests read as bits.
+    ReadOperation,
+}
+
+impl Role {
+    /// The role of the operation rows a serie column of this struct holds.
+    const fn item(self) -> Self {
+        match self {
+            Self::Read | Self::ReadOperation => Self::ReadOperation,
+            Self::Root | Self::Operation => Self::Operation,
+        }
+    }
 }
 
 impl Column {
@@ -434,7 +448,7 @@ impl Column {
                 field
             }
             Self::Alive | Self::Deltas | Self::Executions => {
-                DataType::serie(operation_row_field()?).nullable_field(self.name())
+                DataType::serie(operation_row_field(role.item())?).nullable_field(self.name())
             }
             Self::BidLimits | Self::AskLimits => {
                 DataType::serie(Limit::field()).nullable_field(self.name())
@@ -442,6 +456,20 @@ impl Column {
         };
         if let Some(description) = self.description() {
             field.set_description(description)?;
+        }
+        // A digest reads back from whatever layout a table stored it in -
+        // its bits where that was the `long` of its width - so the read
+        // root states them at every depth and the one cast shares the
+        // buffer.
+        if matches!(role, Role::Read | Role::ReadOperation)
+            && matches!(
+                self,
+                Self::Element(ElementColumn::CurrHashCode | ElementColumn::CrossHashCode)
+            )
+        {
+            field
+                .as_field_properties_mut()
+                .set_representation(Representation::Bits)?;
         }
         // A root states only what its leaf does, so every identity, clock
         // and nested column may be null there; a nested row's own columns
@@ -563,9 +591,11 @@ fn struct_field(name: &str, columns: &[Column], role: Role, nullable: bool) -> R
     ))
 }
 
-/// The item of `alive`, `deltas` and `executions`: one dated operation.
-fn operation_row_field() -> Result<Field> {
-    struct_field(OPERATION_ROW, &operation_columns(), Role::Operation, false)
+/// The item of `alive`, `deltas` and `executions`: one dated operation,
+/// built for `role` - [`Role::Operation`], or [`Role::ReadOperation`] under
+/// the read root.
+fn operation_row_field(role: Role) -> Result<Field> {
+    struct_field(OPERATION_ROW, &operation_columns(), role, false)
 }
 
 /// Whether a market column holds a decimal: every price and quantity.
@@ -695,7 +725,7 @@ impl<'a> Row<'a> {
             // A message is written as the leaves it splits into, at the
             // writer's intake; held whole, it states its own category.
             MarketData::Fix(message) => Self {
-                marketdatakind: message.msgcat(),
+                marketdatakind: message.marketdatakind(),
                 ..Self::operation(kind, message.as_ref(), None)
             },
         }
@@ -2638,8 +2668,9 @@ impl Landed {
         self.read_event(row, &mut event, &mut claims);
         self.read_market(row, &mut event, path, Lift::Security)?;
         self.read_crosscode(row, &mut event);
-        // A book holds no execution: a row stating one is not a book this
-        // crate wrote, and an empty or null cell states none.
+        // A book's row states no `executions` - a trade's column, its own
+        // executions being among its deltas: a row stating one is not a book
+        // this crate wrote, and an empty or null cell states none.
         if let Some(held) = self
             .executions
             .as_ref()

@@ -183,6 +183,14 @@ def _book_alive_on() -> int:
     return len(FOLD_BOOK.alive_on(Side.BUYS))
 
 
+def _book_ordlive() -> int:
+    return len(FOLD_BOOK.ordlive)
+
+
+def _book_orddelta() -> int:
+    return len(FOLD_BOOK.orddelta)
+
+
 def _book_depth() -> object:
     return FOLD_BOOK.depth(Side.BUYS, 10)
 
@@ -280,6 +288,8 @@ def main() -> None:
         _measure("book from_arrow_reader", _book_from_arrow_reader, folds)
         _measure(f"book limits/{count}", _book_limits, folds)
         _measure(f"book alive_on/{count}", _book_alive_on, folds)
+        _measure(f"book ordlive/{count}", _book_ordlive, folds)
+        _measure(f"book orddelta/{count}", _book_orddelta, folds)
         _measure("book depth/10", _book_depth, args.iterations)
         _measure("book imbalance/10", _book_imbalance, args.iterations)
         _measure(f"identifiers from_dict/{len(IDENTIFIERS)}", _identifiers_from_dict, args.iterations)

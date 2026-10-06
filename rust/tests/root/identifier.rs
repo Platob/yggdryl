@@ -546,6 +546,13 @@ fn a_key_that_names_no_identifier_or_another_instruments_security_is_none() {
             "{key:?} names another instrument"
         );
     }
+    // A vendor's source spelling names a type of this instrument's own.
+    assert_eq!(
+        Identifier::from_key("X-SWX-VALOR", "1221405")
+            .expect("a Valor number")
+            .to_string(),
+        "valor=1221405"
+    );
     // Only a security type is refused there: an order identifier a leg or a
     // counterparty states is one of the element's own.
     assert_eq!(

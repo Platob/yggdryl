@@ -120,9 +120,10 @@ impl LocalPath {
         self.url.clone().into_path()
     }
 
-    /// Return whether the location exists yet.
+    /// Return whether anything is at the location yet - a glob whether its
+    /// pattern selects an entry.
     pub fn exists(&self) -> bool {
-        self.url.exists()
+        self.path_exists()
     }
 
     /// Treat this location as a directory, whether or not it exists yet.

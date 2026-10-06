@@ -79,6 +79,8 @@ def test_a_name_no_key_spells_is_read_for_the_identifier_name_it_ends_with() -> 
     assert read("ISINCode", "US0378331005") == "isin=US0378331005"
     assert read("security_cusip", "037833100") == "cusip=037833100"
     assert read("firm.isin", "us0378331005") == "firm:isin=US0378331005"
+    assert read("X-SWX-VALOR", "1221405") == "valor=1221405", "a vendor's source spelling"
+    assert read("OMS_SIXSymbol", "HOLN") == "oms:exchsymb=HOLN"
     for key in ("underlyingisin", "legisin", "transversalkey", "symbol", ""):
         assert Identifier.from_key(key, "US0378331005") is None, key
     assert Identifier.from_key("ClOrdID", "null") is None

@@ -385,6 +385,42 @@ mod columns {
                 ]),
             ),
             (
+                Field::new("lei", DataType::Lei, true),
+                Scalar::from_sequence([
+                    Scalar::from("HWUPKR0MPOU8FGXBT394"),
+                    Scalar::from("hwupkr0mpou8fgxbt395"),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("bic", DataType::Bic, true),
+                Scalar::from_sequence([
+                    Scalar::from("DEUTDEFF500"),
+                    Scalar::from("deutdeff"),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("elf", DataType::Elf, true),
+                Scalar::from_sequence([Scalar::from("8888"), Scalar::from("2hbr"), Scalar::Null]),
+            ),
+            (
+                Field::new("dti", DataType::Dti, true),
+                Scalar::from_sequence([
+                    Scalar::from("X9J9K872S"),
+                    Scalar::from("x9j9k872t"),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("fisn", DataType::Fisn, true),
+                Scalar::from_sequence([
+                    Scalar::from("ACME CORP/SH"),
+                    Scalar::from("acme corp/amort pn w/p/c"),
+                    Scalar::Null,
+                ]),
+            ),
+            (
                 Field::new("uuid", DataType::Uuid, true),
                 Scalar::from_sequence([
                     DataType::uuid()

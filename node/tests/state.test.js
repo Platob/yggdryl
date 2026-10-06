@@ -17,6 +17,12 @@ test('State is the core enum, member for member, in code order', () => {
   assert.equal(State.NEW, 2001)
   assert.equal(State.PARTIALLY_FILLED, 4001)
   assert.equal(State.EXPIRED, 9500)
+  // A thing acknowledged and awaiting its next step works; an approval ends
+  // one.
+  assert.equal(State.PENDING_VERIFICATION, 4006)
+  assert.equal(State.PENDING_ALLOCATION, 4007)
+  assert.equal(State.PENDING_APPROVAL, 4008)
+  assert.equal(State.APPROVED, 8013)
   assert.equal('_stateMembersNative' in require('yggdryl'), false)
 })
 

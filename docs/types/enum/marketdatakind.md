@@ -12,7 +12,7 @@ What kind of market data an element is: FIX's MsgCat code set as an enum of twen
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | An integer that is the code of no member, naming the code; a spelling that names no kind, naming the spelling |
 | Stores | `uint8` under `yggdryl.marketdatakind`: the MsgCat value itself |
-| Owner | The one owner of the MsgCat set: a FIX dictionary's `FIX:msgcat` resolves to a member by its four-letter code, the crate's `msgcatcodeset` renders from `MarketDataKind::ALL`, and a [FIX message](../../fix/message.md)'s `msgcat` and a market data row's `marketdatakind` both state a member; and of the [sided rule](#sided-kinds-and-batches) - which kinds state their side in their stored cross code, `{kind}:{side}:{base}`, whose first number is the kind's `code` |
+| Owner | The one owner of the MsgCat set: a FIX dictionary's `FIX:msgcat` resolves to a member by its four-letter code, the crate's `msgcatcodeset` renders from `MarketDataKind::ALL`, and a [FIX message](../../fix/message.md)'s `marketdatakind` and a market data row's `marketdatakind` both state a member; and of the [sided rule](#sided-kinds-and-batches) - which kinds state their side in their stored cross code, `{kind}:{side}:{base}`, whose first number is the kind's `code` |
 
 A reader tells the leaves of market data apart by one column every FIX engine already speaks: an order is `ORDR`, a quote `QUOT`, an execution `EXEC`, a trade `TRAD` and a book `BOOK`.
 
@@ -327,7 +327,7 @@ The code is the MsgCat value, the stored name its four-letter code, and the word
 
 ## The category of a market data leaf
 
-Every [market data](../../graph/market-data.md) leaf is filed under one member, which its `marketdatakind` column states and a leaf answers without a lookup: `MarketKind::marketdatakind` in Rust, the `marketdatakind` getter on every leaf in Python and JavaScript. A FIX message states the member its dictionary [files its message type under](../../fix/index.md#a-message-type-is-filed-under-one-category), `FixMsg::msgcat`, `UNKN` where it files none ([FIX message](../../fix/message.md)).
+Every [market data](../../graph/market-data.md) leaf is filed under one member, which its `marketdatakind` column states and a leaf answers without a lookup: `MarketKind::marketdatakind` in Rust, the `marketdatakind` getter on every leaf in Python and JavaScript. A FIX message states the member its dictionary [files its message type under](../../fix/index.md#a-message-type-is-filed-under-one-category), `Market::marketdatakind`, `UNKN` where it files none ([FIX message](../../fix/message.md)).
 
 | Leaf | Member |
 | --- | --- |

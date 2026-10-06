@@ -305,7 +305,7 @@ impl DatumCodec<'_> {
                             ),
                         )
                     })?;
-                    node_scalar(node, Scalar::decimal128(unscaled, decimal.scale as i8))?
+                    node_scalar(node, Scalar::decimal128(unscaled, decimal.scale))?
                 }
                 Node::Duration(fixed) => {
                     let (months, days, nanoseconds) =
@@ -683,7 +683,7 @@ impl DatumCodec<'_> {
                         .unsigned_abs()
                         .checked_ilog10()
                         .map_or(1, |log| log + 1);
-                    if digits > decimal.precision {
+                    if digits > u32::from(decimal.precision) {
                         return Err(invalid(format_smolstr!(
                             "expected a decimal of at most {} digits, got {unscaled}",
                             decimal.precision
@@ -1024,14 +1024,14 @@ fn convert_count(count: i64, from: TimeUnit, to: TimeUnit) -> Option<i64> {
 }
 
 /// Read a decimal's unscaled integer at the schema's scale.
-fn decimal_unscaled(value: &Scalar, scale: u32) -> Result<i128> {
+fn decimal_unscaled(value: &Scalar, scale: i8) -> Result<i128> {
     match value {
         Scalar::Decimal32(_)
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_)
         | Scalar::Decimal(_)
-        | Scalar::BigDecimal(_) => value.decimal_unscaled_at(scale as i8).ok_or_else(|| {
+        | Scalar::BigDecimal(_) => value.decimal_unscaled_at(scale).ok_or_else(|| {
             invalid(format_smolstr!(
                 "expected a decimal exactly representable at scale {scale}"
             ))
@@ -1047,11 +1047,16 @@ fn decimal_unscaled(value: &Scalar, scale: u32) -> Result<i128> {
             }
             let whole = other.as_i64().ok_or_else(|| mismatch("decimal", other))?;
             i128::from(whole)
-                .checked_mul(10_i128.checked_pow(scale).ok_or_else(|| {
-                    invalid(format_smolstr!(
-                        "expected a decimal scale below 39, got {scale}"
-                    ))
-                })?)
+                .checked_mul(
+                    u32::try_from(scale)
+                        .ok()
+                        .and_then(|scale| 10_i128.checked_pow(scale))
+                        .ok_or_else(|| {
+                            invalid(format_smolstr!(
+                                "expected a decimal scale of 0 through 38, got {scale}"
+                            ))
+                        })?,
+                )
                 .ok_or_else(|| {
                     invalid(format_smolstr!(
                         "expected a decimal fitting 38 digits, got {whole} at scale {scale}"

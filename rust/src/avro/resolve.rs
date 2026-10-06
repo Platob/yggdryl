@@ -698,7 +698,7 @@ fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Scala
                     ),
                 )
             })?;
-            super::datum::node_scalar(reader, Scalar::decimal128(unscaled, decimal.scale as i8))?
+            super::datum::node_scalar(reader, Scalar::decimal128(unscaled, decimal.scale))?
         }
         Node::Duration(_) => {
             let size = match from {
@@ -899,7 +899,7 @@ fn default_value_at(
             let bytes = default_bytes(default)?;
             let unscaled = super::datum::decimal_from_bytes(&bytes)
                 .ok_or_else(|| bad_default("decimal", default))?;
-            super::datum::node_scalar(node, Scalar::decimal128(unscaled, decimal.scale as i8))?
+            super::datum::node_scalar(node, Scalar::decimal128(unscaled, decimal.scale))?
         }
         Node::String | Node::Enum(_) => Scalar::from(SmolStr::new(
             default

@@ -761,13 +761,25 @@ fn the_strike_is_the_dictionarys_strikeprice_read_off_the_field_and_a_row_states
         .parse_fix_line(b"8=FIX.4.4|35=D|11=O|55=XAU|201=1|202=4600.5|10=0|")
         .expect("an option order");
     assert_eq!(
-        option.strikeprice(),
+        option.strikepx(),
         Some("4600.5".parse::<Decimal>().unwrap())
+    );
+    // The accessor's spelling reaches StrikePrice(202) through the
+    // `px`/`price` words; no crate field or column is named `strikepx`.
+    assert_eq!(
+        option.by_name("strikepx").unwrap(),
+        option.by_tag(202).unwrap()
+    );
+    assert_eq!(
+        registry
+            .get_field_by_name("strikepx")
+            .map(|field| field.as_fix().tag().expect("a tag reading")),
+        Some(Some(202))
     );
     let plain = codec
         .parse_fix_line(b"8=FIX.4.4|35=D|11=P|55=XAU|10=0|")
         .expect("an order");
-    assert_eq!(plain.strikeprice(), None);
+    assert_eq!(plain.strikepx(), None);
     assert!(
         plain.into_row(&schema).unwrap().as_sequence().unwrap()[at].is_null(),
         "no strike stated, none written"
@@ -788,7 +800,7 @@ fn the_strike_is_the_dictionarys_strikeprice_read_off_the_field_and_a_row_states
         Scalar::from_sequence(cells),
     )
     .expect("the row read back");
-    assert_eq!(restated.strikeprice(), Some(Decimal::from_int(4_700)));
+    assert_eq!(restated.strikepx(), Some(Decimal::from_int(4_700)));
     assert_eq!(
         restated.by_tag(202).unwrap(),
         Scalar::from(Decimal::from_int(4_700))

@@ -4237,10 +4237,10 @@ mod internal {
                 set.name()
             );
         }
-        // The crate adds MsgCat's 26 categories, the 61 states and the 118
+        // The crate adds MsgCat's 26 categories, the 62 states and the 118
         // market data types to the 735 published sets.
         assert_eq!(sets, 738, "code sets held");
-        assert_eq!(codes, 7_934, "code records");
+        assert_eq!(codes, 7_935, "code records");
     }
 
     #[test]

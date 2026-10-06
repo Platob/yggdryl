@@ -483,7 +483,10 @@ fn prepare_leaf_arrow_write(
 /// source chunk, then temporarily pass the same handle back to [`push`](Self::push)
 /// or [`finish`](Self::finish). Complete cadences publish synchronously before
 /// either method returns; [`abort`](Self::abort) drops only the unpublished
-/// remainder.
+/// remainder. A table's cadences commit through the table the session locates
+/// off the handle - a held [`IcebergTable`](crate::iceberg::IcebergTable), a
+/// warehouse table - which is closed after each one, so it lets go of the
+/// document it read and reads the commits on its next verb.
 ///
 /// This is hidden because it is a narrow runtime bridge, not another write
 /// operation. Its mode is the same public [`crate::IOMode`] accepted by the
@@ -572,6 +575,11 @@ impl ArrowWriteSession {
     }
 
     /// Start a session for one explicit write mode.
+    ///
+    /// A session meets its destination only at its first push, so the
+    /// options alone decide here and a merge naming no key is refused. A
+    /// destination with a key of its own - an Iceberg table's identifier
+    /// columns - is asked first, through `IOMedia::write_options`.
     pub fn new(mode: crate::IOMode, options: &RecordOptions) -> Result<Self> {
         use crate::media::IORecordOptions;
 
@@ -998,29 +1006,39 @@ impl ArrowWriteSession {
             // where the table is addressed whole.
             ArrowWriteTarget::Iceberg {
                 located, replaced, ..
-            } => match self.mode {
-                crate::IOMode::Overwrite => {
-                    located.overwrite_prepared(batches, replaced, self.delegated.num_threads())?;
+            } => {
+                match self.mode {
+                    crate::IOMode::Overwrite => {
+                        located.overwrite_prepared(
+                            batches,
+                            replaced,
+                            self.delegated.num_threads(),
+                        )?;
+                    }
+                    crate::IOMode::Append => {
+                        located.append_prepared(batches, self.delegated.num_threads())?;
+                    }
+                    crate::IOMode::Merge => located.merge_prepared(
+                        batches,
+                        self.delegated.merge_by(),
+                        self.delegated.safe(),
+                        replaced,
+                        self.delegated.num_threads(),
+                    )?,
+                    crate::IOMode::ReadOnly | crate::IOMode::Random => {
+                        return Err(crate::Error::InvalidRecord {
+                            path: smol_str::SmolStr::new_static("$.mode"),
+                            reason: smol_str::SmolStr::new_static(
+                                "write mode readonly or random is not supported for this operation",
+                            ),
+                        });
+                    }
                 }
-                crate::IOMode::Append => {
-                    located.append_prepared(batches, self.delegated.num_threads())?;
-                }
-                crate::IOMode::Merge => located.merge_prepared(
-                    batches,
-                    self.delegated.merge_by(),
-                    self.delegated.safe(),
-                    replaced,
-                    self.delegated.num_threads(),
-                )?,
-                crate::IOMode::ReadOnly | crate::IOMode::Random => {
-                    return Err(crate::Error::InvalidRecord {
-                        path: smol_str::SmolStr::new_static("$.mode"),
-                        reason: smol_str::SmolStr::new_static(
-                            "write mode readonly or random is not supported for this operation",
-                        ),
-                    });
-                }
-            },
+                // The commit went through the located table: closed, the
+                // handle lets go of the document its own table read, so its
+                // next verb sees it.
+                handle.close()?;
+            }
         }
         self.published = true;
         Ok(())

@@ -417,6 +417,10 @@ impl PyField {
     }
 
     /// Returns a recursively normalized field for a named compatibility target.
+    ///
+    /// An unsigned integer column stating `FIELD:representation=bits` is
+    /// exchanged as the signed integer of its width where the target names
+    /// one, and keeps the declaration.
     #[allow(clippy::wrong_self_convention)]
     fn into_scheme_compat(&self, target: &str) -> PyResult<Self> {
         let target = CoreScheme::from_str(target).map_err(value_error)?;
@@ -2127,6 +2131,17 @@ impl PyProtocolField {
         )))
     }
 
+    /// The same rule for the `FIELD:` vocabulary.
+    fn require_field_properties(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::FIELD {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "{property} is a field property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
+
     /// A transform's `by` is the argument list of its function, written
     /// beside it by the `term` setter, so it is read here and never written
     /// alone.
@@ -3084,6 +3099,38 @@ impl PyProtocolField {
             .inner
             .as_digest_mut()
             .remove_role()
+            .map_err(value_error)
+    }
+
+    /// What crosses when a same-width integer of the other signedness meets
+    /// this integer column, on the `field_properties` view: ``"bits"`` where
+    /// it states them, ``"value"`` - the default - otherwise. Assigning
+    /// ``"value"`` or ``None`` removes the declaration; ``"bits"`` on a
+    /// column that is no integer raises ``ValueError`` and changes nothing.
+    #[getter]
+    fn representation(&self, py: Python<'_>) -> PyResult<&'static str> {
+        self.require_field_properties("representation")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_field_properties()
+            .representation()
+            .as_str())
+    }
+
+    #[setter]
+    fn set_representation(&self, py: Python<'_>, representation: Option<&str>) -> PyResult<()> {
+        self.require_field_properties("representation")?;
+        let representation = representation
+            .map(yggdryl::Representation::from_str)
+            .transpose()
+            .map_err(value_error)?
+            .unwrap_or_default();
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_field_properties_mut()
+            .set_representation(representation)
             .map_err(value_error)
     }
 

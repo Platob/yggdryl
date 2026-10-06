@@ -5,8 +5,8 @@
 
 use yggdryl::IdKey;
 
-use yggdryl::graph::{Element, Market, Order, OrderEvent, Quote};
-use yggdryl::{IdType, Identifier, Identifiers};
+use yggdryl::graph::{BookEvent, Element, Market, Order, OrderEvent, Quote};
+use yggdryl::{Decimal, IdType, Identifier, Identifiers, Side};
 
 /// One security identifier of `kind` from `base`, validated by its type.
 fn id(kind: IdType, code: &str) -> Identifier {
@@ -175,6 +175,36 @@ fn a_ric_is_held_as_written_and_derived_like_any_source() {
     assert!(order.insert_securityid(id(IdType::Ric, "BAES.L")).unwrap());
     assert!(order.remove_securityid(&IdKey::base(IdType::Isin)).unwrap());
     assert_eq!(ids(&order), ["ric=BAES.L"]);
+}
+
+/// A book's legs are its sides' best levels, which the book settles: its
+/// side, `BOTH`, moves no leg and quotes no price, so a one-sided book
+/// whose price is its bid keeps both when it settles to `BOTH`. A tag set
+/// on a book-kind fact quotes as any tag does - a book message's entry
+/// passes through this kind before it is refiled as the quote it is, and
+/// the side it tags must quote its price onto that leg - and the book
+/// settles to `BOTH` whatever it was set to.
+#[test]
+fn a_book_settles_to_both_sides_and_that_side_moves_no_leg() {
+    let price = Some(Decimal::from_int(99));
+    let mut book = BookEvent::new(1, "ACME");
+    book.set_bidpx(price, true);
+    book.set_bidqty(Some(Decimal::from_int(10)), true);
+    book.set_side(Side::Buy, true);
+    assert_eq!(book.get_side(), Side::Buy);
+    assert_eq!(book.get_price(), price, "a tag quotes the leg it names");
+    assert_eq!(book.get_crosscode(), "3:0:ACME");
+
+    book.set_side(Side::Both, true);
+    assert_eq!(book.get_price(), price, "the leg it read stays");
+    assert_eq!(book.get_bidpx(), price);
+    assert_eq!(book.get_bidqty(), Some(Decimal::from_int(10)));
+    book.set_side(Side::Sell, true);
+    assert_eq!(book.get_bidpx(), price, "a moved tag withdraws no leg");
+    book.finalize();
+    assert_eq!(book.get_side(), Side::Both, "a book holds both sides");
+    assert_eq!((book.get_price(), book.get_bidpx()), (price, price));
+    assert_eq!(book.get_crosscode(), "3:0:ACME");
 }
 
 #[cfg(feature = "internals")]

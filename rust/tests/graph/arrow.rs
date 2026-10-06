@@ -2287,6 +2287,42 @@ fn a_delta_book_row_whose_price_disagrees_with_its_legs_is_refused() {
     );
 }
 
+/// A book holds both sides and so does a quote quoting both legs and
+/// tagging neither: each row states side `BOTH` (code 99) and reads back
+/// equal, and a book row stating another side is refused there.
+#[test]
+fn a_book_row_and_a_two_sided_quote_row_state_both_sides() {
+    let book = deep_book(10);
+    let mut quote = QuoteEvent::at(10);
+    quote.set_crosscode("Q-1".to_owned());
+    quote.set_bidpx(Some(Decimal::from_int(99)), true);
+    quote.set_bidqty(Some(Decimal::from_int(2)), true);
+    quote.set_askpx(Some(Decimal::from_int(101)), true);
+    quote.set_askqty(Some(Decimal::from_int(3)), true);
+    quote.finalize();
+    assert_eq!(
+        (book.get_side(), quote.get_side()),
+        (Side::Both, Side::Both)
+    );
+    let values = vec![MarketData::from(book), MarketData::from(quote)];
+    let batch = written(values.clone());
+    let sides = column_of(&batch, "side");
+    let sides = sides
+        .as_any()
+        .downcast_ref::<arrow_array::UInt8Array>()
+        .unwrap();
+    assert_eq!(sides.values().as_ref(), [99, 99]);
+    assert_eq!(read(batch_reader(batch.schema(), [batch])).unwrap(), values);
+
+    let book = written(vec![MarketData::from(deep_book(10))]);
+    let error = refusal(with_column(
+        &book,
+        "side",
+        Arc::new(arrow_array::UInt8Array::from(vec![0_u8])),
+    ));
+    assert!(error.contains("$[0].side"), "{error}");
+}
+
 /// A book stating its deltas alone is pinned by the book it follows and
 /// the deltas it applied: a row naming another predecessor, or stating
 /// other deltas, derives another identity and is refused at its
@@ -2365,4 +2401,126 @@ fn the_deltas_of_books_lay_out_as_the_rows_of_their_kind() {
         error.to_string().contains("expected a book_event"),
         "{error}"
     );
+}
+
+/// A stream of books over a fine grid repeats every alive entry of every
+/// book at every tick, so one batch of books holds hundreds of thousands
+/// of nested rows; cast to the layout a table stores - the digests and the
+/// place widened to `decimal(20, 0)`, every enum to `int32`, the clocks to
+/// microseconds - it casts whole, because a kernel's output is one slot per
+/// row of the batch and the materialization budget charges none of it. The
+/// batch is bounded by the codec's own batch bounds, never by a slot
+/// ceiling the grid can cross.
+#[test]
+fn a_batch_of_books_with_many_alive_entries_casts_to_the_stored_layout_whole() {
+    use yggdryl::graph::BookIterator;
+    use yggdryl::{ArrowCastOptions, Decimal, Scheme, Serie, Side};
+    const T: i64 = 1_700_000_000_000_000_000;
+    const ALIVE: i64 = 250;
+    const TICKS: i64 = 500;
+    let order = |unix: i64, code: String, side: Side| {
+        let mut order = OrderEvent::at(unix);
+        order.set_crosscode(code);
+        order.set_ticker(Some("AAPL".into()), true);
+        order.set_side(side, true);
+        order.set_price(Some(Decimal::from_int(189)), true);
+        order.set_quantity(Some(Decimal::from_int(100)), true);
+        order.finalize();
+        MarketData::from(order)
+    };
+    let mut inputs: Vec<MarketData> = (0..ALIVE)
+        .map(|i| order(T + i, format!("B-{i}"), Side::Buy))
+        .collect();
+    inputs.push(order(
+        T + TICKS * 1_000_000_000,
+        "LAST".to_owned(),
+        Side::Sell,
+    ));
+    // One second ticks: every tick a complete book of every alive entry.
+    let books = BookIterator::new(inputs.into_iter(), 1_000)
+        .unwrap()
+        .map(|book| book.map(MarketData::from));
+    let reader = MarketData::arrow_reader(books, None, None).unwrap();
+    let stored = MarketData::field()
+        .unwrap()
+        .into_scheme_compat(&Scheme::ICEBERG)
+        .unwrap();
+    let mut books = 0;
+    let mut entries = 0;
+    for batch in reader {
+        let batch = batch.unwrap();
+        let alive = batch
+            .column_by_name("alive")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<ListArray>()
+            .unwrap();
+        entries += alive.values().len();
+        let cast = Serie::from_arrow_batch(Some(&stored), &batch, ArrowCastOptions::new())
+            .expect("a batch of books casts to the stored layout whole");
+        books += cast.len();
+    }
+    assert!(books > TICKS as usize, "{books} books");
+    assert!(
+        entries > 100_000,
+        "{entries} alive entries: enough to have crossed the hidden-slot ceiling per cast column"
+    );
+}
+
+/// A table with no unsigned type may store the two digests as the `long`
+/// of their width, carrying their bits and stating nothing: the reader
+/// reads such a cell as its bits at the root and in every nested row, and
+/// verifies the identity each leaf derives as for any other layout.
+#[test]
+fn market_rows_whose_digests_a_table_stored_as_longs_read_back_as_their_leaves() {
+    let expected = every_leaf();
+    let written = rewritten(expected.clone(), expected.len());
+
+    // The written root, its digests retyped to `int64` at every depth and
+    // stating nothing: a foreign layout.
+    let mut foreign = MarketData::field().unwrap();
+    for prefix in ["", "alive[0].", "deltas[0].", "executions[0]."] {
+        for name in ["currhashcode", "crosshashcode"] {
+            let path = format!("{prefix}{name}");
+            let mut child = foreign.get_field_by_path(&path).unwrap().clone();
+            child.set_dtype(yggdryl::DataType::Int64).unwrap();
+            foreign.set_field_by_path(&path, child).unwrap();
+        }
+    }
+    let stored: Vec<RecordBatch> = yggdryl::SerieReader::from_arrow_reader(
+        Some(&foreign),
+        MarketData::arrow_reader(expected.clone(), None, None).unwrap(),
+        ArrowCastOptions::new().with_representation(yggdryl::Representation::Bits),
+    )
+    .unwrap()
+    .into_arrow_reader()
+    .map(Result::unwrap)
+    .collect();
+    let digests = stored[0]
+        .column_by_name("currhashcode")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .expect("the digest is stored as a long")
+        .clone();
+    assert!(
+        digests.values().iter().any(|digest| *digest < 0),
+        "some digest is past i64::MAX, so its long is negative"
+    );
+
+    let actual = read(batch_reader(stored[0].schema(), stored)).unwrap();
+    assert_eq!(actual.len(), expected.len());
+    for (index, (read, stated)) in actual.iter().zip(&expected).enumerate() {
+        assert_eq!(
+            read.get_currhashcode(),
+            stated.get_currhashcode(),
+            "{index}"
+        );
+        assert_eq!(
+            read.get_crosshashcode(),
+            stated.get_crosshashcode(),
+            "{index}"
+        );
+    }
+    assert_eq!(rewritten(actual, expected.len()), written);
 }

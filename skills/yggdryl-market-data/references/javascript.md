@@ -67,7 +67,8 @@ const event = order.at(T)
 assert.ok(event instanceof graph.OrderEvent)
 assert.ok(event.intoElement().equals(order))
 
-// A two-sided quote: its bid and ask are its two legs, and it tags no side.
+// A two-sided quote: its bid and ask are its two legs, and tagging neither it
+// holds both sides, BOTH.
 const quote = new graph.QuoteEvent(T, {
   crosscode: 'Q-7',
   ticker: 'AAPL',
@@ -78,7 +79,7 @@ const quote = new graph.QuoteEvent(T, {
   askqty: 100,
   askccy: 'USD',
 })
-assert.deepEqual([quote.side, quote.crosscode], ['UNKN', '14:0:Q-7'])
+assert.deepEqual([quote.side, quote.crosscode], ['BOTH', '14:0:Q-7'])
 assert.deepEqual([quote.askpx, quote.askqty, quote.marketdatakind], ['189.52', '100', 'QUOT'])
 
 // An offer: tagged `SELL`, its price is its ask leg; a quote's code stays under side 0.
@@ -352,12 +353,13 @@ assert.equal([...new graph.BookIterator([...stream].reverse())].length, 1)
 ## Read a book
 
 A complete book answers each side as its `limits` (one per price, best
-first, the unpriced market level last) and its entries as `aliveOn(side)`;
-every book answers the readings of the first level that can trade:
-`bestPrice`, `bestQuantity`, the `bidpx`/`askpx` it states, `spread`; a
-complete one `depth` and `imbalance` too - all as exact decimal text. A book
-built by hand is complete. A side is its stored name, any spelling `Side`
-reads, or its code.
+first, the unpriced market level last) and its entries as `aliveOn(side)`,
+the orders resting as `ordlive()`; every book answers the readings of the
+first level that can trade: `bestPrice`, `bestQuantity`, the `bidpx`/`askpx`
+it states, `spread`; a complete one `depth` and `imbalance` too - all as
+exact decimal text. Its deltas read by kind as `orddelta()`, `quotes()` and
+`executions()`, which partition them. A book built by hand is complete. A
+side is its stored name, any spelling `Side` reads, or its code.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -391,6 +393,10 @@ assert.equal(book.isComplete, true)
 assert.deepEqual([book.alive().length, book.aliveOn('BUYS').length, book.aliveOn(Side.SELL).length], [5, 4, 1])
 // The deltas are the five orders, in the order applied.
 assert.deepEqual(book.deltas().map((delta) => delta.crosscode), ['10:1:B-0', '10:1:B-1', '10:1:B-2', '10:2:A-1', '10:1:MKT'])
+// By kind: the orders resting in book order - the bids best first and the
+// market order last, then the offer - and every delta an order.
+assert.deepEqual(book.ordlive().map((order) => order.crosscode), ['10:1:B-0', '10:1:B-1', '10:1:B-2', '10:1:MKT', '10:2:A-1'])
+assert.deepEqual([book.orddelta().length, book.quotes().length, book.executions().length], [book.deltas().length, 0, 0])
 ```
 
 ## Replace a scope with a snapshot
@@ -458,7 +464,8 @@ assert.deepEqual([...chain.getChild('crosscode')], ['10:1:O-1001'])
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `bookArrowReader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries, a trade entry (`269=2`) recorded as the
+execution it is - and
 `MarketData.fromArrowReader` reads the books back. A `W` full refresh is a
 snapshot input, so its book is complete; the `X` after it states its delta.
 
@@ -612,8 +619,9 @@ assert.equal(typeof book.serve, 'function')
 - `withOperations`, `withPrevious`, `mergeWith` answer a new value; the one
   you called is unchanged. Only `withPrevious`/`mergeWith` answer `null` when
   nothing moved; `withOperations` refuses an undated `Order` at
-  `$.operations[i].kind` (`BookIterator` at `$.operation.kind`), and an
-  execution or a trade is pruned, no error and no book. What `BookIterator`
+  `$.operations[i].kind` (`BookIterator` at `$.operation.kind`); an execution
+  is recorded among the book's deltas, resting on no side, and a trade is
+  pruned, no error and no book. What `BookIterator`
   finds wrong in the data - an operation dated before its book - it leaves
   out, and an order or a quote stating neither side it places nowhere (still
   the book's delta), each with a warning on standard error (unless a handler

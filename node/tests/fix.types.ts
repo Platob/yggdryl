@@ -196,10 +196,12 @@ const spotrate: string | null = message.spotrate
 const forwardpoints: string | null = message.forwardpoints
 const bidpx: string | null = message.bidpx
 const askccy: string | null = message.askccy
-const messageCategory: string = message.msgcat
-const strikeprice: string | null = message.strikeprice
-// @ts-expect-error the strike price is the dictionary's StrikePrice(202), no crate field
-message.strikepx
+const messageCategory: string = message.marketdatakind
+const strikepx: string | null = message.strikepx
+// @ts-expect-error the strike is strikepx
+message.strikeprice
+// @ts-expect-error the category is marketdatakind
+message.msgcat
 // The instants the message states, as the leaf does.
 const messageCreated: bigint | null = message.creaunix
 const messageExecuted: bigint | null = message.execunix
@@ -290,7 +292,7 @@ void forwardpoints
 void bidpx
 void askccy
 void messageCategory
-void strikeprice
+void strikepx
 void eventCurrunix
 void eventCreated
 void eventExecuted
@@ -656,7 +658,7 @@ const order: MsgType = loaded.msgtype('D')
 const optionalOrder: MsgType | null = loaded.getMsgtype('newordersingle')
 const registered: MsgType = loaded.registerMsgtype('BridgeReport', 'bridgereport')
 const wireCode: string = order.asStr()
-const orderCategory: string | null = order.msgcat
+const orderCategory: string | null = order.marketdatakind
 const messageDefinition: Field = order.asField()
 const identifierValues: Array<[Field, Scalar]> = order.identifierValues(fromText)
 for (const [identifierField, identifierValue] of identifierValues) {

@@ -1095,6 +1095,25 @@ fn a_service_rebuild_allocates_per_delta_not_per_level() {
     );
 }
 
+/// A book's readings by kind - its resting orders, and the orders, quotes
+/// and executions among its deltas - borrow the entries the book holds:
+/// nothing is allocated, at 8 entries or 1,024, the resting orders walking
+/// every live quote to find none.
+#[test]
+fn a_book_s_readings_by_kind_allocate_nothing() {
+    for entries in [8, 1_024] {
+        let book = allocation_book(entries);
+        assert_eq!(book.quotes().count(), entries);
+        assert_eq!(book.ordlive().count(), 0);
+        free("reading a book's entries by kind", || {
+            black_box(book.ordlive().map(black_box).count());
+            black_box(book.orddelta().map(black_box).count());
+            black_box(book.quotes().map(black_box).count());
+            black_box(book.executions().map(black_box).count());
+        });
+    }
+}
+
 #[test]
 fn one_book_update_does_not_allocate_per_live_entry() {
     let mut shallow = allocation_book(1);
@@ -5295,6 +5314,57 @@ fn a_text_to_boolean_cast_allocates_nothing_per_cell() {
 }
 
 #[test]
+fn stated_bits_cast_by_sharing_the_buffer_at_any_length() {
+    // A column stating `FIELD:representation=bits` takes a `uint64` column
+    // as the `int64` of its bits under a cast asking for values: the value
+    // buffer is shared, so a column costs the array handle whatever its
+    // length - never a buffer, never a row.
+    let source = Field::new("digest", DataType::UInt64, false);
+    let mut target = Field::new("digest", DataType::Int64, false);
+    target
+        .as_field_properties_mut()
+        .set_representation(yggdryl::Representation::Bits)
+        .expect("an integer column states bits");
+    let plan = ArrowCastPlan::compile(&source, &target, ArrowCastOptions::new())
+        .expect("a uint64 column casts into its bits");
+    let mut counts = Vec::new();
+    for rows in [64_usize, 4_096] {
+        let column = Serie::from_scalars(
+            source.clone(),
+            (0..rows as u64).map(|row| Scalar::from(u64::MAX - row)),
+        )
+        .expect("a uint64 column");
+        let cast = || plan.apply(&column).expect("the column casts");
+        drop(cast());
+        let (allocations, signed) = counted(cast);
+        assert_eq!(signed.len(), rows);
+        assert_eq!(signed.scalar(0).expect("a row"), Scalar::from(-1_i64));
+        assert!(
+            signed
+                .as_int64()
+                .expect("an int64 column")
+                .array()
+                .values()
+                .inner()
+                .ptr_eq(
+                    column
+                        .as_uint64()
+                        .expect("a uint64 column")
+                        .array()
+                        .values()
+                        .inner()
+                ),
+            "the bits of {rows} rows were copied"
+        );
+        counts.push(allocations);
+    }
+    assert_eq!(
+        counts[0], counts[1],
+        "a stated bits cast cost {counts:?} allocations at 64 and 4096 rows"
+    );
+}
+
+#[test]
 fn a_compiled_cast_costs_the_same_for_every_batch_it_answers() {
     use yggdryl::ArrowCastPlan;
 
@@ -5857,7 +5927,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 53] = [
+    let seeds: [(DataTypeId, Scalar); 58] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -5908,6 +5978,11 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Ric, Scalar::from("AAPL.OQ")),
         (DataTypeId::Forex, Scalar::from("EURUSD")),
         (DataTypeId::Figi, Scalar::from("BBG000BLNQ16")),
+        (DataTypeId::Lei, Scalar::from("HWUPKR0MPOU8FGXBT394")),
+        (DataTypeId::Bic, Scalar::from("DEUTDEFF500")),
+        (DataTypeId::Elf, Scalar::from("8888")),
+        (DataTypeId::Dti, Scalar::from("X9J9K872S")),
+        (DataTypeId::Fisn, Scalar::from("ACME CORP/SH")),
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("NEW")),
         (DataTypeId::MarketDataKind, Scalar::from("ORDR")),
@@ -8573,7 +8648,7 @@ fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
 /// A snapshot stream shares the table rather than copying it: opening one
 /// costs the same five allocations at 64 instruments as at 4,096 - the
 /// reader, its schema and its field - and draining it lays each row out
-/// once, eight allocations a row - the named row, a B-tree of its forty
+/// once, eight allocations a row - the named row, a B-tree of its forty-one
 /// cells inserted in column order, which takes six leaf nodes behind one
 /// `Arc` where the thirty-seven cells of the row before `countrycode`,
 /// `forexcode` and `currency` were added took five, and its canonical run -
@@ -8606,10 +8681,11 @@ fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
 
 /// Reloading rows the registry already holds - a golden file read again -
 /// costs each batch the same whatever its rows: one cast plan for the
-/// stream, the landing per batch - one narrowing per column of the forty,
+/// stream, the landing per batch - one narrowing per column of the
+/// forty-one, one more than the forty before `underlyingisin` was added,
 /// three more than the thirty-seven before `countrycode`, `forexcode` and
-/// `currency` were added - and a code cell adopted as the landing proved
-/// it, so a row that moves nothing allocates nothing.
+/// `currency` were - and a code cell adopted as the landing proved it, so a
+/// row that moves nothing allocates nothing.
 #[test]
 fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     let mut each_at = Vec::new();
@@ -8640,7 +8716,7 @@ fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     }
     assert_eq!(
         each_at,
-        [50, 50],
+        [51, 51],
         "a batch of 64 and of 512 known rows: a cost per row"
     );
 }

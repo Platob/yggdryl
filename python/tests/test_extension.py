@@ -44,6 +44,11 @@ SPELLED = {
     "yggdryl.bbg": "bbg",
     "yggdryl.unit": "unit",
     "yggdryl.forex": "forex",
+    "yggdryl.lei": "lei",
+    "yggdryl.bic": "bic",
+    "yggdryl.elf": "elf",
+    "yggdryl.dti": "dti",
+    "yggdryl.fisn": "fisn",
 }
 
 
@@ -75,6 +80,27 @@ def test_a_datatype_crosses_as_its_extension_type_and_back(name: str) -> None:
     assert Field.from_arrow(exported) == field
     # The type pickles, document included.
     assert pickle.loads(pickle.dumps(arrow)) == arrow
+
+
+@pytest.mark.parametrize("name", sorted(SPELLED))
+def test_a_type_prints_as_pyarrows_own_extension_types_do(name: str) -> None:
+    dtype = DataType(SPELLED[name])
+    arrow = dtype.into_arrow()
+    # A document tells two leaves of one storage apart, so it prints as the
+    # datatype it states; a bare name prints alone, as `arrow.uuid` does.
+    expected = f"extension<{name}[{dtype}]>" if arrow.document else f"extension<{name}>"
+    assert str(arrow) == expected
+    assert repr(arrow) == f"YggdrylType({expected})"
+    column = Serie.from_scalars(Field("x", SPELLED[name]), []).into_arrow_array()
+    assert str(column.type) == expected
+
+
+def test_two_leaves_of_one_storage_print_apart() -> None:
+    four = DataType("sized_ascii(4)").into_arrow()
+    eight = DataType("sized_ascii(8)").into_arrow()
+    assert str(four) == "extension<yggdryl.string[sized_ascii(4)]>"
+    assert str(eight) == "extension<yggdryl.string[sized_ascii(8)]>"
+    assert four != eight
 
 
 def test_a_column_crosses_as_an_extension_array_and_lands_as_its_datatype() -> None:

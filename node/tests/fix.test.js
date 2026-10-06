@@ -1443,10 +1443,11 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // A merge keeps no clock of the reference it chose.
     assert.equal('refrecdunix' in event, false)
     assert.equal(event.marketdatakind, 'ORDR')
-    assert.equal(message.msgcat, 'ORDR')
+    assert.equal(message.marketdatakind, 'ORDR')
+    assert.equal('msgcat' in message, false)
     // The strike price is the dictionary's StrikePrice(202), read each call: no crate field.
-    assert.equal(message.strikeprice, null)
-    assert.equal('strikepx' in message, false)
+    assert.equal(message.strikepx, null)
+    assert.equal('strikeprice' in message, false)
     assert.equal(event.price, '10.5')
     // What is left to work is the quantity; what was asked for is `ordqty`.
     assert.equal(event.quantity, '60')
@@ -1598,7 +1599,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(event.state, message.state)
     assert.equal(event.seqnum, message.seqnum)
     assert.equal(event.prevuuid, message.prevuuid)
-    assert.equal(event.marketdatakind, message.msgcat)
+    assert.equal(event.marketdatakind, message.marketdatakind)
     assert.equal(event.price, message.price)
     assert.equal(event.quantity, message.quantity)
     assert.equal('px' in event, false)
@@ -1850,20 +1851,20 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   })
 
   test('a message reads its strike price off the dictionary field', () => {
-    // `strikeprice` is `StrikePrice(202)`, read each call; no crate column holds it.
+    // `strikepx` is `StrikePrice(202)`, read each call; no crate column holds it.
     const registry = seed()
     const codec = fixedCodec(registry)
     const stated = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|202=12.5|10=0|'))
-    assert.equal(Number(stated.strikeprice), 12.5)
-    assert.ok(stated.strikeprice.startsWith('12.5'), stated.strikeprice)
-    assert.ok(stated.byName('strikeprice').equals(stated.byTag(202)))
-    assert.equal('strikepx' in stated, false)
-    assert.equal(codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|10=0|')).strikeprice, null)
+    assert.equal(Number(stated.strikepx), 12.5)
+    assert.ok(stated.strikepx.startsWith('12.5'), stated.strikepx)
+    assert.ok(stated.byName('strikepx').equals(stated.byTag(202)))
+    assert.equal('strikeprice' in stated, false)
+    assert.equal(codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|10=0|')).strikepx, null)
     // A write to the field moves the answer, and a null clears it.
     stated.set(202, '13')
-    assert.equal(Number(stated.strikeprice), 13)
+    assert.equal(Number(stated.strikepx), 13)
     stated.set(202, null)
-    assert.equal(stated.strikeprice, null)
+    assert.equal(stated.strikepx, null)
     // The fixed row's instrument band carries the dictionary's own column.
     const schema = fix.schema(registry)
     assert.equal(schema.indexOf('strikepx'), null)
@@ -2371,7 +2372,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // it names no side, so its side is UNKN, never null (A15).
     const bid = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q1|55=AAPL|15=USD|132=101.5|134=200|10=0|'))
     assert.equal(bid.side, 'UNKN')
-    assert.equal(bid.msgcat, 'QUOT')
+    assert.equal(bid.marketdatakind, 'QUOT')
     assert.deepEqual(
       ['bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy'].map((name) => bid[name]),
       ['101.5', '200', 'USD', null, null, null],
@@ -2388,12 +2389,12 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     )
 
     // A13: a quote is one element holding its two legs, so a two-sided
-    // quote parses as one message - no split by side - stored unsided, and
-    // states no price of its own.
+    // quote parses as one message - no split by side - holding both sides
+    // and stored unsided, and states no price of its own.
     const parsed = [...codec.parseLine(Buffer.from('8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|'))]
     assert.equal(parsed.length, 1)
     const [two] = parsed
-    assert.equal(two.side, 'UNKN')
+    assert.equal(two.side, 'BOTH')
     assert.equal(two.crosscode, '14:0:Q3')
     assert.deepEqual([two.bidpx, two.askpx], ['101', '102'])
     assert.equal(two.price, null)
@@ -2504,12 +2505,13 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.deepEqual(ordered.excludeMsgtypes, snapshots.excludeMsgtypes)
     assert.equal(snapshots.sortedLifecycle, false)
     assert.equal(ordered.withSortedLifecycle(false).sortedLifecycle, false)
-    assert.equal(registry.msgtype('D').msgcat, 'ORDR')
+    assert.equal(registry.msgtype('D').marketdatakind, 'ORDR')
+    assert.equal('msgcat' in registry.msgtype('D'), false)
 
     const original = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|'))
     const replay = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=7|43=Y|52=20260102-10:15:31|122=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|'))
     const distinct = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|11=REPLAY-1|55=AAPL|10=0|'))
-    assert.equal(original.msgcat, 'ORDR')
+    assert.equal(original.marketdatakind, 'ORDR')
     assert.equal('marketoperationid' in original, false)
     const deduplicated = [...codec.lifecycle([original, original.clone(), replay, distinct])]
     assert.deepEqual(deduplicated.map((message) => message.header().msgseqnum), [7, 8])
@@ -3652,7 +3654,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       '8=FIX.4.4|35=D|52=20260921-10:00:01|11=C2|55=AAPL|54=2|44=101|38=6|10=0|',
       '8=FIX.4.4|35=8|52=20260921-10:00:02|17=E1|37=O1|11=C1|39=1|150=F|55=AAPL|54=1|44=100|38=5|14=2|32=2|31=100|10=0|',
     ].flatMap((line) => [...codec.parseLine(Buffer.from(line))])
-    assert.ok(capture().some((message) => message.msgcat === 'EXEC'))
+    assert.ok(capture().some((message) => message.marketdatakind === 'EXEC'))
     const books = (filter) =>
       [...graph.MarketData.fromArrowReader(codec.bookArrowReader(capture(), 0, filter))].map((data) => data.asBookEvent())
 
@@ -3688,7 +3690,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       '54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|' +
       '54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|',
     ))]
-    assert.deepEqual(messages.map((message) => [message.msgcat, message.side, message.state]), [
+    assert.deepEqual(messages.map((message) => [message.marketdatakind, message.side, message.state]), [
       ['TRAD', 'UNKN', 'TRADE'],
       ['EXEC', 'BUYS', 'FILLED'],
       ['EXEC', 'SELL', 'FILLED'],
@@ -3745,7 +3747,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // its instrument's book, resting on no side.
     const messages = [...codec.parseLine(line)]
     assert.deepEqual(
-      messages.map((message) => [message.msgcat, message.side]),
+      messages.map((message) => [message.marketdatakind, message.side]),
       [['TRAD', 'UNKN'], ['EXEC', 'UNKN']],
     )
     assert.deepEqual(messages[0].marketData(), [])
@@ -4463,6 +4465,13 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   // suite reads a bridge log under the same expression the crate ships rather
   // than a second copy of it.
   const ROWHEADER = fix.ULBRIDGE_ROWHEADER
+  // The codec reads a capture by position, so it takes the list the options
+  // state rather than a copy spelled here.
+  const CAPTURE_NAMES = (() => {
+    const options = new TextOptions()
+    options.rowheader = ROWHEADER
+    return options.captureNames
+  })()
   const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
 
   function seed() {
@@ -4610,7 +4619,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   test('a bridge capture parses whole and walks its chains', () => {
     const registry = seed()
     const codec = reading(registry, {
-      captureNames: ['mtime', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid'],
+      captureNames: CAPTURE_NAMES,
       defaultSendingTime: SENDING,
     })
     const messages = captured(codec)
@@ -4795,7 +4804,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   test('a bridge capture reads as sorted market operations that fold into books', () => {
     const registry = seed()
     const codec = reading(registry, {
-      captureNames: ['mtime', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid'],
+      captureNames: CAPTURE_NAMES,
       defaultSendingTime: SENDING,
       threads: 1,
     })
@@ -4889,8 +4898,9 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // and following no book; and when a book came to be keyed by its
     // instrument's ISIN and to hold it as its `isin` security identifier:
     // the one value `rust/tests/fix/ulbridge.rs` and the Python binding pin
-    // for this log.
-    assert.equal(last.currhashcode, 9_341_042_899_919_963_577n)
+    // for this log. It moved again when a book came to state `BOTH` as its
+    // side, which its own market event feeds where a side nobody stated fed.
+    assert.equal(last.currhashcode, 1_914_142_786_384_712_743n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {
@@ -4913,15 +4923,17 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     for (let at = 0; at < captures.fieldLen; at += 1) {
       names.push(captures.fieldAt(at).name)
     }
-    assert.deepEqual(names.slice(-4), [
+    assert.deepEqual(names.slice(-6), [
+      'msgthreadid',
       'msgsessionid',
       'msgctxid',
       'msgseqnum',
       'msgpluginid',
+      'loglevel',
     ])
-    // The thread and the level are matched and lifted into no column.
-    assert.equal(names.includes('msgthreadid'), false)
-    assert.equal(names.includes('loglevel'), false)
+    // The thread and the level name no field: the line's own columns.
+    assert.equal(String(captures.field('msgthreadid').dtype), 'int64')
+    assert.equal(String(captures.field('loglevel').dtype), 'utf8')
     assert.equal(String(captures.field('msgseqnum').dtype), 'int64')
     // The clock is `mtime`, consumed into each line's `currunix`, so it
     // leads no column of its own.

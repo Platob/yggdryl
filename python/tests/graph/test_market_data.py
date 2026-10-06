@@ -123,7 +123,7 @@ def test_a_fix_message_is_held_whole_and_split_where_it_is_written() -> None:
     data = graph.MarketData(message)
     assert data.kind == "fix"
     # The kind is the category the message's dictionary files it under.
-    assert data.marketdatakind is MarketDataKind.ORDR == message.msgcat
+    assert data.marketdatakind is MarketDataKind.ORDR == message.marketdatakind
     assert data.is_event
     held = data.as_fix()
     assert isinstance(held, FixMsg) and held == message

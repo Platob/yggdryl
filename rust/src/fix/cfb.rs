@@ -1100,7 +1100,7 @@ impl<'doc> Parse<'doc> {
         for at in 0..self.vocabulary.len() {
             let tag = self.vocabulary[at].tag;
             let key = super::registry::name_key(self.vocabulary[at].field.name());
-            let unnamed = self.vocabulary[at].field.name().parse::<i32>() == Ok(tag);
+            let unnamed = super::registry::is_unnamed(&self.vocabulary[at].field);
             let contended = claimed.get(&key).is_some_and(|tags| tags.len() > 1)
                 || decimals.get(&key).is_some_and(|held| *held != tag);
             if !unnamed && !contended {
@@ -1306,7 +1306,7 @@ impl<'doc> Parse<'doc> {
             );
             return Ok(());
         };
-        let Ok(tag) = name.parse::<i32>() else {
+        let Some(tag) = super::field::parse_tag(&name) else {
             self.dropped(
                 &self.refused_in(
                     element,
@@ -2398,7 +2398,7 @@ impl<'doc> Parse<'doc> {
             self.check_validity(closed)?;
             return Ok(None);
         };
-        let Ok(tag) = name.parse::<i32>() else {
+        let Some(tag) = super::field::parse_tag(&name) else {
             self.dropped(
                 &self.refused_in(
                     element,
@@ -2825,11 +2825,7 @@ fn spelling(element: &BytesStart<'_>) -> String {
 /// Trimmed, because a CBlock leaves the space it wrapped an attribute with -
 /// `value="$609 "` is tag 609 written by an editor.
 fn referenced(value: &str) -> Option<i32> {
-    let held = value.trim().strip_prefix('$')?;
-    if held.is_empty() || !held.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    held.parse().ok()
+    super::field::parse_tag(value.trim().strip_prefix('$')?)
 }
 
 /// One description as a single line of prose.

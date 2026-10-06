@@ -174,8 +174,9 @@ pub trait Market {
     /// Sets [`Self::get_unit`].
     fn set_unit(&mut self, unit: Unit, overwrite: bool);
     /// The side the element takes, [`Side::Unknown`] where it states none:
-    /// a sided element's one side ([`Self::is_sided`]), any other's tag, as
-    /// a one-sided quote names the leg it states and a two-sided one none.
+    /// a sided element's one side ([`Self::is_sided`]), any other's tag - a
+    /// one-sided quote names the leg it states, a two-sided quote states
+    /// [`Side::Both`] ([`Self::fill_market`]), and a book is always `BOTH`.
     fn get_side(&self) -> Side;
     /// Sets [`Self::get_side`]; a sided element's cross code is stored under
     /// the side taken ([`Self::stored_crosscode`]), and the side's bid or ask
@@ -359,7 +360,8 @@ pub trait Market {
     /// and each side of one identifier is a chain of its own. Only a sided
     /// element ([`Self::is_sided`]: an order or an execution) states its
     /// side there; any other - a quote, a trade, a book, a snapshot control -
-    /// states `0`, as one taking [`Side::Unknown`] does: `14:0:Q-1`,
+    /// states `0` whatever side it states, `BOTH` included, as one taking
+    /// [`Side::Unknown`] does: `14:0:Q-1`,
     /// `21:0:T-1`, `3:0:XNAS:ESVUFR`, `10:0:ORD-1`. Idempotent: a code
     /// already carrying this prefix is answered as it is, one carrying
     /// another has it replaced, and an empty code stays empty. The one place
@@ -464,7 +466,9 @@ pub trait Market {
     /// a key the element does not state, as a derived identifier. A currency
     /// pair states its quantity in the currency dealt, so an element trading
     /// one and stating no unit takes that currency as its unit - its stated
-    /// currency where that is a leg of the pair, else the pair's base.
+    /// currency where that is a leg of the pair, else the pair's base. A
+    /// quote tagging no side that quotes both its legs states
+    /// [`Side::Both`]; a tag it states stands.
     ///
     /// Provided, and what an implementor's [`Element::finalize`] runs before
     /// it digests. Running it twice changes nothing the first run did not.
@@ -497,6 +501,14 @@ pub trait Market {
         // element states, and read by its length before any check runs.
         if let Some(code) = self.get_ticker().and_then(SymbolCode::from_symbol) {
             fill_symbol(self, code);
+        }
+        // A quote tagging no side that quotes both legs holds both sides.
+        if self.marketdatakind() == crate::MarketDataKind::Quotation
+            && self.get_side() == Side::Unknown
+            && quotes_leg(self, true)
+            && quotes_leg(self, false)
+        {
+            self.set_side(Side::Both, false);
         }
         // The ISIN is owned - a code inline - so its national identifiers
         // are derived straight off it, with no list staged in between.
@@ -1187,7 +1199,7 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
     if this.is_sided() {
         changed |= moved(
             this.get_side(),
-            this.get_side().merge_with(previous.get_side()),
+            this.get_side().merge_with(previous.get_side().tagged()),
             |side| this.set_side(side, true),
         );
     }
@@ -1254,10 +1266,10 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
 /// follower's tag takes, stated by a quantity alone, keeps the chain's
 /// price. A tagged follower of a tagged entry quoting one leg - a book
 /// level - restates that entry whole, moving between sides included; one
-/// following a quote that holds both legs or tags no side - a fill
-/// reported on the leg that traded - keeps the other. A sided follower
-/// quotes its own side alone, and no leg crosses to another instrument.
-/// Whether anything moved.
+/// following a quote that holds both legs or tags no one leg - none, or
+/// `BOTH` - a fill reported on the leg that traded - keeps the other. A
+/// sided follower quotes its own side alone, and no leg crosses to another
+/// instrument. Whether anything moved.
 fn carry_legs<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
     if this.is_sided()
         || names_other_instrument(this, previous)
@@ -1265,23 +1277,16 @@ fn carry_legs<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
     {
         return false;
     }
-    let quotes = |market: &E, bid: bool| {
-        if bid {
-            market.get_bidpx().is_some() || market.get_bidqty().is_some()
-        } else {
-            market.get_askpx().is_some() || market.get_askqty().is_some()
-        }
-    };
-    let tag = this.get_side();
+    let tag = this.get_side().tagged();
     if tag != Side::Unknown
-        && previous.get_side() != Side::Unknown
-        && !(quotes(previous, true) && quotes(previous, false))
+        && previous.get_side().tagged() != Side::Unknown
+        && !(quotes_leg(previous, true) && quotes_leg(previous, false))
     {
         return false;
     }
     let mut changed = false;
     if this.get_bidpx().is_none() && this.get_bidqty().is_none() {
-        if quotes(previous, true) {
+        if quotes_leg(previous, true) {
             if this.get_bidccy().is_none() && previous.get_bidccy().is_some() {
                 this.set_bidccy(previous.get_bidccy().cloned(), true);
             }
@@ -1298,7 +1303,7 @@ fn carry_legs<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
         changed = true;
     }
     if this.get_askpx().is_none() && this.get_askqty().is_none() {
-        if quotes(previous, false) {
+        if quotes_leg(previous, false) {
             if this.get_askccy().is_none() && previous.get_askccy().is_some() {
                 this.set_askccy(previous.get_askccy().cloned(), true);
             }
@@ -1315,6 +1320,16 @@ fn carry_legs<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
         changed = true;
     }
     changed
+}
+
+/// Whether `market` quotes one leg - the bid where `bid`, else the ask -
+/// stating its price or its quantity.
+fn quotes_leg<E: Market + ?Sized>(market: &E, bid: bool) -> bool {
+    if bid {
+        market.get_bidpx().is_some() || market.get_bidqty().is_some()
+    } else {
+        market.get_askpx().is_some() || market.get_askqty().is_some()
+    }
 }
 
 /// Whether `this` and `other` each state a ticker, and not the same one:

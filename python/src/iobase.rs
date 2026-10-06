@@ -651,6 +651,9 @@ impl PyIOBase {
 
     /// Resolve and validate one explicit mode before touching an input value.
     ///
+    /// A merge naming no key is keyed here by the destination's own
+    /// (`IOMedia::merge_by`: an Iceberg table's identity partition columns,
+    /// then its identifier columns), and refused where it states none.
     /// `None` is a zero row or byte limit, which admits no input row: the
     /// write is done having read nothing, and its door answers the empty
     /// `IOResult`.
@@ -661,7 +664,9 @@ impl PyIOBase {
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Option<RecordOptions>> {
         let options = self.resolve_options(options, properties)?;
-        options.require_write_mode(mode).map_err(value_error)?;
+        let options = yggdryl::IOMedia::write_options(self.inner()?, mode, &options)
+            .map_err(value_error)?
+            .into_owned();
         options.require_commit_batch_num().map_err(value_error)?;
         options.require_num_threads().map_err(value_error)?;
         options.require_write_limits().map_err(value_error)?;
@@ -781,6 +786,26 @@ impl PyIOBase {
         if let Some(options) = &options {
             options.require_commit_batch_num().map_err(value_error)?;
             options.require_num_threads().map_err(value_error)?;
+        }
+        // The shared preflight runs before the source is built, so a merge
+        // the destination cannot key is refused before a one-shot Python
+        // iterable is pulled for its first item; the core runs it again
+        // under the handle's own options where none were given.
+        {
+            let inner = self.inner()?;
+            let stated = match &options {
+                Some(options) => std::borrow::Cow::Borrowed(options),
+                None => match inner.record_options() {
+                    Ok(own) => std::borrow::Cow::Owned(own),
+                    Err(_) => std::borrow::Cow::Owned(
+                        RecordOptions::for_media_type(&yggdryl::MediaType::new(
+                            yggdryl::MimeType::ARROW_STREAM,
+                        ))
+                        .map_err(value_error)?,
+                    ),
+                },
+            };
+            yggdryl::IOMedia::write_options(inner, mode, &stated).map_err(value_error)?;
         }
         let source = crate::serie::serie_source_of(value)?;
         let native = matches!(
@@ -1403,10 +1428,12 @@ impl PyIOBase {
     /// Return whether anything is here now, as `Path.exists`.
     ///
     /// Each role answers its own existence - a folder whether its directory
-    /// is there, a file its leaf, a path either - so a handle `mkdir` made and
-    /// `remove` deleted answers `False` though it still names a container. A
-    /// filesystem-bound handle asks its filesystem directly, so a refusal
-    /// such as `PermissionError` is raised rather than read as absence.
+    /// is there, a file its leaf, a path either, a glob whether its pattern
+    /// selects an entry (its listing, up to the first match) - so a handle
+    /// `mkdir` made and `remove` deleted answers `False` though it still names
+    /// a container. A filesystem-bound handle asks its filesystem directly, so
+    /// a refusal such as `PermissionError` is raised rather than read as
+    /// absence; its path is the filesystem's own text, never a pattern.
     fn exists(&self, py: Python<'_>) -> PyResult<bool> {
         let inner = self.inner()?;
         match inner.bound_location() {
@@ -1419,7 +1446,13 @@ impl PyIOBase {
         }
     }
 
-    /// Return whether this resource contains others, as `Path.is_dir`.
+    /// Return whether this resource contains others - the role it has, not
+    /// whether it is there.
+    ///
+    /// A glob or a name ending in `/` is a container by its spelling and asks
+    /// nothing, and a removed folder's handle still answers `True`; `exists`
+    /// is the presence question. A filesystem-bound handle asks its
+    /// filesystem, as `Path.is_dir` does.
     fn is_dir(&self) -> PyResult<bool> {
         match self.inner()?.bound_location() {
             Some(bound) => bound
@@ -1874,8 +1907,9 @@ impl PyIOBase {
         self.write_source(value, IOMode::Append, options, properties)
     }
 
-    /// Merge `value`'s rows into this resource's by the `merge_by` key:
-    /// `write_serie` under `merge`.
+    /// Merge `value`'s rows into this resource's by the `merge_by` key, else
+    /// the destination's own (an Iceberg table's identity partition columns,
+    /// then its identifier columns): `write_serie` under `merge`.
     #[pyo3(signature = (value, *, options = None, **properties))]
     fn merge_serie(
         &mut self,

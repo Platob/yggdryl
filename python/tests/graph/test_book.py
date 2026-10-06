@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from yggdryl import Filter, Identifier, MarketDataKind, Scalar, Side, Term, graph
+from yggdryl import Filter, Identifier, MarketDataKind, Scalar, Side, State, Term, graph
 
 CLOCK = 1_700_000_000_000_000_000
 D = decimal.Decimal
@@ -48,9 +48,11 @@ class TestBookEvent:
         # A book states side 0 whatever side it takes: kind 3, side 0, its ticker.
         assert book.currunix == CLOCK and book.crosscode == "3:0:IBM"
         assert book.marketdatakind is MarketDataKind.BOOK
-        # A book states no side of its own.
-        assert book.side is Side.UNKN
+        # A book holds both sides.
+        assert book.side is Side.BOTH
+        assert book.alive_on(Side.BOTH) == []
         assert book.alive == [] and book.deltas == []
+        assert book.ordlive == [] and book.orddelta == [] and book.quotes == [] and book.executions == []
         assert book.alive_on(Side.BUYS) == [] and book.alive_on("SELL") == []
         # A book a caller builds holds its sides, empty or not.
         assert book.is_complete
@@ -188,7 +190,39 @@ class TestBookEvent:
         book = graph.BookEvent(CLOCK, "IBM").with_operations(iter([graph.MarketData(order()), execution]))
         assert [entry.crosscode for entry in book.alive] == ["10:1:O-1"]
         assert [delta.crosscode for delta in book.deltas] == ["10:1:O-1", "8:1:E-1"]
-        assert not hasattr(book, "executions")
+        # Read by kind, the execution is an `ExecutionEvent` among the deltas.
+        assert [type(held) for held in book.executions] == [graph.ExecutionEvent]
+        assert [held.crosscode for held in book.executions] == ["8:1:E-1"]
+        assert [held.crosscode for held in book.orddelta] == ["10:1:O-1"]
+        assert book.executions[0] == book.deltas[1].as_execution_event()
+
+    def test_resting_orders_and_deltas_by_kind(self) -> None:
+        book = graph.BookEvent(CLOCK, "IBM").with_operations(
+            [order(code="B-1"), order(price="100", code="B-2"), quote()]
+        )
+        cancel = graph.OrderEvent(
+            CLOCK + 1, crosscode="B-1", side="BUYS", price=D("101"), quantity=10, ticker="IBM", state="CANCELED"
+        )
+        fill = graph.ExecutionEvent(CLOCK + 1, crosscode="E-1", side="BUYS", lastpx=D("100"), lastqty=1, ticker="IBM")
+        later = book.with_operations([cancel, fill, quote(CLOCK + 1, price="103", code="Q-2")])
+        assert all(isinstance(entry, graph.OrderEvent) for entry in later.ordlive + later.orddelta)
+        # Resting: the orders alive now. Changed: the orders the instant applied.
+        assert [entry.crosscode for entry in later.ordlive] == ["10:1:B-2"]
+        assert [(entry.crosscode, entry.state) for entry in later.orddelta] == [("10:1:B-1", State.CANCELED)]
+        assert [type(entry) for entry in later.quotes] == [graph.QuoteEvent]
+        assert [entry.crosscode for entry in later.quotes] == ["14:0:Q-2"]
+        assert [entry.crosscode for entry in later.executions] == ["8:1:E-1"]
+        # Q-1 still rests: it is alive, not a delta of this instant.
+        assert "14:0:Q-1" in [entry.crosscode for entry in later.alive]
+        # The three partition the deltas, which hold nothing else.
+        assert len(later.orddelta) + len(later.quotes) + len(later.executions) == len(later.deltas)
+        # A delta book states its changed orders and no resting one.
+        books = list(graph.BookIterator([order(), order(CLOCK + 1, "100", "B-2")]))
+        assert books[1].ordlive == [] and [entry.crosscode for entry in books[1].orddelta] == ["10:1:B-2"]
+        first = books[0].with_previous(graph.BookEvent.keyed(CLOCK, "IBM"))
+        assert first is not None
+        rebuilt = books[1].with_previous(first)
+        assert rebuilt is not None and [entry.crosscode for entry in rebuilt.ordlive] == ["10:1:O-1", "10:1:B-2"]
 
     def test_alive_on_reads_one_side_best_first(self) -> None:
         unpriced = graph.OrderEvent(CLOCK, crosscode="B-M", side="BUYS", quantity=3, ticker="IBM")
@@ -214,7 +248,8 @@ class TestBookEvent:
         two_sided = graph.QuoteEvent(
             CLOCK, crosscode="Q-1", ticker="IBM", bidpx=D("99"), bidqty=2, askpx=D("101"), askqty=3, state="NEW"
         )
-        assert two_sided.crosscode == "14:0:Q-1" and two_sided.side is Side.UNKN
+        # Quoting both legs and tagging neither, it holds both sides.
+        assert two_sided.crosscode == "14:0:Q-1" and two_sided.side is Side.BOTH
         book = graph.BookEvent(CLOCK, "IBM").with_operations([two_sided])
         assert [entry.crosscode for entry in book.alive_on(Side.BUYS)] == ["14:0:Q-1"]
         assert [entry.crosscode for entry in book.alive_on(Side.SELL)] == ["14:0:Q-1"]

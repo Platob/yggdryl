@@ -613,6 +613,7 @@ venue = yggdryl.mic("venue", nullable=False)
 arrow_field = venue.into_arrow()
 assert arrow_field.type.storage_type == pa.string()
 assert arrow_field.type.extension_name == "yggdryl.mic"
+assert str(arrow_field.type) == "extension<yggdryl.mic>"
 assert Field.from_arrow(arrow_field) == venue           # identity kept
 assert DataType.from_arrow(arrow_field.type) == DataType("mic")  # the type too
 assert arrow_field.type.datatype == DataType("mic")
@@ -622,6 +623,10 @@ assert Field("px", "float64").arrow_scalar(1.5) == pa.scalar(1.5)
 
 # Engine rewrites and canonical defaults come from the same core.
 assert DataType("uint8").into_scheme_compat("spark") == DataType("int16")
+# A column stating its bits is exchanged as the signed integer of its width, not widened.
+digest = Field("digest", "uint64", nullable=False)
+digest.field_properties.representation = "bits"
+assert digest.into_scheme_compat("iceberg").dtype == DataType("int64")
 assert DataType("utf8").default_scalar().as_py() == ""
 assert DataType("struct<id:int32 not null,note:utf8>").default_scalar().as_py() == [0, None]
 ```

@@ -942,14 +942,20 @@ impl JsIOBase {
     /// Return whether anything is here now, as `fs.existsSync`.
     ///
     /// Each role answers its own question - a folder whether its container
-    /// is there, a file whether its leaf is - so a folder `mkdir` made and
-    /// `remove` deleted answers `false`.
+    /// is there, a file whether its leaf is, a glob whether its pattern
+    /// selects an entry (its listing, up to the first match) - so a folder
+    /// `mkdir` made and `remove` deleted answers `false`.
     #[napi]
     pub fn exists(&self) -> bool {
         self.inner.exists()
     }
 
-    /// Return whether this resource contains others, as `Stats.isDirectory`.
+    /// Return whether this resource contains others - the role it has, not
+    /// whether it is there.
+    ///
+    /// A glob or a name ending in `/` is a container by its spelling and asks
+    /// nothing, and a removed folder's handle still answers `true`; `exists`
+    /// is the presence question.
     #[napi]
     pub fn is_dir(&self) -> bool {
         self.inner.is_container()
@@ -1892,8 +1898,9 @@ impl JsIOBase {
         options: Option<&JsRecordOptions>,
     ) -> Result<JsIOResult> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
-        options
-            .require_write_mode(IOMode::Overwrite)
+        let options = self
+            .inner
+            .write_options(IOMode::Overwrite, &options)
             .map_err(napi_error)?;
         self.inner
             .overwrite_arrow_reader(batches.take()?, &options)
@@ -1913,8 +1920,9 @@ impl JsIOBase {
         options: Option<&JsRecordOptions>,
     ) -> Result<JsIOResult> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
-        options
-            .require_write_mode(IOMode::Append)
+        let options = self
+            .inner
+            .write_options(IOMode::Append, &options)
             .map_err(napi_error)?;
         self.inner
             .append_arrow_reader(batches.take()?, &options)
@@ -1922,12 +1930,15 @@ impl JsIOBase {
             .map_err(napi_error)
     }
 
-    /// Merge every incoming row by `options.mergeBy`.
+    /// Merge every incoming row by `options.mergeBy`, else by the
+    /// destination's own key.
     ///
-    /// A non-empty match key is required. The core keeps the incoming reader
-    /// streaming, applies `options.field` once, and publishes through the
-    /// implementor's overwrite hook without casting the shaped rows twice.
-    /// Answers the rows the write read, wrote and skipped.
+    /// A non-empty match key is required where the destination states none
+    /// of its own; an Iceberg table's is its identity partition columns, then
+    /// its identifier columns. The core keeps the incoming reader streaming,
+    /// applies `options.field` once, and publishes through the implementor's
+    /// overwrite hook without casting the shaped rows twice. Answers the rows
+    /// the write read, wrote and skipped.
     #[napi]
     pub fn merge_arrow_reader(
         &mut self,
@@ -1935,8 +1946,9 @@ impl JsIOBase {
         options: Option<&JsRecordOptions>,
     ) -> Result<JsIOResult> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
-        options
-            .require_write_mode(IOMode::Merge)
+        let options = self
+            .inner
+            .write_options(IOMode::Merge, &options)
             .map_err(napi_error)?;
         self.inner
             .merge_arrow_reader(batches.take()?, &options)
@@ -1958,14 +1970,18 @@ impl JsIOBase {
     ) -> Result<JsIOResult> {
         let mode = IOMode::from_str(&mode).map_err(napi_error)?;
         let options = JsRecordOptions::resolved(options, &self.inner)?;
-        options.require_write_mode(mode).map_err(napi_error)?;
+        let options = self
+            .inner
+            .write_options(mode, &options)
+            .map_err(napi_error)?;
         self.inner
             .write_arrow_reader(batches.take()?, mode, &options)
             .map(JsIOResult::from_core)
             .map_err(napi_error)
     }
 
-    /// Start the private mode-selected session used between async pulls.
+    /// Start the private mode-selected session used between async pulls,
+    /// a merge naming no key keyed by this destination's own.
     #[napi(js_name = "_beginArrowWriteSessionNative", skip_typescript)]
     pub fn begin_arrow_write_session(
         &self,
@@ -1973,7 +1989,11 @@ impl JsIOBase {
         options: &JsRecordOptions,
     ) -> Result<JsArrowWriteSession> {
         let mode = IOMode::from_str(&mode).map_err(napi_error)?;
-        yggdryl::ArrowWriteSession::new(mode, &options.inner)
+        let options = self
+            .inner
+            .write_options(mode, &options.inner)
+            .map_err(napi_error)?;
+        yggdryl::ArrowWriteSession::new(mode, &options)
             .map(|inner| JsArrowWriteSession { inner })
             .map_err(napi_error)
     }

@@ -468,6 +468,7 @@ One column carries the frames; two more supply, per row, arguments the byte read
 | `sourceurl` | nothing: [the capture's own column](message.md#a-row-is-a-message-again) is what a reader said about the line, so it fills no message fact and is written straight into its own column of the row instead |
 | any other column named after a field | that field, where the message did not state it - a `sendingtime` column among them, which outranks the line's `currunix` and the codec's default sending time |
 | one of the other fourteen [event columns](../graph/market-data.md#columns) | nothing: they are the carrier's own facts - the [text line](../media/text.md) each row is, as the reader stated it - so `curruuid` is each message's one source and the rest fill no message fact, a line's `prevunix` - the instant of the line the read cut before it - among them |
+| any other column | nothing: the capture's own column - a reader's `body`, a bridge header's `msgthreadid` and `loglevel` - carried by every message the row answers for and stated again at its own column by `into_row`, never a fact, an entry or a byte on the wire |
 
 A column is the caller speaking per row and a pin is the caller speaking per run, so a column outranks the pin and both outrank what the frame infers: a row whose `beginstring` says `FIX.4.2` is read at 4.2 whatever the codec was pinned to, and its values translate through the code spellings 4.2 declares. A column absent, null or empty is silence, never an instruction and never an error.
 
@@ -477,25 +478,27 @@ A fill is named the way a key is: a column whose folded name resolves in the reg
 
 ### A bridge log names what it fills
 
-`yggdryl::ULBRIDGE_ROWHEADER` is the [row header](../media/text.md) a ULBridge log writes in front of every line - a clock, a thread bracket, the plugin that wrote the line and its level. Its clock is `mtime`, so the header dates each line it matches; the other four captures are each named for what they fill, so the header carries no column of its own in front of a row; the thread and the level are matched and captured into no column. Rust names the constant; the regex is the same text, ending in one space, in any binding's `rowheader`. A row header capture named `seqnum` or `crosscode`, in any case, is refused because the line derives those facts from its row number and the identifier it was read under. A capture named for another capture-fed [event column](../graph/market-data.md#columns) - `state`, `prevuuid`, or an optional event instant - feeds the line's own fact but no message field: the line states its identity as the message's source, which is all it says about the message. A capture named `execunix` is no event fact - when an element last executed is a [market fact](../graph/market.md#contract), and a line is no market element - so it is an ordinary text column of the line's batch.
+`yggdryl::ULBRIDGE_ROWHEADER` is the [row header](../media/text.md) a ULBridge log writes in front of every line - a clock, a thread bracket, the plugin that wrote the line and its level. Its clock is `mtime`, so the header dates each line it matches; four of the other six captures are named for what they fill, and `msgthreadid` and `loglevel` name no field: they are the line's own columns, and a FIX row parsed from the lines carries them in front of the message's columns, filling nothing. Rust names the constant; the regex is the same text, ending in one space, in any binding's `rowheader`. A row header capture named `seqnum` or `crosscode`, in any case, is refused because the line derives those facts from its row number and the identifier it was read under. A capture named for another capture-fed [event column](../graph/market-data.md#columns) - `state`, `prevuuid`, or an optional event instant - feeds the line's own fact but no message field: the line states its identity as the message's source, which is all it says about the message. A capture named `execunix` is no event fact - when an element last executed is a [market fact](../graph/market.md#contract), and a line is no market element - so it is an ordinary text column of the line's batch.
 
 ```text
-^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:[.,]\d{3}(?:_\d{3})?)?) \[[1-9]\d*(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \([A-Z]+\) 
+^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:[.,]\d{3}(?:_\d{3})?)?) \[(?P<msgthreadid>[1-9]\d*)(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \((?P<loglevel>[A-Z]+)\) 
 ```
 
 | Capture | Typed as | In a batch read |
 | --- | --- | --- |
 | `mtime` | `datetime64(ns, UTC)`, under the text options' `timezone` | no column: consumed into the line's `currunix`, which is its messages' `recdunix` and the sending clock of any that states no `SendingTime(52)`; a point or a comma opens the fraction - three digits, or the grouped microseconds `.524_315` - and a clock may state none |
+| `msgthreadid` | int64, nullable | the thread that wrote the line: a column of the line's row, and on a FIX row the capture's own column carried in front of the message's - provenance, never a fill, an entry, a byte on the wire or an input of any code |
 | `msgsessionid` | utf8, nullable | the session instance the bridge handled the line on; fills `msgsessionid` (65043) rather than leading the row, and never over a reading the message stated. Not the counterparty session a bridge row spells `SESSIONID` for: two connections to one counterparty are two instances |
 | `msgctxid` | utf8, nullable | fills `msgctxid` (65042) |
 | `msgseqnum` | int64, nullable | fills `MsgSeqNum(34)` where the frame did not carry it |
 | `msgpluginid` | utf8 | fills `msgpluginid` (65040), the plugin that logged the line, and selects nothing |
+| `loglevel` | utf8, nullable | the level the bridge logged the line at (`DEBUG`, `INFO`, `WARN`): the capture's own column, as `msgthreadid` is |
 
 The session instance, the context and the sequence number are optional as a whole, so a line carrying only its thread still frames and leaves them null rather than failing the row.
 
 Editing a row header changes how many events a walk answers, which is worth saying plainly because nothing about it looks like a lifecycle change. A line the expression does not match yields no captures at all rather than failing the row: it keeps its body, is dated by its object's modification time rather than a clock of its own, and reaches the walk with no session instance, no message context and no sequence. Those three with the message type are what build `msgsesseventid`, and that is the key two observations of one session event are [merged](lifecycle.md#a-twin-is-not-a-successor) on - so a line the header misses is a line the walk cannot fold, and one unchanged capture read under a narrower header answers *more* events, not fewer. Every message still parses and `currhashcode` still agrees, because the capture's session context is provenance and is excluded from the content code by name; the missed lines' `currunix` and `curruuid` move, because their object's modification time dates them instead of their own clock. `ULBRIDGE_ROWHEADER`'s own clock reads both fractions the bridge writes, three digits and the grouped microseconds it spells `23:59:46.524_315`, behind a point or a comma, and a clock stating none; it admitted only three digits until 0.1.10, and so could not read the last fifteen lines of the capture shipped beside it. Assert the count of lines a header matched beside the count of messages parsed; the two diverge silently otherwise.
 
-A capture that names a field fills it, so the registry's one namespace is what lands it and nothing translates in between; a capture that names none is the capture's own column and fills nothing - this header has none: the thread and the level are matched and not captured. The clock is `mtime`, which is [consumed into `currunix`](../media/text.md) rather than carried beside it and is read at `datetime64(ns, UTC)` whatever its own syntax suggests, so every line the header matches is dated by the clock written in front of it rather than by its file's modification time - and a line's `currunix` is its messages' `recdunix` and the sending clock of any that states no `SendingTime(52)`. Until 0.1.17 the clock was captured as `timestamp`, which dated nothing, so every line of a read took its file's one modification time. The bridge writes these in camel case - `msgCtxId`, `seqNum` - and they used to be captured that way, with a table mapping `seqnum` onto tag 34; naming the captures for the fields retires that table. The session instance, context and plugin are [capture facts](message.md#typed-tags), held by `FixCapture` rather than the content row. A complete nonempty message type, session instance and context with a present message sequence join to `msgsesseventid` (65044), a fourth capture fact and a column of the fixed row of its own: the four values joined by `:` as stated, `<msgtype>:<msgsessionid>:<msgctxid>:<msgseqnum>`, with the sequence in its canonical `u64` spelling. Thus message type `8`, session `e7256476`, context `9effef3e6a` and sequence `1094` spell `8:e7256476:9effef3e6a:1094`, and any absent or empty text part leaves it null. It is capture provenance and is excluded from the FIX content UUID. A cross code instead comes from an explicit nonempty value or the message's ordered FIX identifiers, as [the lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) defines. Where the line was read from is not among them at all - that is [the capture's own column](message.md#a-row-is-a-message-again), which a message carries and never states, because the same message read from a second copy of one day's log is the same message.
+A capture that names a field fills it, so the registry's one namespace is what lands it and nothing translates in between; a capture that names none is the capture's own column and fills nothing - `msgthreadid` and `loglevel` here: on the line door a capture of either name is read past, and on the batch door the cell rides every message the row carries (`FixMsg::carried`) and is stated again at its column by `into_row`. The clock is `mtime`, which is [consumed into `currunix`](../media/text.md) rather than carried beside it and is read at `datetime64(ns, UTC)` whatever its own syntax suggests, so every line the header matches is dated by the clock written in front of it rather than by its file's modification time - and a line's `currunix` is its messages' `recdunix` and the sending clock of any that states no `SendingTime(52)`. Until 0.1.17 the clock was captured as `timestamp`, which dated nothing, so every line of a read took its file's one modification time. The bridge writes these in camel case - `msgCtxId`, `seqNum` - and they used to be captured that way, with a table mapping `seqnum` onto tag 34; naming the captures for the fields retires that table. The session instance, context and plugin are [capture facts](message.md#typed-tags), held by `FixCapture` rather than the content row. A complete nonempty message type, session instance and context with a present message sequence join to `msgsesseventid` (65044), a fourth capture fact and a column of the fixed row of its own: the four values joined by `:` as stated, `<msgtype>:<msgsessionid>:<msgctxid>:<msgseqnum>`, with the sequence in its canonical `u64` spelling. Thus message type `8`, session `e7256476`, context `9effef3e6a` and sequence `1094` spell `8:e7256476:9effef3e6a:1094`, and any absent or empty text part leaves it null. It is capture provenance and is excluded from the FIX content UUID. A cross code instead comes from an explicit nonempty value or the message's ordered FIX identifiers, as [the lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) defines. Where the line was read from is not among them at all - that is [the capture's own column](message.md#a-row-is-a-message-again), which a message carries and never states, because the same message read from a second copy of one day's log is the same message.
 
 The plugin is a fill and nothing more: it lands in the crate's own `msgpluginid` column by name, like any capture named after a field, and selects no dictionary and no version - the registry is one namespace, and which dictionaries a field belongs to is the field's own `FIX:branches`, which no read consults.
 
@@ -508,11 +511,47 @@ The plugin is a fill and nothing more: it lands in the crate's own `msgpluginid`
     let options = TextOptions::new().try_with_rowheader(ULBRIDGE_ROWHEADER)?;
     let captures = options.source_field()?;
     let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-    // The clock dates each line, so it leads no column of its own.
-    assert!(names.ends_with(&["msgsessionid", "msgctxid", "msgseqnum", "msgpluginid"]));
+    // The clock dates each line, so it leads no column of its own; the
+    // thread and the level are the line's own columns.
+    assert!(names.ends_with(&["msgthreadid", "msgsessionid", "msgctxid", "msgseqnum", "msgpluginid", "loglevel"]));
     assert!(!names.contains(&"mtime"));
     // Typed from the pattern before a byte is read.
     assert_eq!(captures.field("msgseqnum")?.dtype(), &DataType::Int64);
+    assert_eq!(captures.field("msgthreadid")?.dtype(), &DataType::Int64);
+    assert_eq!(captures.field("loglevel")?.dtype(), &DataType::utf8());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import TextOptions
+    from yggdryl.fix import ULBRIDGE_ROWHEADER
+
+    options = TextOptions()
+    options.rowheader = ULBRIDGE_ROWHEADER
+    captures = options.source_field()
+    names = [child.name for child in captures]
+    assert names[-6:] == ["msgthreadid", "msgsessionid", "msgctxid", "msgseqnum", "msgpluginid", "loglevel"]
+    assert "mtime" not in names
+    assert str(captures.field("msgthreadid").dtype) == "int64"
+    assert str(captures.field("loglevel").dtype) == "utf8"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { TextOptions, fix } = require('yggdryl')
+
+    const options = new TextOptions()
+    options.rowheader = fix.ULBRIDGE_ROWHEADER
+    const captures = options.sourceField()
+    const names = []
+    for (let at = 0; at < captures.fieldLen; at += 1) names.push(captures.fieldAt(at).name)
+    assert.deepEqual(names.slice(-6), ['msgthreadid', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid', 'loglevel'])
+    assert.equal(names.includes('mtime'), false)
+    assert.equal(String(captures.field('msgthreadid').dtype), 'int64')
+    assert.equal(String(captures.field('loglevel').dtype), 'utf8')
     ```
 
 ## One row per message
@@ -605,7 +644,7 @@ A source row is read for every message it carries, so a capture answers one row 
 
 ## Rows are messages again, and messages rows
 
-`messages` reads a stream of batches back as semantic messages, each row through [`FixMsg::from_row`](message.md#a-row-is-a-message-again) under the source schema: projected columns, residual `fixentries` - `0:<key>` entries included - and the keys `metadata` holds that no dictionary resolved rebuild the message without parsing. Its recorded identity cells remain stated while market getters refill from the reconstructed content. `arrow_reader` is the other direction: a stream of messages into batches under a schema, each through `FixMsg::into_row`, closed on the bytes each row lands as. The two invert each other at the canonical row: `messages` reads each row's own cells into the message it makes, carried and never content, and `into_row` states them again at their columns, so a `messages` -> stage -> `arrow_reader` composition keeps them whatever order the stage answers in - `lifecycle_arrow_reader` and `format_arrow_reader` are that composition spelled once. It is what lets a stage run over a capture already landed in Arrow; the example ends [back on the wire](#back-to-the-wire). One thread holds one source batch at a time. Several threads retain bounded 64-row chunks, at most two per worker, which can span input batches and still answer messages in source order.
+`messages` reads a stream of batches back as semantic messages, each row through [`FixMsg::from_row`](message.md#a-row-is-a-message-again) under the source schema: projected columns, residual `fixentries` - `0:<key>` entries included - and the keys `metadata` holds that no dictionary resolved rebuild the message without parsing. A schema a table hands back keeps no `FIX:` key - an Iceberg table keeps a column's name, its datatype and its `doc` - so a bare column is read as the fixed row's column of its name, the crate's `bidqty` rather than the dictionary's `BidSize(134)`, and the message read back settles to the identity the parse stamped. Its recorded identity cells remain stated while market getters refill from the reconstructed content. `arrow_reader` is the other direction: a stream of messages into batches under a schema, each through `FixMsg::into_row`, closed on the bytes each row lands as. The two invert each other at the canonical row: `messages` reads each row's own cells into the message it makes, carried and never content, and `into_row` states them again at their columns, so a `messages` -> stage -> `arrow_reader` composition keeps them whatever order the stage answers in - `lifecycle_arrow_reader` and `format_arrow_reader` are that composition spelled once. It is what lets a stage run over a capture already landed in Arrow; the example ends [back on the wire](#back-to-the-wire). One thread holds one source batch at a time. Several threads retain bounded 64-row chunks, at most two per worker, which can span input batches and still answer messages in source order.
 
 === "Rust"
 
@@ -777,6 +816,7 @@ A carried column returns to its place because the message carries it: a message 
 - A fill never overrides what the frame stated: a `msgseqnum` capture beside a frame carrying `34=` leaves that field to the frame.
 - A fill is row-only: never an entry, never in `fixentries`, never re-emitted by `write_arrow_reader`, never in the arrival digest.
 - `messages` reads a row carrying the settled values - `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `crosscode`, `curruuid`, `crossuuid`, `seqnum` - as a replayable message; a row leaving one of them null is left out with a [warning](capture.md#warnings), since the fixed row declares them required.
+- A digest cell a table stored as an `int64` - the `long` a column stating [`FIELD:representation=bits`](../types/protocol.md#integers-stated-as-bits) is exchanged as, or any table's signed digest - is read as its bits whatever the row's schema states, a negative cell being no other `u64`; a whole `decimal(20, 0)` reads as the number it is. `seqnum` is a count, read by value: a negative place refuses the row at `$.seqnum`. A row recorded with a digest is kept as recorded, so a foreign `-1` meaning "no digest" reads as `u64::MAX` rather than refusing.
 - `messages` on a row whose `securityids`, `identifiers` or `partyids` cell holds a key that reads as none, a value its type refuses or two spellings of one key with two values, or whose `fixentries` holds a key naming another field than its tag (`55:securityid`) -> that row left out with a [warning](capture.md#warnings), because [`FixMsg::from_row`](message.md#a-row-is-a-message-again) refuses it: a row's identifier map is its word, never replaced by what its fields state.
 - A batch closes on the bytes each row lands as - the leaves of every column the row fills and a per-row width - so a source batch of any size splits by what its messages land as, and a line answering two messages is charged twice, once per row.
 - A `batch_byte_size` of `0` or `1` is a batch a row: the target is where a batch closes, never a bound a row must fit under.

@@ -17,8 +17,17 @@ pub trait IOPath: IOBase {
     /// Return whether the location names an existing leaf.
     fn is_file(&self) -> bool;
 
-    /// Return whether anything is there yet.
+    /// Return whether anything is there yet: a glob whether its pattern
+    /// selects an entry, any other location whether it names an existing
+    /// container or leaf.
+    ///
+    /// A pattern is the set its listing expands it into, so it is there
+    /// exactly when that listing yields one entry, the walk stopping at the
+    /// first; its [`Self::path_kind`] names a container whatever it selects.
     fn path_exists(&self) -> bool {
+        if self.path_url().is_glob() {
+            return crate::iobase::selects_any(self);
+        }
         self.is_folder() || self.is_file()
     }
 

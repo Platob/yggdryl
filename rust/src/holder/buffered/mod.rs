@@ -463,6 +463,10 @@ impl<H: IOBase> crate::IOMedia for Buffered<H> {
         crate::IOMedia::record_options(&self.handle)
     }
 
+    fn merge_by(&self) -> Result<crate::Selector> {
+        crate::IOMedia::merge_by(&self.handle)
+    }
+
     fn read_arrow_field(&self, options: &crate::media::RecordOptions) -> Result<crate::Field> {
         crate::IOMedia::read_arrow_field(&self.handle, options)
     }

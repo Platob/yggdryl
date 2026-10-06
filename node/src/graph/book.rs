@@ -12,7 +12,7 @@ use yggdryl::graph::{
 };
 
 use super::market_data::JsMarketData;
-use super::operation::JsBookRef;
+use super::operation::{JsBookRef, JsExecutionEvent, JsOrderEvent, JsQuoteEvent};
 use super::{AnyMarketData, decimal_text, instant_of, market_data_from, market_data_of};
 use crate::expression::{JsFilter, JsTerm, filter_from_input};
 use crate::{Failed, Pulled, exact_i64, exact_u64, javascript_failure, napi_error, or_null};
@@ -126,13 +126,61 @@ impl JsBookEvent {
         Ok(market_data_list(self.inner.alive_on(side_of(side)?)))
     }
 
-    /// The orders and quotes applied since the book before this one, each a
-    /// `MarketData`, in the order applied across both sides: what a book
-    /// stating its deltas alone states, and what `withPrevious` replays
-    /// over the book before it.
+    /// Every event of the book's instant since the book before this one,
+    /// each a `MarketData`, in the order applied across both sides: the
+    /// orders and quotes applied, and the executions recorded, which rest on
+    /// no side. What a book stating its deltas alone states, and what
+    /// `withPrevious` replays over the book before it.
     #[napi]
     pub fn deltas(&self) -> Vec<JsMarketData> {
         market_data_list(self.inner.deltas())
+    }
+
+    /// The orders resting on the book - every `alive()` entry that is an
+    /// order - each an `OrderEvent`, in `alive()`'s order: the bid side's,
+    /// best price first, then the ask side's. Empty on a book stating its
+    /// deltas alone.
+    #[napi]
+    pub fn ordlive(&self) -> Vec<JsOrderEvent> {
+        self.inner
+            .ordlive()
+            .cloned()
+            .map(JsOrderEvent::from_core)
+            .collect()
+    }
+
+    /// The orders among `deltas()`, each an `OrderEvent`, in the order
+    /// applied: every order the book's instant placed, changed or ended.
+    #[napi]
+    pub fn orddelta(&self) -> Vec<JsOrderEvent> {
+        self.inner
+            .orddelta()
+            .cloned()
+            .map(JsOrderEvent::from_core)
+            .collect()
+    }
+
+    /// The quotes among `deltas()`, each a `QuoteEvent`, in the order
+    /// applied; a quote resting since an earlier instant is `alive()`'s and
+    /// not here.
+    #[napi]
+    pub fn quotes(&self) -> Vec<JsQuoteEvent> {
+        self.inner
+            .quotes()
+            .cloned()
+            .map(JsQuoteEvent::from_core)
+            .collect()
+    }
+
+    /// The executions among `deltas()`, each an `ExecutionEvent`, in the
+    /// order applied: recorded at the book's instant, resting on no side.
+    #[napi]
+    pub fn executions(&self) -> Vec<JsExecutionEvent> {
+        self.inner
+            .executions()
+            .cloned()
+            .map(JsExecutionEvent::from_core)
+            .collect()
     }
 
     /// One limit per price level of the side `side` names - read through
@@ -345,11 +393,12 @@ impl JsBookIterator {
     /// disables grid snapshots, so a book is emitted whole only at a full
     /// refresh.
     ///
-    /// The walk folds orders, quotes and snapshot controls and prunes every
-    /// other input where it is pulled. `filter` - a `Filter`, a `Term` or
-    /// the text of a predicate over the `marketdata` row - narrows it
-    /// further, bound once here; it never admits an execution or a trade.
-    /// Not given, every booked input is kept.
+    /// The walk folds orders, quotes and snapshot controls, records every
+    /// execution among the deltas of its book at its instant, and prunes
+    /// every other input where it is pulled. `filter` - a `Filter`, a `Term`
+    /// or the text of a predicate over the `marketdata` row - narrows it
+    /// further, bound once here; it never admits a trade. Not given, every
+    /// recorded input is kept.
     #[napi(factory, js_name = "_bookIteratorNative", skip_typescript)]
     pub fn new_native(
         env: Env,

@@ -72,7 +72,7 @@ impl IOFolder for FsFolder {
         self.url()
     }
 
-    fn folder_exists(&self) -> bool {
+    fn has_folder(&self) -> bool {
         self.filesystem()
             .file_info(self.path())
             .is_ok_and(|info| info.kind == IOKind::Directory)

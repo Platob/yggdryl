@@ -16,6 +16,7 @@ import yggdryl
 from yggdryl import (
     ArrowCastPlan,
     BbgField,
+    BicField,
     Bound,
     BoundSelector,
     BytesField,
@@ -25,10 +26,13 @@ from yggdryl import (
     CusipField,
     DataType,
     DenseUnionField,
+    DtiField,
+    ElfField,
     Expression,
     Field,
     FigiField,
     Filter,
+    FisnField,
     FixedSizeSerieField,
     GeographyField,
     GeometryField,
@@ -36,6 +40,7 @@ from yggdryl import (
     IOResult,
     Int32Field,
     IsinField,
+    LeiField,
     MarketDataKind,
     MediaType,
     MicField,
@@ -308,6 +313,8 @@ applied_root.sort.by = ["value desc"]
 applied_root.sort.by = None
 removed_partition_by: str | None = applied_root.partition.remove_by()
 transform_term: Term | None = applied_root.transform.term
+field_representation: Literal["value", "bits"] = applied_root.field_properties.representation
+applied_root.field_properties.representation = None
 partitioned_root: Field = applied_root.with_partition_by(["value", ("value", "copy")])
 declared_partition_by: list[str] = partitioned_root.partition_by
 filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().apply_arrow_batch(
@@ -551,6 +558,16 @@ typed_ric: RicField = yggdryl.ric("ric")
 typed_ric_kind: Literal["ric"] = typed_ric.dtype.id
 typed_figi: FigiField = yggdryl.figi("figi")
 typed_figi_kind: Literal["figi"] = typed_figi.dtype.id
+typed_lei: LeiField = yggdryl.lei("lei")
+typed_lei_kind: Literal["lei"] = typed_lei.dtype.id
+typed_bic: BicField = yggdryl.bic("bic")
+typed_bic_kind: Literal["bic"] = typed_bic.dtype.id
+typed_elf: ElfField = yggdryl.elf("elf")
+typed_elf_kind: Literal["elf"] = typed_elf.dtype.id
+typed_dti: DtiField = yggdryl.dti("dti")
+typed_dti_kind: Literal["dti"] = typed_dti.dtype.id
+typed_fisn: FisnField = yggdryl.fisn("fisn")
+typed_fisn_kind: Literal["fisn"] = typed_fisn.dtype.id
 typed_uuid: UuidField = yggdryl.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
 typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
@@ -1178,6 +1195,10 @@ iceberg_table.overwrite_where(
 )
 iceberg_table.overwrite_where(None, pa.table({"id": [1]}))
 iceberg_table.merge(pa.table({"id": [1]}), ["id"])
+# A merge naming no key - left out or None - matches on the table's own.
+iceberg_table.merge(pa.table({"id": [1]}))
+iceberg_table.merge(pa.table({"id": [1]}), None)
+iceberg_table.merge_where([("venue", "XNAS")], pa.table({"id": [1]}))
 iceberg_table.merge(
     pa.table({"id": [1]}),
     ["id"],
@@ -1568,8 +1589,8 @@ fix_message_event: fix.FixMsg = fix_message
 fix_message_header: fix.FixHeader = fix_message.header()
 fix_message_capture: fix.FixCapture = fix_message.capture()
 fix_message_text: str | None = fix_message.text
-fix_message_msgcat: MarketDataKind = fix_message.msgcat
-fix_message_strikeprice: Scalar | None = fix_message.strikeprice
+fix_message_marketdatakind: MarketDataKind = fix_message.marketdatakind
+fix_message_strikepx: Scalar | None = fix_message.strikepx
 fix_message_metadata: dict[str, str] = fix_message.metadata
 fix_message_curruuid: Scalar = fix_message.curruuid
 fix_message_crossuuid: Scalar = fix_message.crossuuid
@@ -1847,7 +1868,7 @@ fix_msgtype: fix.MsgType = fix_registry_loaded.msgtype("D")
 fix_optional_msgtype: fix.MsgType | None = fix_registry_loaded.get_msgtype("D")
 fix_msgtype_name: str = fix_msgtype.name
 fix_msgtype_value: str = fix_msgtype.value
-fix_msgtype_category: MarketDataKind | None = fix_msgtype.msgcat
+fix_msgtype_category: MarketDataKind | None = fix_msgtype.marketdatakind
 assert fix_msgtype_category is MarketDataKind.ORDR
 fix_msgtype_field: Field = fix_msgtype.field
 fix_msgtype_group: Field | None = fix_msgtype.get_group_by_tag(453)
@@ -1923,8 +1944,8 @@ assert fix_message_operations and isinstance(fix_message_operations[0], graph.Ma
 assert isinstance(fix_message_header, fix.FixHeader)
 assert isinstance(fix_message_capture, fix.FixCapture)
 assert fix_message_text is None or fix_message_text
-assert isinstance(fix_message_msgcat, MarketDataKind)
-assert fix_message_strikeprice is None or isinstance(fix_message_strikeprice, Scalar)
+assert isinstance(fix_message_marketdatakind, MarketDataKind)
+assert fix_message_strikepx is None or isinstance(fix_message_strikepx, Scalar)
 assert isinstance(fix_message_metadata, dict) and isinstance(fix_message_identifiers, yggdryl.Identifiers)
 assert isinstance(fix_message_partyids, yggdryl.Identifiers)
 assert fix_message_isincode is None or isinstance(fix_message_isincode, str)
@@ -2149,6 +2170,10 @@ graph_book_with_operations: graph.BookEvent = graph_book.with_operations(
 )
 graph_book_alive: list[graph.MarketData] = graph_book_with_operations.alive
 graph_book_deltas: list[graph.MarketData] = graph_book_with_operations.deltas
+graph_book_ordlive: list[graph.OrderEvent] = graph_book_with_operations.ordlive
+graph_book_orddelta: list[graph.OrderEvent] = graph_book_with_operations.orddelta
+graph_book_quotes: list[graph.QuoteEvent] = graph_book_with_operations.quotes
+graph_book_executions: list[graph.ExecutionEvent] = graph_book_with_operations.executions
 graph_book_alive_on: list[graph.MarketData] = graph_book_with_operations.alive_on(Side.BUYS)
 graph_book_alive_on_text: list[graph.MarketData] = graph_book_with_operations.alive_on("SELL")
 graph_book_complete: bool = graph_book_with_operations.is_complete

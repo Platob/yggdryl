@@ -855,18 +855,28 @@ fn an_entry_reads_back_from_its_scalar() {
     .with_cficode(cfi("ESVUFR"))
     .with_countrycode(Some(Country::new("CH").unwrap()))
     .with_forexcode(Some(Forex::new("EUR/CHF").unwrap()))
+    .with_underlyingisin(Some(isin(APPLE)))
     .with_miccode(mic("XSWX"))
     .with_ticker(Some(SmolStr::new(" HOLN ")))
     .with_currency(ccy("CHF"));
     assert_eq!(entry.ticker(), Some("HOLN"));
+    assert_eq!(entry.underlyingisin().map(Isin::as_str), Some(APPLE));
     assert_eq!(IsinEntry::from_scalar(&entry.into_scalar()).unwrap(), entry);
+    assert_eq!(
+        entry
+            .into_scalar()
+            .as_struct()
+            .and_then(|cells| cells.get("underlyingisin"))
+            .and_then(|cell| cell.as_str()),
+        Some(APPLE)
+    );
     let columns: Vec<String> = IsinEntry::dtype()
         .as_fields()
         .unwrap()
         .iter()
         .map(|field| field.name().to_string())
         .collect();
-    assert_eq!(columns.len(), 40);
+    assert_eq!(columns.len(), 41);
     assert_eq!(
         &columns[..10],
         [
@@ -875,11 +885,11 @@ fn an_entry_reads_back_from_its_scalar() {
             "cficode",
             "countrycode",
             "forexcode",
+            "underlyingisin",
             "miccode",
             "ticker",
             "currency",
-            "cusip",
-            "sedol"
+            "cusip"
         ]
     );
     assert!(!IsinEntry::field().is_nullable());
@@ -887,7 +897,7 @@ fn an_entry_reads_back_from_its_scalar() {
         .as_fields()
         .unwrap()
         .iter()
-        .take(8)
+        .take(9)
         .map(|field| field.dtype().to_string())
         .collect();
     assert_eq!(
@@ -898,11 +908,118 @@ fn an_entry_reads_back_from_its_scalar() {
             "cfi",
             "country",
             "forex",
+            "isin",
             "mic",
             "utf8",
             "ccy"
         ]
     );
+}
+
+/// The underlying is an instrument fact: a real ISIN other than the row's
+/// own fills and replaces on any market and no listing switch clears it; the
+/// row's own ISIN or a typo states nothing; `learn` never states one, since
+/// what a FIX message names as its underlying is the lifecycle's reading.
+#[test]
+fn the_underlying_is_an_instrument_fact_merged_by_the_update_rule() {
+    let holcim = || IsinEntry::new(isin(HOLCIM));
+    assert_eq!(
+        holcim()
+            .with_underlyingisin(Some(isin(HOLCIM)))
+            .underlyingisin(),
+        None,
+        "an instrument is not written on itself"
+    );
+    let mut registry = IsinRegistry::new();
+    assert!(
+        registry
+            .merge(
+                holcim()
+                    .with_miccode(mic("XSWX"))
+                    .with_ticker(Some(SmolStr::new("HOLN")))
+            )
+            .unwrap()
+    );
+    let underlying = |registry: &IsinRegistry| {
+        registry
+            .get(HOLCIM)
+            .and_then(|row| row.underlyingisin().map(|code| code.as_str().to_owned()))
+    };
+    assert!(
+        !registry
+            .merge(holcim().with_underlyingisin(Some(isin(HOLCIM))))
+            .unwrap(),
+        "the row's own ISIN states nothing"
+    );
+    assert_eq!(underlying(&registry), None);
+    assert!(
+        registry
+            .merge(holcim().with_underlyingisin(Some(isin(APPLE))))
+            .unwrap(),
+        "a real ISIN fills"
+    );
+    assert_eq!(underlying(&registry).as_deref(), Some(APPLE));
+    assert!(
+        !registry
+            .merge(holcim().with_underlyingisin(Some(isin(APPLE))))
+            .unwrap(),
+        "the same value moves nothing"
+    );
+    assert!(
+        !registry.merge(holcim()).unwrap(),
+        "a statement of none moves nothing"
+    );
+    // A typo is dropped with a warning and moves nothing.
+    assert!(
+        !registry
+            .merge(holcim().with_underlyingisin(Some(isin("US0378331006"))))
+            .unwrap()
+    );
+    assert_eq!(underlying(&registry).as_deref(), Some(APPLE));
+    // A different real ISIN replaces whatever the time.
+    assert!(
+        registry
+            .merge(
+                holcim()
+                    .with_updunix(Some(1))
+                    .with_underlyingisin(Some(isin(NOVARTIS)))
+            )
+            .unwrap()
+    );
+    assert_eq!(underlying(&registry).as_deref(), Some(NOVARTIS));
+    // A listing switch on another market keeps it: an instrument fact.
+    assert!(
+        registry
+            .merge(
+                holcim()
+                    .with_miccode(mic("XLON"))
+                    .with_ticker(Some(SmolStr::new("HOLNL")))
+            )
+            .unwrap()
+    );
+    let row = registry.get(HOLCIM).unwrap();
+    assert_eq!(row.miccode().map(Mic::as_str), Some("XLON"));
+    assert_eq!(row.ticker(), Some("HOLNL"));
+    assert_eq!(row.underlyingisin().map(Isin::as_str), Some(NOVARTIS));
+    // `learn` never states one.
+    let mut fresh = IsinRegistry::new();
+    assert!(fresh.learn(&order(
+        5,
+        &[(IdType::Isin, APPLE), (IdType::Cusip, "037833100")]
+    )));
+    assert_eq!(fresh.get(APPLE).unwrap().underlyingisin(), None);
+    // The named struct reads it back, and the ordered row carries it.
+    let entry = holcim().with_underlyingisin(Some(isin(APPLE)));
+    assert_eq!(IsinEntry::from_scalar(&entry.into_scalar()).unwrap(), entry);
+    let named = yggdryl::Scalar::from_struct([
+        (SmolStr::new_static("isin"), yggdryl::Scalar::from(HOLCIM)),
+        (
+            SmolStr::new_static("underlyingisin"),
+            yggdryl::Scalar::from(APPLE),
+        ),
+    ])
+    .unwrap();
+    assert_eq!(IsinEntry::from_scalar(&named).unwrap(), entry);
 }
 
 #[test]
@@ -1141,6 +1258,9 @@ fn a_flat_golden_file_loads_by_the_columns_its_names_spell() {
         ArrowField::new("Currency", ArrowType::Utf8, true),
         ArrowField::new("CcyPair", ArrowType::Utf8, true),
         ArrowField::new("rank", ArrowType::Int64, true),
+        ArrowField::new("UnderlyingISIN", ArrowType::Utf8, true),
+        ArrowField::new("ValorSymbol", ArrowType::Utf8, true),
+        ArrowField::new("X-SWX-VALOR", ArrowType::Utf8, true),
     ]));
     let batch = RecordBatch::try_new(
         Arc::clone(&schema),
@@ -1154,6 +1274,9 @@ fn a_flat_golden_file_loads_by_the_columns_its_names_spell() {
             Arc::new(StringArray::from(vec![Some("CHF"), None])),
             Arc::new(StringArray::from(vec![None, Some("USD/CHF")])),
             Arc::new(Int64Array::from(vec![1, 2])),
+            Arc::new(StringArray::from(vec![Some(APPLE), None])),
+            Arc::new(StringArray::from(vec![Some("HOLN"), None])),
+            Arc::new(StringArray::from(vec![Some("1221405"), None])),
         ],
     )
     .unwrap();
@@ -1168,6 +1291,12 @@ fn a_flat_golden_file_loads_by_the_columns_its_names_spell() {
     assert_eq!(row.miccode().map(|code| code.as_str()), Some("XSWX"));
     assert_eq!(row.countrycode().map(|code| code.as_str()), Some("LI"));
     assert_eq!(row.currency().map(|code| code.as_str()), Some("CHF"));
+    // A key naming an underlying's ISIN lands in `underlyingisin`; SIX's
+    // symbol is the exchange symbol of the row's listing, and the vendor's
+    // source spelling its Valor number.
+    assert_eq!(row.underlyingisin().map(Isin::as_str), Some(APPLE));
+    assert_eq!(row.get(&IdType::ExchSymb), Some("HOLN"));
+    assert_eq!(row.get(&IdType::Valor), Some("1221405"));
     let apple = registry.get(APPLE).unwrap();
     assert!(apple.iter().next().is_none());
     assert_eq!(apple.forexcode().map(|pair| pair.as_str()), Some("USD/CHF"));
@@ -1241,6 +1370,57 @@ fn a_load_refuses_a_utf8_code_its_type_refuses_on_its_row_and_column() {
     assert_eq!(row.countrycode(), None);
     assert_eq!(row.currency(), None);
     assert_eq!(row.get(&IdType::Valor), Some("1221405"));
+}
+
+/// An LEI and a DTI equivalent are typed by their own codes, so a store
+/// declares them and a round trip keeps them; a store whose column is
+/// `utf8` still loads, its cells cast into the code, a cell that is not the
+/// code's canonical spelling landing null.
+#[test]
+fn an_lei_and_a_dti_column_is_its_own_code_and_a_utf8_one_still_loads() {
+    let declared = IsinEntry::dtype();
+    for (name, dtype) in [
+        ("lei", yggdryl::DataType::lei()),
+        ("dti", yggdryl::DataType::dti()),
+    ] {
+        let column = declared
+            .as_fields()
+            .unwrap()
+            .iter()
+            .find(|field| field.name() == name)
+            .unwrap_or_else(|| panic!("the {name} column"));
+        assert_eq!(column.dtype(), &dtype, "{name}");
+    }
+    let mut registry = IsinRegistry::new();
+    registry
+        .merge(
+            IsinEntry::new(isin(APPLE))
+                .try_with_code(IdType::Lei, "hwupkr0mpou8fgxbt394")
+                .unwrap()
+                .try_with_code(IdType::Dti, "x9j9k872s")
+                .unwrap(),
+        )
+        .unwrap();
+    let read = IsinRegistry::from_arrow_reader(registry.into_arrow_reader().unwrap()).unwrap();
+    let row = read.get(APPLE).unwrap();
+    assert_eq!(row.get(&IdType::Lei), Some("HWUPKR0MPOU8FGXBT394"));
+    assert_eq!(row.get(&IdType::Dti), Some("X9J9K872S"));
+
+    let stored = IsinRegistry::from_arrow_reader(flat(&[
+        ("isin", vec![Some(APPLE), Some(HOLCIM)]),
+        (
+            "lei",
+            vec![Some("HWUPKR0MPOU8FGXBT394"), Some("hwupkr0mpou8fgxbt394")],
+        ),
+        ("dti", vec![Some("NOT-A-DTI"), None]),
+    ]))
+    .unwrap();
+    let apple = stored.get(APPLE).unwrap();
+    assert_eq!(apple.get(&IdType::Lei), Some("HWUPKR0MPOU8FGXBT394"));
+    // The column lands as the code through the safe cast: a cell that is
+    // not its canonical spelling lands null, the rest of the row kept.
+    assert_eq!(apple.get(&IdType::Dti), None);
+    assert_eq!(stored.get(HOLCIM).unwrap().get(&IdType::Lei), None);
 }
 
 /// A row stating more than twelve equivalents is refused, naming the row.

@@ -1291,18 +1291,8 @@ impl ColumnReader {
                     }
                     _ => return Err(shape_error(node, arrow)),
                 },
-                precision: u8::try_from(decimal.precision).map_err(|_| {
-                    invalid(format_smolstr!(
-                        "expected an Avro decimal precision fitting u8, got {}",
-                        decimal.precision
-                    ))
-                })?,
-                scale: i8::try_from(decimal.scale).map_err(|_| {
-                    invalid(format_smolstr!(
-                        "expected an Avro decimal scale fitting i8, got {}",
-                        decimal.scale
-                    ))
-                })?,
+                precision: decimal.precision,
+                scale: decimal.scale,
                 size: decimal.fixed.as_ref().map(|fixed| fixed.size),
             },
             Node::UuidFixed(_) => Self::Uuid {

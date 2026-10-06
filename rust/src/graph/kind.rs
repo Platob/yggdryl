@@ -27,7 +27,7 @@ pub enum MarketKind {
     /// A full-snapshot control: [`SnapshotEvent`](super::SnapshotEvent).
     SnapshotEvent,
     /// A FIX message held whole: [`FixMsg`](crate::FixMsg), the category
-    /// it is filed under its own `msgcat`.
+    /// it is filed under the category its dictionary files its type under.
     Fix,
 }
 
@@ -76,7 +76,7 @@ impl MarketKind {
     /// `marketdatakind` column states: an order `ORDR`, a quote `QUOT`, an
     /// execution `EXEC`, a trade `TRAD`, and a book and a snapshot
     /// control `BOOK`. A FIX message states its own - the category its
-    /// dictionary files it under ([`FixMsg::msgcat`](crate::FixMsg::msgcat)) -
+    /// dictionary files it under ([`Market::marketdatakind`](crate::graph::Market::marketdatakind)) -
     /// so the kind alone answers `UNKN` for it.
     ///
     /// ```

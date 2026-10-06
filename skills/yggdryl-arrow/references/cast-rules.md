@@ -64,6 +64,7 @@ required column.
 | Different widths (`uint32` -> `int64`) | ordinary conversion, range-checked |
 | Rule-governed target (fixed string, code, UUID, version) | the target's rule still runs: bytes past `0x7F` are not a currency |
 | Required target over source nulls | refused by path, exactly as under `value` |
+| A column stating `FIELD:representation=bits` (`field.as_field_properties_mut().set_representation(Representation::Bits)`, `field.field_properties.representation = "bits"`, `field.fieldProperties.representation = 'bits'`) | the same-width integer of the other signedness crosses into or out of it as its bits whatever the plan's `representation`, the buffer shared - and at `Field::scalar`, and through `into_scheme_compat`, which exchanges it as the signed integer of its width and keeps the declaration; `DataType::scalar` and a column stating nothing never read bits |
 
 ## Conversions worth knowing
 

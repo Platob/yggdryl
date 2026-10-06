@@ -1650,6 +1650,442 @@ mod derived_columns {
     }
 }
 
+mod own_key {
+    //! A merge whose options name no key matches on the table's own: its
+    //! identity partition columns, then the columns its schema's
+    //! `identifier-field-ids` name - the same key at every door that writes
+    //! the table, and the refusal naming `$.merge_by` where it states none.
+
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use arrow_array::RecordBatch;
+    use yggdryl::arrow::BatchReader;
+    use yggdryl::holder::Holder;
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{
+        ArrowCastOptions, ArrowWriteSession, DataType, Field, Handle, IOMedia, IOMode, Properties,
+        Scalar, Selector, Serie, SerieReader, SerieSource, StructType, Table, Url,
+    };
+
+    /// A location nothing occupies, unique to this test and this process.
+    fn root(label: &str) -> std::path::PathBuf {
+        let mut path = LocalFolder::temporary().unwrap().path().unwrap();
+        path.push(format!(
+            "yggdryl-iceberg-own-key-{label}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&path);
+        path
+    }
+
+    /// `(id, symbol, venue)` rows as a caller holds them, no field id stated.
+    fn row() -> Field {
+        StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().nullable_field("symbol"),
+            DataType::utf8().required_field("venue"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+    }
+
+    /// The table's schema: [`row`] numbered from 1 - `id` 1, `symbol` 2,
+    /// `venue` 3 - stating the identifier columns `ids` name.
+    fn schema(ids: &[i32]) -> Field {
+        let mut schema = row();
+        assign_field_ids(&mut schema, 1).unwrap();
+        if !ids.is_empty() {
+            schema
+                .as_iceberg_mut()
+                .set_identifier_field_ids(ids)
+                .unwrap();
+        }
+        schema
+    }
+
+    fn trade(id: i64, symbol: &str, venue: &str) -> Scalar {
+        Scalar::from_sequence([Scalar::from(id), Scalar::from(symbol), Scalar::from(venue)])
+    }
+
+    fn trades(rows: &[(i64, &str, &str)]) -> Serie {
+        Serie::from_scalars(
+            row(),
+            rows.iter()
+                .map(|(id, symbol, venue)| trade(*id, symbol, venue)),
+        )
+        .unwrap()
+    }
+
+    fn reader(rows: &[(i64, &str, &str)]) -> BatchReader {
+        SerieReader::from_serie(trades(rows))
+            .unwrap()
+            .into_arrow_reader()
+    }
+
+    /// A table at `label` under `version`, partitioned by `venue` where
+    /// `partitioned` says so, stating the identifier columns `ids` name.
+    fn table(
+        label: &str,
+        version: FormatVersion,
+        ids: &[i32],
+        partitioned: bool,
+    ) -> (std::path::PathBuf, IcebergTable<Handle>) {
+        let path = root(label);
+        let schema = schema(ids);
+        let spec = if partitioned {
+            PartitionSpec::identity(1, &schema, &["venue"]).unwrap()
+        } else {
+            PartitionSpec::unpartitioned()
+        };
+        let table = IcebergTable::create_from_url(
+            Url::from_path(&path).unwrap(),
+            &Properties::new(),
+            Some(version),
+            schema,
+            Some(spec),
+        )
+        .unwrap();
+        (path, table)
+    }
+
+    /// [`table`] holding `[1 A XNAS, 2 B XLON]`, one append committed.
+    fn seeded(
+        label: &str,
+        version: FormatVersion,
+        ids: &[i32],
+        partitioned: bool,
+    ) -> (std::path::PathBuf, IcebergTable<Handle>) {
+        let (path, mut table) = table(label, version, ids, partitioned);
+        table
+            .append_serie(trades(&[(1, "A", "XNAS"), (2, "B", "XLON")]).into(), None)
+            .unwrap();
+        (path, table)
+    }
+
+    /// The table at `path` as its folder holds it now.
+    fn reopened(path: &std::path::Path) -> IcebergTable<LocalFolder> {
+        IcebergTable::open(LocalFolder::new(path).unwrap()).unwrap()
+    }
+
+    /// Every row a table holds, in value order.
+    fn stored(table: &impl IOMedia) -> Vec<Scalar> {
+        let mut rows: Vec<Scalar> = table
+            .read_serie(None)
+            .unwrap()
+            .flat_map(|batch| batch.unwrap().rows().into_owned())
+            .collect();
+        rows.sort();
+        rows
+    }
+
+    fn names(selector: &Selector) -> Vec<String> {
+        selector
+            .names()
+            .iter()
+            .map(|name| name.to_string())
+            .collect()
+    }
+
+    /// A stream whose pulls `pulls` counts.
+    fn counted(pulls: &Arc<AtomicUsize>, rows: &[(i64, &str, &str)]) -> BatchReader {
+        let batch: RecordBatch = trades(rows).into_arrow_batch().unwrap();
+        let pulls = Arc::clone(pulls);
+        yggdryl::arrow::batch_reader(
+            batch.schema(),
+            std::iter::once(batch).inspect(move |_| {
+                pulls.fetch_add(1, Ordering::SeqCst);
+            }),
+        )
+    }
+
+    #[test]
+    fn the_table_answers_its_identity_partition_columns_then_its_identifier_columns() {
+        for (label, ids, partitioned, expected) in [
+            ("flat-id", &[1][..], false, &["id"][..]),
+            ("venue-id", &[1], true, &["venue", "id"]),
+            ("venue", &[], true, &["venue"]),
+            ("flat", &[], false, &[]),
+            ("venue-id-venue", &[1, 3], true, &["venue", "id"]),
+        ] {
+            let (path, table) = table(
+                &format!("answers-{label}"),
+                FormatVersion::V2,
+                ids,
+                partitioned,
+            );
+            assert_eq!(
+                names(&IOMedia::merge_by(&table).unwrap()),
+                expected,
+                "{label}"
+            );
+            assert_eq!(
+                names(&IOMedia::merge_by(&reopened(&path)).unwrap()),
+                expected,
+                "{label}: the key is the stored schema's"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    #[test]
+    fn a_merge_naming_no_key_upserts_on_the_identifier_columns_through_every_door() {
+        let incoming: &[(i64, &str, &str)] = &[(2, "B2", "XLON"), (3, "C", "XNAS")];
+        for door in [
+            "serie", "reader", "generic", "records", "commit", "holder", "session",
+        ] {
+            let (path, mut table) =
+                seeded(&format!("doors-{door}"), FormatVersion::V2, &[1], false);
+            let options: RecordOptions = IOMedia::record_options(&table).unwrap();
+            assert!(options.merge_by().is_empty());
+            match door {
+                "serie" => {
+                    table.merge_serie(trades(incoming).into(), None).unwrap();
+                }
+                "reader" => {
+                    table
+                        .merge_arrow_reader(reader(incoming), &options)
+                        .unwrap();
+                }
+                "generic" => {
+                    table
+                        .write_arrow_reader(reader(incoming), IOMode::Merge, &options)
+                        .unwrap();
+                }
+                "records" => {
+                    let records: Vec<Scalar> = incoming
+                        .iter()
+                        .map(|(id, symbol, venue)| trade(*id, symbol, venue))
+                        .collect();
+                    table
+                        .merge_records(records, &options.clone().with_field(row()))
+                        .unwrap();
+                }
+                "commit" => {
+                    table
+                        .commit_merge(reader(incoming), &Selector::all(), true)
+                        .unwrap();
+                }
+                "holder" => {
+                    let mut holder = Holder::from(Table::from(table));
+                    holder.merge_serie(trades(incoming).into(), None).unwrap();
+                }
+                _ => {
+                    // A session is built before it meets a destination, so
+                    // its options are resolved against the one it will.
+                    let mut holder = Holder::from(Table::from(table));
+                    let keyed = holder.write_options(IOMode::Merge, &options).unwrap();
+                    assert_eq!(keyed.merge_by().to_string(), "id");
+                    let mut session = ArrowWriteSession::merge(&keyed).unwrap();
+                    assert!(session.push(&mut holder, reader(incoming)).unwrap());
+                    session.finish(&mut holder).unwrap();
+                }
+            }
+            let table = reopened(&path);
+            assert_eq!(
+                stored(&table),
+                [
+                    trade(1, "A", "XNAS"),
+                    trade(2, "B2", "XLON"),
+                    trade(3, "C", "XNAS")
+                ],
+                "{door}"
+            );
+            assert_eq!(table.metadata().unwrap().snapshots().len(), 2, "{door}");
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    #[test]
+    fn a_key_the_options_name_wins_over_the_tables_own() {
+        let (path, mut table) = seeded("named", FormatVersion::V2, &[1], false);
+        let by_symbol = IOMedia::record_options(&table)
+            .unwrap()
+            .with_merge_by(["symbol"])
+            .unwrap();
+        table
+            .merge_serie(trades(&[(9, "A", "XPAR")]).into(), Some(&by_symbol))
+            .unwrap();
+        assert_eq!(
+            stored(&reopened(&path)),
+            [trade(2, "B", "XLON"), trade(9, "A", "XPAR")],
+            "the row matched on symbol, not on id"
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_partitioned_table_stating_no_identifier_replaces_partitions_through_the_record_doors() {
+        let (path, mut table) = seeded("partitions", FormatVersion::V2, &[], true);
+        table
+            .merge_serie(trades(&[(5, "E", "XNAS")]).into(), None)
+            .unwrap();
+        assert_eq!(
+            stored(&reopened(&path)),
+            [trade(2, "B", "XLON"), trade(5, "E", "XNAS")],
+            "the XNAS partition is replaced and XLON carried"
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn an_unpartitioned_table_stating_no_key_refuses_naming_merge_by() {
+        let (path, mut table) = table("no-key", FormatVersion::V2, &[], false);
+        assert!(IOMedia::merge_by(&table).unwrap().is_empty());
+        let options = IOMedia::record_options(&table).unwrap();
+        let pulls = Arc::new(AtomicUsize::new(0));
+
+        let stream = SerieReader::from_arrow_reader(
+            None,
+            counted(&pulls, &[(1, "A", "XNAS")]),
+            ArrowCastOptions::default(),
+        )
+        .unwrap();
+        let error = table
+            .merge_serie(SerieSource::from(stream), None)
+            .expect_err("the serie door has no key");
+        assert!(error.to_string().contains("$.merge_by"), "{error}");
+        let error = table
+            .merge_arrow_reader(counted(&pulls, &[(1, "A", "XNAS")]), &options)
+            .expect_err("the direct door has no key");
+        assert!(error.to_string().contains("$.merge_by"), "{error}");
+        assert_eq!(pulls.load(Ordering::SeqCst), 0, "no source is pulled");
+
+        let error = table
+            .commit_merge(reader(&[(1, "A", "XNAS")]), &Selector::all(), true)
+            .expect_err("the commit door has no key");
+        let message = error.to_string();
+        assert!(
+            message.contains("$.merge_by") && message.contains("empty match key"),
+            "{message}"
+        );
+        assert!(table.current_snapshot().unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_nested_identifier_keys_by_its_path() {
+        let plain = StructType::from_fields([
+            DataType::from(
+                StructType::from_fields([DataType::Int64.required_field("id")]).unwrap(),
+            )
+            .required_field("ref"),
+            DataType::utf8().nullable_field("v"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        let mut schema = plain.clone();
+        assign_field_ids(&mut schema, 1).unwrap();
+        let nested = schema.fields()[0].fields()[0]
+            .parquet_field_id()
+            .unwrap()
+            .unwrap();
+        schema
+            .as_iceberg_mut()
+            .set_identifier_field_ids(&[nested])
+            .unwrap();
+        let path = root("nested");
+        let mut table = IcebergTable::create_from_url(
+            Url::from_path(&path).unwrap(),
+            &Properties::new(),
+            Some(FormatVersion::V2),
+            schema,
+            Some(PartitionSpec::unpartitioned()),
+        )
+        .unwrap();
+        assert_eq!(names(&IOMedia::merge_by(&table).unwrap()), ["ref.id"]);
+
+        let row = |id: i64, v: &str| {
+            Scalar::from_sequence([Scalar::from_sequence([Scalar::from(id)]), Scalar::from(v)])
+        };
+        let rows = |values: &[(i64, &str)]| {
+            Serie::from_scalars(plain.clone(), values.iter().map(|(id, v)| row(*id, v))).unwrap()
+        };
+        table
+            .append_serie(rows(&[(1, "a"), (2, "b")]).into(), None)
+            .unwrap();
+        table
+            .merge_serie(rows(&[(2, "B"), (3, "c")]).into(), None)
+            .unwrap();
+        assert_eq!(
+            stored(&reopened(&path)),
+            [row(1, "a"), row(2, "B"), row(3, "c")]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn an_identifier_naming_no_column_never_reaches_a_merge() {
+        // The list is held to Iceberg's rules where it enters - a create,
+        // and an open of a document another writer left - so the key a
+        // keyless merge resolves always names columns.
+        let path = root("dangling-create");
+        let error = IcebergTable::create_from_url(
+            Url::from_path(&path).unwrap(),
+            &Properties::new(),
+            Some(FormatVersion::V2),
+            schema(&[99]),
+            Some(PartitionSpec::unpartitioned()),
+        )
+        .expect_err("no column carries field id 99");
+        assert!(error.to_string().contains("identifier field 99"), "{error}");
+
+        let (path, _) = seeded("dangling-open", FormatVersion::V2, &[1], false);
+        for entry in std::fs::read_dir(path.join("metadata")).unwrap() {
+            let entry = entry.unwrap().path();
+            if entry.to_string_lossy().ends_with(".metadata.json") {
+                let document = std::fs::read_to_string(&entry).unwrap();
+                let rewritten = document.replace(
+                    "\"identifier-field-ids\":[1]",
+                    "\"identifier-field-ids\":[99]",
+                );
+                assert_ne!(rewritten, document, "the list is rewritten");
+                std::fs::write(&entry, rewritten).unwrap();
+            }
+        }
+        let error = IcebergTable::open(LocalFolder::new(&path).unwrap())
+            .and_then(|table| IOMedia::merge_by(&table))
+            .expect_err("no column carries field id 99");
+        assert!(error.to_string().contains("identifier field 99"), "{error}");
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_keyless_merge_on_v3_is_refused_as_a_keyed_one_is() {
+        let (path, mut table) = seeded("v3", FormatVersion::V3, &[1], false);
+        let error = table
+            .merge_serie(trades(&[(2, "B2", "XLON")]).into(), None)
+            .expect_err("a v3 rewrite cannot keep its row ids yet");
+        assert!(error.to_string().contains("format v3"), "{error}");
+        assert_eq!(
+            stored(&reopened(&path)),
+            [trade(1, "A", "XNAS"), trade(2, "B", "XLON")]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_limit_on_a_keyless_merge_of_a_partitioned_table_is_refused() {
+        let (path, mut table) = seeded("limited", FormatVersion::V2, &[], true);
+        let limited = IOMedia::record_options(&table)
+            .unwrap()
+            .with_max_row_size(1);
+        let error = table
+            .merge_serie(trades(&[(5, "E", "XNAS")]).into(), Some(&limited))
+            .expect_err("a truncated merge corrupts");
+        assert!(error.to_string().contains("merge_by `venue`"), "{error}");
+        assert_eq!(
+            stored(&reopened(&path)),
+            [trade(1, "A", "XNAS"), trade(2, "B", "XLON")]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+}
+
 mod located {
     //! A table reached by its location: opened, created, and opened or
     //! created by the URL of its folder, and dropped as the folder it is.
@@ -2170,5 +2606,229 @@ mod located {
                 "{location}: {error}"
             );
         }
+    }
+}
+
+mod stated_bits {
+    //! A `uint64` digest stating its bits is stored as the `long` of its
+    //! width, and reads back as the digest it was.
+
+    use arrow_array::{Array, Int64Array, RecordBatch, UInt64Array};
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{
+        ArrowCastOptions, DataType, Field, IOMedia, Representation, Scalar, Scheme, Serie,
+        StructType,
+    };
+
+    const DIGESTS: [u64; 3] = [0, 1 << 63, u64::MAX];
+
+    fn root(label: &str) -> std::path::PathBuf {
+        let mut path = LocalFolder::temporary().unwrap().path().unwrap();
+        path.push(format!(
+            "yggdryl-iceberg-bits-{label}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&path);
+        path
+    }
+
+    /// The rows as a caller holds them: one `uint64` digest, stating its
+    /// bits where `bits` says so.
+    fn logical(bits: bool) -> Field {
+        let mut digest = DataType::UInt64.required_field("digest");
+        if bits {
+            digest
+                .as_field_properties_mut()
+                .set_representation(Representation::Bits)
+                .unwrap();
+        }
+        StructType::from_fields([digest])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row")
+    }
+
+    fn digests(field: &Field, values: &[u64]) -> Serie {
+        Serie::from_scalars(
+            field.clone(),
+            values
+                .iter()
+                .map(|value| Scalar::from_sequence([Scalar::from(*value)])),
+        )
+        .unwrap()
+    }
+
+    /// Every stored digest cell, as the long it is, and whether every
+    /// batch's field states the bits.
+    fn stored(table: &IcebergTable<LocalFolder>) -> (Vec<i64>, bool) {
+        let mut longs = Vec::new();
+        let mut stated = true;
+        for batch in table.scan(None).unwrap() {
+            let batch = batch.unwrap();
+            let schema = batch.schema();
+            stated &= schema
+                .field(0)
+                .metadata()
+                .get("FIELD:representation")
+                .is_some_and(|value| value == "bits");
+            let column = batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .expect("the digest is stored as a long");
+            longs.extend(column.values().iter().copied());
+        }
+        longs.sort_unstable();
+        (longs, stated)
+    }
+
+    fn unsigned(batches: impl IntoIterator<Item = RecordBatch>) -> Vec<u64> {
+        let mut values: Vec<u64> = batches
+            .into_iter()
+            .flat_map(|batch| {
+                batch
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<UInt64Array>()
+                    .expect("the digest reads back as a uint64")
+                    .values()
+                    .to_vec()
+            })
+            .collect();
+        values.sort_unstable();
+        values
+    }
+
+    #[test]
+    fn a_digest_stating_bits_is_stored_as_a_long_and_read_back_as_the_digest() {
+        let path = root("stored");
+        let schema = logical(true).into_scheme_compat(&Scheme::ICEBERG).unwrap();
+        assert_eq!(schema.fields()[0].dtype(), &DataType::Int64);
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table
+            .append_serie(digests(&logical(true), &DIGESTS).into(), None)
+            .unwrap();
+        let (longs, stated) = stored(&table);
+        assert_eq!(longs, [i64::MIN, -1, 0]);
+        assert!(stated, "a scan states the bits its column declares");
+
+        // Reopened, the table declares the bits its property keeps, so a
+        // write of plain `uint64` rows takes them again.
+        let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(
+            table.schema().unwrap().fields()[0]
+                .as_field_properties()
+                .representation(),
+            Representation::Bits
+        );
+        table
+            .append_serie(digests(&logical(false), &[u64::MAX - 1]).into(), None)
+            .unwrap();
+        let (longs, _) = stored(&table);
+        assert_eq!(longs, [i64::MIN, -2, -1, 0]);
+
+        // Read under the logical field, the digests are what was written.
+        let mut declared = logical(true);
+        assign_field_ids(&mut declared, 1).unwrap();
+        let options = table.record_options().unwrap().with_field(declared);
+        let read = table
+            .read_serie(Some(&options))
+            .unwrap()
+            .map(|record| record.unwrap().into_arrow_batch().unwrap());
+        assert_eq!(unsigned(read), [0, 1 << 63, u64::MAX - 1, u64::MAX]);
+
+        // A stored long landed as itself casts back by the bits its field
+        // states, into a column that states nothing.
+        let plain = logical(false);
+        let cast = table.scan(None).unwrap().map(|batch| {
+            Serie::from_arrow_batch(None, &batch.unwrap(), ArrowCastOptions::new())
+                .unwrap()
+                .cast(&plain, ArrowCastOptions::new())
+                .unwrap()
+                .into_arrow_batch()
+                .unwrap()
+        });
+        assert_eq!(unsigned(cast), [0, 1 << 63, u64::MAX - 1, u64::MAX]);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// A table sorted by a digest it stores as a long keeps its files in
+    /// the order of the longs; read as the digest, the rows come back in
+    /// the digests' order, which is the order the read declares.
+    #[test]
+    fn a_read_of_a_table_sorted_by_a_stated_digest_keeps_the_order_it_declares() {
+        let path = root("sorted");
+        let mut schema = logical(true).into_scheme_compat(&Scheme::ICEBERG).unwrap();
+        schema.as_sort_mut().set_by_texts(["digest"]).unwrap();
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        // Two files whose longs order the second before the first.
+        table
+            .append_serie(digests(&logical(true), &[1, 2]).into(), None)
+            .unwrap();
+        table
+            .append_serie(
+                digests(&logical(true), &[u64::MAX - 1, u64::MAX]).into(),
+                None,
+            )
+            .unwrap();
+
+        let mut declared = logical(true);
+        declared.as_sort_mut().set_by_texts(["digest"]).unwrap();
+        assign_field_ids(&mut declared, 1).unwrap();
+        let options = table.record_options().unwrap().with_field(declared);
+        let reader = table.read_serie(Some(&options)).unwrap();
+        let order = reader.field().get_metadata("SORT:by").map(str::to_owned);
+        let read: Vec<u64> = reader
+            .map(|record| record.unwrap().into_arrow_batch().unwrap())
+            .flat_map(|batch| {
+                batch
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<UInt64Array>()
+                    .expect("the digest reads back as a uint64")
+                    .values()
+                    .to_vec()
+            })
+            .collect();
+        // The read lands the digests and sorts what it landed, so the order
+        // it declares is the digests' own, not the longs'.
+        assert_eq!(order.as_deref(), Some(r#"["digest"]"#));
+        assert_eq!(read, [1, 2, u64::MAX - 1, u64::MAX]);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_table_whose_long_states_nothing_refuses_a_digest_past_its_range() {
+        let path = root("refused");
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            StructType::from_fields([DataType::Int64.required_field("digest")])
+                .map(DataType::from)
+                .unwrap()
+                .required_field("row"),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let message = table
+            .append_serie(digests(&logical(false), &DIGESTS).into(), None)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("$.digest"), "{message}");
+        let _ = std::fs::remove_dir_all(&path);
     }
 }

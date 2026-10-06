@@ -261,6 +261,11 @@ pub(crate) fn nesting_exceeds(
         | DataType::TimeInForce
         | DataType::Unit
         | DataType::Forex
+        | DataType::Lei
+        | DataType::Bic
+        | DataType::Elf
+        | DataType::Dti
+        | DataType::Fisn
         | DataType::Uuid
         | DataType::Version
         | DataType::Url
@@ -372,6 +377,11 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::TimeInForce
             | DataType::Unit
             | DataType::Forex
+            | DataType::Lei
+            | DataType::Bic
+            | DataType::Elf
+            | DataType::Dti
+            | DataType::Fisn
             | DataType::Uuid
             | DataType::Version
             | DataType::Url | DataType::Urn
@@ -480,7 +490,12 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Ric
         | D::Figi
         | D::Unit
-        | D::Forex => scalar(DefaultPlan::String, false),
+        | D::Forex
+        | D::Lei
+        | D::Bic
+        | D::Elf
+        | D::Dti
+        | D::Fisn => scalar(DefaultPlan::String, false),
         held @ crate::enum_dtypes!() => scalar(DefaultPlan::Enum(held.id()), false),
         D::Serie(_) | D::SerieView(_) | D::LargeSerie(_) | D::LargeSerieView(_) => {
             scalar(DefaultPlan::EmptySequence, false)

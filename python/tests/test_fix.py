@@ -603,13 +603,14 @@ def test_market_arrow_reader_rows_state_every_kind_and_the_twin_agrees(seed_batc
         MarketDataKind.EXEC,
         MarketDataKind.BOOK,
     ]
-    # The quote states its two legs and no side, under side 0.
+    # The quote states its two legs and tags neither, so it holds both sides,
+    # under side 0.
     assert table.column("crosscode").to_pylist()[1] == "14:0:Q1"
     assert (table.column("bidpx").to_pylist()[1], table.column("askpx").to_pylist()[1]) == (
         decimal.Decimal("99"),
         decimal.Decimal("101"),
     )
-    assert table.column("side").to_pylist()[1] == Side.UNKN
+    assert table.column("side").to_pylist()[1] == Side.BOTH
     direct = list(codec.market_data(capture))
     assert list(MarketData.from_arrow_reader(table)) == direct
 
@@ -769,7 +770,9 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # deltas alone: with no grid and no snapshot input no book is whole. The
     # hash moved again when a book stopped holding executions, when a code's
     # first book came to state its deltas alone, and when a book came to be
-    # keyed by its instrument's ISIN, holding it as its `isin`.
+    # keyed by its instrument's ISIN, holding it as its `isin`. It moved again
+    # when a book came to state `BOTH` as its side, which its own market
+    # event feeds where a side nobody stated fed.
     books = list(graph.BookIterator(operations))
     assert len(books) == 11
     assert not any(book.is_complete for book in books)
@@ -778,7 +781,7 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     assert (last.isincode, last.crosscode) == ("TW0002454006", "3:0:TW0002454006")
     assert last.alive == []
     assert [delta.price for delta in last.deltas] == [None, None]
-    assert last.currhashcode == 9_341_042_899_919_963_577
+    assert last.currhashcode == 1_914_142_786_384_712_743
     # Every book is keyed by the ISIN its inputs state, else their ticker:
     # the masked line's number keys its own book, and the trade capture's
     # execution, of an instrument no order names, opens that instrument's.
@@ -3104,8 +3107,9 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert event.recdunix == CLOCK_NS
     assert not hasattr(event, "refrecdunix")
     assert not hasattr(event, "marketoperationid")
-    assert event.msgcat is MarketDataKind.ORDR
-    assert event.strikeprice is None and not hasattr(event, "strikepx")
+    assert event.marketdatakind is MarketDataKind.ORDR
+    assert not hasattr(event, "msgcat")
+    assert event.strikepx is None and not hasattr(event, "strikeprice")
     assert event.price.as_py() == 10.5
     # OrderQty(38) is the ordered quantity; `quantity` moves with leavesqty.
     assert event.ordqty is not None and event.ordqty.as_py() == 100
@@ -3170,7 +3174,7 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert message.fxrates == event.fxrates
     assert message.spotrate == event.spotrate and message.forwardpoints == event.forwardpoints
     assert message.metadata == event.metadata
-    assert message.msgcat == event.msgcat == 10
+    assert message.marketdatakind == event.marketdatakind == 10
     assert message.srcuuids == event.srcuuids == []
     assert message.state == event.state
     assert message.seqnum == event.seqnum
@@ -3785,10 +3789,10 @@ def test_a_quote_states_its_bid_and_offer_and_holds_both_legs(seed: FixRegistry)
     assert offer.askpx is not None and offer.askpx.as_py() == 102
     assert offer.askqty is not None and offer.askqty.as_py() == 50
 
-    # Both legs are one message: the parse never splits a quote, which states
-    # no side, no price of its own and its two legs under side 0.
+    # Both legs are one message: the parse never splits a quote, which holds
+    # both sides, states no price of its own and its two legs under side 0.
     [quote] = codec.parse_line(b"8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|")
-    assert quote.side is Side.UNKN and quote.price is None
+    assert quote.side is Side.BOTH and quote.price is None
     assert quote.crosscode == "14:0:Q3"
     assert quote.bidpx is not None and quote.bidpx.as_py() == 101
     assert quote.askpx is not None and quote.askpx.as_py() == 102
@@ -3961,19 +3965,19 @@ def test_an_unmapped_key_naming_an_identifier_lands_in_the_set_its_type_belongs_
 
 
 def test_a_message_reads_its_strike_price_off_the_dictionary_field(seed: FixRegistry) -> None:
-    """``strikeprice`` is ``StrikePrice(202)``, read each call; no crate column holds it."""
+    """``strikepx`` is ``StrikePrice(202)``, read each call; no crate column holds it."""
     reader = _fixed(seed)
     stated = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|202=12.5|10=0|")
-    assert stated.strikeprice is not None
-    assert stated.strikeprice.as_py() == decimal.Decimal("12.5")
-    assert stated.strikeprice == stated.by_tag(202) == stated.by_name("strikeprice")
-    assert not hasattr(stated, "strikepx")
-    assert reader.parse_fix_line(b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|10=0|").strikeprice is None
+    assert stated.strikepx is not None
+    assert stated.strikepx.as_py() == decimal.Decimal("12.5")
+    assert stated.strikepx == stated.by_tag(202) == stated.by_name("strikeprice") == stated.by_name("strikepx")
+    assert not hasattr(stated, "strikeprice")
+    assert reader.parse_fix_line(b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|10=0|").strikepx is None
     # A write to the field moves the answer, and `None` clears it.
     stated.set(202, "13")
-    assert stated.strikeprice is not None and stated.strikeprice.as_py() == decimal.Decimal("13")
+    assert stated.strikepx is not None and stated.strikepx.as_py() == decimal.Decimal("13")
     stated.set(202, None)
-    assert stated.strikeprice is None
+    assert stated.strikepx is None
     # The fixed row's instrument band carries the dictionary's own column.
     schema = fix_schema(seed)
     assert schema.index_of("strikepx") is None
@@ -4418,7 +4422,7 @@ def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed
     assert sorted_codec.default_sending_time == snapshot_codec.default_sending_time
     assert snapshot_codec.sorted_lifecycle is False
     assert sorted_codec.with_sorted_lifecycle(False).sorted_lifecycle is False
-    assert seed.msgtype("D").msgcat is MarketDataKind.ORDR
+    assert seed.msgtype("D").marketdatakind is MarketDataKind.ORDR
 
     original = codec.parse_fix_line(
         b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|"
@@ -4429,7 +4433,7 @@ def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed
     distinct = codec.parse_fix_line(
         b"8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|11=REPLAY-1|55=AAPL|10=0|"
     )
-    assert original.msgcat is MarketDataKind.ORDR and original.msgcat == 10
+    assert original.marketdatakind is MarketDataKind.ORDR and original.marketdatakind == 10
     deduplicated = list(codec.lifecycle([original, copy.copy(original), replay, distinct]))
     assert [held.header().msgseqnum for held in deduplicated] == [7, 8]
     # The twin merges into the live message; `distinct`, a later instant,
@@ -4947,14 +4951,18 @@ def test_the_bridge_row_header_is_the_crates_own_text_and_names_its_captures() -
     options.rowheader = ULBRIDGE_ROWHEADER
     captures = options.source_field()
     names = [child.name for child in captures]
-    assert names[-4:] == [
+    assert names[-6:] == [
+        "msgthreadid",
         "msgsessionid",
         "msgctxid",
         "msgseqnum",
         "msgpluginid",
+        "loglevel",
     ]
-    # The thread and the level are matched and lifted into no column.
-    assert "msgthreadid" not in names and "loglevel" not in names
+    # The thread and the level name no field: they are the line's own
+    # columns, typed from the pattern.
+    assert str(captures.field("msgthreadid").dtype) == "int64"
+    assert str(captures.field("loglevel").dtype) == "utf8"
     assert str(captures.field("msgseqnum").dtype) == "int64"
     # The clock is `mtime`, consumed into each line's `currunix`, so it leads
     # no column of its own.
@@ -5353,6 +5361,7 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     import datetime as dt
 
     from tests import medallion
+    from yggdryl import IsinRegistry
     from yggdryl.iceberg import IcebergCatalog
 
     # Two catalogs - two warehouse folders here, two table buckets live - and
@@ -5364,7 +5373,12 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     captured = ULBRIDGE_LOG.read_bytes().splitlines(keepends=True)
     (logs / "bridge-0.log").write_bytes(b"".join(captured[:72]))
     (logs / "bridge-1.log").write_bytes(b"".join(captured[72:]))
-    codec = _fixed_batch(seed_batch, threads=None)
+    # The instruments the pipeline meets, bound to a table of the silver
+    # catalog: the codec's lifecycle learns into it, and the pipeline commits
+    # it as a stage of its own.
+    registry = medallion.instruments(silver)
+    assert len(registry) == 0 and not registry.is_dirty
+    codec = _fixed_batch(seed_batch, threads=None, isin_registry=registry)
 
     # The capture's day - lines at 03:xx, 14:xx, 16:xx and 23:xx UTC - as
     # one window opening on a quarter hour, midnight.
@@ -5381,12 +5395,25 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         "bronze.log_messages",
         "bronze.fix_messages",
         "silver.fix_messages",
+        "silver.instruments",
         "silver.books",
         "silver.orders",
         "silver.quotes",
         "silver.executions",
     ]
     assert written["bronze.log_messages"] == IOResult(144, 144)
+    # The lifecycle learned the capture's instruments into the registry, and
+    # the commit wrote them as one snapshot: the table holds the registry.
+    instruments = written["silver.instruments"].written_rows
+    assert instruments == len(registry) > 0
+    assert not registry.is_dirty
+    stored = silver.table("record_keeping.instruments")
+    assert stored.row_size() == instruments
+    field = stored.field()
+    assert field.index_of("underlyingisin") == field.index_of("forexcode") + 1
+    reloaded = IsinRegistry.from_url(stored.url)
+    assert len(reloaded) == instruments
+    assert reloaded.get("CH0012214059") == registry.get("CH0012214059") is not None
     for stage, result in written.items():
         assert result.read_rows == result.written_rows, stage
         assert result.skipped_rows == 0, stage
@@ -5448,6 +5475,7 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         "books",
         "executions",
         "fix_messages",
+        "instruments",
         "orders",
         "quotes",
     ]
@@ -5455,6 +5483,11 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     # Running every stage again over the window rewrites what it wrote: the
     # same rows under one more snapshot, never the two runs together.
     again = medallion.run(bronze, silver, codec, IOBase(logs / "*.log"), start, end)
+    # The registry learned nothing it did not hold, so its commit wrote
+    # nothing and the table keeps its one snapshot.
+    assert again.pop("silver.instruments") == IOResult(0, 0)
+    assert len(silver.table("record_keeping.instruments").snapshots) == 1
+    written.pop("silver.instruments")
     assert again == written
     for catalog, name in ((bronze, "log_messages"), (silver, "books"), (silver, "executions")):
         table = catalog.table(f"record_keeping.{name}")
@@ -5465,6 +5498,7 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     # those partitions alone: the rows past it keep their files.
     half = dt.datetime(2026, 8, 14, 19, 0, tzinfo=utc)
     partial = medallion.run(bronze, silver, codec, IOBase(logs / "*.log"), start, half)
+    assert partial["silver.instruments"] == IOResult(0, 0)
     assert 0 < partial["bronze.log_messages"].written_rows < 144
     assert bronze.table("record_keeping.log_messages").row_size() == 144
     assert partial["silver.books"].written_rows <= books

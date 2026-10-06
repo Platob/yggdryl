@@ -86,6 +86,13 @@ def test_a_row_merges_by_the_update_rule(codec: FixCodec) -> None:
     assert registry.merge({"isin": HOLCIM, "cusip": "037833100", "countrycode": "LI", "currency": "CHF"})
     row = registry.get(HOLCIM)
     assert row is not None and (row["cusip"], row["countrycode"], row["currency"]) == ("037833100", "LI", "CHF")
+    assert row["underlyingisin"] is None
+    assert registry.merge({"isin": HOLCIM, "underlyingisin": APPLE}), "an instrument fact fills"
+    assert not registry.merge({"isin": HOLCIM, "underlyingisin": HOLCIM}), "the row's own ISIN states nothing"
+    assert not registry.merge({"isin": HOLCIM, "underlyingisin": "US0378331006"}), "a typo is dropped"
+    assert registry.merge({"isin": HOLCIM, "miccode": "XLON", "ticker": "HOLNL"}), "a listing switch"
+    row = registry.get(HOLCIM)
+    assert row is not None and (row["underlyingisin"], row["miccode"]) == (APPLE, "XLON"), "an instrument fact no listing switch clears"
     with pytest.raises(ValueError, match="isin"):
         registry.merge({"ric": "HOLN.S"})
     removed = registry.remove(HOLCIM)
@@ -93,6 +100,35 @@ def test_a_row_merges_by_the_update_rule(codec: FixCodec) -> None:
     registry.merge({"isin": HOLCIM})
     registry.clear()
     assert len(registry) == 0
+
+
+def test_a_walk_learns_the_underlying_a_message_names_and_learn_never_does(codec: FixCodec) -> None:
+    line = b"8=FIX.4.4|35=D|11=W|22=4|48=CH0012005267|55=NOVN|207=XSWX|711=1|311=HOLN|309=" + HOLCIM.encode() + b"|305=4|10=0|"
+    registry = IsinRegistry()
+    shared = FixCodec(codec.registry, isin_registry=registry)
+    walked = list(shared.lifecycle([shared.parse_fix_line(line)]))
+    row = registry.get("CH0012005267")
+    assert row is not None and row["underlyingisin"] == HOLCIM, "the lifecycle learns the underlying"
+    assert HOLCIM not in str(walked[0].securityids), "lifted nowhere"
+    assert b"309=" + HOLCIM.encode() in walked[0].into_bytes(ord("|")), "the wire is the parse's"
+    fresh = IsinRegistry()
+    assert fresh.learn(codec.parse_fix_line(line))
+    assert fresh.get("CH0012005267")["underlyingisin"] is None, "the bindings' learn reads no underlying"
+
+
+def test_the_underlying_crosses_the_pipelines_iceberg_table(tmp_path: pathlib.Path) -> None:
+    from tests import medallion
+    from yggdryl.iceberg import IcebergCatalog
+
+    silver = IcebergCatalog.open_or_create("silver", tmp_path / "silver")
+    registry = medallion.instruments(silver)
+    assert registry.merge({"isin": "CH0012005267", "underlyingisin": HOLCIM})
+    assert registry.commit().written_rows == 1
+    stored = silver.table("record_keeping.instruments")
+    field = stored.field()
+    assert field.index_of("underlyingisin") == field.index_of("forexcode") + 1
+    reloaded = IsinRegistry.from_url(stored.url)
+    assert reloaded.get("CH0012005267")["underlyingisin"] == HOLCIM
 
 
 def test_a_ticker_leads_back_to_its_isin_on_the_same_market() -> None:
@@ -185,7 +221,7 @@ def test_a_registry_round_trips_through_a_holder(tmp_path: pathlib.Path) -> None
     table = snapshot.read_all()
     assert table.num_rows == 2, "the stream is a snapshot a later write does not move"
     assert table.column("isin").to_pylist() == [HOLCIM, APPLE], "in ISIN order"
-    assert table.schema.names[:8] == ["isin", "updunix", "cficode", "countrycode", "forexcode", "miccode", "ticker", "currency"]
+    assert table.schema.names[:9] == ["isin", "updunix", "cficode", "countrycode", "forexcode", "underlyingisin", "miccode", "ticker", "currency"]
     target = tmp_path / "instruments.arrow"
     LocalFile(target).overwrite_arrow_reader(IsinRegistry.from_arrow_reader(table).into_arrow_reader())
     loaded = IsinRegistry.from_url(target)

@@ -251,6 +251,11 @@ function createFields(DataType, Field, native) {
     unit: simple('unit'),
     ric: simple('ric'),
     forex: simple('forex'),
+    lei: simple('lei'),
+    bic: simple('bic'),
+    elf: simple('elf'),
+    dti: simple('dti'),
+    fisn: simple('fisn'),
     // Each enum is a datatype of its own, storing the unsigned integer code
     // of its member and crossing JavaScript as the member's stored name.
     state: simple('state'),

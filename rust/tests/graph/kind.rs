@@ -77,7 +77,7 @@ fn every_kind_stands_under_its_marketdatakind() {
             MarketDataKind::Trade,
             MarketDataKind::Book,
             MarketDataKind::Book,
-            // A FIX message states its own, its dictionary's `msgcat`.
+            // A FIX message states its own, the category its dictionary files its type under.
             MarketDataKind::Unknown,
         ]
     );

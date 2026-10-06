@@ -313,6 +313,19 @@ pub enum DataType {
     MarketDataType,
     /// ISO 4217 currency pair: `CCY/CCY`, seven ASCII bytes.
     Forex,
+    /// ISO 17442 legal entity identifier: twenty ASCII bytes closed by two
+    /// MOD 97-10 check digits.
+    Lei,
+    /// ISO 9362 business identifier code: eight or eleven ASCII bytes.
+    Bic,
+    /// ISO 20275 entity legal form code: four ASCII bytes.
+    Elf,
+    /// ISO 24165 digital token identifier: nine ASCII bytes closed by an
+    /// ISO 7064 MOD 31,30 check character.
+    Dti,
+    /// ISO 18774 financial instrument short name: an issuer and an
+    /// instrument description, at most thirty-five ASCII bytes.
+    Fisn,
 }
 
 impl DataType {
@@ -425,6 +438,11 @@ impl DataType {
             Self::Bbg => DataTypeId::Bbg,
             Self::Ric => DataTypeId::Ric,
             Self::Forex => DataTypeId::Forex,
+            Self::Lei => DataTypeId::Lei,
+            Self::Bic => DataTypeId::Bic,
+            Self::Elf => DataTypeId::Elf,
+            Self::Dti => DataTypeId::Dti,
+            Self::Fisn => DataTypeId::Fisn,
             Self::Figi => DataTypeId::Figi,
             Self::Side => DataTypeId::Side,
             Self::State => DataTypeId::State,
@@ -810,6 +828,11 @@ enum Shape<'a> {
     MarketDataKind,
     MarketDataType,
     Forex,
+    Lei,
+    Bic,
+    Elf,
+    Dti,
+    Fisn,
 }
 
 impl<'a> Shape<'a> {
@@ -889,6 +912,11 @@ impl<'a> Shape<'a> {
             D::MarketDataKind => Self::MarketDataKind,
             D::MarketDataType => Self::MarketDataType,
             D::Forex => Self::Forex,
+            D::Lei => Self::Lei,
+            D::Bic => Self::Bic,
+            D::Elf => Self::Elf,
+            D::Dti => Self::Dti,
+            D::Fisn => Self::Fisn,
         }
     }
 }
@@ -1050,6 +1078,11 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Forex => 72,
         DataType::MarketDataKind => 73,
         DataType::MarketDataType => 74,
+        DataType::Lei => 75,
+        DataType::Bic => 76,
+        DataType::Elf => 77,
+        DataType::Dti => 78,
+        DataType::Fisn => 79,
     }
 }
 
@@ -1332,7 +1365,12 @@ mod arrow {
                 | R::Ric
                 | R::Figi
                 | R::Unit
-                | R::Forex => code::code_arrow_storage(self)?,
+                | R::Forex
+                | R::Lei
+                | R::Bic
+                | R::Elf
+                | R::Dti
+                | R::Fisn => code::code_arrow_storage(self)?,
                 // An enum member is the code of its leaf.
                 R::MarketDataKind | R::Side | R::TimeInForce => <u8 as crate::EnumRepr>::ARROW,
                 R::State | R::MarketDataType => <u16 as crate::EnumRepr>::ARROW,

@@ -14,8 +14,9 @@
 /// message context and the sequence number, separated as the bridge writes
 /// them. Those three are optional as a whole, so a line that carries only
 /// the thread still frames and leaves them null rather than failing the row.
-/// The thread and the level are matched and never captured: they are the
-/// log's own, not the message's, so no row lifts either.
+/// The thread is `msgthreadid` and the level `loglevel`: the log's own,
+/// not the message's, so each is a column of the line's row and fills no
+/// field of any message the line carries.
 ///
 /// The clock is `mtime`, so the header dates the lines it matches: a text
 /// read consumes the capture into the line's `currunix` rather than
@@ -37,8 +38,14 @@
 /// [`MsgPluginId`](super::MSGPLUGINID_TAG_NAME) - the session names the
 /// line moved between are what the line itself spells, never the plugin.
 ///
-/// Every capture but the clock names the field it fills, so the header
-/// carries no column of its own in front of a row.
+/// The other two name no field and are the capture's own columns:
+/// `msgthreadid`, the thread that wrote the line, read at `int64`, and
+/// `loglevel`, the bridge's own log level, at `utf8`. A text read states
+/// each beside the line's body. A FIX row parsed from those rows carries
+/// each in front of the message's own columns as the row's own cells
+/// ([`FixMsg::carried`](super::FixMsg::carried)), outside the content, the
+/// entries, the wire and every code. A message read off a line carries
+/// neither, because no capture of either name reaches a field.
 ///
 /// The bridge writes the session, the context and the sequence in camel
 /// case - `senderSessionId`, `msgCtxId`, `seqNum` - and they were captured
@@ -75,7 +82,9 @@
 /// and why a walk over that capture answered four events more than the
 /// same capture read whole. Until 0.1.17 its clock was a capture named
 /// `timestamp`, which dated nothing, so every line of a read took the one
-/// modification time of its file.
+/// modification time of its file. In 0.1.20 it matched the thread and the
+/// level without capturing either; naming them again moved no line it
+/// frames.
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
@@ -83,12 +92,13 @@
 ///     .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)?;
 /// let captures = options.source_field()?;
 /// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-/// // The clock is consumed into each line's `currunix`, so it leads no column.
-/// assert!(names.ends_with(&["msgsessionid", "msgctxid", "msgseqnum", "msgpluginid"]));
-/// // The thread and the level are matched and lifted into no column.
-/// assert!(!names.contains(&"msgthreadid") && !names.contains(&"loglevel"));
+/// // The clock is consumed into each line's `currunix`, so it leads no
+/// // column; the thread and the level are the line's own columns.
+/// assert!(names.ends_with(&["msgthreadid", "msgsessionid", "msgctxid", "msgseqnum", "msgpluginid", "loglevel"]));
 /// assert!(!names.contains(&"mtime"));
 /// assert_eq!(captures.field("msgseqnum")?.dtype(), &yggdryl::DataType::Int64);
+/// assert_eq!(captures.field("msgthreadid")?.dtype(), &yggdryl::DataType::Int64);
+/// assert_eq!(captures.field("loglevel")?.dtype(), &yggdryl::DataType::utf8());
 /// let lines = yggdryl::text::read_text_lines(
 ///     &yggdryl::holder::Buffer::from_bytes(
 ///         b"2026-01-02 10:15:30.125 [7] [OMS] (INFO) one\n2026-01-02 10:15:31,250 [7] [OMS] (INFO) two\n2026-01-02 10:15:32 [7] [OMS] (INFO) three\n".to_vec(),
@@ -104,7 +114,7 @@
 /// # Ok(())
 /// # }
 /// ```
-pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:[.,]\d{3}(?:_\d{3})?)?) \[[1-9]\d*(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \([A-Z]+\) ";
+pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:[.,]\d{3}(?:_\d{3})?)?) \[(?P<msgthreadid>[1-9]\d*)(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \((?P<loglevel>[A-Z]+)\) ";
 
 /// The plugin a message came into the bridge through, as the prose in front
 /// of its payload names it, the first of three sentences that reads:

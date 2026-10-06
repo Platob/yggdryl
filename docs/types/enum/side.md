@@ -1,6 +1,6 @@
 # Side
 
-Which side of the market a trade took: FIX `Side(54)` as an enum of eighteen members - `UNKN` and the seventeen sides the code set names - stored as the `uint8` code of its member, a code being the position of its wire character.
+Which side of the market a trade took: FIX `Side(54)` as an enum of nineteen members - `UNKN`, the seventeen sides the code set names, and `BOTH` - stored as the `uint8` code of its member, a wire side's code being the position of its wire character.
 
 ## Contract
 
@@ -11,7 +11,7 @@ Which side of the market a trade took: FIX `Side(54)` as an enum of eighteen mem
 | Lazy | Nothing - the member table and the vocabularies are static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | An integer that is the code of no member, naming the code; a spelling that names no side, naming the spelling |
-| Stores | `uint8` under `yggdryl.side`: `UNKN` at `0`, then `1` to `17` in FIX's own order, wire codes `1`-`9` then `A`-`H` |
+| Stores | `uint8` under `yggdryl.side`: `UNKN` at `0`, then `1` to `17` in FIX's own order, wire codes `1`-`9` then `A`-`H`, and `BOTH` at `99` |
 | Default | `UNKN`, a side stated as none: a stated value, never an absence |
 
 A `Side` is one byte in memory and its code in a column. What `as_str` answers and every text format writes is the member's fixed four-letter code - `BUYS`, `SSHT`, `CRSX` - never FIX's one-character code, which `fix_code` answers on its own; the long name is the member's `description`. The names the members were stored under before their codes (`BUY`, `SSHORT`, `ASDEF`, `UNKNOWN`, ...) are still read, case-insensitively, and never written.
@@ -235,8 +235,9 @@ A FIX `Side(54)` wire code, the specification's own name, and the four-letter co
 | `15` | `F` | `LEND` | `Lend` | Lend. |
 | `16` | `G` | `BORR` | `Borrow` | Borrow. |
 | `17` | `H` | `SELU` | `SellUndisclosed` | Sell undisclosed. |
+| `99` | - | `BOTH` | - | Both sides at once: a book, or a quote holding its bid and its ask and tagging neither. |
 
-`from_spelling` answers the member or nothing and `read` is the same reading as a refusal; `fix_code` is the wire character, `None` for `UNKN`, which no message carries. A dialect's own code maps as its dictionary says, because FIX's `Side(54)` reaches these members through the name the [code set it reads by](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) gives each code.
+`from_spelling` answers the member or nothing and `read` is the same reading as a refusal; `fix_code` is the wire character, `None` for `UNKN` and `BOTH`, which no message carries. A dialect's own code maps as its dictionary says, because FIX's `Side(54)` reaches these members through the name the [code set it reads by](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) gives each code.
 
 === "Rust"
 
@@ -254,6 +255,7 @@ A FIX `Side(54)` wire code, the specification's own name, and the four-letter co
     assert_eq!(Side::Buy.fix_code(), Some('1'));
     assert_eq!(Side::CrossShX.fix_code(), Some('A'));
     assert_eq!(Side::Unknown.fix_code(), None);
+    assert_eq!(Side::Both.fix_code(), None);
 
     // `read` is the same reading as a refusal naming the spelling.
     assert_eq!(Side::read("Buy")?, Side::Buy);
@@ -274,6 +276,7 @@ A FIX `Side(54)` wire code, the specification's own name, and the four-letter co
     assert Side.BUYS.fix_code == "1"
     assert Side.CRSX.fix_code == "A"
     assert Side.UNKN.fix_code is None
+    assert Side.BOTH.fix_code is None
     ```
 
 === "JavaScript"
@@ -292,7 +295,7 @@ A FIX `Side(54)` wire code, the specification's own name, and the four-letter co
 
 ## Which side of a book
 
-`is_bid` and `is_ask` say which side of a book a side takes: a [book](../../graph/book.md) rests an order among its bid or its ask levels by them, and a one-sided quote tagging the side states the leg that side takes (`bidpx` for a bid, `askpx` for an ask); an order of a side that takes neither, or a quote stating no leg, places nothing - still a delta of its book, warned of, never refused. `BUYS` and `BUYM` take the bid; `SELL`, `SELP`, `SSHT`, `SSEX` and `SELU` take the ask. Everything else takes neither: a cross is both sides at once, `OPPO` means "whatever the other leg was", and `ASDF`, `UNDI`, the four remaining sides and `UNKN` say nothing about a side of a book. Domain knowledge written where a reviewer can check it, because Orchestra does not publish it. Rust and Python; JavaScript holds the names only.
+`is_bid` and `is_ask` say which side of a book a side takes: a [book](../../graph/book.md) rests an order among its bid or its ask levels by them, and a one-sided quote tagging the side states the leg that side takes (`bidpx` for a bid, `askpx` for an ask); an order of a side that takes neither, or a quote stating no leg, places nothing - still a delta of its book, warned of, never refused. `BUYS` and `BUYM` take the bid; `SELL`, `SELP`, `SSHT`, `SSEX` and `SELU` take the ask. Everything else takes neither: a cross is both sides at once, `OPPO` means "whatever the other leg was", `BOTH` holds both legs and so takes no one of them, and `ASDF`, `UNDI`, the four remaining sides and `UNKN` say nothing about a side of a book. Domain knowledge written where a reviewer can check it, because Orchestra does not publish it. Rust and Python; JavaScript holds the names only.
 
 === "Rust"
 
@@ -302,10 +305,12 @@ A FIX `Side(54)` wire code, the specification's own name, and the four-letter co
     assert!(Side::Buy.is_bid() && !Side::Buy.is_ask());
     assert!(Side::SShortEx.is_ask() && !Side::SShortEx.is_bid());
 
-    // A cross, `OPPOSITE` and a side stated as none take neither.
+    // A cross, `OPPOSITE`, a side stated as none and both sides at once
+    // take neither.
     assert!(!Side::Cross.is_bid() && !Side::Cross.is_ask());
     assert!(!Side::Opposite.is_bid() && !Side::Opposite.is_ask());
     assert!(!Side::Unknown.is_bid() && !Side::Unknown.is_ask());
+    assert!(!Side::Both.is_bid() && !Side::Both.is_ask());
     ```
 
 === "Python"
@@ -317,6 +322,7 @@ A FIX `Side(54)` wire code, the specification's own name, and the four-letter co
     assert Side.SSEX.is_ask() and not Side.SSEX.is_bid()
     assert not Side.CROS.is_bid() and not Side.CROS.is_ask()
     assert not Side.UNKN.is_bid() and not Side.UNKN.is_ask()
+    assert not Side.BOTH.is_bid() and not Side.BOTH.is_ask()
     ```
 
 ## `UNKN` states no side
@@ -333,6 +339,68 @@ assert_eq!(Side::Buy.merge_with(Side::Sell), Side::Buy);
 assert_eq!(Side::Buy.merge_with(Side::Unknown), Side::Buy);
 ```
 
+## `BOTH` holds both sides
+
+`BOTH` (`99`) is the side of an element holding both legs: a [book](../../graph/book.md) always states it, whatever it is set to, and a [quote](../../graph/quote.md) stating no side that quotes a bid and an ask states it once finalized - a tag it states stands, and a quote quoting one leg stays `UNKN`. It takes neither leg, quotes no price onto one, has no wire character and is stated, so a merge keeps it over another side. Neither a book nor a quote is [sided](../../graph/market.md#sides-and-cross-codes), so each still stores its cross code under side `0`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::graph::{BookEvent, Element, Market, QuoteEvent};
+    use yggdryl::{Decimal, Side};
+
+    let book = BookEvent::new(1, "ACME");
+    assert_eq!(book.get_side(), Side::Both);
+    assert_eq!(book.get_crosscode(), "3:0:ACME");
+
+    // A bid and an ask and no tag: both sides, stored under side 0.
+    let mut quote = QuoteEvent::at(1);
+    quote.set_crosscode("Q-1".to_owned());
+    quote.set_bidpx(Some(Decimal::from_int(99)), true);
+    quote.set_askpx(Some(Decimal::from_int(101)), true);
+    quote.finalize();
+    assert_eq!(quote.get_side(), Side::Both);
+    assert_eq!(quote.get_crosscode(), "14:0:Q-1");
+    assert_eq!(quote.get_price(), None);
+    assert_eq!(Side::Both.code(), 99);
+    assert_eq!(Side::Unknown.merge_with(Side::Both), Side::Both);
+    ```
+
+=== "Python"
+
+    ```python
+    from decimal import Decimal
+
+    from yggdryl import Side, graph
+
+    book = graph.BookEvent(1, "ACME")
+    assert book.side is Side.BOTH and book.crosscode == "3:0:ACME"
+
+    # A bid and an ask and no tag: both sides, stored under side 0.
+    quote = graph.QuoteEvent(1, crosscode="Q-1", bidpx=Decimal("99"), askpx=Decimal("101"))
+    assert quote.side is Side.BOTH and quote.crosscode == "14:0:Q-1"
+    assert quote.price is None
+    assert Side.BOTH == 99 and Side.from_spelling("both") is Side.BOTH
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Side, graph } = require('yggdryl')
+
+    const book = new graph.BookEvent(1n, 'ACME')
+    assert.equal(book.side, 'BOTH')
+    assert.equal(book.crosscode, '3:0:ACME')
+
+    // A bid and an ask and no tag: both sides, stored under side 0.
+    const quote = new graph.QuoteEvent(1n, { crosscode: 'Q-1', bidpx: '99', askpx: '101' })
+    assert.equal(quote.side, 'BOTH')
+    assert.equal(quote.crosscode, '14:0:Q-1')
+    assert.equal(quote.price, null)
+    assert.equal(Side.BOTH, 99)
+    ```
+
 ## Edges
 
 - A spelling that names no side, or an integer that is the code of none -> refused naming `side`, never stored; a column typed `side` therefore holds members only, and a value that names none leaves a nullable column null under `safe`.
@@ -340,12 +408,12 @@ assert_eq!(Side::Buy.merge_with(Side::Unknown), Side::Buy);
 - A name folds: `SellShort`, `sell_short` and `SELL SHORT` are one spelling, `SSHT`.
 - A stored code is an integer, never text: `"10"` is no spelling, because `1`-`9` are wire codes and a number read as text would answer the wrong member for one of the two vocabularies; `10` is `CRSX`.
 - The default value is `UNKN`, code `0`: a stated value, not an absence. An empty text cell entering the column is null ([Cast](../cast.md#empty-text)), and a required column refuses it.
-- An order or an execution taking a side states its numeric code in its stored cross code `{kind}:{side}:{base}` - `10:1:ORD-1` to buy, `10:2:ORD-1` to sell - so the two sides of one identifier are two chains; `UNKN` states `0` there, and no other element - a quote (`14:0:Q-7`), a trade, a book, a snapshot control - states a side but `0` whatever side it takes or tags ([Market](../../graph/market.md#sides-and-cross-codes)).
+- An order or an execution taking a side states its numeric code in its stored cross code `{kind}:{side}:{base}` - `10:1:ORD-1` to buy, `10:2:ORD-1` to sell - so the two sides of one identifier are two chains; `UNKN` states `0` there, and no other element - a quote (`14:0:Q-7`), a trade, a book, a snapshot control - states a side but `0` whatever side it takes or tags, `BOTH` on a quote or a book included ([Market](../../graph/market.md#sides-and-cross-codes)).
 - In an expression a text constant meets a `side` column as the member it spells and an integer as the code it stores: `side = 'BUYS'`, `side in ('1', 'SellShort')`, `cast('2' as side) = side` and `side < 3` all compare members.
 - A Hive partition over a `side` column is named by the member, `side=BUYS`.
 - JSON, TOML, YAML and XML write a side as its four-letter code, the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under the side's own identifier, so a side, a [state](state.md) and an integer of one code are three values.
 - `utf8` under `yggdryl.side` is a foreign field wearing the name and imports as the text it is; a side packs into no US-ASCII integer, because its column already holds its code.
-- `StringEnum::SIDES` is the listing of the eighteen four-letter codes, sorted, reached by the logical name `side` for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("side")` is this enum. Python's `yggdryl.enums` declares no side: `yggdryl.Side` is the vocabulary.
+- `StringEnum::SIDES` is the listing of the nineteen four-letter codes, sorted, reached by the logical name `side` for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("side")` is this enum. Python's `yggdryl.enums` declares no side: `yggdryl.Side` is the vocabulary.
 
 ## Commands
 

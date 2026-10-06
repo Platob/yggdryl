@@ -50,6 +50,8 @@ test('a name no key spells is read for the identifier name it ends with', () => 
   assert.equal(read('fix:ClOrdID', 'C-1'), 'clordid=C-1')
   assert.equal(read('Derived_ISIN', 'US0378331005'), 'isin=US0378331005', 'a reserved source names no namespace')
   assert.equal(read('ISINCode', 'US0378331005'), 'isin=US0378331005')
+  assert.equal(read('X-SWX-VALOR', '1221405'), 'valor=1221405', "a vendor's source spelling")
+  assert.equal(read('OMS_SIXSymbol', 'HOLN'), 'oms:exchsymb=HOLN')
   for (const key of ['underlyingisin', 'legisin', 'transversalkey', 'symbol', '']) {
     assert.equal(Identifier.fromKey(key, 'US0378331005'), null, key)
   }

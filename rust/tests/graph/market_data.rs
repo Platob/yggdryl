@@ -341,6 +341,15 @@ mod fix {
     }
 
     #[test]
+    fn a_fix_message_held_whole_answers_its_category_through_the_trait() {
+        let message = messages(&ORDERS[..1]).remove(0);
+        let data = MarketData::from(message);
+        assert_eq!(Market::marketdatakind(&data), MarketDataKind::Order);
+        assert!(Market::is_sided(&data));
+        assert_eq!(data.marketdatakind(), Market::marketdatakind(&data));
+    }
+
+    #[test]
     fn a_book_folds_the_leaves_a_message_splits_into() {
         let parsed = messages(&ORDERS);
         let whole: Vec<MarketData> = parsed.iter().cloned().map(MarketData::from).collect();

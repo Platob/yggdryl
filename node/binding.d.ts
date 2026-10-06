@@ -501,6 +501,11 @@ export type DataTypeId =
   | 'unit'
   | 'ric'
   | 'forex'
+  | 'lei'
+  | 'bic'
+  | 'elf'
+  | 'dti'
+  | 'fisn'
   | 'uuid'
   | 'version'
   | 'url'
@@ -616,6 +621,11 @@ interface DataTypeKindById {
   unit: 'code'
   ric: 'code'
   forex: 'code'
+  lei: 'code'
+  bic: 'code'
+  elf: 'code'
+  dti: 'code'
+  fisn: 'code'
   uuid: 'uuid'
   version: 'text'
   url: 'text'
@@ -945,9 +955,11 @@ declare module './index' {
      * Stream sorted messages through native market data and books into
      * nested Arrow batches, one book per book key and instant. A positive
      * snapshot width is epoch aligned. Orders, quotes and `W`/`X` book
-     * messages fold; an execution or a trade never reaches a book. `filter`,
-     * a predicate over the `marketdata` row, narrows what the books fold and
-     * never admits a pruned kind; not given, every booked leaf is kept.
+     * messages fold and an execution is recorded among its book's deltas -
+     * an entry reporting a trade (`269=2`) as the execution it is; a trade
+     * never reaches a book. `filter`, a predicate over the `marketdata` row,
+     * narrows what the books fold and never admits a pruned kind; not given,
+     * every recorded leaf is kept.
      */
     bookArrowReader(
       messages: Iterable<FixMsg>,
@@ -1793,6 +1805,16 @@ export type MarketDataKindField = FieldOf<'marketdatakind', MarketDataKindName>
 export type MarketDataTypeField = FieldOf<'marketdatatype', MarketDataTypeName>
 /** A currency pair, `CCY/CCY`, stored as its text. */
 export type ForexField = FieldOf<'forex', string>
+/** ISO 17442, the twenty-character legal entity identifier closed by its MOD 97-10 check digits. */
+export type LeiField = FieldOf<'lei', string>
+/** ISO 9362, the business identifier code: eight characters, or eleven with a branch. */
+export type BicField = FieldOf<'bic', string>
+/** ISO 20275, the four-character entity legal form code. */
+export type ElfField = FieldOf<'elf', string>
+/** ISO 24165, the nine-character digital token identifier closed by its ISO 7064 MOD 31,30 check character. */
+export type DtiField = FieldOf<'dti', string>
+/** ISO 18774, the financial instrument short name - issuer and description split at the first `/` - upper case, at most thirty-five bytes. */
+export type FisnField = FieldOf<'fisn', string>
 /** FIX TimeInForce(59), how long an order stands, an enum stored as the `uint8` code of its member and crossing as the member's name. */
 export type TimeInForceField = FieldOf<'timeinforce', TimeInForceName>
 /** The unit a quantity is counted in, FIX UnitOfMeasure(996), ASCII held to thirty-two bytes. */
@@ -2105,6 +2127,11 @@ export interface FieldsNamespace {
   unit(name: string, options?: FieldOptions): UnitField
   ric(name: string, options?: FieldOptions): RicField
   forex(name: string, options?: FieldOptions): ForexField
+  lei(name: string, options?: FieldOptions): LeiField
+  bic(name: string, options?: FieldOptions): BicField
+  elf(name: string, options?: FieldOptions): ElfField
+  dti(name: string, options?: FieldOptions): DtiField
+  fisn(name: string, options?: FieldOptions): FisnField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
   geometry(name: string, options: FieldOptions): GeometryField
   geography(
@@ -2768,6 +2795,26 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'forex', string, N, O>
+  lei<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'lei', string, N, O>
+  bic<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'bic', string, N, O>
+  elf<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'elf', string, N, O>
+  dti<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'dti', string, N, O>
+  fisn<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'fisn', string, N, O>
   geometry<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -3501,9 +3548,6 @@ export declare const State: Readonly<{
   PENDING_NEW: 1001
   QUEUED: 1002
   RECEIVED: 1003
-  PENDING_VERIFICATION: 1004
-  PENDING_ALLOCATION: 1005
-  PENDING_APPROVAL: 1006
   ACCEPTED: 2000
   NEW: 2001
   STARTING: 2002
@@ -3520,6 +3564,9 @@ export declare const State: Readonly<{
   TRADE_CORRECT: 4003
   TRADE_CANCEL: 4004
   TRADE_IN_CLEARING_HOLD: 4005
+  PENDING_VERIFICATION: 4006
+  PENDING_ALLOCATION: 4007
+  PENDING_APPROVAL: 4008
   PAUSED: 5000
   STOPPED: 5001
   SUSPENDED: 5002
@@ -3546,6 +3593,7 @@ export declare const State: Readonly<{
   CLEARED: 8010
   SETTLED: 8011
   CLAIMED: 8012
+  APPROVED: 8013
   CANCELED: 9000
   REVERSED: 9001
   REMOVED: 9002
@@ -3796,7 +3844,8 @@ export declare function timeInForceFixCode(name: TimeInForceName): string | null
  * FIX's `Side(54)`: which side of the market a trade took, each member's
  * four-letter code under the `uint8` code a `side` column stores - `UNKN` at
  * zero, then the seventeen sides in FIX's own order, so a code is the
- * position of its one-character wire code.
+ * position of its one-character wire code, and `BOTH` at 99, both sides at
+ * once - a book's and a two-sided quote's - which has no wire code.
  */
 export declare const Side: Readonly<{
   UNKN: 0
@@ -3817,6 +3866,7 @@ export declare const Side: Readonly<{
   LEND: 15
   BORR: 16
   SELU: 17
+  BOTH: 99
 }>
 
 /** The four-letter code of one side. */
@@ -4418,7 +4468,7 @@ declare module './index' {
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): IOResult
-    /** Merge one native reader by the non-empty `options.mergeBy` keys. */
+    /** Merge one native reader by `options.mergeBy`, else the destination's own key (an Iceberg table's identity partition columns, then its identifier columns). */
     mergeArrowReader(
       reader: BatchReader,
       options?: RecordOptionsInput | RecordProperties | null,
@@ -4444,7 +4494,7 @@ declare module './index' {
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): IOResult
-    /** Merge one Apache Arrow JS table by the non-empty `options.mergeBy` keys. */
+    /** Merge one Apache Arrow JS table by `options.mergeBy`, else the destination's own key. */
     mergeArrowTable(
       table: ArrowTable,
       options?: RecordOptionsInput | RecordProperties | null,
@@ -4470,7 +4520,7 @@ declare module './index' {
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): IOResult
-    /** Merge one Apache Arrow JS record batch by `options.mergeBy`. */
+    /** Merge one Apache Arrow JS record batch by `options.mergeBy`, else the destination's own key. */
     mergeArrowBatch(
       batch: ArrowRecordBatch,
       options?: RecordOptionsInput | RecordProperties | null,
@@ -4515,7 +4565,7 @@ declare module './index' {
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): IOResult
-    /** Merge `value`'s rows by the non-empty `options.mergeBy` keys: `writeSerie` under `merge`. */
+    /** Merge `value`'s rows by `options.mergeBy`, else the destination's own key: `writeSerie` under `merge`. */
     mergeSerie(
       value: SerieSource,
       options?: RecordOptionsInput | RecordProperties | null,
@@ -4553,7 +4603,7 @@ declare module './index' {
       properties?: RecordProperties | null,
     ): Promise<IOResult>
     appendRecords(rows: RecordSource, options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): IOResult
-    /** Merge records by the non-empty `options.mergeBy` keys. */
+    /** Merge records by `options.mergeBy`, else the destination's own key. */
     mergeRecords(
       rows: AsyncIterable<StructRecord>,
       options?: RecordOptionsInput | RecordProperties | null,
@@ -4642,19 +4692,19 @@ declare module './index' {
       options?: IcebergOptions | IcebergProperties | null,
       properties?: IcebergProperties | null,
     ): void
-    /** Merge `rows` into the stored rows, matching on the `mergeBy` selector. */
+    /** Merge `rows` into the stored rows, matching on the `mergeBy` selector, else - left out or `null` - on the table's own key: its identity partition columns, then the columns its schema's `identifier-field-ids` names. */
     merge(
       rows: IcebergSource,
-      mergeBy: Selector | Term | string | readonly string[],
+      mergeBy?: Selector | Term | string | readonly string[] | null,
       safe?: boolean | null,
       options?: IcebergOptions | IcebergProperties | null,
       properties?: IcebergProperties | null,
     ): void
-    /** Merge `rows` into the rows `filters` selects, on the `mergeBy` selector. */
+    /** Merge `rows` into the rows `filters` selects, on the `mergeBy` selector, else on the table's own key as `merge`. */
     mergeWhere(
       filters: PartitionFilters | null | undefined,
       rows: IcebergSource,
-      mergeBy: Selector | Term | string | readonly string[],
+      mergeBy?: Selector | Term | string | readonly string[] | null,
       safe?: boolean | null,
       options?: IcebergOptions | IcebergProperties | null,
       properties?: IcebergProperties | null,
@@ -5289,11 +5339,11 @@ export interface Fix {
    * each line it matches: the capture is consumed into the line's
    * `currunix` - the `recdunix` of its messages and the sending clock of one
    * stating no `SendingTime(52)` - read at nanoseconds UTC under the text
-   * options' `timezone`, never the file's modification time. The other
-   * four captures are named for the fields they fill - `msgsessionid`,
-   * `msgctxid`, `msgseqnum` and `msgpluginid` - so the header carries no
-   * column of its own; the thread that wrote a line and the level it was
-   * logged at are matched and lifted into no column. Its
+   * options' `timezone`, never the file's modification time. Four of the
+   * other six captures are named for the fields they fill - `msgsessionid`,
+   * `msgctxid`, `msgseqnum` and `msgpluginid` - and `msgthreadid` and
+   * `loglevel` name none: columns of the line's row, carried in front of a
+   * FIX row parsed from it, filling no field. Its
    * clock reads what bridges write, a point or a comma before three digits
    * or grouped microseconds, or no fraction at all, and a line a row header
    * does not match carries no capture context - which is what the lifecycle
@@ -5435,9 +5485,10 @@ export interface OperationEventConstructor<T> {
  * The public `BookIterator` constructor: its items pulled lazily from the
  * caller's iterable through the loader's pull adapter, the way `FixCodec`'s
  * streams are; a failure behind the iterable is thrown as itself. Orders,
- * quotes and snapshot controls fold, and every other input is pruned;
- * `filter`, a predicate over the `marketdata` row bound once, narrows what
- * the books fold and never admits an execution or a trade.
+ * quotes and snapshot controls fold, an execution is recorded among its
+ * book's deltas, and every other input is pruned; `filter`, a predicate over
+ * the `marketdata` row bound once, narrows what the books fold and never
+ * admits a trade.
  */
 export interface BookIteratorConstructor {
   new (

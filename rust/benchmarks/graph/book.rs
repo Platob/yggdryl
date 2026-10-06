@@ -87,6 +87,16 @@ pub fn benchmarks(criterion: &mut Criterion) {
         group.bench_function(format!("imbalance_{levels}"), |bencher| {
             bencher.iter(|| black_box(&book).imbalance(black_box(levels)));
         });
+        // The book's entries by kind, borrowed over both sides: the deltas'
+        // quotes, every entry, and the resting orders, none - the filter's
+        // own cost over every live entry.
+        group.throughput(Throughput::Elements(u64::try_from(2 * levels).unwrap()));
+        group.bench_function(format!("quotes_{levels}"), |bencher| {
+            bencher.iter(|| black_box(&book).quotes().map(black_box).count());
+        });
+        group.bench_function(format!("ordlive_{levels}"), |bencher| {
+            bencher.iter(|| black_box(&book).ordlive().map(black_box).count());
+        });
         group.throughput(Throughput::Elements(1));
         group.bench_function(format!("spread_{levels}"), |bencher| {
             bencher.iter(|| black_box(&book).spread());

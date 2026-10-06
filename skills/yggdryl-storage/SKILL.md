@@ -35,7 +35,7 @@ Install and cross-language conventions are in `yggdryl`.
 | bounded chunks | `pstream_bytes(position, batch_size)?` | `pstream_bytes(position=0, batch_size=65536)` | `pstreamBytes(position?, batchSize?)` |
 | cursor | `cursor()`, `cursor_at(n)` + `IOCursor` (`tell`, `seek_to`, `read_next`, `write_next`, `stream_bytes`), `std::io::Read/Write/Seek` | `cursor(pos)`: `read`, `readinto`, `write`, `seek(o, whence)`, `tell`, `stream_bytes` | `cursor(pos)`: `read`, `write`, `seek`, `tell`, `position`, `streamBytes` |
 | `std::io` adapters | `reader_at(o)`, `writer_at(o)` | the cursor is file-like | n/a |
-| size, kind, existence | `size()`, `kind()`, `is_container()`, `kind().is_known()` | `size()`, `kind()`, `exists()`, `is_dir()`, `is_file()` | `size()`, `kind()`, `exists()`, `isDir()`, `isFile()` |
+| size, kind, existence (`is_dir` the role a spelling settles, `exists` presence: a glob while it selects an entry) | `size()`, `kind()`, `is_container()`, `kind().is_known()`, `Holder::exists()` | `size()`, `kind()`, `exists()`, `is_dir()`, `is_file()` | `size()`, `kind()`, `exists()`, `isDir()`, `isFile()` |
 | child, parent | `child_by_path("a/b.bin")?`, `parent()` | `h / "a/b.bin"`, `joinpath(...)`, `parent` | `joinpath('a/b.bin')`, `parent` |
 | list, glob | `ls(recursive, include_private)`, `glob(pattern, include_private)?` | `ls(recursive=False)`, `iterdir()`, `glob(p)`, `rglob(p)` | `ls(recursive?)`, `iterdir()`, `glob(p)`, `rglob(p)`, `[...h]` |
 | make a folder | `LocalPath::as_directory()?.create()?`, `truncate(0)?` on a folder | `mkdir()` (returns the folder role; on a wrapper, the plain handle's beneath it) | `mkdir()` |
@@ -80,7 +80,10 @@ Install and cross-language conventions are in `yggdryl`.
 3. **EAFP - never guard.** A read of something absent is empty (`b""`, size
    `0`), a write creates the resource and every missing parent, `remove` of
    something absent succeeds. `exists()`/`is_dir()`/`mkdir()` before an
-   operation is a wasted round trip and a race.
+   operation is a wasted round trip and a race. `is_dir()` is the role a
+   spelling settles (a glob, `lake/`), asked of nothing; `exists()` is
+   presence, a glob while it selects an entry - one listing up to the first
+   match, one request on S3.
 4. **Stream bounded chunks.** `pstream_bytes` hands out 64 KiB owned chunks
    and never asks for `size`; digests (`read_digest`) stream too. Reach for
    `read_all_bytes` only when the whole value is the answer. A folder, a path

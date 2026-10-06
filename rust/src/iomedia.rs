@@ -77,6 +77,18 @@ pub(crate) fn container_field(
     opened_field(open_container(handle, options)?, options)
 }
 
+/// The refusal a structured text document answers any write but an
+/// overwrite with: it is one frame around its rows, so it is written whole.
+fn document_takes_overwrite_alone(mode: crate::IOMode) -> crate::Error {
+    crate::Error::InvalidRecord {
+        path: smol_str::SmolStr::new_static("$.mode"),
+        reason: smol_str::format_smolstr!(
+            "a structured text document is one frame around its rows, so it is written whole; \
+             expected overwrite, got {mode}"
+        ),
+    }
+}
+
 /// Record-oriented operations every [`IOBase`] handle exposes.
 ///
 /// The trait deliberately has no storage primitives of its own. Implementors
@@ -197,6 +209,66 @@ pub trait IOMedia: Send {
             }
         }
         RecordOptions::for_media_type(handle.media_type())
+    }
+
+    /// Return the match key this resource states for its own rows: what a
+    /// merge whose options name no
+    /// [`merge_by`](crate::media::IORecordOptions::merge_by) matches on.
+    ///
+    /// Empty - the default - where the resource states none, as a leaf, a
+    /// folder and a buffer do, so a merge naming no key is refused there
+    /// naming `$.merge_by`. An Iceberg table answers its identity partition
+    /// columns, then the columns its schema's `identifier-field-ids` name,
+    /// read off its metadata with no data file opened.
+    ///
+    /// # Errors
+    ///
+    /// Returns the read of the metadata the key is stated in, or a stated
+    /// key naming no column.
+    fn merge_by(&self) -> Result<crate::Selector> {
+        Ok(crate::Selector::all())
+    }
+
+    /// Return the options a write under `mode` runs under here: `options` as
+    /// they stand, refused as
+    /// [`RecordOptions::require_write_mode`] refuses them, except a merge
+    /// whose options name no key, which runs keyed by this resource's own
+    /// [`merge_by`](Self::merge_by) where it states one; a merge into a
+    /// structured text document is refused naming the mode before any key
+    /// is asked for, since a document is written whole.
+    ///
+    /// Every generic write door resolves its options through this once,
+    /// before a one-shot source is pulled, and the bindings call it from
+    /// their preflight. The answer borrows `options` wherever it does not
+    /// re-key them, and never `self`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusal of the mode or of the key, naming `$.merge_by`,
+    /// or the error [`merge_by`](Self::merge_by) raises.
+    #[doc(hidden)]
+    fn write_options<'o>(
+        &self,
+        mode: crate::IOMode,
+        options: &'o RecordOptions,
+    ) -> Result<std::borrow::Cow<'o, RecordOptions>> {
+        use crate::media::IORecordOptions;
+
+        if mode == crate::IOMode::Merge {
+            if crate::text::Format::from_media_type(self.as_io_base().media_type()).is_ok() {
+                return Err(document_takes_overwrite_alone(mode));
+            }
+            if options.merge_by().is_empty() {
+                let own = IOMedia::merge_by(self)?;
+                if !own.is_empty() {
+                    let mut keyed = options.clone();
+                    keyed.set_merge_by(own);
+                    return Ok(std::borrow::Cow::Owned(keyed));
+                }
+            }
+        }
+        options.require_write_mode(mode)?;
+        Ok(std::borrow::Cow::Borrowed(options))
     }
 
     /// Read this Parquet leaf's footer statistics without decoding rows.
@@ -432,13 +504,7 @@ pub trait IOMedia: Send {
 
         if crate::text::Format::from_media_type(self.as_io_base().media_type()).is_ok() {
             if mode != crate::IOMode::Overwrite {
-                return Err(crate::Error::InvalidRecord {
-                    path: smol_str::SmolStr::new_static("$.mode"),
-                    reason: smol_str::format_smolstr!(
-                        "a structured text document is one frame around its rows, so it is written \
-                         whole; expected overwrite, got {mode}"
-                    ),
-                });
+                return Err(document_takes_overwrite_alone(mode));
             }
             // A document reads the declared field off the options and
             // nothing else: it has no frame to select, filter or bound within.
@@ -496,7 +562,8 @@ pub trait IOMedia: Send {
     }
 
     /// Merge `value`'s rows into this resource's by the options'
-    /// [`merge_by`](crate::media::IORecordOptions::merge_by) key:
+    /// [`merge_by`](crate::media::IORecordOptions::merge_by) key, else this
+    /// resource's own [`merge_by`](Self::merge_by):
     /// [`write_serie`](Self::write_serie) under
     /// [`IOMode::Merge`](crate::IOMode::Merge).
     ///
@@ -522,8 +589,9 @@ pub trait IOMedia: Send {
     /// # Errors
     ///
     /// Returns the selected primitive's validation, cast, read, or publication
-    /// failure. In particular, merge requires non-empty match keys while the
-    /// other modes refuse them.
+    /// failure. In particular, merge requires a match key - the options', else
+    /// this resource's own [`merge_by`](Self::merge_by) - while the other
+    /// modes refuse one.
     fn write_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -532,12 +600,13 @@ pub trait IOMedia: Send {
     ) -> Result<crate::IOResult> {
         // The generic entry point owns mode validation so an implementor's
         // specialized primitive cannot consume a one-shot reader before the
-        // authoritative intent and its key settings are known to agree.
-        options.require_write_mode(mode)?;
+        // authoritative intent and its key - the options', else this
+        // resource's own - are known to agree.
+        let options = self.write_options(mode, options)?;
         match mode {
-            crate::IOMode::Overwrite => self.overwrite_arrow_reader(batches, options),
-            crate::IOMode::Append => self.append_arrow_reader(batches, options),
-            crate::IOMode::Merge => self.merge_arrow_reader(batches, options),
+            crate::IOMode::Overwrite => self.overwrite_arrow_reader(batches, &options),
+            crate::IOMode::Append => self.append_arrow_reader(batches, &options),
+            crate::IOMode::Merge => self.merge_arrow_reader(batches, &options),
             crate::IOMode::ReadOnly | crate::IOMode::Random => Err(crate::Error::InvalidRecord {
                 path: smol_str::SmolStr::new_static("$.mode"),
                 reason: smol_str::SmolStr::new_static(
@@ -652,11 +721,11 @@ pub trait IOMedia: Send {
         mode: crate::IOMode,
         options: &RecordOptions,
     ) -> Result<crate::IOResult> {
-        options.require_write_mode(mode)?;
+        let options = self.write_options(mode, options)?;
         match mode {
-            crate::IOMode::Overwrite => self.overwrite_arrow_batch(batch, options),
-            crate::IOMode::Append => self.append_arrow_batch(batch, options),
-            crate::IOMode::Merge => self.merge_arrow_batch(batch, options),
+            crate::IOMode::Overwrite => self.overwrite_arrow_batch(batch, &options),
+            crate::IOMode::Append => self.append_arrow_batch(batch, &options),
+            crate::IOMode::Merge => self.merge_arrow_batch(batch, &options),
             crate::IOMode::ReadOnly | crate::IOMode::Random => Err(crate::Error::InvalidRecord {
                 path: smol_str::SmolStr::new_static("$.mode"),
                 reason: smol_str::SmolStr::new_static(
@@ -732,9 +801,15 @@ pub trait IOMedia: Send {
 
     /// Merge every incoming row into this resource by the declared match key.
     ///
-    /// The match key is required. Stored rows are indexed because a reader
-    /// cannot be rewound; the incoming side remains streaming and is folded in
-    /// one batch at a time. The resulting stream is published through the
+    /// The match key is required: the options'
+    /// [`merge_by`](crate::media::IORecordOptions::merge_by), which every
+    /// generic door ([`write_arrow_reader`](Self::write_arrow_reader),
+    /// [`merge_serie`](Self::merge_serie),
+    /// [`merge_records`](Self::merge_records)) takes from this resource's own
+    /// [`merge_by`](Self::merge_by) where the options name none. Stored rows
+    /// are indexed because a reader cannot be rewound; the incoming side
+    /// remains streaming and is folded in one batch at a time. The resulting
+    /// stream is published through the
     /// implementor's [`overwrite_arrow_reader`](Self::overwrite_arrow_reader)
     /// after the declared field has been popped from a cloned options value, so
     /// the already-cast rows are never cast to that field twice.
@@ -753,7 +828,8 @@ pub trait IOMedia: Send {
     /// # Errors
     ///
     /// Returns a read, cast, merge, encoding, or write failure. An empty match
-    /// key is refused: use overwrite or append when rows have no identity.
+    /// key is refused where the resource states no key of its own: use
+    /// overwrite or append when rows have no identity.
     /// `commit_batch_num`, and an Iceberg table's own cadence where none is
     /// stated, retain merge intent for every bounded publication; successful
     /// prefixes remain visible after a later failure.
@@ -853,7 +929,7 @@ pub trait IOMedia: Send {
     {
         use crate::media::IORecordOptions;
 
-        options.require_write_mode(crate::IOMode::Overwrite)?;
+        let options = self.write_options(crate::IOMode::Overwrite, options)?;
         options.require_commit_batch_num()?;
         options.require_num_threads()?;
         let field = options.require_field()?.clone();
@@ -864,7 +940,7 @@ pub trait IOMedia: Send {
             options.batch_byte_size(),
             options.max_row_size(),
         )?;
-        self.overwrite_arrow_reader(batches, options)
+        self.overwrite_arrow_reader(batches, &options)
     }
 
     /// Append native row values to this resource.
@@ -893,7 +969,7 @@ pub trait IOMedia: Send {
     {
         use crate::media::IORecordOptions;
 
-        options.require_write_mode(crate::IOMode::Append)?;
+        let options = self.write_options(crate::IOMode::Append, options)?;
         options.require_commit_batch_num()?;
         options.require_num_threads()?;
         let field = options.require_field()?.clone();
@@ -904,15 +980,16 @@ pub trait IOMedia: Send {
             options.batch_byte_size(),
             options.max_row_size(),
         )?;
-        self.append_arrow_reader(batches, options)
+        self.append_arrow_reader(batches, &options)
     }
 
     /// Merge native row values into this resource by explicit keys.
     ///
     /// This is the row-by-row adapter over
     /// [`merge_arrow_reader`](Self::merge_arrow_reader). `merge_by` must
-    /// name at least one key; an empty iterator is a no-op once that
-    /// intent has been validated.
+    /// name at least one key, or this resource must state its own
+    /// ([`merge_by`](Self::merge_by)); an empty iterator is a no-op once
+    /// that intent has been validated.
     ///
     /// # Errors
     ///
@@ -933,7 +1010,7 @@ pub trait IOMedia: Send {
     {
         use crate::media::IORecordOptions;
 
-        options.require_write_mode(crate::IOMode::Merge)?;
+        let options = self.write_options(crate::IOMode::Merge, options)?;
         options.require_commit_batch_num()?;
         options.require_num_threads()?;
         let field = options.require_field()?.clone();
@@ -944,7 +1021,7 @@ pub trait IOMedia: Send {
             options.batch_byte_size(),
             options.max_row_size(),
         )?;
-        self.merge_arrow_reader(batches, options)
+        self.merge_arrow_reader(batches, &options)
     }
 
     /// Write native row values using one explicit intent.
@@ -971,11 +1048,11 @@ pub trait IOMedia: Send {
         R: TryInto<crate::Scalar>,
         R::Error: Into<crate::Error>,
     {
-        options.require_write_mode(mode)?;
+        let options = self.write_options(mode, options)?;
         match mode {
-            crate::IOMode::Overwrite => self.overwrite_records(records, options),
-            crate::IOMode::Append => self.append_records(records, options),
-            crate::IOMode::Merge => self.merge_records(records, options),
+            crate::IOMode::Overwrite => self.overwrite_records(records, &options),
+            crate::IOMode::Append => self.append_records(records, &options),
+            crate::IOMode::Merge => self.merge_records(records, &options),
             crate::IOMode::ReadOnly | crate::IOMode::Random => Err(crate::Error::InvalidRecord {
                 path: smol_str::SmolStr::new_static("$.mode"),
                 reason: smol_str::SmolStr::new_static(
@@ -1093,6 +1170,10 @@ macro_rules! __delegate_iomedia_arrow {
 
         fn record_options(&self) -> $crate::Result<$crate::media::RecordOptions> {
             $crate::IOMedia::record_options(&self.$handle)
+        }
+
+        fn merge_by(&self) -> $crate::Result<$crate::Selector> {
+            $crate::IOMedia::merge_by(&self.$handle)
         }
 
         fn read_arrow_field(
@@ -1273,6 +1354,10 @@ macro_rules! __delegate_resolved_iomedia {
 
         fn record_options(&self) -> $crate::Result<$crate::media::RecordOptions> {
             $crate::IOMedia::record_options(self.$get()?)
+        }
+
+        fn merge_by(&self) -> $crate::Result<$crate::Selector> {
+            $crate::IOMedia::merge_by(self.$get()?)
         }
 
         #[cfg(feature = "parquet")]

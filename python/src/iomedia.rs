@@ -2094,7 +2094,9 @@ impl PyRecordOptions {
     }
 
     /// The keys a write matches stored rows on - the plan's `upsert by`;
-    /// `select *` (empty) means overwrite or append.
+    /// `select *` (empty) is what overwrite and append require, and on a
+    /// merge means the destination's own key (an Iceberg table's identity
+    /// partition columns, then its identifier columns).
     ///
     /// The setter takes a `Selector`, the text of one, or the key column
     /// names.
@@ -2811,7 +2813,9 @@ impl PyTextOptions {
     }
 
     /// The keys a write matches stored rows on - the plan's `upsert by`;
-    /// `select *` (empty) means overwrite or append.
+    /// `select *` (empty) is what overwrite and append require, and on a
+    /// merge means the destination's own key (an Iceberg table's identity
+    /// partition columns, then its identifier columns).
     ///
     /// The setter takes a `Selector`, the text of one, or the key column
     /// names.

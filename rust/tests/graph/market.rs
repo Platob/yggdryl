@@ -1137,7 +1137,11 @@ fn a_quote_follower_takes_each_leg_it_states_nothing_of() {
     second.set_askqty(Some(dec("5")), true);
     second.finalize();
     let second = second.with_previous(&first).expect("a later statement");
-    assert_eq!(second.get_side(), Side::Unknown);
+    assert_eq!(
+        second.get_side(),
+        Side::Both,
+        "holding the bid it carried and the ask it states, it holds both sides"
+    );
     assert_eq!(
         (second.get_bidpx(), second.get_bidqty()),
         (Some(dec("99")), Some(dec("10"))),
@@ -1173,6 +1177,88 @@ fn a_quote_follower_takes_each_leg_it_states_nothing_of() {
         (third.get_askpx(), third.get_askqty()),
         (Some(dec("102")), Some(dec("5")))
     );
+}
+
+/// A quote tagging no side that quotes both its legs holds both sides: it
+/// states `BOTH` once finalized, quoting nothing onto one leg and storing
+/// its cross code under side `0`. A quote stating one leg, or tagging a
+/// side, is left as it is.
+#[test]
+fn a_quote_tagging_no_side_that_quotes_both_legs_states_both_sides() {
+    let two_sided = || {
+        let mut quote = QuoteEvent::at(1);
+        quote.set_crosscode("Q-1".to_owned());
+        quote.set_bidpx(Some(dec("99")), true);
+        quote.set_bidqty(Some(dec("10")), true);
+        quote.set_askpx(Some(dec("101")), true);
+        quote.set_askqty(Some(dec("20")), true);
+        quote
+    };
+    let legs = |quote: &QuoteEvent| {
+        (
+            quote.get_bidpx(),
+            quote.get_bidqty(),
+            quote.get_askpx(),
+            quote.get_askqty(),
+        )
+    };
+    let both = (
+        Some(dec("99")),
+        Some(dec("10")),
+        Some(dec("101")),
+        Some(dec("20")),
+    );
+
+    let mut quote = two_sided();
+    assert_eq!(quote.get_side(), Side::Unknown, "until it is finalized");
+    quote.finalize();
+    assert_eq!(quote.get_side(), Side::Both);
+    assert_eq!(quote.get_crosscode(), "14:0:Q-1");
+    assert_eq!(legs(&quote), both);
+    assert_eq!((quote.get_price(), quote.get_quantity()), (None, None));
+
+    // Stated as none again, the next finalize states it once more.
+    quote.set_side(Side::Unknown, true);
+    assert_eq!(quote.get_side(), Side::Unknown);
+    quote.finalize();
+    assert_eq!(quote.get_side(), Side::Both);
+    assert_eq!(legs(&quote), both);
+
+    // A tag it states stands.
+    let mut tagged = two_sided();
+    tagged.set_side(Side::Buy, true);
+    tagged.finalize();
+    assert_eq!(tagged.get_side(), Side::Buy);
+    assert_eq!(tagged.get_price(), Some(dec("99")));
+
+    // A quote stating one leg tags none.
+    let mut bid = QuoteEvent::at(1);
+    bid.set_crosscode("Q-2".to_owned());
+    bid.set_bidpx(Some(dec("99")), true);
+    bid.set_bidqty(Some(dec("10")), true);
+    bid.finalize();
+    assert_eq!(bid.get_side(), Side::Unknown);
+    assert_eq!(bid.get_crosscode(), "14:0:Q-2");
+}
+
+/// A sided element takes its chain's side where it states none, but never
+/// both sides at once: an order continuing an element that holds both - a
+/// two-sided quote's book entry - takes no side from it.
+#[test]
+fn a_sided_follower_takes_no_side_from_a_predecessor_holding_both() {
+    let mut first = OrderEvent::at(1);
+    first.set_crosscode("ORD-1".to_owned());
+    first.set_ticker(Some(SmolStr::new("AAPL")), true);
+    first.set_side(Side::Both, true);
+    first.finalize();
+    assert_eq!(first.get_side(), Side::Both);
+    let mut next = OrderEvent::at(2);
+    next.set_crosscode("ORD-1".to_owned());
+    next.finalize();
+    let next = next.with_previous(&first).expect("a later statement");
+    assert_eq!(next.get_ticker(), Some("AAPL"), "the chain's facts carry");
+    assert_eq!(next.get_side(), Side::Unknown);
+    assert_eq!(next.get_crosscode(), "10:0:ORD-1");
 }
 
 /// A quote statement tagging a side over a quote holding both legs - a

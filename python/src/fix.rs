@@ -1270,9 +1270,9 @@ impl PyMsgType {
     /// The definition's business category, as the `MarketDataKind` member
     /// the dictionary files the type under, or `None`.
     #[getter]
-    fn msgcat(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+    fn marketdatakind(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.inner()
-            .msgcat()
+            .marketdatakind()
             .map(|kind| member(py, kind))
             .transpose()
     }
@@ -2034,16 +2034,16 @@ impl PyFixMsg {
     /// The message's business category, as the `MarketDataKind` member its
     /// type is filed under - `UNKN` for a type filed under none.
     #[getter]
-    fn msgcat(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        member(py, self.inner.msgcat())
+    fn marketdatakind(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        member(py, self.inner.marketdatakind())
     }
 
     /// The option strike price the message identifies - `StrikePrice(202)`
     /// read off the dictionary field - as a decimal; `None` where it states
     /// none.
     #[getter]
-    fn strikeprice(&self) -> Option<PyScalar> {
-        self.inner.strikeprice().map(decimal_scalar)
+    fn strikepx(&self) -> Option<PyScalar> {
+        self.inner.strikepx().map(decimal_scalar)
     }
 
     /// What the line said about the capture it was written for, typed and
@@ -3730,7 +3730,7 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// The event's clocks - `currunix`, `creaunix`, `recdunix`,
 /// `prevunix`, `snapunix`, `exprunix` - its identities - `currhashcode`,
 /// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`, the `crosscode` they
-/// derive from, its `seqnum` - the `state` it reached and the `msgcat` it is
+/// derive from, its `seqnum` - the `state` it reached and the `marketdatakind` it is
 /// filed under - the `srcuuids` of the lines it was read from - what a
 /// bridge's own log states about a line - the `msgpluginid`, the `msgctxid`,
 /// the `msgsessionid` and the `msgsesseventid` they join to with the message

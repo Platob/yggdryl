@@ -438,7 +438,7 @@ pub(super) fn is_unnamed(field: &Field) -> bool {
         .tag()
         .ok()
         .flatten()
-        .is_some_and(|tag| field.name().parse::<i32>() == Ok(tag))
+        .is_some_and(|tag| super::field::parse_tag(field.name()) == Some(tag))
 }
 
 /// Where one incoming scalar lands under [`FixRegistry::add_field`]'s rules.

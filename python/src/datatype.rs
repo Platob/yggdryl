@@ -750,6 +750,11 @@ impl PyDataType {
     /// Internal direct constructor used by the typed field factories at the package root.
     #[staticmethod]
     fn _simple(kind: &str) -> PyResult<Self> {
+        // A registered code is named by the core's own listing, so a code the
+        // core adds reaches this door with no arm of its own.
+        if let Some((_, code, _)) = CoreDataType::CODES.iter().find(|(name, ..)| *name == kind) {
+            return Self::from_validated(code.clone());
+        }
         let inner = match kind {
             "null" => CoreDataType::Null,
             "boolean" => CoreDataType::Boolean,
@@ -782,21 +787,9 @@ impl PyDataType {
             "large_cp1252" => CoreDataType::large_cp1252(),
             "cp1252_view" => CoreDataType::cp1252_view(),
             "large_cp1252_view" => CoreDataType::large_cp1252_view(),
-            "country" => CoreDataType::Country,
-            "ccy" => CoreDataType::Ccy,
-            "mic" => CoreDataType::Mic,
-            "cfi" => CoreDataType::Cfi,
-            "isin" => CoreDataType::Isin,
-            "cusip" => CoreDataType::Cusip,
-            "sedol" => CoreDataType::Sedol,
-            "bbg" => CoreDataType::Bbg,
-            "figi" => CoreDataType::Figi,
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,
-            "unit" => CoreDataType::Unit,
-            "ric" => CoreDataType::Ric,
-            "forex" => CoreDataType::Forex,
             "marketdatakind" => CoreDataType::MarketDataKind,
             "marketdatatype" => CoreDataType::MarketDataType,
             "uuid" => CoreDataType::uuid(),
@@ -1337,6 +1330,9 @@ impl PyDataType {
     }
 
     /// Returns a recursively normalized datatype for a named compatibility target.
+    ///
+    /// A bare datatype states no `FIELD:representation`, so an unsigned
+    /// integer widens; a struct's children state their own.
     #[allow(clippy::wrong_self_convention)]
     fn into_scheme_compat(&self, target: &str) -> PyResult<Self> {
         let target = CoreScheme::from_str(target).map_err(value_error)?;

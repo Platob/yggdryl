@@ -616,4 +616,24 @@ mod metadata {
             );
         }
     }
+
+    #[test]
+    fn field_representation_reads_its_vocabulary_and_stores_the_canonical_word() {
+        assert_eq!(
+            Metadata::from_entries([("FIELD:representation", " BITS ")])
+                .unwrap()
+                .get("FIELD:representation"),
+            Some("bits")
+        );
+        assert_eq!(
+            Metadata::from_entries([("field:representation", "Value")])
+                .unwrap()
+                .get("FIELD:representation"),
+            Some("value")
+        );
+        let error = Metadata::from_entries([("FIELD:representation", "bytes")]).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("FIELD:representation"), "{message}");
+        assert!(message.contains("value or bits"), "{message}");
+    }
 }

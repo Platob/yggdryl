@@ -709,8 +709,11 @@ function installRecords({
     return settings.field === null ? settings.withField(reader.field) : settings
   }
 
-  function preflightWriteIntent(settings, intent) {
-    return Reflect.apply(requireWritePreflight, settings, [intent])
+  // The destination, where one is given, answers a merge naming no key with
+  // its own: an Iceberg table's identity partition columns, then its
+  // identifier columns.
+  function preflightWriteIntent(settings, intent, handle) {
+    return Reflect.apply(requireWritePreflight, settings, [intent, handle])
   }
 
   // The mode is read by the core's `IOMode` vocabulary, before any input is
@@ -883,7 +886,7 @@ function installRecords({
         configurable: true,
         value(source, options, properties) {
           let settings = resolvedRecordOptions(this, options, properties)
-          preflightWriteIntent(settings, intent)
+          preflightWriteIntent(settings, intent, this)
           if (writeLimitIsZero(settings)) {
             if (intent === 'append') return emptyAppendResult()
             const converted = emptyRecordsReader(settings)
@@ -906,7 +909,7 @@ function installRecords({
       value(source, mode, options, properties) {
         const intent = writeMode(mode)
         let settings = resolvedRecordOptions(this, options, properties)
-        preflightWriteIntent(settings, intent)
+        preflightWriteIntent(settings, intent, this)
         if (writeLimitIsZero(settings)) {
           if (intent === 'append') return emptyAppendResult()
           const converted = emptyRecordsReader(settings)
@@ -1005,7 +1008,7 @@ function installRecords({
     if (settings === undefined || settings === null) {
       return Reflect.apply(writeSerieNative, handle, [serieSource(source), intent, undefined])
     }
-    preflightWriteIntent(settings, intent)
+    preflightWriteIntent(settings, intent, handle)
     if (writeLimitIsZero(settings)) {
       if (intent === 'append') return emptyAppendResult()
       // A limited merge was rejected by preflight. An overwrite bounded to no
@@ -1097,7 +1100,7 @@ function installRecords({
   // return a Promise; synchronous records stay lazy.
   function writeRecordSource(handle, rows, options, properties, intent, publish) {
     const settings = resolvedRecordOptions(handle, options, properties)
-    const defaultBatchRowSize = preflightWriteIntent(settings, intent)
+    const defaultBatchRowSize = preflightWriteIntent(settings, intent, handle)
     if (writeLimitIsZero(settings)) {
       if (intent === 'append') return emptyAppendResult()
       // A limited merge was rejected by preflight. Overwrite still publishes

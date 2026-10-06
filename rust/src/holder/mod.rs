@@ -156,6 +156,9 @@ impl Holder {
     /// there, a file whether its leaf is, a path whether either is - so a
     /// handle `mkdir` made a folder and `remove` then deleted answers `false`,
     /// while its [`kind`](IOBase::kind) still names the role it was built as.
+    /// A glob location - `logs/*.log` - is there while its pattern selects an
+    /// entry, which its listing answers up to the first match; its kind names
+    /// a container whatever it selects.
     /// A buffer always holds its bytes, as an HTTP session, response or stream
     /// holds what it answers; an HTTP request asks its resource with one
     /// `HEAD`, and a wrapper answers for the handle it wraps.
@@ -959,6 +962,10 @@ impl crate::IOMedia for Holder {
 
     fn record_options(&self) -> Result<crate::media::RecordOptions> {
         crate::IOMedia::record_options(self.as_media())
+    }
+
+    fn merge_by(&self) -> Result<crate::Selector> {
+        crate::IOMedia::merge_by(self.as_media())
     }
 
     #[cfg(feature = "parquet")]

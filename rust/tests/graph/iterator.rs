@@ -1637,6 +1637,77 @@ fn one_quote_identifier_is_one_chain_whatever_side_its_statements_state() {
     assert_eq!(walked[1].get_crosscode(), "14:0:TWO-1");
 }
 
+/// A quote quoting both legs and tagging no side states both sides
+/// (`BOTH`), and its names are alive as an untagged quote's are: a tagged
+/// statement going by its name continues it, a two-sided statement joins
+/// the one quote alive under its name, and joins neither where a bid and an
+/// offer both go by it.
+#[test]
+fn a_quote_holding_both_sides_goes_by_its_names_as_an_untagged_one() {
+    use yggdryl::Side;
+    use yggdryl::graph::QuoteEvent;
+
+    let tagged = |code: &str, ms: i64, side: Side, px: &str| {
+        let mut quote = QuoteEvent::at(at(ms));
+        quote.set_crosscode(code.to_owned());
+        quote.set_side(side, true);
+        quote.set_price(Some(px.parse().unwrap()), true);
+        quote
+            .insert_identifier(identifier(&IdType::QuoteId, "Q1"))
+            .unwrap();
+        quote.finalize();
+        quote
+    };
+    let two_sided = |code: &str, ms: i64| {
+        let mut quote = QuoteEvent::at(at(ms));
+        quote.set_crosscode(code.to_owned());
+        quote.set_bidpx(Some("99".parse().unwrap()), true);
+        quote.set_askpx(Some("101".parse().unwrap()), true);
+        quote
+            .insert_identifier(identifier(&IdType::QuoteId, "Q1"))
+            .unwrap();
+        quote.finalize();
+        quote
+    };
+    assert_eq!(two_sided("TWO-1", 10).get_side(), Side::Both);
+
+    // A tagged statement continues the quote holding both sides.
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            two_sided("TWO-1", 10),
+            tagged("FILL-1", 20, Side::Buy, "99"),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_crosscode(), "14:0:TWO-1");
+    assert_eq!(walked[1].get_side(), Side::Buy, "its tag is its own");
+
+    // A two-sided statement joins the one quote alive under its name.
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![tagged("BID-1", 10, Side::Buy, "99"), two_sided("TWO-1", 20)],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_crosscode(), "14:0:BID-1");
+    assert_eq!(walked[1].get_side(), Side::Both);
+
+    // And neither where a bid and an offer go by it.
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            tagged("BID-1", 10, Side::Buy, "99"),
+            tagged("ASK-1", 20, Side::Sell, "101"),
+            two_sided("TWO-1", 30),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[2].get_prevuuid(), None);
+    assert_eq!(walked[2].get_crosscode(), "14:0:TWO-1");
+}
+
 /// Elements split off one message - two entries of one batch going by the
 /// batch's own identifier - are two entries: neither joins the other's
 /// chain by the name they share.

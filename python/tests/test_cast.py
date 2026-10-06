@@ -499,6 +499,28 @@ def test_the_bits_reading_crosses_every_same_width_pair() -> None:
         ).into_arrow_array()
 
 
+def test_a_column_stating_bits_takes_them_without_being_asked() -> None:
+    # The column states that its integers are bits, so a cast asking for
+    # values carries them, sharing the buffer; a float meeting the column is
+    # still the number it is.
+    digest = Field("digest", "int64")
+    digest.field_properties.representation = "bits"
+    unsigned = pa.array([0, 2**63, 2**64 - 1], type=pa.uint64())
+    signed = Serie.from_arrow_array(unsigned, digest).into_arrow_array()
+    assert signed.type == pa.int64()
+    assert signed.to_pylist() == [0, -(2**63), -1]
+    assert signed.buffers()[1].address == unsigned.buffers()[1].address
+    assert Serie.from_arrow_array(
+        pa.array([1.0], type=pa.float64()), digest
+    ).into_arrow_array().to_pylist() == [1]
+    # A column stating nothing reads the value, and a required one refuses
+    # what no int64 holds.
+    with pytest.raises(ValueError, match=r"\$\.digest"):
+        Serie.from_arrow_array(
+            unsigned, Field("digest", "int64", nullable=False), safe=False
+        ).into_arrow_array()
+
+
 def test_asking_for_bits_never_reinterprets_a_different_width() -> None:
     bits: dict[str, Any] = {"representation": "bits"}
 

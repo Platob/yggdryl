@@ -245,6 +245,84 @@ still says whether a value may be absent ([Required columns](#required-columns))
     assert.deepEqual(Serie.fromArrowArray(narrow, fields.int64('id'), bits).asJs(), [7])
     ```
 
+### A column that states its bits
+
+A column may ask for the bits itself, by stating
+[`FIELD:representation=bits`](protocol.md#integers-stated-as-bits): one node joining two
+integer layouts of one width is then the bit reading, whatever the whole cast asks, when the
+target column states it or the source's Arrow field does - the column a table stores a `uint64`
+digest in as a `long`, which its reader casts back. The decision is made once, where the node is
+planned, and the buffer is shared. It is the integers' alone: a float or a temporal meeting a
+column that states it is converted by value, where `representation="bits"` asked of a whole cast
+would share its bytes too. The plan-wide option is untouched, so a record whose digest states
+bits casts its other columns by value.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Float64Array, UInt64Array};
+    use yggdryl::{ArrowCastOptions, DataType, Representation, Serie};
+
+    let mut digest = DataType::Int64.required_field("digest");
+    digest.as_field_properties_mut().set_representation(Representation::Bits)?;
+
+    // A cast asking for values carries the bits of the column that states them.
+    let unsigned = UInt64Array::from(vec![0, 1 << 63, u64::MAX]);
+    let signed =
+        Serie::from_arrow_array(Some(&digest), Arc::new(unsigned.clone()), ArrowCastOptions::new())?;
+    let signed = signed.as_int64().expect("an int64 column").array().clone();
+    assert_eq!(signed.values(), &[0, i64::MIN, -1]);
+    assert!(signed.values().inner().ptr_eq(unsigned.values().inner()));
+
+    // A float meeting the column is the number it is.
+    let price = Serie::from_arrow_array(
+        Some(&digest),
+        Arc::new(Float64Array::from(vec![1.0])),
+        ArrowCastOptions::new(),
+    )?;
+    assert_eq!(price.as_int64().expect("an int64 column").values(), &[1]);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+    from yggdryl import Field, Serie
+
+    digest = Field("digest", "int64")
+    digest.field_properties.representation = "bits"
+
+    unsigned = pa.array([0, 2**63, 2**64 - 1], type=pa.uint64())
+    signed = Serie.from_arrow_array(unsigned, digest).into_arrow_array()
+    assert signed.to_pylist() == [0, -(2**63), -1]
+    assert signed.buffers()[1].address == unsigned.buffers()[1].address
+
+    # A float meeting the column is the number it is.
+    price = Serie.from_arrow_array(pa.array([1.0]), digest)
+    assert price.as_py() == [1]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Serie, fields } = require('yggdryl')
+
+    const digest = fields.int64('digest')
+    digest.fieldProperties.representation = 'bits'
+
+    const unsigned = arrow.vectorFromArray([0n, 2n ** 63n, 2n ** 64n - 1n], new arrow.Uint64())
+    const signed = Serie.fromArrowArray(unsigned, digest)
+    assert.deepEqual([...signed.intoArrowArray()], [0n, -(2n ** 63n), -1n])
+
+    // A float meeting the column is the number it is.
+    const price = Serie.fromArrowArray(arrow.vectorFromArray([1.0], new arrow.Float64()), digest)
+    assert.deepEqual([...price.intoArrowArray()], [1n])
+    ```
+
 ## Row values
 
 `validate_value` checks a [`Scalar`](scalar.md) row is representable; `canonicalize_value` rewrites it exactly.
@@ -1382,6 +1460,7 @@ What each binding door accepts, each resolved once at the door:
 - Text or bytes into a struct, serie or map -> each cell one JSON document under the target, never a one-item list wrapped around the cell; `""` and the document `null` are absence; a JSON object holds no order, so a map's entries come back in the order of their keys' text and a sorted map's in the order of its keys.
 - Text into a union or a variant -> the union's member that takes it, the variant's string; neither reads a document at the top of a cast.
 - `representation="bits"` over two different widths, or into a datatype with a value rule -> the ordinary conversion, range check and all.
+- A column stating `FIELD:representation=bits` met by a float or a temporal -> converted by value; the column's declaration is its integers' alone.
 - A required `bits` target over source nulls -> refused by path, exactly as under `value`.
 - A foreign column carrying a `yggdryl.*` extension label -> its rows read once under the field's rule, a refused row named with its column and row under every option; a label is never a proof.
 - A column of another layout handed to a compiled plan -> error naming both layouts; a plan is compiled for one source.

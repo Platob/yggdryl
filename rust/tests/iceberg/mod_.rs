@@ -5457,6 +5457,57 @@ mod handles {
         }
     }
 
+    /// A session commits through the table it locates off the handle, so
+    /// the handle's own table is closed after each cadence and reads the
+    /// commits on its next verb, and a commit through it after the session
+    /// is no conflict.
+    #[test]
+    fn a_write_session_leaves_the_handle_it_was_given_current() {
+        let seed = trades(
+            &[1, 2],
+            &[Some("A"), Some("B")],
+            &[Some("XNAS"), Some("XLON")],
+        );
+        let (path, folder) = table("session-current");
+        let mut held = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let options = options(&folder);
+        held.append_arrow_reader(
+            yggdryl::arrow::batch_reader(seed.schema(), [seed.clone()]),
+            &options,
+        )
+        .unwrap();
+        let cadence = options
+            .clone()
+            .with_merge_by(["venue"])
+            .unwrap()
+            .with_commit_batch_num(1);
+        let mut session = yggdryl::ArrowWriteSession::merge(&cadence).unwrap();
+        let incoming = trades(&[3], &[Some("C")], &[Some("XNAS")]);
+        assert!(session.push(&mut held, one_row_batches(&incoming)).unwrap());
+        session.finish(&mut held).unwrap();
+        assert_eq!(snapshots(&path), 2);
+        assert_eq!(
+            collect(held.read_arrow_reader(&options).unwrap()),
+            triples(&[(2, "B", "XLON"), (3, "C", "XNAS")]),
+            "the handle reads what the session committed"
+        );
+        let later = trades(&[4], &[Some("D")], &[Some("XLON")]);
+        held.merge_arrow_reader(one_row_batches(&later), &cadence)
+            .unwrap();
+        assert_eq!(
+            snapshots(&path),
+            3,
+            "a merge after the session rebases on it"
+        );
+        let mut rows = collect(held.read_arrow_reader(&options).unwrap());
+        rows.sort();
+        assert_eq!(
+            rows,
+            triples(&[(3, "C", "XNAS"), (4, "D", "XLON")]),
+            "the merge replaced the XLON row through the handle"
+        );
+    }
+
     #[test]
     fn an_overwrite_replaces_the_partitions_its_rows_fall_in_through_every_door() {
         // `XNAS` and `XLON` are reached and replaced, `XNYS` is not and

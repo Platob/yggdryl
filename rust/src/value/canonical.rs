@@ -70,7 +70,11 @@ impl Field {
     /// [`DataType::scalar`] with this field's nullability on top: the value is
     /// checked and rewritten by the datatype, and a null is refused here when
     /// the column cannot hold one. Every other value contract in the crate is
-    /// this one, so a value built here is a value every reader accepts.
+    /// this one, so a value built here is a value every reader accepts. On an
+    /// integer column stating `FIELD:representation=bits`
+    /// ([`FieldPropertiesField::representation`](crate::protocol::FieldPropertiesField::representation)),
+    /// a same-width integer of the other signedness is read as its bits:
+    /// `-1_i64` under such a `uint64` is `u64::MAX`.
     ///
     /// ```
     /// use yggdryl::{DataType, DataTypeId, Field, Scalar};
@@ -99,6 +103,8 @@ impl Field {
         let value = value.into();
         let value = if matches!(self.dtype(), DataType::Variant) && matches!(value, Scalar::Null) {
             value
+        } else if let Some(bits) = stated_bits(self, &value) {
+            bits
         } else {
             dtype_scalar(self.dtype(), value)
                 .map_err(|error| rooted_at_field(error, self.name()))?
@@ -591,7 +597,22 @@ fn canonicalize_field_payload(field: &Field, value: &Scalar) -> Result<(Scalar, 
     if matches!(value, Scalar::Null) && !matches!(field.dtype(), DataType::Union(..)) {
         return Ok((Scalar::Null, false));
     }
+    if let Some(bits) = stated_bits(field, value) {
+        return Ok((bits, true));
+    }
     canonicalize_dtype_value(field.dtype(), value)
+}
+
+/// `value` as `field`'s bits, where the column states them and they read
+/// apart from its value ([`crate::integer::bits_reading`]): the declaration
+/// is read only for such a value, so no other value pays a metadata lookup.
+fn stated_bits(field: &Field, value: &Scalar) -> Option<Scalar> {
+    let bits = crate::integer::bits_reading(field.dtype(), value)?;
+    field
+        .as_field_properties()
+        .representation()
+        .is_bits()
+        .then_some(bits)
 }
 
 /// The physical count a self-describing value carries for one column.
@@ -1059,7 +1080,12 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Ric
         | D::Figi
         | D::Unit
-        | D::Forex => {
+        | D::Forex
+        | D::Lei
+        | D::Bic
+        | D::Elf
+        | D::Dti
+        | D::Fisn => {
             if value.is_code() && value.id() == dtype.id() {
                 return Ok((value.clone(), false));
             }
@@ -1087,6 +1113,11 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 D::Figi => Scalar::Figi(crate::Figi::new(text)?),
                 D::Unit => Scalar::Unit(crate::Unit::new(text)?),
                 D::Forex => Scalar::Forex(crate::Forex::new(text)?),
+                D::Lei => Scalar::Lei(crate::Lei::new(text)?),
+                D::Bic => Scalar::Bic(crate::Bic::new(text)?),
+                D::Elf => Scalar::Elf(crate::Elf::new(text)?),
+                D::Dti => Scalar::Dti(crate::Dti::new(text)?),
+                D::Fisn => Scalar::Fisn(crate::Fisn::new(text)?),
                 _ => unreachable!("registered code matched above"),
             };
             Ok((canonical, true))
@@ -1815,6 +1846,9 @@ fn validate_field_payload_at_depth(
     {
         return Ok(());
     }
+    if stated_bits(field, value).is_some() {
+        return Ok(());
+    }
     validate_dtype_value(field.dtype(), value, depth)
 }
 
@@ -1940,7 +1974,12 @@ fn validate_dtype_value(
         | D::Ric
         | D::Figi
         | D::Unit
-        | D::Forex => match ascii_bytes(value) {
+        | D::Forex
+        | D::Lei
+        | D::Bic
+        | D::Elf
+        | D::Dti
+        | D::Fisn => match ascii_bytes(value) {
             // A pair's spellings are wider than the pair; the width holds
             // the canonical text, which the canonicalization builds.
             Some(bytes) if matches!(dtype, D::Forex) => ascii_text_sized(None, bytes)

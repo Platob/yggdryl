@@ -3519,3 +3519,89 @@ mod serie_verbs {
         );
     }
 }
+
+mod own_key {
+    //! A merge whose options name no key takes the destination's own
+    //! ([`IOMedia::merge_by`]), resolved once by [`IOMedia::write_options`]
+    //! before a source is pulled; a leaf states none, so it is refused there.
+
+    use std::borrow::Cow;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{ArrowCastOptions, IOBase, IOMedia, IOMode, SerieReader, SerieSource};
+
+    use super::{counted_source, handle, rows_batch};
+
+    #[test]
+    fn a_leaf_states_no_key_so_a_keyless_merge_is_refused_before_its_source_is_pulled() {
+        let mut target = handle("trades.arrows");
+        assert!(IOMedia::merge_by(&target).unwrap().is_empty());
+        let options = target.record_options().unwrap();
+        let error = target
+            .write_options(IOMode::Merge, &options)
+            .expect_err("a leaf states no key of its own");
+        assert!(error.to_string().contains("$.merge_by"), "{error}");
+
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let error = target
+            .write_arrow_reader(
+                counted_source(Arc::clone(&pulls), [Ok(rows_batch(&[1, 2]))]),
+                IOMode::Merge,
+                &options,
+            )
+            .expect_err("the generic door refuses the empty key");
+        assert!(
+            error
+                .to_string()
+                .contains("requires at least one merge_by column"),
+            "{error}"
+        );
+        assert_eq!(
+            pulls.load(Ordering::SeqCst),
+            0,
+            "the source is never pulled"
+        );
+
+        let stream = SerieReader::from_arrow_reader(
+            None,
+            counted_source(Arc::clone(&pulls), [Ok(rows_batch(&[3]))]),
+            ArrowCastOptions::default(),
+        )
+        .unwrap();
+        let error = target
+            .merge_serie(SerieSource::from(stream), None)
+            .expect_err("the serie door refuses the empty key");
+        assert!(error.to_string().contains("$.merge_by"), "{error}");
+        assert_eq!(
+            pulls.load(Ordering::SeqCst),
+            0,
+            "the stream is never pulled"
+        );
+        assert_eq!(IOBase::size(&target), 0, "nothing was written");
+    }
+
+    #[test]
+    fn write_options_borrows_the_options_it_does_not_rekey() {
+        let target = handle("trades.arrows");
+        let options = target.record_options().unwrap();
+        for mode in [IOMode::Overwrite, IOMode::Append] {
+            assert!(
+                matches!(target.write_options(mode, &options), Ok(Cow::Borrowed(_))),
+                "{mode}"
+            );
+        }
+        let keyed = options.clone().with_merge_by(["id"]).unwrap();
+        let resolved = target.write_options(IOMode::Merge, &keyed).unwrap();
+        assert!(matches!(resolved, Cow::Borrowed(_)));
+        assert_eq!(resolved.merge_by().to_string(), "id");
+        let error = target
+            .write_options(IOMode::Overwrite, &keyed)
+            .expect_err("an overwrite refuses a key");
+        assert!(
+            error.to_string().contains("does not accept merge_by"),
+            "{error}"
+        );
+    }
+}

@@ -1469,14 +1469,14 @@ impl FixCodec {
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
     /// # use yggdryl::{FixCodec, FixRegistry, MarketDataKind, State};
-    /// # use yggdryl::graph::{Element, Event};
+    /// # use yggdryl::graph::{Element, Event, Market};
     /// let codec = FixCodec::new(Arc::new(FixRegistry::new()));
     /// let fill = b"8=FIX.4.4|35=8|17=E1|37=O1|39=1|150=F|32=2|31=10|10=0|";
     /// let read: Vec<_> = codec.parse_line(fill)?.collect::<yggdryl::Result<_>>()?;
     /// let [report, execution] = read.as_slice() else { panic!("two messages") };
-    /// assert_eq!(report.msgcat(), MarketDataKind::Order);
+    /// assert_eq!(report.marketdatakind(), MarketDataKind::Order);
     /// assert_eq!(*report.get_state(), State::PartiallyFilled);
-    /// assert_eq!(execution.msgcat(), MarketDataKind::Execution);
+    /// assert_eq!(execution.marketdatakind(), MarketDataKind::Execution);
     /// assert_eq!(*execution.get_state(), State::Filled);
     /// assert!(execution.get_srcuuids().contains(&report.get_curruuid()));
     /// # Ok(())

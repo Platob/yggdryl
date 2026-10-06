@@ -17,6 +17,8 @@ mod arithmetic;
 mod ascii;
 #[path = "root/bbg.rs"]
 mod bbg;
+#[path = "root/bic.rs"]
+mod bic;
 #[path = "root/boolean.rs"]
 mod boolean;
 #[path = "root/budget.rs"]
@@ -63,10 +65,14 @@ mod default;
 mod diff;
 #[path = "root/digest.rs"]
 mod digest;
+#[path = "root/dti.rs"]
+mod dti;
 #[path = "root/duration.rs"]
 mod duration;
 #[path = "root/edge_algorithm.rs"]
 mod edge_algorithm;
+#[path = "root/elf.rs"]
+mod elf;
 #[path = "root/enumeration.rs"]
 mod enumeration;
 #[path = "root/enums.rs"]
@@ -77,6 +83,8 @@ mod error;
 mod field;
 #[path = "root/figi.rs"]
 mod figi;
+#[path = "root/fisn.rs"]
+mod fisn;
 #[path = "root/floating.rs"]
 mod floating;
 #[path = "root/forex.rs"]
@@ -105,12 +113,16 @@ mod interval;
 mod iobase;
 #[path = "root/iocursor.rs"]
 mod iocursor;
+#[path = "root/iofolder.rs"]
+mod iofolder;
 #[path = "root/iokind.rs"]
 mod iokind;
 #[path = "root/iomedia.rs"]
 mod iomedia;
 #[path = "root/iomode.rs"]
 mod iomode;
+#[path = "root/iopath.rs"]
+mod iopath;
 #[path = "root/ioresult.rs"]
 mod ioresult;
 #[path = "root/isin.rs"]
@@ -119,6 +131,8 @@ mod isin;
 mod isin_registry;
 #[path = "root/join.rs"]
 mod join;
+#[path = "root/lei.rs"]
+mod lei;
 #[path = "root/lib.rs"]
 mod lib;
 #[path = "root/limit.rs"]

@@ -1,6 +1,6 @@
 """The pyarrow extension types of the datatypes Arrow cannot state alone.
 
-Every `yggdryl.*` name the core writes - the twelve codes, the five enum
+Every `yggdryl.*` name the core writes - the seventeen codes, the five enum
 leaves, the fixed decimals, the string and bytes documents, the version, URL,
 URN, timezone, MIME and media types - is registered with pyarrow when
 `yggdryl` is imported, from the one list the core keeps
@@ -76,8 +76,27 @@ class YggdrylType(pa.ExtensionType):  # type: ignore[misc]
             )
         return NotImplemented
 
+    # pyarrow's own `__ne__` would compare the name and the storage alone, so
+    # the inverse of the equality above is spelled too.
+    def __ne__(self, other: object) -> bool:
+        equal = self.__eq__(other)
+        return equal if equal is NotImplemented else not equal
+
     def __hash__(self) -> int:
         return hash((self.extension_name, self.storage_type, self._document))
+
+    # pyarrow renders a Python extension type as `extension<name<Class>>`; its
+    # own canonical types print `extension<arrow.uuid>`, a parameterized one
+    # its parameters in brackets. The document is what tells two leaves of one
+    # storage apart, as equality does, so it prints as the datatype it states.
+    # A pyarrow field or schema still renders through Arrow C++.
+    def __str__(self) -> str:
+        if not self._document:
+            return f"extension<{self.extension_name}>"
+        return f"extension<{self.extension_name}[{self.datatype}]>"
+
+    def __repr__(self) -> str:
+        return f"YggdrylType({self})"
 
     @property
     def document(self) -> bytes:

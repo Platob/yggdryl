@@ -3368,10 +3368,16 @@ mod committed {
     /// message naming none stating the empty text rather than a null - the
     /// crate's field shard and the fixed row component written again over
     /// that one flag. No count of the census below moved.
+    /// It last moved when the intrinsic `statecodeset` moved
+    /// `PENDING_VERIFICATION`, `PENDING_ALLOCATION` and `PENDING_APPROVAL`
+    /// out of the pending band to 4006-4008 - each a report or an
+    /// allocation already acknowledged and awaiting its next step - and
+    /// gained `APPROVED` (8013): one set the registry renders from the
+    /// enum, so no file and no count of the census below moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 12_622_587_116_294_776_451);
+        assert_eq!(registry.stable_hash(), 1_504_958_496_605_363_645);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

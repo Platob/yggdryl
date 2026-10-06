@@ -15,12 +15,14 @@ lifted ``marketdata`` Arrow doors (``field``, ``arrow_reader``,
 ``apply_view``, one of ``enums.MARKET_VIEWS`` each). :class:`BookRef` is the
 typed book-control facts a market-data entry carries. A :class:`BookEvent`
 answers each side's ``alive_on``, ``limits``, ``best_price`` and ``depth``,
-and its ``spread``, ``is_locked`` and ``imbalance``; ``is_complete`` says
+and its ``spread``, ``is_locked`` and ``imbalance``; it reads its entries by
+kind - ``ordlive`` the orders resting, ``orddelta``, ``quotes`` and
+``executions`` the deltas, which hold nothing else; ``is_complete`` says
 whether it holds its sides, and ``with_previous`` makes a book stating its
 deltas alone whole over the book before it, ``BookEvent.keyed`` the empty
 one. :class:`BookIterator` folds a sorted stream of orders, quotes and
-snapshot controls into books - an execution or a trade is pruned, and a
-``filter`` narrows the walk further;
+snapshot controls into books - an execution is recorded among its book's
+deltas and a trade pruned, and a ``filter`` narrows the walk further;
 :class:`EventIterator` chains a stream of leaves to the live element each
 follows. :class:`CandleIterator` folds a sorted stream of books into
 :class:`Candle` values - one OHLC of the best bid, the best ask, their

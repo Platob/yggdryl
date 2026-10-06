@@ -159,9 +159,9 @@ impl MarketDataKind {
 
     /// The side a cross code and a chain of this kind are keyed by: the
     /// stated `side` of a sided kind ([`Self::is_sided`]), and
-    /// [`Side::Unknown`] for every other kind, whatever side it states. The
-    /// one owner of that reading, so the stored code, the walk's chain key
-    /// and a session's key never disagree on it.
+    /// [`Side::Unknown`] for every other kind, whatever side it states -
+    /// `BOTH` included. The one owner of that reading, so the stored code,
+    /// the walk's chain key and a session's key never disagree on it.
     #[must_use]
     pub(crate) const fn stored_side(self, side: Side) -> Side {
         if self.is_sided() { side } else { Side::Unknown }

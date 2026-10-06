@@ -26,6 +26,7 @@ from yggdryl import (
     ChunkedSerie,
     DataType,
     Field,
+    Scalar,
     Serie,
     StringEnum,
     StringParameters,
@@ -788,6 +789,11 @@ def test_a_registered_code_is_its_own_datatype() -> None:
         ("sedol", 7),
         ("bbg", 32),
         ("ric", 32),
+        ("lei", 20),
+        ("bic", 11),
+        ("elf", 4),
+        ("dti", 9),
+        ("fisn", 35),
     ]:
         dtype = DataType(name)
         assert (dtype.id, dtype.code_width, dtype.kind) == (name, width, "code")
@@ -859,6 +865,84 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     # Two identifiers are two values, and neither is the string it spells.
     assert cusip.scalar("037833100") != DataType("utf8").scalar("037833100")
     assert cusip.scalar("037833100") != sedol.scalar("B0YBKJ7")
+
+
+#: One value of each reference-data code as a caller may spell it, the value
+#: it stores as, a spelling whose check does not close - kept as the value it
+#: states - and a spelling its shape refuses with the reason the core names.
+REFERENCE_CODES = {
+    "lei": ("hwupkr0mpou8fgxbt394", "HWUPKR0MPOU8FGXBT394", "HWUPKR0MPOU8FGXBT395",
+            ("HWUPKR0MPOU8FGXBT3A4", "two closing check digits")),
+    "bic": ("deutdeff500", "DEUTDEFF500", "DEUTZZFF",
+            ("DEUT1EFF", "two-letter country code")),
+    "elf": ("2hbr", "2HBR", "2HBR",
+            ("2H-R", "four letters or digits")),
+    "dti": ("x9j9k872s", "X9J9K872S", "X9J9K872T",
+            ("A9J9K872S", "consonants other than Y")),
+    "fisn": ("acme corp/sh", "ACME CORP/SH", "ACME/AMORT PN W/P/C",
+             ("ACME CORP SH", "a '/' between the issuer")),
+}
+
+
+@pytest.mark.parametrize("name", sorted(REFERENCE_CODES))
+def test_a_reference_data_code_folds_keeps_a_typo_and_refuses_its_shape(name: str) -> None:
+    spelled, stored, unclosed, (refused, reason) = REFERENCE_CODES[name]
+    dtype = DataType(name)
+    assert dtype.kind == "code"
+    assert dtype.string_parameters is None
+    assert dtype.fixed_byte_width is None
+    value = dtype.scalar(spelled)
+    assert value.as_py() == stored
+    assert value.kind == name
+    assert value.dtype == dtype
+    # A check that does not close is the value it states, never a refusal.
+    assert dtype.scalar(unclosed).as_py() == unclosed
+    with pytest.raises(ValueError, match=reason):
+        dtype.scalar(refused)
+    # Two codes are two values, and neither is the string it spells.
+    assert value != DataType("utf8").scalar(stored)
+    # The value pickles and copies under its own identity, and a pickled
+    # state its shape refuses is refused by the same door.
+    assert pickle.loads(pickle.dumps(value)) == value
+    assert pickle.loads(pickle.dumps(value)).kind == name
+    assert copy.deepcopy(value) == value
+    with pytest.raises(ValueError, match=reason):
+        Scalar._from_pickle((name, refused))
+    # The field factory builds the datatype, and a column of it crosses into
+    # Arrow under its own extension name and lands back as the datatype.
+    field = getattr(yggdryl, name)("value")
+    assert field.dtype == dtype
+    assert pickle.loads(pickle.dumps(field)) == field
+    serie = Serie.from_scalars(field, [spelled, None])
+    assert serie.as_py() == [stored, None]
+    arrow = serie.into_arrow_array()
+    assert arrow.type.extension_name == f"yggdryl.{name}"
+    assert arrow.storage.to_pylist() == [stored, None]
+    assert Serie.from_arrow_array(arrow).field.dtype == dtype
+
+
+def test_a_bic_and_a_fisn_keep_what_their_standards_leave_open() -> None:
+    bic = DataType("bic")
+    # Eight and eleven characters are kept as stated: two spellings of the one
+    # primary office, neither folded into the other.
+    assert bic.scalar("DEUTDEFF").as_py() == "DEUTDEFF"
+    assert bic.scalar("DEUTDEFFXXX").as_py() == "DEUTDEFFXXX"
+    assert bic.scalar("DEUTDEFF") != bic.scalar("DEUTDEFFXXX")
+    # ISO 9362:2014 opened the party prefix to digits.
+    assert bic.scalar("1234DEFF").as_py() == "1234DEFF"
+    with pytest.raises(ValueError, match="eight or eleven characters"):
+        bic.scalar("DEUTDEFF5")
+    fisn = DataType("fisn")
+    # The separator is the first `/`, and the bound is thirty-five bytes.
+    assert fisn.scalar("ACME/AMORT PN W/P/C").as_py() == "ACME/AMORT PN W/P/C"
+    with pytest.raises(ValueError, match="at most 35"):
+        fisn.scalar("ACME CORPORATION INCORPORATED/ORD SH")
+    # A code stores US-ASCII, so a Latin-1 letter ISO 18774 allows is refused.
+    with pytest.raises(ValueError):
+        fisn.scalar("SOCIÉTÉ/SH")
+    # A DTI never opens with `0`.
+    with pytest.raises(ValueError, match="first character other than 0"):
+        DataType("dti").scalar("09J9K872S")
 
 
 def test_a_code_and_a_uuid_read_into_every_string_and_byte_datatype() -> None:
@@ -1500,6 +1584,11 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "bbg": yggdryl.bbg("value"),
         "ric": yggdryl.ric("value"),
         "figi": yggdryl.figi("value"),
+        "lei": yggdryl.lei("value"),
+        "bic": yggdryl.bic("value"),
+        "elf": yggdryl.elf("value"),
+        "dti": yggdryl.dti("value"),
+        "fisn": yggdryl.fisn("value"),
         "uuid": yggdryl.uuid("value"),
         "version": yggdryl.version("value"),
         "url": yggdryl.url("value"),

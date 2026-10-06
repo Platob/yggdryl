@@ -186,7 +186,7 @@ use super::staging::{Staging, container, leaf, sized};
 use super::value::{compare_single, is_portable, single_value};
 use crate::arrow::BatchReader;
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
-use crate::expression::Projection;
+use crate::expression::{FieldPath, FieldSegment, Projection};
 use crate::holder::Holder;
 use crate::media::{Cadence, IORecordOptions, RecordOptions};
 use crate::{ChunkedSerie, IOBase, IOMedia, Serie, SpillOptions};
@@ -2394,11 +2394,14 @@ impl<H: IOBase> IcebergTable<H> {
     /// files; what is in memory at once is one group's rows and the stored
     /// files it selected, never the whole table.
     ///
-    /// A merge that names no key beyond the partition columns replaces the
-    /// partitions the rows fall in - the partition *is* the row's identity -
-    /// and needs a partitioned table: with no partition and no key there is
-    /// nothing to match on, which is refused by name rather than read as an
-    /// overwrite.
+    /// A `merge_by` naming nothing is the table's own key: the columns its
+    /// schema's `identifier-field-ids` name, a column below structs by its
+    /// path ([`IOMedia::merge_by`](crate::IOMedia::merge_by) answers the
+    /// whole key, partition columns included). With no identifier stated the
+    /// partition is the key - the partition *is* the row's identity - and
+    /// the partitions the rows fall in are replaced; an unpartitioned table
+    /// stating none has nothing to match on, which is refused by name rather
+    /// than read as an overwrite.
     ///
     /// Like [`Self::commit_overwrite_where`], a merge beaten by a concurrent commit
     /// reports a [`CommitConflict`] rather than rebasing, because the files it
@@ -2408,7 +2411,9 @@ impl<H: IOBase> IcebergTable<H> {
     ///
     /// Returns an error for a keyed merge on format v3, whose existing row IDs
     /// this writer cannot yet preserve, when `merge_by` names a column the schema
-    /// does not declare, when the table has neither a partition nor a key,
+    /// does not declare, when an `identifier-field-ids` id names no column a
+    /// keyless merge could key by, when the table has neither a partition nor a
+    /// key,
     /// when a live file written under another partition spec could hold an
     /// incoming key - it belongs to no partition of the current spec, so
     /// rewrite it first - or for any read, join, or write failure, including
@@ -2452,7 +2457,7 @@ impl<H: IOBase> IcebergTable<H> {
     ) -> Result<()> {
         let schema = self.schema()?.clone();
         let spec = self.opened()?.metadata.default_spec()?.clone();
-        let (keys, row_keys) = merge_keys(&schema, &spec, merge_by);
+        let (keys, row_keys) = merge_keys(&schema, &spec, merge_by)?;
         if !row_keys.is_empty() {
             // A keyed merge rewrites the stored rows it keeps, under fresh
             // row IDs; a partition replaced whole retains none of them.
@@ -2463,7 +2468,7 @@ impl<H: IOBase> IcebergTable<H> {
                 path: SmolStr::new_static("$.merge_by"),
                 reason: SmolStr::new_static(
                     "expected at least one column to merge on, got an empty match key on an \
-                     unpartitioned table",
+                     unpartitioned table whose schema states no identifier-field-ids",
                 ),
             });
         }
@@ -3675,6 +3680,17 @@ impl<H: IOBase> IOBase for IcebergTable<H> {
         truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, parent,
         child_by_path);
 
+    /// Flush the root and let go of the metadata document the table read,
+    /// so its next verb reads the store again: how a handle learns of the
+    /// commits another instance over the same table made - the table a
+    /// write session locates off it among them. A table never holds a byte
+    /// unpublished, so nothing but the document is let go of.
+    fn close(&mut self) -> Result<()> {
+        self.root.flush()?;
+        self.opened = OnceLock::new();
+        Ok(())
+    }
+
     /// The files below the table: its folder's listing under the folder
     /// contract.
     ///
@@ -3924,6 +3940,16 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
         Ok(RecordOptions::Parquet(crate::parquet::ParquetOptions::new()))
     }
 
+    /// The table's own match key: its identity partition columns, then the
+    /// columns its schema's `identifier-field-ids` name, each once - what a
+    /// merge whose options name no key matches on, read off the metadata
+    /// with no data file opened. Empty for an unpartitioned table whose
+    /// schema states no identifier column.
+    fn merge_by(&self) -> Result<Selector> {
+        let spec = self.opened()?.metadata.default_spec()?;
+        merge_keys(self.schema()?, spec, &Selector::all()).map(|(keys, _)| keys)
+    }
+
     /// The stored schema as the metadata declares it, no data file opened.
     ///
     /// A declared schema is returned as it stands, as on every handle, but
@@ -4049,9 +4075,11 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
 
     /// Merge into the selected partitions: `write_cadenced` under
     /// [`IOMode::Merge`](crate::IOMode::Merge). The partition columns lead
-    /// the match key, so an empty [`merge_by`](IORecordOptions::merge_by)
-    /// on a partitioned table replaces the partitions the rows fall in; see
-    /// [`IcebergTable::commit_merge_where`].
+    /// the match key, and an empty [`merge_by`](IORecordOptions::merge_by)
+    /// is the table's own key ([`IOMedia::merge_by`]): its identity
+    /// partition columns, then its identifier columns - so on a partitioned
+    /// table stating no identifier the partitions the rows fall in are
+    /// replaced; see [`IcebergTable::commit_merge_where`].
     fn merge_arrow_reader(
         &mut self,
         batches: BatchReader,
@@ -4087,13 +4115,15 @@ impl<H: IOBase> IcebergTable<H> {
     /// touching no other partition; an overwrite of stated `pairs`, or of
     /// an unpartitioned table, replaces that scope on its first commit and
     /// appends after. An append appends, and every commit of a merge merges
-    /// by its key - a merge keyed by the partition alone replacing
-    /// partitions as an overwrite does. The commits before a failure stay
-    /// published.
+    /// by its key - a merge naming no key keyed by the table's own, resolved
+    /// once before the source is pulled, and a merge keyed by the partition
+    /// alone replacing partitions as an overwrite does. The commits before a
+    /// failure stay published.
     ///
     /// # Errors
     ///
-    /// Returns the options' refusal of the mode, a zero cadence or thread
+    /// Returns the options' refusal of the mode - a merge naming no key on a
+    /// table stating none of its own included - a zero cadence or thread
     /// count, a limit on a merge, and a metadata, manifest, read, cast or
     /// write failure.
     pub(crate) fn write_cadenced(
@@ -4103,26 +4133,20 @@ impl<H: IOBase> IcebergTable<H> {
         options: &RecordOptions,
         pairs: &[(&str, &str)],
     ) -> Result<crate::IOResult> {
+        // The write's key is resolved once, here: a merge naming none is
+        // keyed by the table's own - its identity partition columns, then its
+        // identifier columns - and refused naming `$.merge_by` where it has
+        // neither.
+        let options = &*IOMedia::write_options(self, mode, options)?;
         match mode {
-            crate::IOMode::Overwrite => options.require_write_mode(mode)?,
+            crate::IOMode::Overwrite => {}
             crate::IOMode::Append => {
-                options.require_write_mode(mode)?;
                 options.require_write_limits()?;
                 if options.write_limit_is_zero() {
                     return Ok(crate::IOResult::default());
                 }
             }
-            crate::IOMode::Merge => {
-                // The generic rule - a merge names a key - is met by the
-                // partition columns of a partitioned table, so only an
-                // unpartitioned one has to be told what to match on.
-                if self.opened()?.metadata.default_spec()?.is_unpartitioned()
-                    || !options.merge_by().is_empty()
-                {
-                    options.require_write_mode(mode)?;
-                }
-                options.require_write_limits()?;
-            }
+            crate::IOMode::Merge => options.require_write_limits()?,
             crate::IOMode::ReadOnly | crate::IOMode::Random => {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.mode"),
@@ -5010,11 +5034,28 @@ fn partition_columns_of<'schema>(
 /// The match key a merge joins on, and the part of it beyond the partition.
 ///
 /// The identity partition columns lead, each named once, and `merge_by`
-/// follows with any projection that repeats one of them dropped. The second
-/// selector is `merge_by` without the partition columns: within a partition
-/// group they are constant, so the join reads only these, and an empty one
-/// says the partition alone is the key.
-fn merge_keys(schema: &Field, spec: &PartitionSpec, merge_by: &Selector) -> (Selector, Selector) {
+/// follows - or, where it names nothing, the table's own key, the columns
+/// its schema's `identifier-field-ids` name ([`identifier_key`]) - with any
+/// projection that repeats a partition column dropped. The second selector
+/// is that key without the partition columns: within a partition group they
+/// are constant, so the join reads only these, and an empty one says the
+/// partition alone is the key.
+///
+/// # Errors
+///
+/// Returns the refusal [`identifier_key`] raises.
+fn merge_keys(
+    schema: &Field,
+    spec: &PartitionSpec,
+    merge_by: &Selector,
+) -> Result<(Selector, Selector)> {
+    let own;
+    let merge_by = if merge_by.is_empty() {
+        own = identifier_key(schema)?;
+        &own
+    } else {
+        merge_by
+    };
     let partitions: Vec<&Field> = partition_columns_of(spec, schema);
     let mut keys: Vec<Projection> = partitions
         .iter()
@@ -5033,7 +5074,44 @@ fn merge_keys(schema: &Field, spec: &PartitionSpec, merge_by: &Selector) -> (Sel
         keys.push(projection.clone());
         row_keys.push(projection.clone());
     }
-    (Selector::new(keys), Selector::new(row_keys))
+    Ok((Selector::new(keys), Selector::new(row_keys)))
+}
+
+/// The columns a schema root's `identifier-field-ids` name, in the order
+/// the property lists them: the table's own key.
+///
+/// A top-level column is keyed by its name; one below structs - Iceberg
+/// allows an identifier there, never inside a list or a map - by its path,
+/// published under the path's text so two leaves of one name stay two key
+/// columns.
+///
+/// # Errors
+///
+/// Returns an error naming `ICEBERG:identifier-field-ids` when the property
+/// does not parse, or lists an id no column reachable through structs
+/// carries.
+fn identifier_key(schema: &Field) -> Result<Selector> {
+    let ids = schema.as_iceberg().identifier_field_ids()?;
+    let mut key = Vec::with_capacity(ids.len());
+    for id in ids {
+        let (path, _) =
+            super::partition::source_path(schema, id).map_err(|_| Error::InvalidMetadataValue {
+                key: format_smolstr!("ICEBERG:{}", super::schema::IDENTIFIER),
+                reason: format_smolstr!(
+                    "expected the field id of a column reachable through structs, got {id}, \
+                     which no such column carries"
+                ),
+            })?;
+        key.push(match path.as_slice() {
+            [name] => Projection::column(name.clone()),
+            _ => {
+                let path = FieldPath::new(path.into_iter().map(FieldSegment::field));
+                let alias = SmolStr::new(path.to_string());
+                Projection::from(path).with_alias(alias)
+            }
+        });
+    }
+    Ok(Selector::new(key))
 }
 
 /// The predicate that keeps exactly the partitions a set of tuples names.

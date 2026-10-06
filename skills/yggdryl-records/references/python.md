@@ -468,7 +468,7 @@ assert filled.column("year").to_pylist() == [2024, 2025]
 
 ## Iceberg: create, append, upsert, scan
 
-A table is a folder reached through one `IOBase`; no catalog is required. Scans are `pyarrow.RecordBatchReader`s planned from metadata; `merge` keys are the identity partition columns plus `merge_by`.
+A table is a folder reached through one `IOBase`; no catalog is required. Scans are `pyarrow.RecordBatchReader`s planned from metadata; `merge` keys are the identity partition columns plus `merge_by`, else - `merge_by` left out or `None` - the columns the schema's `identifier-field-ids` names.
 
 ```python
 import pathlib

@@ -830,3 +830,253 @@ fn every_scalar_leaf_has_an_answer_for_every_target() {
         }
     }
 }
+
+/// Every foreign engine reads an enum member as the `int32` code of its
+/// leaf and a registered code as the text it stores, so the two families
+/// are answered once above the four matrices - and Arrow keeps both.
+#[test]
+fn every_foreign_engine_reads_an_enum_as_its_int32_code_and_a_code_as_its_text() {
+    let mut enums = 0;
+    let mut codes = 0;
+    for id in DataTypeId::ALL {
+        if id.is_parameterized() {
+            continue;
+        }
+        let Ok(dtype) = DataType::from_str(id.as_str()) else {
+            continue;
+        };
+        let expected = if dtype.is_enum() {
+            enums += 1;
+            DataType::Int32
+        } else if dtype.is_code() {
+            codes += 1;
+            DataType::utf8()
+        } else {
+            continue;
+        };
+        for scheme in [
+            &Scheme::SPARK,
+            &Scheme::POLARS,
+            &Scheme::PANDAS,
+            &Scheme::ICEBERG,
+        ] {
+            assert_eq!(
+                dtype.clone().into_scheme_compat(scheme).unwrap(),
+                expected,
+                "{dtype} under {scheme}"
+            );
+        }
+        assert_eq!(
+            dtype.clone().into_scheme_compat(&Scheme::ARROW).unwrap(),
+            dtype
+        );
+    }
+    assert!(enums >= 5, "{enums} enums seen");
+    assert!(codes >= 12, "{codes} codes seen");
+}
+
+/// What the Iceberg widening lands on is a type the Iceberg writer spells:
+/// the compatibility matrix is the cast, `PrimitiveType::from_dtype` the
+/// stored type, and every answer of the first is a question the second
+/// answers - the nested and geospatial kinds aside, which the writer does
+/// not yet spell.
+#[test]
+fn every_iceberg_widening_lands_on_a_type_the_iceberg_writer_spells() {
+    use yggdryl::DataTypeKind;
+    use yggdryl::iceberg::PrimitiveType;
+    let mut samples: Vec<DataType> = DataTypeId::ALL
+        .iter()
+        .filter(|id| !id.is_parameterized())
+        .filter_map(|id| DataType::from_str(id.as_str()).ok())
+        .collect();
+    samples.extend([
+        DataType::decimal32(7, 2).unwrap(),
+        DataType::decimal64(12, 2).unwrap(),
+        DataType::decimal128(38, 9).unwrap(),
+        DataType::sized_utf8(8).unwrap(),
+        DataType::fixed_cp1252(4).unwrap(),
+        DataType::LargeBinary,
+        DataType::Decimal,
+    ]);
+    let mut seen = 0;
+    for dtype in samples {
+        if matches!(
+            dtype.kind(),
+            DataTypeKind::Nested | DataTypeKind::Geospatial
+        ) {
+            continue;
+        }
+        let Ok(widened) = dtype.clone().into_scheme_compat(&Scheme::ICEBERG) else {
+            continue;
+        };
+        seen += 1;
+        assert!(
+            PrimitiveType::from_dtype(&widened).is_ok(),
+            "{dtype} widened to {widened}, which Iceberg does not spell"
+        );
+    }
+    assert!(seen > 20, "{seen} widenings seen");
+    // An unsigned column stating its bits lands on the signed integer of its
+    // width, which the writer spells too.
+    for unsigned in [
+        DataType::UInt8,
+        DataType::UInt16,
+        DataType::UInt32,
+        DataType::UInt64,
+    ] {
+        let exchanged = bits_column(unsigned.clone())
+            .into_scheme_compat(&Scheme::ICEBERG)
+            .unwrap();
+        assert!(
+            PrimitiveType::from_dtype(exchanged.dtype()).is_ok(),
+            "{unsigned} stating bits exchanged as {}, which Iceberg does not spell",
+            exchanged.dtype()
+        );
+    }
+}
+
+/// A column of `dtype` stating its integers are bits.
+fn bits_column(dtype: DataType) -> Field {
+    let mut field = dtype.required_field("digest");
+    field
+        .as_field_properties_mut()
+        .set_representation(yggdryl::Representation::Bits)
+        .unwrap();
+    field
+}
+
+/// An unsigned column stating bits is exchanged as the signed integer of
+/// its width wherever the target names that width, keeps the declaration,
+/// and is otherwise rewritten as any column; nothing stating it moves.
+#[test]
+fn an_unsigned_column_stating_bits_takes_the_signed_integer_of_its_width() {
+    use yggdryl::Representation;
+
+    let decimal = DataType::decimal128(20, 0).unwrap();
+    for (scheme, expected) in [
+        (
+            Scheme::SPARK,
+            [
+                DataType::Int8,
+                DataType::Int16,
+                DataType::Int32,
+                DataType::Int64,
+            ],
+        ),
+        (
+            Scheme::ICEBERG,
+            [
+                DataType::Int32,
+                DataType::Int32,
+                DataType::Int32,
+                DataType::Int64,
+            ],
+        ),
+        (
+            Scheme::POLARS,
+            [
+                DataType::UInt8,
+                DataType::UInt16,
+                DataType::UInt32,
+                DataType::UInt64,
+            ],
+        ),
+        (
+            Scheme::PANDAS,
+            [
+                DataType::UInt8,
+                DataType::UInt16,
+                DataType::UInt32,
+                DataType::UInt64,
+            ],
+        ),
+        (
+            Scheme::ARROW,
+            [
+                DataType::UInt8,
+                DataType::UInt16,
+                DataType::UInt32,
+                DataType::UInt64,
+            ],
+        ),
+    ] {
+        for (unsigned, expected) in [
+            DataType::UInt8,
+            DataType::UInt16,
+            DataType::UInt32,
+            DataType::UInt64,
+        ]
+        .into_iter()
+        .zip(expected)
+        {
+            let exchanged = bits_column(unsigned.clone())
+                .into_scheme_compat(&scheme)
+                .unwrap();
+            assert_eq!(exchanged.dtype(), &expected, "{unsigned} under {scheme}");
+            assert_eq!(
+                exchanged.as_field_properties().representation(),
+                Representation::Bits,
+                "{unsigned} under {scheme}"
+            );
+        }
+    }
+
+    // A column stating nothing still widens, and a bare datatype states
+    // nothing.
+    for scheme in [Scheme::SPARK, Scheme::ICEBERG] {
+        assert_eq!(
+            DataType::UInt64
+                .required_field("count")
+                .into_scheme_compat(&scheme)
+                .unwrap()
+                .dtype(),
+            &decimal
+        );
+        assert_eq!(
+            DataType::UInt64.into_scheme_compat(&scheme).unwrap(),
+            decimal
+        );
+    }
+
+    // The rule holds at any depth: a struct's child, a serie's item and a
+    // map's value.
+    let row = DataType::from(
+        StructType::from_fields([
+            bits_column(DataType::UInt64),
+            DataType::UInt64.required_field("count"),
+            DataType::serie(bits_column(DataType::UInt64)).nullable_field("items"),
+            DataType::map(
+                DataType::from(
+                    StructType::from_fields([
+                        DataType::utf8().required_field("key"),
+                        bits_column(DataType::UInt64).with_name("value"),
+                    ])
+                    .unwrap(),
+                )
+                .required_field("entries"),
+                false,
+            )
+            .unwrap()
+            .nullable_field("mapped"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let exchanged = row.into_scheme_compat(&Scheme::ICEBERG).unwrap();
+    let fields = exchanged.fields();
+    assert_eq!(fields[0].dtype(), &DataType::Int64);
+    assert_eq!(fields[1].dtype(), &decimal);
+    let item = fields[2].dtype().get_field(0).unwrap();
+    assert_eq!(item.dtype(), &DataType::Int64);
+    assert_eq!(
+        item.as_field_properties().representation(),
+        Representation::Bits
+    );
+    let entries = fields[3].dtype().get_field(0).unwrap();
+    let value = entries.dtype().get_field(1).unwrap();
+    assert_eq!(value.dtype(), &DataType::Int64);
+    assert_eq!(
+        value.as_field_properties().representation(),
+        Representation::Bits
+    );
+}

@@ -428,6 +428,8 @@ Two integers meet at a width that holds both - mixed signs promote only where th
 - A magnitude outside the declared width -> refused at the value door and at the column door; nothing ever wraps.
 - `as_u64` on a negative value -> `None`; `as_i64` on `u64::MAX` -> `None`. A wider integer that does not fit answers `None` rather than losing magnitude.
 - Reading an integer out of text takes the widest signed then unsigned storage the crate has, and the declared width narrows it; surrounding space is not part of the number.
+- A decimal with no fraction enters an integer column as the number it is - a table with no unsigned type stores a `uint64` as `decimal(20, 0)` ([`into_scheme_compat`](../datatype.md#compatibility-rewriting)), and the door takes it back; a fraction is refused, never rounded, and so is a negative decimal entering an unsigned width.
+- A column stating [`FIELD:representation=bits`](../protocol.md#integers-stated-as-bits) reads a same-width integer of the other signedness as its bits: `-1_i64` under such a `uint64` is `u64::MAX`, and `u64::MAX` under such an `int64` is `-1`. `DataType::scalar`, and a column stating nothing, never read bits, and a narrower width is read by value.
 - Division or remainder by zero -> `Error::DivisionByZero`, Python `ZeroDivisionError`, a JavaScript throw; an overflow of the shared width -> `Error::ArithmeticOverflow`, Python `OverflowError`.
 - `int16`, `int32` and `int64` are the only widths a [run-end](../nested/runend.md) column may index with.
 - An `int64` or `uint64` crosses into JavaScript as a `BigInt` wherever the value may exceed `Number.MAX_SAFE_INTEGER`; a small one reads back as a `Number`.

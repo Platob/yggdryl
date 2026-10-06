@@ -457,9 +457,9 @@ test('a FixMsg is held whole and reports the leaves it expands to', () => {
   const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(seed), { excludeMsgtypes: [] })
   const order = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|52=20240102-10:15:30|11=A1|55=ACME|54=1|38=100|44=10.5|40=2|59=1|10=0|'))
   const data = new graph.MarketData(order)
-  // Held whole: kind `fix`, its category the message's own `msgcat`.
+  // Held whole: kind `fix`, its category the message's own `marketdatakind`.
   assert.equal(data.kind, 'fix')
-  assert.equal(data.marketdatakind, order.msgcat)
+  assert.equal(data.marketdatakind, order.marketdatakind)
   assert.equal(data.marketdatakind, 'ORDR')
   assert.ok(data.intoLeaf() instanceof fix.FixMsg)
   assert.ok(data.asFix() instanceof fix.FixMsg)

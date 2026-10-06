@@ -273,12 +273,36 @@ export declare class BookEvent {
    */
   aliveOn(side: string | number): Array<JsMarketData>
   /**
-   * The orders and quotes applied since the book before this one, each a
-   * `MarketData`, in the order applied across both sides: what a book
-   * stating its deltas alone states, and what `withPrevious` replays
-   * over the book before it.
+   * Every event of the book's instant since the book before this one,
+   * each a `MarketData`, in the order applied across both sides: the
+   * orders and quotes applied, and the executions recorded, which rest on
+   * no side. What a book stating its deltas alone states, and what
+   * `withPrevious` replays over the book before it.
    */
   deltas(): Array<JsMarketData>
+  /**
+   * The orders resting on the book - every `alive()` entry that is an
+   * order - each an `OrderEvent`, in `alive()`'s order: the bid side's,
+   * best price first, then the ask side's. Empty on a book stating its
+   * deltas alone.
+   */
+  ordlive(): Array<JsOrderEvent>
+  /**
+   * The orders among `deltas()`, each an `OrderEvent`, in the order
+   * applied: every order the book's instant placed, changed or ended.
+   */
+  orddelta(): Array<JsOrderEvent>
+  /**
+   * The quotes among `deltas()`, each a `QuoteEvent`, in the order
+   * applied; a quote resting since an earlier instant is `alive()`'s and
+   * not here.
+   */
+  quotes(): Array<JsQuoteEvent>
+  /**
+   * The executions among `deltas()`, each an `ExecutionEvent`, in the
+   * order applied: recorded at the book's instant, resting on no side.
+   */
+  executions(): Array<JsExecutionEvent>
   /**
    * One limit per price level of the side `side` names - read through
    * the `Side` vocabulary - best first and the one unpriced limit last,
@@ -3309,12 +3333,12 @@ export declare class FixMsg {
    * `marketdatakind` member's stored name - `ORDR`, `QUOT`, `EXEC`,
    * `TRAD`, `BOOK` - and `UNKN` where it files none.
    */
-  get msgcat(): string
+  get marketdatakind(): string
   /**
    * The option strike price the message identifies - `StrikePrice(202)`
    * read off the dictionary field - as decimal text, or `null`.
    */
-  get strikeprice(): string | null
+  get strikepx(): string | null
   /**
    * This message's own `UUIDv7` identity, ordered by millisecond and
    * sequence with a content payload seeded by its cross hash, as
@@ -4759,24 +4783,29 @@ export declare class IcebergTable {
    * A row whose key is already stored updates it and a row whose key is not
    * appends. Only the files whose recorded bounds could hold an incoming key
    * are read and rewritten - the rest are carried into the new snapshot
-   * untouched - so an upsert costs the files it can actually change. A
-   * non-empty `mergeBy` is required because nothing else identifies a
-   * row.
+   * untouched - so an upsert costs the files it can actually change.
+   *
+   * `mergeBy` left out, or `null`, matches on the table's own key: its
+   * identity partition columns, then the columns its schema's
+   * `identifier-field-ids` name. A partitioned table stating no
+   * identifier replaces the partitions the rows fall in, and an
+   * unpartitioned one stating none is refused naming `$.merge_by`.
    *
    * `safe` decides what a cast that cannot convert a value does: the
    * default nulls it, and `false` throws instead. `options` configures this
    * one write, exactly as on [`append`](Self::append).
    */
-  merge(batches: JsBatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  merge(batches: JsBatchReader, mergeBy?: Selector | Term | string | Array<Term | string> | undefined | null, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /**
-   * Merge `batches` into the rows `filters` selects, on `mergeBy`.
+   * Merge `batches` into the rows `filters` selects, on `mergeBy`, else on
+   * the table's own key, as [`merge`](Self::merge).
    *
    * [`merge`](Self::merge) narrowed to a part of the table first: the
    * filters decide which files are candidates at all, and the match-key
    * statistics then decide which of those are actually read. `options`
    * configures this one write, exactly as on [`append`](Self::append).
    */
-  mergeWhere(filters: ScanFilters | undefined | null, batches: JsBatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  mergeWhere(filters: ScanFilters | undefined | null, batches: JsBatchReader, mergeBy?: Selector | Term | string | Array<Term | string> | undefined | null, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /** Add a schema, make it current, and write a new metadata document. */
   evolveSchema(schema: Field): number
   /**
@@ -5182,11 +5211,19 @@ export declare class IOBase {
    * Return whether anything is here now, as `fs.existsSync`.
    *
    * Each role answers its own question - a folder whether its container
-   * is there, a file whether its leaf is - so a folder `mkdir` made and
-   * `remove` deleted answers `false`.
+   * is there, a file whether its leaf is, a glob whether its pattern
+   * selects an entry (its listing, up to the first match) - so a folder
+   * `mkdir` made and `remove` deleted answers `false`.
    */
   exists(): boolean
-  /** Return whether this resource contains others, as `Stats.isDirectory`. */
+  /**
+   * Return whether this resource contains others - the role it has, not
+   * whether it is there.
+   *
+   * A glob or a name ending in `/` is a container by its spelling and asks
+   * nothing, and a removed folder's handle still answers `true`; `exists`
+   * is the presence question.
+   */
   isDir(): boolean
   /** Return whether this resource holds bytes, as `Stats.isFile`. */
   isFile(): boolean
@@ -5515,12 +5552,15 @@ export declare class IOBase {
    */
   appendArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): JsIOResult
   /**
-   * Merge every incoming row by `options.mergeBy`.
+   * Merge every incoming row by `options.mergeBy`, else by the
+   * destination's own key.
    *
-   * A non-empty match key is required. The core keeps the incoming reader
-   * streaming, applies `options.field` once, and publishes through the
-   * implementor's overwrite hook without casting the shaped rows twice.
-   * Answers the rows the write read, wrote and skipped.
+   * A non-empty match key is required where the destination states none
+   * of its own; an Iceberg table's is its identity partition columns, then
+   * its identifier columns. The core keeps the incoming reader streaming,
+   * applies `options.field` once, and publishes through the implementor's
+   * overwrite hook without casting the shaped rows twice. Answers the rows
+   * the write read, wrote and skipped.
    */
   mergeArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): JsIOResult
   /** Decode this location as a host-independent forward-slash path. */
@@ -5611,7 +5651,8 @@ export type JsIOResult = IOResult
 
 /**
  * A table of instruments keyed by ISIN - each row the instrument's CFI
- * code, its country of issue, its currency pair, its market, its ticker
+ * code, its country of issue, its currency pair, the instrument it is
+ * written on, its market, its ticker
  * and trading currency and one code per `SecurityIDSource(22)` type - that
  * a lifecycle learns into and fills from, and a parse fills from. Bound to
  * the store it was loaded from, committed back only where it moved.
@@ -5625,6 +5666,14 @@ export declare class IsinRegistry {
    * ISIN past the bound and loading refuses it.
    */
   constructor(maxInstruments?: number | undefined | null)
+  /**
+   * The registry's row: the required struct `isinregistry` every row is
+   * laid out as - `isin`, `updunix`, `cficode`, `countrycode`,
+   * `forexcode`, `underlyingisin`, `miccode`, `ticker`, `currency`, then
+   * one column per `SecurityIDSource(22)` type but the ISIN: forty-one
+   * columns - what a table holding the registry is created from.
+   */
+  static field(): Field
   /**
    * A registry bound to the store `location` names and loaded from it:
    * a URL of any scheme this build holds, a path or an `IOBase` - an
@@ -5880,7 +5929,7 @@ export declare class MarketData {
    * The market data category of this value's leaf, as the
    * `marketdatakind` member's stored name: an order `ORDR`, a quote
    * `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a snapshot
-   * `BOOK`, a FIX message its own `msgcat`.
+   * `BOOK`, a FIX message the category its dictionary files it under.
    */
   get marketdatakind(): string
   /** Whether the leaf is one of the six dated ones. */
@@ -6320,7 +6369,7 @@ export declare class MsgType {
    * `marketdatakind` member's stored name, or `null` for an unclassified
    * custom definition.
    */
-  get msgcat(): string | null
+  get marketdatakind(): string | null
   /** The native canonical name. */
   get name(): string
   /** The complete wire message code. */
@@ -7320,6 +7369,20 @@ export declare class ProtocolField {
    * `null` where there was none.
    */
   removeTerm(): string | null
+  /**
+   * What crosses when a same-width integer of the other signedness meets
+   * this integer column, on the `fieldProperties` view: `'bits'` where it
+   * states them, `'value'` - the default - otherwise. Every other view
+   * refuses the property.
+   */
+  get representation(): 'value' | 'bits'
+  /**
+   * State what crosses when a same-width integer of the other signedness
+   * meets this integer column; `'value'` or `null` removes the
+   * declaration, and `'bits'` on a column that is no integer is refused,
+   * leaving the field unchanged.
+   */
+  set representation(representation: 'value' | 'bits' | null)
   /**
    * The dictionaries that contributed this field, on the `fix` view.
    *
@@ -12046,7 +12109,7 @@ export interface FixCommitReport {
  * `msgsessionid` - and the `msgsesseventid` the session and the context
  * join to with the message type and sequence; the capture's own column,
  * `sourceurl`, which whoever read the line states on the row and no message
- * holds; the `msgcat` the message type files under; the normalized
+ * holds; the `marketdatakind` the message type files under; the normalized
  * instrument codes (`isincode`, `bloombergcode`, `figicode`, `forexcode`,
  * `miccode`) and the market and operation facts a message names - each a
  * fact no FIX dictionary publishes, at the datatype its graph column names,
@@ -12759,7 +12822,7 @@ export interface SheetOptions {
 /**
  * One member of the core's side enum - FIX's `Side(54)`: its four-letter code,
  * the code a `side` column stores, what it means, its one-character FIX
- * code (`null` for `UNKN`), and whether it is a bid or an ask.
+ * code (`null` for `UNKN` and `BOTH`), and whether it is a bid or an ask.
  */
 export interface SideMember {
   name: string

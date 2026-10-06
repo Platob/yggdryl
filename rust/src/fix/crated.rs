@@ -314,7 +314,7 @@ pub const EXPRUNIX_TAG_NAME: (i32, &str) = (65_010, "exprunix");
 
 /// The tag and name carrying the business category of the message type, as
 /// the member of [`crate::MarketDataKind`] its code stores: the one
-/// [`FixMsg::msgcat`](super::FixMsg::msgcat) answers, under the
+/// [`Market::marketdatakind`](crate::graph::Market::marketdatakind) answers on a message, under the
 /// [`MarketColumn`] name every market row states it by.
 pub const MARKETDATAKIND_TAG_NAME: (i32, &str) = (65_016, "marketdatakind");
 /// The crate-owned vocabulary registered for the `marketdatakind` column to
@@ -703,7 +703,7 @@ enum Holds {
     Operation(OperationColumn),
     /// A fact no graph event states - what a bridge's row header said and
     /// the session event it joins to, where the line was read from, the
-    /// normalized identifiers and the strike - which therefore spells its
+    /// normalized identifiers - which therefore spells its
     /// own.
     Own {
         datatype: fn() -> Result<DataType>,

@@ -218,6 +218,47 @@ mod accounting {
             "s3://trades/lake/year=2026/part.parquet"
         );
     }
+
+    #[test]
+    fn whether_a_spelled_container_is_there_is_one_listing() {
+        let store = store();
+
+        // The spelling settles the role for nothing; whether anything is
+        // there is asked all the same, as one listing of one key, and an
+        // empty prefix is not there.
+        let spelled = path(&store, "lake/");
+        store.clear_requests();
+        assert_eq!(spelled.kind(), IOKind::Directory);
+        assert_eq!(store.request_count(), 0, "the spelling settled the role");
+        assert!(!spelled.exists());
+        assert_eq!(store.request_count(), 1, "one listing of one key");
+
+        store.put(BUCKET, "lake/part.parquet", b"PAR1");
+        let populated = path(&store, "lake/");
+        store.clear_requests();
+        assert!(populated.exists());
+        assert_eq!(store.request_count(), 1);
+
+        // The bucket is asked with one `HEAD`.
+        let bucket = path(&store, "");
+        store.clear_requests();
+        assert!(bucket.exists());
+        assert_eq!(store.request_count(), 1);
+        assert_eq!(store.requests()[0].method, "HEAD");
+
+        // A glob is its listing up to the first match: one page here,
+        // whichever way it answers.
+        logs(&store);
+        let matching = path(&store, "logs/*.log");
+        store.clear_requests();
+        assert!(matching.exists());
+        assert_eq!(store.request_count(), 1, "one listing");
+        assert_eq!(store.requests()[0].method, "GET");
+        let none = path(&store, "logs/*.csv");
+        store.clear_requests();
+        assert!(!none.exists());
+        assert_eq!(store.request_count(), 1, "one page, read to its end");
+    }
 }
 
 mod protocol {

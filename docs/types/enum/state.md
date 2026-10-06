@@ -1,6 +1,6 @@
 # State
 
-What state one thing is in, from asked for to ended: a lifecycle-sorted enum of sixty-one members, stored as the `uint16` code of its member, the hundreds of the code its rank.
+What state one thing is in, from asked for to ended: a lifecycle-sorted enum of sixty-two members, stored as the `uint16` code of its member, the hundreds of the code its rank.
 
 ## Contract
 
@@ -214,14 +214,14 @@ A member's code is its **rank times one hundred plus its place in the rank**. Th
 | rank | codes | meaning | members |
 | ---: | --- | --- | --- |
 | `0` | `0` | stated, but not a state anything reached | `UNKNOWN` |
-| `10` | `1000`-`1099` | asked for, not yet acknowledged | `PENDING`, `PENDING_NEW`, `QUEUED`, `RECEIVED`, `PENDING_VERIFICATION`, `PENDING_ALLOCATION`, `PENDING_APPROVAL` |
+| `10` | `1000`-`1099` | asked for, not yet acknowledged | `PENDING`, `PENDING_NEW`, `QUEUED`, `RECEIVED` |
 | `20` | `2000`-`2099` | acknowledged, not yet working | `ACCEPTED`, `NEW`, `STARTING`, `SUBMITTED`, `ACKNOWLEDGED` |
 | `30` | `3000`-`3099` | working | `RUNNING`, `STATUS`, `TRIGGERED`, `ACTIVE`, `UPDATED` |
-| `40` | `4000`-`4099` | working, and something has happened | `IN_PROGRESS`, `PARTIALLY_FILLED`, `TRADE`, `TRADE_CORRECT`, `TRADE_CANCEL`, `TRADE_IN_CLEARING_HOLD` |
+| `40` | `4000`-`4099` | working, and something has happened - or acknowledged and awaiting its next step | `IN_PROGRESS`, `PARTIALLY_FILLED`, `TRADE`, `TRADE_CORRECT`, `TRADE_CANCEL`, `TRADE_IN_CLEARING_HOLD`, `PENDING_VERIFICATION`, `PENDING_ALLOCATION`, `PENDING_APPROVAL` |
 | `50` | `5000`-`5099` | halted, and able to resume | `PAUSED`, `STOPPED`, `SUSPENDED`, `LOCKED`, `DISPUTED`, `INCOMPLETE` |
 | `60` | `6000`-`6099` | a change is outstanding | `PENDING_CANCEL`, `PENDING_REPLACE`, `PENDING_REVERSAL` |
 | `70` | `7000`-`7099` | changed, and the new thing carries on | `REPLACED`, `RESTATED`, `AMENDED`, `RELEASED` |
-| `80` | `8000`-`8999` | ended, having done what was asked | `CALCULATED`, `COMPLETE`, `DONE_FOR_DAY`, `FILLED`, `SUCCEEDED`, `TRADE_RELEASED_TO_CLEARING`, `ALLOCATED`, `CONFIRMED`, `AFFIRMED`, `VERIFIED`, `CLEARED`, `SETTLED`, `CLAIMED` |
+| `80` | `8000`-`8999` | ended, having done what was asked | `CALCULATED`, `COMPLETE`, `DONE_FOR_DAY`, `FILLED`, `SUCCEEDED`, `TRADE_RELEASED_TO_CLEARING`, `ALLOCATED`, `CONFIRMED`, `AFFIRMED`, `VERIFIED`, `CLEARED`, `SETTLED`, `CLAIMED`, `APPROVED` |
 | `90` | `9000`-`9499` | ended, because someone stopped it | `CANCELED`, `REVERSED`, `REMOVED`, `TERMINATED` |
 | `95` | `9500`-`9999` | ended, because it could not be done | `EXPIRED`, `FAILED`, `REJECTED`, `TIMED_OUT`, `DONT_KNOW`, `MISMATCHED`, `NOT_FOUND` |
 
@@ -311,7 +311,7 @@ A FIX message states its state in whichever status field its kind answers a requ
 
 ## The further along stands
 
-A state that reached none - `UNKNOWN` - takes the other, and otherwise the state further along by rank stands, whichever side it is on. Rust only.
+A state that reached none - `UNKNOWN` - takes the other, and otherwise the state further along by rank stands, whichever side it is on. A trade report awaiting its verification, an allocation awaiting its making and a give-up awaiting its approval were each acknowledged first, so they rank `40`: past their acknowledgement, and below their dispute or incompleteness, a pending cancel and their verification, allocation or approval, so the fold keeps the answer whichever order it arrives in. `APPROVED` is reached by spelling alone: FIX states an approved give-up as `AllocStatus(87)` `0`, which reads `ALLOCATED`. Rust only.
 
 ```rust
 use yggdryl::State;
@@ -320,6 +320,14 @@ assert_eq!(State::unknown(), State::Unknown);
 assert_eq!(State::Unknown.merge_with(State::New), State::New);
 assert_eq!(State::New.merge_with(State::Filled), State::Filled);
 assert_eq!(State::Filled.merge_with(State::New), State::Filled);
+
+// Awaiting a verification ranks past the acceptance and below the answers.
+assert_eq!(State::from_fix_status(939, "8"), Some(State::PendingVerification));
+assert_eq!(State::PendingVerification.code(), 4006);
+assert_eq!(State::Accepted.merge_with(State::PendingVerification), State::PendingVerification);
+assert_eq!(State::Disputed.merge_with(State::PendingVerification), State::Disputed);
+assert_eq!(State::PendingApproval.merge_with(State::Approved), State::Approved);
+assert_eq!(State::from_spelling("approved"), Some(State::Approved));
 ```
 
 ## Stated anew over a live one

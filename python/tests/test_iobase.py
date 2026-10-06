@@ -166,6 +166,30 @@ class TestPathlibParity:
         assert not handle.is_file()
         assert handle.name == "lake"
 
+    def test_a_pattern_exists_while_it_selects_an_entry(self, lake: pathlib.Path) -> None:
+        # A glob is a container by its spelling, and there while its listing
+        # yields an entry - what `iterdir` answers and a read walks.
+        years = IOBase(lake) / "year=*"
+        assert years.is_dir()
+        assert years.exists()
+        none = IOBase(lake) / "*.csv"
+        assert none.is_dir()
+        assert not none.exists()
+        assert list(none.iterdir()) == []
+        assert (IOBase(lake) / "**" / "*.parquet").exists()
+        # A `Url` keeps pathlib's literal answer: no directory is named so.
+        assert not years.url.exists()
+
+    def test_a_spelled_container_is_a_container_before_it_is_there(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        spelled = IOBase(tmp_path) / "lake/"
+        assert spelled.is_dir()
+        assert not spelled.exists()
+
+        (tmp_path / "lake").mkdir()
+        assert spelled.exists()
+
     def test_a_missing_location_is_empty_rather_than_an_error(
         self, tmp_path: pathlib.Path
     ) -> None:
@@ -1342,6 +1366,24 @@ class TestWriteResults:
         folder = IOBase(lake)
         assert folder.append_serie(quote_table()) == IOResult(2, 2)
         assert len(rows_of(folder)) == 4
+
+    def test_a_keyless_merge_on_a_leaf_is_refused_before_the_rows_are_read(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # A leaf states no key of its own, so a merge naming none is refused
+        # by the preflight, before the one-shot source is pulled.
+        pulled: list[int] = []
+
+        def records() -> Iterator[dict[str, object]]:
+            pulled.append(1)
+            yield {"symbol": "AAPL", "size": 1}
+
+        handle = IOBase(tmp_path / "quotes.arrows")
+        with pytest.raises(ValueError, match="merge_by"):
+            handle.merge_records(records())
+        with pytest.raises(ValueError, match="merge_by"):
+            handle.merge_serie(records())
+        assert pulled == []
 
 
 CURSOR_READS_SCRIPT = r"""

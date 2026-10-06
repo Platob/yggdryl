@@ -126,3 +126,53 @@ fn the_enum_narrows_and_compares_as_its_description() {
         "filesystem \"MediaTable\" does not support updating the properties it keeps"
     );
 }
+
+#[test]
+fn a_table_forwards_its_implementations_merge_key() {
+    let url = Url::from_str("file:///lake/ticks.arrows").expect("a URL");
+    let media = Table::from(MediaTable::new("lake.ticks", url).expect("a table"));
+    assert!(
+        IOMedia::merge_by(&media).expect("no key").is_empty(),
+        "a media table states no key of its own"
+    );
+    #[cfg(feature = "iceberg")]
+    {
+        use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
+
+        let root = root("merge-key");
+        let mut schema = DataType::from(
+            StructType::from_fields([DataType::Int64.required_field("id")]).expect("a root"),
+        )
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).expect("numbered");
+        schema
+            .as_iceberg_mut()
+            .set_identifier_field_ids(&[1])
+            .expect("stated");
+        let table = Table::from(
+            IcebergTable::create_from_url(
+                Url::from_path(root.join("ticks")).expect("a URL"),
+                &Properties::new(),
+                Some(FormatVersion::V2),
+                schema,
+                Some(PartitionSpec::unpartitioned()),
+            )
+            .expect("created"),
+        );
+        let names = |media: &dyn IOMedia| -> Vec<String> {
+            media
+                .merge_by()
+                .expect("the stated key")
+                .names()
+                .iter()
+                .map(ToString::to_string)
+                .collect()
+        };
+        assert_eq!(names(&table), ["id"]);
+        assert_eq!(
+            names(&Holder::from(table)),
+            ["id"],
+            "a holder forwards it too"
+        );
+    }
+}

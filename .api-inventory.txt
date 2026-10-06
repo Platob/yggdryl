@@ -23,7 +23,7 @@ pub fn array_memory_size(column: &ArrayRef) -> usize
 pub fn scalar_memory_size(value: &Scalar) -> usize
 
 ### yggdryl::arrow::extension  [rust/src/arrow/extension.rs]  (arrow-rs's typed extension types for the datatypes that ride a name, every method redirecting into the recognizer Field::from_arrow_field imports through: the name over the storage the datatype lays out, a dictionary of it included, is that datatype, and any other storage or a document a parameter-free name states none of is refused)
-impl ExtensionType for UuidType, VariantType, VersionType, TimezoneType, MimeTypeType, MediaTypeType, StateType, MarketDataKindType, MarketDataTypeType, SideType, TimeInForceType, CountryType, CcyType, MicType, CfiType, IsinType, CusipType, SedolType, FigiType, RicType, BbgType, UnitType, ForexType  (NAME the datatype identifier's arrow_extension_name, Metadata = (), no document)
+impl ExtensionType for UuidType, VariantType, VersionType, TimezoneType, MimeTypeType, MediaTypeType, StateType, MarketDataKindType, MarketDataTypeType, SideType, TimeInForceType, CountryType, CcyType, MicType, CfiType, IsinType, CusipType, SedolType, FigiType, RicType, BbgType, UnitType, ForexType, LeiType, BicType, ElfType, DtiType, FisnType  (NAME the datatype identifier's arrow_extension_name, Metadata = (), no document)
 impl ExtensionType for StringType  (NAME yggdryl.string, Metadata = Self: the leaf written whole as its extension_json document)
 impl ExtensionType for BytesType  (NAME yggdryl.bytes, Metadata = Self)
 
@@ -220,7 +220,7 @@ pub struct ValueStream  (Iterator<Item = Vec<u8>> + FusedIterator: one chunk per
 
 ### yggdryl::root::datatype_id  [rust/src/datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 91] = [all exact datatype identifiers in canonical declaration order, including Figi, Decimal, BigDecimal, Ric at 0x7e and Forex at 0x7f, and ending State, MarketDataKind, Side, MarketDataType, TimeInForce at 0xc1..=0xc5];  (every discriminant is explicit; values are partitioned by DataTypeKind rather than declaration position; 0x75, the byte side took as a code, is retired and never reused)
+  pub const ALL: [Self; 96] = [all exact datatype identifiers in canonical declaration order, including Lei, Bic, Elf, Dti, Fisn at 0x6b..=0x6f, Figi, Decimal, BigDecimal, Ric at 0x7e and Forex at 0x7f, and ending State, MarketDataKind, Side, MarketDataType, TimeInForce at 0xc1..=0xc5];  (every discriminant is explicit; values are partitioned by DataTypeKind rather than declaration position; 0x75, 0x76 and 0x77 - side, state and timeinforce while each was a code - are retired and never reused; the code family took the text family's never-used tail 0x6a..=0x6f, so Text is 0x50..=0x69 and Code 0x6a..=0x7f)
   pub fn from_str(value: &str) -> Result<Self>  (an identifier's as_str name or one of its LEGACY_NAMES, ignoring case)
   pub const fn as_str(self) -> &'static str  (the serie family spells serie, serie_view, fixed_size_serie, large_serie, large_serie_view)
   pub const LEGACY_NAMES: [(&'static str, Self); 5]  (the names the serie family had before it took its own - list, list_view, fixed_size_list, large_list, large_list_view - read by every door that reads a datatype's name, written by none)
@@ -230,7 +230,7 @@ pub enum DataTypeId
   pub const fn kind(self) -> DataTypeKind  (the family whose DataTypeKind::range the byte is in)
   pub const fn temporal_family(self) -> Option<&'static str>  (date, time, datetime, duration or interval: which of the five temporal families the leaf is in, the widths of one family sharing it; None outside DataTypeKind::Temporal)
   pub const fn arrow_extension_name(self) -> Option<&'static str>  (the one owner of which datatype states itself to Arrow by a name: arrow.uuid, arrow.parquet.variant, geoarrow.wkb, yggdryl.string for every string leaf but plain utf8/large_utf8/utf8_view, yggdryl.bytes for sized_binary and large_binary_view, and yggdryl.<name> for the fixed decimals, the version, URL, URN, timezone, MIME and media types, the five enum leaves and the twelve codes; None for every datatype Arrow states alone; DataType::arrow_extension reads its name here)
-  pub fn arrow_extension_names() -> impl Iterator<Item = &'static str>  (every distinct name arrow_extension_name answers, in ALL order - thirty; what a binding registers its runtime's extension types from)
+  pub fn arrow_extension_names() -> impl Iterator<Item = &'static str>  (every distinct name arrow_extension_name answers, in ALL order - thirty-five; what a binding registers its runtime's extension types from)
   pub const fn is_parameterized(self) -> bool  (a leaf whose datatype carries more than its identity: the temporal units, the fixed and sized string and byte leaves, the nested, dictionary, decimal and geospatial ones; the unnumbered string and byte leaves are their identifier)
   pub const fn is_integer(self) -> bool  (DataTypeKind::Integer.contains(self))
   pub const fn is_signed_integer(self) -> bool
@@ -242,7 +242,7 @@ pub enum DataTypeId
   pub const fn is_binary(self) -> bool
   pub const fn is_string(self) -> bool  (the eighteen string leaves)
   pub const fn fixed_byte_width(self) -> Option<usize>  (the numbers, a UUID; a code answers code_width instead)
-  pub const fn code_width(self) -> Option<usize>  (the twelve registered codes; the most bytes one value may be: ccy 8, cusip 9, sedol and forex 7, bbg, ric and unit 32)
+  pub const fn code_width(self) -> Option<usize>  (the seventeen registered codes; the most bytes one value may be: elf 4, sedol and forex 7, ccy 8, cusip and dti 9, bic 11, lei 20, bbg, ric and unit 32, fisn 35)
 
 ### yggdryl::root::datatype_kind  [rust/src/datatype_kind.rs]
 pub enum DataTypeKind
@@ -769,13 +769,13 @@ pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_043, "msgsessionid");  (displ
 pub const CURRUUID_TAG_NAME: (i32, &str) = (65_001, "curruuid");  (non-null uuid: the event's identity, the UUIDv7 with its millisecond `currunix`, `seqnum` in the 12-bit ordered lane, and a 62-bit XXH3 payload over `currhashcode` plus the whole sequence seeded by `crosshashcode`; sequences above 4095 saturate in the ordered lane but remain in the payload)
 pub const CROSSUUID_TAG_NAME: (i32, &str) = (65_002, "crossuuid");  (non-null uuid: the identity every event of one chain shares, the UUIDv8 of `crosshashcode`, or `curruuid` where the event names no cross code)
 pub const SEQNUM_TAG_NAME: (i32, &str) = (65_014, "seqnum");  (nullable uint64: the event's place among the events of its instant - zero for the first a stream placed there, one more for each other content placed next at that instant, a repeated content taking its place; zero answers as absent)
-pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_003, "crosscode");  (utf8: the identifier every message of one lifecycle shares: an explicit nonempty value, else the first nonempty OrderID(37), ClOrdID(11), OrigClOrdID(41), QuoteID(117), QuoteReqID(131) or MDReqID(262), stored as `{kind}:{side}:{base}` through `Market::stored_crosscode` - the `MarketDataKind` code of the message's `msgcat`, the `Side` code of a sided kind (`MarketDataKind::is_sided`: `ORDR`, `EXEC`) and `0` for any other kind - a quote, whose side is a tag, among them - or a side not stated - `10:1:ORD-1` a buy order, `14:0:Q-1` a quote, `21:0:T-1` a trade; `crosshashcode` and `crossuuid` derive from the stored text)
+pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_003, "crosscode");  (utf8: the identifier every message of one lifecycle shares: an explicit nonempty value, else the first nonempty OrderID(37), ClOrdID(11), OrigClOrdID(41), QuoteID(117), QuoteReqID(131) or MDReqID(262), stored as `{kind}:{side}:{base}` through `Market::stored_crosscode` - the `MarketDataKind` code of the message's category, the `Side` code of a sided kind (`MarketDataKind::is_sided`: `ORDR`, `EXEC`) and `0` for any other kind - a quote, whose side is a tag, among them - or a side not stated - `10:1:ORD-1` a buy order, `14:0:Q-1` a quote, `21:0:T-1` a trade; `crosshashcode` and `crossuuid` derive from the stored text)
 pub const METADATA_TAG_NAME: (i32, &str) = (65_035, "metadata");  (nullable sorted `map<utf8, utf8>` group, self-countered: what a message stated that is no field and no identifier map holds - a bridge's namespaced keys, `AMON.*`, `firm.*`, and in a fixed row every key no dictionary resolved, its raw text or, repeated, nested or stated with no value, its JSON - each under the key as it was spelled, folded; a key an identifier map holds with its value - a bridge's `TECH.CLIENTID`, its `PARENTORDERID` - rides `fixentries` under `0:<key>` as it arrived instead; a row read back restores the unresolved keys as the message's own entries)
 pub const FIXMSG_TAG_NAME: (i32, &str) = (65_050, "fixmsg");  (the fixed row `fix_schema` builds as a store dumps it: `components/fixmsg.json`, every column a reference to the field or group that types it; written by `commit`, passed over on read)
 pub const SRCUUIDS_TAG_NAME: (i32, &str) = (65_006, "srcuuids");  (nullable `serie<uuid>` of required `srcuuid` items, display `Source UUIDs`: the identities of the elements the message was read from - the text line it was parsed out of, stated by the line doors as the line's `curruuid` before the message settles, none for raw bytes; provenance, never its chain - no walk moves it - outside the currhashcode and never on the wire; a column of the fixed row, listed by `fix_crate_fields` and registered by no registry)
 pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");  (nullable `state`, the `uint16` code of a `State` member read by the intrinsic `statecodeset`, written on every row a message writes, display `State`: the state the message reached - the first of `State::FIX_STATUS_TAGS` stated, else what its message type asks for, `UNKNOWN` where neither states one - the furthest its chain knows once the lifecycle followed it; a row stating one is the row's word, which the derivation leaves)
 pub const EXPRUNIX_TAG_NAME: (i32, &str) = (65_010, "exprunix");  (nullable clock, display `Expiry Time`: when the message stops being good - `ExpireTime(126)`, else `ValidUntilTime(62)`, else the end of the day `ExpireDate(432)` names; `MaturityDate(541)` is the instrument's, no deadline - the chain's deadline where it states none, a newer explicit one replacing it even where earlier; a row stating one is the row's word)
-pub const MARKETDATAKIND_TAG_NAME: (i32, &str) = (65_016, "marketdatakind");  (nullable `marketdatakind`, display `Market Data Kind`: the business category of the message type as a `MarketDataKind` member - the dictionary's `FIX:msgcat` for the type, `UNKN` where it files none - read by the intrinsic `msgcatcodeset`, the name every market row states it by; what `FixMsg::msgcat` answers; a row stating one is the row's word)
+pub const MARKETDATAKIND_TAG_NAME: (i32, &str) = (65_016, "marketdatakind");  (nullable `marketdatakind`, display `Market Data Kind`: the business category of the message type as a `MarketDataKind` member - the dictionary's `FIX:msgcat` for the type, `UNKN` where it files none - read by the intrinsic `msgcatcodeset`, the name every market row states it by; what `Market::marketdatakind` answers on a `FixMsg`; a row stating one is the row's word)
 pub const MARKETDATATYPE_TAG_NAME: (i32, &str) = (65_017, "marketdatatype");  (nullable `marketdatatype`, display `Market Data Type`: the type of its kind the message is as a `MarketDataType` member - `OrdType(40)`, `QuoteType(537)`, `TrdType(828)` or `MDEntryType(269)`, the one its kind names first, or any field a registry maps through `FIX:marketdatatype` - read by the intrinsic `marketdatatypecodeset`)
 pub const ISINCODE_TAG_NAME: (i32, &str) = (65_021, "isincode");  (nullable `isin`: the `isin` entry of the message's security identifiers, a view of `get_securityids()` - the code `get` answered when the row was written - resolved once when the message is whole: read back from a row with no `securityids` column, a code any key of its type in the message's reading - the wire's, a landed bridge key's, an instrument key's ISIN - holds states nothing, the one its `Symbol(55)` shape derives where nothing else names its type reads back from `derived` and follows a written symbol, and any other replaces its type's base key, the named sources staying as evidence and a replaced ISIN taking back what it derived but the pair - whether it was derived lost; beside a `securityids` column a code a key of its type holds states nothing; on a parsed line any other fills the base key where it is empty, one disagreeing with a held base key dropped with an anomaly naming the view column; a caller's write replaces its type's base key, a null removes every key of the type)
 pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_047, "bloombergcode");  (nullable `bbg`: the `bloomberg` entry of the message's security identifiers, a view of `get_securityids()` - the code `get` answered when the row was written - resolved once when the message is whole: read back from a row with no `securityids` column, a code any key of its type in the message's reading - the wire's, a landed bridge key's, an instrument key's ISIN - holds states nothing, the one its `Symbol(55)` shape derives where nothing else names its type reads back from `derived` and follows a written symbol, and any other replaces its type's base key, the named sources staying as evidence and a replaced ISIN taking back what it derived but the pair - whether it was derived lost; beside a `securityids` column a code a key of its type holds states nothing; on a parsed line any other fills the base key where it is empty, one disagreeing with a held base key dropped with an anomaly naming the view column; a caller's write replaces its type's base key, a null removes every key of the type)
@@ -867,8 +867,7 @@ pub struct FixMsg  (a market operation event with a FIX body around it: the crat
   pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self>  (the value canonicalized under the root; a child stating a typed fact - one of `FIX_TYPED_TAGS` or a crate column - fills its holder and leaves the row; a child named under a namespace, `TECH.CLIENTID`, lands in the metadata; the clocks are settled and the identity derived; runs no derivation)
   pub const fn header(&self) -> &FixHeader  (the standard header and trailer)
   pub const fn capture(&self) -> &FixCapture
-  pub fn msgcat(&self) -> MarketDataKind  (the business category the message's type files under: the dictionary's `FIX:msgcat` for its `MsgType(35)`, `MarketDataKind::Unknown` where it files none, and a type filed under `EXEC` that reports no fill its order's report, `ORDR`, or its quote's, `QUOT`, where it names a `QuoteID(117)`; a row stating one is the row's word; the fixed row's `msgcat` column)
-  pub fn strikeprice(&self) -> Option<Decimal>  (the option strike price the message identifies: the dictionary field `StrikePrice(202)` read as the decimal leaf at each call, `None` where it states none; the fixed row's instrument band carries it under that field's own tag 202)
+  pub fn strikepx(&self) -> Option<Decimal>  (the option strike price the message identifies: the dictionary field `StrikePrice(202)` read as the decimal leaf at each call, `None` where it states none; the fixed row's instrument band carries it under that field's own tag 202, the column `strikeprice`; `by_name("strikepx")` reaches the same field through the px/price words)
   pub fn anomalies(&self) -> &[FixAnomaly]  (what the message states that its reading could not take as it stands, in arrival order - the parse's, then the last settle's: a value that will not type, an alias stating another value than the field it lost to, a dropped conflicting identifier or identifier-map value, a `#`-twin stating another value, a contradicted conversation, a non-ISO MIC alias, a later observation's provenance; never a column or a digest input)
   pub const fn lifted(&self) -> &FixLifted  (the FIX numbers and identifiers the message lifted, exactly as it stated them; a fact the `Market` getters answer but this holder lacks is derived, which is why it reaches neither the wire nor the code)
   pub fn text(&self) -> Option<&str>  (`Text(58)`)
@@ -899,7 +898,7 @@ pub struct FixMsg  (a market operation event with a FIX body around it: the crat
   pub fn dated_by_transaction(self) -> Self  (never refuses: a step the enriching pass cannot write is warned about and the message keeps what it stated; the message dated by the TransactTime(60) it states with a clock where the parse supplied its sending clock - a carrier's, the default, the intake's - created at an earlier OrigSendingTime(122), its stand-in sending clock moved with it, and enriched again under the rules its date selects; a stated SendingTime stands, a day-only TransactTime dates nothing; what `lifecycle` reads before it walks)
   pub fn carried(&self) -> &[(SmolStr, Scalar)]  (the capture's own cells the message carries, each under the column it was read from: where the line was read from, its place in the object, the body it was cut from, when it was recorded; provenance and never content - none is an entry, none reaches the wire or the currhashcode - and `into_row` states each again at its column; empty for a message parsed from bytes, a row's for one parsed out of or read back from a row)
   pub fn set_carried(&mut self, cells: Vec<(SmolStr, Scalar)>)  (states the capture's own cells, replaced whole)
-  impl Element, Event, Market, Operation for FixMsg  (through the held event facts: `is_after` is the instant, `finalize` settles the identity again, `with_previous` is `Operation::following_operation` - the market facts the chain is about, the time in force and whether it trades where unstated, each identifier whose `FIX:idmap` entry follows, each followed type's parents with it (`is_followed_identifier`), and every party id of the chain - each identifier it states taking the parents its chain gave it (`Identifiers::follow_parents`, read through `FixRegistry::parents_of`) - and every `metadata` key of the chain it does not state, its own values standing - recording the predecessor as `prevuuid` and `prevunix`, keeping its own `seqnum` unless the predecessor happened at its instant or later, where it takes the next, while the sources stay its own, `merge_with` is `Operation::merging_operation_event` and `restating` `graph::market::restating_operation`, which takes the same as following does; every market setter forces its fact over the derivation; the identifier facts are logical - read off the fields, the wire kept as sent: `get_securityids` is rebuilt at every settle from `SecurityID(48)` under `SecurityIDSource(22)` (the base key of its type), each `SecAltIDGrp(454)` occurrence, an unmapped entry whose key names a security type (`Identifier::from_key`: `OMS_InstrumentID` is `oms:instrumentid`, a bridge's keyed alias `ISINCODE` or `OMS_RICCODE` its type, a value its type refuses an anomaly, the first stated code under a key kept unless a later one outranks it) and the crated ISIN/Bloomberg/FIGI/forex views, resolved once when the message is whole (`ISINCODE_TAG_NAME`), and its `set_`/`insert_`/`remove_` verbs state the set itself, writing no field; `get_identifiers` is rebuilt from the fields the registry's `FIX:idmap` entries name (`FixRegistry::idmap_sources`), and from each regulatory trade id - `NoRegulatoryTradeIDs(1907)` and a side's `NoSideRegulatoryTradeIDs(1971)` - under `regtradeid`, `prevregtradeid`, `blockregtradeid`, `relatedregtradeid`, `clearedregtradeid`, `tvtic` or `reporttrackingnumber` by its type, else `regtradeid{n}`, each its type's base key, and from each unmapped entry whose key names an operation identifier (any non-security, non-party type of `Identifier::from_key`); an unmapped entry a set holds with its value is captured - it leaves the metadata, rides a row's `fixentries` under `0:<key>` and stays on the wire; `OrigClOrdID(41)` is the `clordid`'s `origclordid` parent and a finalize fills each parent's own type from its nearest parent (`Identifiers::fill_parents`); `get_partyids` is rebuilt at every settle from the parties of `NoPartyIDs(453)` and `NoRootPartyIDs(1116)` - each `PartyID` typed by its `PartyRole`'s code-set name folded (`executingtrader`, `customeraccount`), `partyrole{n}` for a wire code the set names nothing for, `party` where none is stated, and sourced by its `PartyIDSource`'s name folded, a word the set does not resolve its own spelling folded and a bare code it names nothing for - one character, or digits - `partyidsource{code}`, the base source where none is stated, a named source filling the role's base key - and from `Account(1)` typed `account` from its `AcctIDSource(660)`'s name by the same rule, `acctidsource{code}` for a code the set names nothing for, and from each unmapped entry whose key names a party type, a side's own party ids and account first, the first value of a key standing unless a later one outranks it (`IdType::rank`) and a second staying on the wire; a set a caller or a row stated keeps every value it holds and is filled at each settle with what the fields state that it lacks; `get_execunix` reads the crate's `execunix` (65_023); `get_side` is `UNKN` where no `Side(54)` is stated; `marketdatakind` is its `msgcat` - an execution report of no fill its order's `ORDR`, or its quote's `QUOT` naming a `QuoteID(117)` - and `is_sided` that kind's `MarketDataKind::is_sided`, the cross code stored as `{kind}:{side}:{base}` for every kind (`Market::stored_crosscode`), the side `0` unless sided; `get_bidpx`, `get_bidqty`, `get_askpx` and `get_askqty` read `BidPx(132)`, `BidSize(134)`, `OfferPx(133)` and `OfferSize(135)`, and `get_bidccy`/`get_askccy` a stated `BidCurrency`, else `AskCurrency` or `OfferCurrency`, else the message's currency where that side states a price or a size - a quote one message holding both legs, whatever side it tags; no field fills `get_fxrates`, which answers what a caller set; `is_execution` is the category `EXEC` and a report of an execution - explicit execution-like ExecType(150), an initial AE when 487 is absent/New even if 150 is absent, never a non-New/cancel/correct/reverse/status AE or AD/AQ/AR - so the execution a parse splits off an order's, a quote's or a trade's report is one, and the report it was split from - restated `ORDR`/`QUOT`, or the `TRAD` trade - is not)
+  impl Element, Event, Market, Operation for FixMsg  (through the held event facts: `is_after` is the instant, `finalize` settles the identity again, `with_previous` is `Operation::following_operation` - the market facts the chain is about, the time in force and whether it trades where unstated, each identifier whose `FIX:idmap` entry follows, each followed type's parents with it (`is_followed_identifier`), and every party id of the chain - each identifier it states taking the parents its chain gave it (`Identifiers::follow_parents`, read through `FixRegistry::parents_of`) - and every `metadata` key of the chain it does not state, its own values standing - recording the predecessor as `prevuuid` and `prevunix`, keeping its own `seqnum` unless the predecessor happened at its instant or later, where it takes the next, while the sources stay its own, `merge_with` is `Operation::merging_operation_event` and `restating` `graph::market::restating_operation`, which takes the same as following does; every market setter forces its fact over the derivation; the identifier facts are logical - read off the fields, the wire kept as sent: `get_securityids` is rebuilt at every settle from `SecurityID(48)` under `SecurityIDSource(22)` (the base key of its type), each `SecAltIDGrp(454)` occurrence, an unmapped entry whose key names a security type (`Identifier::from_key`: `OMS_InstrumentID` is `oms:instrumentid`, a bridge's keyed alias `ISINCODE` or `OMS_RICCODE` its type, a value its type refuses an anomaly, the first stated code under a key kept unless a later one outranks it) and the crated ISIN/Bloomberg/FIGI/forex views, resolved once when the message is whole (`ISINCODE_TAG_NAME`), and its `set_`/`insert_`/`remove_` verbs state the set itself, writing no field; `get_identifiers` is rebuilt from the fields the registry's `FIX:idmap` entries name (`FixRegistry::idmap_sources`), and from each regulatory trade id - `NoRegulatoryTradeIDs(1907)` and a side's `NoSideRegulatoryTradeIDs(1971)` - under `regtradeid`, `prevregtradeid`, `blockregtradeid`, `relatedregtradeid`, `clearedregtradeid`, `tvtic` or `reporttrackingnumber` by its type, else `regtradeid{n}`, each its type's base key, and from each unmapped entry whose key names an operation identifier (any non-security, non-party type of `Identifier::from_key`); an unmapped entry a set holds with its value is captured - it leaves the metadata, rides a row's `fixentries` under `0:<key>` and stays on the wire; `OrigClOrdID(41)` is the `clordid`'s `origclordid` parent and a finalize fills each parent's own type from its nearest parent (`Identifiers::fill_parents`); `get_partyids` is rebuilt at every settle from the parties of `NoPartyIDs(453)` and `NoRootPartyIDs(1116)` - each `PartyID` typed by its `PartyRole`'s code-set name folded (`executingtrader`, `customeraccount`), `partyrole{n}` for a wire code the set names nothing for, `party` where none is stated, and sourced by its `PartyIDSource`'s name folded, a word the set does not resolve its own spelling folded and a bare code it names nothing for - one character, or digits - `partyidsource{code}`, the base source where none is stated, a named source filling the role's base key - and from `Account(1)` typed `account` from its `AcctIDSource(660)`'s name by the same rule, `acctidsource{code}` for a code the set names nothing for, and from each unmapped entry whose key names a party type, a side's own party ids and account first, the first value of a key standing unless a later one outranks it (`IdType::rank`) and a second staying on the wire; a set a caller or a row stated keeps every value it holds and is filled at each settle with what the fields state that it lacks; `get_execunix` reads the crate's `execunix` (65_023); `get_side` is `UNKN` where no `Side(54)` is stated, `BOTH` on a quote holding both legs and tagging neither; `marketdatakind` is the category its type files under (the dictionary's `FIX:msgcat`, `UNKN` where it files none) - an execution report of no fill its order's `ORDR`, or its quote's `QUOT` naming a `QuoteID(117)` - and `is_sided` that kind's `MarketDataKind::is_sided`, the cross code stored as `{kind}:{side}:{base}` for every kind (`Market::stored_crosscode`), the side `0` unless sided; `get_bidpx`, `get_bidqty`, `get_askpx` and `get_askqty` read `BidPx(132)`, `BidSize(134)`, `OfferPx(133)` and `OfferSize(135)`, and `get_bidccy`/`get_askccy` a stated `BidCurrency`, else `AskCurrency` or `OfferCurrency`, else the message's currency where that side states a price or a size - a quote one message holding both legs, whatever side it tags; no field fills `get_fxrates`, which answers what a caller set; `is_execution` is the category `EXEC` and a report of an execution - explicit execution-like ExecType(150), an initial AE when 487 is absent/New even if 150 is absent, never a non-New/cancel/correct/reverse/status AE or AD/AQ/AR - so the execution a parse splits off an order's, a quote's or a trade's report is one, and the report it was split from - restated `ORDR`/`QUOT`, or the `TRAD` trade - is not)
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg  (equal over the holders, the row and the registry - the same Arc or equal registries; hashed over the currhashcode, the row's schema and its value)
 
 ### yggdryl::fix::anomaly  [rust/src/fix/anomaly.rs]
@@ -963,7 +962,7 @@ pub struct MsgType  (registry-owned non-null Struct Field with a compiled group 
   pub const fn as_field(&self) -> &Field
   pub fn name(&self) -> &str
   pub fn as_str(&self) -> &str
-  pub fn msgcat(&self) -> Option<MarketDataKind>  (the definition's `FIX:msgcat` as the `MarketDataKind` member it names, where it declares one; what `FixMsg::msgcat` answers for a message of the type)
+  pub fn marketdatakind(&self) -> Option<MarketDataKind>  (the definition's `FIX:msgcat` as the `MarketDataKind` member it names, where it declares one; what `Market::marketdatakind` answers for a message of the type)
   pub fn get_group_by_tag(&self, tag: i32) -> Option<&Field>  (the unique repeating group the counter `tag` opens within this message's structure, by the path compiled at registration; a repeated context is ambiguous)
   pub fn identifier_values<'a>(&'a self, message: &'a FixMsg) -> impl Iterator<Item = (&'a Field, &'a Scalar)>  (the direct scalar members FIX:identifiers selects, read off the message's content row in declaration order, absent or null ones skipped; borrowed, no metadata parsing or allocation)
   impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Display, AsRef<Field> for MsgType
@@ -1082,7 +1081,7 @@ pub struct FixCommit  (re-exported at the crate root; what one `commit` moved un
   pub fn is_empty(&self) -> bool
 
 ### yggdryl::fix::ulbridge  [rust/src/fix/ulbridge.rs]
-pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: `mtime`, `msgsessionid`, `msgctxid`, `msgseqnum`, `msgpluginid` - the thread that wrote a line and the level it was logged at matched and never captured; `mtime` is the clock, consumed into each line's `currunix` - a point or a comma before three digits or grouped microseconds, or no fraction - so the header dates its lines and a message stating no SendingTime(52) is read against its line's clock; `msgsessionid`, `msgctxid`, `msgseqnum` and `msgpluginid` are named for the fields they fill, so the header carries no column of its own; kept ULBridge's because the line shape is the product's)
+pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: `mtime`, `msgthreadid`, `msgsessionid`, `msgctxid`, `msgseqnum`, `msgpluginid`, `loglevel`; `mtime` is the clock, consumed into each line's `currunix` - a point or a comma before three digits or grouped microseconds, or no fraction - so the header dates its lines and a message stating no SendingTime(52) is read against its line's clock; `msgsessionid`, `msgctxid`, `msgseqnum` and `msgpluginid` are named for the fields they fill, and `msgthreadid` (int64) and `loglevel` (utf8) name none: columns of the line's row, carried in front of a FIX row as the row's own cells and filling no field; kept ULBridge's because the line shape is the product's)
 
 ### yggdryl::fs  [rust/src/fs/mod.rs]  (Arrow-compatible filesystems bound to the crate's one IOBase: `FileSystem` is the public, object-safe seam, `BoundLocation` the binding every handle carries, and an unsupported backend capability returns `Error::Unsupported`)
   pub use file::FsFile;
@@ -1345,9 +1344,9 @@ pub trait Market  (an element that stands in a market, no supertrait: every fact
   fn set_hiddenqty(&mut self, qty: Option<Decimal>, overwrite: bool)  (fills `displayqty` back, the quantity less it)
   fn get_unit(&self) -> &Unit  (`Unit::none()` where unstated)
   fn set_unit(&mut self, unit: Unit, overwrite: bool)
-  fn get_side(&self) -> Side  (by value, one byte; `Side::Unknown` where none: a sided element's one side (`is_sided`), any other's tag - a one-sided quote names the leg it states, a two-sided one none)
+  fn get_side(&self) -> Side  (by value, one byte; `Side::Unknown` where none: a sided element's one side (`is_sided`), any other's tag - a one-sided quote names the leg it states, a two-sided one `BOTH`; a book always `BOTH`)
   fn set_side(&mut self, side: Side, overwrite: bool)  (a sided element's cross code restated under the new side and the side it left no longer quoting the price and quantity; any other element's a tag over the legs it holds, withdrawing none, the price and quantity moving from the leg the old tag took to the one the new takes; either way the side taken quotes them; never touches another element's)
-  fn marketdatakind(&self) -> MarketDataKind  (required: the category the holder is filed under - an order `ORDR`, a quote `QUOT`, an execution `EXEC`, a trade `TRAD`, a book `BOOK`, a FIX message's `msgcat` - and the category a lifecycle chains within)
+  fn marketdatakind(&self) -> MarketDataKind  (required: the category the holder is filed under - an order `ORDR`, a quote `QUOT`, an execution `EXEC`, a trade `TRAD`, a book `BOOK`, a FIX message the category its dictionary files its type under - and the category a lifecycle chains within)
   fn is_sided(&self) -> bool  (provided: `MarketDataKind::is_sided` of `marketdatakind` - whether the cross code states the side in its prefix: an order or an execution; a quote, whose side is a tag, a trade, a book, a snapshot control and every other category state `0` there)
   fn get_marketdatatype(&self) -> MarketDataType  (the type of its kind the element is - an order type, a quote type, a trade type, a book entry type; `MarketDataType::Unknown` where it states none)
   fn set_marketdatatype(&mut self, mdtype: MarketDataType, overwrite: bool)
@@ -1533,7 +1532,11 @@ pub struct BookEvent  (one view of a market at one exact nanosecond instant, key
   pub fn is_complete(&self) -> bool  (whether the book holds its sides rather than only the deltas it applied since the book before it: a book a caller builds, one a walk emits at a snapshot tick and one `with_previous` rebuilt are complete)
   pub fn alive(&self) -> impl Iterator<Item = &MarketData>  (every alive entry, each once: the bid side's best first and unpriced last, then the ask side's but those resting on the bid too - a two-sided quote listed with the bids; same-price entries by stated `BookRef::position`, then arrival; nothing on a book holding only its deltas)
   pub fn alive_on(&self, side: Side) -> impl ExactSizeIterator<Item = &MarketData>  (the entries resting on the side `side` takes, best price first and unpriced last, borrowed from the side's store - a two-sided quote on both sides, at its leg's price on each; nothing for a side neither bid nor ask, or on a book holding only its deltas)
-  pub fn deltas(&self) -> impl ExactSizeIterator<Item = &MarketData>  (the orders and quotes applied since the book before it, in the order applied across both sides - one list, each the very entry a side holds where it rests: what a book holding only its deltas states and `with_previous` replays)
+  pub fn deltas(&self) -> impl ExactSizeIterator<Item = &MarketData>  (every event of the book's instant since the book before it, in the order applied across both sides - one list: the orders and quotes applied, each the very entry a side holds where it rests, and the executions recorded, resting on no side: what a book holding only its deltas states and `with_previous` replays)
+  pub fn ordlive(&self) -> impl Iterator<Item = &OrderEvent>  (the orders resting on the book: every `alive` entry that is an order, in its order - the bid side's best first and unpriced last, then the ask side's; nothing on a book holding only its deltas; borrowed, nothing allocated)
+  pub fn orddelta(&self) -> impl Iterator<Item = &OrderEvent>  (the orders among `deltas`, in the order applied - placed, changed, ended, expired or withdrawn at the book's instant - each the very entry a side holds where it rests, so an order placed at the instant is also `ordlive`'s; borrowed)
+  pub fn quotes(&self) -> impl Iterator<Item = &QuoteEvent>  (the quotes among `deltas`, in the order applied; a quote resting since an earlier instant is `alive`'s and not here; borrowed)
+  pub fn executions(&self) -> impl Iterator<Item = &ExecutionEvent>  (the executions among `deltas`, in the order applied, each recorded at the book's instant and resting on no side; `orddelta`, `quotes` and `executions` partition `deltas`, which hold nothing else; borrowed)
   pub fn best_price(&self, side: Side) -> Option<Decimal>  (the first priced level's of the side `side` takes whose `Limit::tradable` holds - a level that cannot trade is skipped, never answered; `None` for an empty side, one of unpriced entries only, one no level of which trades, or a side neither bid nor ask; what the book states as `bidpx` (`BUYS`) and `askpx` (`SELL`), and read from it, so a book holding only its deltas answers it too)
   pub fn best_quantity(&self, side: Side) -> Option<Decimal>  (exact aggregate quantity at `best_price` - an order its quantity, a quote that leg's - an entry stating none adding nothing; the book's `bidqty` and `askqty`, read from it)
   pub fn limits(&self, side: Side) -> impl Iterator<Item = Limit> + '_  (one `Limit` per level of that side in held order - best first, the unpriced limit last - its entries' `curruuid`s in position order, ties in arrival order, tradable when any of them does not state `tradable = false` - an entry stating nothing trades, and only a level every entry of which states `false` cannot; allocates each limit's `uuids` and nothing else; nothing for a side neither bid nor ask, or on a book holding only its deltas. What a complete book's row states under `bidlimits` (`BUYS`) and `asklimits` (`SELL`); the first priced limit that can trade is `best_price` and `best_quantity`)
@@ -1547,7 +1550,7 @@ pub struct BookEvent  (one view of a market at one exact nanosecond instant, key
   pub fn add_operations<I>(&mut self, operations: I) -> Result<()> where I: IntoIterator, I::Item: Into<Result<MarketData>>  (atomic; every input `MarketDataKind::is_recorded` does not admit - a `TradeEvent` - pruned first, so a group of nothing else changes nothing; an `OrderEvent`, `QuoteEvent` or `SnapshotEvent` folds and an `ExecutionEvent` is recorded, each applied order or quote and each execution a delta in the order applied, an execution moving no side and dating the book's last execution, and any other variant is `InvalidRecord` at `$.operations[index].kind`; one nonregressing `currunix` across the group, a later instant following the book it was - `prevuuid`, `prevunix`, `prevpx`, `prevqty` - and starting its deltas again while retaining live depth; an order or a quote rests on every side it states a leg for, as one entry, a leg sized zero resting nowhere, and one resting on no side, first seen ended or ending an entry the book no longer holds places nothing, never refused, and is still its delta; a statement repeating the live entry it continues - every fact but its identity, digests and chain place, the same book control - records no delta; a full-snapshot order, quote or `SnapshotEvent` clears only its symbol + scope partition first, an entry its scope restates kept identity and all; the live key is symbol + scope + cross identity; a stated same-partition `mdentryrefid` resolves before the incoming identity or its `mdentryid`, and a distinct occupied destination is ambiguous and refused; a level whose aggregate quantity would pass decimal is refused at `$.quantity`, naming its price; a book holding only its deltas refused at `$.alive` - rebuild it with `with_previous` first; the book unchanged on every error)
 pub struct BookIterator<I> where I: Iterator, I::Item: Into<Result<MarketData>>  (books from an already sorted infallible or fallible stream of `MarketData`, one per book key and effective timestamp - the key `Market::book_crosscode`: an input's ISIN where it holds one, else its ticker, else `Isin::NONE`, one book per instrument wherever an ISIN is known; a book opens keyed (`BookEvent::keyed`) and takes its ticker and its ISIN from the first input stating each, no input moving them after; the walk folds what `MarketDataKind::is_booked` admits - orders, quotes and snapshot controls - records every execution among the deltas of its instrument's book at its instant, and prunes every other input `is_recorded` does not admit where it is pulled, a FIX message's leaves once it is split, so a pruned input touches no book, no instant and no grid; an identity restated under another key - a chain stated by its ticker alone and then under its ISIN - leaves the book it stood in by a `REMOVED` delta there reporting no fill, a snapshot's member as any other statement, and opens in its own at the same instant, so an entry rests in one book at a time; a book is emitted where it holds a delta - every order and quote folded but a repeat of the live entry it continues - or at a snapshot tick where it holds an entry, a snapshot emptying a book emitted too, empty and complete; complete - its alive entries, its limits, `snapunix` the instant - only at a snapshot tick: every grid tick `snapshot_millis` crosses for every code, the ticks caught up on and the quiet buckets included, and a group that replaced membership - a full refresh, an empty snapshot control, inputs stating a `snapunix`; every other book its deltas alone beside the top of book they settled on, naming the book it follows as `prevuuid` - none for a code's first book, which follows the empty book - so `Element::with_previous` over the complete book before it rebuilds it; a variant a book does not fold is `InvalidRecord` naming its kind and ends the walk; an operation dated before its book and a group the book refuses are left out with a deduplicated warning, the book standing as it was; each timestamp and book commits ordinary deltas, expirations and explicit scope-membership snapshots atomically; a source failure follows the completed prefix once and fuses)
   pub fn new(operations: I, snapshot_millis: u64) -> Result<Self>  (zero disables the epoch-aligned snapshot grid, a book then complete only at a full refresh; checked conversion to nanoseconds)
-  pub fn with_filter(mut self, filter: impl IntoFilter) -> Result<Self>  (folds only the inputs `filter` keeps: an expression over the `MarketData::field` row, bound once here and answered by the expression engine over one batch per 1,024 booked inputs pulled ahead; the kind rule prunes first, so a filter narrows what a book folds and never admits what `MarketDataKind::is_recorded` does not; a filter keeping every row installs nothing; refuses the filter's own parse error, a column the row does not carry and an answer that is no boolean)
+  pub fn with_filter(mut self, filter: impl IntoFilter) -> Result<Self>  (folds only the inputs `filter` keeps: an expression over the `MarketData::field` row, bound once here and answered by the expression engine over one batch per 1,024 recorded inputs pulled ahead; the kind rule prunes first, so a filter narrows what a book folds and never admits what `MarketDataKind::is_recorded` does not; a filter keeping every row installs nothing; refuses the filter's own parse error, a column the row does not carry and an answer that is no boolean)
   impl<I> Iterator<Item = Result<BookEvent>> for BookIterator<I> where I: Iterator, I::Item: Into<Result<MarketData>>
   impl<I> FusedIterator for BookIterator<I> where I: FusedIterator, I::Item: Into<Result<MarketData>>
 
@@ -1849,7 +1852,7 @@ pub struct LocalFolder
   pub fn config() -> Result<Self>
   pub const fn url(&self) -> &Url
   pub fn path(&self) -> Result<PathBuf>
-  pub fn exists(&self) -> bool
+  pub fn exists(&self) -> bool  (folder_exists: a glob location whether its pattern selects an entry)
   pub fn create(&self) -> Result<()>
 
 ### yggdryl::local::path  [rust/src/local/path.rs]
@@ -1858,7 +1861,7 @@ pub struct LocalPath
   pub fn from_url(url: Url) -> Result<Self>
   pub const fn url(&self) -> &Url
   pub fn path(&self) -> Result<std::path::PathBuf>
-  pub fn exists(&self) -> bool
+  pub fn exists(&self) -> bool  (path_exists: a glob whether its pattern selects an entry)
   pub fn as_directory(&self) -> Result<LocalFolder>
   pub fn as_file(&self) -> Result<LocalFile>
 
@@ -2627,7 +2630,7 @@ pub enum Holder
   Buffered(Box<Buffered<Self>>), Coded(Box<Coded>), Text(Box<crate::text::Text<Self>>), Media(Box<crate::media::Media>)  (each wraps another Holder, so each is boxed)
   Uri(Uri)  (an identifier holding what it names, resolved through from_url on first use; From<Uri>, From<Url>, From<Urn>, From<Arn>)
   Catalog(Box<crate::Catalog>), Namespace(Box<crate::Namespace>), Table(Box<crate::Table>)  (the warehouse objects as handles: a catalog or a namespace a container whose `ls` yields its children as handles and whose byte verbs are `Error::NotAtomic`, a table every verb its implementation's; From<Catalog>, From<Namespace>, From<Table>, From<Object>)
-  pub fn exists(&self) -> bool  (each role's own answer; a buffer always, a wrapper its handle's)
+  pub fn exists(&self) -> bool  (each role's own answer - a glob location whether its pattern selects an entry, its listing up to the first match; a buffer always, a wrapper its handle's)
   pub const fn buffer(buffer: Buffer) -> Self
   pub fn folder(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn file(path: impl AsRef<std::path::Path>) -> Result<Self>
@@ -2872,11 +2875,14 @@ pub trait IOCursor
 
 ### yggdryl::root::iofolder  [rust/src/iofolder.rs]
 pub trait IOFolder: IOBase
+  fn has_folder(&self) -> bool  (required: the container itself)
+  fn folder_exists(&self) -> bool  (provided: a glob location whether its pattern selects an entry, else has_folder)
   fn folder_pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'static>>
   fn folder_read_all_bytes(&self) -> Result<Vec<u8>>
   fn folder_read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>>
   pub trait IOFile: IOBase
   pub trait IOPath: IOBase
+  fn path_exists(&self) -> bool  (provided: a glob whether its pattern selects an entry, else is_folder or is_file)
 
 ### yggdryl::root::iokind  [rust/src/iokind.rs]
 pub enum IOKind
@@ -2894,6 +2900,8 @@ pub trait IOMedia: Send
   fn row_size(&self) -> Result<u64>
   fn column_size(&self) -> Result<usize>
   fn record_options(&self) -> Result<RecordOptions>
+  fn merge_by(&self) -> Result<crate::Selector>  (the key this resource states for its own rows, which a merge whose options name none matches on: an Iceberg table's identity partition columns then the columns its schema's identifier-field-ids name, a column below structs by its path, read off the metadata with no data file opened; empty for every other handle; forwarded by Holder, warehouse Table, Handle, Uri, Box<dyn IOBase>, Buffered, Coded, Media and delegate_iomedia!)
+  fn write_options<'o>(&self, mode: crate::IOMode, options: &'o RecordOptions) -> Result<std::borrow::Cow<'o, RecordOptions>>  (#[doc(hidden)], what every generic write door and the bindings' preflight resolve their options through: the options as they stand, refused as require_write_mode refuses them - a merge into a structured text document refused naming $.mode before any key is asked for - but a merge naming no key keyed by merge_by() where it is non-empty - resolved once, before a source is pulled; borrows the options, never self)
   fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics>
   fn read_parquet_geospatial_statistics( &self, column: &str, ) -> Result<crate::parquet::GeospatialStatistics>
   fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field>
@@ -2902,7 +2910,7 @@ pub trait IOMedia: Send
   fn write_serie( &mut self, value: crate::SerieSource, mode: crate::IOMode, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (the source as the stream of the batches it already is - SerieSource::into_reader, nothing copied or re-landed - to write_arrow_reader as its transport face; None the handle's own record_options(); a structured text document overwritten whole, its rows cast onto the declared field and no other option read, any other mode refused at $.mode; a run or a record holding an absent row refused before the destination is touched; what a cadence holds between publications held under the process spill bound)
   fn overwrite_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (write_serie under IOMode::Overwrite)
   fn append_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (write_serie under IOMode::Append)
-  fn merge_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (write_serie under IOMode::Merge, keyed by the options' merge_by)
+  fn merge_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (write_serie under IOMode::Merge, keyed by the options' merge_by, else the destination's own merge_by())
   fn write_arrow_reader( &mut self, batches: crate::arrow::BatchReader, mode: crate::IOMode, options: &RecordOptions, ) -> Result<crate::IOResult>
   fn overwrite_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<crate::IOResult>
   fn overwrite_prepared_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<()>
@@ -3189,6 +3197,7 @@ pub enum FormatVersion
   pub fn spec_by_id(&self, spec_id: i32) -> Option<&PartitionSpec>
   pub fn property(&self, key: &str) -> Option<&str>
   pub const TRANSFORM_PROPERTY_PREFIX: &'static str  (`yggdryl.transform.`: the table property holding one derived top-level column's term, written at creation from the schema's TRANSFORM declarations and declared back on the column wherever the metadata is read)
+  pub const REPRESENTATION_BITS_PROPERTY: &'static str  (`yggdryl.representation.bits`: the sorted comma-separated identifiers of every column, at any depth, stating FIELD:representation=bits; written at creation, restated by add_schema over every schema, declared back wherever the metadata is read, a value that is no list of identifiers refused naming it)
   pub fn add_schema(&mut self, schema: Field) -> Result<i32>
   pub fn from_json(document: &Scalar) -> Result<Self>
   pub fn into_json(self) -> Result<Scalar>
@@ -3388,8 +3397,8 @@ pub struct IcebergTable<H: IOBase>  (the root eager, the current metadata docume
   pub fn commit_append(&mut self, batches: BatchReader) -> Result<()>
   pub fn commit_overwrite(&mut self, batches: BatchReader) -> Result<()>  (the partitions the rows fall in replaced, every other file carried with its row lineage, on every format version; a source with no row commits nothing; an unpartitioned table replaced whole)
   pub fn commit_overwrite_where(&mut self, filters: &[(&str, &str)], batches: BatchReader) -> Result<()>  (the stated scope replaced; no filter is the whole table)
-  pub fn commit_merge(&mut self, batches: BatchReader, merge_by: &crate::Selector, safe: bool) -> Result<()>
-  pub fn commit_merge_where(&mut self, filters: &[(&str, &str)], batches: BatchReader, merge_by: &crate::Selector, safe: bool) -> Result<()>
+  pub fn commit_merge(&mut self, batches: BatchReader, merge_by: &crate::Selector, safe: bool) -> Result<()>  (commit_merge_where with no scope)
+  pub fn commit_merge_where(&mut self, filters: &[(&str, &str)], batches: BatchReader, merge_by: &crate::Selector, safe: bool) -> Result<()>  (an empty merge_by the table's own key: the identity partition columns then the identifier-field-ids columns; the partition alone replaces the partitions the rows fall in; neither on an unpartitioned table refused at $.merge_by)
   pub fn evolve_schema(&mut self, schema: Field) -> Result<i32>
   pub fn update_schema(&mut self, update: &crate::iceberg::SchemaUpdate) -> Result<i32>  (rebase-safe; nothing recorded commits nothing)
 
@@ -5270,7 +5279,7 @@ pub enum DataType
 
 ### yggdryl::field  [rust/src/field.rs]
   pub struct FieldOf<D: DataTypeValue>  (one field carrying its family's own datatype, so the payload is the proof and no marker carries it)
-  pub type Int8Field = FieldOf<Int8Type>;  (one alias per family: Int8Field .. Float64Field, DateTimeField, DateField, TimeField, DurationField, IntervalField, BytesField, StringField, the fourteen code fields CountryField .. UnitField, UuidField, VersionField, UriField, SerieField, StructField, UnionField, EnumField, DecimalField, MappingField, RunEndEncodedField, VariantField, GeometryField, GeographyField, TimezoneField, MimeTypeField, MediaTypeField, CusipField, SedolField, BbgField, FigiField)
+  pub type Int8Field = FieldOf<Int8Type>;  (one alias per family: Int8Field .. Float64Field, DateTimeField, DateField, TimeField, DurationField, IntervalField, BytesField, StringField, the seventeen code fields CountryField .. FisnField, UuidField, VersionField, UriField, SerieField, StructField, UnionField, EnumField, DecimalField, MappingField, RunEndEncodedField, VariantField, GeometryField, GeographyField, TimezoneField, MimeTypeField, MediaTypeField, CusipField, SedolField, BbgField, FigiField)
   pub type FieldRef = Arc<ArrowField>;
   pub enum Field  (the enum over those leaves; every arm names the family that answers, and a variant is a datatype nobody can disagree with)
   pub fn new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Self
@@ -5800,6 +5809,10 @@ pub enum PythonKind
   pub fn set_by(&mut self, by: impl IntoIterator<Item = Ordering>) -> Result<()>
   pub fn set_by_texts<I, P>(&mut self, by: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,  (each text parsed as an `order by` key and stored as the grammar spells it)
   pub fn remove_by(&mut self) -> Option<String>
+  impl FieldPropertiesField<'_>
+  pub fn representation(&self) -> Representation  (FIELD:representation: Bits where the integer column states its integers are bit patterns - a same-width integer of the other signedness crossing as its bits at Field::scalar, the cast and Field::into_scheme_compat - Value, the default, where it states nothing)
+  impl FieldPropertiesFieldMut<'_>
+  pub fn set_representation(&mut self, representation: Representation) -> Result<()>  (Value removes the declaration; Bits refused on a column that is no integer, naming the key and the datatype and leaving the field unchanged)
   impl<'field> PythonField<'field>
   pub fn module(&self) -> Option<&'field str>
   pub fn qualname(&self) -> Option<&'field str>
@@ -5920,7 +5933,7 @@ pub struct ProtocolField<'field>
   pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::scalar  [rust/src/scalar.rs]  (the Value contract and the leaf contracts a scalar's leaves answer are under yggdryl::value; a family is no value type, only the DataTypeId range its DataTypeKind owns)
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Decimal, BigDecimal (the fixed leaves' units at scale eighteen, wire tags `decimal` and `bigdecimal`, equal to and hashing as their Decimal128/Decimal256 twins), Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Ccy, Mic, Cfi, Side, State, TimeInForce, Isin, Cusip, Sedol, Bbg, Ric, Figi, Unit, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the twelve registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Decimal, BigDecimal (the fixed leaves' units at scale eighteen, wire tags `decimal` and `bigdecimal`, equal to and hashing as their Decimal128/Decimal256 twins), Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Ccy, Mic, Cfi, Side, State, TimeInForce, Isin, Cusip, Sedol, Bbg, Ric, Figi, Unit, Forex, Lei, Bic, Elf, Dti, Fisn, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the seventeen registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub const fn id(&self) -> DataTypeId
   pub const fn family(&self) -> DataTypeKind  (the family whose DataTypeKind::range id() is in; which temporal family is id().temporal_family())
   pub const fn kind(&self) -> &'static str
@@ -5929,7 +5942,7 @@ pub struct ProtocolField<'field>
   pub fn from_struct<K, I>(entries: I) -> Result<Self> where
   pub const fn as_bool(&self) -> Option<bool>
   pub fn as_str(&self) -> Option<&str>
-  pub const fn code_storage(&self) -> Option<&SmolStr>  (the fourteen registered codes written out once; `id` is the other half - the identity leads, the text follows)
+  pub const fn code_storage(&self) -> Option<&SmolStr>  (the seventeen registered codes written out once; `id` is the other half - the identity leads, the text follows)
   pub const fn is_code(&self) -> bool  (DataTypeKind::Code.contains(self.id()))
   pub fn as_bytes(&self) -> Option<&[u8]>
   pub fn into_json_bytes(&self) -> Result<Vec<u8>>
@@ -6225,7 +6238,7 @@ pub struct ProtocolField<'field>
   pub type BinaryViewSerie = ByteViewSerie<BinaryViewType, Octets>
   pub type FixedBytesSerie = FixedSerie<Octets>  (a UUID, or any identity stored at one width)
 
-### yggdryl::serie::string  [rust/src/serie/string.rs]  (the string family's leaves over the byte layouts: the field says which of the eighteen string leaves or fourteen codes the bytes are)
+### yggdryl::serie::string  [rust/src/serie/string.rs]  (the string family's leaves over the byte layouts: the field says which of the eighteen string leaves or seventeen codes the bytes are)
   pub type Utf8StringSerie = ByteSerie<Utf8Type, Chars>
   pub type LargeUtf8StringSerie = ByteSerie<LargeUtf8Type, Chars>
   pub type Utf8ViewStringSerie = ByteViewSerie<StringViewType, Chars>
@@ -6352,12 +6365,12 @@ pub trait TemporalValue: Value  (implemented by Date32, Date64, Time32, Time64, 
 pub trait GeospatialValue: Value  (implemented by Geometry and Geography)
   fn as_bytes(&self) -> &[u8]
   fn storage(&self) -> &Arc<[u8]>
-pub trait CodeValue: Value  (implemented by the twelve registered codes)
+pub trait CodeValue: Value  (implemented by the seventeen registered codes)
   const WIDTH: usize
   fn as_str(&self) -> &str
   fn storage(&self) -> &SmolStr
   const MAX_RANK: u8  (provided as 1: the rank of a real value - 2 for Isin and Cfi)
-  fn rank(&self) -> u8  (provided as MAX_RANK: how real this value is, from zero to MAX_RANK - `new` admits the shape, and what the shape leaves open is this reading: an Isin closing under a listed prefix 2, closing or listed 1, neither 0; a Cusip, Sedol or Figi 1 where it closes; a Country 1 where ISO 3166 lists it; a Ccy `XXX`, a Mic `XXXX` and an empty Unit 0; a Cfi unclassified 0, classified 1, detailed 2; every other code 1)
+  fn rank(&self) -> u8  (provided as MAX_RANK: how real this value is, from zero to MAX_RANK - `new` admits the shape, and what the shape leaves open is this reading: an Isin closing under a listed prefix 2, closing or listed 1, neither 0; a Cusip, Sedol, Figi, Lei or Dti 1 where it closes; a Country 1 where ISO 3166 lists it; a Bic 1 where its country is listed or SWIFT's `XK`; a Ccy `XXX`, a Mic `XXXX` and an empty Unit 0; a Cfi unclassified 0, classified 1, detailed 2; every other code 1)
   fn is_real(&self) -> bool  (provided: `rank() == MAX_RANK`)
   fn merge_with(self, other: &Self) -> Self  (provided: the better statement of two codes of one kind - the other where it outranks this one, else this one, so a real value replaces a placeholder, a masked number or a typo whatever the order and two of one rank keep the one that leads; a Cfi folds further, filling every `X` from the other where the two describe one instrument, and keeping this code across another category or group or a contradicted attribute)
 pub trait EnumValue: Value + Copy + Default  (implemented by the Enum-family leaves State, MarketDataKind, Side, MarketDataType and TimeInForce through `enum_leaf!`: a closed set of members, each stored as its unsigned code at the width of its `Repr`)
@@ -6758,6 +6771,65 @@ impl Scalar
   pub const fn figi() -> Self
   pub type FigiField = FieldOf<FigiType>;
 
+### yggdryl::lei  [rust/src/lei.rs]
+  pub struct Lei(SmolStr)  (one ISO 17442 Legal Entity Identifier held by its shape: twenty ASCII bytes, eighteen letters or digits then two decimal check digits, upper-cased; positions five and six are entity code, not a reserved `00`; the ISO 7064 MOD 97-10 close is its rank (1), a typo rank 0 never a refusal; datatype `lei`, extension `yggdryl.lei` over Arrow Utf8, `DataTypeId::Lei = 0x6b`; `LeiType` marks its field)
+  pub fn new(value: impl AsRef<str>) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub const fn storage(&self) -> &SmolStr
+  pub fn prefix(&self) -> &str  (the issuing LOU's four characters)
+  pub fn check_digits(&self) -> u8
+  pub fn is_canonical(text: &str) -> bool
+  pub fn is_closed(text: &str) -> bool  (upper case and remainder one under MOD 97-10; lower case closes nothing)
+  pub fn closing_digits(body: &str) -> Option<u8>  (the two digits, 2..=98, closing eighteen upper-case letters or digits)
+  pub const fn lei() -> Self
+  pub type LeiField = FieldOf<LeiType>;
+
+### yggdryl::bic  [rust/src/bic.rs]
+  pub struct Bic(SmolStr)  (one ISO 9362 Business Identifier Code held by its shape: eight or eleven ASCII bytes kept as stated - a four-character party prefix of letters or digits (ISO 9362:2014), a two-letter country, a two-character location, an optional three-character branch - upper-cased; no check character, rank 1 where ISO 3166 lists the country or it is SWIFT's `XK`, else 0; datatype `bic`, extension `yggdryl.bic`, `DataTypeId::Bic = 0x6c`, width 11 a maximum)
+  pub fn new(value: impl AsRef<str>) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub const fn storage(&self) -> &SmolStr
+  pub fn party_prefix(&self) -> &str
+  pub fn country(&self) -> &str
+  pub fn location(&self) -> &str
+  pub fn branch(&self) -> Option<&str>  (None on eight characters)
+  pub fn is_primary_office(&self) -> bool  (eight characters, or the branch `XXX`)
+  pub fn is_canonical(text: &str) -> bool
+  pub const fn bic() -> Self
+  pub type BicField = FieldOf<BicType>;
+
+### yggdryl::elf  [rust/src/elf.rs]
+  pub struct Elf(SmolStr)  (one ISO 20275 Entity Legal Form code: four ASCII letters or digits, upper-cased; no check character and no placeholder, every value rank 1; datatype `elf`, extension `yggdryl.elf`, `DataTypeId::Elf = 0x6d`)
+  pub fn new(value: impl AsRef<str>) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub const fn storage(&self) -> &SmolStr
+  pub fn is_canonical(text: &str) -> bool
+  pub const fn elf() -> Self
+  pub type ElfField = FieldOf<ElfType>;
+
+### yggdryl::dti  [rust/src/dti.rs]
+  pub struct Dti(SmolStr)  (one ISO 24165 Digital Token Identifier held by its shape: nine ASCII symbols of `0123456789BCDFGHJKLMNPQRSTVWXZ`, never opening with `0`, upper-cased; the ISO 7064 hybrid MOD 31,30 close is its rank (1) and nothing else is - no exception table, a registry code the algorithm does not close ranks as a typo; datatype `dti`, extension `yggdryl.dti`, `DataTypeId::Dti = 0x6e`)
+  pub fn new(value: impl AsRef<str>) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub const fn storage(&self) -> &SmolStr
+  pub fn check_character(&self) -> char
+  pub fn is_canonical(text: &str) -> bool
+  pub fn is_closed(text: &str) -> bool
+  pub fn closing_character(body: &str) -> Option<char>
+  pub const fn dti() -> Self
+  pub type DtiField = FieldOf<DtiType>;
+
+### yggdryl::fisn  [rust/src/fisn.rs]
+  pub struct Fisn(SmolStr)  (one ISO 18774 Financial Instrument Short Name: at most thirty-five printable US-ASCII bytes, an issuer and a description either side of the first `/` (a second `/` belongs to the description; the fifteen-character issuer bound is not a shape rule), upper-cased; a Latin-1 letter is refused; every value rank 1; past twenty-three bytes one shared allocation; datatype `fisn`, extension `yggdryl.fisn`, `DataTypeId::Fisn = 0x6f`, width 35 a maximum)
+  pub fn new(value: impl AsRef<str>) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub const fn storage(&self) -> &SmolStr
+  pub fn issuer(&self) -> &str
+  pub fn description(&self) -> &str
+  pub fn is_canonical(text: &str) -> bool
+  pub const fn fisn() -> Self
+  pub type FisnField = FieldOf<FisnType>;
+
 ### yggdryl::idkey  [rust/src/idkey.rs]  (the key an identifier is held under: the source that gave it and the type of name it is, spelled `src:type`, a key from the base source spelled as its type alone)
 pub struct IdKey { src, kind }  (an `IdSource` and an `IdType`; Clone, Debug, Eq, Hash, PartialEq, Ord by the bytes of its spelling - `cusip` < `derived:cusip` < `isin` < `oms:instrumentid` < `ullink:isin` - Display `src:type` (`isin` for a base key), FromStr, `PartialEq<str>` and `PartialEq<&str>` comparing the spelling without building it, `From<&IdKey> for SmolStr` a static string for a key of two member words; re-exported at the crate root)
   pub const fn new(src: IdSource, kind: IdType) -> Self
@@ -6809,7 +6881,7 @@ pub enum IdType  (eighty-seven members the crate names, each a static folded wor
   pub const KNOWN: [Self; 87]  (every member the crate names, in declaration order)
   pub fn as_str(&self) -> &str  (the folded spelling: `isin`, `clordid`, `executingtrader`)
   pub const fn is_known(&self) -> bool  (a member, not an `Other`)
-  impl FromStr for IdType  (folds the text - trimmed, lower-cased, the `_`, `-`, space and `#` a spelling breaks it with dropped, ASCII letters, digits and `.` only, 1 to 64 bytes - and reads the member it or an alias names: `isinnumber`, `isincode` and `isinid` are `Isin`, `riccode`, `reuterscode` and `reuterssymbol` `Ric`, `bbg`, `bloombergsymbol`, `bloombergcode` and `bloombergticker` `Bloomberg`, `figicode` and `openfigi` `Figi`, `cusipnumber` `Cusip`, `sedolcode` `Sedol`, `ccypair` `Forex`; any other word is an `Other`; Err = Error)
+  impl FromStr for IdType  (folds the text - trimmed, lower-cased, the `_`, `-`, space and `#` a spelling breaks it with dropped, ASCII letters, digits and `.` only, 1 to 64 bytes - and reads the member it or an alias names: `isinnumber`, `isincode` and `isinid` are `Isin`, `riccode`, `reuterscode` and `reuterssymbol` `Ric`, `bbg`, `bloombergsymbol`, `bloombergcode` and `bloombergticker` `Bloomberg`, `figicode` and `openfigi` `Figi`, `cusipnumber` `Cusip`, `sedolcode` `Sedol`, `ccypair` `Forex`, `xswxvalor` and `valorennummer` `Valor`, `sixsymbol` and `valorsymbol` `ExchSymb`; any other word is an `Other`; Err = Error)
   pub fn from_fix_security_source(code: char) -> Option<Self>  (the type one FIX `SecurityIDSource(22)` code names: `4` is `Isin`)
   pub fn fix_security_source(&self) -> Option<char>  (the code of a type FIX names; none for `Forex`, `Cfi` and every operation or party type)
   pub fn from_security_source(text: &str) -> Result<Self>  (a one-character FIX code, case-sensitive, else a code-set name with its punctuation, spacing and parenthesized remarks passed over, else the value kept as the word the `IdType` fold makes of it - `100` stays `100`, `Z` is `z`; refuses `ticker`, a member naming an operation's or a party's identifier, and a value no word holds)
@@ -6820,9 +6892,9 @@ pub enum IdType  (eighty-seven members the crate names, each a static folded wor
   pub fn is_security(&self) -> bool  (a type FIX's `SecurityIDSource(22)` names, `Forex`, `Cfi` or `InstrumentId`: what a market's `securityids` hold)
   pub const fn is_party(&self) -> bool  (`Account`, `Party`, `UserId` or a `PartyRole(452)` role the crate names: what an operation's `partyids` hold)
   pub const fn is_listing(&self) -> bool  (a code naming one venue's listing rather than the instrument - `Ric`, `Bloomberg`, `ExchSymb`, `Cta`, `Sedol`, `Figi`, `MktAssigned`, `Fim`, `Umtf`, `InstrumentId` - which an `IsinRegistry` fills only on its own market)
-  pub const fn value_dtype(&self) -> DataType  (the datatype a column of this type's values declares: `isin`, `cusip`, `sedol`, `figi`, `ric`, `bbg`, `ccy`, `country`, `cfi`, `forex`, else `utf8`)
-  pub fn max_value_width(&self) -> usize  (ISIN 12, CUSIP 9, SEDOL 7, FOREX 7, FIGI 12, WKN 6, CFI 6, VALOR 9, ISOCCY 3, ISOCTRY 2, BLOOMBERG `BBG_WIDTH` 32, RIC `RIC_WIDTH` 32, `IDENTIFIER_VALUE_WIDTH` 64 for every other type, FIX-named or not)
-  pub fn rank(&self, value: &str) -> u8  (how real `value` is as a value of this type, from zero to `max_rank`: a registered code's `CodeValue::rank` - an ISIN, a CUSIP, a SEDOL, a FIGI, a CFI, an ISO currency or country code - read at the case the type stores it in, one for every other type, zero for a value the type refuses; what `Identifiers` decides a restated key by; allocation-free)
+  pub const fn value_dtype(&self) -> DataType  (the datatype a column of this type's values declares: `isin`, `cusip`, `sedol`, `figi`, `ric`, `bbg`, `ccy`, `country`, `cfi`, `forex`, `lei`, `dti`, else `utf8`)
+  pub fn max_value_width(&self) -> usize  (ISIN 12, CUSIP 9, SEDOL 7, FOREX 7, FIGI 12, WKN 6, CFI 6, VALOR 9, ISOCCY 3, ISOCTRY 2, BLOOMBERG `BBG_WIDTH` 32, RIC `RIC_WIDTH` 32, LEI `LEI_WIDTH` 20, DTI `DTI_WIDTH` 9, `IDENTIFIER_VALUE_WIDTH` 64 for every other type, FIX-named or not)
+  pub fn rank(&self, value: &str) -> u8  (how real `value` is as a value of this type, from zero to `max_rank`: a registered code's `CodeValue::rank` - an ISIN, a CUSIP, a SEDOL, a FIGI, an LEI, a DTI, a CFI, an ISO currency or country code - read at the case the type stores it in, one for every other type, zero for a value the type refuses; what `Identifiers` decides a restated key by; allocation-free)
   pub fn max_rank(&self) -> u8  (the rank of a real value: `CodeValue::MAX_RANK` for an ISIN or a CFI, two; one for every other type)
   pub fn is_real(&self, value: &str) -> bool  (`rank(value) == max_rank()`)
 
@@ -6840,16 +6912,17 @@ pub enum IdSource  (eighteen members the crate names and `Other(IdWord)` for any
   pub fn SymbolCode::instrument(text: &str) -> Option<SymbolCode>  (an instrument key shaped twelve, four and three ASCII letters and digits, each part read by its own type and none where it refuses it; what an `*INSTRUMENTID` security identifier's tail is read by)
 
 ### yggdryl::isin_registry  [rust/src/isin_registry.rs]  (the instrument registry: one row per ISIN of every security fact it is known by, learned from and filled into market elements by the ordered lifecycle, filled from by every parse door off the snapshot it fixes as it opens, bound to a store it is loaded from and committed back to as one snapshot)
-pub struct IsinEntry  (one instrument's row: `isin`, `updunix` (ns UTC of the statement that last moved it, a stamp and never a gate), the detailed `cficode`, the `countrycode` of issue stated beside the ISIN, the `forexcode` pair, the `miccode` its listing facts belong to (never `XXXX`), the `ticker` (1 to 64 bytes, trimmed), the listing's `currency` (never `XXX`), and one code per `SecurityIDSource(22)` type but the ISIN, at most `IsinRegistry::MAX_EQUIVALENTS`; Clone, Debug, Eq, PartialEq; re-exported at the crate root)
+pub struct IsinEntry  (one instrument's row: `isin`, `updunix` (ns UTC of the statement that last moved it, a stamp and never a gate), the detailed `cficode`, the `countrycode` of issue stated beside the ISIN, the `forexcode` pair, the `underlyingisin` it is written on (a real ISIN other than its own), the `miccode` its listing facts belong to (never `XXXX`), the `ticker` (1 to 64 bytes, trimmed), the listing's `currency` (never `XXX`), and one code per `SecurityIDSource(22)` type but the ISIN, at most `IsinRegistry::MAX_EQUIVALENTS`; Clone, Debug, Eq, PartialEq; re-exported at the crate root)
   pub fn new(isin: Isin) -> Self
   pub fn dtype() -> DataType
-  pub fn field() -> Field  (the non-null struct `isinregistry`: `isin`, `updunix` `datetime64(ns,"UTC")`, `cficode` `cfi`, `countrycode` `country`, `forexcode` `forex`, `miccode` `mic`, `ticker` `utf8`, `currency` `ccy`, then one column per `SecurityIDSource(22)` type but the ISIN in code-set order, each `IdType::value_dtype`; 40 columns)
+  pub fn field() -> Field  (the non-null struct `isinregistry`: `isin`, `updunix` `datetime64(ns,"UTC")`, `cficode` `cfi`, `countrycode` `country`, `forexcode` `forex`, `underlyingisin` `isin`, `miccode` `mic`, `ticker` `utf8`, `currency` `ccy`, then one column per `SecurityIDSource(22)` type but the ISIN in code-set order, each `IdType::value_dtype`; 41 columns)
   pub fn isin(&self) -> &Isin
   pub fn updunix(&self) -> Option<i64>
   pub fn cficode(&self) -> Option<&Cfi>
   pub fn countrycode(&self) -> Option<&Country>  (the country stated beside the ISIN; none in a folded row where it is the ISIN's own prefix)
   pub fn country(&self) -> Option<Country>  (the stated one, else the ISIN's prefix where ISO 3166 lists it; an agency prefix - `XS`, `EU`, `XT` - none)
   pub fn forexcode(&self) -> Option<&Forex>
+  pub fn underlyingisin(&self) -> Option<&Isin>  (the instrument it is written on - FIX's underlying; real, never the row's own ISIN; an instrument fact no listing switch clears)
   pub fn miccode(&self) -> Option<&Mic>
   pub fn ticker(&self) -> Option<&str>
   pub fn currency(&self) -> Option<&Ccy>
@@ -6859,6 +6932,7 @@ pub struct IsinEntry  (one instrument's row: `isin`, `updunix` (ns UTC of the st
   pub fn with_cficode(self, code: Option<Cfi>) -> Self  (a coarse code is stored as none)
   pub fn with_countrycode(self, code: Option<Country>) -> Self  (a code ISO 3166 does not list is stored as none)
   pub fn with_forexcode(self, code: Option<Forex>) -> Self
+  pub fn with_underlyingisin(self, isin: Option<Isin>) -> Self  (the row's own ISIN is stored as none)
   pub fn with_miccode(self, code: Option<Mic>) -> Self  (`XXXX` is stored as none)
   pub fn with_ticker(self, ticker: Option<SmolStr>) -> Self  (trimmed, 1 to 64 bytes, else none)
   pub fn with_currency(self, code: Option<Ccy>) -> Self  (`XXX` is stored as none)
@@ -6878,14 +6952,14 @@ pub struct IsinRegistry  (one row per real ISIN - closing under a listed prefix 
   pub fn get(&self, isin: &str) -> Option<&IsinEntry>  (borrowed, allocation-free)
   pub fn get_by_ticker(&self, ticker: &str, market: Option<&Mic>) -> Option<&IsinEntry>  (the ticker trimmed, through the ticker index: the one row listing the ticker whose market is `market`, or whose market or `market` - none and `XXXX` unstated - is unstated; two rows answering is ambiguous and answers none)
   pub fn iter(&self) -> impl Iterator<Item = &IsinEntry>  (ISIN order)
-  pub fn merge(&mut self, entry: IsinEntry) -> Result<bool>  (the update rule, no clock gate: a stated valid value fills a column the row lacks and replaces one it holds that differs; a code that is no real value of its type (`IdType::is_real`) is dropped with one warning per column; a CFI code compatible with the held one refines it and a contradicting one replaces it; a stated country that is the ISIN's own prefix takes a differing held one back; a ticker or a listing code stated on another market switches the listing whole - market, ticker, currency, listing codes - clearing what it does not restate, a currency alone never; a new code type past `MAX_EQUIVALENTS` is passed over and moves nothing; `updunix` the later, only where something moved; a statement that moves nothing allocates nothing; refuses an ISIN that is not real - a `ZZ` number, a masked one, a typo - and a new ISIN past `max_instruments`)
+  pub fn merge(&mut self, entry: IsinEntry) -> Result<bool>  (the update rule, no clock gate: a stated valid value fills a column the row lacks and replaces one it holds that differs; a code that is no real value of its type (`IdType::is_real`) is dropped with one warning per column; a CFI code compatible with the held one refines it and a contradicting one replaces it; a stated country that is the ISIN's own prefix takes a differing held one back; a stated underlying fills or replaces as an instrument fact, one that is no real ISIN dropped with one warning; a ticker or a listing code stated on another market switches the listing whole - market, ticker, currency, listing codes - clearing what it does not restate, a currency alone never; a new code type past `MAX_EQUIVALENTS` is passed over and moves nothing; `updunix` the later, only where something moved; a statement that moves nothing allocates nothing; refuses an ISIN that is not real - a `ZZ` number, a masked one, a typo - and a new ISIN past `max_instruments`)
   pub fn remove(&mut self, isin: &str) -> Option<IsinEntry>
   pub fn clear(&mut self)
-  pub fn learn<E: Market + Event + ?Sized>(&mut self, event: &E) -> bool  (keyed by the stated ISIN alone - a real one, closing under a listed prefix, never a derivation - at its `currunix`; reads the detailed CFI, the market but `XXXX`, the ticker, the currency but `XXX` unless the event holds a `forex` identifier (the dealt currency, not the listing's), the pair it states as a `forex` identifier, and each equivalent type's base key it states with a real value (`IdType::is_real`) - never one it only derived, a masked number or a typo; a new ISIN past the bound skipped with one warning per registry)
+  pub fn learn<E: Market + Event + ?Sized>(&mut self, event: &E) -> bool  (keyed by the stated ISIN alone - a real one, closing under a listed prefix, never a derivation - at its `currunix`; reads the detailed CFI, the market but `XXXX`, the ticker, the currency but `XXX` unless the event holds a `forex` identifier (the dealt currency, not the listing's), the pair it states as a `forex` identifier, and each equivalent type's base key it states with a real value (`IdType::is_real`) - never one it only derived, a masked number or a typo, and never an underlying, which the FIX lifecycle learns beside a message (`FixMsg::stated_underlying_isin`, crate-private); a new ISIN past the bound skipped with one warning per registry)
   pub fn fill<E: Market + Element + ?Sized>(&self, element: &mut E) -> bool  (from the row its real ISIN - stated or derived - names, a miss ending the fill, else its ticker's on its market (`get_by_ticker`), the ISIN derived first - over none, or over a number ranking below it, a masked one or a typo: each equivalent of a type it holds nothing of through `derive_securityid`, the listing codes only where its market - none and `XXXX` unstated - is the row's or either is unstated, the pair, the ticker on the same market, its CFI code where it states none or the row's refines it, the currency only where both markets are stated and equal, the ticker is the row's and it states none; finalized where anything moved; never a FIX field or the wire)
   pub fn enrich<E: Market + Event + ?Sized>(&mut self, event: &mut E) -> bool  (learn, then fill)
   pub fn from_arrow_reader(reader: BatchReader) -> crate::arrow::Result<Self>  (unbound and clean after the load)
-  pub fn extend_from_arrow_reader(&mut self, reader: BatchReader) -> crate::arrow::Result<usize>  (each column resolved once from the schema - the registry's own name, any spelling of an identifier type (`RIC`, `BloombergSymbol`, `ISINCode`), a field name a type is spelled by, the market spellings `cfi`/`mic`/`symbol`/`tickersymbol`/`country`/`countryofissue`/`ccy`/`currencycode`/`forex`/`ccypair` - an unknown one ignored, two naming one fact refused naming both, no `isin` refused unless the stream has no column at all, the empty stream a missing store reads as; one cast plan, a code column's cells adopted as the landing proved them, a `utf8` one's through its type's rule, each row folded through `merge`, a refusal located `$[row].column`, a load past `max_instruments` refused; how many rows it read)
+  pub fn extend_from_arrow_reader(&mut self, reader: BatchReader) -> crate::arrow::Result<usize>  (each column resolved once from the schema - the registry's own name, any spelling of an identifier type (`RIC`, `BloombergSymbol`, `ISINCode`), a field name a type is spelled by, the market spellings `cfi`/`mic`/`symbol`/`tickersymbol`/`country`/`countryofissue`/`ccy`/`currencycode`/`forex`/`ccypair`, `underlyingisin` or any key naming an underlying's ISIN (`UnderlyingISIN`) - an unknown one ignored, two naming one fact refused naming both, no `isin` refused unless the stream has no column at all, the empty stream a missing store reads as; one cast plan, a code column's cells adopted as the landing proved them, a `utf8` one's through its type's rule, each row folded through `merge`, a refusal located `$[row].column`, a load past `max_instruments` refused; how many rows it read)
   pub fn extend_from_handle(&mut self, handle: &dyn IOBase) -> Result<usize>  (the handle's own record stream - an Arrow IPC file, Parquet, a folder of either, an object store - through `extend_from_arrow_reader`, binding nothing)
   pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader>  (a snapshot stream under `IsinEntry::field()` in ISIN order, one bounded batch at a time, which a learn while it streams does not move; written by `IOBase::write_arrow_reader`, a merge by `isin` upserting)
 
@@ -7089,17 +7163,17 @@ impl Record<'_>
   pub fn stable_hash(&self) -> u64  (XXH3-64 of the logger's name, the level and the rendered message, each framed; the message is rendered into the hash, never into text)
 
 ### yggdryl::side  [rust/src/side.rs]
-  pub enum Side  (#[repr(u8)], one byte; an Enum-family leaf, `DataTypeId::Side = 0xc3`, stored as the `uint8` code of its member under `yggdryl.side` over Arrow UInt8: `Unknown = 0`, then `Buy = 1`, `Sell`, `BuyMinus`, `SellPlus`, `SShort`, `SShortEx`, `Undisc`, `Cross`, `CrossSh`, `CrossShX`, `AsDef`, `Opposite`, `Subscr`, `Redeem`, `Lend`, `Borrow`, `SellUnd = 17` in FIX `Side(54)` code order; Copy, Default (Unknown), total Ord by code; Display and serde as the stored four-letter code, deserialized from a code or a spelling; `SideType` marks its field, `SideField` is `FieldOf<SideType>`)
+  pub enum Side  (#[repr(u8)], one byte; an Enum-family leaf, `DataTypeId::Side = 0xc3`, stored as the `uint8` code of its member under `yggdryl.side` over Arrow UInt8: `Unknown = 0`, then `Buy = 1`, `Sell`, `BuyMinus`, `SellPlus`, `SShort`, `SShortEx`, `Undisc`, `Cross`, `CrossSh`, `CrossShX`, `AsDef`, `Opposite`, `Subscr`, `Redeem`, `Lend`, `Borrow`, `SellUnd = 17` in FIX `Side(54)` code order, then `Both = 99` (`BOTH`), both sides at once - a book's and a two-sided quote's - with no wire character; Copy, Default (Unknown), total Ord by code; Display and serde as the stored four-letter code, deserialized from a code or a spelling; `SideType` marks its field, `SideField` is `FieldOf<SideType>`)
   pub const ALL: &'static [Self]  (every member in code order)
   pub const fn code(self) -> u8
-  pub const fn as_str(self) -> &'static str  (the stored four-letter code: `UNKN`, `BUYS`, `SELL`, `BUYM`, `SELP`, `SSHT`, `SSEX`, `UNDI`, `CROS`, `CRSH`, `CRSX`, `ASDF`, `OPPO`, `SUBS`, `REDM`, `LEND`, `BORR`, `SELU`)
+  pub const fn as_str(self) -> &'static str  (the stored four-letter code: `UNKN`, `BUYS`, `SELL`, `BUYM`, `SELP`, `SSHT`, `SSEX`, `UNDI`, `CROS`, `CRSH`, `CRSX`, `ASDF`, `OPPO`, `SUBS`, `REDM`, `LEND`, `BORR`, `SELU`, `BOTH`)
   pub const fn description(self) -> &'static str  (the long name: `Buy.`, `Sell short.`)
   pub const fn from_code(code: u8) -> Option<Self>
   pub fn from_name(name: &str) -> Option<Self>  (the stored name exactly)
   pub fn new(value: impl AsRef<str>) -> Result<Self>  (`read` over any text)
-  pub const fn fix_code(self) -> Option<char>  (`1`..=`9`, `A`..=`H`; `None` for `Unknown`)
+  pub const fn fix_code(self) -> Option<char>  (`1`..=`9`, `A`..=`H`; `None` for `Unknown` and `Both`, which no message carries)
   pub const fn is_bid(self) -> bool  (`BUYS`, `BUYM`: a party willing to pay, the bid of a quote or a book)
-  pub const fn is_ask(self) -> bool  (`SELL`, `SELP`, `SSHT`, `SSEX`, `SELU`; a cross, `UNDI`, `ASDF`, `OPPO`, the four others and `UNKN` take neither side)
+  pub const fn is_ask(self) -> bool  (`SELL`, `SELP`, `SSHT`, `SSEX`, `SELU`; a cross, `UNDI`, `ASDF`, `OPPO`, the four others, `UNKN` and `BOTH` - which holds both legs and so takes neither one - take neither side)
   pub const fn merge_with(self, other: Self) -> Self  (Unknown takes the other; anything stated stands)
   pub fn read(spelling: &str) -> Result<Self>  (`from_spelling` as a refusal naming the spelling, kind "side")
   pub fn read_code(code: i64) -> Result<Self>  (`from_code` as a refusal naming the code)
@@ -7108,7 +7182,7 @@ impl Record<'_>
   pub type SideField = FieldOf<SideType>;
 
 ### yggdryl::state  [rust/src/state.rs]
-  pub enum State  (#[repr(u16)], #[non_exhaustive]; sixty-one members from Unknown = 0 to NotFound = 9506 - `Updated = 3004`, stated anew over a live predecessor, in the working band - each stored as its `uint16` code, the hundreds of the code its rank: 0 unknown, 10 pending, 20 acknowledged, 30 working, 40 working with events, 50 halted, 60 change outstanding, 70 changed and carrying on, 80-89 done, 90-94 cancelled, 95-99 failed; Copy, Default (Unknown), total Ord by code; `StateType` marks its field, `StateField` is `FieldOf<StateType>`; Display and serde as the stored name, deserialized from a code or a spelling)
+  pub enum State  (#[repr(u16)], #[non_exhaustive]; sixty-two members from Unknown = 0 to NotFound = 9506 - `Updated = 3004`, stated anew over a live predecessor, in the working band - each stored as its `uint16` code, the hundreds of the code its rank: 0 unknown, 10 pending, 20 acknowledged, 30 working, 40 working with events, or acknowledged and awaiting its next step (`PendingVerification` 4006, `PendingAllocation` 4007, `PendingApproval` 4008), 50 halted, 60 change outstanding, 70 changed and carrying on, 80-89 done (`Approved` 8013 among them, reached by spelling and by no FIX status code), 90-94 cancelled, 95-99 failed; Copy, Default (Unknown), total Ord by code; `StateType` marks its field, `StateField` is `FieldOf<StateType>`; Display and serde as the stored name, deserialized from a code or a spelling)
   pub const ALL: &'static [Self]  (every member in code order)
   pub const fn as_str(self) -> &'static str  (the stored name: `PARTIALLY_FILLED`)
   pub const fn description(self) -> &'static str
@@ -7321,7 +7395,7 @@ pub struct CfiGroup  (a group letter and its name, under one category)
   pub const fn identifier(&self) -> DataTypeId
   pub const fn datatype(&self) -> DataType
 impl DataType
-  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("ccy", DataType::Ccy, 8), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("cusip", DataType::Cusip, 9), ("sedol", DataType::Sedol, 7), ("bbg", DataType::Bbg, 32), ("figi", DataType::Figi, 12), ("unit", DataType::Unit, 32), ("ric", DataType::Ric, 32), ("forex", DataType::Forex, 7)];  (the newest code last)
+  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("ccy", DataType::Ccy, 8), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("cusip", DataType::Cusip, 9), ("sedol", DataType::Sedol, 7), ("bbg", DataType::Bbg, 32), ("figi", DataType::Figi, 12), ("unit", DataType::Unit, 32), ("ric", DataType::Ric, 32), ("forex", DataType::Forex, 7), ("lei", DataType::Lei, 20), ("bic", DataType::Bic, 11), ("elf", DataType::Elf, 4), ("dti", DataType::Dti, 9), ("fisn", DataType::Fisn, 35)];  (the newest code last)
   pub const fn country() -> Self
   pub const fn ccy() -> Self
   pub const fn mic() -> Self
@@ -7333,6 +7407,12 @@ impl DataType
   pub const fn ric() -> Self
   pub const fn figi() -> Self
   pub const fn unit() -> Self
+  pub const fn lei() -> Self
+  pub const fn bic() -> Self
+  pub const fn elf() -> Self
+  pub const fn dti() -> Self
+  pub const fn fisn() -> Self
+
   pub const fn code_name(&self) -> Option<&'static str>
   pub const fn code_width(&self) -> Option<usize>  (the most bytes one value may be; a maximum, so fixed_byte_width is None)
   pub const fn is_code(&self) -> bool
@@ -7355,7 +7435,7 @@ impl StringEnum
   pub const CURRENCIES: &'static [&'static str]
   pub const COUNTRIES: &'static [&'static str]
   pub const MICS: &'static [&'static str]
-  pub const SIDES: &'static [&'static str]  (the explicit side codes, sorted: ASDF, BORR, BUYM, BUYS, CROS, CRSH, CRSX, LEND, OPPO, REDM, SELL, SELP, SELU, SSEX, SSHT, SUBS, UNDI, UNKN - one per side FIX's Side(54) names across every version and UNKN; never FIX's one-character codes, which `Side::from_spelling` maps onto them)
+  pub const SIDES: &'static [&'static str]  (the explicit side codes, sorted: ASDF, BORR, BOTH, BUYM, BUYS, CROS, CRSH, CRSX, LEND, OPPO, REDM, SELL, SELP, SELU, SSEX, SSHT, SUBS, UNDI, UNKN - one per side FIX's Side(54) names across every version, UNKN and BOTH; never FIX's one-character codes, which `Side::from_spelling` maps onto them)
   pub const TIMESINFORCE: &'static [&'static str]
   pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]  // ccy, country, mic, exchange, side, timeinforce
   pub fn from_logical_name(name: &str) -> Result<Self>
