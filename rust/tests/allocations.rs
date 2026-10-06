@@ -1095,6 +1095,27 @@ fn a_service_rebuild_allocates_per_delta_not_per_level() {
     );
 }
 
+/// A book's readings by kind - its resting orders, and the orders, quotes,
+/// executions and every other delta among its deltas - borrow the entries
+/// the book holds: nothing is allocated, at 8 entries or 1,024, the resting
+/// orders walking every live quote to find none.
+#[test]
+fn a_book_s_readings_by_kind_allocate_nothing() {
+    for entries in [8, 1_024] {
+        let book = allocation_book(entries);
+        assert_eq!(book.quotes().count(), entries);
+        assert_eq!(book.ordlive().count(), 0);
+        assert_eq!(book.events().count(), 0);
+        free("reading a book's entries by kind", || {
+            black_box(book.ordlive().map(black_box).count());
+            black_box(book.orddelta().map(black_box).count());
+            black_box(book.quotes().map(black_box).count());
+            black_box(book.executions().map(black_box).count());
+            black_box(book.events().map(black_box).count());
+        });
+    }
+}
+
 #[test]
 fn one_book_update_does_not_allocate_per_live_entry() {
     let mut shallow = allocation_book(1);
@@ -5096,6 +5117,9 @@ fn a_chunked_cast_compiles_one_plan_and_applies_it_per_chunk() {
     // hands a chunked serie under its own field back as the two vectors of
     // a clone, and a held chunked column crosses into a stream without a
     // row read: the same count at ninety-six rows as at sixteen thousand.
+    // Resolve the process default before measuring application costs: its
+    // one-time environment read is not part of every additional chunk.
+    black_box(yggdryl::SpillOptions::from_env().expect("spill options"));
     let wide = Field::new("count", DataType::Float64, true);
     let options = ArrowCastOptions::new();
     let mut streamed = Vec::new();
@@ -5291,6 +5315,57 @@ fn a_text_to_boolean_cast_allocates_nothing_per_cell() {
     assert_eq!(
         counts[0], counts[1],
         "a text to boolean cast cost {counts:?} allocations at 64 and 4096 rows"
+    );
+}
+
+#[test]
+fn stated_bits_cast_by_sharing_the_buffer_at_any_length() {
+    // A column stating `FIELD:representation=bits` takes a `uint64` column
+    // as the `int64` of its bits under a cast asking for values: the value
+    // buffer is shared, so a column costs the array handle whatever its
+    // length - never a buffer, never a row.
+    let source = Field::new("digest", DataType::UInt64, false);
+    let mut target = Field::new("digest", DataType::Int64, false);
+    target
+        .as_field_properties_mut()
+        .set_representation(yggdryl::Representation::Bits)
+        .expect("an integer column states bits");
+    let plan = ArrowCastPlan::compile(&source, &target, ArrowCastOptions::new())
+        .expect("a uint64 column casts into its bits");
+    let mut counts = Vec::new();
+    for rows in [64_usize, 4_096] {
+        let column = Serie::from_scalars(
+            source.clone(),
+            (0..rows as u64).map(|row| Scalar::from(u64::MAX - row)),
+        )
+        .expect("a uint64 column");
+        let cast = || plan.apply(&column).expect("the column casts");
+        drop(cast());
+        let (allocations, signed) = counted(cast);
+        assert_eq!(signed.len(), rows);
+        assert_eq!(signed.scalar(0).expect("a row"), Scalar::from(-1_i64));
+        assert!(
+            signed
+                .as_int64()
+                .expect("an int64 column")
+                .array()
+                .values()
+                .inner()
+                .ptr_eq(
+                    column
+                        .as_uint64()
+                        .expect("a uint64 column")
+                        .array()
+                        .values()
+                        .inner()
+                ),
+            "the bits of {rows} rows were copied"
+        );
+        counts.push(allocations);
+    }
+    assert_eq!(
+        counts[0], counts[1],
+        "a stated bits cast cost {counts:?} allocations at 64 and 4096 rows"
     );
 }
 
@@ -5857,7 +5932,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 54] = [
+    let seeds: [(DataTypeId, Scalar); 59] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -5908,6 +5983,11 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Ric, Scalar::from("AAPL.OQ")),
         (DataTypeId::Forex, Scalar::from("EURUSD")),
         (DataTypeId::Figi, Scalar::from("BBG000BLNQ16")),
+        (DataTypeId::Lei, Scalar::from("HWUPKR0MPOU8FGXBT394")),
+        (DataTypeId::Bic, Scalar::from("DEUTDEFF500")),
+        (DataTypeId::Elf, Scalar::from("8888")),
+        (DataTypeId::Dti, Scalar::from("X9J9K872S")),
+        (DataTypeId::Fisn, Scalar::from("ACME CORP/SH")),
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("NEW")),
         (DataTypeId::MarketDataKind, Scalar::from("ORDR")),
@@ -7658,7 +7738,7 @@ struct StageCosts {
 /// no longer pays a table of names: a frame's walk stands at 7; and a bridge
 /// row's fell from 35 to 8 when redating a message a parse built settled
 /// what its clock moved alone. A trade side stating no `Side(54)` came to
-/// split off an execution of side `UNKN` where it noted an anomaly: the
+/// split off an execution of side `UKNW` where it noted an anomaly: the
 /// packed frame's parse 1029 to 1132, that execution's 106 less the
 /// anomaly's 3. Reading the accounts off the parties at every settle took
 /// the bridge row to 641 and the packed frame to 1145, thirteen each for
@@ -7941,14 +8021,15 @@ struct StageCosts {
 /// for the refusal it then dropped - so a datetime field costs a parse
 /// nothing, and no other stage moved.
 ///
-/// The fixed row then gained `msgpluginside` (65041), the role of the
-/// plugin whose session produced the message - a required `pluginside`
-/// column the codec stamps on every message it builds, `UKNW` under no
-/// source. Each landing rose by the five a `uint8` column holding no null
-/// costs to lay out - the bridge row's to 1505, a frame's to 1485, the
-/// packed frame's to 1523 - and each batch by the one array it gathers
-/// more, to 211; no parse, `into_row`, digest or lifecycle moved, the
-/// column being a stamp read off the codec and no key of the line.
+/// The strike then came to be a market fact, `strikepx`, a column of the
+/// fixed row's shared prefix none of these messages states: each landing
+/// rose by the seven a nullable decimal column holding a null costs to lay
+/// out - its values, its validity and the array around them - to 1507, 1487
+/// and 1525, and each batch by the one array it gathers more, to 211; no
+/// other stage moved.
+/// Main also adds the required `msgpluginside` column (65042), whose
+/// five landing allocations combine with strike's seven: 1512, 1492 and
+/// 1530. Both added arrays make each batch 212; no per-row stage moved.
 ///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
@@ -7958,8 +8039,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 543,
             into_row: 88,
-            landing: 1505,
-            batch: 211,
+            landing: 1512,
+            batch: 212,
             digest: 1,
             lifecycle: 10,
         },
@@ -7970,8 +8051,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 212,
             into_row: 64,
-            landing: 1485,
-            batch: 211,
+            landing: 1492,
+            batch: 212,
             digest: 1,
             lifecycle: 10,
         },
@@ -7982,8 +8063,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 1016,
             into_row: 250,
-            landing: 1523,
-            batch: 211,
+            landing: 1530,
+            batch: 212,
             digest: 1,
             lifecycle: 10,
         },
@@ -8329,7 +8410,10 @@ fn identifier_reads_and_inline_inserts_allocate_nothing() {
         assert!(
             ids.insert(
                 Identifier::new(
-                    IdKey::new(black_box(IdSource::Bic), black_box(IdType::ExecutingTrader)),
+                    IdKey::new(
+                        black_box(IdSource::Proprietary),
+                        black_box(IdType::ExecutingTrader)
+                    ),
                     black_box("ABCDEFGHIJKLMNOPQRSTUVW")
                 )
                 .unwrap()
@@ -8338,6 +8422,37 @@ fn identifier_reads_and_inline_inserts_allocate_nothing() {
         assert_eq!(ids.len(), 3);
         black_box(&ids);
     });
+    // A value under the bic or the legalentityidentifier source is held as
+    // the code and ranked by it in place: an eleven-byte BIC and a
+    // twenty-byte LEI stay inline, and a closing LEI replacing a typo under
+    // its key moves no slot.
+    let lei = |value: &str| {
+        Identifier::new(
+            IdKey::new(IdSource::LegalEntityIdentifier, IdType::ClientId),
+            value,
+        )
+    };
+    let mut coded: Identifiers = [lei("HWUPKR0MPOU8FGXBT395").unwrap()].into_iter().collect();
+    free(
+        "a BIC and an LEI held and ranked under their sources",
+        || {
+            let firm = Identifier::new(
+                IdKey::new(black_box(IdSource::Bic), black_box(IdType::ExecutingFirm)),
+                black_box("deutdeff500"),
+            )
+            .unwrap();
+            assert_eq!(firm.value(), "DEUTDEFF500");
+            black_box(coded.insert(lei(black_box("hwupkr0mpou8fgxbt394")).unwrap()));
+            black_box((&firm, &coded));
+        },
+    );
+    assert_eq!(
+        coded.get_from(&IdKey::new(
+            IdSource::LegalEntityIdentifier,
+            IdType::ClientId
+        )),
+        Some("HWUPKR0MPOU8FGXBT394")
+    );
 }
 
 /// An ISIN registry learns a statement of a known instrument that says
@@ -8583,10 +8698,11 @@ fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
 /// A snapshot stream shares the table rather than copying it: opening one
 /// costs the same five allocations at 64 instruments as at 4,096 - the
 /// reader, its schema and its field - and draining it lays each row out
-/// once, eight allocations a row - the named row, a B-tree of its forty
+/// once, eight allocations a row - the named row, a B-tree of its forty-two
 /// cells inserted in column order, which takes six leaf nodes behind one
-/// `Arc` where the thirty-seven cells of the row before `countrycode`,
-/// `forexcode` and `currency` were added took five, and its canonical run -
+/// `Arc` as the forty-one before `eusipacode` did, where the thirty-seven
+/// cells of the row before `countrycode`, `forexcode` and `currency` were
+/// added took five, and its canonical run -
 /// plus one doubling of the batch's row vector each time the rows double.
 #[test]
 fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
@@ -8616,10 +8732,12 @@ fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
 
 /// Reloading rows the registry already holds - a golden file read again -
 /// costs each batch the same whatever its rows: one cast plan for the
-/// stream, the landing per batch - one narrowing per column of the forty,
-/// three more than the thirty-seven before `countrycode`, `forexcode` and
-/// `currency` were added - and a code cell adopted as the landing proved
-/// it, so a row that moves nothing allocates nothing.
+/// stream, the landing per batch - one narrowing per column of the
+/// forty-two, one more than the forty-one before `eusipacode` was added and
+/// two more than the forty before `underlyingisin` was, four more than the
+/// thirty-seven before `countrycode`, `forexcode` and `currency` were - and
+/// a code cell adopted as the landing proved it, so a row that moves
+/// nothing allocates nothing.
 #[test]
 fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     let mut each_at = Vec::new();
@@ -8650,7 +8768,7 @@ fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     }
     assert_eq!(
         each_at,
-        [50, 50],
+        [52, 52],
         "a batch of 64 and of 512 known rows: a cost per row"
     );
 }
@@ -9376,9 +9494,12 @@ fn spill_costs(column: &Serie, options: &yggdryl::SpillOptions) -> Vec<usize> {
 #[test]
 fn spilling_a_column_costs_a_constant_whatever_its_row_count() {
     // A flat column spills whole for one allocation per buffer it maps -
-    // the values, then the validity where there is one - one for the
-    // platform temporary folder resolved where no folder is stated (a
-    // stated one is cloned for nothing), and fourteen that follow nothing:
+    // the values, then the validity where there is one - and twelve that
+    // follow nothing. The native folder is resolved once: a default spill
+    // no longer builds a URL only to decode its path, and the joined path
+    // reserves its final size rather than growing for separator and name.
+    // Windows adds two native path conversions for open and unlink.
+    // The remaining allocations hold
     // the array handle and its data, the file's path, name and joined path,
     // the one write buffer, the skeleton the process keeps, the mapping, the
     // rebuilt data and array, and the leaf it lands as. The bytes go to the
@@ -9387,10 +9508,12 @@ fn spilling_a_column_costs_a_constant_whatever_its_row_count() {
     //
     // A record of two required children - `venue: utf8`, `count: int64` -
     // holds no buffer of its own, so it spills child by child at each
-    // child's flat cost (seventeen for the text's offsets and bytes, sixteen
-    // for the counts), beside the children ordered by weight, each child's
+    // child's flat cost (fourteen for the text's offsets and bytes, thirteen
+    // for the counts, plus the native calls on Windows), beside the children
+    // ordered by weight, each child's
     // name, and the record's leaf and child list copied once off the clone
-    // it shares them with: thirty-eight.
+    // it shares them with: thirty-two, or thirty-six on Windows.
+    let two_buffers = 14 + 2 * usize::from(cfg!(windows));
     let everything = yggdryl::SpillOptions::new().with_byte_size(0);
     let stated = everything
         .clone()
@@ -9401,21 +9524,26 @@ fn spilling_a_column_costs_a_constant_whatever_its_row_count() {
                 "int64 with a validity",
                 spill_corpus(rows, true),
                 &everything,
-                17,
+                two_buffers,
             ),
             (
                 "int64 with no validity",
                 spill_corpus(rows, false),
                 &everything,
-                16,
+                two_buffers - 1,
             ),
             (
                 "int64 with a validity, a folder stated",
                 spill_corpus(rows, true),
                 &stated,
-                16,
+                two_buffers,
             ),
-            ("record<utf8, int64>", quote_records(rows), &everything, 38),
+            (
+                "record<utf8, int64>",
+                quote_records(rows),
+                &everything,
+                2 * two_buffers + 4,
+            ),
         ] {
             assert!(!column.is_spilled(), "{what}");
             assert_eq!(

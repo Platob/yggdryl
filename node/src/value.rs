@@ -92,18 +92,8 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         D::Geometry(_) | D::Geography(_) => JsValueHint::Buffer,
         // A code reads back as the text it stores and a UUID as its
         // hyphenated spelling, so both project as the string family does.
-        string if string.is_string() => JsValueHint::String,
-        D::Country
-        | D::Ccy
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bbg
-        | D::Figi
-        | D::Forex
-        | D::Side
+        text if text.is_string() || text.is_code() => JsValueHint::String,
+        D::Side
         | D::State
         | D::MarketDataKind
         | D::MarketDataType
@@ -362,7 +352,7 @@ fn text_or_binary_to_js<'env>(
                 .to_vec(),
         )
         .into_unknown(env)?,
-        string if string.is_string() => value
+        text if text.is_string() || text.is_code() => value
             .as_str()
             .ok_or_else(|| napi_error("invalid native string record value"))?
             .to_owned()

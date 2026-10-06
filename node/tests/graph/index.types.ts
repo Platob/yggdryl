@@ -20,6 +20,7 @@ import {
   type MarketItem,
   type Order,
   type OrderEvent,
+  type QuoteEvent,
 } from '../..'
 
 // The operation leaves take their named facts as one plain object, or the
@@ -73,6 +74,12 @@ const alive: MarketData[] = book.alive()
 const bids: MarketData[] = book.aliveOn('BUYS')
 const asks: MarketData[] = book.aliveOn(2)
 const deltas: MarketData[] = book.deltas()
+// The same entries by kind: the orders resting, and the deltas' orders,
+// quotes and executions, each the typed leaf.
+const ordlive: OrderEvent[] = book.ordlive()
+const orddelta: OrderEvent[] = book.orddelta()
+const bookQuotes: QuoteEvent[] = book.quotes()
+const bookExecutions: ExecutionEvent[] = book.executions()
 const complete: boolean = book.isComplete
 const keyed: BookEvent = graph.BookEvent.keyed(1n, 'CH0012214059')
 const rebuilt: BookEvent | null = book.withPrevious(keyed)
@@ -120,8 +127,6 @@ const bidqty: string | null = candle.bidqty
 const bookCount: number = candle.books
 // @ts-expect-error a candle counts books; what traded is no book's
 void candle.volume
-// @ts-expect-error a book holds no execution
-void book.executions()
 const candleField: Field = graph.Candle.field()
 const candleScalar: Scalar = candle.intoScalar()
 const restoredCandle: Candle = graph.Candle.fromScalar(candleScalar)
@@ -171,6 +176,7 @@ void field
 void rows
 void marketKinds
 void [alive, bids, asks, deltas, complete, keyed, rebuilt, filtered, heldFilter, termFilter]
+void [ordlive, orddelta, bookQuotes, bookExecutions]
 void books
 void walked
 void snapshotNs

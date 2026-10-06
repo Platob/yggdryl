@@ -96,7 +96,12 @@ impl LocalFolder {
     /// # }
     /// ```
     pub fn temporary() -> Result<Self> {
-        Self::new(std::env::temp_dir())
+        Self::new(Self::temporary_path())
+    }
+
+    /// The native temporary path, shared with spill's direct file creation.
+    pub(crate) fn temporary_path() -> PathBuf {
+        std::env::temp_dir()
     }
 
     /// The current user's home directory.
@@ -179,9 +184,10 @@ impl LocalFolder {
         self.url.clone().into_path()
     }
 
-    /// Return whether the directory exists yet.
+    /// Return whether the directory exists yet - a glob location whether its
+    /// pattern selects an entry.
     pub fn exists(&self) -> bool {
-        self.url.is_dir()
+        self.folder_exists()
     }
 
     /// Create the directory and every missing parent.
@@ -267,7 +273,7 @@ impl IOFolder for LocalFolder {
         &self.url
     }
 
-    fn folder_exists(&self) -> bool {
+    fn has_folder(&self) -> bool {
         self.url.is_dir()
     }
 

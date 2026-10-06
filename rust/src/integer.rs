@@ -109,21 +109,73 @@ integer_leaf!(UInt128, u128);
 const _: () = assert!(std::mem::size_of::<Int32>() == 4);
 
 /// The signed integer a value entering an integer column reads as: its
-/// own magnitude, or an enum member's stored code - a member is held and
+/// own magnitude, an enum member's stored code - a member is held and
 /// stored as that code, so a column that stores it as a plain integer, as
-/// an Iceberg table does, takes the member back as it is.
+/// an Iceberg table does, takes the member back as it is - or a decimal
+/// with no fraction, which is how a table with no unsigned type stores a
+/// `uint64` ([`into_scheme_compat`](DataType::into_scheme_compat) widens
+/// it to `decimal(20, 0)`), so the digest it stored reads back as the
+/// number it was. A decimal with a fraction is refused, never rounded.
 fn signed_of(value: &Scalar) -> Option<i128> {
     value
         .as_i128()
         .or_else(|| value.enum_code().map(i128::from))
+        .or_else(|| value.decimal_unscaled_at(0))
 }
 
 /// The unsigned integer a value entering an integer column reads as; the
-/// enum rule of [`signed_of`].
+/// enum and the whole-decimal rules of [`signed_of`], a negative decimal
+/// refused.
 fn unsigned_of(value: &Scalar) -> Option<u128> {
     value
         .as_u128()
         .or_else(|| value.enum_code().map(u128::from))
+        .or_else(|| {
+            value
+                .decimal_unscaled_at(0)
+                .and_then(|whole| u128::try_from(whole).ok())
+        })
+}
+
+/// `value` read as bits under `dtype`: a same-width integer of the other
+/// signedness that `dtype` cannot hold by value - `u64::MAX` under `int64`,
+/// `-1_i64` under `uint64` - as the integer its bits are. `None` for every
+/// other pairing, a value the width holds by value included, whose bits and
+/// value read alike. The reading a column stating
+/// `FIELD:representation=bits` takes; `DataType::scalar` never does.
+pub(crate) fn bits_reading(dtype: &DataType, value: &Scalar) -> Option<Scalar> {
+    use DataType as D;
+    match (dtype, value) {
+        (D::Int8, Scalar::UInt8(held)) => {
+            let bits = held.get().cast_signed();
+            (bits < 0).then(|| Scalar::from(bits))
+        }
+        (D::UInt8, Scalar::Int8(held)) => {
+            (held.get() < 0).then(|| Scalar::from(held.get().cast_unsigned()))
+        }
+        (D::Int16, Scalar::UInt16(held)) => {
+            let bits = held.get().cast_signed();
+            (bits < 0).then(|| Scalar::from(bits))
+        }
+        (D::UInt16, Scalar::Int16(held)) => {
+            (held.get() < 0).then(|| Scalar::from(held.get().cast_unsigned()))
+        }
+        (D::Int32, Scalar::UInt32(held)) => {
+            let bits = held.get().cast_signed();
+            (bits < 0).then(|| Scalar::from(bits))
+        }
+        (D::UInt32, Scalar::Int32(held)) => {
+            (held.get() < 0).then(|| Scalar::from(held.get().cast_unsigned()))
+        }
+        (D::Int64, Scalar::UInt64(held)) => {
+            let bits = held.get().cast_signed();
+            (bits < 0).then(|| Scalar::from(bits))
+        }
+        (D::UInt64, Scalar::Int64(held)) => {
+            (held.get() < 0).then(|| Scalar::from(held.get().cast_unsigned()))
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn canonical_signed(dtype: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {

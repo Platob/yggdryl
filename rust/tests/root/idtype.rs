@@ -53,11 +53,22 @@ fn a_type_reads_codes_keys_and_names_and_keeps_any_other_word() {
         ("FinancialInstrumentGlobalIdentifier", IdType::Figi),
         ("Wertpapier", IdType::Wkn),
         ("Valoren", IdType::Valor),
+        ("X-SWX-VALOR", IdType::Valor),
+        ("x_swx_valor", IdType::Valor),
+        ("Valorennummer", IdType::Valor),
+        ("SIX Symbol", IdType::ExchSymb),
+        ("Valorensymbol", IdType::ExchSymb),
         ("ClOrdID", IdType::ClOrdId),
         ("cl_ord_id", IdType::ClOrdId),
         ("#OrderID", IdType::OrderId),
         ("Executing Trader", IdType::ExecutingTrader),
         ("TradingVenueTransactionIdentifier", IdType::Tvtic),
+        ("FISN", IdType::Fisn),
+        ("FISNCode", IdType::Fisn),
+        ("FinancialInstrumentShortName", IdType::Fisn),
+        ("ELF", IdType::Elf),
+        ("EntityLegalForm", IdType::Elf),
+        ("entity_legal_form_code", IdType::Elf),
     ] {
         let read: IdType = spelling.parse().unwrap();
         assert_eq!(read, expected, "{spelling:?}");
@@ -244,6 +255,15 @@ fn the_fix_source_table_agrees_with_the_code_set_exactly() {
 fn a_security_source_reads_a_code_or_any_spelling_and_refuses_a_ticker() {
     assert_eq!(IdType::from_security_source("4").unwrap(), IdType::Isin);
     assert_eq!(IdType::from_security_source(" 4 ").unwrap(), IdType::Isin);
+    // A vendor's own source spelling reads as the type it names.
+    assert_eq!(
+        IdType::from_security_source("X-SWX-VALOR").unwrap(),
+        IdType::Valor
+    );
+    assert_eq!(
+        IdType::from_security_source("SIX Symbol").unwrap(),
+        IdType::ExchSymb
+    );
     assert_eq!(
         IdType::from_security_source("A").unwrap(),
         IdType::Bloomberg
@@ -335,8 +355,18 @@ fn a_field_name_names_one_instruments_own_identifier_type() {
     assert_eq!(named("wkn").as_deref(), Some("wkn"));
     assert_eq!(named("wertpapier").as_deref(), Some("wkn"));
     assert_eq!(named("valor").as_deref(), Some("valor"));
+    assert_eq!(named("X-SWX-VALOR").as_deref(), Some("valor"));
+    assert_eq!(named("Valorennummer").as_deref(), Some("valor"));
+    assert_eq!(named("SIX_SYMBOL").as_deref(), Some("exchsymb"));
+    assert_eq!(named("Valorensymbol").as_deref(), Some("exchsymb"));
     assert_eq!(named("lei").as_deref(), Some("lei"));
     assert_eq!(named("LegalEntityIdentifier").as_deref(), Some("lei"));
+    // FIX gives a short name and a legal form no source code, so no field
+    // is named for either: FinancialInstrumentShortName(2737) is read by
+    // its tag.
+    assert_eq!(named("FinancialInstrumentShortName"), None);
+    assert_eq!(named("fisn"), None);
+    assert_eq!(named("EntityLegalForm"), None);
     assert_eq!(named("exchange_symbol").as_deref(), Some("exchsymb"));
     assert_eq!(named("cusip_number").as_deref(), Some("cusip"));
     assert_eq!(
@@ -432,6 +462,8 @@ fn a_code_suffixed_security_spelling_reads_at_the_end_of_a_key() {
         ("OMS_InstrumentCode", "dbi;X", "oms:instrumentid=dbi;X"),
         ("OMS_WKNCode", "865985", "oms:wkn=865985"),
         ("OMS_ValorNumber", "1221405", "oms:valor=1221405"),
+        ("OMS_ValorenNumber", "1221405", "oms:valor=1221405"),
+        ("OMS_SIXSymbol", "HOLN", "oms:exchsymb=HOLN"),
         ("OMS_ISINID", "US0378331005", "oms:isin=US0378331005"),
         ("BBGCODE", "AAPL US Equity", "bloomberg=AAPL US Equity"),
         ("BBG", "AAPL US Equity", "bloomberg=AAPL US Equity"),
@@ -439,8 +471,19 @@ fn a_code_suffixed_security_spelling_reads_at_the_end_of_a_key() {
         ("Reuters", "AAPL.O", "ric=AAPL.O"),
         ("ExchSymbol", "AAPL", "exchsymb=AAPL"),
         ("InstrumentCode", "dbi;X", "instrumentid=dbi;X"),
+        ("OMS_FISNCODE", "acme corp/sh", "oms:fisn=ACME CORP/SH"),
     ] {
         assert_eq!(read(key, value).as_deref(), Some(expected), "{key}");
+    }
+    // A legal form names no security, so no key is read as one; nor is a
+    // product category, which no type names.
+    for key in [
+        "OMS_ELFCODE",
+        "EntityLegalFormCode",
+        "EUSIPACode",
+        "SSPACategory",
+    ] {
+        assert_eq!(read(key, "2HBR"), None, "{key}");
     }
     for key in [
         "TICKER",
@@ -540,14 +583,11 @@ fn each_type_holds_its_value_to_its_own_rule() {
     assert_eq!(width("forex"), 7);
     assert_eq!(width("bloomberg"), 32);
     assert_eq!(width("ric"), 32);
-    for unchecked in [
-        "lei",
-        "fpmlurl",
-        "fpmlspec",
-        "index",
-        "isdacommodity",
-        "100",
-    ] {
+    assert_eq!(width("lei"), 20);
+    assert_eq!(width("dti"), 9);
+    assert_eq!(width("fisn"), 35);
+    assert_eq!(width("elf"), 4);
+    for unchecked in ["fpmlurl", "fpmlspec", "index", "isdacommodity", "100"] {
         assert_eq!(
             width(unchecked),
             64,
@@ -598,6 +638,61 @@ fn each_type_holds_its_value_to_its_own_rule() {
     assert!(accepts("figi", "BBG000B9XRY5"));
     assert_eq!(IdType::Figi.rank("BBG000B9XRY5"), 0);
     assert!(!accepts("figi", "BSG000B9XRY4"), "a reserved prefix");
+    // An LEI and a DTI are held by their own code's shape and ranked by
+    // their own check, folded first.
+    assert!(accepts("lei", "HWUPKR0MPOU8FGXBT394"));
+    assert!(accepts("lei", "HWUPKR0MPOU8FGXBT395"));
+    assert!(!accepts("lei", "x"), "the shape");
+    assert_eq!(IdType::Lei.rank("hwupkr0mpou8fgxbt394"), 1);
+    assert_eq!(IdType::Lei.rank("HWUPKR0MPOU8FGXBT395"), 0);
+    assert_eq!(IdType::Lei.max_rank(), 1);
+    assert_eq!(
+        id("lei", "hwupkr0mpou8fgxbt394").unwrap().value(),
+        "HWUPKR0MPOU8FGXBT394"
+    );
+    assert!(accepts("dti", "X9J9K872S"));
+    assert!(!accepts("dti", "A9J9K872S"), "a vowel");
+    assert_eq!(IdType::Dti.rank("x9j9k872s"), 1);
+    assert_eq!(IdType::Dti.rank("X9J9K872T"), 0);
+    // A short name and a legal form are held by their own code's shape,
+    // upper-cased; neither has a check, so every value of the shape ranks
+    // one.
+    assert_eq!(id("fisn", "acme corp/sh").unwrap().value(), "ACME CORP/SH");
+    assert_eq!(
+        id("FinancialInstrumentShortName", "ACME CORP/AMORT PN W/P/C")
+            .unwrap()
+            .value(),
+        "ACME CORP/AMORT PN W/P/C"
+    );
+    assert!(!accepts("fisn", "ACME CORP SH"), "no '/'");
+    assert!(!accepts("fisn", "/SH"), "no issuer");
+    assert!(
+        !accepts("fisn", &format!("ACME/{}", "S".repeat(31))),
+        "36 bytes"
+    );
+    assert!(
+        accepts("fisn", &format!("ACME/{}", "S".repeat(30))),
+        "35 bytes"
+    );
+    let refused = id("fisn", "ACME CORP SH").unwrap_err().to_string();
+    assert!(refused.contains("'/'"), "{refused}");
+    assert_eq!(IdType::Fisn.rank("ACME CORP/SH"), 1);
+    assert_eq!(IdType::Fisn.rank("acme corp/sh"), 1);
+    for refused in ["ACME CORP SH", "/SH", "ACME/"] {
+        assert_eq!(IdType::Fisn.rank(refused), 0, "{refused}");
+        assert!(!IdType::Fisn.is_real(refused), "{refused}");
+    }
+    assert_eq!(IdType::Fisn.max_rank(), 1);
+    assert_eq!(id("elf", "2hbr").unwrap().value(), "2HBR");
+    assert_eq!(id("EntityLegalForm", "2HBR").unwrap().value(), "2HBR");
+    assert!(!accepts("elf", "2HB"), "three characters");
+    assert!(!accepts("elf", "2H-R"), "punctuation");
+    assert_eq!(IdType::Elf.rank("2HBR"), 1);
+    assert_eq!(IdType::Elf.rank("2hbr"), 1);
+    for refused in ["2HB", "2H-R", "2HBRA"] {
+        assert_eq!(IdType::Elf.rank(refused), 0, "{refused}");
+        assert!(!IdType::Elf.is_real(refused), "{refused}");
+    }
     // The listed country and the detailed classification rank; every
     // other type has nothing partial about it.
     assert_eq!(IdType::IsoCtry.rank("CH"), 1);
@@ -1021,6 +1116,7 @@ fn a_type_is_a_security_a_party_or_neither() {
         IdType::Lei,
         IdType::Forex,
         IdType::Cfi,
+        IdType::Fisn,
         IdType::InstrumentId,
     ] {
         assert!(security.is_security(), "{security}");
@@ -1053,6 +1149,7 @@ fn a_type_is_a_security_a_party_or_neither() {
         IdType::Tvtic,
         kind("housekey"),
         kind("parentorderid"),
+        IdType::Elf,
     ] {
         assert!(!neither.is_security(), "{neither}");
         assert!(!neither.is_party(), "{neither}");
@@ -1065,12 +1162,14 @@ fn a_type_is_a_security_a_party_or_neither() {
             assert!(known.is_security(), "{known}");
         }
     }
+    // The 33 FIX sources, then the crate's own four: the pair, the
+    // classification, the short name and the instrument key.
     assert_eq!(
         IdType::KNOWN
             .iter()
             .filter(|known| known.is_security())
             .count(),
-        33 + 3
+        33 + 4
     );
     assert_eq!(
         IdType::KNOWN
@@ -1251,6 +1350,10 @@ fn a_listing_type_and_the_datatype_a_column_of_each_type_declares() {
         (IdType::IsoCtry, DataType::country()),
         (IdType::Cfi, DataType::cfi()),
         (IdType::Forex, DataType::forex()),
+        (IdType::Lei, DataType::lei()),
+        (IdType::Dti, DataType::dti()),
+        (IdType::Fisn, DataType::fisn()),
+        (IdType::Elf, DataType::elf()),
         (IdType::Valor, DataType::utf8()),
         (IdType::OrderId, DataType::utf8()),
         (kind("housecode"), DataType::utf8()),

@@ -71,7 +71,7 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     // crate's block on its own shard, its `metadata` group and its `fixmsg`
     // component - a store states the whole row, so the crate's three
     // documents are written beside the store's one - plus the built-in
-    // market data type, MsgCat, plugin side and state vocabularies. The three category roots and `codesets/` are each reached
+    // market data kind, market data type, plugin side and state vocabularies. The three category roots and `codesets/` are each reached
     // once for pruning. Each intrinsic set adds one document lookup and no
     // root lookup. The sources catalog, `sources.json` at the root, is
     // one more resolution each way whatever the registry holds: a write
@@ -85,8 +85,8 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
             .map(|set| set.name())
             .collect::<Vec<_>>(),
         [
+            "marketdatakindcodeset",
             "marketdatatypecodeset",
-            "msgcatcodeset",
             "msgpluginsidecodeset",
             "statecodeset"
         ],

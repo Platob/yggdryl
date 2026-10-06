@@ -2095,9 +2095,13 @@ impl JsTable {
     /// A row whose key is already stored updates it and a row whose key is not
     /// appends. Only the files whose recorded bounds could hold an incoming key
     /// are read and rewritten - the rest are carried into the new snapshot
-    /// untouched - so an upsert costs the files it can actually change. A
-    /// non-empty `mergeBy` is required because nothing else identifies a
-    /// row.
+    /// untouched - so an upsert costs the files it can actually change.
+    ///
+    /// `mergeBy` left out, or `null`, matches on the table's own key: its
+    /// identity partition columns, then the columns its schema's
+    /// `identifier-field-ids` name. A partitioned table stating no
+    /// identifier replaces the partitions the rows fall in, and an
+    /// unpartitioned one stating none is refused naming `$.merge_by`.
     ///
     /// `safe` decides what a cast that cannot convert a value does: the
     /// default nulls it, and `false` throws instead. `options` configures this
@@ -2106,21 +2110,26 @@ impl JsTable {
     pub fn merge(
         &mut self,
         batches: &mut JsBatchReader,
-        merge_by: napi::bindgen_prelude::Either4<
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
-            String,
-            Vec<
-                napi::bindgen_prelude::Either<
-                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
-                    String,
+        merge_by: Option<
+            napi::bindgen_prelude::Either4<
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                String,
+                Vec<
+                    napi::bindgen_prelude::Either<
+                        napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                        String,
+                    >,
                 >,
             >,
         >,
         safe: Option<bool>,
         options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
-        let keys = crate::expression::selector_from_input(merge_by)?;
+        let keys = merge_by.map_or_else(
+            || Ok(yggdryl::Selector::all()),
+            crate::expression::selector_from_input,
+        )?;
         let batches = batches.take()?;
         with_call_options(&mut self.inner, call_options(options), |table| {
             table
@@ -2129,7 +2138,8 @@ impl JsTable {
         })
     }
 
-    /// Merge `batches` into the rows `filters` selects, on `mergeBy`.
+    /// Merge `batches` into the rows `filters` selects, on `mergeBy`, else on
+    /// the table's own key, as [`merge`](Self::merge).
     ///
     /// [`merge`](Self::merge) narrowed to a part of the table first: the
     /// filters decide which files are candidates at all, and the match-key
@@ -2140,14 +2150,16 @@ impl JsTable {
         &mut self,
         filters: Option<ScanFilters>,
         batches: &mut JsBatchReader,
-        merge_by: napi::bindgen_prelude::Either4<
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
-            String,
-            Vec<
-                napi::bindgen_prelude::Either<
-                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
-                    String,
+        merge_by: Option<
+            napi::bindgen_prelude::Either4<
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                String,
+                Vec<
+                    napi::bindgen_prelude::Either<
+                        napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                        String,
+                    >,
                 >,
             >,
         >,
@@ -2155,7 +2167,10 @@ impl JsTable {
         options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
         let pairs = filter_pairs(filters);
-        let keys = crate::expression::selector_from_input(merge_by)?;
+        let keys = merge_by.map_or_else(
+            || Ok(yggdryl::Selector::all()),
+            crate::expression::selector_from_input,
+        )?;
         let batches = batches.take()?;
         with_call_options(&mut self.inner, call_options(options), |table| {
             table

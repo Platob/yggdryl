@@ -147,13 +147,13 @@ test('the field is the lifted marketdata struct', () => {
   for (const name of ['currunix', 'price', 'isincode', 'fxrates', 'bidpx', 'askccy', 'identifiers', 'bookscope']) {
     assert.ok(names.includes(name), name)
   }
-  // A1/A10: six identity, nine event, thirty-four market and five
+  // A1/A10: six identity, nine event, thirty-five market and five
   // operation columns, the three book controls a book's deltas replay by,
-  // and the five nested columns closing the row: 62 in all.
-  assert.equal(names.length, 6 + 9 + 34 + 5 + 3 + 5)
-  assert.deepEqual(names.slice(54, 57), ['bookscope', 'bookaction', 'bookposition'])
-  assert.equal(field.fieldAt(56).dtype.id, 'uint32')
-  assert.deepEqual(names.slice(57), NESTED)
+  // and the five nested columns closing the row: 63 in all.
+  assert.equal(names.length, 6 + 9 + 35 + 5 + 3 + 5)
+  assert.deepEqual(names.slice(55, 58), ['bookscope', 'bookaction', 'bookposition'])
+  assert.equal(field.fieldAt(57).dtype.id, 'uint32')
+  assert.deepEqual(names.slice(58), NESTED)
   // When an element last executed is a market fact, stated among the
   // market columns, and the party ids an operation names an operation one.
   assert.ok(names.indexOf('execunix') > names.indexOf('state'))
@@ -457,9 +457,9 @@ test('a FixMsg is held whole and reports the leaves it expands to', () => {
   const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(seed), { excludeMsgtypes: [] })
   const order = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|52=20240102-10:15:30|11=A1|55=ACME|54=1|38=100|44=10.5|40=2|59=1|10=0|'))
   const data = new graph.MarketData(order)
-  // Held whole: kind `fix`, its category the message's own `msgcat`.
+  // Held whole: kind `fix`, its category the message's own `marketdatakind`.
   assert.equal(data.kind, 'fix')
-  assert.equal(data.marketdatakind, order.msgcat)
+  assert.equal(data.marketdatakind, order.marketdatakind)
   assert.equal(data.marketdatakind, 'ORDR')
   assert.ok(data.intoLeaf() instanceof fix.FixMsg)
   assert.ok(data.asFix() instanceof fix.FixMsg)

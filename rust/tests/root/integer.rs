@@ -50,6 +50,43 @@ mod reading {
     }
 
     #[test]
+    fn the_value_door_reads_a_decimal_with_no_fraction_as_the_integer_it_is() {
+        // A table with no unsigned type stores a `uint64` as `decimal(20, 0)`
+        // (`into_scheme_compat`), so the door takes a whole decimal back as
+        // the number it was - at any scale whose fraction is zero - and
+        // refuses a fraction rather than rounding it, a negative one into an
+        // unsigned width, and a magnitude the width cannot hold.
+        assert_eq!(
+            DataType::UInt64
+                .scalar(Scalar::decimal128(i128::from(u64::MAX), 0))
+                .unwrap(),
+            Scalar::from(u64::MAX)
+        );
+        assert_eq!(
+            DataType::Int32
+                .scalar(Scalar::decimal128(-4_200, 2))
+                .unwrap(),
+            Scalar::from(-42_i32)
+        );
+        assert_eq!(
+            DataType::UInt8.scalar(Scalar::decimal128(700, 2)).unwrap(),
+            Scalar::from(7_u8)
+        );
+        assert!(
+            DataType::Int32
+                .scalar(Scalar::decimal128(4_250, 2))
+                .is_err()
+        );
+        assert!(DataType::UInt64.scalar(Scalar::decimal128(-1, 0)).is_err());
+        assert!(
+            DataType::UInt64
+                .scalar(Scalar::decimal128(i128::from(u64::MAX) + 1, 0))
+                .is_err()
+        );
+        assert!(DataType::Int8.scalar(Scalar::decimal128(128, 0)).is_err());
+    }
+
+    #[test]
     fn the_value_door_reads_a_signed_whole_number_and_narrows_it_to_the_width() {
         for (text, expected) in [
             (" 42 ", 42_i64),

@@ -37,6 +37,41 @@ fn every_column_states_back_what_it_read() {
 }
 
 #[test]
+fn a_digest_a_table_stored_as_a_whole_decimal_reads_back_as_the_number_it_was() {
+    // An Iceberg table has no unsigned type, so a `uint64` digest is stored
+    // as `decimal(20, 0)`: the column reads the cell through its own value
+    // door, so the digest returns as it was - read back as zero, the row
+    // was another message's delivery - and a cell the door refuses states
+    // nothing.
+    let mut element = OrderEvent::at(7);
+    ElementColumn::CurrHashCode.record(&mut element, &Scalar::decimal128(i128::from(u64::MAX), 0));
+    ElementColumn::CrossHashCode.record(&mut element, &Scalar::decimal128(400, 2));
+    assert_eq!(element.get_currhashcode(), u64::MAX);
+    assert_eq!(element.get_crosshashcode(), 4);
+    ElementColumn::CurrHashCode.record(&mut element, &Scalar::decimal128(-1, 0));
+    ElementColumn::CrossHashCode.record(&mut element, &Scalar::from("digest"));
+    assert_eq!(element.get_currhashcode(), u64::MAX);
+    assert_eq!(element.get_crosshashcode(), 4);
+}
+
+#[test]
+fn a_digest_a_table_stored_as_a_long_reads_back_as_its_bits() {
+    // A table that stores a digest as the `long` of its width holds its
+    // bits: a negative cell is no other `u64`, and a cell both readings
+    // agree on is the number it is.
+    let mut element = OrderEvent::at(7);
+    ElementColumn::CurrHashCode.record(&mut element, &Scalar::from(-1_i64));
+    ElementColumn::CrossHashCode.record(&mut element, &Scalar::from(i64::MIN));
+    assert_eq!(element.get_currhashcode(), u64::MAX);
+    assert_eq!(element.get_crosshashcode(), 1 << 63);
+    ElementColumn::CurrHashCode.record(&mut element, &Scalar::from(5_i64));
+    assert_eq!(element.get_currhashcode(), 5);
+    // Only the width of the digest carries its bits.
+    ElementColumn::CrossHashCode.record(&mut element, &Scalar::from(-1_i32));
+    assert_eq!(element.get_crosshashcode(), 1 << 63);
+}
+
+#[test]
 fn a_null_clears_and_nothing_stated_is_none() {
     let mut element = OrderEvent::at(7);
     element.set_crosscode("X".to_owned());

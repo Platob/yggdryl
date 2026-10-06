@@ -401,7 +401,7 @@ class FixCatalogGeneration(unittest.TestCase):
             (out / "layouts.json").write_text("{}", encoding="utf-8")
             # The crate's own documents are never generated and never swept.
             crated = (
-                "codesets/msgcatcodeset.json",
+                "codesets/marketdatakindcodeset.json",
                 "codesets/msgpluginsidecodeset.json",
                 "components/fixmsg.json",
                 "groups/metadata.json",

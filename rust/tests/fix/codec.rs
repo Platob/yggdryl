@@ -4015,6 +4015,14 @@ mod equivalence {
     /// no rule of its own, and a difference here means the reading moved. Where
     /// that was the point, the snapshot is regenerated in the commit that moved
     /// it; where it was not, it is a defect.
+    ///
+    /// It last moved when the digest's category label `msgcat` became
+    /// `marketdatakind`: every message's `currhashcode` and `curruuid`, a
+    /// `crossuuid` that is its own `curruuid`, the `srcuuids` and `prevuuid`
+    /// naming a moved message, and the `crosscode`, `crosshashcode` and
+    /// `crossuuid` of an execution split off a report naming no `ExecID` or
+    /// `TradeID` - its cross code derives from the report's `currhashcode` -
+    /// changed; no wire, entry or `seqnum` did.
     #[test]
     fn the_codec_answers_what_it_answered() {
         let pinned = read();
@@ -5027,7 +5035,7 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
     let spelled = super::fixed_codec(Arc::clone(&registry))
         .with_source("ms")
         .expect("a held source")
-        .parse_fix_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|65041=BUYS|10=0|")
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|65042=BUYS|10=0|")
         .expect("a message");
     assert_eq!(spelled.msgpluginside(), PluginSide::BuySide);
     assert!(

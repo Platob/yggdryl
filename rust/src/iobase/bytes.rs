@@ -672,6 +672,10 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::record_options(self.as_ref())
     }
 
+    fn merge_by(&self) -> Result<crate::Selector> {
+        IOMedia::merge_by(self.as_ref())
+    }
+
     #[cfg(feature = "parquet")]
     fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
         IOMedia::read_parquet_statistics(self.as_ref())

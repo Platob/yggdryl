@@ -4304,10 +4304,10 @@ mod internal {
                 set.name()
             );
         }
-        // The crate adds MsgCat's 26 categories, the 61 states, the 118
+        // The crate adds MarketDataKind's 26 categories, the 62 states, the 118
         // market data types and the 3 plugin sides to the 735 published sets.
         assert_eq!(sets, 739, "code sets held");
-        assert_eq!(codes, 7_937, "code records");
+        assert_eq!(codes, 7_938, "code records");
     }
 
     #[test]

@@ -110,7 +110,8 @@ mod sealed {
         /// side ([`Self::walked_side`]) for a sided kind, and an unsided
         /// element's own tag - FIX scopes an `MDEntryID(278)` by its
         /// `MDEntryType(269)`, so a bid and an offer going by one name are
-        /// two entries - `Side::Unknown` where it tags none.
+        /// two entries - `Side::Unknown` where it tags none or both legs
+        /// ([`Side::Both`]).
         fn walked_slot(&self) -> Side;
         /// Whether the element may join another chain by a name or a base
         /// code it shares with it: every chained element but one filed as
@@ -194,7 +195,7 @@ mod sealed {
             self.marketdatakind().stored_side(self.get_side())
         }
         fn walked_slot(&self) -> Side {
-            self.get_side()
+            self.get_side().tagged()
         }
         fn walked_joins(&self) -> bool {
             self.marketdatakind() != MarketDataKind::Execution
@@ -335,7 +336,7 @@ mod sealed {
         }
         fn walked_slot(&self) -> Side {
             self.as_event_operation()
-                .map_or(Side::Unknown, |operation| operation.get_side())
+                .map_or(Side::Unknown, |operation| operation.get_side().tagged())
         }
         fn walked_joins(&self) -> bool {
             self.as_event_operation()
@@ -1103,8 +1104,9 @@ where
                     .find(|(held, identity)| *held == wanted && joined(identity))
                     .map(|(_, identity)| *identity)
             };
-            // A tagged statement of an unsided kind continues the untagged
-            // quote holding both legs where none of its side goes by it.
+            // A tagged statement of an unsided kind continues the quote
+            // holding both legs - untagged, or `BOTH` - where none of its
+            // side goes by it.
             if let Some(identity) =
                 on(slot).or_else(|| (side == Side::Unknown).then(|| on(Side::Unknown)).flatten())
             {

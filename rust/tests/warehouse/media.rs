@@ -9,8 +9,8 @@ use yggdryl::holder::{Buffer, Holder};
 use yggdryl::local::LocalFolder;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{
-    DataType, Field, FolderLayout, IOBase, IOKind, IOMedia, MediaTable, MimeType, ObjectValue,
-    Properties, StructType, TableValue, Url,
+    Catalog, DataType, Field, FolderLayout, IOBase, IOKind, IOMedia, MediaTable, MemoryCatalog,
+    MimeType, ObjectValue, Properties, StructType, Table, TableValue, Url,
 };
 
 fn root(label: &str) -> PathBuf {
@@ -46,6 +46,25 @@ fn batch() -> RecordBatch {
         ],
     )
     .expect("a batch")
+}
+
+fn ids(table: &impl IOMedia) -> Vec<i64> {
+    let options = table.record_options().expect("record options");
+    let batches: Vec<RecordBatch> = table
+        .read_arrow_reader(&options)
+        .expect("a reader")
+        .collect::<Result<_, _>>()
+        .expect("read batches");
+    let mut ids = Vec::new();
+    for batch in &batches {
+        let column = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .expect("int64 ids");
+        ids.extend(column.values().iter().copied());
+    }
+    ids
 }
 
 fn write(url: &Url) {
@@ -296,6 +315,7 @@ fn every_write_verb_reaches_the_handle() {
             &options,
         )
         .expect("overwritten");
+    assert!(!IOBase::opened(&table), "a leaf write releases its storage");
     assert_eq!(table.row_size().expect("rows"), 3);
     table
         .append_arrow_reader(
@@ -303,6 +323,7 @@ fn every_write_verb_reaches_the_handle() {
             &options,
         )
         .expect("appended");
+    assert!(!IOBase::opened(&table), "an append releases its storage");
     assert_eq!(table.row_size().expect("rows"), 6);
     let read = table
         .read_serie(None)
@@ -314,6 +335,105 @@ fn every_write_verb_reaches_the_handle() {
     assert!(Holder::from(yggdryl::Table::from(table.clone())).exists());
     table.remove(false).expect("removed through the handle");
     assert_eq!(table.row_size().expect("absent reads empty"), 0);
+}
+
+#[test]
+fn returned_leaf_tables_reopen_after_later_namespace_writes() {
+    let root = root("returned-writes");
+    let url = Url::from_path(root.join("ticks.arrows")).expect("a URL");
+    let catalog = Catalog::Memory(
+        MemoryCatalog::new("lake")
+            .with_object(Table::from(
+                MediaTable::new("lake.ticks", url).expect("a table"),
+            ))
+            .expect("registered"),
+    );
+    let tables = catalog.tables();
+    let rows = batch();
+    let mut first = tables
+        .append_arrow_reader("ticks", yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+        .expect("first append");
+    assert!(
+        !IOBase::opened(&first),
+        "the returned table is a descriptor"
+    );
+
+    // Keep the first result alive and unread while another writer opens the file.
+    let rows = batch();
+    let second = tables
+        .append_arrow_reader("ticks", yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+        .expect("second append while the first result lives");
+    assert!(!IOBase::opened(&second), "the next result is a descriptor");
+    assert_eq!(first.row_size().expect("reopened count"), 6);
+    assert_eq!(ids(&first), [1, 2, 3, 1, 2, 3]);
+    first
+        .close()
+        .expect("release the reader before replacement");
+
+    let rows = batch();
+    let third = tables
+        .overwrite_arrow_reader("ticks", yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+        .expect("overwrite while both earlier results live");
+    assert!(!IOBase::opened(&third), "overwrite returns a descriptor");
+    assert_eq!(third.row_size().expect("replacement count"), 3);
+    assert_eq!(
+        ids(&first),
+        [1, 2, 3],
+        "the first result reopens current rows"
+    );
+}
+
+#[test]
+fn an_unlocated_bound_buffer_keeps_rows_after_record_writes() {
+    let mut table = MediaTable::bound(
+        "memory.trades",
+        Holder::buffer(Buffer::new().with_media_type(MimeType::ARROW_STREAM.into())),
+    )
+    .expect("a table");
+    let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM).expect("IPC options");
+    let rows = batch();
+    table
+        .overwrite_arrow_reader(
+            yggdryl::arrow::batch_reader(rows.schema(), [rows]),
+            &options,
+        )
+        .expect("written into the unlocated buffer");
+    assert_eq!(table.row_size().expect("rows still held"), 3);
+    let rows = batch();
+    table
+        .append_arrow_reader(
+            yggdryl::arrow::batch_reader(rows.schema(), [rows]),
+            &options,
+        )
+        .expect("appended into the same buffer");
+    assert_eq!(ids(&table), [1, 2, 3, 1, 2, 3]);
+}
+
+#[test]
+fn a_bound_file_keeps_its_explicit_media_after_record_writes() {
+    let root = root("bound-media-writes");
+    let mut holder = Holder::local(root.join("trades.bin")).expect("holds");
+    holder.set_media_type(MimeType::ARROW_STREAM.into());
+    let mut table = MediaTable::bound("lake.trades", holder).expect("a table");
+    let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM).expect("IPC options");
+    let rows = batch();
+    table
+        .overwrite_arrow_reader(
+            yggdryl::arrow::batch_reader(rows.schema(), [rows]),
+            &options,
+        )
+        .expect("written under the bound media type");
+    assert!(!IOBase::opened(&table), "the completed session is released");
+    assert_eq!(IOBase::media_type(&table).base(), &MimeType::ARROW_STREAM);
+    assert_eq!(table.row_size().expect("bound media is retained"), 3);
+    let rows = batch();
+    table
+        .append_arrow_reader(
+            yggdryl::arrow::batch_reader(rows.schema(), [rows]),
+            &options,
+        )
+        .expect("appended under the same media type");
+    assert_eq!(ids(&table), [1, 2, 3, 1, 2, 3]);
 }
 
 #[test]

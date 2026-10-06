@@ -13,7 +13,9 @@ use super::arrow::{ALIVE, DELTAS, RowFilter};
 use super::facts::{MarketEventFacts, OperationEventFacts};
 use super::market::merge_market_event_into_reference;
 use super::market_data::MarketData;
-use super::operation::{BookRef, MdUpdateAction, OrderKind, QuoteKind};
+use super::operation::{
+    BookRef, ExecutionEvent, MdUpdateAction, OrderEvent, OrderKind, QuoteEvent, QuoteKind,
+};
 use super::{Element, Event, Market, Operation};
 use crate::expression::IntoFilter;
 use crate::logging::warning::warned;
@@ -750,7 +752,7 @@ impl EntryKey {
 
 /// The entry type an entry's `MDEntryID` is scoped by: `BUYS` for a bid,
 /// `SELL` for an ask, the side an order takes or a quote tags, and
-/// `UKNW` for a quote tagging none.
+/// `UKNW` for a quote tagging none or both.
 fn entry_side(operation: &MarketData) -> Side {
     let side = operation.get_side();
     if side.is_bid() {
@@ -1437,8 +1439,8 @@ impl Sides {
     /// entry its `MDEntryRefID` names, else its own where it is live, else
     /// the entry its `MDEntryID` names; its own where none is live. An id
     /// names an entry of the input's entry type ([`entry_side`]) - else a
-    /// quote tagging none, which holds both legs - so a new offer never
-    /// continues a bid going by its id; only a change, an overlay or a
+    /// quote tagging none or both, which holds both legs - so a new offer
+    /// never continues a bid going by its id; only a change, an overlay or a
     /// delete finding none of its type continues the entry of the other
     /// type going by it, which it moves. An input stating no side names the
     /// one entry going by the id, of whichever type, where just one does.
@@ -1734,10 +1736,14 @@ impl SidesJournal {
 /// Each side of a complete book is one contiguous store in book order,
 /// shared with the books a walk emits until the walk changes it, and every
 /// reading borrows from it: [`Self::alive`], [`Self::alive_on`],
-/// [`Self::deltas`]. A complete book answers each side as the [`Limit`]s
-/// its row states under `bidlimits` and `asklimits` - [`Self::limits`], best
-/// first - and its depth, [`Self::depth`] and [`Self::imbalance`]; a book
-/// holding only its deltas answers none of them. Every book, complete or
+/// [`Self::deltas`], and the same entries by kind - [`Self::ordlive`] the
+/// orders resting, [`Self::orddelta`], [`Self::quotes`] and
+/// [`Self::executions`] the deltas, and [`Self::events`] every other delta,
+/// of which the fold admits none today. A complete
+/// book answers each side as the [`Limit`]s its row states under
+/// `bidlimits` and `asklimits` - [`Self::limits`], best first - and its
+/// depth, [`Self::depth`] and [`Self::imbalance`]; a book holding only its
+/// deltas answers none of them. Every book, complete or
 /// not, answers its top of book from the facts it settled on, reading no
 /// side: [`Self::best_price`], [`Self::best_quantity`], [`Self::spread`],
 /// [`Self::bbo_midpoint`], [`Self::median_quantity`], [`Self::is_crossed`],
@@ -1925,7 +1931,8 @@ impl BookEvent {
     /// by the ticker, which it states, and taking the inputs keyed to it -
     /// stating that ticker and no ISIN - and those stating neither ISIN nor
     /// ticker. An empty `symbol` keys the book [`Isin::NONE`], the number
-    /// that states none, and states no ticker.
+    /// that states none, and states no ticker. A book holds both sides: its
+    /// side is [`Side::Both`].
     #[must_use]
     pub fn new(unix: i64, symbol: impl Into<String>) -> Self {
         let symbol = symbol.into();
@@ -1942,7 +1949,8 @@ impl BookEvent {
     /// crosscode, what [`Market::book_crosscode`] answers for every input
     /// it takes - an instrument's ISIN, a ticker, or [`Isin::NONE`] - and
     /// the book states neither a ticker nor an ISIN until its first input
-    /// states each. The empty base every walk starts a code's books from,
+    /// states each, and its side is [`Side::Both`], whatever it is set to.
+    /// The empty base every walk starts a code's books from,
     /// which a code's first book, stating its deltas alone and following
     /// no book, rebuilds over with [`Element::with_previous`]:
     ///
@@ -2133,8 +2141,9 @@ impl BookEvent {
     /// The entries alive on the side `side` takes, best price first and
     /// every entry stating no price last, borrowed from the side's store -
     /// a two-sided quote on both sides, at its leg's price on each; nothing
-    /// for a side that is neither a bid nor an ask, or on a book stating its
-    /// deltas alone.
+    /// for a side that is neither a bid nor an ask - `UNKN`, `BOTH`, for
+    /// which [`Self::alive`] is both sides - or on a book stating its deltas
+    /// alone.
     ///
     /// ```
     /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent};
@@ -2161,6 +2170,8 @@ impl BookEvent {
     /// assert_eq!(bids, [Some(Decimal::from_int(100)), Some(Decimal::from_int(99))]);
     /// assert_eq!(book.alive_on(Side::Sell).len(), 1);
     /// assert_eq!(book.alive_on(Side::Unknown).len(), 0);
+    /// assert_eq!(book.alive_on(Side::Both).len(), 0);
+    /// assert_eq!(book.get_side(), Side::Both);
     /// // The deltas are the three orders, in the order applied.
     /// let applied: Vec<_> = book.deltas().map(Element::get_crosscode).collect();
     /// assert_eq!(applied, ["10:1:B-1", "10:2:A-1", "10:1:B-2"]);
@@ -2182,6 +2193,150 @@ impl BookEvent {
     /// execution placing nothing on the way.
     pub fn deltas(&self) -> impl ExactSizeIterator<Item = &MarketData> {
         self.deltas.iter().map(Arc::as_ref)
+    }
+
+    /// The orders resting on the book - every [`Self::alive`] entry that is
+    /// an order - each once and in its order: the bid side's, best price
+    /// first and every order stating no price last, then the ask side's. An
+    /// order placed at the book's instant is here and among
+    /// [`Self::orddelta`] as the one entry both borrow; one the instant ended
+    /// is among the deltas alone. Nothing on a book stating its deltas
+    /// alone: rebuild it with [`Element::with_previous`] first.
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent};
+    /// use yggdryl::{Decimal, Side, State};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let order = |unix: i64, code: &str, price: i64, state: State| {
+    ///     let mut order = OrderEvent::at(unix);
+    ///     order.set_crosscode(code.to_owned());
+    ///     order.set_side(Side::Buy, true);
+    ///     order.set_price(Some(Decimal::from_int(price)), true);
+    ///     order.set_quantity(Some(Decimal::ONE), true);
+    ///     order.set_state(state);
+    ///     order.finalize();
+    ///     MarketData::from(order)
+    /// };
+    /// let mut book = BookEvent::new(1, "ACME");
+    /// book.add_operations([order(1, "B-1", 99, State::New), order(1, "B-2", 100, State::New)])?;
+    /// // A second later B-1 is cancelled and B-3 placed.
+    /// book.add_operations([order(2, "B-1", 99, State::Canceled), order(2, "B-3", 98, State::New)])?;
+    /// let resting: Vec<_> = book.ordlive().map(Element::get_crosscode).collect();
+    /// assert_eq!(resting, ["10:1:B-2", "10:1:B-3"]);
+    /// let changed: Vec<_> = book.orddelta().map(|order| (order.get_crosscode(), *order.get_state())).collect();
+    /// assert_eq!(changed, [("10:1:B-1", State::Canceled), ("10:1:B-3", State::New)]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn ordlive(&self) -> impl Iterator<Item = &OrderEvent> {
+        self.alive().filter_map(MarketData::as_order_event)
+    }
+
+    /// The orders among [`Self::deltas`] - every order the book's instant
+    /// applied: placed, changed, ended, expired or withdrawn to another
+    /// book - in the order applied, each the very entry a side holds where
+    /// it rests ([`Self::ordlive`]). What a book stating its deltas alone
+    /// states too.
+    pub fn orddelta(&self) -> impl Iterator<Item = &OrderEvent> {
+        self.deltas().filter_map(MarketData::as_order_event)
+    }
+
+    /// The quotes among [`Self::deltas`] - every quote the book's instant
+    /// applied - in the order applied. A quote resting since an earlier
+    /// instant is [`Self::alive`]'s and not here.
+    pub fn quotes(&self) -> impl Iterator<Item = &QuoteEvent> {
+        self.deltas().filter_map(MarketData::as_quote_event)
+    }
+
+    /// The executions among [`Self::deltas`], in the order applied: each
+    /// one the book recorded at its instant, resting on no side and moving
+    /// none - its fill moved the book through its order's or quote's own
+    /// report. [`Self::orddelta`], [`Self::quotes`], these and
+    /// [`Self::events`] partition the deltas; laid out as rows, the same
+    /// split is [`MarketData::deltas_serie`]'s `kind`.
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookEvent, Element, ExecutionEvent, Market, MarketData, OrderEvent, QuoteEvent};
+    /// use yggdryl::{Decimal, Side};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut order = OrderEvent::at(1);
+    /// order.set_crosscode("B-1".to_owned());
+    /// order.set_side(Side::Buy, true);
+    /// order.set_price(Some(Decimal::from_int(100)), true);
+    /// order.set_quantity(Some(Decimal::ONE), true);
+    /// order.finalize();
+    /// let mut quote = QuoteEvent::at(1);
+    /// quote.set_crosscode("Q-1".to_owned());
+    /// quote.set_side(Side::Sell, true);
+    /// quote.set_price(Some(Decimal::from_int(101)), true);
+    /// quote.set_quantity(Some(Decimal::ONE), true);
+    /// quote.finalize();
+    /// let mut fill = ExecutionEvent::at(1);
+    /// fill.set_crosscode("E-1".to_owned());
+    /// fill.set_side(Side::Buy, true);
+    /// fill.set_lastqty(Some(Decimal::ONE), true);
+    /// fill.finalize();
+    /// let mut book = BookEvent::new(1, "ACME");
+    /// book.add_operations([MarketData::from(order), MarketData::from(fill), MarketData::from(quote)])?;
+    /// assert_eq!(book.executions().map(Element::get_crosscode).collect::<Vec<_>>(), ["8:1:E-1"]);
+    /// assert_eq!(book.quotes().map(Element::get_crosscode).collect::<Vec<_>>(), ["14:0:Q-1"]);
+    /// assert_eq!(
+    ///     book.orddelta().count()
+    ///         + book.quotes().count()
+    ///         + book.executions().count()
+    ///         + book.events().count(),
+    ///     book.deltas().len()
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn executions(&self) -> impl Iterator<Item = &ExecutionEvent> {
+        self.deltas().filter_map(MarketData::as_execution_event)
+    }
+
+    /// Every delta that is no order, quote or execution, in the order
+    /// applied - the typed home of whatever else a book comes to record, so
+    /// [`Self::orddelta`], [`Self::quotes`], [`Self::executions`] and these
+    /// partition [`Self::deltas`] whatever it holds. Empty today, by
+    /// construction: a fold prunes every input `MarketDataKind::is_recorded`
+    /// refuses before it reads one - a trade, whose fills are executions
+    /// already, a batch, a session message - refuses every other recorded
+    /// one by kind - an undated order, quote or execution, a nested book -
+    /// and folds a snapshot control into the sides' membership, never among
+    /// the deltas; a book read back from its row refuses a delta of any
+    /// other kind at `$.deltas[i]`.
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookEvent, Element, Market, MarketData, OrderEvent};
+    /// use yggdryl::{Decimal, Side};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut order = OrderEvent::at(1);
+    /// order.set_crosscode("B-1".to_owned());
+    /// order.set_side(Side::Buy, true);
+    /// order.set_price(Some(Decimal::from_int(100)), true);
+    /// order.set_quantity(Some(Decimal::ONE), true);
+    /// order.finalize();
+    /// let mut book = BookEvent::new(1, "ACME");
+    /// book.add_operations([MarketData::from(order)])?;
+    /// assert_eq!(book.events().count(), 0);
+    /// // A nested book is refused by kind, the book untouched.
+    /// assert!(book.add_operations([MarketData::from(BookEvent::new(1, "ACME"))]).is_err());
+    /// assert_eq!(book.orddelta().count() + book.events().count(), book.deltas().len());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn events(&self) -> impl Iterator<Item = &MarketData> {
+        self.deltas().filter(|delta| {
+            !matches!(
+                delta,
+                MarketData::OrderEvent(_)
+                    | MarketData::QuoteEvent(_)
+                    | MarketData::ExecutionEvent(_)
+            )
+        })
     }
 
     /// Whether the book holds no entry alive - a book stating its deltas
@@ -2490,15 +2645,14 @@ impl BookEvent {
 
     /// Atomically applies all operations of one timestamp. Full-snapshot depth
     /// operations and controls first replace only their declared book scope.
-    /// A book folds an [`OrderEvent`](super::OrderEvent), a
-    /// [`QuoteEvent`](super::QuoteEvent) and a [`SnapshotEvent`], each
-    /// applied order or quote recorded as a delta in the order applied.
-    /// Every input of a kind
-    /// [`MarketDataKind::is_booked`](crate::MarketDataKind::is_booked) does
-    /// not admit - an [`ExecutionEvent`](super::ExecutionEvent), a
-    /// [`TradeEvent`](super::TradeEvent) - is pruned first, so a group of
-    /// nothing else changes nothing: the instant does not advance and the
-    /// deltas stand.
+    /// A book folds an [`OrderEvent`], a [`QuoteEvent`] and a
+    /// [`SnapshotEvent`], each applied order or quote recorded as a delta in
+    /// the order applied, and records an [`ExecutionEvent`] among the deltas
+    /// as it is, resting on no side and moving none. Every input of a kind
+    /// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
+    /// does not admit - a [`TradeEvent`](super::TradeEvent) - is pruned
+    /// first, so a group of nothing else changes nothing: the instant does
+    /// not advance and the deltas stand.
     ///
     /// An order or a quote rests on every side it states a leg for, as one
     /// entry: an order on the side it takes, a quote - which holds a bid and
@@ -3143,6 +3297,8 @@ fn finalize_book_event(
     sides: Option<&Sides>,
     deltas: &[Arc<MarketData>],
 ) {
+    // A book holds both sides.
+    event.set_side(Side::Both, true);
     event.sync_cross();
     let mut digest = event.digest_market_event();
     digest.write(&event.get_currunix().to_be_bytes());
@@ -3374,10 +3530,12 @@ delegate_event!(
 ///
 /// The walk folds what
 /// [`MarketDataKind::is_booked`](crate::MarketDataKind::is_booked) admits -
-/// orders, quotes and snapshot controls - and prunes every other input
-/// where it is pulled, a FIX message's leaves once it is split: a pruned
-/// input touches no book, no instant and no grid, so an instant only an
-/// execution or a trade reached emits no book. [`Self::with_filter`]
+/// orders, quotes and snapshot controls - records every execution among the
+/// deltas of its instrument's book at its instant, and prunes every other
+/// input [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
+/// does not admit where it is pulled, a FIX message's leaves once it is
+/// split: a pruned input touches no book, no instant and no grid, so an
+/// instant only a trade reached emits no book. [`Self::with_filter`]
 /// narrows the walk further.
 pub struct BookIterator<I>
 where
@@ -3465,11 +3623,11 @@ where
 
     /// This walk folding only the inputs `filter` keeps: an expression over
     /// the [`MarketData::field`] row, bound once here and answered by the
-    /// expression engine over one batch per 1,024 booked inputs the walk
+    /// expression engine over one batch per 1,024 recorded inputs the walk
     /// pulls ahead. The kind rule prunes first, so a filter narrows what a
     /// book folds and never admits what
-    /// [`MarketDataKind::is_booked`](crate::MarketDataKind::is_booked) does
-    /// not. A filter that keeps every row installs nothing, and the walk
+    /// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
+    /// does not. A filter that keeps every row installs nothing, and the walk
     /// pulls one input at a time again.
     ///
     /// ```

@@ -577,6 +577,39 @@ impl DataType {
     }
 }
 
+/// A decimal's precision and scale as every decimal leaf holds them, from
+/// the width a foreign schema states them at - Iceberg's type text an `i64`,
+/// its official model a `u32`, an Avro document a `u32`.
+///
+/// Narrowing only: whether the pair is a decimal is [`validate_decimal`]'s
+/// question, which [`DataType::decimal`] asks, so a caller raises the reason
+/// under its own error and location.
+///
+/// # Errors
+///
+/// `expected a decimal precision fitting u8, got {precision}`, else
+/// `expected a decimal scale fitting i8, got {scale}`.
+pub(crate) fn decimal_parameters<P, S>(
+    precision: P,
+    scale: S,
+) -> std::result::Result<(u8, i8), SmolStr>
+where
+    P: TryInto<u8> + fmt::Display + Copy,
+    S: TryInto<i8> + fmt::Display + Copy,
+{
+    let Ok(narrowed) = precision.try_into() else {
+        return Err(format_smolstr!(
+            "expected a decimal precision fitting u8, got {precision}"
+        ));
+    };
+    let Ok(scaled) = scale.try_into() else {
+        return Err(format_smolstr!(
+            "expected a decimal scale fitting i8, got {scale}"
+        ));
+    };
+    Ok((narrowed, scaled))
+}
+
 pub(crate) fn validate_decimal(
     kind: &'static str,
     precision: u8,
@@ -2768,13 +2801,31 @@ pub mod internals {
     //! `Scalar::from_decimal_text` is crate-private: it is the one reader
     //! every decimal spelling goes through, and whether a digit the declared
     //! scale cannot hold is refused as a reading or as a parse failure is
-    //! what decides whether a wider reader may try the same text. The
-    //! forwarder changes no visibility.
+    //! what decides whether a wider reader may try the same text; the
+    //! narrowing of a foreign schema's decimal parameters is the one every
+    //! document reader shares. The forwarders change no visibility.
 
     use crate::{DataType, Result, Scalar};
 
     /// Read `text` as a decimal at the scale `dtype` declares.
     pub fn from_decimal_text(dtype: &DataType, text: &str) -> Result<Scalar> {
         Scalar::from_decimal_text(dtype, text)
+    }
+
+    /// Narrow a foreign schema's precision and scale to the widths a
+    /// decimal leaf holds them at, naming the one that does not fit.
+    ///
+    /// # Errors
+    ///
+    /// Returns the reason naming the parameter and the value.
+    pub fn decimal_parameters<P, S>(
+        precision: P,
+        scale: S,
+    ) -> std::result::Result<(u8, i8), smol_str::SmolStr>
+    where
+        P: TryInto<u8> + std::fmt::Display + Copy,
+        S: TryInto<i8> + std::fmt::Display + Copy,
+    {
+        super::decimal_parameters(precision, scale)
     }
 }

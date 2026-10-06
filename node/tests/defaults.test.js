@@ -640,6 +640,28 @@ test('compatibility normalization mirrors core Arrow and conservative Spark poli
   )
 })
 
+// Mirrors rust/tests/root/compatibility.rs
+// `an_unsigned_column_stating_bits_takes_the_signed_integer_of_its_width`.
+test('an unsigned column stating bits is exchanged as the signed integer of its width', () => {
+  const digest = fields.uint64('digest', { nullable: false })
+  digest.fieldProperties.representation = 'bits'
+  const source = fields.struct('row', [digest, fields.uint64('count', { nullable: false })], {
+    nullable: false,
+  })
+  for (const exchanged of [source.intoSchemeCompat('iceberg'), source.intoSchemeCompat('spark')]) {
+    const stated = exchanged.dtype.getFieldAt(0)
+    assert.equal(String(stated.dtype), 'int64')
+    assert.equal(stated.fieldProperties.representation, 'bits')
+    // A column stating nothing still widens to the twenty digits.
+    assert.ok(
+      exchanged.dtype
+        .getFieldAt(1)
+        .dtype.equals(fields.decimal128('expected', 20, 0).dtype),
+    )
+  }
+  assert.equal(String(source.intoSchemeCompat('polars').dtype.getFieldAt(0).dtype), 'uint64')
+})
+
 test('public defaults expose no private native bridge names', () => {
   for (const prototype of [DataType.prototype, Field.prototype]) {
     assert.equal('_defaultJSValueNative' in prototype, false)

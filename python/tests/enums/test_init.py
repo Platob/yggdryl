@@ -120,6 +120,7 @@ def test_the_graph_enum_listings_mirror_the_native_vocabulary() -> None:
         "askccy",
         "fxrates",
         "ticker",
+        "strikepx",
         "metadata",
     )
     assert enums.OPERATION_COLUMNS == (

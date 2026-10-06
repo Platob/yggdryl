@@ -200,11 +200,7 @@ mod datatype {
         assert_eq!(DataType::Forex.code_width(), Some(7));
         assert_eq!(DataType::Forex.fixed_byte_width(), None);
         assert_eq!(DataType::forex(), DataType::Forex);
-        assert_eq!(
-            DataType::CODES.last(),
-            Some(&("forex", DataType::Forex, 7)),
-            "the newest code is listed last"
-        );
+        assert!(DataType::CODES.contains(&("forex", DataType::Forex, 7)));
         assert_eq!(
             DataType::from_logical_name("forex").unwrap(),
             DataType::Forex

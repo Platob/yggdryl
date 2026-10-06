@@ -152,7 +152,11 @@ impl Hash for Site {
 /// [`IOMedia`] verb as the handle it resolves to - a verb that returns a
 /// `Result` carrying the resolution's failure, an accessor that cannot
 /// answering the empty value - so a property stated on the object reaches
-/// its storage and nothing is opened before it is needed. A clone starts
+/// its storage and nothing is opened before it is needed. A successful leaf
+/// record write by a `MediaTable` closes its located holder's session, releasing
+/// mappings and wrapper caches while retaining the holder's media and backend
+/// options; a bound handle with no site is retained as the data itself. Folder
+/// and format writes and direct byte operations keep their held session. A clone starts
 /// unresolved and rebuilds from the site under the same properties; an
 /// object bound to a handle with no site cannot be rebuilt after a clone,
 /// and says so by name when its handle is next needed. Equality and the
@@ -223,6 +227,16 @@ impl Handle {
     /// The handle already resolved, without resolving one.
     pub(crate) fn held(&self) -> Option<&Holder> {
         self.held.get().map(Box::as_ref)
+    }
+
+    /// Release a located writer's cached session, retaining its configuration.
+    /// A bound handle without a site is the data itself.
+    pub(crate) fn release_after_write(&mut self) -> Result<()> {
+        if self.site.is_some() {
+            self.held.get_mut().map_or(Ok(()), |held| held.close())
+        } else {
+            Ok(())
+        }
     }
 
     /// The holder the handle resolves to, resolved on the first call and

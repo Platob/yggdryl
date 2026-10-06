@@ -339,13 +339,15 @@ pub trait IORecordOptions: Sized {
 
     /// Borrow the selector whose columns form an explicit merge's match key.
     ///
-    /// A non-empty selector is required by
-    /// [`merge_arrow_reader`](crate::IOMedia::merge_arrow_reader): a row
-    /// whose key is already stored updates it, and a row whose key is not
-    /// appends. Each projection is one key column - a stored column by name,
-    /// or a term computed from the row, so `trade.id` and `lower(symbol)`
-    /// are keys as much as `id` is. The option never selects an operation;
-    /// overwrite and append reject it, and merge rejects an empty selector.
+    /// A merge matches on it: a row whose key is already stored updates it,
+    /// and a row whose key is not appends. Each projection is one key
+    /// column - a stored column by name, or a term computed from the row, so
+    /// `trade.id` and `lower(symbol)` are keys as much as `id` is. The option
+    /// never selects an operation; overwrite and append reject it. An empty
+    /// selector on a merge is the destination's own key
+    /// ([`IOMedia::merge_by`](crate::IOMedia::merge_by): an Iceberg table's
+    /// identity partition columns, then its identifier columns), and is
+    /// refused naming `$.merge_by` where the destination states none.
     fn merge_by(&self) -> &Selector;
 
     /// Set the selector whose columns form an explicit merge's match key.
@@ -619,14 +621,36 @@ pub trait IORecordOptions: Sized {
     }
 
     /// Set the merge key from the scalar that spells it, as
-    /// [`Selector::from_scalar`] reads one.
+    /// [`Selector::from_scalar`] reads one, or from a boolean.
+    ///
+    /// `true` is the destination's own key: it stores the empty key, the
+    /// state in which a merge is keyed by the destination's own
+    /// [`IOMedia::merge_by`](crate::IOMedia::merge_by), so it spells
+    /// exactly what a null does and keeps no flag - a later overwrite
+    /// or append under these options is not refused for it. `false` has no
+    /// reading a merge could take, since a merge always matches on a key,
+    /// and is refused.
     ///
     /// # Errors
     ///
-    /// Returns the error [`Selector::from_scalar`] does, or the error
-    /// [`require_merge_by`](Self::require_merge_by) does.
+    /// Returns an error at `$.merge_by` for `false`, the error
+    /// [`Selector::from_scalar`] does, or the error
+    /// [`require_merge_by`](Self::require_merge_by) does; a refused key
+    /// leaves the one these options held.
     fn set_merge_by_scalar(&mut self, merge_by: &Scalar) -> Result<()> {
-        let merge_by = Selector::from_scalar(merge_by)?;
+        let merge_by = match merge_by.as_bool() {
+            Some(true) => Selector::all(),
+            Some(false) => {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$.merge_by"),
+                    reason: crate::text::expected_got(
+                        "a column list, a selector text, null, or true (the destination's own key)",
+                        "false",
+                    ),
+                });
+            }
+            None => Selector::from_scalar(merge_by)?,
+        };
         // Validated before it is stored, so a refused key leaves the old one.
         distinct_merge_key(&merge_by)?;
         self.set_merge_by(merge_by);
@@ -1762,7 +1786,9 @@ impl RecordOptions {
     ///
     /// The mode is authoritative. Match keys refine `merge` and never select
     /// it implicitly: merge requires at least one key, while overwrite and
-    /// append refuse every key.
+    /// append refuse every key. This reads the options alone; a destination
+    /// with a key of its own resolves a keyless merge first, through
+    /// [`IOMedia::write_options`](crate::IOMedia::write_options).
     #[doc(hidden)]
     pub fn require_write_mode(&self, mode: IOMode) -> Result<()> {
         let keyed = mode == IOMode::Merge;

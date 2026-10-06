@@ -8,6 +8,11 @@
 //! the plan would hide it - so 1, 10, and 1,000 of them are measured, which is
 //! also the range a streamed read actually pulls.
 //!
+//! A third arm, `stated_bits`, casts `uint64` digests into the `int64`
+//! column a table with no unsigned type stores them in, the column stating
+//! `FIELD:representation=bits`: one plan, its node a bit cast sharing every
+//! buffer, so its time is the plan's walk per batch and never a row.
+//!
 //! The benchmark-only gate compares warmed medians and refuses reuse more
 //! than 25% slower than replanning. Only optimized, explicit benchmark
 //! invocations time it; test invocations retain the result assertions without
@@ -17,10 +22,12 @@ use std::hint::black_box;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
+use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray, UInt64Array};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use criterion::{Criterion, Throughput};
-use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Serie, StructType};
+use yggdryl::{
+    ArrowCastOptions, ArrowCastPlan, DataType, Field, Representation, Serie, StructType,
+};
 
 /// Rows per batch: small on purpose, so the per-batch plan is what is timed.
 const ROWS: usize = crate::bench_profile::corpus(64, 8);
@@ -77,6 +84,51 @@ fn batches(count: usize) -> Vec<Serie> {
         .collect()
 }
 
+/// The `uint64` digest column a writer hands a table.
+fn digest() -> Field {
+    Field::new("digest", DataType::UInt64, false)
+}
+
+/// The `int64` column a table with no unsigned type stores a digest in,
+/// stating that its integers are bits.
+fn stated() -> Field {
+    let mut field = Field::new("digest", DataType::Int64, false);
+    field
+        .as_field_properties_mut()
+        .set_representation(Representation::Bits)
+        .expect("an integer column states bits");
+    field
+}
+
+/// `count` digest columns of [`ROWS`] rows each.
+fn digests(count: usize) -> Vec<Serie> {
+    let field = digest();
+    (0..count)
+        .map(|index| {
+            let base = u64::try_from(index).expect("the benchmark batch count fits a u64");
+            let values = (0..ROWS as u64).map(|row| u64::MAX - base - row);
+            Serie::from_arrow_array(
+                Some(&field),
+                Arc::new(UInt64Array::from_iter_values(values)),
+                ArrowCastOptions::new(),
+            )
+            .expect("the benchmark digests land as their column")
+        })
+        .collect()
+}
+
+/// Apply one plan into a column stating bits to every digest column.
+fn stated_bits(plan: &ArrowCastPlan, columns: &[Serie]) -> usize {
+    columns
+        .iter()
+        .map(|column| {
+            plan.apply(column)
+                .expect("a digest column casts into its bits")
+                .len()
+        })
+        .sum()
+}
+
 /// Compile once, then apply the plan to every batch.
 fn compiled(root: &Field, source: &Field, batches: &[Serie]) -> usize {
     let plan = ArrowCastPlan::compile(source, root, ArrowCastOptions::new())
@@ -124,6 +176,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let root = target();
     let source = Field::from_arrow_schema("row", &stored()).expect("the stored schema imports");
 
+    let bits = ArrowCastPlan::compile(&digest(), &stated(), ArrowCastOptions::new())
+        .expect("a digest column casts into a column stating bits");
+
     let mut group = criterion.benchmark_group("cast_plan");
     for count in COUNTS {
         let corpus = batches(count);
@@ -143,6 +198,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
         });
         group.bench_function(format!("planned_per_batch/{count}"), |bencher| {
             bencher.iter(|| per_batch(black_box(&root), black_box(&corpus)));
+        });
+
+        let columns = digests(count);
+        assert_eq!(stated_bits(&bits, &columns), count * ROWS);
+        group.bench_function(format!("stated_bits/{count}"), |bencher| {
+            bencher.iter(|| stated_bits(black_box(&bits), black_box(&columns)));
         });
     }
     group.finish();

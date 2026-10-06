@@ -8,6 +8,7 @@ import {
   fields,
   intoField,
   type MetadataEntry,
+  type Representation,
 } from '..'
 import { Field as ArrowField, Utf8 as ArrowUtf8 } from 'apache-arrow'
 
@@ -221,6 +222,12 @@ const transformTerm: Term | null = classField.transform.term
 classField.transform.term = 'year(event)'
 classField.transform.term = null
 const removedTerm: string | null = classField.transform.removeTerm()
+const digestField = new Field('digest', 'uint64', false)
+const representation: Representation = digestField.fieldProperties.representation
+digestField.fieldProperties.representation = 'bits'
+digestField.fieldProperties.representation = null
+// @ts-expect-error a representation is 'value' or 'bits'
+digestField.fieldProperties.representation = 'bytes'
 const declared: Field = classField.withPartitionBy(['id', 'truncate(id, 10) as bucket'])
 const declaration: string[] = declared.partitionBy()
 // @ts-expect-error a partition entry is expression text
@@ -233,4 +240,5 @@ void digestBy
 void transformBy
 void transformTerm
 void removedTerm
+void representation
 void declaration

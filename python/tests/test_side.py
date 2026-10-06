@@ -16,9 +16,11 @@ from yggdryl import DataType, Field, Scalar, Side
 
 def test_the_members_are_the_cores_in_code_order() -> None:
     codes = [int(side) for side in Side]
-    assert codes == list(range(18))
+    assert codes == [*range(18), 99]
     assert Side.UKNW == 0 and Side.BUYS == 1 and Side.SELL == 2
     assert Side.SELU == 17
+    # Both sides at once - a book's, a two-sided quote's - stands last.
+    assert Side.BOTH == 99
     assert [side.name for side in Side][:6] == ["UKNW", "BUYS", "SELL", "BUYM", "SELP", "SSHT"]
     for side in Side:
         assert str(side) == side.name
@@ -43,6 +45,9 @@ def test_the_wire_code_and_the_two_lanes_are_the_cores() -> None:
     assert Side.SSEX.is_ask() and not Side.SSEX.is_bid()
     assert not Side.CROS.is_bid() and not Side.CROS.is_ask()
     assert not Side.UKNW.is_bid() and not Side.UKNW.is_ask()
+    # Both sides at once takes neither leg, and no message carries it.
+    assert Side.BOTH.fix_code is None
+    assert not Side.BOTH.is_bid() and not Side.BOTH.is_ask()
 
 
 def test_a_spelling_reads_to_one_member() -> None:
@@ -56,6 +61,8 @@ def test_a_spelling_reads_to_one_member() -> None:
     assert Side.from_spelling("UNKNOWN") is Side.UKNW
     assert Side.SSHT.name == "SSHT"
     assert Side.from_spelling("H") is Side.SELU
+    assert Side.from_spelling("both") is Side.BOTH
+    assert Side.from_spelling("two-sided") is Side.BOTH
     assert Side.from_spelling("X") is None
 
 
@@ -67,8 +74,9 @@ def test_the_datatype_stores_the_code_and_reads_back_the_member() -> None:
         value = DataType("side").scalar(given)
         assert value.kind == "side"
         assert value.as_py() is Side.BUYS
+    assert DataType("side").scalar(99).as_py() is Side.BOTH
     with pytest.raises(ValueError):
-        DataType("side").scalar(99)
+        DataType("side").scalar(98)
     with pytest.raises(ValueError):
         DataType("side").scalar("not a side")
     held = Scalar.from_(Side.SELL)

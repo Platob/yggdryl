@@ -575,6 +575,16 @@ pub enum Serie {
     Unit(Arc<Utf8StringSerie>),
     /// A column of `Forex` values, stored as their UTF-8 text.
     Forex(Arc<Utf8StringSerie>),
+    /// A column of `Lei` values, stored as their UTF-8 text.
+    Lei(Arc<Utf8StringSerie>),
+    /// A column of `Bic` values, stored as their UTF-8 text.
+    Bic(Arc<Utf8StringSerie>),
+    /// A column of `Elf` values, stored as their UTF-8 text.
+    Elf(Arc<Utf8StringSerie>),
+    /// A column of `Dti` values, stored as their UTF-8 text.
+    Dti(Arc<Utf8StringSerie>),
+    /// A column of `Fisn` values, stored as their UTF-8 text.
+    Fisn(Arc<Utf8StringSerie>),
     /// A column of UUIDs, sixteen fixed bytes each.
     Uuid(Arc<FixedBytesSerie>),
     /// A column of series: 32-bit offsets over one item column.
@@ -694,6 +704,11 @@ macro_rules! column {
             Serie::Figi($column) => $answer,
             Serie::Unit($column) => $answer,
             Serie::Forex($column) => $answer,
+            Serie::Lei($column) => $answer,
+            Serie::Bic($column) => $answer,
+            Serie::Elf($column) => $answer,
+            Serie::Dti($column) => $answer,
+            Serie::Fisn($column) => $answer,
             Serie::Uuid($column) => $answer,
             Serie::Serie($column) => $answer,
             Serie::SerieView($column) => $answer,
@@ -987,6 +1002,26 @@ macro_rules! column_mut {
                 $answer
             }
             Serie::Forex(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Lei(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Bic(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Elf(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Dti(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Fisn(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -1456,6 +1491,11 @@ impl Leaf for Utf8StringSerie {
             DataType::Figi => Serie::Figi(Arc::new(self)),
             DataType::Unit => Serie::Unit(Arc::new(self)),
             DataType::Forex => Serie::Forex(Arc::new(self)),
+            DataType::Lei => Serie::Lei(Arc::new(self)),
+            DataType::Bic => Serie::Bic(Arc::new(self)),
+            DataType::Elf => Serie::Elf(Arc::new(self)),
+            DataType::Dti => Serie::Dti(Arc::new(self)),
+            DataType::Fisn => Serie::Fisn(Arc::new(self)),
             _ => Serie::Utf8String(Arc::new(self)),
         }
     }
@@ -1480,7 +1520,12 @@ impl Leaf for Utf8StringSerie {
             | Serie::Ric(held)
             | Serie::Figi(held)
             | Serie::Unit(held)
-            | Serie::Forex(held) => Some(held.as_ref()),
+            | Serie::Forex(held)
+            | Serie::Lei(held)
+            | Serie::Bic(held)
+            | Serie::Elf(held)
+            | Serie::Dti(held)
+            | Serie::Fisn(held) => Some(held.as_ref()),
             _ => None,
         }
     }
@@ -1505,7 +1550,12 @@ impl Leaf for Utf8StringSerie {
             | Serie::Ric(held)
             | Serie::Figi(held)
             | Serie::Unit(held)
-            | Serie::Forex(held) => Some(Arc::make_mut(held)),
+            | Serie::Forex(held)
+            | Serie::Lei(held)
+            | Serie::Bic(held)
+            | Serie::Elf(held)
+            | Serie::Dti(held)
+            | Serie::Fisn(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -3101,6 +3151,11 @@ impl Serie {
             (Self::Figi(mine), Self::Figi(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Unit(mine), Self::Unit(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Forex(mine), Self::Forex(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Lei(mine), Self::Lei(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Bic(mine), Self::Bic(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Elf(mine), Self::Elf(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Dti(mine), Self::Dti(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Fisn(mine), Self::Fisn(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Uuid(mine), Self::Uuid(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Serie(mine), Self::Serie(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::SerieView(mine), Self::SerieView(theirs)) => Arc::make_mut(mine).append(theirs),

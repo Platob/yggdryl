@@ -33,7 +33,7 @@
 //! [`EventIterator`], reads operations in their order and states each as
 //! the one after the live element it follows. [`ElementColumn`] is the six
 //! columns every generated schema of an element opens with,
-//! [`EventColumn`] the nine an event adds, [`MarketColumn`] the thirty-four
+//! [`EventColumn`] the nine an event adds, [`MarketColumn`] the thirty-five
 //! of a market and [`OperationColumn`] the five of an operation - one per
 //! fact the traits answer, under one name and one datatype each, in that
 //! order - so a text line's batch, a FIX row, a chained message and a
@@ -146,6 +146,14 @@ macro_rules! delegate_market {
 
             fn set_stoppx(&mut self, value: Option<$crate::Decimal>, overwrite: bool) {
                 $crate::graph::Market::set_stoppx(&mut self.$($field).+, value, overwrite);
+            }
+
+            fn get_strikepx(&self) -> Option<$crate::Decimal> {
+                $crate::graph::Market::get_strikepx(&self.$($field).+)
+            }
+
+            fn set_strikepx(&mut self, value: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_strikepx(&mut self.$($field).+, value, overwrite);
             }
             fn get_currency(&self) -> &$crate::Ccy {
                 $crate::graph::Market::get_currency(&self.$($field).+)

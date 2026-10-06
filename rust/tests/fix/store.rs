@@ -50,7 +50,7 @@ const CRATE_DOCUMENTS: [&str; 5] = [
     "fields/000000650.json",
     "components/fixmsg.json",
     "groups/metadata.json",
-    "codesets/msgcatcodeset.json",
+    "codesets/marketdatakindcodeset.json",
     "codesets/msgpluginsidecodeset.json",
 ];
 
@@ -170,7 +170,7 @@ fn catalog() -> FixRegistry {
 #[test]
 fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     let registry = FixRegistry::new();
-    let map = registry.get_field_by_counter(65_035).unwrap();
+    let map = registry.get_field_by_counter(65_036).unwrap();
     let mut stated = map.clone();
     stated.set_comment("not the crate's declaration").unwrap();
     let snapshot = registry.into_json().unwrap();
@@ -189,7 +189,7 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     ])
     .unwrap();
     let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_035), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_036), Some(map));
 
     let root = scratch("crate-map");
     let mut folder = LocalFolder::new(&root).unwrap();
@@ -201,14 +201,14 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
         .write_all_bytes(&stated.into_json_bytes().unwrap())
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_035), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_036), Some(map));
     std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips() {
     let mut registry = FixRegistry::new();
-    let mut map = registry.get_field_by_counter(65_035).unwrap().clone();
+    let mut map = registry.get_field_by_counter(65_036).unwrap().clone();
     map.as_fix_mut().set_group("metadata").unwrap();
     let component = StructType::from_fields([map])
         .map(DataType::from)
@@ -481,7 +481,7 @@ fn ordinary_stored_component_references_still_require_null_placeholders() {
 #[test]
 fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     let registry = FixRegistry::new();
-    let map = registry.get_field_by_counter(65_035).unwrap();
+    let map = registry.get_field_by_counter(65_036).unwrap();
     let mut substituted = map.clone();
     substituted.as_fix_mut().set_tag(9001).unwrap();
     substituted.as_fix_mut().set_counter(9001).unwrap();
@@ -495,7 +495,7 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     ])
     .unwrap();
     let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_035), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_036), Some(map));
     assert!(loaded.get_field_by_counter(9001).is_none());
 
     let root = scratch("crate-map-substitution");
@@ -506,7 +506,7 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
         .write_all_bytes(&substituted.into_json_bytes().unwrap())
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_035), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_036), Some(map));
     assert!(loaded.get_field_by_counter(9001).is_none());
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -3374,39 +3374,32 @@ mod committed {
     /// message naming none stating the empty text rather than a null - the
     /// crate's field shard and the fixed row component written again over
     /// that one flag. No count of the census below moved.
-    /// It last moved when the zero member of every four-letter enum came to
-    /// be spelled `UKNW` where it was `UNKN`: the intrinsic `msgcatcodeset`
-    /// rendered from `MarketDataKind` and the `marketdatatypecodeset`
-    /// rendered from `MarketDataType` name it so, and the crate's field shard
-    /// was written again over the three descriptions naming it - `crosscode`
-    /// (65003), `marketdatakind` (65016) and `marketdatatype` (65017); the
-    /// `statecodeset` did not move, a state's zero member being `UNKNOWN`. No
-    /// tag and no count of the census below moved.
-    /// It last moved when the registry took a sources catalog beside its
-    /// code sets - the entries a field's `FIX:sources` ids name, `sources.json`
-    /// in a store: the hash feeds the catalog's entry count after the sets,
-    /// so the committed store's empty catalog feeds one zero where it fed
-    /// nothing. No document, no tag and no count of the census below moved.
-    /// It last moved when the crate gained `msgpluginside` (65041), the role
-    /// of the FIX plugin whose session produced the message, `BUYS`, `SELL`
-    /// or `UKNW` as the `pluginside` enum, required, read by the new
-    /// intrinsic `msgpluginsidecodeset` the registry renders from
-    /// `PluginSide` and a store writes as `codesets/msgpluginsidecodeset.json`,
-    /// right after `msgpluginid` (65040), so every later crate tag moved up
-    /// by one: `msgoriginator` 65042, `msgctxid` 65043, `msgsessionid`
-    /// 65044, `msgsesseventid` 65045, `conversationid` 65046, `forexcode`
-    /// 65047, `bloombergcode` 65048, `figicode` 65049, `sourceurl` 65050 and
-    /// `fixmsg` 65051; the crate's field shard and the fixed row component
-    /// were written again over the new field and those ten tags. The crate
-    /// holds one field more, which the scalar census beside this test -
-    /// `6241 + crated_fields()` - counts through `crated_fields()`, so the
-    /// registered scalars moved by exactly that one field; no literal of the
-    /// census below moved, `registry.len()` being the directory's own sum
-    /// rather than a number.
+    /// It last moved when the intrinsic `statecodeset` moved
+    /// `PENDING_VERIFICATION`, `PENDING_ALLOCATION` and `PENDING_APPROVAL`
+    /// out of the pending band to 4006-4008 - each a report or an
+    /// allocation already acknowledged and awaiting its next step - and
+    /// gained `APPROVED` (8013): one set the registry renders from the
+    /// enum, so no file and no count of the census below moved.
+    /// It last moved when the strike became a market fact and the intrinsic
+    /// category set took its column's name: `strikepx` (65035), the strike
+    /// of the option a message identifies, is a derived market column
+    /// beside `StrikePrice(202)` that no registry holds, and every crate tag
+    /// from `metadata` on moved up by one - `metadata` 65036, `sourceurl`
+    /// 65050, `fixmsg` 65051 - so the crate's field shard, its `metadata`
+    /// group and the fixed row component were written again; and
+    /// `msgcatcodeset` became `marketdatakindcodeset`, the one document
+    /// renamed and `marketdatakind` (65016) reading by it. No count of the
+    /// census below moved.
+    /// It next moved when four-letter zero members were spelled `UKNW`,
+    /// the registry began hashing its sources count, and the crate gained
+    /// `msgpluginside` (65042) immediately after `msgpluginid` (65041): the plugin's
+    /// code set, field shard and fixed row changed, and the following
+    /// crate tags moved up once more, ending at `sourceurl` 65051 and
+    /// `fixmsg` 65052. Those regenerated documents pin the combined hash.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 4_829_474_574_508_854_660);
+        assert_eq!(registry.stable_hash(), 14_590_816_604_712_223_535);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

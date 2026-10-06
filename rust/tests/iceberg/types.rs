@@ -245,6 +245,26 @@ mod iceberg {
     }
 
     #[test]
+    fn a_decimal_spelled_past_its_width_is_refused_by_the_parameter_that_does_not_fit() {
+        // The precision and the scale are narrowed by one rule wherever a
+        // foreign schema spells them, and the refusal names which one.
+        let refused = |text: &str| PrimitiveType::from_str(text).unwrap_err().to_string();
+        let precision = refused("decimal(300, 0)");
+        assert!(precision.contains("precision fitting u8"), "{precision}");
+        assert!(precision.contains("300"), "{precision}");
+        let scale = refused("decimal(9, 200)");
+        assert!(scale.contains("scale fitting i8"), "{scale}");
+        assert!(scale.contains("200"), "{scale}");
+        // What fits the width and is still no decimal is the datatype's
+        // refusal, asked where the type is made.
+        assert!(
+            PrimitiveType::from_str("decimal(200, 0)")
+                .and_then(PrimitiveType::into_dtype)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn the_datatype_grammar_reads_every_iceberg_primitive_and_member_as_the_reader_does() {
         // `PrimitiveType::into_dtype` is the one Iceberg mapping, and the
         // grammar reads each name a schema document or a dump writes as the

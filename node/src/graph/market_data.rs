@@ -167,7 +167,7 @@ impl JsMarketData {
     /// The market data category of this value's leaf, as the
     /// `marketdatakind` member's stored name: an order `ORDR`, a quote
     /// `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a snapshot
-    /// `BOOK`, a FIX message its own `msgcat`.
+    /// `BOOK`, a FIX message the category its dictionary files it under.
     #[napi(getter)]
     pub fn marketdatakind(&self) -> &'static str {
         self.inner.marketdatakind().as_str()

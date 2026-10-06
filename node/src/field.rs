@@ -1660,7 +1660,10 @@ impl JsField {
     }
 
     /// Recursively normalize this exact Field for one closed compatibility
-    /// target without changing the current wrapper.
+    /// target without changing the current wrapper. An unsigned integer
+    /// column stating `FIELD:representation=bits` is exchanged as the signed
+    /// integer of its width where the target names one, and keeps the
+    /// declaration.
     #[napi(js_name = "intoSchemeCompat", skip_typescript)]
     pub fn into_scheme_compat(&self, target: String) -> Result<Self> {
         let target = CoreScheme::from_str(&target).map_err(napi_error)?;
@@ -1783,6 +1786,21 @@ impl JsProtocolField {
             env,
             format!(
                 "{property} is a fix property, and this is a {} view",
+                self.scheme.as_str()
+            ),
+        ))
+    }
+
+    /// The same rule for the `FIELD:` vocabulary, answered by the view
+    /// `field.fieldProperties` returns.
+    fn require_field_properties(&self, env: Env, property: &str) -> Result<()> {
+        if self.scheme == CoreScheme::FIELD {
+            return Ok(());
+        }
+        Err(napi_type_error(
+            env,
+            format!(
+                "{property} is a field property, and this is a {} view",
                 self.scheme.as_str()
             ),
         ))
@@ -2006,6 +2024,42 @@ impl JsProtocolField {
     pub fn remove_term(&mut self, env: Env) -> Result<Option<String>> {
         self.require_transform(env, "removeTerm")?;
         Ok(self.field.inner.as_transform_mut().remove_term())
+    }
+
+    /// What crosses when a same-width integer of the other signedness meets
+    /// this integer column, on the `fieldProperties` view: `'bits'` where it
+    /// states them, `'value'` - the default - otherwise. Every other view
+    /// refuses the property.
+    #[napi(getter, ts_return_type = "'value' | 'bits'")]
+    pub fn representation(&self, env: Env) -> Result<String> {
+        self.require_field_properties(env, "representation")?;
+        Ok(self
+            .field
+            .inner
+            .as_field_properties()
+            .representation()
+            .as_str()
+            .to_owned())
+    }
+
+    /// State what crosses when a same-width integer of the other signedness
+    /// meets this integer column; `'value'` or `null` removes the
+    /// declaration, and `'bits'` on a column that is no integer is refused,
+    /// leaving the field unchanged.
+    #[napi(setter, ts_args_type = "representation: 'value' | 'bits' | null")]
+    pub fn set_representation(&mut self, env: Env, representation: Option<String>) -> Result<()> {
+        self.require_field_properties(env, "representation")?;
+        let representation = representation
+            .as_deref()
+            .map(yggdryl::Representation::from_str)
+            .transpose()
+            .map_err(napi_error)?
+            .unwrap_or_default();
+        self.field
+            .inner
+            .as_field_properties_mut()
+            .set_representation(representation)
+            .map_err(napi_error)
     }
 
     /// The sources that contributed this field, on the `fix` view.

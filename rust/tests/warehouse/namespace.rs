@@ -308,6 +308,8 @@ fn the_write_helpers_write_through_an_existing_table() {
         )
         .expect("overwritten");
     assert_eq!(written.row_size().expect("rows"), 2);
+    // An append resizes the file, so its previous reader must be finished.
+    drop(written);
     let appended = tables
         .append_arrow_reader(
             "ticks",
@@ -315,7 +317,8 @@ fn the_write_helpers_write_through_an_existing_table() {
         )
         .expect("appended");
     assert_eq!(appended.row_size().expect("rows"), 4);
-    let options = written.record_options().expect("options");
+    let options = appended.record_options().expect("options");
+    drop(appended);
     let again = tables
         .overwrite_arrow_reader_with_options(
             "ticks",
@@ -324,6 +327,7 @@ fn the_write_helpers_write_through_an_existing_table() {
         )
         .expect("overwritten");
     assert_eq!(again.row_size().expect("rows"), 2);
+    drop(again);
     let again = tables
         .append_arrow_reader_with_options(
             "ticks",

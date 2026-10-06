@@ -782,3 +782,125 @@ fn an_integer_of_any_width_narrows_to_an_integer_leaf_exactly_at_its_range() {
         }
     }
 }
+
+/// A column stating `FIELD:representation=bits` reads a same-width integer
+/// of the other signedness as its bits; the datatype's own door, and a
+/// column stating nothing, read every value by value.
+#[test]
+fn a_column_stating_bits_reads_the_other_sign_of_its_width_as_its_bits() {
+    use yggdryl::{DataType, Field, Representation, Scalar};
+
+    let stating = |dtype: DataType| -> Field {
+        let mut field = dtype.required_field("digest");
+        field
+            .as_field_properties_mut()
+            .set_representation(Representation::Bits)
+            .unwrap();
+        field
+    };
+
+    let digest = stating(DataType::UInt64);
+    assert_eq!(digest.scalar(-1_i64).unwrap(), Scalar::from(u64::MAX));
+    assert_eq!(digest.scalar(i64::MIN).unwrap(), Scalar::from(1_u64 << 63));
+    // A value both readings agree on is read by value.
+    assert_eq!(digest.scalar(5_i64).unwrap(), Scalar::from(5_u64));
+    let signed = stating(DataType::Int64);
+    assert_eq!(signed.scalar(u64::MAX).unwrap(), Scalar::from(-1_i64));
+    assert_eq!(signed.scalar(7_u64).unwrap(), Scalar::from(7_i64));
+
+    for (unsigned, signed, negative, top) in [
+        (
+            DataType::UInt32,
+            DataType::Int32,
+            Scalar::from(-2_i32),
+            Scalar::from(u32::MAX - 1),
+        ),
+        (
+            DataType::UInt16,
+            DataType::Int16,
+            Scalar::from(-2_i16),
+            Scalar::from(u16::MAX - 1),
+        ),
+        (
+            DataType::UInt8,
+            DataType::Int8,
+            Scalar::from(-2_i8),
+            Scalar::from(u8::MAX - 1),
+        ),
+    ] {
+        assert_eq!(
+            stating(unsigned.clone()).scalar(negative.clone()).unwrap(),
+            top,
+            "{unsigned}"
+        );
+        assert_eq!(
+            stating(signed.clone()).scalar(top.clone()).unwrap(),
+            negative,
+            "{signed}"
+        );
+    }
+
+    // Bits are read only across one width: a narrower negative is refused.
+    assert!(digest.scalar(-1_i32).is_err());
+    // A column stating nothing, and the datatype, read by value.
+    assert!(
+        DataType::UInt64
+            .required_field("digest")
+            .scalar(-1_i64)
+            .is_err()
+    );
+    assert!(DataType::UInt64.scalar(Scalar::from(-1_i64)).is_err());
+    assert!(DataType::Int64.scalar(Scalar::from(u64::MAX)).is_err());
+    // The nullability of the column still holds.
+    assert!(digest.scalar(Scalar::Null).is_err());
+
+    // A column laid out from such values holds their bits.
+    let column =
+        yggdryl::Serie::from_scalars(digest, [Scalar::from(-1_i64), Scalar::from(5_i64)]).unwrap();
+    assert_eq!(column.scalar(0).unwrap(), Scalar::from(u64::MAX));
+    assert_eq!(column.scalar(1).unwrap(), Scalar::from(5_u64));
+}
+
+/// A row under a root whose column states bits validates and canonicalizes
+/// the bits, at the root and inside a serie's item.
+#[test]
+fn a_row_under_a_root_stating_bits_validates_and_canonicalizes_the_bits() {
+    use yggdryl::{DataType, Representation, Scalar, StructType};
+
+    let mut digest = DataType::UInt64.required_field("d");
+    digest
+        .as_field_properties_mut()
+        .set_representation(Representation::Bits)
+        .unwrap();
+    let item =
+        DataType::from(StructType::from_fields([digest.clone()]).unwrap()).required_field("item");
+    let root = DataType::from(
+        StructType::from_fields([digest, DataType::serie(item).nullable_field("items")]).unwrap(),
+    )
+    .required_field("row");
+
+    let row = Scalar::from_sequence([
+        Scalar::from(-1_i64),
+        Scalar::from_sequence([Scalar::from_sequence([Scalar::from(-2_i64)])]),
+    ]);
+    root.validate_value(&row).unwrap();
+    let canonical = root.canonicalize_value(row).unwrap();
+    assert_eq!(
+        canonical.get(0).map(|cell| cell.into_owned()),
+        Some(Scalar::from(u64::MAX))
+    );
+    let items = canonical.get(1).unwrap().into_owned();
+    let first = items.get(0).unwrap().into_owned();
+    assert_eq!(
+        first.get(0).map(|cell| cell.into_owned()),
+        Some(Scalar::from(u64::MAX - 1))
+    );
+
+    // The same row under a root stating nothing is refused.
+    let plain =
+        DataType::from(StructType::from_fields([DataType::UInt64.required_field("d")]).unwrap())
+            .required_field("row");
+    let refused = Scalar::from_sequence([Scalar::from(-1_i64)]);
+    assert!(plain.validate_value(&refused).is_err());
+    assert!(plain.canonicalize_value(refused).is_err());
+}

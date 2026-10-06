@@ -569,6 +569,13 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ("bbg", "AAPL US Equity"),
         ("ric", "VOD.L"),
         ("figi", "BBG000BLNQ16"),
+        ("unit", "MWh"),
+        ("forex", "EUR/USD"),
+        ("lei", "HWUPKR0MPOU8FGXBT394"),
+        ("bic", "DEUTDEFFXXX"),
+        ("elf", "2HBR"),
+        ("dti", "X9J9K872S"),
+        ("fisn", "ACME CORP/SH"),
     ]
     record_state = (
         "struct",

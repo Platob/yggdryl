@@ -216,19 +216,48 @@ impl ElementColumn {
                     .map(str::to_owned)
                     .unwrap_or_default(),
             ),
+            // A digest read as its bits or through its column's own value
+            // door, so a cell a table stored in another layout - the
+            // `decimal(20, 0)` an Iceberg table holds a `uint64` as, or the
+            // `long` of its width - states the number it was; a cell the
+            // door refuses states nothing.
             Self::CurrHashCode => {
-                if let Some(code) = value.as_u64() {
+                if let Some(code) = digest_u64(value) {
                     element.set_currhashcode(code);
                 }
             }
             Self::CrossHashCode => {
-                if let Some(code) = value.as_u64() {
+                if let Some(code) = digest_u64(value) {
                     element.set_crosshashcode(code);
                 }
             }
             Self::SrcUuids => element.set_srcuuids(uuids_of(value)),
         }
     }
+}
+
+/// The `uint64` one cell states, read through the datatype's own value
+/// door: an integer of any width that fits, an enum's code, a decimal with
+/// no fraction; `None` for a null or a value the door refuses.
+pub(crate) fn whole_u64(value: &Scalar) -> Option<u64> {
+    if value.is_null() {
+        return None;
+    }
+    DataType::UInt64
+        .scalar(value.clone())
+        .ok()
+        .and_then(|whole| whole.as_u64())
+}
+
+/// The digest one cell states: an `int64` cell's bits - the reading
+/// `FIELD:representation=bits` states, which a digest column takes whatever
+/// the schema it was read under says: an XXH3-64 is a bit pattern, a table
+/// with no unsigned type stores it as the `long` of its width, and a
+/// negative cell is no other `u64` - else [`whole_u64`].
+pub(crate) fn digest_u64(value: &Scalar) -> Option<u64> {
+    crate::integer::bits_reading(&DataType::UInt64, value)
+        .and_then(|bits| bits.as_u64())
+        .or_else(|| whole_u64(value))
 }
 
 /// One run of identities as the raw value its `serie<uuid>` column types,

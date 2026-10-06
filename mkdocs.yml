@@ -172,6 +172,11 @@ nav:
       - RIC: types/codes/ric.md
       - Forex: types/codes/forex.md
       - Unit: types/codes/unit.md
+      - LEI: types/codes/lei.md
+      - BIC: types/codes/bic.md
+      - ELF: types/codes/elf.md
+      - DTI: types/codes/dti.md
+      - FISN: types/codes/fisn.md
     - Enums:
       - types/enum/index.md
       - State: types/enum/state.md

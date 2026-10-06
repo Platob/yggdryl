@@ -636,9 +636,10 @@ mod parameters {
         // retired versioned leaves left no number behind: the family's own
         // number is the placeholder no leaf takes.
         // FIGI, Unit, RIC and Forex each add one code leaf, and
-        // MarketDataKind, MarketDataType and PluginSide an enum leaf each,
-        // without changing the UUID family's range.
-        assert_eq!(DataTypeId::ALL.len(), 92);
+        // MarketDataKind, MarketDataType and PluginSide an enum leaf each, and LEI,
+        // BIC, ELF, DTI and FISN a code leaf each in the text range's tail
+        // the code family took, without changing the UUID family's range.
+        assert_eq!(DataTypeId::ALL.len(), 97);
         assert_eq!(DataTypeId::Uuid.as_u8(), 0x81);
         assert_eq!(DataTypeId::from_u8(0x80), None);
         assert!(

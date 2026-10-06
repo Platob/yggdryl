@@ -28,8 +28,10 @@ impl JsMsgType {
     /// `marketdatakind` member's stored name, or `null` for an unclassified
     /// custom definition.
     #[napi(getter)]
-    pub fn msgcat(&self) -> Option<&'static str> {
-        self.inner.msgcat().map(yggdryl::MarketDataKind::as_str)
+    pub fn marketdatakind(&self) -> Option<&'static str> {
+        self.inner
+            .marketdatakind()
+            .map(yggdryl::MarketDataKind::as_str)
     }
 
     /// The native canonical name.

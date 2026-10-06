@@ -56,7 +56,7 @@ fn handle(name: &str) -> Buffer {
 }
 
 /// Merging options over a handle, keyed on `id`.
-fn merging(handle: &Buffer) -> RecordOptions {
+fn merging(handle: &impl IOMedia) -> RecordOptions {
     handle
         .record_options()
         .unwrap()
@@ -235,6 +235,187 @@ fn a_key_arriving_twice_lets_the_last_arrival_win() {
     assert_eq!(
         stored(&handle, &options),
         vec![(1, Some("c".to_owned())), (9, Some("d".to_owned()))]
+    );
+}
+
+/// A handle whose every forwarded call is tallied.
+fn counted(name: &str) -> yggdryl::holder::counted::Counted<Buffer> {
+    yggdryl::holder::counted::Counted::new(handle(name))
+}
+
+/// The calls a handle answered that change what it stores.
+fn writes(handle: &yggdryl::holder::counted::Counted<Buffer>) -> u64 {
+    handle
+        .counts()
+        .group(yggdryl::holder::counted::Group::Write)
+}
+
+#[test]
+fn a_merge_that_changes_no_row_writes_nothing() {
+    let mut handle = counted("replay.arrows");
+    let options = merging(&handle);
+    let seeded = || reader(vec![rows(vec![1, 2], vec![Some("AAPL"), None])]);
+    handle.merge_arrow_reader(seeded(), &options).unwrap();
+    assert!(writes(&handle) > 0);
+
+    // The same rows again, and one of them alone: every last arrival equals
+    // the row it matches, so the leaf is not written at all.
+    handle.reset();
+    let result = handle.merge_arrow_reader(seeded(), &options).unwrap();
+    // A merge still applies every row it pulled.
+    assert_eq!(result, yggdryl::IOResult::new(2, 2));
+    handle
+        .merge_arrow_reader(reader(vec![rows(vec![2], vec![None])]), &options)
+        .unwrap();
+    assert_eq!(writes(&handle), 0);
+    assert_eq!(
+        stored(&handle, &options),
+        vec![(1, Some("AAPL".to_owned())), (2, None)]
+    );
+
+    // A null that becomes a value is a change, and so is a new key.
+    handle
+        .merge_arrow_reader(reader(vec![rows(vec![2], vec![Some("MSFT")])]), &options)
+        .unwrap();
+    assert!(writes(&handle) > 0);
+    handle.reset();
+    handle
+        .merge_arrow_reader(reader(vec![rows(vec![3], vec![Some("IBM")])]), &options)
+        .unwrap();
+    assert!(writes(&handle) > 0);
+    assert_eq!(
+        stored(&handle, &options),
+        vec![
+            (1, Some("AAPL".to_owned())),
+            (2, Some("MSFT".to_owned())),
+            (3, Some("IBM".to_owned())),
+        ]
+    );
+}
+
+#[test]
+fn a_first_arrival_that_differs_then_a_last_that_equals_is_no_change() {
+    let mut handle = counted("first-differs.arrows");
+    let options = merging(&handle);
+    handle
+        .merge_arrow_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
+        .unwrap();
+    handle.reset();
+
+    // The last arrival decides what the row becomes, and it is what the row
+    // already is: the stale first arrival is never written.
+    handle
+        .merge_arrow_reader(
+            reader(vec![rows(vec![1, 1], vec![Some("STALE"), Some("AAPL")])]),
+            &options,
+        )
+        .unwrap();
+    assert_eq!(writes(&handle), 0);
+    assert_eq!(
+        stored(&handle, &options),
+        vec![(1, Some("AAPL".to_owned()))]
+    );
+
+    // The other way round, the last arrival differs and is written.
+    handle
+        .merge_arrow_reader(
+            reader(vec![rows(vec![1, 1], vec![Some("AAPL"), Some("AAPL.O")])]),
+            &options,
+        )
+        .unwrap();
+    assert!(writes(&handle) > 0);
+    assert_eq!(
+        stored(&handle, &options),
+        vec![(1, Some("AAPL.O".to_owned()))]
+    );
+}
+
+#[test]
+fn a_row_that_returns_to_what_is_stored_in_a_later_batch_is_no_change() {
+    let mut handle = counted("returns-later.arrows");
+    let options = merging(&handle);
+    handle
+        .merge_arrow_reader(
+            reader(vec![rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])]),
+            &options,
+        )
+        .unwrap();
+    handle.reset();
+
+    // The first batch restates 1 with another symbol and the last with the
+    // stored one: across the whole merge the row ends as it was, so the
+    // leaf is not written.
+    handle
+        .merge_arrow_reader(
+            reader(vec![
+                rows(vec![1, 2], vec![Some("STALE"), Some("MSFT")]),
+                rows(vec![2], vec![Some("MSFT")]),
+                rows(vec![1], vec![Some("AAPL")]),
+            ]),
+            &options,
+        )
+        .unwrap();
+    assert_eq!(writes(&handle), 0);
+    assert_eq!(
+        stored(&handle, &options),
+        vec![(1, Some("AAPL".to_owned())), (2, Some("MSFT".to_owned()))]
+    );
+
+    // A row a later batch leaves differing is written, and so is a key a
+    // later batch appends after the rows returned.
+    handle
+        .merge_arrow_reader(
+            reader(vec![
+                rows(vec![1], vec![Some("AAPL")]),
+                rows(vec![1], vec![Some("AAPL.O")]),
+            ]),
+            &options,
+        )
+        .unwrap();
+    assert!(writes(&handle) > 0);
+    handle.reset();
+    handle
+        .merge_arrow_reader(
+            reader(vec![
+                rows(vec![1], vec![Some("STALE")]),
+                rows(vec![1, 3], vec![Some("AAPL.O"), Some("IBM")]),
+            ]),
+            &options,
+        )
+        .unwrap();
+    assert!(writes(&handle) > 0);
+    assert_eq!(
+        stored(&handle, &options),
+        vec![
+            (1, Some("AAPL.O".to_owned())),
+            (2, Some("MSFT".to_owned())),
+            (3, Some("IBM".to_owned())),
+        ]
+    );
+}
+
+#[test]
+fn a_key_stored_twice_with_one_copy_differing_is_a_change() {
+    let mut handle = counted("stored-twice-differing.arrows");
+    let options = merging(&handle);
+    handle
+        .overwrite_arrow_reader(
+            reader(vec![rows(vec![1, 1], vec![Some("AAPL"), Some("OLD")])]),
+            &options
+                .clone()
+                .with_merge_by(yggdryl::expression::Selector::all())
+                .unwrap(),
+        )
+        .unwrap();
+    handle.reset();
+
+    handle
+        .merge_arrow_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
+        .unwrap();
+    assert!(writes(&handle) > 0);
+    assert_eq!(
+        stored(&handle, &options),
+        vec![(1, Some("AAPL".to_owned())), (1, Some("AAPL".to_owned()))]
     );
 }
 
@@ -817,4 +998,66 @@ fn incoming_batches_of_changing_layouts_are_each_cast_to_the_field() {
         }
     }
     assert_eq!(found, vec![(1, "IBM".to_owned()), (2, "MSFT".to_owned())]);
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn a_matched_row_whose_layout_the_row_format_cannot_compare_counts_as_changed() {
+    use arrow_array::types::Int32Type;
+    use arrow_array::{DictionaryArray, Int32Array, StructArray};
+    use arrow_schema::DataType as ArrowDataType;
+
+    // A dictionary over records is a layout Arrow's row format does not
+    // encode, so a pair holding one cannot be proven equal.
+    let tag = StructType::from_fields([DataType::Int64.required_field("x")])
+        .map(DataType::from)
+        .unwrap();
+    let field = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::dictionary(DataType::Int32, tag)
+            .unwrap()
+            .nullable_field("tag"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let arrow = field.clone().into_arrow_schema().unwrap();
+    let ArrowDataType::Dictionary(_, values) = arrow.field(1).data_type() else {
+        panic!("a dictionary column, got {}", arrow.field(1).data_type());
+    };
+    let ArrowDataType::Struct(children) = values.as_ref() else {
+        panic!("a dictionary over a record, got {values}");
+    };
+    let batch = || {
+        let values = StructArray::new(
+            children.clone(),
+            vec![Arc::new(Int64Array::from(vec![7])) as ArrayRef],
+            None,
+        );
+        let tags =
+            DictionaryArray::<Int32Type>::try_new(Int32Array::from(vec![0, 0]), Arc::new(values))
+                .unwrap();
+        RecordBatch::try_new(
+            Arc::clone(&arrow),
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
+                Arc::new(tags),
+            ],
+        )
+        .unwrap()
+    };
+    let changes = |field: &Field, stored: RecordBatch, incoming: RecordBatch| {
+        yggdryl::internals::media_merge::changes(
+            yggdryl::arrow::batch_reader(stored.schema(), [stored]),
+            yggdryl::arrow::batch_reader(incoming.schema(), [incoming]),
+            field,
+            &yggdryl::Selector::from_columns(["id"]),
+            true,
+        )
+        .unwrap()
+    };
+    assert!(changes(&field, batch(), batch()));
+    // The same replay over a layout the format encodes is no change.
+    let plain = rows(vec![1, 2], vec![Some("AAPL"), None]);
+    assert!(!changes(&schema(), plain.clone(), plain));
 }

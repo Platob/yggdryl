@@ -100,12 +100,12 @@
     "groups": 581,
     "enumFields": 2030,
     "codesets": 739,
-    "codes": 7937,
+    "codes": 7938,
     "aliases": 56,
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 151,
+    "columns": 152,
     "memberships": 0,
     "dialects": 0,
     "datatypes": 29,
@@ -79226,7 +79226,7 @@
           "type": "marketdatakind"
         },
         "metadata": {
-          "FIX:codeset": "msgcatcodeset",
+          "FIX:codeset": "marketdatakindcodeset",
           "FIX:tag": "65016",
           "description": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UKNW where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word.",
           "display": "Market Data Kind"
@@ -79295,7 +79295,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65040",
+          "FIX:tag": "65041",
           "description": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived.",
           "display": "Message Plugin ID"
         },
@@ -79308,7 +79308,7 @@
         },
         "metadata": {
           "FIX:codeset": "msgpluginsidecodeset",
-          "FIX:tag": "65041",
+          "FIX:tag": "65042",
           "description": "The role of the FIX plugin whose session produced the message: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, and independent of Side(54).",
           "display": "Message Plugin Side"
         },
@@ -79320,7 +79320,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65042",
+          "FIX:tag": "65043",
           "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
           "display": "Message Originator"
         },
@@ -79332,7 +79332,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65043",
+          "FIX:tag": "65044",
           "description": "The message context a bridge handled the message in, as its own log names it.",
           "display": "Message Context ID"
         },
@@ -79344,7 +79344,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65044",
+          "FIX:tag": "65045",
           "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
           "display": "Message Session ID"
         },
@@ -79356,7 +79356,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65045",
+          "FIX:tag": "65046",
           "FIX:transient": "false",
           "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
           "display": "Message Session Event ID"
@@ -79369,7 +79369,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65046",
+          "FIX:tag": "65047",
           "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
           "display": "Conversation ID"
         },
@@ -79381,7 +79381,7 @@
           "type": "forex"
         },
         "metadata": {
-          "FIX:tag": "65047",
+          "FIX:tag": "65048",
           "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other replaces its type's answer, the base key.",
           "display": "Forex Code"
         },
@@ -79393,7 +79393,7 @@
           "type": "bbg"
         },
         "metadata": {
-          "FIX:tag": "65048",
+          "FIX:tag": "65049",
           "description": "The normalized Bloomberg identifier the message identifies.",
           "display": "Bloomberg Code"
         },
@@ -79405,7 +79405,7 @@
           "type": "figi"
         },
         "metadata": {
-          "FIX:tag": "65049",
+          "FIX:tag": "65050",
           "description": "The normalized FIGI the message identifies.",
           "display": "FIGI Code"
         },
@@ -79417,7 +79417,7 @@
           "type": "url"
         },
         "metadata": {
-          "FIX:tag": "65050",
+          "FIX:tag": "65051",
           "FIX:transient": "false",
           "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
           "display": "Source URL"
@@ -225272,8 +225272,8 @@
           "type": "map"
         },
         "metadata": {
-          "FIX:counter": "65035",
-          "FIX:tag": "65035",
+          "FIX:counter": "65036",
+          "FIX:tag": "65036",
           "description": "What a message stated that is no field and no identifier map holds: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order; a key an identifier map holds with its value - a bridge's TECH.CLIENTID, its PARENTORDERID - rides fixentries under 0:key as it arrived instead.",
           "display": "Metadata"
         },
@@ -248903,6 +248903,141 @@
     {
       "codes": [
         {
+          "doc": "No published category: a message type the dictionary does not file.",
+          "name": "UKNW",
+          "value": "0"
+        },
+        {
+          "doc": "Account reporting.",
+          "name": "ACCT",
+          "value": "1"
+        },
+        {
+          "doc": "Allocation instructions, reports and acknowledgements.",
+          "name": "ALLO",
+          "value": "2"
+        },
+        {
+          "doc": "Market data: books, their snapshots, increments and requests.",
+          "name": "BOOK",
+          "value": "3"
+        },
+        {
+          "doc": "Certificate handling.",
+          "name": "CERT",
+          "value": "4"
+        },
+        {
+          "doc": "Collateral management.",
+          "name": "COLL",
+          "value": "5"
+        },
+        {
+          "doc": "Communication: news and email.",
+          "name": "COMM",
+          "value": "6"
+        },
+        {
+          "doc": "Confirmation and affirmation.",
+          "name": "CONF",
+          "value": "7"
+        },
+        {
+          "doc": "Execution reports and their acknowledgements.",
+          "name": "EXEC",
+          "value": "8"
+        },
+        {
+          "doc": "Market structure reference data.",
+          "name": "MKST",
+          "value": "9"
+        },
+        {
+          "doc": "Order handling: single, list, cross, multileg and mass.",
+          "name": "ORDR",
+          "value": "10"
+        },
+        {
+          "doc": "Pay management.",
+          "name": "PAYM",
+          "value": "11"
+        },
+        {
+          "doc": "Position maintenance.",
+          "name": "POSN",
+          "value": "12"
+        },
+        {
+          "doc": "Parties reference data and risk limits reporting.",
+          "name": "PRTY",
+          "value": "13"
+        },
+        {
+          "doc": "Quotation and negotiation.",
+          "name": "QUOT",
+          "value": "14"
+        },
+        {
+          "doc": "Registration instructions.",
+          "name": "REGI",
+          "value": "15"
+        },
+        {
+          "doc": "Party risk limits.",
+          "name": "RISK",
+          "value": "16"
+        },
+        {
+          "doc": "Securities reference data.",
+          "name": "SECU",
+          "value": "17"
+        },
+        {
+          "doc": "Session, application sequencing and business rejects.",
+          "name": "SESS",
+          "value": "18"
+        },
+        {
+          "doc": "Settlement instructions and obligations.",
+          "name": "SETL",
+          "value": "19"
+        },
+        {
+          "doc": "Stream assignment.",
+          "name": "STRM",
+          "value": "20"
+        },
+        {
+          "doc": "Trade capture and matching.",
+          "name": "TRAD",
+          "value": "21"
+        },
+        {
+          "doc": "Order batches: lists, mass order handling and crosses, one order per entry.",
+          "name": "ORDB",
+          "value": "22"
+        },
+        {
+          "doc": "Quote batches: mass quotes and bid lists, one quote per entry.",
+          "name": "QUOB",
+          "value": "23"
+        },
+        {
+          "doc": "Execution batches: several executions reported at once, one per entry.",
+          "name": "EXEB",
+          "value": "24"
+        },
+        {
+          "doc": "Trade batches: match reports stating several trades, one per entry.",
+          "name": "TRDB",
+          "value": "25"
+        }
+      ],
+      "name": "marketdatakindcodeset"
+    },
+    {
+      "codes": [
+        {
           "doc": "No type stated.",
           "name": "UKNW",
           "value": "0"
@@ -252667,141 +252802,6 @@
         }
       ],
       "name": "moneylaunderingstatuscodeset"
-    },
-    {
-      "codes": [
-        {
-          "doc": "No published category: a message type the dictionary does not file.",
-          "name": "UKNW",
-          "value": "0"
-        },
-        {
-          "doc": "Account reporting.",
-          "name": "ACCT",
-          "value": "1"
-        },
-        {
-          "doc": "Allocation instructions, reports and acknowledgements.",
-          "name": "ALLO",
-          "value": "2"
-        },
-        {
-          "doc": "Market data: books, their snapshots, increments and requests.",
-          "name": "BOOK",
-          "value": "3"
-        },
-        {
-          "doc": "Certificate handling.",
-          "name": "CERT",
-          "value": "4"
-        },
-        {
-          "doc": "Collateral management.",
-          "name": "COLL",
-          "value": "5"
-        },
-        {
-          "doc": "Communication: news and email.",
-          "name": "COMM",
-          "value": "6"
-        },
-        {
-          "doc": "Confirmation and affirmation.",
-          "name": "CONF",
-          "value": "7"
-        },
-        {
-          "doc": "Execution reports and their acknowledgements.",
-          "name": "EXEC",
-          "value": "8"
-        },
-        {
-          "doc": "Market structure reference data.",
-          "name": "MKST",
-          "value": "9"
-        },
-        {
-          "doc": "Order handling: single, list, cross, multileg and mass.",
-          "name": "ORDR",
-          "value": "10"
-        },
-        {
-          "doc": "Pay management.",
-          "name": "PAYM",
-          "value": "11"
-        },
-        {
-          "doc": "Position maintenance.",
-          "name": "POSN",
-          "value": "12"
-        },
-        {
-          "doc": "Parties reference data and risk limits reporting.",
-          "name": "PRTY",
-          "value": "13"
-        },
-        {
-          "doc": "Quotation and negotiation.",
-          "name": "QUOT",
-          "value": "14"
-        },
-        {
-          "doc": "Registration instructions.",
-          "name": "REGI",
-          "value": "15"
-        },
-        {
-          "doc": "Party risk limits.",
-          "name": "RISK",
-          "value": "16"
-        },
-        {
-          "doc": "Securities reference data.",
-          "name": "SECU",
-          "value": "17"
-        },
-        {
-          "doc": "Session, application sequencing and business rejects.",
-          "name": "SESS",
-          "value": "18"
-        },
-        {
-          "doc": "Settlement instructions and obligations.",
-          "name": "SETL",
-          "value": "19"
-        },
-        {
-          "doc": "Stream assignment.",
-          "name": "STRM",
-          "value": "20"
-        },
-        {
-          "doc": "Trade capture and matching.",
-          "name": "TRAD",
-          "value": "21"
-        },
-        {
-          "doc": "Order batches: lists, mass order handling and crosses, one order per entry.",
-          "name": "ORDB",
-          "value": "22"
-        },
-        {
-          "doc": "Quote batches: mass quotes and bid lists, one quote per entry.",
-          "name": "QUOB",
-          "value": "23"
-        },
-        {
-          "doc": "Execution batches: several executions reported at once, one per entry.",
-          "name": "EXEB",
-          "value": "24"
-        },
-        {
-          "doc": "Trade batches: match reports stating several trades, one per entry.",
-          "name": "TRDB",
-          "value": "25"
-        }
-      ],
-      "name": "msgcatcodeset"
     },
     {
       "codes": [
@@ -269477,21 +269477,6 @@
           "value": "1003"
         },
         {
-          "doc": "A trade report waiting on its verification.",
-          "name": "PENDING_VERIFICATION",
-          "value": "1004"
-        },
-        {
-          "doc": "An allocation asked for and not yet made.",
-          "name": "PENDING_ALLOCATION",
-          "value": "1005"
-        },
-        {
-          "doc": "A give-up or take-up waiting on its approval.",
-          "name": "PENDING_APPROVAL",
-          "value": "1006"
-        },
-        {
           "doc": "Accepted, not yet working: FIX `AcceptedForBidding`, an accepted trade report, quote or mass action.",
           "name": "ACCEPTED",
           "value": "2000"
@@ -269570,6 +269555,21 @@
           "doc": "A trade held before clearing.",
           "name": "TRADE_IN_CLEARING_HOLD",
           "value": "4005"
+        },
+        {
+          "doc": "A trade report accepted, its verification outstanding.",
+          "name": "PENDING_VERIFICATION",
+          "value": "4006"
+        },
+        {
+          "doc": "An allocation acknowledged, the allocation itself outstanding.",
+          "name": "PENDING_ALLOCATION",
+          "value": "4007"
+        },
+        {
+          "doc": "A give-up or take-up acknowledged, its approval outstanding.",
+          "name": "PENDING_APPROVAL",
+          "value": "4008"
         },
         {
           "doc": "Halted by its owner.",
@@ -269700,6 +269700,11 @@
           "doc": "An allocation claimed.",
           "name": "CLAIMED",
           "value": "8012"
+        },
+        {
+          "doc": "Approved: a give-up or take-up its counterparty approved, or anything else that waited on an approval.",
+          "name": "APPROVED",
+          "value": "8013"
         },
         {
           "doc": "Cancelled by someone.",
@@ -278860,15 +278865,22 @@
         "x": "The ticker the instrument goes by: Symbol, trimmed. Derived from the message's fields; a row stating one is the row's word."
       },
       {
-        "c": "metadata",
+        "c": "strikepx",
         "t": 65035,
+        "n": "Strike Price",
+        "y": "decimal",
+        "x": "The strike price of the option the message identifies: StrikePrice, the one its chain names for the same instrument once followed. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "metadata",
+        "t": 65036,
         "n": "Metadata",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
         "x": "What a message stated that is no field and no identifier map holds: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order; a key an identifier map holds with its value - a bridge's TECH.CLIENTID, its PARENTORDERID - rides fixentries under 0:key as it arrived instead."
       },
       {
         "c": "ordqty",
-        "t": 65036,
+        "t": 65037,
         "n": "Order Quantity",
         "y": "decimal",
         "x": "The quantity the operation ordered: OrderQty; working, CumQty plus LeavesQty where it states none. Derived from the message's fields; a row stating one is the row's word."
@@ -278882,21 +278894,21 @@
       },
       {
         "c": "tradable",
-        "t": 65037,
+        "t": 65038,
         "n": "Tradable",
         "y": "boolean",
         "x": "Whether the instrument can trade: SecurityTradingStatus, else TradingSessionStatus or SecurityStatus. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "identifiers",
-        "t": 65038,
+        "t": 65039,
         "n": "Identifiers",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
         "x": "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap, the parties that name one, and the keys no dictionary resolved whose names spell one - a bridge's PARENTORDERID, its firm.x.ParentOrderID - which ride fixentries under 0:key. Derived from the message's fields; a set a row states keeps its own and takes what it lacks."
       },
       {
         "c": "partyids",
-        "t": 65039,
+        "t": 65040,
         "n": "Party IDs",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
         "x": "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, Account under AcctIDSource, and the keys no dictionary resolved whose names spell a party - a bridge's OMS_UserID, its TECH.CLIENTID - which ride fixentries under 0:key. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks."
@@ -279008,49 +279020,49 @@
       },
       {
         "c": "msgpluginid",
-        "t": 65040,
+        "t": 65041,
         "n": "Message Plugin ID",
         "y": "utf8",
         "x": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived."
       },
       {
         "c": "msgpluginside",
-        "t": 65041,
+        "t": 65042,
         "n": "Message Plugin Side",
         "y": "pluginside",
         "x": "The role of the FIX plugin whose session produced the message: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, and independent of Side(54)."
       },
       {
         "c": "msgoriginator",
-        "t": 65042,
+        "t": 65043,
         "n": "Message Originator",
         "y": "utf8",
         "x": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content."
       },
       {
         "c": "msgctxid",
-        "t": 65043,
+        "t": 65044,
         "n": "Message Context ID",
         "y": "utf8",
         "x": "The message context a bridge handled the message in, as its own log names it."
       },
       {
         "c": "msgsessionid",
-        "t": 65044,
+        "t": 65045,
         "n": "Message Session ID",
         "y": "utf8",
         "x": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself."
       },
       {
         "c": "msgsesseventid",
-        "t": 65045,
+        "t": 65046,
         "n": "Message Session Event ID",
         "y": "utf8",
         "x": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on."
       },
       {
         "c": "conversationid",
-        "t": 65046,
+        "t": 65047,
         "n": "Conversation ID",
         "y": "utf8",
         "x": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content."
@@ -279064,21 +279076,21 @@
       },
       {
         "c": "forexcode",
-        "t": 65047,
+        "t": 65048,
         "n": "Forex Code",
         "y": "forex",
         "x": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other replaces its type's answer, the base key."
       },
       {
         "c": "bloombergcode",
-        "t": 65048,
+        "t": 65049,
         "n": "Bloomberg Code",
         "y": "bbg",
         "x": "The normalized Bloomberg identifier the message identifies."
       },
       {
         "c": "figicode",
-        "t": 65049,
+        "t": 65050,
         "n": "FIGI Code",
         "y": "figi",
         "x": "The normalized FIGI the message identifies."
@@ -279773,6 +279785,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "ORDLIMIT",
         "price": "10.5",
         "stoppx": null,
@@ -279805,6 +279818,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": "AAPL",
+        "strikepx": null,
         "metadata": {},
         "ordqty": "100",
         "timeinforce": "DAY",
@@ -280101,6 +280115,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "FILLED",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
@@ -280133,6 +280148,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": "AAPL",
+        "strikepx": null,
         "metadata": {},
         "ordqty": "100",
         "timeinforce": "DAY",
@@ -280512,6 +280528,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UKNW",
         "price": "41.25",
         "stoppx": null,
@@ -280544,6 +280561,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": "BRN",
+        "strikepx": null,
         "metadata": {},
         "ordqty": "50",
         "timeinforce": "DAY",
@@ -283448,6 +283466,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
+        "marketdatakind": "BOOK",
         "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
@@ -283480,6 +283499,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": "BRN",
+        "strikepx": null,
         "metadata": {},
         "ordqty": null,
         "timeinforce": null,
@@ -283750,6 +283770,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "ACTIVE",
+        "marketdatakind": "QUOT",
         "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
@@ -283758,7 +283779,7 @@
         "displayqty": null,
         "hiddenqty": null,
         "unit": "",
-        "side": "UKNW",
+        "side": "BOTH",
         "securityids": {},
         "isincode": null,
         "cficode": null,
@@ -283782,6 +283803,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": "BRN",
+        "strikepx": null,
         "metadata": {},
         "ordqty": null,
         "timeinforce": null,
@@ -283986,6 +284008,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
+        "marketdatakind": "SESS",
         "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
@@ -284018,6 +284041,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": null,
+        "strikepx": null,
         "metadata": {},
         "ordqty": null,
         "timeinforce": null,
@@ -284155,6 +284179,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
+        "marketdatakind": "SESS",
         "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
@@ -284187,6 +284212,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": null,
+        "strikepx": null,
         "metadata": {},
         "ordqty": null,
         "timeinforce": null,
@@ -284354,6 +284380,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "REJECTED",
+        "marketdatakind": "SESS",
         "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
@@ -284386,6 +284413,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": null,
+        "strikepx": null,
         "metadata": {},
         "ordqty": null,
         "timeinforce": null,
@@ -284617,6 +284645,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_REPLACE",
+        "marketdatakind": "ORDR",
         "marketdatatype": "ORDLIMIT",
         "price": "10.75",
         "stoppx": null,
@@ -284649,6 +284678,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": "AAPL",
+        "strikepx": null,
         "metadata": {},
         "ordqty": "150",
         "timeinforce": "DAY",
@@ -284920,6 +284950,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UKNW",
         "price": "10.5",
         "stoppx": null,
@@ -284952,6 +284983,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": null,
+        "strikepx": null,
         "metadata": {},
         "ordqty": "100",
         "timeinforce": "DAY",
@@ -285209,6 +285241,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
@@ -285241,6 +285274,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": null,
+        "strikepx": null,
         "metadata": {},
         "ordqty": "100",
         "timeinforce": "DAY",
@@ -285592,6 +285626,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
+        "marketdatakind": "SECU",
         "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
@@ -285624,6 +285659,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": "BRN",
+        "strikepx": null,
         "metadata": {},
         "ordqty": null,
         "timeinforce": null,
@@ -285904,6 +285940,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
+        "marketdatakind": "UKNW",
         "marketdatatype": "UKNW",
         "price": "41.25",
         "stoppx": null,
@@ -285936,6 +285973,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": "TTF",
+        "strikepx": null,
         "metadata": {},
         "ordqty": "1200",
         "timeinforce": null,
@@ -286128,6 +286166,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
@@ -286160,6 +286199,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": "AAPL",
+        "strikepx": null,
         "metadata": {},
         "ordqty": "100",
         "timeinforce": "DAY",
@@ -286341,6 +286381,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
@@ -286373,6 +286414,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": "AAPL",
+        "strikepx": null,
         "metadata": {},
         "ordqty": "100",
         "timeinforce": "DAY",
@@ -286545,6 +286587,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
@@ -286577,6 +286620,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": "AAPL",
+        "strikepx": null,
         "metadata": {},
         "ordqty": null,
         "timeinforce": "DAY",
@@ -286760,6 +286804,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "UNKNOWN",
+        "marketdatakind": "UKNW",
         "marketdatatype": "UKNW",
         "price": null,
         "stoppx": null,
@@ -286792,6 +286837,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": null,
+        "strikepx": null,
         "metadata": {},
         "ordqty": null,
         "timeinforce": null,
@@ -286990,6 +287036,7 @@
         "prevuuid": null,
         "seqnum": 0,
         "state": "PENDING_NEW",
+        "marketdatakind": "ORDR",
         "marketdatatype": "UKNW",
         "price": "10.5",
         "stoppx": null,
@@ -287022,6 +287069,7 @@
         "askccy": null,
         "fxrates": {},
         "ticker": "AAPL",
+        "strikepx": null,
         "metadata": {},
         "ordqty": "100",
         "timeinforce": "DAY",

@@ -116,6 +116,7 @@ fn every_ending_is_told_apart_from_every_other_without_reading_a_name() {
         State::Allocated,
         State::Settled,
         State::Verified,
+        State::Approved,
     ] {
         assert!(state.is_done(), "{state}");
     }
@@ -170,7 +171,7 @@ fn a_chain_folds_to_the_furthest_state_it_knows() {
 
 #[test]
 fn updated_is_the_working_band_stated_anew_over_a_live_predecessor() {
-    assert_eq!(State::ALL.len(), 61);
+    assert_eq!(State::ALL.len(), 62);
     assert_eq!(State::Updated.code(), 3004);
     assert_eq!(State::Updated.rank(), 30);
     assert_eq!(State::Updated.as_str(), "UPDATED");
@@ -330,7 +331,10 @@ fn every_fix_status_field_answers_by_its_own_code_set() {
         (297, "12", None),
         (297, "13", None),
         (87, "0", Some(State::Allocated)),
+        (87, "6", Some(State::PendingAllocation)),
         (87, "7", Some(State::Reversed)),
+        (87, "11", Some(State::PendingApproval)),
+        (87, "13", Some(State::PendingApproval)),
         (87, "14", Some(State::PendingReversal)),
         (665, "2", Some(State::Mismatched)),
         (665, "4", Some(State::Confirmed)),
@@ -359,6 +363,90 @@ fn every_fix_status_field_answers_by_its_own_code_set() {
         ("0", None),
     ] {
         assert_eq!(State::from_fix_msgtype(msgtype), expected, "35={msgtype}");
+    }
+}
+
+/// A trade report awaiting its verification, an allocation awaiting its
+/// making and a give-up awaiting its approval were each acknowledged first,
+/// so they rank past their acknowledgement and below every answer to them:
+/// the fold keeps the answer whichever order it arrives in.
+#[test]
+fn a_state_awaiting_its_next_step_ranks_past_its_acknowledgement_and_below_its_answers() {
+    for (state, code) in [
+        (State::PendingVerification, 4006),
+        (State::PendingAllocation, 4007),
+        (State::PendingApproval, 4008),
+    ] {
+        assert_eq!(state.code(), code, "{state}");
+        assert_eq!(state.rank(), 40, "{state}");
+        assert_eq!(State::from_code(code), Some(state), "{state}");
+        assert!(!state.is_pending(), "{state}");
+        assert!(state.is_live(), "{state}");
+        assert!(!state.is_new_like(), "{state}");
+    }
+    // The codes they were stored under before name nothing.
+    for code in 1004..=1006 {
+        assert_eq!(State::from_code(code), None, "{code}");
+    }
+    // Past the acknowledgement, below the answers.
+    assert_eq!(
+        State::PendingVerification.merge_with(State::Accepted),
+        State::PendingVerification
+    );
+    assert_eq!(
+        State::Accepted.merge_with(State::PendingVerification),
+        State::PendingVerification
+    );
+    assert_eq!(
+        State::Received.merge_with(State::PendingAllocation),
+        State::PendingAllocation
+    );
+    assert_eq!(
+        State::Disputed.merge_with(State::PendingVerification),
+        State::Disputed
+    );
+    assert_eq!(
+        State::PendingVerification.merge_with(State::Disputed),
+        State::Disputed
+    );
+    assert_eq!(
+        State::PendingCancel.merge_with(State::PendingVerification),
+        State::PendingCancel
+    );
+    assert_eq!(
+        State::Verified.merge_with(State::PendingVerification),
+        State::Verified
+    );
+    assert_eq!(
+        State::Incomplete.merge_with(State::PendingAllocation),
+        State::Incomplete
+    );
+    assert_eq!(
+        State::Allocated.merge_with(State::PendingApproval),
+        State::Allocated
+    );
+    assert_eq!(
+        State::PendingApproval.merge_with(State::Approved),
+        State::Approved
+    );
+
+    // Approved ends an approval as verified ends a verification.
+    assert_eq!(State::Approved.code(), 8013);
+    assert_eq!(State::Approved.rank(), 80);
+    assert!(State::Approved.is_done());
+    assert_eq!(State::Approved.as_str(), "APPROVED");
+    assert_eq!(State::from_code(8013), Some(State::Approved));
+    assert_eq!(State::from_spelling("approved"), Some(State::Approved));
+    assert_eq!(State::from_spelling("APPROVED"), Some(State::Approved));
+    // FIX states an approved give-up as `AllocStatus` accepted, so no
+    // status code answers it.
+    for code in 0..=20 {
+        let code = code.to_string();
+        assert_ne!(
+            State::from_fix_status(87, &code),
+            Some(State::Approved),
+            "87={code}"
+        );
     }
 }
 

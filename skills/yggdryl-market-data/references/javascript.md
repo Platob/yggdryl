@@ -47,6 +47,15 @@ assert.equal(order.lastpx, null, 'a price is never a last execution')
 assert.equal(order.bidpx, order.price, "a buy's price is its bid")
 assert.deepEqual(order.fxrates, {}, 'nothing fills the rates')
 assert.deepEqual([order.side, order.state, order.marketdatakind], ['BUYS', 'UNKNOWN', 'ORDR'])
+
+// Under the `bic` source a value is a BIC whatever its type, and under
+// `legalentityidentifier` an LEI: upper-cased, or refused on its key.
+assert.equal(new Identifier('bic:executingfirm', 'deutdeff').toString(), 'bic:executingfirm=DEUTDEFF')
+assert.throws(() => new Identifier('bic:executingfirm', 'T-1'), /bic:executingfirm.*is a BIC/)
+assert.equal(new Identifier('proprietary:executingfirm', 'T-1').value, 'T-1') // any other source: the type's rule
+// A short name (FISN) is a security identifier; a legal form (ELF) neither a security's nor a party's.
+assert.equal(new Identifier('FinancialInstrumentShortName', 'Apple Inc/Sh').toString(), 'fisn=APPLE INC/SH')
+assert.equal(new Identifier('entitylegalform', '2hbr').toString(), 'elf=2HBR')
 ```
 
 ## Build undated leaves, quotes and book entries
@@ -67,7 +76,8 @@ const event = order.at(T)
 assert.ok(event instanceof graph.OrderEvent)
 assert.ok(event.intoElement().equals(order))
 
-// A two-sided quote: its bid and ask are its two legs, and it tags no side.
+// A two-sided quote: its bid and ask are its two legs, and tagging neither it
+// holds both sides, BOTH.
 const quote = new graph.QuoteEvent(T, {
   crosscode: 'Q-7',
   ticker: 'AAPL',
@@ -78,7 +88,7 @@ const quote = new graph.QuoteEvent(T, {
   askqty: 100,
   askccy: 'USD',
 })
-assert.deepEqual([quote.side, quote.crosscode], ['UKNW', '14:0:Q-7'])
+assert.deepEqual([quote.side, quote.crosscode], ['BOTH', '14:0:Q-7'])
 assert.deepEqual([quote.askpx, quote.askqty, quote.marketdatakind], ['189.52', '100', 'QUOT'])
 
 // An offer: tagged `SELL`, its price is its ask leg; a quote's code stays under side 0.
@@ -113,6 +123,12 @@ assert.equal(filled.crossuuid, placed.crossuuid, 'one chain')
 assert.equal(filled.prevpx, '189.5')
 // Never itself, never one that happened after it.
 assert.equal(placed.withPrevious(filled), null)
+
+// An instrument fact travels along the chain: a follower naming no other
+// ISIN takes the option's strike it does not state.
+const option = new graph.OrderEvent(T, { crosscode: 'O-1001', side: 'BUYS', strikepx: '190' })
+const follower = new graph.OrderEvent(T + 1_000_000_000n, { crosscode: 'O-1001', side: 'BUYS' }).withPrevious(option)
+assert.equal(follower.strikepx, '190')
 
 // One report recorded by two hops: recording clocks and sources are not content.
 const LINE_1 = '018bcfe5-6800-7000-8000-000000000001'
@@ -247,10 +263,10 @@ const { BatchReader, MarketDataKind, graph } = require('yggdryl')
 const order = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001' })
 const values = [new graph.Order(), order, new graph.BookEvent(1_700_000_001_000_000_000n, 'AAPL')]
 
-// 62 columns: 6 element, 9 event, 34 market (marketdatakind first), 5 operation,
+// 63 columns: 6 element, 9 event, 35 market (marketdatakind first), 5 operation,
 // the book controls bookscope, bookaction and bookposition, 5 nested.
 const field = graph.MarketData.field()
-assert.equal(field.fieldLen, 62)
+assert.equal(field.fieldLen, 63)
 assert.equal(field.fieldAt(15).name, 'marketdatakind')
 const table = graph.MarketData.arrowReader(values, 1_000).intoTable()
 // The column stores each member's code.
@@ -352,12 +368,15 @@ assert.equal([...new graph.BookIterator([...stream].reverse())].length, 1)
 ## Read a book
 
 A complete book answers each side as its `limits` (one per price, best
-first, the unpriced market level last) and its entries as `aliveOn(side)`;
-every book answers the readings of the first level that can trade:
-`bestPrice`, `bestQuantity`, the `bidpx`/`askpx` it states, `spread`; a
-complete one `depth` and `imbalance` too - all as exact decimal text. A book
-built by hand is complete. A side is its stored name, any spelling `Side`
-reads, or its code.
+first, the unpriced market level last) and its entries as `aliveOn(side)`,
+the orders resting as `ordlive()`; every book answers the readings of the
+first level that can trade: `bestPrice`, `bestQuantity`, the `bidpx`/`askpx`
+it states, `spread`; a complete one `depth` and `imbalance` too - all as
+exact decimal text. Its deltas read by kind as `orddelta()`, `quotes()` and
+`executions()`, which partition them - a book records no other kind; the
+`events` catch-all Rust and Python read is not bound in JavaScript. A book
+built by hand is complete. A
+side is its stored name, any spelling `Side` reads, or its code.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -391,6 +410,10 @@ assert.equal(book.isComplete, true)
 assert.deepEqual([book.alive().length, book.aliveOn('BUYS').length, book.aliveOn(Side.SELL).length], [5, 4, 1])
 // The deltas are the five orders, in the order applied.
 assert.deepEqual(book.deltas().map((delta) => delta.crosscode), ['10:1:B-0', '10:1:B-1', '10:1:B-2', '10:2:A-1', '10:1:MKT'])
+// By kind: the orders resting in book order - the bids best first and the
+// market order last, then the offer - and every delta an order.
+assert.deepEqual(book.ordlive().map((order) => order.crosscode), ['10:1:B-0', '10:1:B-1', '10:1:B-2', '10:1:MKT', '10:2:A-1'])
+assert.deepEqual([book.orddelta().length, book.quotes().length, book.executions().length], [book.deltas().length, 0, 0])
 ```
 
 ## Replace a scope with a snapshot
@@ -458,7 +481,8 @@ assert.deepEqual([...chain.getChild('crosscode')], ['10:1:O-1001'])
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `bookArrowReader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries, a trade entry (`269=2`) recorded as the
+execution it is - and
 `MarketData.fromArrowReader` reads the books back. A `W` full refresh is a
 snapshot input, so its book is complete; the `X` after it states its delta.
 
@@ -612,8 +636,9 @@ assert.equal(typeof book.serve, 'function')
 - `withOperations`, `withPrevious`, `mergeWith` answer a new value; the one
   you called is unchanged. Only `withPrevious`/`mergeWith` answer `null` when
   nothing moved; `withOperations` refuses an undated `Order` at
-  `$.operations[i].kind` (`BookIterator` at `$.operation.kind`), and an
-  execution or a trade is pruned, no error and no book. What `BookIterator`
+  `$.operations[i].kind` (`BookIterator` at `$.operation.kind`); an execution
+  is recorded among the book's deltas, resting on no side, and a trade is
+  pruned, no error and no book. What `BookIterator`
   finds wrong in the data - an operation dated before its book - it leaves
   out, and an order or a quote stating neither side it places nowhere (still
   the book's delta), each with a warning on standard error (unless a handler

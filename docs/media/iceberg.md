@@ -11,6 +11,7 @@ Apache Iceberg tables in a folder: `metadata/` and `data/`, no catalog required,
 | Rust | `yggdryl::iceberg`: `IcebergTable` (`create`, `open`, `open_or_create`, and by location alone `from_url`, `create_from_url`, `open_or_create_from_url`, `scan`, `scan_matching`, `plan_matching`, `commit_append`, `commit_overwrite`, `commit_merge`, `update_schema`, `compact`), `PartitionSpec`, `PartitionField`, `Transform`, `SortOrder`, `SchemaUpdate`, `IcebergOptions`; `IcebergCatalog` and `IcebergNamespace`, the [warehouse](../warehouse/index.md) implementations over a folder of namespaces of tables, `IcebergTable` the `Table` they answer |
 | Python | `yggdryl.iceberg`: `IcebergTable` (`create`, `open_or_create`, the constructor `IcebergTable(root, **properties)` that opens one - `root` a container handle or the table's location - `scan`, `scan_matching`, `plan_matching`, `append`, `overwrite`, `merge`, `update_schema`, `compact`), `PartitionSpec`, `SchemaUpdate`, `IcebergOptions`; `IcebergCatalog`, `IcebergNamespace` and `IcebergTable` the `Catalog`, `Namespace` and `Table` subclasses a warehouse folder answers |
 | JavaScript | `iceberg`: `IcebergTable` (`create`, `open`, `openOrCreate` - `root` a container handle or the table's location, `properties` beside a location - `scan`, `scanMatching`, `planMatching`, `append`, `overwrite`, `merge`, `updateSchema`, `compact`), `PartitionSpec`, `IcebergOptions`; `IcebergCatalog` and `IcebergNamespace` over a warehouse folder, `IcebergTable.from(table)` the Iceberg table a `warehouse.Table` holds |
+| Declarations kept | an Iceberg schema states a column's identifier, name, type, nullability and `doc` and nothing else, so the table keeps a derived column's term as `yggdryl.transform.<column>` ([Declared partitioning](#declared-partitioning-and-sort-order)) and the columns whose integers are bits as `yggdryl.representation.bits` ([Integers stated as bits](#integers-stated-as-bits)), each declared back on the schema wherever the metadata is read |
 | Settings | `IcebergOptions`, each resolved from the call, then the table property, then the default: `read.parallelism`, `write.parallelism`, `write.target-file-size-bytes` and the commit retries among them; both parallelisms default to every thread the host offers, and each thread costs a bounded piece of memory: a scan worker holds its file's projected compressed column chunks and at most sixteen refined batches ahead of the release cursor (`READ_AHEAD_BATCHES`, the Parquet reader's own read-ahead), never a file decoded whole; a commit writer holds one whole encoded data file - the Parquet encoder writes into memory and publishes the file in one write, so up to about `write.target-file-size-bytes` compressed - plus up to 32 MiB of Arrow input awaiting the column writers, the group's rows themselves spilled chunks under the process spill bound; a write's `RecordOptions` add `commit_batch_num` and `num_threads`. A count or a byte size held as a table property reads as the one integer grammar reads a whole number - a sign and the digits, the surrounding blanks not part of it, no unit suffix - and a property that does not read is refused naming its key |
 
 A table lives in one folder: `metadata/` and `data/`, no catalog required.
@@ -158,11 +159,11 @@ A record read - `read_serie`, `read_arrow_reader` and every door over them, a fo
 
 ## Write
 
-A write commits a snapshot: an append keeps every row the table holds, an overwrite replaces the partitions its rows fall in, and a merge updates the rows its key matches and appends the rest. The partition is an overwrite's unit: every live file of a partition the incoming rows reach is dropped from the new snapshot and every other file is carried as it is - same location, same statistics, same row lineage, on every format version - so reprocessing one window of a table rewrites that window's partitions and touches no other, and a source with no row replaces nothing and commits nothing. An unpartitioned table is one partition, replaced whole. A `where` naming partition values replaces those partitions instead, whatever the rows reach; `commit_overwrite_where` with no filter, and `clear`, replace the whole table. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row, and cuts each partition's rows into data files of about the target file size (`write.target-file-size-bytes`) as `yggdryl::arrow::memory_size` measures them before encoding - one file for a partition under it; the target cuts files, never commits. A commit writes its partition groups on `num_threads` threads at once where the write's options state it, else on `write.parallelism`, else `read.parallelism`, else every thread the host offers, each group's file encoding its columns on its share of them. New data files are Parquet unless `data_mime_type` names another encoding, and a scan reads each file as its manifest entry records, so one table can mix them.
+A write commits a snapshot: an append keeps every row the table holds and adds its own - on a table stating its own key, only the rows whose key it lacks ([Appending to a keyed table](#appending-to-a-keyed-table)) - an overwrite replaces the partitions its rows fall in, and a merge updates the rows [its key](#the-merge-key) matches and appends the rest, committing nothing where no row changes ([A merge that changes nothing](#a-merge-that-changes-nothing)). The partition is an overwrite's unit: every live file of a partition the incoming rows reach is dropped from the new snapshot and every other file is carried as it is - same location, same statistics, same row lineage, on every format version - so reprocessing one window of a table rewrites that window's partitions and touches no other, and a source with no row replaces nothing and commits nothing. An unpartitioned table is one partition, replaced whole. A `where` naming partition values replaces those partitions instead, whatever the rows reach; `commit_overwrite_where` with no filter, and `clear`, replace the whole table. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row, and cuts each partition's rows into data files of about the target file size (`write.target-file-size-bytes`) as `yggdryl::arrow::memory_size` measures them before encoding - one file for a partition under it; the target cuts files, never commits. A commit writes its partition groups on `num_threads` threads at once where the write's options state it, else on `write.parallelism`, else `read.parallelism`, else every thread the host offers, each group's file encoding its columns on its share of them. New data files are Parquet unless `data_mime_type` names another encoding, and a scan reads each file as its manifest entry records, so one table can mix them.
 
-A write through the record doors - `write_serie` and its three intents, the `*_arrow_reader` family, a folder addressing the table - commits **once**, when its source ends: every partition's rows are held as the chunks they arrived in - a batch falling whole in one partition the batch itself, a run of its rows a slice, interleaved rows one take - settled under the process [spill bound](../types/serie.md#spilling-to-disk) as they arrive, so an overwrite of any length is one atomic snapshot and its memory is the bound, not the stream. `commit_batch_num = N` commits every `N` whole batches instead, which paces a stream whose rows would outgrow the spill folder; an overwrite then replaces each partition on the first commit that reaches it and appends to it on every later one, and an append or a merge keeps its intent in every commit. No write compacts: `compact` is the one maintenance door, and the caller runs it. A data file's directory spells its partition tuple with ASCII letters, digits, `.`, `_`, `+` and `-` alone, any other character `_` - an instant's `:` among them, which no Windows path holds - because the manifest, never the path, is the authority on a partition value. Where the table declares a sort order, each partition's rows are sorted as a whole by it - stable, through [`ChunkedSerie::into_sort_by`](../types/chunked-serie.md#sorting-uniqueness-and-partitions), each chunk sorted on its own and the chunks merged - unless the group is already in that order: a stream whose root [declares](../types/serie.md#a-declared-order) it, proven as it lands, or a group read once chunk by chunk and edge by edge, is written as it arrived. The Python and JavaScript `IcebergTable.append` and `IcebergTable.overwrite` hold their rows under the same bound and commit once too.
+A write through the record doors - `write_serie` and its three intents, the `*_arrow_reader` family, a folder addressing the table - commits **once**, when its source ends: every partition's rows are held as the chunks they arrived in - a batch falling whole in one partition the batch itself, a run of its rows a slice, interleaved rows one take - settled under the process [spill bound](../types/serie.md#spilling-to-disk) as they arrive, so an overwrite of any length is one atomic snapshot and its memory is the bound, not the stream; beside it a merge holds the stored rows its key may hit, and a keyed append the keys of its partition ([Appending to a keyed table](#appending-to-a-keyed-table)). `commit_batch_num = N` commits every `N` whole batches instead, which paces a stream whose rows would outgrow the spill folder; an overwrite then replaces each partition on the first commit that reaches it and appends to it on every later one, and an append or a merge keeps its intent in every commit, a keyed append reading what the commits before it wrote as stored. No write compacts: `compact` is the one maintenance door, and the caller runs it. A data file's directory spells its partition tuple with ASCII letters, digits, `.`, `_`, `+` and `-` alone, any other character `_` - an instant's `:` among them, which no Windows path holds - because the manifest, never the path, is the authority on a partition value. Where the table declares a sort order, each partition's rows are sorted as a whole by it - stable, through [`ChunkedSerie::into_sort_by`](../types/chunked-serie.md#sorting-uniqueness-and-partitions), each chunk sorted on its own and the chunks merged - unless the group is already in that order: a stream whose root [declares](../types/serie.md#a-declared-order) it, proven as it lands, or a group read once chunk by chunk and edge by edge, is written as it arrived. The Python and JavaScript `IcebergTable.append` and `IcebergTable.overwrite` hold their rows under the same bound and commit once too.
 
-A commit claims its version by creating the version's document, `metadata/v{n}.metadata.json`, with `IOBase::create_bytes`: the create writes only where no document is, so of writers racing for one version exactly one publishes it and every other is told - nothing listed, no attempt file written or removed - wherever the store's create is exclusive: local storage and the local filesystem (`O_EXCL`), Amazon S3, Azure Blob Storage and an HTTP resource (`If-None-Match: *`), Google Cloud Storage (`ifGenerationMatch=0`), a ZIP member written through one archive and a buffer. Where it is not, the claim is best-effort and the later document stands: a filesystem bridged from Python or JavaScript, which asks and then writes, an HTTP origin that ignores preconditions, and two mounts of one ZIP archive, which hold an index each - A version has two names, plain and gzip, and the create excludes one: a claim that lands reads its version's other spelling once before its staged files are committed, and where that spelling holds a byte withdraws its own document and is beaten as a refused create is - of two claims under two codecs at most one commits, both withdraw when they land before either checks, and the jittered retries settle the next. A reader that meets both spellings of one version whole refuses with an error naming both documents, and a commit that meets them waits as a beaten attempt and reports the fork once its budget is spent. Best-effort still: a reader in the instant between a second claim and its withdrawal is refused rather than answered; a third writer that read the first claim before that claim's own check, and built the next version on it, has built on a document the check then withdraws; and a withdrawal the store refuses leaves the version forked, reported with every file the document names kept. After the document, the version hint is written whole with one `IOBase::write_all_bytes` - a local file through a sibling renamed over it, so a reader that mapped the old hint keeps reading it, an object in one `PUT` - and a hint write that fails once the document is durable is logged at warn while the commit answers `Ok`: the document is the commit, and every reader walks past the version a hint names. A create lists `metadata/` once before it claims `v1.metadata.json` and refuses with a conflict where any metadata document is there - another catalog's `00001-{uuid}.metadata.json`, a first document spelled `v1.gz.metadata.json` - rather than hiding that table behind a hint of its own; two creates racing under two spellings stay best-effort. A commit whose claim is lost to a winner whose document cannot be read yet waits and looks again, as one beaten by a visible winner does. A commit beaten by another writer rebases where that is safe: an append and a metadata-only commit reload the winner and re-apply their intent, with jittered backoff bounded by `commit_retries` and `commit_total_timeout_ms`. An overwrite, a merge or a compaction cannot - it planned against files the winner may have replaced, and its input is already consumed - so after the same bounded waits it fails with `CommitConflict` naming both versions, the table left as the winner made it, and the caller re-reads and retries. A failed commit changes nothing a reader sees; at worst it leaves data files no snapshot names.
+A commit claims its version by creating the version's document, `metadata/v{n}.metadata.json`, with `IOBase::create_bytes`: the create writes only where no document is, so of writers racing for one version exactly one publishes it and every other is told - nothing listed, no attempt file written or removed - wherever the store's create is exclusive: local storage and the local filesystem (`O_EXCL`), Amazon S3, Azure Blob Storage and an HTTP resource (`If-None-Match: *`), Google Cloud Storage (`ifGenerationMatch=0`), a ZIP member written through one archive and a buffer. Where it is not, the claim is best-effort and the later document stands: a filesystem bridged from Python or JavaScript, which asks and then writes, an HTTP origin that ignores preconditions, and two mounts of one ZIP archive, which hold an index each - A version has two names, plain and gzip, and the create excludes one: a claim that lands reads its version's other spelling once before its staged files are committed, and where that spelling holds a byte withdraws its own document and is beaten as a refused create is - of two claims under two codecs at most one commits, both withdraw when they land before either checks, and the jittered retries settle the next. A reader that meets both spellings of one version whole refuses with an error naming both documents, and a commit that meets them waits as a beaten attempt and reports the fork once its budget is spent. Best-effort still: a reader in the instant between a second claim and its withdrawal is refused rather than answered; a third writer that read the first claim before that claim's own check, and built the next version on it, has built on a document the check then withdraws; and a withdrawal the store refuses leaves the version forked, reported with every file the document names kept. After the document, the version hint is written whole with one `IOBase::write_all_bytes` - a local file through a sibling renamed over it, so a reader that mapped the old hint keeps reading it, an object in one `PUT` - and a hint write that fails once the document is durable is logged at warn while the commit answers `Ok`: the document is the commit, and every reader walks past the version a hint names. A create lists `metadata/` once before it claims `v1.metadata.json` and refuses with a conflict where any metadata document is there - another catalog's `00001-{uuid}.metadata.json`, a first document spelled `v1.gz.metadata.json` - rather than hiding that table behind a hint of its own; two creates racing under two spellings stay best-effort. A commit whose claim is lost to a winner whose document cannot be read yet waits and looks again, as one beaten by a visible winner does. A keyless append keeps one pending attempt intact while that winner is unreadable, so a retry names the same snapshot and manifest list; a winner retaining that exact snapshot is the append already committed, adopted without adding its rows again. A commit beaten by another writer rebases where that is safe: an append to a table stating no key and a metadata-only commit reload the winner and re-apply their intent, with jittered backoff bounded by `commit_retries` and `commit_total_timeout_ms`. An overwrite, a merge, an append to a keyed table or a compaction cannot - it planned against files the winner may have replaced or written keys beside, and its input is already consumed - so after the same bounded waits it fails with `CommitConflict` naming both versions, the table left as the winner made it, and the caller re-reads and retries. A conflict after a refused create whose winner stays unreadable is an ambiguous outcome: the claim may already have durably written this commit's document. The handle restores its prior in-memory state and reports `CommitConflict` when the retry budget ends, keyed append included, but retains the staged data, manifest and manifest-list files because that document may name them. A later reopen may therefore show the commit despite the conflict; if another writer held the claim, table maintenance can collect the unreferenced files. A readable winner with a distinct snapshot follows the ordinary conflict path, with a safe blind append rebased and a keyed append refused.
 
 === "Rust"
 
@@ -291,6 +292,427 @@ A commit claims its version by creating the version's document, `metadata/v{n}.m
     // Reopening finds the table again, with no catalog in between.
     const reopened = iceberg.IcebergTable.open(root)
     assert.equal(reopened.scan().intoTable().numRows, 2)
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
+### The merge key
+
+A merge matches on the identity partition columns first, then its key: the options' `merge_by` where it names one, else the table's own - the columns the schema's `identifier-field-ids` names, a column below structs by its path. `IOMedia::merge_by` answers that whole key from the metadata alone, no data file opened, and every door resolves it once, before a row is pulled: `merge_serie`, `write_arrow_reader` under merge and the `merge_*` family, `merge_records`, `commit_merge` with an empty selector, a `Holder` or a warehouse `Table` holding the table, `upsert into t` stating no `by`, Python's `merge` and `merge_where` with `merge_by` left out, `None` or `True` - `True` spelling the destination's own key on every record door ([Options](index.md#options)) - and JavaScript's `merge` with `mergeBy` left out or `null`, JavaScript taking no boolean. With no identifier stated the partition is the key, so a merge naming none replaces the partitions its rows fall in - through the record doors too, which refused such a merge before; an unpartitioned table stating neither is refused naming `$.merge_by`, its source never pulled. The key is the table's: another engine that changes `identifier-field-ids` changes what a merge naming none matches on. A folder handle addressing the table states no key of its own and refuses a merge naming none; open it as a table. A keyed merge on format v3 is refused, the table's own key included, until rewritten rows keep their row ids.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{DataType, IOMedia, Scalar, Serie, StructType};
+
+    let row = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("venue"),
+    ])?)
+    .required_field("row");
+    let mut schema = row.clone();
+    assign_field_ids(&mut schema, 1)?;
+    // The table's own key: `id`, named by the field id the numbering gave it.
+    schema.as_iceberg_mut().set_identifier_field_ids(&[1])?;
+
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-merge-key");
+    let _ = std::fs::remove_dir_all(&path);
+    let mut table = IcebergTable::create(
+        LocalFolder::new(&path)?,
+        FormatVersion::V2,
+        schema,
+        PartitionSpec::unpartitioned(),
+    )?;
+    assert_eq!(IOMedia::merge_by(&table)?.to_string(), "id");
+
+    let trade = |id: i64, venue: &str| Scalar::from_sequence([Scalar::from(id), Scalar::from(venue)]);
+    let trades = Serie::from_scalars(row.clone(), [trade(1, "XNAS"), trade(2, "XNYS")])?;
+    table.append_serie(trades.into(), None)?;
+
+    // No key named: the merge matches on `id`, updating 2 and adding 3.
+    let incoming = Serie::from_scalars(row.clone(), [trade(2, "XLON"), trade(3, "XPAR")])?;
+    table.merge_serie(incoming.into(), None)?;
+    // `true` names the same key outright; `false` is refused.
+    let own = table.record_options()?.with_merge_by_scalar(&Scalar::from(true))?;
+    table.merge_serie(Serie::from_scalars(row, [trade(1, "XAMS")])?.into(), Some(&own))?;
+    assert!(own.with_merge_by_scalar(&Scalar::from(false)).is_err());
+
+    let mut rows: Vec<Scalar> = Vec::new();
+    for batch in table.read_serie(None)? {
+        rows.extend(batch?.rows().into_owned());
+    }
+    rows.sort();
+    assert_eq!(rows, [trade(1, "XAMS"), trade(2, "XLON"), trade(3, "XPAR")]);
+    let _ = std::fs::remove_dir_all(&path);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.iceberg import IcebergTable, assign_field_ids
+
+    rows = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("venue", pa.string()),
+    ])
+    schema = assign_field_ids(rows)
+    # The table's own key: `id`, named by the field id the numbering gave it.
+    schema.iceberg.update({"identifier-field-ids": "1"})
+
+    root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
+    table = IcebergTable.create(root, schema, None)
+    table.append(pa.record_batch({"id": [1, 2], "venue": ["XNAS", "XNYS"]}, schema=rows))
+
+    # No key named: the merge matches on `id`, updating 2 and adding 3.
+    table.merge_serie(pa.record_batch({"id": [2, 3], "venue": ["XLON", "XPAR"]}, schema=rows))
+    # `merge` with `merge_by` left out takes the same key.
+    table.merge(pa.record_batch({"id": [1], "venue": ["XAMS"]}, schema=rows))
+    # `True` names it outright, on `merge` and on every record door; `False` is refused.
+    table.merge(pa.record_batch({"id": [3], "venue": ["XMIL"]}, schema=rows), True)
+    table.merge_serie(pa.record_batch({"id": [4], "venue": ["XETR"]}, schema=rows), merge_by=True)
+    try:
+        table.merge(pa.record_batch({"id": [4], "venue": ["XPAR"]}, schema=rows), False)
+    except ValueError as refusal:
+        assert "$.merge_by" in str(refusal)
+    else:
+        raise AssertionError("False names no key")
+
+    assert table.scan().read_all().sort_by("id").to_pydict() == {
+        "id": [1, 2, 3, 4],
+        "venue": ["XAMS", "XLON", "XMIL", "XETR"],
+    }
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = iceberg.assignFieldIds(
+      fields.struct('row', [Field.from('id: int64 not null'), Field.from('venue: utf8')], {
+        nullable: false,
+      }),
+    )
+    // The table's own key: `id`, named by the field id the numbering gave it.
+    schema.set('ICEBERG:identifier-field-ids', '1')
+
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+    const table = iceberg.IcebergTable.create(root, schema)
+    const trades = (ids, venues) =>
+      new arrow.Table({
+        id: arrow.vectorFromArray(ids, new arrow.Int64()),
+        venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
+      })
+    table.append(trades([1n, 2n], ['XNAS', 'XNYS']))
+
+    // No key named: the merge matches on `id`, updating 2 and adding 3.
+    table.merge(trades([2n, 3n], ['XLON', 'XPAR']))
+
+    const merged = table.scan().intoTable()
+    const venues = new Map(
+      [...merged.getChild('id')].map((id, index) => [id, merged.getChild('venue').get(index)]),
+    )
+    assert.deepEqual(
+      venues,
+      new Map([
+        [1n, 'XNAS'],
+        [2n, 'XLON'],
+        [3n, 'XPAR'],
+      ]),
+    )
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
+### Appending to a keyed table
+
+An append to a table whose schema states `identifier-field-ids` writes only the rows whose key - the identity partition columns, then the identifier columns, the key [a merge naming none](#the-merge-key) matches on - is neither stored in their partition nor met earlier in the same write. The first arrival is kept, every other row is counted in `IOResult.skipped_rows` ([Write results](../holder/index.md#write-results)), no stored file is rewritten, and an append that keeps no row commits no snapshot - so loading the same rows twice leaves the table as the first load did. A table stating no identifier appends every row: the declaration is the only switch. A keyed append works on format v2 and v3 alike, where a keyed merge on v3 is refused. Every append door decides the same way - `commit_append`, `append_serie`, the `append_*` family, `write_serie` and `write_arrow_reader` under append, a `Holder` or a warehouse `Table` holding the table, Python's and JavaScript's `append` - and the doors that answer an `IOResult` count what they left out; `commit_append` and the bindings' `append` answer nothing.
+
+Within each partition the incoming rows fall in, only the key columns of the files whose statistics may hold an incoming key are read. A live file of another partition spec is read the same way where its statistics may hold an incoming key - its keys and the columns the current spec places a row by, each row given to the partition its current tuple names - and is never refused. A write paced by [`commit_batch_num`](../holder/index.md#commit-cadence) reads what its earlier commits wrote as stored, while the later commits of an overwrite append every row they bring beside its first. What is held to decide is per partition group, on its writer thread: one set of key bytes - every stored key read from the files kept and every incoming key kept - and a mask over the group's rows, never a stored row's payload; the incoming rows are held as every commit holds them, spilled chunks under the process spill bound, and at most `num_threads` groups' sets are live at once. The keys of a file of another partition spec are the exception: no group owns such a file and it may hold any group's keys, so it is read once, on the committing thread before any writer starts, and the key columns of its rows are held for every group they fall in at once, each group's until its writer folds them into its set. The key set is not under the spill bound: a partition of many keys costs its keys in memory, as a merge's own key index does.
+
+A keyed append decides what is absent against one snapshot, and a commit that beat it may hold the keys it kept, so it does not rebase: after the configured retries it fails with `CommitConflict`, as a merge does, and a re-run skips whatever the winner wrote ([Write](#write)).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{DataType, IOMedia, IOResult, Scalar, Serie, StructType};
+
+    let row = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("venue"),
+    ])?)
+    .required_field("row");
+    let mut schema = row.clone();
+    assign_field_ids(&mut schema, 1)?;
+    // The table's own key: `id`, named by the field id the numbering gave it.
+    schema.as_iceberg_mut().set_identifier_field_ids(&[1])?;
+
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-keyed-append");
+    let _ = std::fs::remove_dir_all(&path);
+    let mut table = IcebergTable::create(
+        LocalFolder::new(&path)?,
+        FormatVersion::V2,
+        schema,
+        PartitionSpec::unpartitioned(),
+    )?;
+
+    let trade = |id: i64, venue: &str| Scalar::from_sequence([Scalar::from(id), Scalar::from(venue)]);
+    let trades = |rows: Vec<Scalar>| Serie::from_scalars(row.clone(), rows);
+    let first = table.append_serie(trades(vec![trade(1, "XNAS"), trade(2, "XNYS")])?.into(), None)?;
+    assert_eq!(first, IOResult::new(2, 2));
+
+    // 2 is stored and 3 arrives twice: the first 3 is kept, the other two skipped.
+    let appended = table.append_serie(
+        trades(vec![trade(2, "XLON"), trade(3, "XPAR"), trade(3, "XAMS")])?.into(),
+        None,
+    )?;
+    assert_eq!(appended, IOResult::new(3, 1));
+    assert_eq!(appended.skipped_rows, 2);
+
+    // A replay keeps no row, so it commits no snapshot.
+    let snapshots = table.metadata()?.snapshots().len();
+    let replayed = table.append_serie(trades(vec![trade(1, "XNAS"), trade(2, "XNYS")])?.into(), None)?;
+    assert_eq!((replayed.written_rows, replayed.skipped_rows), (0, 2));
+    assert_eq!(table.metadata()?.snapshots().len(), snapshots);
+
+    let mut rows: Vec<Scalar> = Vec::new();
+    for batch in table.read_serie(None)? {
+        rows.extend(batch?.rows().into_owned());
+    }
+    rows.sort();
+    assert_eq!(rows, [trade(1, "XNAS"), trade(2, "XNYS"), trade(3, "XPAR")]);
+    let _ = std::fs::remove_dir_all(&path);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase, IOResult
+    from yggdryl.iceberg import IcebergTable, assign_field_ids
+
+    rows = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("venue", pa.string()),
+    ])
+    schema = assign_field_ids(rows)
+    # The table's own key: `id`, named by the field id the numbering gave it.
+    schema.iceberg.update({"identifier-field-ids": "1"})
+
+    table = IcebergTable.create(IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades"), schema, None)
+    trades = lambda ids, venues: pa.record_batch({"id": ids, "venue": venues}, schema=rows)
+    assert table.append_serie(trades([1, 2], ["XNAS", "XNYS"])) == IOResult(2, 2, 0)
+
+    # 2 is stored and 3 arrives twice: the first 3 is kept, the other two skipped.
+    appended = table.append_serie(trades([2, 3, 3], ["XLON", "XPAR", "XAMS"]))
+    assert appended == IOResult(3, 1, 2)
+    assert appended.skipped_rows == 2
+
+    # A replay keeps no row, so it commits no snapshot; `append` answers nothing.
+    snapshots = len(table.snapshots)
+    assert table.append(trades([1, 2], ["XNAS", "XNYS"])) is None
+    assert len(table.snapshots) == snapshots
+
+    assert table.scan().read_all().sort_by("id").to_pydict() == {
+        "id": [1, 2, 3],
+        "venue": ["XNAS", "XNYS", "XPAR"],
+    }
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = iceberg.assignFieldIds(
+      fields.struct('row', [Field.from('id: int64 not null'), Field.from('venue: utf8')], {
+        nullable: false,
+      }),
+    )
+    // The table's own key: `id`, named by the field id the numbering gave it.
+    schema.set('ICEBERG:identifier-field-ids', '1')
+
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+    const table = iceberg.IcebergTable.create(root, schema)
+    const trades = (ids, venues) =>
+      new arrow.Table({
+        id: arrow.vectorFromArray(ids, new arrow.Int64()),
+        venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
+      })
+    table.append(trades([1n, 2n], ['XNAS', 'XNYS']))
+
+    // 2 is stored and 3 arrives twice: only the first 3 is written.
+    table.append(trades([2n, 3n, 3n], ['XLON', 'XPAR', 'XAMS']))
+
+    // A replay keeps no row, so it commits no snapshot.
+    const snapshots = table.snapshots.length
+    table.append(trades([1n, 2n], ['XNAS', 'XNYS']))
+    assert.equal(table.snapshots.length, snapshots)
+
+    const stored = table.scan().intoTable()
+    const venues = new Map(
+      [...stored.getChild('id')].map((id, index) => [id, stored.getChild('venue').get(index)]),
+    )
+    assert.deepEqual(
+      venues,
+      new Map([
+        [1n, 'XNAS'],
+        [2n, 'XNYS'],
+        [3n, 'XPAR'],
+      ]),
+    )
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
+### A merge that changes nothing
+
+A merge replaces a stored row only where the last incoming row for its key - the last of every batch the merge pulls - differs from it, every column compared ([Append and merge](../holder/index.md#append-and-merge)). A partition group whose merge changes no stored row and adds no key carries the files it read under their exact paths; a group that adds a key or changes a row rewrites the files it read; and a merge in which no group changes commits no snapshot, the table left as it was - so replaying a merge adds no version. An overwrite, and a merge keyed by the partition alone - which replaces the partitions its rows fall in - always commit. The merge still answers every row it pulled as written, changed or not ([Write results](../holder/index.md#write-results)).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{DataType, IOMedia, IOResult, Scalar, Serie, StructType};
+
+    let row = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("venue"),
+    ])?)
+    .required_field("row");
+    let mut schema = row.clone();
+    assign_field_ids(&mut schema, 1)?;
+    schema.as_iceberg_mut().set_identifier_field_ids(&[1])?;
+
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-replay-merge");
+    let _ = std::fs::remove_dir_all(&path);
+    let mut table = IcebergTable::create(
+        LocalFolder::new(&path)?,
+        FormatVersion::V2,
+        schema,
+        PartitionSpec::unpartitioned(),
+    )?;
+
+    let trade = |id: i64, venue: &str| Scalar::from_sequence([Scalar::from(id), Scalar::from(venue)]);
+    let trades = |rows: Vec<Scalar>| Serie::from_scalars(row.clone(), rows);
+    table.append_serie(trades(vec![trade(1, "XNAS"), trade(2, "XNYS")])?.into(), None)?;
+    let version = table.metadata_version()?;
+    let snapshots = table.metadata()?.snapshots().len();
+
+    // Every row equals the row its key holds: no file is written and no
+    // snapshot committed, and the merge still answers every row it pulled.
+    let replayed = table.merge_serie(trades(vec![trade(1, "XNAS"), trade(2, "XNYS")])?.into(), None)?;
+    assert_eq!(replayed, IOResult::new(2, 2));
+    assert_eq!(table.metadata_version()?, version);
+    assert_eq!(table.metadata()?.snapshots().len(), snapshots);
+
+    // One row that differs is one snapshot.
+    table.merge_serie(trades(vec![trade(2, "XLON")])?.into(), None)?;
+    assert_eq!(table.metadata()?.snapshots().len(), snapshots + 1);
+    let _ = std::fs::remove_dir_all(&path);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase, IOResult
+    from yggdryl.iceberg import IcebergTable, assign_field_ids
+
+    rows = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("venue", pa.string()),
+    ])
+    schema = assign_field_ids(rows)
+    schema.iceberg.update({"identifier-field-ids": "1"})
+
+    table = IcebergTable.create(IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades"), schema, None)
+    trades = lambda ids, venues: pa.record_batch({"id": ids, "venue": venues}, schema=rows)
+    table.append(trades([1, 2], ["XNAS", "XNYS"]))
+    before = (table.version, len(table.snapshots))
+
+    # Every row equals the row its key holds: no file is written and no snapshot
+    # committed, and the merge still answers every row it pulled.
+    assert table.merge_serie(trades([1, 2], ["XNAS", "XNYS"])) == IOResult(2, 2, 0)
+    table.merge(trades([2], ["XNYS"]))
+    assert (table.version, len(table.snapshots)) == before
+
+    # One row that differs is one snapshot.
+    table.merge(trades([2], ["XLON"]))
+    assert len(table.snapshots) == before[1] + 1
+    assert table.scan().read_all().sort_by("id").to_pydict() == {
+        "id": [1, 2],
+        "venue": ["XNAS", "XLON"],
+    }
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = iceberg.assignFieldIds(
+      fields.struct('row', [Field.from('id: int64 not null'), Field.from('venue: utf8')], {
+        nullable: false,
+      }),
+    )
+    schema.set('ICEBERG:identifier-field-ids', '1')
+
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+    const table = iceberg.IcebergTable.create(root, schema)
+    const trades = (ids, venues) =>
+      new arrow.Table({
+        id: arrow.vectorFromArray(ids, new arrow.Int64()),
+        venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
+      })
+    table.append(trades([1n, 2n], ['XNAS', 'XNYS']))
+    const version = table.version
+    const snapshots = table.snapshots.length
+
+    // Every row equals the row its key holds: no file, no snapshot.
+    table.merge(trades([1n, 2n], ['XNAS', 'XNYS']))
+    assert.equal(table.version, version)
+    assert.equal(table.snapshots.length, snapshots)
+
+    // One row that differs is one snapshot.
+    table.merge(trades([2n], ['XLON']))
+    assert.equal(table.snapshots.length, snapshots + 1)
+    assert.equal(table.scan().intoTable().numRows, 2)
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
@@ -568,6 +990,103 @@ A table is also created from what its schema declares. `PartitionSpec::from_sche
     ```
 
 `IcebergTable.create` and `open_or_create` take the partitioning as a `PartitionSpec` or as `PARTITION:by` entries - Python's `partition_by`, JavaScript's `partitionBy`, each entry its text, in Python a `Term` or a `(term, alias)` pair too - read by `PartitionSpec::from_schema`'s rule, so a refusal names the entry. Omitted, the schema's own `PARTITION:by` is read; `None` in Python and `null` in JavaScript - or an empty list - partition nothing whatever the schema declares. The default sort order is the schema's `SORT:by` either way.
+
+### Integers stated as bits
+
+Iceberg has no unsigned integer, so [`into_scheme_compat`](../types/datatype.md#compatibility-rewriting) widens a `uint64` to `decimal(20, 0)`. A column stating [`FIELD:representation=bits`](../types/protocol.md#integers-stated-as-bits) - an XXH3-64 digest nobody does arithmetic on - is a `long` instead, carrying the digest's bits, and the table keeps the declaration: an Iceberg schema states nothing beside a type, so the table property `yggdryl.representation.bits` holds the sorted, comma-separated identifiers of every column, at any depth, that states it. It is written when the table is created, restated when a schema is added - over every schema the table holds, identifiers never being reused - and declared back on every schema wherever the metadata is read; a property that is no list of identifiers is refused naming it, and an identifier a schema does not hold declares nothing on it. The table's own field, which every write is cast onto, and every scan batch's Arrow field therefore state the bits, so a write of `uint64` digests is stored by its bits and a read under a field stating `uint64` takes them back, the buffer shared both ways and no option asked for. A read sorted by such a column lands the digests and orders what it landed, so the order it declares is the digests' own. A pushed-down filter compares the stored `long`: filter a digest past `i64::MAX` by its signed value, or after the cast.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, TableMetadata};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{DataType, IOMedia, Representation, Scalar, Scheme, Serie, StructType};
+
+    let mut digest = DataType::UInt64.required_field("digest");
+    digest.as_field_properties_mut().set_representation(Representation::Bits)?;
+    let logical = DataType::from(StructType::from_fields([digest])?).required_field("row");
+    let schema = logical.clone().into_scheme_compat(&Scheme::ICEBERG)?;
+    assert_eq!(schema.fields()[0].dtype(), &DataType::Int64);
+
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-bits");
+    let _ = std::fs::remove_dir_all(&path);
+    let mut table = IcebergTable::create(
+        LocalFolder::new(&path)?,
+        FormatVersion::V2,
+        schema,
+        PartitionSpec::unpartitioned(),
+    )?;
+    let rows = Serie::from_scalars(
+        logical,
+        [Scalar::from_sequence([Scalar::from(u64::MAX)])],
+    )?;
+    table.append_serie(rows.into(), None)?;
+
+    // Reopened, the property declares the column again.
+    let reopened = IcebergTable::open(LocalFolder::new(&path)?)?;
+    let column = &reopened.schema()?.fields()[0];
+    assert_eq!(column.as_field_properties().representation(), Representation::Bits);
+    let id = column.parquet_field_id()?.expect("a column id").to_string();
+    assert_eq!(
+        reopened.metadata()?.property(TableMetadata::REPRESENTATION_BITS_PROPERTY),
+        Some(id.as_str())
+    );
+    let batch = reopened.scan(None)?.next().expect("one batch")?;
+    let stored = batch.column(0).as_any().downcast_ref::<arrow_array::Int64Array>().expect("a long");
+    assert_eq!(stored.values(), &[-1]);
+    let _ = std::fs::remove_dir_all(&path);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+    from yggdryl import DataType, Field, IOBase
+    from yggdryl.iceberg import IcebergTable, assign_field_ids
+
+    digest = Field("digest", "uint64", nullable=False)
+    digest.field_properties.representation = "bits"
+    logical = Field("row", DataType.from_fields([digest]), nullable=False)
+    stored = assign_field_ids(logical.into_scheme_compat("iceberg"))
+    root = pathlib.Path(tempfile.mkdtemp())
+
+    table = IcebergTable.create(IOBase(root / "digests"), stored)
+    table.append(pa.record_batch({"digest": pa.array([2**64 - 1], type=pa.uint64())}))
+
+    reopened = IcebergTable(IOBase(root / "digests"))
+    assert reopened.schema.dtype["digest"].field_properties.representation == "bits"
+    assert reopened.scan().read_all().column("digest").to_pylist() == [-1]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { fields, iceberg } = require('yggdryl')
+
+    const digest = fields.uint64('digest', { nullable: false })
+    digest.fieldProperties.representation = 'bits'
+    const logical = fields.struct('row', [digest], { nullable: false })
+    const stored = iceberg.assignFieldIds(logical.intoSchemeCompat('iceberg'))
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const location = path.join(root, 'digests')
+
+    const table = iceberg.IcebergTable.create(location, stored, iceberg.PartitionSpec.unpartitioned())
+    table.append(new arrow.Table({ digest: arrow.vectorFromArray([2n ** 64n - 1n], new arrow.Uint64()) }))
+
+    const reopened = iceberg.IcebergTable.open(location)
+    assert.equal(reopened.schema.dtype.getFieldAt(0).fieldProperties.representation, 'bits')
+    assert.deepEqual([...reopened.scan().intoTable().getChild('digest')], [-1n])
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
 
 ## Schema evolution
 
@@ -864,7 +1383,7 @@ The counts are pinned in `rust/tests/s3tables/catalog.rs` against the fake contr
 
 ### The capture pipeline on Amazon S3 Tables
 
-`python/tests/medallion.py` is the capture pipeline on two table buckets - the capture under a glob to `bronze.log_messages`, the parse to `bronze.fix_messages`, the lifecycle to `silver.fix_messages`, the books every quarter of an hour to `silver.books`, and the books read once into the three event tables - and it prints, per stage, every request the process sent by host, through `yggdryl.http.process_stats`. Measured live on 2026-10-06 against Amazon S3 Tables in `eu-central-1` under an IAM user, over one day of a capture of two 124 KB log objects, the second of two runs in one process - every namespace and table there, every table rewritten:
+`python/tests/medallion.py` is the capture pipeline on two table buckets - the capture under a glob to `bronze.log_messages`, the parse to `bronze.fix_messages`, the lifecycle to `silver.fix_messages`, the books every quarter of an hour to `silver.books`, and the books read once into the three event tables. The historical comparison below was measured live on 2026-10-06 against Amazon S3 Tables in `eu-central-1` under an IAM user, over one day of a capture of two 124 KB log objects, the second of two runs in one process - every namespace and table there, every table rewritten:
 
 | per run | before (main `671d2df32`) | after |
 | --- | ---: | ---: |
@@ -1245,6 +1764,14 @@ The `commit` group streams eight batches through `append_arrow_reader` into a fr
 
 ```bash
 cargo bench --features "parquet iceberg" -p yggdryl --bench media -- "^commit/"
+```
+
+### Merges and keyed appends
+
+The `merge` group measures the key path. Three functions share an unpartitioned table of fifty single-row data files, one id each, so every file's id bounds are as tight as bounds can be: `upsert_into_50_files` merges ten stored ids whose venue flips on every iteration - a settling merge first folds their ten files into one, so each measured upsert reads that file, rewrites it and carries the other forty; `replay_into_50_files` merges the ten rows the table already holds, which reads and compares that file, writes nothing and commits no snapshot; and `append_held_keys_into_50_files` appends the same ten ids to a twin table keyed by `id` through its `identifier-field-ids`, which reads the key column of the ten files their bounds keep and commits nothing. `one_partition_of_64` merges ten rows into one `venue` partition of 64 whose every column is the key, so each measured merge reads that partition's one file, writes nothing and commits nothing - the partition alone keeps it from reading the other 63. Each setup asserts what it claims - the files folded or carried, the snapshots unchanged - before the timer starts. No result is published here yet: the table is regenerated by a release run of the command below on the machine it names.
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- "^merge/"
 ```
 
 ### Against PyIceberg

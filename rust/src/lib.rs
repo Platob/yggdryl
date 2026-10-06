@@ -31,6 +31,7 @@ pub mod avro;
 #[cfg(feature = "aws")]
 pub mod aws;
 pub mod bbg;
+pub mod bic;
 pub mod boolean;
 pub(crate) mod budget;
 pub mod bytes;
@@ -50,13 +51,17 @@ pub mod datetime;
 pub mod decimal;
 mod default;
 mod diff;
+pub mod dti;
 pub mod duration;
+pub mod elf;
 mod enumeration;
 pub mod enums;
+mod eusipa;
 pub mod excel;
 pub mod expression;
 mod field;
 pub mod figi;
+pub mod fisn;
 pub mod fix;
 pub mod floating;
 pub mod forex;
@@ -95,6 +100,7 @@ pub mod isin;
 mod isin_registry;
 mod join;
 pub mod json;
+pub mod lei;
 pub mod limit;
 mod listing;
 pub mod local;
@@ -203,10 +209,10 @@ pub use fix::{
     PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
     RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH,
     SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS,
-    STANDARD_TRAILER_TAGS, STATE_TAG_NAME, TICKER_TAG_NAME, TRADABLE_TAG_NAME, ULBRIDGE_ROWHEADER,
-    UNIT_TAG_NAME, Words, fix_column_of, fix_column_tags, fix_crate_fields, fix_schema,
-    fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document, is_crate_tag,
-    is_derived_tag,
+    STANDARD_TRAILER_TAGS, STATE_TAG_NAME, STRIKEPX_TAG_NAME, TICKER_TAG_NAME, TRADABLE_TAG_NAME,
+    ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, Words, fix_column_of, fix_column_tags, fix_crate_fields,
+    fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document,
+    is_crate_tag, is_derived_tag,
 };
 pub use hostname::HOSTNAME;
 pub use int256::{i256, u256};
@@ -265,6 +271,7 @@ pub use xxhash::{DigestFieldNames, DigestFields};
 pub(crate) use arithmetic::Arithmetic;
 pub(crate) use ascii::{ascii_bytes, ascii_text, ascii_text_sized};
 pub use bbg::*;
+pub use bic::*;
 pub use boolean::*;
 pub use bytes::*;
 pub use ccy::*;
@@ -284,11 +291,15 @@ pub(crate) use default::{
 };
 pub(crate) use diff::push_field_name_path;
 pub use diff::{Differences, OwnedDifferences};
+pub use dti::*;
 pub use duration::*;
+pub use elf::*;
 pub use enumeration::Vocabulary;
 pub use enums::*;
+pub use eusipa::Eusipa;
 pub use field::*;
 pub use figi::*;
+pub use fisn::*;
 pub use floating::*;
 pub use forex::*;
 #[cfg(feature = "parquet")]
@@ -303,6 +314,7 @@ pub use integer::*;
 pub use interval::*;
 pub use isin::*;
 pub use isin_registry::{IsinEntry, IsinRegistry};
+pub use lei::*;
 pub use limit::Limit;
 pub use mapping::*;
 pub use marketdatakind::*;

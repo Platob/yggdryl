@@ -66,13 +66,13 @@ and stays in ``metadata`` as it arrived);
 :meth:`FixMsg.header`, the standard
 header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
 ``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``); the
-business category ``msgcat``, the :class:`yggdryl.MarketDataKind` member the
-message type is filed under (``MsgType.msgcat`` answers the same member for
+business category ``marketdatakind``, the :class:`yggdryl.MarketDataKind` member the
+message type is filed under (``MsgType.marketdatakind`` answers the same member for
 the definition); ``msgpluginside``, the :class:`yggdryl.PluginSide` member
 naming the role of the plugin whose session produced the message - the
 codec's ``source`` entry's, ``UKNW`` where none is named - never a FIX tag's
-and independent of ``Side(54)``; the option ``strikeprice`` the message
-identifies (``StrikePrice(202)``);
+and independent of ``Side(54)``; the ``strikepx`` of the option the message
+identifies, its market fact derived from ``StrikePrice(202)``;
 :meth:`FixMsg.capture`, what the line's own bridge row header said about
 the capture it was written for (``msgpluginid``, ``msgpluginside``, ``msgctxid``,
 ``msgsessionid``, and the ``msgsesseventid`` the message type, session,
@@ -278,11 +278,11 @@ second copy of it. Its clock is ``mtime``, so the header dates each line it
 matches: the capture is consumed into the line's ``currunix`` - the
 ``recdunix`` of its messages and the sending clock of one stating no
 ``SendingTime(52)`` - and read at ``datetime64(ns, UTC)`` under the text
-options' ``timezone``, never the file's modification time. The other four
-captures are named for the fields they fill - ``msgsessionid``, ``msgctxid``,
-``msgseqnum`` and ``msgpluginid`` - so the header carries no column of its
-own; the thread that wrote a line and the level it was logged at are matched
-and lifted into no column.
+options' ``timezone``, never the file's modification time. Four of the other
+six captures are named for the fields they fill - ``msgsessionid``,
+``msgctxid``, ``msgseqnum`` and ``msgpluginid`` - and ``msgthreadid`` and
+``loglevel`` name none: they are columns of the line's row, carried in front
+of a FIX row parsed from it, filling no field.
 Its clock reads what bridges write, a point or a comma before three digits or
 grouped microseconds, or no fraction at all - and a line a row header does not
 match carries no capture context, which is what the lifecycle folds

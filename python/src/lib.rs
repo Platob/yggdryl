@@ -33,6 +33,7 @@ mod chunked_serie;
 mod coding;
 mod datatype;
 mod enums;
+mod eusipa;
 mod excel;
 mod expression;
 mod field;
@@ -687,6 +688,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<identifier::PyIdentifier>()?;
     module.add_class::<identifier::PyIdentifiers>()?;
     module.add_class::<isin_registry::PyIsinRegistry>()?;
+    module.add_class::<eusipa::PyEusipa>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;
     module.add_class::<fix::PyFixMsgIterator>()?;

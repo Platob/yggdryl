@@ -62,19 +62,7 @@ impl Figi {
     /// Returns an error when the text is not twelve ASCII bytes of the
     /// standard's shape, or uses a reserved prefix.
     pub fn new(value: impl AsRef<str>) -> Result<Self> {
-        let value = crate::ascii_text(FIGI_WIDTH, value.as_ref().as_bytes())?;
-        let mut bytes = [0_u8; FIGI_WIDTH];
-        for (target, byte) in bytes.iter_mut().zip(value.bytes()) {
-            *target = byte.to_ascii_uppercase();
-        }
-        let folded = std::str::from_utf8(&bytes[..value.len()]).expect("validated ASCII");
-        if let Some(reason) = Self::refusal(folded) {
-            return Err(crate::Error::InvalidDataType {
-                kind: "figi",
-                reason: smol_str::format_smolstr!("{reason}, got {value:?}"),
-            });
-        }
-        Ok(Self(SmolStr::new(folded)))
+        crate::code::folded_code::<FIGI_WIDTH>("figi", value.as_ref(), Self::refusal).map(Self)
     }
 
     /// Borrow the canonical identifier.

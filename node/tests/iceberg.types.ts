@@ -346,6 +346,10 @@ created.overwriteWhere({ venue: 'XNAS' }, BatchReader.from(arrowTable))
 created.merge(BatchReader.from(arrowTable), ['id'])
 created.merge(BatchReader.from(arrowTable), ['id'], false)
 created.mergeWhere({ venue: 'XNAS' }, BatchReader.from(arrowTable), ['id'], true)
+// A merge naming no key - left out or `null` - matches on the table's own.
+created.merge(BatchReader.from(arrowTable))
+created.merge(BatchReader.from(arrowTable), null, true)
+created.mergeWhere({ venue: 'XNAS' }, BatchReader.from(arrowTable))
 
 // The same five with a trailing per-call options value. Declaring the argument
 // is the half a type checker can see: these three shipped accepting one at

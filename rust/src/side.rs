@@ -17,6 +17,10 @@ enum_leaf! {
     /// is the member's description. What a column stores is the integer
     /// code, which every engine reads.
     ///
+    /// `Both` (`BOTH`, 99) stands outside the wire order for both sides at
+    /// once - a book's side and a two-sided quote's - and has no wire
+    /// character.
+    ///
     /// ```
     /// use yggdryl::Side;
     ///
@@ -26,6 +30,9 @@ enum_leaf! {
     /// assert_eq!(Side::SShort.as_str(), "SSHT");
     /// assert_eq!(Side::SShort.description(), "Sell short.");
     /// assert_eq!(Side::Unknown.merge_with(Side::Sell), Side::Sell);
+    /// assert_eq!(Side::Both.code(), 99);
+    /// assert_eq!(Side::Both.fix_code(), None);
+    /// assert_eq!(Side::Unknown.merge_with(Side::Both), Side::Both);
     /// ```
     pub enum Side: u8, kind = "side", extension = SIDE_EXTENSION_NAME, aliases = side_aliases {
         #[default]
@@ -47,6 +54,7 @@ enum_leaf! {
         Lend = 15 as "LEND": "Lend.",
         Borrow = 16 as "BORR": "Borrow.",
         SellUnd = 17 as "SELU": "Sell undisclosed.",
+        Both = 99 as "BOTH": "Both sides at once: a book, or a quote holding its bid and its ask and tagging neither.",
     }
 }
 
@@ -62,8 +70,8 @@ impl Side {
     }
 
     /// The `Side(54)` wire character: `1`..=`9` then `A`..=`H`, in the order
-    /// of the members; `None` for a side stated as none, which no message
-    /// carries.
+    /// of the members; `None` for a side stated as none and for `BOTH`,
+    /// which no message carries.
     ///
     /// ```
     /// use yggdryl::Side;
@@ -72,13 +80,16 @@ impl Side {
     /// assert_eq!(Side::CrossShX.fix_code(), Some('A'));
     /// assert_eq!(Side::SellUnd.fix_code(), Some('H'));
     /// assert_eq!(Side::Unknown.fix_code(), None);
+    /// assert_eq!(Side::Both.fix_code(), None);
     /// ```
     #[must_use]
     pub const fn fix_code(self) -> Option<char> {
-        match self as u8 {
-            0 => None,
-            code @ 1..=9 => Some((b'0' + code) as char),
-            code => Some((b'A' + code - 10) as char),
+        match self {
+            Self::Unknown | Self::Both => None,
+            side => match side as u8 {
+                code @ 1..=9 => Some((b'0' + code) as char),
+                code => Some((b'A' + code - 10) as char),
+            },
         }
     }
 
@@ -104,7 +115,8 @@ impl Side {
     /// to be paid.
     ///
     /// Everything on neither side - a cross, `UNDI`, `ASDF`, `OPPO`, a side
-    /// stated as none - takes neither: a cross is both sides at once and
+    /// stated as none, and `BOTH`, which holds both legs and so takes
+    /// neither one - takes neither: a cross is both sides at once and
     /// `OPPOSITE` means "whatever the other leg was".
     ///
     /// ```
@@ -125,12 +137,24 @@ impl Side {
     /// The better of two sides: this one, unless it is `Unknown`.
     ///
     /// What a graph element folds two statements of one side with: a side
-    /// stated as none takes the other, and anything stated stands.
+    /// stated as none takes the other, and anything stated stands - `BOTH`
+    /// included.
     #[must_use]
     pub const fn merge_with(self, other: Self) -> Self {
         match self {
             Self::Unknown => other,
             stated => stated,
+        }
+    }
+
+    /// The one leg this side tags: itself, and [`Self::Unknown`] for
+    /// [`Self::Both`], which holds both legs and so tags no one of them -
+    /// what a walk slots a quote's names by and what a follower reads a
+    /// predecessor's tag as.
+    pub(crate) const fn tagged(self) -> Self {
+        match self {
+            Self::Both => Self::Unknown,
+            side => side,
         }
     }
 
@@ -218,6 +242,7 @@ static SIDE_NAMES: &[(&str, Side)] = &[
     ("asdf", Side::AsDef),
     ("borr", Side::Borrow),
     ("borrow", Side::Borrow),
+    ("both", Side::Both),
     ("buy", Side::Buy),
     ("buym", Side::BuyMinus),
     ("buyminus", Side::BuyMinus),
@@ -250,6 +275,7 @@ static SIDE_NAMES: &[(&str, Side)] = &[
     ("subs", Side::Subscr),
     ("subscr", Side::Subscr),
     ("subscribe", Side::Subscr),
+    ("twosided", Side::Both),
     ("uknw", Side::Unknown),
     ("undi", Side::Undisc),
     ("undisc", Side::Undisc),

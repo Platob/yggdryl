@@ -88,6 +88,11 @@ impl JsDataType {
     /// Internal direct constructor for parameter-free typed Field factories.
     #[napi(factory, js_name = "_simple", skip_typescript)]
     pub fn simple(kind: String) -> Result<Self> {
+        // Every registered code by the one listing, so a new code adds no
+        // arm here.
+        if let Some((_, dtype, _)) = CoreDataType::CODES.iter().find(|(name, ..)| *name == kind) {
+            return Ok(Self::from_core(dtype.clone()));
+        }
         let inner = match kind.as_str() {
             "null" => CoreDataType::Null,
             "boolean" => CoreDataType::Boolean,
@@ -120,16 +125,6 @@ impl JsDataType {
             "large_cp1252" => CoreDataType::large_cp1252(),
             "cp1252_view" => CoreDataType::cp1252_view(),
             "large_cp1252_view" => CoreDataType::large_cp1252_view(),
-            "country" => CoreDataType::Country,
-            "ccy" => CoreDataType::Ccy,
-            "mic" => CoreDataType::Mic,
-            "cfi" => CoreDataType::Cfi,
-            "isin" => CoreDataType::Isin,
-            "cusip" => CoreDataType::Cusip,
-            "sedol" => CoreDataType::Sedol,
-            "bbg" => CoreDataType::Bbg,
-            "figi" => CoreDataType::Figi,
-            "forex" => CoreDataType::Forex,
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "marketdatakind" => CoreDataType::MarketDataKind,
@@ -899,7 +894,9 @@ impl JsDataType {
     }
 
     /// Recursively normalize this datatype for one closed compatibility
-    /// target without changing the current wrapper.
+    /// target without changing the current wrapper. A bare datatype states
+    /// no `FIELD:representation`, so an unsigned integer widens; a struct's
+    /// children state their own.
     #[napi(js_name = "intoSchemeCompat", skip_typescript)]
     pub fn into_scheme_compat(&self, target: String) -> Result<Self> {
         let target = CoreScheme::from_str(&target).map_err(napi_error)?;

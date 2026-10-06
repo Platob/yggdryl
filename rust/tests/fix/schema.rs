@@ -87,7 +87,9 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     // `parties` state what they name, and a message stating them keeps them
     // among its entries.
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 150);
+    // The capture now states the plugin role beside its plugin id: one
+    // new tagged column over the strike-bearing row.
+    assert_eq!(tags.len(), 151);
     for tag in [22, 48, 453, 454] {
         assert!(!tags.contains(&tag), "{tag} is no column");
     }
@@ -95,7 +97,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     // event's, the market's and the operation's facts, the crate's own tag
     // or - for a market or an operation column FIX already names alike -
     // that field's.
-    let shared = 6 + 9 + 34 + 5;
+    let shared = 6 + 9 + 35 + 5;
     assert_eq!(
         &tags[..15],
         [
@@ -134,7 +136,16 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "the market's category and type, prices and quantities, FIX's own fields where FIX names them alike"
     );
     assert_eq!(
-        &tags[49..shared],
+        &tags[47..50],
+        [
+            yggdryl::TICKER_TAG_NAME.0,
+            yggdryl::STRIKEPX_TAG_NAME.0,
+            yggdryl::METADATA_TAG_NAME.0,
+        ],
+        "the ticker, the strike FIX states as StrikePrice(202), then the metadata"
+    );
+    assert_eq!(
+        &tags[50..shared],
         [
             yggdryl::ORDQTY_TAG_NAME.0,
             59,
@@ -202,7 +213,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     let schema = fix_schema(&registry, "fix").unwrap();
     // The two identifier fields and the two groups - each its list alone,
     // its length the count - are four columns no row holds.
-    assert_eq!(schema.fields().len(), 151);
+    assert_eq!(schema.fields().len(), 152);
     assert!(
         schema
             .fields()
@@ -1988,4 +1999,287 @@ fn a_reports_filled_quantities_are_columns_and_read_back() {
         (int(0), int(60))
     );
     assert_eq!(again.into_row(&schema).unwrap(), row);
+}
+
+/// `Field` with every metadata key but `description` taken off at every
+/// depth, through its structural document: what an Iceberg table keeps of a
+/// column - its name, its datatype, its `doc` - and nothing a `FIX:` key
+/// stated.
+fn keeping_descriptions(field: &Field) -> Field {
+    fn strip(node: serde_json::Value) -> serde_json::Value {
+        match node {
+            serde_json::Value::Object(held) => serde_json::Value::Object(
+                held.into_iter()
+                    .map(|(key, value)| {
+                        let value = if key == "metadata" {
+                            match value {
+                                serde_json::Value::Object(keys) => serde_json::Value::Object(
+                                    keys.into_iter()
+                                        .filter(|(key, _)| key == "description")
+                                        .collect(),
+                                ),
+                                other => other,
+                            }
+                        } else {
+                            strip(value)
+                        };
+                        (key, value)
+                    })
+                    .collect(),
+            ),
+            serde_json::Value::Array(held) => {
+                serde_json::Value::Array(held.into_iter().map(strip).collect())
+            }
+            other => other,
+        }
+    }
+    let document: serde_json::Value =
+        serde_json::from_str(&field.clone().into_json().unwrap()).unwrap();
+    Field::from_json(&strip(document).to_string()).unwrap()
+}
+
+/// A row read back under a schema that keeps no `FIX:` key - an Iceberg
+/// table's, which keeps a column's name, datatype and `doc` and nothing
+/// else - is the message the parse made: the plan resolves each column by
+/// name, and the member it builds states the tag, so the header's
+/// `BodyLength(9)` stays the envelope the digest leaves out, a group's
+/// members re-emit under their tags rather than their names, and the
+/// identity the message settles to again is the one the parse stamped.
+/// The wire keeps the order it arrived in and the row does not, so the
+/// wire digest is not the pin; the event identity reads siblings
+/// canonically and is.
+#[test]
+fn a_row_read_back_under_a_schema_keeping_no_fix_key_settles_to_the_identity_the_parse_stamped() {
+    let (registry, reader) = reader();
+    let reader = reader.with_separator(b'|');
+    let message = reader
+        .parse_fix_line(
+            b"8=FIX.4.4|9=0|35=D|49=OMS|56=VENUE|34=7|11=ORD-1|55=SYM|54=1|38=100|40=2|44=9.5|\
+453=2|448=A|447=D|452=1|448=B|447=D|452=3|OMS_UserID=trader1|52=20260814-09:00:15.000|10=000|",
+        )
+        .expect("a readable order");
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let row = message.into_row(&schema).unwrap();
+    let stored = keeping_descriptions(&schema);
+    assert!(
+        stored.fields().iter().all(|column| column
+            .as_metadata()
+            .iter()
+            .all(|(key, _)| key == "description")),
+        "the stored schema keeps descriptions alone"
+    );
+    let back = yggdryl::FixMsg::from_row(Arc::clone(&registry), &stored, &row).unwrap();
+    // Every entry under its tag: the tags the two re-emit, as multisets,
+    // with what nests under each - the order the wire arrived in is not
+    // the row's to keep.
+    let tags = |held: &yggdryl::FixMsg| {
+        let mut tags = held
+            .entries()
+            .iter()
+            .map(|entry| (entry.tag(), entry.entries().len()))
+            .collect::<Vec<_>>();
+        tags.sort_unstable();
+        tags
+    };
+    assert_eq!(
+        tags(&back),
+        tags(&message),
+        "every entry resolves to its tag"
+    );
+    assert!(
+        back.entries().iter().all(|entry| entry.tag() != 0),
+        "no member reads as an unresolved key: {:?}",
+        back.entries()
+            .iter()
+            .map(yggdryl::FixEntry::name)
+            .collect::<Vec<_>>()
+    );
+    let wire = |held: &yggdryl::FixMsg| {
+        let mut fields = held.into_bytes(b'|');
+        fields.pop();
+        let mut fields = fields
+            .split(|byte| *byte == b'|')
+            .map(<[u8]>::to_vec)
+            .collect::<Vec<_>>();
+        fields.sort();
+        fields
+    };
+    assert_eq!(
+        wire(&back),
+        wire(&message),
+        "the wire re-emits every field under its tag"
+    );
+    // The group's occurrences, member by member, under their tags.
+    let parties = |held: &yggdryl::FixMsg| {
+        held.entries()
+            .iter()
+            .find(|entry| entry.tag() == 453)
+            .map(|group| {
+                group
+                    .entries()
+                    .iter()
+                    .map(|occurrence| {
+                        occurrence
+                            .entries()
+                            .iter()
+                            .map(|member| (member.tag(), member.value().map(str::to_owned)))
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>()
+            })
+    };
+    assert_eq!(
+        parties(&back),
+        parties(&message),
+        "a group reads back member by member"
+    );
+    assert_eq!(
+        parties(&message).map(|occurrences| occurrences.len()),
+        Some(2),
+        "the parse holds both parties"
+    );
+    assert_eq!(
+        back.get_currhashcode(),
+        message.get_currhashcode(),
+        "the row's code is kept"
+    );
+    // Settled again - as the lifecycle settles a message it follows or
+    // restates - both reach the identity the parse stamped.
+    let (mut held, mut back) = (message.clone(), back);
+    held.finalize();
+    back.finalize();
+    assert_eq!(
+        back.get_currhashcode(),
+        held.get_currhashcode(),
+        "the read-back message settles to the code the parse settles to"
+    );
+    assert_eq!(back.get_curruuid(), held.get_curruuid());
+    assert_eq!(
+        held.get_currhashcode(),
+        message.get_currhashcode(),
+        "settling the parsed message again moves nothing"
+    );
+    // The row is its own fixed point, column by column.
+    let again = back.into_row(&stored).unwrap();
+    let (held, written) = (
+        row.as_sequence().expect("a row"),
+        again.as_sequence().expect("a row"),
+    );
+    let differing: Vec<String> = stored
+        .fields()
+        .iter()
+        .zip(held.iter().zip(written))
+        .filter(|(_, (held, written))| held != written)
+        .map(|(column, (held, written))| format!("{}: {held:?} -> {written:?}", column.name()))
+        .collect();
+    assert!(
+        differing.is_empty(),
+        "the row is its own fixed point: {differing:#?}"
+    );
+}
+
+/// The two digests stated as bits cross an Iceberg table as longs.
+///
+/// An XXH3-64 is a bit pattern nobody does arithmetic on, so a caller may
+/// state `FIELD:representation=bits` on the two digest columns: the
+/// compatibility rewrite then exchanges each as the `long` of its width
+/// rather than a `decimal(20, 0)`, the rows are written through the value
+/// door with their bits, the table keeps the declaration, and the messages
+/// read back off a scan carry the digests they were stamped with. The place
+/// states nothing and still widens.
+#[cfg(feature = "iceberg")]
+#[test]
+fn digests_stating_bits_cross_an_iceberg_table_as_longs() {
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{
+        CROSSHASHCODE_TAG_NAME, CURRHASHCODE_TAG_NAME, Representation, SEQNUM_TAG_NAME, Scheme,
+    };
+
+    let (registry, codec) = reader();
+    let codec = codec.with_separator(b'|');
+    let lines: [&[u8]; 2] = [
+        b"8=FIX.4.4|35=D|11=LONG-1|55=AAPL|207=XNAS|15=USD|54=1|38=100|52=20260102-10:15:30.000|10=0|",
+        b"8=FIX.4.4|35=8|11=LONG-1|37=O-1|17=E-1|39=2|150=F|55=AAPL|207=XNAS|15=USD|14=100|52=20260102-10:15:31.000|10=0|",
+    ];
+    let messages: Vec<_> = lines
+        .iter()
+        .map(|line| Ok(codec.sole_line(line).unwrap()))
+        .collect();
+    let stamped: Vec<_> = codec
+        .lifecycle(messages)
+        .map(|held| held.unwrap())
+        .collect();
+    let digests = [CURRHASHCODE_TAG_NAME.1, CROSSHASHCODE_TAG_NAME.1];
+    let expected: Vec<(u64, u64)> = stamped
+        .iter()
+        .map(|held| (held.get_currhashcode(), held.get_crosshashcode()))
+        .collect();
+    assert!(
+        expected
+            .iter()
+            .any(|(curr, cross)| (*curr).max(*cross) > i64::MAX.unsigned_abs()),
+        "some digest is past i64::MAX, so its long is negative: {expected:?}"
+    );
+
+    let mut fixed = fix_schema(&registry, "fix").unwrap();
+    for name in digests {
+        let mut digest = fixed.get_field(name).unwrap().clone();
+        digest
+            .as_field_properties_mut()
+            .set_representation(Representation::Bits)
+            .unwrap();
+        fixed.set_field(name, digest).unwrap();
+    }
+    let mut schema = fixed.into_scheme_compat(&Scheme::ICEBERG).unwrap();
+    assign_field_ids(&mut schema, 1).unwrap();
+    for name in digests {
+        assert_eq!(
+            schema.get_field(name).unwrap().dtype(),
+            &DataType::Int64,
+            "{name}"
+        );
+    }
+    assert_eq!(
+        schema.get_field(SEQNUM_TAG_NAME.1).unwrap().dtype(),
+        &DataType::decimal128(20, 0).unwrap()
+    );
+
+    let path = LocalFolder::temporary()
+        .unwrap()
+        .path()
+        .unwrap()
+        .join(format!("yggdryl-fix-long-digests-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&path);
+    std::fs::create_dir_all(&path).unwrap();
+    let mut table = IcebergTable::create(
+        LocalFolder::new(&path).unwrap(),
+        FormatVersion::V2,
+        schema.clone(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    // Each digest crosses the value door into its long by its bits.
+    let rows = codec
+        .arrow_reader(schema, stamped.into_iter().map(Ok))
+        .unwrap();
+    table.commit_append(rows).unwrap();
+
+    let scan = table.scan(None).unwrap();
+    for name in digests {
+        assert_eq!(
+            scan.schema().field_with_name(name).unwrap().data_type(),
+            &arrow_schema::DataType::Int64,
+            "{name}"
+        );
+    }
+    let read: Vec<(u64, u64)> = codec
+        .messages(scan)
+        .map(|held| {
+            let held = held.unwrap();
+            (held.get_currhashcode(), held.get_crosshashcode())
+        })
+        .collect();
+    assert_eq!(read, expected, "the digests come back exactly as they went");
+    let _ = std::fs::remove_dir_all(&path);
 }

@@ -82,7 +82,7 @@ fn every_kind_is_reachable() {
 
 #[test]
 fn the_strings_and_the_codes_are_text() {
-    assert_eq!(DataTypeId::ALL.len(), 92);
+    assert_eq!(DataTypeId::ALL.len(), 97);
     for id in [
         DataTypeId::Utf8String,
         DataTypeId::FixedUtf8String,
@@ -258,6 +258,13 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::Timezone, 0x66),
         (DataTypeId::MimeType, 0x67),
         (DataTypeId::MediaType, 0x68),
+        // The code family took the text range's tail, which no leaf had
+        // ever held, when its own bytes ran out.
+        (DataTypeId::Lei, 0x6b),
+        (DataTypeId::Bic, 0x6c),
+        (DataTypeId::Elf, 0x6d),
+        (DataTypeId::Dti, 0x6e),
+        (DataTypeId::Fisn, 0x6f),
         (DataTypeId::Country, 0x71),
         (DataTypeId::Ccy, 0x72),
         (DataTypeId::Mic, 0x73),
@@ -361,8 +368,8 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
         (K::Decimal, 0x28, 0x2f),
         (K::Temporal, 0x30, 0x3f),
         (K::Bytes, 0x40, 0x4f),
-        (K::Text, 0x50, 0x6f),
-        (K::Code, 0x70, 0x7f),
+        (K::Text, 0x50, 0x69),
+        (K::Code, 0x6a, 0x7f),
         (K::Uuid, 0x80, 0x8f),
         (K::Nested, 0x90, 0xaf),
         (K::Geospatial, 0xb0, 0xbf),
@@ -486,6 +493,11 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
         (
             K::Code,
             &[
+                DataTypeId::Lei,
+                DataTypeId::Bic,
+                DataTypeId::Elf,
+                DataTypeId::Dti,
+                DataTypeId::Fisn,
                 DataTypeId::Country,
                 DataTypeId::Ccy,
                 DataTypeId::Mic,

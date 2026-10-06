@@ -1430,16 +1430,8 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
             OfficialPrimitiveType::Decimal { precision, scale },
             OfficialPrimitiveLiteral::Int128(value),
         ) => {
-            let precision = u8::try_from(*precision).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected a decimal precision fitting u8, got {precision}"
-                ))
-            })?;
-            let scale = i8::try_from(*scale).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected a decimal scale fitting i8, got {scale}"
-                ))
-            })?;
+            let (precision, scale) =
+                crate::decimal::decimal_parameters(*precision, *scale).map_err(invalid)?;
             DataType::decimal(precision, scale)?.scalar(Scalar::decimal128(*value, scale))
         }
         (OfficialPrimitiveType::Date, OfficialPrimitiveLiteral::Int(value)) => {

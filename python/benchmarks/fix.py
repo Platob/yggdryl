@@ -270,8 +270,8 @@ assert len(list(CODEC.parse_lines(LINES))) == len(LINES)
 ORDER_TYPE = SEED_REGISTRY.msgtype("D")
 ORDER_DECLARATION = ORDER_TYPE.field
 SNAPSHOT_CODEC = FixCodec(SEED_REGISTRY, snapshot_ns=1_000_000_000)
-assert ORDER_TYPE.msgcat is MarketDataKind.ORDR
-assert PARSED.msgcat is MarketDataKind.ORDR
+assert ORDER_TYPE.marketdatakind is MarketDataKind.ORDR
+assert PARSED.marketdatakind is MarketDataKind.ORDR
 assert SNAPSHOT_CODEC.snapshot_ns == 1_000_000_000
 # A parse fills what the line implied, so the names the message goes by are
 # on the message the parse answered rather than behind a pass of its own.
@@ -316,12 +316,12 @@ def _field_msgcat() -> object:
     return ORDER_DECLARATION.fix.msgcat
 
 
-def _msgtype_msgcat() -> object:
-    return ORDER_TYPE.msgcat
+def _msgtype_marketdatakind() -> object:
+    return ORDER_TYPE.marketdatakind
 
 
-def _message_msgcat() -> object:
-    return PARSED.msgcat
+def _message_marketdatakind() -> object:
+    return PARSED.marketdatakind
 
 
 def _message_msgpluginside() -> object:
@@ -497,8 +497,8 @@ def main() -> None:
         _measure("message from_row", _message_from_row, args.iterations)
         _measure("field.fix.identifiers", _field_identifiers, args.iterations)
         _measure("field.fix.msgcat", _field_msgcat, args.iterations)
-        _measure("MsgType.msgcat", _msgtype_msgcat, args.iterations)
-        _measure("FixMsg.msgcat", _message_msgcat, args.iterations)
+        _measure("MsgType.marketdatakind", _msgtype_marketdatakind, args.iterations)
+        _measure("FixMsg.marketdatakind", _message_marketdatakind, args.iterations)
         _measure("FixMsg.msgpluginside", _message_msgpluginside, args.iterations)
         _measure("FixCodec.snapshot_ns", _codec_snapshot_ns, args.iterations)
         _measure("MsgType.identifier_values", _identifier_values, args.iterations)

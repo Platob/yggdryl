@@ -355,7 +355,12 @@ mod limits {
                 | DataType::Ric
                 | DataType::Figi
                 | DataType::Unit
-                | DataType::Forex => {
+                | DataType::Forex
+                | DataType::Lei
+                | DataType::Bic
+                | DataType::Elf
+                | DataType::Dti
+                | DataType::Fisn => {
                     self.add_offsets(rows, 4)?;
                     self.add_fixed_rows(rows, dtype.code_width().unwrap_or_default())?;
                 }
@@ -481,7 +486,12 @@ mod limits {
                 | DataType::Ric
                 | DataType::Figi
                 | DataType::Unit
-                | DataType::Forex => {
+                | DataType::Forex
+                | DataType::Lei
+                | DataType::Bic
+                | DataType::Elf
+                | DataType::Dti
+                | DataType::Fisn => {
                     self.add_offsets(rows, 4)?;
                     self.add_fixed_rows(rows, dtype.code_width().unwrap_or_default())?;
                 }

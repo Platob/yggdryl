@@ -10,6 +10,7 @@ use yggdryl::{
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     {
         use yggdryl::graph::{Market, Order};
+        use yggdryl::{Bic, Dti, Elf, Fisn, Lei};
         use yggdryl::{Cfi, Figi, Forex, FxSymbol, IdType, Identifier, Isin, Ric};
         let mut codes = criterion.benchmark_group("instrument_codes");
         codes.bench_function("isin", |bench| {
@@ -20,6 +21,27 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         });
         codes.bench_function("ric", |bench| {
             bench.iter(|| Ric::new(black_box("0005.HK")).unwrap());
+        });
+        codes.bench_function("lei", |bench| {
+            bench.iter(|| Lei::new(black_box("hwupkr0mpou8fgxbt394")).unwrap());
+        });
+        codes.bench_function("lei_closed", |bench| {
+            bench.iter(|| Lei::is_closed(black_box("HWUPKR0MPOU8FGXBT394")));
+        });
+        codes.bench_function("bic", |bench| {
+            bench.iter(|| Bic::new(black_box("deutdeffxxx")).unwrap());
+        });
+        codes.bench_function("elf", |bench| {
+            bench.iter(|| Elf::new(black_box("2hbr")).unwrap());
+        });
+        codes.bench_function("dti", |bench| {
+            bench.iter(|| Dti::new(black_box("x9j9k872s")).unwrap());
+        });
+        codes.bench_function("dti_closed", |bench| {
+            bench.iter(|| Dti::is_closed(black_box("X9J9K872S")));
+        });
+        codes.bench_function("fisn", |bench| {
+            bench.iter(|| Fisn::new(black_box("apple inc/sh")).unwrap());
         });
         let ric = Ric::new("0005.HK").unwrap();
         codes.bench_function("ric_exchange_code", |bench| {

@@ -35,6 +35,12 @@ def test_the_stub_lists_the_native_table() -> None:
     }
     # A NEW over a new-like predecessor is stated anew and carrying on.
     assert State.UPDATED == 3004 and State.UPDATED.is_live()
+    # A thing acknowledged and awaiting its next step works, past its
+    # acknowledgement and below its answers; an approval ends one.
+    assert State.PENDING_VERIFICATION == 4006 and State.PENDING_VERIFICATION.rank == 40
+    assert not State.PENDING_VERIFICATION.is_pending()
+    assert State.PENDING_ALLOCATION == 4007 and State.PENDING_APPROVAL == 4008
+    assert State.APPROVED == 8013 and State.APPROVED.is_done()
 
 
 def test_each_band_is_one_question() -> None:
@@ -56,6 +62,8 @@ def test_a_spelling_a_status_and_a_message_type_read_to_one_member() -> None:
     assert State.from_spelling("not a state") is None
     assert State.from_fix_status(39, "8") is State.REJECTED
     assert State.from_fix_status(150, "F") is State.TRADE
+    assert State.from_fix_status(87, "6") is State.PENDING_ALLOCATION
+    assert State.from_spelling("approved") is State.APPROVED
     assert State.from_fix_status(55, "8") is None
     assert State.from_fix_msgtype("D") is State.PENDING_NEW
     assert State.from_fix_msgtype("F") is State.PENDING_CANCEL

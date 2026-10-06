@@ -12,12 +12,12 @@ A fact has one name and one datatype in every row, so a reader who knows one row
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | Nothing of its own. The column names come from `ElementColumn::ALL` (6), `EventColumn::ALL` (9), `MarketColumn::ALL` (34) and `OperationColumn::ALL` (5) in `yggdryl::graph`. The rows are built by `MarketData::field`, `fix_schema` and the text record reader |
+| Owns | Nothing of its own. The column names come from `ElementColumn::ALL` (6), `EventColumn::ALL` (9), `MarketColumn::ALL` (35) and `OperationColumn::ALL` (5) in `yggdryl::graph`. The rows are built by `MarketData::field`, `fix_schema` and the text record reader |
 | Order | Element, event, market, operation - the order of the traits that answer them (`Element`, `Event`, `Market`, `Operation`) - then the row's own columns |
 | Names | Every fact has one name and one datatype in every row. Every generated column carries a display name in its `display` metadata |
 | Text line | The 15 element and event columns, then `body`, then one column per row-header capture |
-| FIX row | The 54 prefix columns, then the message's own bands and `fixentries`: 151 columns and 150 tags under the committed dictionary. A fact FIX states in a field of its own is that field, typed as the dictionary types it (`price` is `Price(44)`, `timeinforce` the `TimeInForce(59)` wire text the message's [`TimeInForce`](../types/enum/timeinforce.md) member is read from) |
-| `marketdata` row | The 54 prefix columns, the three book controls `bookscope`, `bookaction` and `bookposition`, then the nested `alive`, `deltas`, `executions`, `bidlimits` and `asklimits`: 62 columns |
+| FIX row | The 55 prefix columns, then the message's own bands and `fixentries`: 152 fields and 151 tags under the committed dictionary. A fact FIX states in a field of its own is that field, typed as the dictionary types it (`price` is `Price(44)`, `timeinforce` the `TimeInForce(59)` wire text the message's [`TimeInForce`](../types/enum/timeinforce.md) member is read from) |
+| `marketdata` row | The 55 prefix columns, the three book controls `bookscope`, `bookaction` and `bookposition`, then the nested `alive`, `deltas`, `executions`, `bidlimits` and `asklimits`: 63 columns |
 | Identifiers | `securityids`, `identifiers` and `partyids` are each a sorted `map<utf8, utf8>` from the key's text to its value ([Identifier](identifier.md#arrow)): on the FIX row every key the map holds - `src:type`, the type alone for the base source; on a market-data row the base keys alone, one per type, every other key [side information](market-data.md#side-information) in `metadata` under its map's name and its `src:type` spelling, `securityids.ullink:isin`; read raw and closed once, so every type held has its base key |
 | Cross code | `crosscode` is the code as an element stores it - `{kind}:{side}:{base}` on a `marketdata` row and on a FIX row, the side stated by an order or an execution alone (`10:1:O-1001`, `14:0:Q-1`, `3:0:AAPL`) - and as given on a text line, which is no market element ([Market](market.md#sides-and-cross-codes)) |
 | Persisted | Every [market fill](market.md#setting-fill-or-overwrite) a leaf answered is stored as a column value. A row read back through `MarketData::from_arrow_reader` or `FixMsg::from_row` answers the same facts without running the fills again |
@@ -34,15 +34,15 @@ A fact has one name and one datatype in every row, so a reader who knows one row
         .chain(MarketColumn::ALL.iter().map(|column| column.name()))
         .chain(OperationColumn::ALL.iter().map(|column| column.name()))
         .collect();
-    assert_eq!(prefix.len(), 54);
+    assert_eq!(prefix.len(), 55);
     assert_eq!(&prefix[..3], ["curruuid", "crossuuid", "crosscode"]);
     assert_eq!(&prefix[15..17], ["marketdatakind", "marketdatatype"]);
 
     let row = MarketData::field()?;
     let names: Vec<&str> = row.fields().iter().map(|field| field.name()).collect();
-    assert_eq!(names.len(), 62);
-    assert_eq!(&names[..54], prefix.as_slice());
-    assert_eq!(&names[54..57], ["bookscope", "bookaction", "bookposition"]);
+    assert_eq!(names.len(), 63);
+    assert_eq!(&names[..55], prefix.as_slice());
+    assert_eq!(&names[55..58], ["bookscope", "bookaction", "bookposition"]);
     ```
 
 === "Python"
@@ -51,12 +51,12 @@ A fact has one name and one datatype in every row, so a reader who knows one row
     from yggdryl import enums, graph
 
     prefix = [*enums.ELEMENT_COLUMNS, *enums.EVENT_COLUMNS, *enums.MARKET_COLUMNS, *enums.OPERATION_COLUMNS]
-    assert len(prefix) == 54
+    assert len(prefix) == 55
     assert prefix[15:17] == ["marketdatakind", "marketdatatype"]
 
     names = graph.MarketData.field().into_arrow_schema().names
-    assert len(names) == 62
-    assert names[:54] == prefix and names[54:57] == ["bookscope", "bookaction", "bookposition"]
+    assert len(names) == 63
+    assert names[:55] == prefix and names[55:58] == ["bookscope", "bookaction", "bookposition"]
     ```
 
 === "JavaScript"
@@ -66,12 +66,12 @@ A fact has one name and one datatype in every row, so a reader who knows one row
     const { enums, graph } = require('yggdryl')
 
     const prefix = [...enums.elementColumns, ...enums.eventColumns, ...enums.marketColumns, ...enums.operationColumns]
-    assert.equal(prefix.length, 54)
+    assert.equal(prefix.length, 55)
     assert.deepEqual(prefix.slice(15, 17), ['marketdatakind', 'marketdatatype'])
 
     const row = graph.MarketData.field()
-    assert.equal(row.fieldLen, 62)
-    assert.deepEqual([54, 55, 56].map((at) => row.getFieldAt(at).name), ['bookscope', 'bookaction', 'bookposition'])
+    assert.equal(row.fieldLen, 63)
+    assert.deepEqual([55, 56, 57].map((at) => row.getFieldAt(at).name), ['bookscope', 'bookaction', 'bookposition'])
     ```
 
 ## The text line
@@ -165,109 +165,112 @@ Some wire values also keep a column of their own:
 | 45 | `askccy` | `ccy` |  | Ask Currency | 65032 |
 | 46 | `fxrates` | `map(...)` |  | FX Rates | 65033 |
 | 47 | `ticker` | `utf8` |  | Ticker | 65034 |
-| 48 | `metadata` | `map(...)` |  | Metadata | 65035 |
-| 49 | `ordqty` | `decimal` |  | Order Quantity | 65036 |
-| 50 | `timeinforce` | `utf8` |  | TimeInForce | 59 |
-| 51 | `tradable` | `boolean` |  | Tradable | 65037 |
-| 52 | `identifiers` | `map(...)` |  | Identifiers | 65038 |
-| 53 | `partyids` | `map(...)` |  | Party IDs | 65039 |
-| 54 | `sendingtime` | `datetime64(ns,"UTC")` |  | SendingTime | 52 |
-| 55 | `origsendingtime` | `datetime64(ns,"UTC")` |  | OrigSendingTime | 122 |
-| 56 | `transacttime` | `datetime64(ns,"UTC")` |  | TransactTime | 60 |
-| 57 | `settldate` | `datetime64(ns)` |  | SettlDate | 64 |
-| 58 | `tradedate` | `datetime64(ns)` |  | TradeDate | 75 |
-| 59 | `expiretime` | `datetime64(ns,"UTC")` |  | ExpireTime | 126 |
-| 60 | `validuntiltime` | `datetime64(ns,"UTC")` |  | ValidUntilTime | 62 |
-| 61 | `expiredate` | `datetime64(ns)` |  | ExpireDate | 432 |
-| 62 | `beginstring` | `utf8` | yes | BeginString | 8 |
-| 63 | `msgtype` | `utf8` |  | MsgType | 35 |
-| 64 | `msgseqnum` | `int64` |  | MsgSeqNum | 34 |
-| 65 | `sendercompid` | `utf8` |  | SenderCompID | 49 |
-| 66 | `targetcompid` | `utf8` |  | TargetCompID | 56 |
-| 67 | `possdupflag` | `boolean` |  | PossDupFlag | 43 |
-| 68 | `msgdirection` | `utf8` |  | MsgDirection | 385 |
-| 69 | `msgpluginid` | `utf8` |  | Message Plugin ID | 65040 |
-| 70 | `msgpluginside` | `pluginside` | yes | Message Plugin Side | 65041 |
-| 71 | `msgoriginator` | `utf8` |  | Message Originator | 65042 |
-| 72 | `msgctxid` | `utf8` |  | Message Context ID | 65043 |
-| 73 | `msgsessionid` | `utf8` |  | Message Session ID | 65044 |
-| 74 | `msgsesseventid` | `utf8` |  | Message Session Event ID | 65045 |
-| 75 | `conversationid` | `utf8` |  | Conversation ID | 65046 |
-| 76 | `symbol` | `utf8` |  | Symbol | 55 |
-| 77 | `forexcode` | `forex` |  | Forex Code | 65047 |
-| 78 | `bloombergcode` | `bbg` |  | Bloomberg Code | 65048 |
-| 79 | `figicode` | `figi` |  | FIGI Code | 65049 |
-| 80 | `strikeprice` | `decimal128(38,18)` |  | StrikePrice | 202 |
-| 81 | `securitytype` | `utf8` |  | SecurityType | 167 |
-| 82 | `securitysubtype` | `utf8` |  | SecuritySubType | 762 |
-| 83 | `securityexchange` | `mic` |  | SecurityExchange | 207 |
-| 84 | `exdestination` | `mic` |  | ExDestination | 100 |
-| 85 | `lastmkt` | `mic` |  | LastMkt | 30 |
-| 86 | `maturitydate` | `datetime64(ns)` |  | MaturityDate | 541 |
-| 87 | `product` | `int32` |  | Product | 460 |
-| 88 | `securitytradingstatus` | `int32` |  | SecurityTradingStatus | 326 |
-| 89 | `tradsesstatus` | `int32` |  | TradSesStatus | 340 |
-| 90 | `securitystatus` | `utf8` |  | SecurityStatus | 965 |
-| 91 | `account` | `utf8` |  | Account | 1 |
-| 92 | `clordid` | `utf8` |  | ClOrdID | 11 |
-| 93 | `origclordid` | `utf8` |  | OrigClOrdID | 41 |
-| 94 | `secondaryclordid` | `utf8` |  | SecondaryClOrdID | 526 |
-| 95 | `orderid` | `utf8` |  | OrderID | 37 |
-| 96 | `secondaryorderid` | `utf8` |  | SecondaryOrderID | 198 |
-| 97 | `execid` | `utf8` |  | ExecID | 17 |
-| 98 | `tradeid` | `utf8` |  | TradeID | 1003 |
-| 99 | `quotereqid` | `utf8` |  | QuoteReqID | 131 |
-| 100 | `quoteid` | `utf8` |  | QuoteID | 117 |
-| 101 | `mdreqid` | `utf8` |  | MDReqID | 262 |
-| 102 | `quoterespid` | `utf8` |  | QuoteRespID | 693 |
-| 103 | `orderqty` | `decimal128(38,18)` |  | OrderQty | 38 |
-| 104 | `maxfloor` | `decimal128(38,18)` |  | MaxFloor | 111 |
-| 105 | `prevclosepx` | `decimal128(38,18)` |  | PrevClosePx | 140 |
-| 106 | `unitofmeasure` | `utf8` |  | UnitOfMeasure | 996 |
-| 107 | `settlcurrency` | `ccy` |  | SettlCurrency | 120 |
-| 108 | `qtytype` | `int32` |  | QtyType | 854 |
-| 109 | `ordtype` | `utf8` |  | OrdType | 40 |
-| 110 | `quotetype` | `int32` |  | QuoteType | 537 |
-| 111 | `trdtype` | `int32` |  | TrdType | 828 |
-| 112 | `offerpx` | `decimal128(38,18)` |  | OfferPx | 133 |
-| 113 | `bidsize` | `decimal128(38,18)` |  | BidSize | 134 |
-| 114 | `offersize` | `decimal128(38,18)` |  | OfferSize | 135 |
-| 115 | `lastspotrate` | `decimal128(38,18)` |  | LastSpotRate | 194 |
-| 116 | `lastforwardpoints` | `decimal128(38,18)` |  | LastForwardPoints | 195 |
-| 117 | `bidspotrate` | `decimal128(38,18)` |  | BidSpotRate | 188 |
-| 118 | `bidforwardpoints` | `decimal128(38,18)` |  | BidForwardPoints | 189 |
-| 119 | `offerspotrate` | `decimal128(38,18)` |  | OfferSpotRate | 190 |
-| 120 | `offerforwardpoints` | `decimal128(38,18)` |  | OfferForwardPoints | 191 |
-| 121 | `ordstatus` | `utf8` |  | OrdStatus | 39 |
-| 122 | `exectype` | `utf8` |  | ExecType | 150 |
-| 123 | `quotestatus` | `int32` |  | QuoteStatus | 297 |
-| 124 | `quoteresponselevel` | `int32` |  | QuoteResponseLevel | 301 |
-| 125 | `quoteentryrejectreason` | `int32` |  | QuoteEntryRejectReason | 368 |
-| 126 | `ordrejreason` | `int32` |  | OrdRejReason | 103 |
-| 127 | `cxlrejreason` | `int32` |  | CxlRejReason | 102 |
-| 128 | `text` | `utf8` |  | Text | 58 |
-| 129 | `trdregtimestamps` | `serie(...)` |  | TrdRegTimestamps | 763375 |
-| 130 | `regulatorytradeids` | `serie(...)` |  | RegulatoryTradeIDs | 497401 |
-| 131 | `bodylength` | `int32` |  | BodyLength | 9 |
-| 132 | `onbehalfofcompid` | `utf8` |  | OnBehalfOfCompID | 115 |
-| 133 | `delivertocompid` | `utf8` |  | DeliverToCompID | 128 |
-| 134 | `securedatalen` | `int32` |  | SecureDataLen | 90 |
-| 135 | `securedata` | `binary` |  | SecureData | 91 |
-| 136 | `sendersubid` | `utf8` |  | SenderSubID | 50 |
-| 137 | `senderlocationid` | `utf8` |  | SenderLocationID | 142 |
-| 138 | `targetsubid` | `utf8` |  | TargetSubID | 57 |
-| 139 | `targetlocationid` | `utf8` |  | TargetLocationID | 143 |
-| 140 | `onbehalfofsubid` | `utf8` |  | OnBehalfOfSubID | 116 |
-| 141 | `onbehalfoflocationid` | `utf8` |  | OnBehalfOfLocationID | 144 |
-| 142 | `delivertosubid` | `utf8` |  | DeliverToSubID | 129 |
-| 143 | `delivertolocationid` | `utf8` |  | DeliverToLocationID | 145 |
-| 144 | `possresend` | `boolean` |  | PossResend | 97 |
-| 145 | `xmldatalen` | `int32` |  | XmlDataLen | 212 |
-| 146 | `xmldata` | `binary` |  | XmlData | 213 |
-| 147 | `signaturelength` | `int32` |  | SignatureLength | 93 |
-| 148 | `signature` | `binary` |  | Signature | 89 |
-| 149 | `checksum` | `utf8` |  | CheckSum | 10 |
-| 150 | `fixentries` | `map(...)` |  | FixEntries |  |
+| 48 | `strikepx` | `decimal` |  | Strike Price | 65035 |
+| 49 | `metadata` | `map(...)` |  | Metadata | 65036 |
+| 50 | `ordqty` | `decimal` |  | Order Quantity | 65037 |
+| 51 | `timeinforce` | `utf8` |  | TimeInForce | 59 |
+| 52 | `tradable` | `boolean` |  | Tradable | 65038 |
+| 53 | `identifiers` | `map(...)` |  | Identifiers | 65039 |
+| 54 | `partyids` | `map(...)` |  | Party IDs | 65040 |
+| 55 | `sendingtime` | `datetime64(ns,"UTC")` |  | SendingTime | 52 |
+| 56 | `origsendingtime` | `datetime64(ns,"UTC")` |  | OrigSendingTime | 122 |
+| 57 | `transacttime` | `datetime64(ns,"UTC")` |  | TransactTime | 60 |
+| 58 | `settldate` | `datetime64(ns)` |  | SettlDate | 64 |
+| 59 | `tradedate` | `datetime64(ns)` |  | TradeDate | 75 |
+| 60 | `expiretime` | `datetime64(ns,"UTC")` |  | ExpireTime | 126 |
+| 61 | `validuntiltime` | `datetime64(ns,"UTC")` |  | ValidUntilTime | 62 |
+| 62 | `expiredate` | `datetime64(ns)` |  | ExpireDate | 432 |
+| 63 | `beginstring` | `utf8` | yes | BeginString | 8 |
+| 64 | `msgtype` | `utf8` |  | MsgType | 35 |
+| 65 | `msgseqnum` | `int64` |  | MsgSeqNum | 34 |
+| 66 | `sendercompid` | `utf8` |  | SenderCompID | 49 |
+| 67 | `targetcompid` | `utf8` |  | TargetCompID | 56 |
+| 68 | `possdupflag` | `boolean` |  | PossDupFlag | 43 |
+| 69 | `msgdirection` | `utf8` |  | MsgDirection | 385 |
+| 70 | `msgpluginid` | `utf8` |  | Message Plugin ID | 65041 |
+| 71 | `msgpluginside` | `pluginside` | yes | Message Plugin Side | 65042 |
+| 72 | `msgoriginator` | `utf8` |  | Message Originator | 65043 |
+| 73 | `msgctxid` | `utf8` |  | Message Context ID | 65044 |
+| 74 | `msgsessionid` | `utf8` |  | Message Session ID | 65045 |
+| 75 | `msgsesseventid` | `utf8` |  | Message Session Event ID | 65046 |
+| 76 | `conversationid` | `utf8` |  | Conversation ID | 65047 |
+| 77 | `symbol` | `utf8` |  | Symbol | 55 |
+| 78 | `forexcode` | `forex` |  | Forex Code | 65048 |
+| 79 | `bloombergcode` | `bbg` |  | Bloomberg Code | 65049 |
+| 80 | `figicode` | `figi` |  | FIGI Code | 65050 |
+| 81 | `strikeprice` | `decimal128(38,18)` |  | StrikePrice | 202 |
+| 82 | `securitytype` | `utf8` |  | SecurityType | 167 |
+| 83 | `securitysubtype` | `utf8` |  | SecuritySubType | 762 |
+| 84 | `securityexchange` | `mic` |  | SecurityExchange | 207 |
+| 85 | `exdestination` | `mic` |  | ExDestination | 100 |
+| 86 | `lastmkt` | `mic` |  | LastMkt | 30 |
+| 87 | `maturitydate` | `datetime64(ns)` |  | MaturityDate | 541 |
+| 88 | `product` | `int32` |  | Product | 460 |
+| 89 | `securitytradingstatus` | `int32` |  | SecurityTradingStatus | 326 |
+| 90 | `tradsesstatus` | `int32` |  | TradSesStatus | 340 |
+| 91 | `securitystatus` | `utf8` |  | SecurityStatus | 965 |
+| 92 | `account` | `utf8` |  | Account | 1 |
+| 93 | `clordid` | `utf8` |  | ClOrdID | 11 |
+| 94 | `origclordid` | `utf8` |  | OrigClOrdID | 41 |
+| 95 | `secondaryclordid` | `utf8` |  | SecondaryClOrdID | 526 |
+| 96 | `orderid` | `utf8` |  | OrderID | 37 |
+| 97 | `secondaryorderid` | `utf8` |  | SecondaryOrderID | 198 |
+| 98 | `execid` | `utf8` |  | ExecID | 17 |
+| 99 | `tradeid` | `utf8` |  | TradeID | 1003 |
+| 100 | `quotereqid` | `utf8` |  | QuoteReqID | 131 |
+| 101 | `quoteid` | `utf8` |  | QuoteID | 117 |
+| 102 | `mdreqid` | `utf8` |  | MDReqID | 262 |
+| 103 | `quoterespid` | `utf8` |  | QuoteRespID | 693 |
+| 104 | `orderqty` | `decimal128(38,18)` |  | OrderQty | 38 |
+| 105 | `maxfloor` | `decimal128(38,18)` |  | MaxFloor | 111 |
+| 106 | `prevclosepx` | `decimal128(38,18)` |  | PrevClosePx | 140 |
+| 107 | `unitofmeasure` | `utf8` |  | UnitOfMeasure | 996 |
+| 108 | `settlcurrency` | `ccy` |  | SettlCurrency | 120 |
+| 109 | `qtytype` | `int32` |  | QtyType | 854 |
+| 110 | `ordtype` | `utf8` |  | OrdType | 40 |
+| 111 | `quotetype` | `int32` |  | QuoteType | 537 |
+| 112 | `trdtype` | `int32` |  | TrdType | 828 |
+| 113 | `offerpx` | `decimal128(38,18)` |  | OfferPx | 133 |
+| 114 | `bidsize` | `decimal128(38,18)` |  | BidSize | 134 |
+| 115 | `offersize` | `decimal128(38,18)` |  | OfferSize | 135 |
+| 116 | `lastspotrate` | `decimal128(38,18)` |  | LastSpotRate | 194 |
+| 117 | `lastforwardpoints` | `decimal128(38,18)` |  | LastForwardPoints | 195 |
+| 118 | `bidspotrate` | `decimal128(38,18)` |  | BidSpotRate | 188 |
+| 119 | `bidforwardpoints` | `decimal128(38,18)` |  | BidForwardPoints | 189 |
+| 120 | `offerspotrate` | `decimal128(38,18)` |  | OfferSpotRate | 190 |
+| 121 | `offerforwardpoints` | `decimal128(38,18)` |  | OfferForwardPoints | 191 |
+| 122 | `ordstatus` | `utf8` |  | OrdStatus | 39 |
+| 123 | `exectype` | `utf8` |  | ExecType | 150 |
+| 124 | `quotestatus` | `int32` |  | QuoteStatus | 297 |
+| 125 | `quoteresponselevel` | `int32` |  | QuoteResponseLevel | 301 |
+| 126 | `quoteentryrejectreason` | `int32` |  | QuoteEntryRejectReason | 368 |
+| 127 | `ordrejreason` | `int32` |  | OrdRejReason | 103 |
+| 128 | `cxlrejreason` | `int32` |  | CxlRejReason | 102 |
+| 129 | `text` | `utf8` |  | Text | 58 |
+| 130 | `trdregtimestamps` | `serie(...)` |  | TrdRegTimestamps | 763375 |
+| 131 | `regulatorytradeids` | `serie(...)` |  | RegulatoryTradeIDs | 497401 |
+| 132 | `bodylength` | `int32` |  | BodyLength | 9 |
+| 133 | `onbehalfofcompid` | `utf8` |  | OnBehalfOfCompID | 115 |
+| 134 | `delivertocompid` | `utf8` |  | DeliverToCompID | 128 |
+| 135 | `securedatalen` | `int32` |  | SecureDataLen | 90 |
+| 136 | `securedata` | `binary` |  | SecureData | 91 |
+| 137 | `sendersubid` | `utf8` |  | SenderSubID | 50 |
+| 138 | `senderlocationid` | `utf8` |  | SenderLocationID | 142 |
+| 139 | `targetsubid` | `utf8` |  | TargetSubID | 57 |
+| 140 | `targetlocationid` | `utf8` |  | TargetLocationID | 143 |
+| 141 | `onbehalfofsubid` | `utf8` |  | OnBehalfOfSubID | 116 |
+| 142 | `onbehalfoflocationid` | `utf8` |  | OnBehalfOfLocationID | 144 |
+| 143 | `delivertosubid` | `utf8` |  | DeliverToSubID | 129 |
+| 144 | `delivertolocationid` | `utf8` |  | DeliverToLocationID | 145 |
+| 145 | `possresend` | `boolean` |  | PossResend | 97 |
+| 146 | `xmldatalen` | `int32` |  | XmlDataLen | 212 |
+| 147 | `xmldata` | `binary` |  | XmlData | 213 |
+| 148 | `signaturelength` | `int32` |  | SignatureLength | 93 |
+| 149 | `signature` | `binary` |  | Signature | 89 |
+| 150 | `checksum` | `utf8` |  | CheckSum | 10 |
+| 151 | `fixentries` | `map(...)` |  | FixEntries |  |
+
+The capture-only `sourceurl` has crate tag 65051; the persisted `fixmsg` component has tag 65052. Neither is an extra column in this fixed row.
 
 A group column (`trdregtimestamps`, `regulatorytradeids`) is a `serie` of the group's struct, found by its counter's tag (`NoTrdRegTimestamps(768)`, `NoRegulatoryTradeIDs(1907)`); no counter column stands beside it, the group's length being the count. `SecurityID(48)`, `SecurityIDSource(22)` and the groups `Parties(453)` and `SecAltIDGrp(454)` are no columns: the prefix's [`securityids` and `partyids`](identifier.md) state the identifiers they name, as does an unmapped entry whose key names one - `OMS_InstrumentID`, `OMS_UserID`, a security alias such as `ISINCODE` or `OMS_RICCODE` - read into the map its type belongs to ([Identifier](identifier.md#where-identifiers-come-from)). A message stating them keeps them in `fixentries` as sent - `453:parties` holding the group as JSON - and an unmapped entry an identifier map holds leaves the `metadata` cell and rides `fixentries` under `0:<key>`, the key as it arrived, so `metadata` holds only what nothing resolved. `fixentries` is the sorted residual `map<utf8, utf8>`, keyed `tag:name`.
 
@@ -330,20 +333,21 @@ This is `MarketData::field()`: the prefix, then the book.
 | 45 | `askccy` | `ccy` |  | Ask Currency | market |
 | 46 | `fxrates` | `map<ccy, decimal>` |  | FX Rates | market |
 | 47 | `ticker` | `utf8` |  | Ticker | market |
-| 48 | `metadata` | `map<utf8, utf8?>` |  | Metadata | market |
-| 49 | `ordqty` | `decimal` |  | Order Quantity | operation |
-| 50 | `timeinforce` | `timeinforce` |  | Time In Force | operation |
-| 51 | `tradable` | `boolean` |  | Tradable | operation |
-| 52 | `identifiers` | `map<utf8, utf8>` |  | Identifiers | operation |
-| 53 | `partyids` | `map<utf8, utf8>` |  | Party IDs | operation |
-| 54 | `bookscope` | `utf8` |  | Book Scope | book control |
-| 55 | `bookaction` | `utf8` |  | Book Action | book control |
-| 56 | `bookposition` | `uint32` |  | Book Position | book control |
-| 57 | `alive` | `serie<operationevent>` |  |  | book |
-| 58 | `deltas` | `serie<operationevent>` |  |  | book |
-| 59 | `executions` | `serie<operationevent>` |  |  | trade |
-| 60 | `bidlimits` | `serie<limit>` |  |  | book |
-| 61 | `asklimits` | `serie<limit>` |  |  | book |
+| 48 | `strikepx` | `decimal` |  | Strike Price | market |
+| 49 | `metadata` | `map<utf8, utf8?>` |  | Metadata | market |
+| 50 | `ordqty` | `decimal` |  | Order Quantity | operation |
+| 51 | `timeinforce` | `timeinforce` |  | Time In Force | operation |
+| 52 | `tradable` | `boolean` |  | Tradable | operation |
+| 53 | `identifiers` | `map<utf8, utf8>` |  | Identifiers | operation |
+| 54 | `partyids` | `map<utf8, utf8>` |  | Party IDs | operation |
+| 55 | `bookscope` | `utf8` |  | Book Scope | book control |
+| 56 | `bookaction` | `utf8` |  | Book Action | book control |
+| 57 | `bookposition` | `uint32` |  | Book Position | book control |
+| 58 | `alive` | `serie<operationevent>` |  |  | book |
+| 59 | `deltas` | `serie<operationevent>` |  |  | book |
+| 60 | `executions` | `serie<operationevent>` |  |  | trade |
+| 61 | `bidlimits` | `serie<limit>` |  |  | book |
+| 62 | `asklimits` | `serie<limit>` |  |  | book |
 
 ## Edges
 

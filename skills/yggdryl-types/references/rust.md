@@ -414,7 +414,37 @@ assert_eq!(
 );
 ```
 
-## Enums: side, marketdatakind, state, timeinforce, pluginside
+## A structured product's category: Eusipa
+
+`Eusipa` is a value, not a datatype: EUSIPA's four-digit product category,
+which the SSPA's Swiss map numbers the same way, held by its shape alone -
+`1` an investment product, `2` a leverage product - and named by each map
+where it lists the code. An `IsinEntry` holds one as its `eusipacode`.
+
+```rust
+use yggdryl::{Eusipa, Isin, IsinEntry};
+
+let constant: Eusipa = "2300".parse()?;
+assert_eq!((constant.code(), constant.group(), constant.level()), (2300, 23, 2));
+assert_eq!(constant.to_string(), "2300");
+assert_eq!(constant.name(), Some("Constant Leverage Certificate"));
+// The two maps name one code apart: keep the code, never a name.
+let express = Eusipa::new(1260)?;
+assert_eq!(express.name(), Some("Express Certificates"));
+assert_eq!(express.sspa_name(), Some("Conditional Coupon Barrier Reverse Convertible"));
+// A code of the shape no map lists is held; another shape is refused.
+assert!(!Eusipa::new(2301)?.is_listed());
+assert_eq!(
+    Eusipa::new(3100).unwrap_err().to_string(),
+    "invalid record value at $: expected a four-digit EUSIPA product category opening with 1, an investment product, or 2, a leverage product, got 3100",
+);
+assert!(Eusipa::from_text("23x0").is_err());
+
+let entry = IsinEntry::new(Isin::new("CH0123456789")?).with_eusipacode(Some(constant));
+assert_eq!(entry.eusipacode(), Some(constant));
+```
+
+## Enums: side, marketdatakind, state, timeinforce
 
 `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` and
 `pluginside` are the `enum` family: each member is a code in a column - `uint8`
@@ -667,6 +697,10 @@ assert_eq!(
 
 // Engine rewrites and canonical defaults come from the same core.
 assert_eq!(DataType::UInt8.into_scheme_compat(&Scheme::SPARK)?, DataType::Int16);
+// A column stating its bits is exchanged as the signed integer of its width, not widened.
+let mut digest = DataType::UInt64.required_field("digest");
+digest.as_field_properties_mut().set_representation(yggdryl::Representation::Bits)?;
+assert_eq!(digest.into_scheme_compat(&Scheme::ICEBERG)?.dtype(), &DataType::Int64);
 assert_eq!(DataType::utf8().default_value()?, yggdryl::Scalar::from(""));
 ```
 

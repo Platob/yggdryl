@@ -15,7 +15,7 @@ import pickle
 import pyarrow as pa
 import pytest
 
-from yggdryl import IOResult, IsinRegistry
+from yggdryl import Eusipa, IOResult, IsinRegistry
 from yggdryl.holder import LocalFile
 from yggdryl.fix import FixCodec, FixRegistry
 
@@ -86,6 +86,13 @@ def test_a_row_merges_by_the_update_rule(codec: FixCodec) -> None:
     assert registry.merge({"isin": HOLCIM, "cusip": "037833100", "countrycode": "LI", "currency": "CHF"})
     row = registry.get(HOLCIM)
     assert row is not None and (row["cusip"], row["countrycode"], row["currency"]) == ("037833100", "LI", "CHF")
+    assert row["underlyingisin"] is None
+    assert registry.merge({"isin": HOLCIM, "underlyingisin": APPLE}), "an instrument fact fills"
+    assert not registry.merge({"isin": HOLCIM, "underlyingisin": HOLCIM}), "the row's own ISIN states nothing"
+    assert not registry.merge({"isin": HOLCIM, "underlyingisin": "US0378331006"}), "a typo is dropped"
+    assert registry.merge({"isin": HOLCIM, "miccode": "XLON", "ticker": "HOLNL"}), "a listing switch"
+    row = registry.get(HOLCIM)
+    assert row is not None and (row["underlyingisin"], row["miccode"]) == (APPLE, "XLON"), "an instrument fact no listing switch clears"
     with pytest.raises(ValueError, match="isin"):
         registry.merge({"ric": "HOLN.S"})
     removed = registry.remove(HOLCIM)
@@ -93,6 +100,100 @@ def test_a_row_merges_by_the_update_rule(codec: FixCodec) -> None:
     registry.merge({"isin": HOLCIM})
     registry.clear()
     assert len(registry) == 0
+
+
+def test_a_walk_learns_the_underlying_a_message_names_and_learn_never_does(codec: FixCodec) -> None:
+    line = b"8=FIX.4.4|35=D|11=W|22=4|48=CH0012005267|55=NOVN|207=XSWX|711=1|311=HOLN|309=" + HOLCIM.encode() + b"|305=4|10=0|"
+    registry = IsinRegistry()
+    shared = FixCodec(codec.registry, isin_registry=registry)
+    walked = list(shared.lifecycle([shared.parse_fix_line(line)]))
+    row = registry.get("CH0012005267")
+    assert row is not None and row["underlyingisin"] == HOLCIM, "the lifecycle learns the underlying"
+    assert HOLCIM not in str(walked[0].securityids), "lifted nowhere"
+    assert b"309=" + HOLCIM.encode() in walked[0].into_bytes(ord("|")), "the wire is the parse's"
+    fresh = IsinRegistry()
+    assert fresh.learn(codec.parse_fix_line(line))
+    assert fresh.get("CH0012005267")["underlyingisin"] is None, "the bindings' learn reads no underlying"
+
+
+def test_the_product_category_is_an_instrument_fact_merged_by_the_update_rule(codec: FixCodec) -> None:
+    # The EUSIPA product category crosses as its number - an `int` `Eusipa`
+    # reads - typed `int32`, right after the underlying.
+    field = IsinRegistry.field()
+    assert field.index_of("eusipacode") == field.index_of("underlyingisin") + 1
+    assert str(field["eusipacode"].dtype) == "int32"
+    registry = IsinRegistry()
+    assert registry.merge({"isin": HOLCIM, "miccode": "XSWX", "ticker": "HOLN"})
+    row = registry.get(HOLCIM)
+    assert row is not None and row["eusipacode"] is None
+    assert registry.merge({"isin": HOLCIM, "eusipacode": 2300}), "a category fills"
+    row = registry.get(HOLCIM)
+    assert row is not None and row["eusipacode"] == 2300
+    assert Eusipa(row["eusipacode"]).name == "Constant Leverage Certificate"
+    assert not registry.merge({"isin": HOLCIM, "eusipacode": 2300}), "the same category moves nothing"
+    assert not registry.merge({"isin": HOLCIM}), "a statement of none moves nothing"
+    assert registry.merge({"isin": HOLCIM, "eusipacode": 2301}), "a category neither map lists is a category"
+    assert registry.merge({"isin": HOLCIM, "eusipacode": "1260", "updunix": 1}), "text of the number, whatever the time"
+    assert not registry.merge({"isin": HOLCIM, "eusipacode": 3100}), "a number of no category's shape is dropped"
+    assert registry.merge({"isin": HOLCIM, "miccode": "XLON", "ticker": "HOLNL"}), "a listing switch"
+    row = registry.get(HOLCIM)
+    assert row is not None and (row["miccode"], row["eusipacode"]) == ("XLON", 1260), "no listing switch clears it"
+    # A golden file states it under either map's name, as a number or its text.
+    for name in ("EUSIPA_Code", "eusipa", "EUSIPACategory", "SSPA", "sspa_code", "SSPACategory"):
+        for cells in ([2300, 3100, None], ["2300", "3100", ""]):
+            golden = IsinRegistry.from_arrow_reader(pa.table({"ISIN": [HOLCIM, APPLE, "CH0012005267"], name: cells}))
+            assert [golden.get(key)["eusipacode"] for key in (HOLCIM, APPLE, "CH0012005267")] == [2300, None, None], name
+
+
+def test_a_walk_learns_the_product_category_a_bridge_key_states_and_lifts_it_nowhere(codec: FixCodec) -> None:
+    mini = "CH0012005267"
+    registry = IsinRegistry()
+    shared = FixCodec(codec.registry, isin_registry=registry)
+    line = b"8=FIX.4.4|35=D|11=W|22=4|48=" + mini.encode() + b"|EUSIPACode=2300|10=0|"
+    [walked] = list(shared.lifecycle([shared.parse_fix_line(line)]))
+    row = registry.get(mini)
+    assert row is not None and row["eusipacode"] == 2300, "the lifecycle learns the category"
+    assert "2300" not in str(walked.securityids) and "2300" not in str(walked.identifiers), "lifted nowhere"
+    assert b"|eusipacode=2300|" in walked.into_bytes(ord("|")).lower(), "the entry stays on the wire"
+    # Either map's name, a namespace before it, replaces it.
+    other = b"8=FIX.4.4|35=D|11=X|22=4|48=" + mini.encode() + b"|OMS_SSPACategory=1260|10=0|"
+    list(shared.lifecycle([shared.parse_fix_line(other)]))
+    assert registry.get(mini)["eusipacode"] == 1260
+    # Two categories state none, and `learn` alone reads none: the reading is the lifecycle's.
+    both = b"8=FIX.4.4|35=D|11=Y|22=4|48=" + mini.encode() + b"|EUSIPACode=2300|SSPACategory=2205|10=0|"
+    list(shared.lifecycle([shared.parse_fix_line(both)]))
+    assert registry.get(mini)["eusipacode"] == 1260
+    fresh = IsinRegistry()
+    assert fresh.learn(codec.parse_fix_line(b"8=FIX.4.4|35=D|11=Z|22=4|48=" + mini.encode() + b"|55=MINI|207=XSWX|EUSIPACode=2300|10=0|"))
+    assert fresh.get(mini)["eusipacode"] is None
+
+
+def test_a_store_written_before_the_product_category_loads_it_null(tmp_path: pathlib.Path) -> None:
+    registry = IsinRegistry()
+    registry.merge({"isin": HOLCIM, "ric": "HOLN.S"})
+    older = registry.into_arrow_reader().read_all().drop_columns(["eusipacode"])
+    assert len(older.schema.names) == 41
+    target = tmp_path / "instruments.arrow"
+    LocalFile(target).overwrite_arrow_reader(pa.RecordBatchReader.from_batches(older.schema, older.to_batches()))
+    loaded = IsinRegistry.from_url(target)
+    row = loaded.get(HOLCIM)
+    assert row is not None and row["ric"] == "HOLN.S" and row["eusipacode"] is None
+    assert not loaded.is_dirty
+
+
+def test_the_underlying_crosses_the_pipelines_iceberg_table(tmp_path: pathlib.Path) -> None:
+    from tests import medallion
+    from yggdryl.iceberg import IcebergCatalog
+
+    silver = IcebergCatalog.open_or_create("silver", tmp_path / "silver")
+    registry = medallion.instruments(silver)
+    assert registry.merge({"isin": "CH0012005267", "underlyingisin": HOLCIM})
+    assert registry.commit().written_rows == 1
+    stored = silver.table("record_keeping.instruments")
+    field = stored.field()
+    assert field.index_of("underlyingisin") == field.index_of("forexcode") + 1
+    reloaded = IsinRegistry.from_url(stored.url)
+    assert reloaded.get("CH0012005267")["underlyingisin"] == HOLCIM
 
 
 def test_a_ticker_leads_back_to_its_isin_on_the_same_market() -> None:
@@ -185,7 +286,19 @@ def test_a_registry_round_trips_through_a_holder(tmp_path: pathlib.Path) -> None
     table = snapshot.read_all()
     assert table.num_rows == 2, "the stream is a snapshot a later write does not move"
     assert table.column("isin").to_pylist() == [HOLCIM, APPLE], "in ISIN order"
-    assert table.schema.names[:8] == ["isin", "updunix", "cficode", "countrycode", "forexcode", "miccode", "ticker", "currency"]
+    assert table.schema.names[:10] == [
+        "isin",
+        "updunix",
+        "cficode",
+        "countrycode",
+        "forexcode",
+        "underlyingisin",
+        "eusipacode",
+        "miccode",
+        "ticker",
+        "currency",
+    ]
+    assert len(table.schema.names) == 42
     target = tmp_path / "instruments.arrow"
     LocalFile(target).overwrite_arrow_reader(IsinRegistry.from_arrow_reader(table).into_arrow_reader())
     loaded = IsinRegistry.from_url(target)

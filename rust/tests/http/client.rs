@@ -7,7 +7,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use yggdryl::holder::Holder;
-use yggdryl::http::HostStats;
 use yggdryl::http::{
     Body, Client, Fault, Headers, HttpOptions, Method, Response, Server, ServerOptions, Session,
     StatsSnapshot, Status,
@@ -246,44 +245,6 @@ fn a_proxy_that_does_not_tunnel_is_refused_by_status() {
         .expect_err("the proxy refused the tunnel");
     assert!(error.to_string().contains("405"), "{error}");
     assert_eq!(origin.request_count(), 0);
-}
-
-#[test]
-fn every_request_the_process_sends_is_in_the_ledger_under_its_host() {
-    use yggdryl::http::process_stats;
-
-    let server = HttpServer::start();
-    server.put_resource("/ledger", b"counted", Some("text/plain"));
-    let session = session(HttpOptions::default());
-    let host = server.endpoint().trim_start_matches("http://").to_owned();
-
-    let before = process_stats();
-    for _ in 0..2 {
-        session.get(&server.url("/ledger")).unwrap().send().unwrap();
-    }
-    session
-        .head(&server.url("/ledger"))
-        .unwrap()
-        .send()
-        .unwrap();
-    let since = process_stats().since(&before);
-
-    // The three requests, under this server's host and port alone: other
-    // tests' servers share the loopback host and stand apart by their port.
-    let mine = since.host(&host);
-    assert_eq!(
-        (mine.requests, mine.gets, mine.heads),
-        (3, 2, 1),
-        "{since:?}"
-    );
-    assert!(since.total().requests >= 3);
-    assert!(since.hosts().any(|(name, _)| name == host), "{since:?}");
-    // What came before is not in the difference, and the difference of a
-    // reading with itself is empty.
-    assert_eq!(
-        process_stats().since(&process_stats()).total(),
-        HostStats::default()
-    );
 }
 
 // --- retries -----------------------------------------------------------------

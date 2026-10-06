@@ -204,6 +204,14 @@ impl Staging {
             published.clear();
         }
     }
+
+    /// A refused claim may have durably written its document while the store
+    /// cannot read it back. Keep its files on a reported conflict rather than
+    /// risk removing files that document names; an actual loser may leave
+    /// orphans for table maintenance to collect.
+    pub(super) fn preserve_uncertain(&self) {
+        self.commit();
+    }
 }
 
 impl Drop for Staging {

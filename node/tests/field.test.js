@@ -804,6 +804,39 @@ test('the sort view declares the order a struct keeps', () => {
 })
 
 // Mirrors rust/tests/root/protocol.rs
+// `field_properties_state_bits_on_an_integer_column_and_value_by_absence`.
+test('the field properties view states bits on an integer column', () => {
+  const digest = new Field('digest', 'uint64', false)
+  assert.equal(digest.fieldProperties.representation, 'value')
+  assert.throws(() => digest.scalar(-1n))
+
+  digest.fieldProperties.representation = 'bits'
+  assert.equal(digest.get('FIELD:representation'), 'bits')
+  assert.equal(digest.fieldProperties.representation, 'bits')
+  // A same-width integer of the other sign is read as its bits.
+  assert.equal(digest.scalar(-1n).asJs(), 2n ** 64n - 1n)
+
+  // Stating the value removes the declaration, and so does `null`.
+  digest.fieldProperties.representation = 'value'
+  assert.equal(digest.get('FIELD:representation'), null)
+  digest.fieldProperties.representation = 'bits'
+  digest.fieldProperties.representation = null
+  assert.equal(digest.get('FIELD:representation'), null)
+  assert.throws(() => {
+    digest.fieldProperties.representation = 'bytes'
+  }, /representation/)
+
+  // Bits on a column that is no integer are refused, the field unchanged.
+  const text = new Field('text', 'utf8')
+  assert.throws(() => {
+    text.fieldProperties.representation = 'bits'
+  }, /utf8/)
+  assert.equal(text.get('FIELD:representation'), null)
+  // And the property is the `fieldProperties` view's alone.
+  assert.throws(() => digest.iceberg.representation, /representation is a field property/)
+})
+
+// Mirrors rust/tests/root/protocol.rs
 // `the_partition_view_declares_what_rows_partition_by`.
 test('the partition view declares what rows partition by', () => {
   const row = Field.from('row: struct<venue: utf8 not null, id: int64 not null> not null')

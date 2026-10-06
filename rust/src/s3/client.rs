@@ -1124,7 +1124,6 @@ impl Client {
         headers: &[(String, String)],
     ) -> std::result::Result<Answer, ureq::Error> {
         self.stats.record(request.method);
-        crate::http::record_process(&self.endpoint.host_header(&request.bucket), request.method);
         let mut wire = ureq::http::Request::builder()
             .method(request.method)
             .uri(target);
@@ -1240,7 +1239,6 @@ impl Client {
         headers: &[(String, String)],
     ) -> std::result::Result<Streamed, ureq::Error> {
         self.stats.record(request.method);
-        crate::http::record_process(&self.endpoint.host_header(&request.bucket), request.method);
         let mut wire = ureq::http::Request::builder()
             .method(request.method)
             .uri(target);

@@ -5,13 +5,16 @@ use smol_str::SmolStr;
 
 use crate::ascii::ascii_text_sized;
 use crate::{
-    BBG_EXTENSION_NAME, CCY_EXTENSION_NAME, CFI_EXTENSION_NAME, COUNTRY_EXTENSION_NAME,
-    CUSIP_EXTENSION_NAME, FIGI_EXTENSION_NAME, FOREX_EXTENSION_NAME, ISIN_EXTENSION_NAME,
-    MIC_EXTENSION_NAME, RIC_EXTENSION_NAME, SEDOL_EXTENSION_NAME, UNIT_EXTENSION_NAME,
+    BBG_EXTENSION_NAME, BIC_EXTENSION_NAME, CCY_EXTENSION_NAME, CFI_EXTENSION_NAME,
+    COUNTRY_EXTENSION_NAME, CUSIP_EXTENSION_NAME, DTI_EXTENSION_NAME, ELF_EXTENSION_NAME,
+    FIGI_EXTENSION_NAME, FISN_EXTENSION_NAME, FOREX_EXTENSION_NAME, ISIN_EXTENSION_NAME,
+    LEI_EXTENSION_NAME, MIC_EXTENSION_NAME, RIC_EXTENSION_NAME, SEDOL_EXTENSION_NAME,
+    UNIT_EXTENSION_NAME,
 };
 use crate::{
-    BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, FOREX_WIDTH,
-    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, UNIT_WIDTH,
+    BBG_WIDTH, BIC_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, DTI_WIDTH, ELF_WIDTH,
+    FIGI_WIDTH, FISN_WIDTH, FOREX_WIDTH, ISIN_WIDTH, LEI_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH,
+    UNIT_WIDTH,
 };
 use crate::{DataType, Error, Result};
 
@@ -88,6 +91,36 @@ pub(crate) const fn identifier_value(byte: u8) -> Option<u32> {
         b'A'..=b'Z' => Some((byte - b'A') as u32 + 10),
         _ => None,
     }
+}
+
+/// `value` checked as US-ASCII within a code's width, upper-cased, and held
+/// to the code's shape: the one door every case-folding code's `new` runs.
+///
+/// `refusal` reads the upper-cased spelling and answers why it is not the
+/// code's shape, or `None` where it is.
+///
+/// # Errors
+///
+/// The width refusal [`ascii_text`](crate::ascii_text) gives, else the
+/// shape's own reason under the code's name, with the spelling it saw.
+pub(crate) fn folded_code<const WIDTH: usize>(
+    kind: &'static str,
+    value: &str,
+    refusal: impl Fn(&str) -> Option<&'static str>,
+) -> Result<SmolStr> {
+    let value = crate::ascii_text(WIDTH, value.as_bytes())?;
+    let mut bytes = [0_u8; WIDTH];
+    for (target, byte) in bytes.iter_mut().zip(value.bytes()) {
+        *target = byte.to_ascii_uppercase();
+    }
+    let folded = std::str::from_utf8(&bytes[..value.len()]).expect("validated ASCII");
+    if let Some(reason) = refusal(folded) {
+        return Err(Error::InvalidDataType {
+            kind,
+            reason: smol_str::format_smolstr!("{reason}, got {value:?}"),
+        });
+    }
+    Ok(SmolStr::new(folded))
 }
 
 macro_rules! code_value {
@@ -174,6 +207,11 @@ impl DataType {
             Self::Figi => Some("figi"),
             Self::Unit => Some("unit"),
             Self::Forex => Some("forex"),
+            Self::Lei => Some("lei"),
+            Self::Bic => Some("bic"),
+            Self::Elf => Some("elf"),
+            Self::Dti => Some("dti"),
+            Self::Fisn => Some("fisn"),
             _ => None,
         }
     }
@@ -233,6 +271,11 @@ pub(crate) fn code_for_extension(name: &str) -> Option<DataType> {
         SEDOL_EXTENSION_NAME => Some(DataType::Sedol),
         UNIT_EXTENSION_NAME => Some(DataType::Unit),
         FOREX_EXTENSION_NAME => Some(DataType::Forex),
+        LEI_EXTENSION_NAME => Some(DataType::Lei),
+        BIC_EXTENSION_NAME => Some(DataType::Bic),
+        ELF_EXTENSION_NAME => Some(DataType::Elf),
+        DTI_EXTENSION_NAME => Some(DataType::Dti),
+        FISN_EXTENSION_NAME => Some(DataType::Fisn),
         _ => None,
     }
 }
@@ -277,6 +320,11 @@ pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'
         DataType::Sedol => code_text::<SEDOL_WIDTH>(bytes),
         DataType::Unit => code_text::<UNIT_WIDTH>(bytes),
         DataType::Forex => code_text::<FOREX_WIDTH>(bytes),
+        DataType::Lei => code_text::<LEI_WIDTH>(bytes),
+        DataType::Bic => code_text::<BIC_WIDTH>(bytes),
+        DataType::Elf => code_text::<ELF_WIDTH>(bytes),
+        DataType::Dti => code_text::<DTI_WIDTH>(bytes),
+        DataType::Fisn => code_text::<FISN_WIDTH>(bytes),
         _ => Err(code_refusal(dtype)),
     }
 }

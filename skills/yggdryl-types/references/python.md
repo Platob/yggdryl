@@ -370,7 +370,45 @@ assert Scalar.from_(uuid.UUID(text)).kind == "string"  # undeclared: text
 assert DataType("binary(2)").scalar(b"\x01\x02").as_py() == b"\x01\x02"
 ```
 
-## Enums: side, marketdatakind, state, timeinforce, pluginside
+## A structured product's category: Eusipa
+
+`Eusipa` is a value, not a datatype: EUSIPA's four-digit product category,
+which the SSPA's Swiss map numbers the same way, held by its shape alone -
+`1` an investment product, `2` a leverage product - and named by each map
+where it lists the code. An `IsinRegistry` row holds one as its
+`eusipacode`, an `int`.
+
+```python
+import pickle
+
+import pytest
+
+from yggdryl import Eusipa, IsinRegistry
+
+constant = Eusipa("2300")
+assert (constant.code, constant.group, constant.level) == (2300, 23, 2)
+assert (int(constant), str(constant), repr(constant)) == (2300, "2300", "Eusipa(2300)")
+assert constant.name == "Constant Leverage Certificate"
+assert pickle.loads(pickle.dumps(constant)) == constant == Eusipa(2300)
+# The two maps name one code apart: keep the code, never a name.
+express = Eusipa(1260)
+assert express.name == "Express Certificates"
+assert express.sspa_name == "Conditional Coupon Barrier Reverse Convertible"
+# A code of the shape no map lists is held; another shape is refused.
+assert not Eusipa(2301).is_listed and Eusipa(2301).name is None
+with pytest.raises(ValueError, match="got 3100"):
+    Eusipa(3100)
+with pytest.raises(ValueError, match="expected a four-digit EUSIPA product category"):
+    Eusipa("23x0")
+with pytest.raises(TypeError):
+    Eusipa(True)  # type: ignore[arg-type]
+
+registry = IsinRegistry()
+assert registry.merge({"isin": "CH0123456789", "eusipacode": 2300})
+assert Eusipa(registry.get("CH0123456789")["eusipacode"]) == constant
+```
+
+## Enums: side, marketdatakind, state, timeinforce
 
 `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` and
 `pluginside` are the `enum` family: each member is a code in a column - `uint8`
@@ -619,6 +657,7 @@ venue = yggdryl.mic("venue", nullable=False)
 arrow_field = venue.into_arrow()
 assert arrow_field.type.storage_type == pa.string()
 assert arrow_field.type.extension_name == "yggdryl.mic"
+assert str(arrow_field.type) == "extension<yggdryl.mic>"
 assert Field.from_arrow(arrow_field) == venue           # identity kept
 assert DataType.from_arrow(arrow_field.type) == DataType("mic")  # the type too
 assert arrow_field.type.datatype == DataType("mic")
@@ -628,6 +667,10 @@ assert Field("px", "float64").arrow_scalar(1.5) == pa.scalar(1.5)
 
 # Engine rewrites and canonical defaults come from the same core.
 assert DataType("uint8").into_scheme_compat("spark") == DataType("int16")
+# A column stating its bits is exchanged as the signed integer of its width, not widened.
+digest = Field("digest", "uint64", nullable=False)
+digest.field_properties.representation = "bits"
+assert digest.into_scheme_compat("iceberg").dtype == DataType("int64")
 assert DataType("utf8").default_scalar().as_py() == ""
 assert DataType("struct<id:int32 not null,note:utf8>").default_scalar().as_py() == [0, None]
 ```

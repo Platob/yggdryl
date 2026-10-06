@@ -80,6 +80,7 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     assert event.prevpx is None and event.prevqty is None
     assert event.spotrate is None and event.forwardpoints is None
     assert event.ticker == "ACME"
+    assert event.strikepx is None
     assert event.metadata == {}
     assert event.timeinforce is TimeInForce.DAY
     assert event.tradable is None
@@ -248,6 +249,31 @@ def test_an_order_follows_the_order_it_replaces() -> None:
     assert first.with_previous(later) is None
     assert first.merge_with(first) is None
     assert followed.restating(followed) == followed
+
+
+def test_a_strike_is_a_market_fact_its_instruments_chain_carries() -> None:
+    isin = [Identifier("isin", "US0378331005")]
+    first = graph.OrderEvent(CLOCK, crosscode="O-1", side="BUYS", strikepx=D("4600.5"), securityids=isin)
+    assert first.strikepx is not None and first.strikepx.as_py() == D("4600.5")
+    assert graph.Order(strikepx="12.5").strikepx == graph.Order(strikepx=D("12.5")).strikepx
+    assert graph.OrderEvent(CLOCK, crosscode="O-1", strikepx=None).strikepx is None
+    assert pickle.loads(pickle.dumps(first)).strikepx == first.strikepx
+    assert graph.MarketData(first).strikepx == first.strikepx
+    with pytest.raises(ValueError, match=r"\$\.strikepx"):
+        graph.OrderEvent(CLOCK, strikepx="not a number")
+    # A follower stating none takes its chain's, an instrument fact; one
+    # naming another instrument does not, and a stated strike stands.
+    later = graph.OrderEvent(CLOCK + 1, crosscode="O-1", side="BUYS", quantity=4)
+    followed = later.with_previous(first)
+    assert followed is not None and followed.strikepx == first.strikepx
+    other = graph.OrderEvent(
+        CLOCK + 1, crosscode="O-1", side="BUYS", securityids=[Identifier("isin", "CH0012214059")]
+    )
+    followed = other.with_previous(first)
+    assert followed is not None and followed.strikepx is None
+    own = graph.OrderEvent(CLOCK + 1, crosscode="O-1", side="BUYS", strikepx=D("13"))
+    followed = own.with_previous(first)
+    assert followed is not None and followed.strikepx is not None and followed.strikepx.as_py() == D("13")
 
 
 def test_following_crosses_no_kind() -> None:

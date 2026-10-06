@@ -1,16 +1,16 @@
 # Market
 
-`Market` states thirty-four facts: the kind and type of the element, the instrument, the side, the price and quantity - shown, hidden and stopped at -, the bid and the ask, what has traded and when it last did, the rates to other currencies and free-form metadata.
+`Market` states thirty-five facts: the kind and type of the element, the instrument and an option's strike, the side, the price and quantity - shown, hidden and stopped at -, the bid and the ask, what has traded and when it last did, the rates to other currencies and free-form metadata.
 
 ## Contract
 
 | Key | Rule |
 | --- | --- |
 | Owner | trait `yggdryl::graph::Market` (`graph::market`), no supertrait; Rust-only - [leaves](index.md#leaves) answer it in Python/JavaScript |
-| Price, quantity, numbers | `get_price`/`get_quantity` + `set_`: what the element states, exact as [`Decimal`](../types/numeric/decimal.md#decimal), `None` if none - never last-executed, never a default; likewise `lastpx`/`lastqty` (last executed price/quantity), `avgpx`, `cumqty`, `leavesqty`, `prevpx`/`prevqty` (prior step's settlement), `spotrate`/`forwardpoints` (FX parts) |
+| Price, quantity, numbers | `get_price`/`get_quantity` + `set_`: what the element states, exact as [`Decimal`](../types/numeric/decimal.md#decimal), `None` if none - never last-executed, never a default; likewise `lastpx`/`lastqty` (last executed price/quantity), `avgpx`, `cumqty`, `leavesqty`, `prevpx`/`prevqty` (prior step's settlement), `spotrate`/`forwardpoints` (FX parts), `stoppx` (the price a stop order triggers at) and `strikepx` (the strike price of the option the element is about - an instrument fact, which a follower of the same instrument [takes along its chain](#following-and-merging); a FIX message's `StrikePrice(202)`) |
 | Currency, unit | `get_currency`/`set_currency`: [`Ccy::none()`](../types/codes/ccy.md) if unstated; `get_unit`/`set_unit`: [`Unit::none()`](../types/codes/unit.md) if unstated |
-| Side | `get_side`/`set_side`: the [side](../types/enum/side.md) by value, never absent - `Side::Unknown` (code `0`) where none is stated, which means "not stated": nothing invents a side. An order's or an execution's side is the one side it takes, and its stored cross code states its code ([below](#sides-and-cross-codes)); any other element's is a tag - a [quote](#a-quotes-two-legs) holds its bid and its ask and tags the leg it states, a two-sided one none |
-| Kind | `marketdatakind()`: required - the [category](../types/enum/marketdatakind.md) the element is filed under and a [lifecycle](event.md#lifecycle-walk) chains within (a leaf answers its own kind, a [FIX message](../fix/message.md#market-data) its `msgcat`) |
+| Side | `get_side`/`set_side`: the [side](../types/enum/side.md) by value, never absent - `Side::Unknown` (code `0`) where none is stated, which means "not stated": nothing invents a side. An order's or an execution's side is the one side it takes, and its stored cross code states its code ([below](#sides-and-cross-codes)); any other element's is a tag - a [quote](#a-quotes-two-legs) holds its bid and its ask and tags the leg it states, a two-sided one `Side::Both` (`BOTH`, code `99`), and a [book](book.md) is always `BOTH` |
+| Kind | `marketdatakind()`: required - the [category](../types/enum/marketdatakind.md) the element is filed under and a [lifecycle](event.md#lifecycle-walk) chains within (a leaf answers its own kind, a [FIX message](../fix/message.md#market-data) the category its dictionary files its type under) |
 | Sided | `is_sided()`: provided as `marketdatakind().is_sided()` - whether the element's stored cross code states its side, true exactly for an order or an execution - any other kind, a quote among them, states `0` there: [`MarketDataKind::is_sided`](../types/enum/marketdatakind.md#sided-kinds-and-batches), the one owner of the rule |
 | Execution clock | `get_execunix`/`set_execunix` (`Option<i64>`): when the element last executed - the latest execution clock its lifecycle reached, nanoseconds since the Unix epoch, UTC, `None` where unknown; a market fact, not an event's: an undated order, quote or execution states one, a [text line](../media/text.md) none, and no digest feeds it. The `execunix` column is a nullable nanosecond UTC clock ([Market data](market-data.md#columns)) |
 | Bid and ask | `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy` ([below](#bid-and-ask)) |
@@ -18,7 +18,7 @@
 | Instrument | the security's [identifiers](#security-identifiers), `securityids`; `get_isincode`: their `isin`, borrowed; `get_cficode`/`get_miccode` + setters - a leaf keeps a [CFI](../types/codes/cfi.md) only when it is detailed (one of positions 3-6 not `X`): a coarse code states nothing, neither filling nor clearing, and a detailed code stated over another describing the same instrument takes what that one says where it says nothing ([`Cfi::refined`](../types/codes/cfi.md#two-statements-of-one-instrument)); a market of `XXXX` is unstated, so a stated one fills over it; `get_ticker`/`set_ticker`: an informal name, apart from the codes; `book_crosscode`: the [book key](#the-book-key) |
 | Metadata | `get_metadata`/`set_metadata`: a `BTreeMap<SmolStr, SmolStr>` of source facts no typed column reads, keyed by name/[path](../types/paths.md); never identifier/typed; `None`/empty alike; a FIX leaf's = [`FixMsg::market_data`](../fix/message.md#market-data)'s; a follower takes the chain's keys it lacks ([below](#following-and-merging)) |
 | `fill_market` | provided, idempotent, called by `finalize` pre-digest: never invents price/quantity/`cumqty`/`leavesqty`/bid/ask/rates; [derives](#security-identifiers) the national id a canonical ISIN embeds |
-| `digest_market` | provided (`Self: Element`): extends [`Element::digest`](element.md#contract) - price, currency, quantity, unit, side, security identifiers (each fed as source, type and value under the label `securityids`), classification, market, last-trade/avg/progress/FX parts, bid/ask (each only if stated), FX rates (only if any), ticker, metadata (key order); excludes `prevpx`/`prevqty`, like the predecessor's instant/identity |
+| `digest_market` | provided (`Self: Element`): extends [`Element::digest`](element.md#contract) - price, currency, quantity, unit, side, security identifiers (each fed as source, type and value under the label `securityids`), classification, market, the stop and strike prices and the shown, hidden and cancelled quantities (each only if stated), last-trade/avg/progress/FX parts, bid/ask (each only if stated), FX rates (only if any), ticker, metadata (key order); excludes `prevpx`/`prevqty`, like the predecessor's instant/identity |
 | Provided on events | where `Self: Event`: `digest_market_event`, `following_market`, `merging_market_event` ([below](#following-and-merging)) |
 
 ## Setting: fill or overwrite
@@ -28,7 +28,7 @@ Every `Market` and `Operation` setter takes a trailing `overwrite: bool`; the `i
 | `overwrite` | Effect |
 | --- | --- |
 | `true` | states the value whatever the element held; `None` clears the fact |
-| `false` | fills: the value lands only where the element states nothing yet - `None`, `Side::Unknown`, `Ccy::none()`, `Unit::none()`, `MarketDataType::Unknown` - and a map fills only the keys it lacks |
+| `false` | fills: the value lands only where the element states nothing yet - `None`, `Side::Unknown`, `Ccy::none()`, `Unit::none()`, `MarketDataType::Unknown` - ordinary maps fill only keys they lack; `Identifiers` maps replace lower-ranked values and keep equal-ranked held values |
 | either | a value equal to the held one changes nothing, and moves nothing |
 
 A change carries what it implies onto the facts that follow it. A source *moves* a fact it implies along with it - where the element states nothing there, or still holds what the source was - and never one stated apart from it; a fact that says something back about its source only *fills* the source where the element states none. Three properties hold for every rule below:
@@ -46,6 +46,7 @@ A change carries what it implies onto the facts that follow it. A source *moves*
 | `bidpx`/`bidqty`, `askpx`/`askqty` | | the price and quantity of an element taking that side |
 | a predecessor's `hiddenqty`, followed | a follower stating none: what it kept back less what traded since - the rise in `cumqty`, else `lastqty` - never below zero | |
 | a predecessor's side, followed | a sided follower stating none takes it: the side is part of its identity | |
+| a predecessor's `strikepx`, followed | a follower of the same instrument stating none takes it: the strike is the option's | |
 | a predecessor's bid or ask, followed | an unsided follower tagging no side and stating neither the price nor the quantity of that leg: the leg whole, its currency with it ([A quote's two legs](#a-quotes-two-legs)) | |
 | a predecessor's `ordqty`, `cumqty`, `avgpx`, followed | an operation's follower stating none of them: what its chain ordered, traded and at what average - never a last fill, which no rise in `cumqty` invents | |
 | `lastpx`, `spotrate`, `forwardpoints` | | the third, where two are stated: `lastpx` is spot plus points |
@@ -153,7 +154,7 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
 | --- | --- |
 | `stored_crosscode(code)` | provided, the one speller of the prefix every element's cross code is stored under: `"{kind}:{side}:{code}"` - the [`MarketDataKind`](../types/enum/marketdatakind.md) code of the category the element is filed under, then the [`Side`](../types/enum/side.md) code of the side it takes where it is sided, `0` otherwise - so `10:1:O-1001` is an order to buy, `10:2:O-1001` an order to sell, `10:0:O-1001` an order stating no side, `8:2:E-1` an execution, `14:0:Q-1` a quote whatever leg it tags, `21:0:T-1` a trade, `3:0:CH0012214059` a book; idempotent, a prefix of another kind or side replaced (`10:2:O-1001` read under a buy is `10:1:O-1001`), an empty code left empty |
 | Stored | every holder the crate ships stores its cross code through it, so `set_crosscode`, `set_side` and the kind a holder stamps converge in any order; [`crosshashcode` and `crossuuid`](element.md#contract) follow the stored text, and the two sides of one identifier are two chains ([walk](event.md#lifecycle-walk)) |
-| Unsided | an order or an execution stating no side states `0`, and so does every other element whatever side it takes or tags - a quote, a trade, a book, a snapshot control, a FIX message filed under any other category: `14:0:Q-1`, `21:0:T-1`, `3:0:AAPL`, whatever the side |
+| Unsided | an order or an execution stating no side states `0`, and so does every other element whatever side it takes or tags - a quote, a trade, a book, a snapshot control, a FIX message filed under any other category: `14:0:Q-1`, `21:0:T-1`, `3:0:AAPL`, whatever the side, `BOTH` included |
 | Copied | a trade or a snapshot control built over a sided element - `TradeEvent::from_parts(&order, ..)`, `SnapshotEvent::snapshot(&order, ..)` - takes the base code under its own kind's prefix (`21:0:O-1001` from `10:1:O-1001`), with the cross hash and element of that stored code; a sided leaf built over such facts stores it under its side again |
 
 ## The book key
@@ -170,13 +171,13 @@ A chain stated by its ticker alone and then under its ISIN moves to the ISIN's b
 
 ## A quote's two legs
 
-A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy` and `askpx`, `askqty`, `askccy` - and its side is a tag: a one-sided quote tags the leg it states, a two-sided one none. It is not [sided](#sides-and-cross-codes), so its cross code is stored under side `0` (`14:0:Q-1`) and one identifier is one chain whatever leg a statement updates.
+A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy` and `askpx`, `askqty`, `askccy` - and its side is a tag: a one-sided quote tags the leg it states, and a two-sided one tagging none states `BOTH` once finalized - a tag it states stands. It is not [sided](#sides-and-cross-codes), so its cross code is stored under side `0` (`14:0:Q-1`) and one identifier is one chain whatever leg a statement updates.
 
 | Key | Rule |
 | --- | --- |
-| Price and quantity | the leg its tag takes: a quote tagging `BUYS` that states a price and a quantity quotes them as its bid, one tagging `SELL` as its ask; a quote tagging none states its legs alone |
+| Price and quantity | the leg its tag takes: a quote tagging `BUYS` that states a price and a quantity quotes them as its bid, one tagging `SELL` as its ask; a quote tagging none, or `BOTH`, states its legs alone |
 | Changing the tag | moves the price and quantity from the leg the old tag took to the leg the new one takes, withdrawing no leg |
-| Following | a follower tagging no side takes each leg of its chain it states neither the price nor the quantity of, whole - its currency with it - so a statement updating one leg keeps the other and an acknowledgement quoting nothing keeps the quote; a leg it states, a zero quantity withdrawing it included, is its own, and a leg its tag takes stated by a quantity alone keeps the chain's price. A tagged follower of a tagged one-leg entry - a book level - restates that entry whole, moving between sides included; one following a quote that holds both legs or tags none - a fill reported on the leg that traded - keeps the other. No leg crosses to another instrument or another ticker |
+| Following | a follower tagging no one leg - none, or `BOTH` - takes each leg of its chain it states neither the price nor the quantity of, whole - its currency with it - so a statement updating one leg keeps the other and an acknowledgement quoting nothing keeps the quote; a leg it states, a zero quantity withdrawing it included, is its own, and a leg its tag takes stated by a quantity alone keeps the chain's price. A tagged follower of a tagged one-leg entry - a book level - restates that entry whole, moving between sides included; one following a quote that holds both legs or tags no one leg - none, or `BOTH` - a fill reported on the leg that traded - keeps the other; a follower left holding both legs and tagging none states `BOTH`. No leg crosses to another instrument or another ticker |
 | On a book | it rests on each leg it states a price or a quantity of, one entry on both sides where it states both ([Book](book.md#entries)) |
 | From FIX | a quote message is one quote: `BidPx(132)`/`BidSize(134)` its bid, `OfferPx(133)`/`OfferSize(135)` its ask, never split by side ([Quote](quote.md)) |
 
@@ -209,8 +210,8 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 | Verb | Rule |
 | --- | --- |
 | `get_securityids` | the map, sorted by its key's text; `get(&IdType::Isin)` the base key's value - the type's answer, whichever source stated it ([Lookups](identifier.md#contract)) - `get_from(&IdKey::new(src, IdType::Isin))` one source's |
-| `get_isincode` | provided: `get_securityids().get(&IdType::Isin)`, borrowed - a projection of the set, never a second store; the `isincode` column writes it and a stated cell fills an absent `isin` base key ([Market data](market-data.md#arrow)) |
-| `set_securityids(ids, overwrite)` | with `overwrite`, replaces the whole map, derived identifiers included, `Identifiers::new()` unsaying it; without, each identifier fills an absent key as `insert_securityid` does |
+| `get_isincode` | provided: `get_securityids().get(&IdType::Isin)`, borrowed - a projection of the set, never a second store; the `isincode` column writes it through `insert_securityid`, replacing a lower-ranked ISIN and leaving an equal- or higher-ranked value standing ([Market data](market-data.md#arrow)) |
+| `set_securityids(ids, overwrite)` | with `overwrite`, replaces the whole map, derived identifiers included, `Identifiers::new()` unsaying it; without, validates each security type then rank-merges: a higher-ranked value replaces a lower-ranked one, equal ranks keep the held value, and other keys remain |
 | `insert_securityid(id)` | `Identifiers::insert` after the security check: fills an absent key, or replaces a held value that [ranks](identifier.md#ranks) below it - a real ISIN over a masked one or a typo, whichever came first - a named source filling its type's base key where it is empty or ranks below; it takes back a `derived` identifier of its type unless the derivation outranks it - a statement answers before a derivation of its rank; one from `derived` is a derivation; `ticker` is refused ([`IdType::check_security`](identifier.md#per-type-value-checks)); `true` if it landed |
 | `derive_securityid(kind, code)` | fills only a type the element holds none of, from `derived` - the code as `Identifier::new` stores it, a code its type refuses naming nothing - implication, not statement; never reaches a store the holder is a view of |
 | `remove_securityid(&key)` | removes what an `IdKey` holds: a named source's key that identifier alone, the base key every key of its type; where no ISIN is left, every `derived` identifier is taken back too, since each hangs on it |
@@ -226,10 +227,10 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 
 | Reading | Rule |
 | --- | --- |
-| `following_market` | [`Event::following`](event.md#following); `prevpx`/`prevqty`, currency, unit, a sided element's side (this element's where it states one, the chain's where it states `UKNW`) - any other element's side is its own tag, and a quote takes the [legs](#a-quotes-two-legs) it states nothing of - ticker, each security id it lacks, classification, market, and every metadata key it lacks - all from the predecessor where this event says nothing, this element's own values standing; always leads, even with the timed link unchanged |
+| `following_market` | [`Event::following`](event.md#following); `prevpx`/`prevqty`, currency, unit, a sided element's side (this element's where it states one, the chain's where it states `UKNW` - never a `BOTH` the chain held, which tags no one side) - any other element's side is its own tag, and a quote takes the [legs](#a-quotes-two-legs) it states nothing of - ticker, each security id it lacks and the strike price - neither where it names another instrument, below -, classification, market, and every metadata key it lacks - all from the predecessor where this event says nothing, this element's own values standing; always leads, even with the timed link unchanged |
 | A FIX message | follows the metadata too, as a [`FixMsg`](../fix/message.md) in the [lifecycle](../fix/lifecycle.md): its metadata is the bridge's namespaced keys its row's `metadata` column holds, so a followed message's row carries the chain's keys |
 | Identity | a follower's `currhashcode` and `curruuid` digest what it takes ([`digest_market`](#contract) feeds the metadata), so they move where it took a key |
-| Two instruments | two stated real ISINs that differ - each closing under a listed prefix - name two instruments: nothing is taken from the predecessor, and a merge keeps the leading statement's identifiers whole. A number that is not real - a `ZZ`, a masked one, a typo - names no country's instrument, so it is never the other one: it yields to the higher-ranked ISIN, which replaces it and everything derived under it, whichever statement leads |
+| Two instruments | two stated real ISINs that differ - each closing under a listed prefix - name two instruments: no identifier and no strike price is taken from the predecessor, and a merge keeps the leading statement's identifiers whole. A number that is not real - a `ZZ`, a masked one, a typo - names no country's instrument, so it is never the other one: it yields to the higher-ranked ISIN, which replaces it and everything derived under it, whichever statement leads |
 | Execution clock | a market event whose state reports an execution ([`is_execution`](event.md#contract)) and states no `execunix` is dated from its own instant first - before it names a predecessor, so an inherited state is never read as its own execution; following then keeps the later of its own clock and its predecessor's, so a delayed report cannot regress it, and a non-execution carries the chain's latest |
 | Restating | a market event's [`restating`](event.md#restating) also takes the market's place: `prevpx`/`prevqty`, what the chain is about where this reading said nothing - the metadata keys included, as in following - and the execution clock - the earliest of the two statements' |
 | `merging_market` | where `Self: Element`, no event clocks: `self` leads, and the execution clock is the earliest either states |
@@ -485,8 +486,8 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
 
     // The pair lands canonical under the crate's own type.
     assert_eq!(quote.get_securityids().to_string(), "[forex=EUR/USD]");
-    // Two prices and no side: a bid and an ask are facts, not a side.
-    assert_eq!(quote.get_side(), Side::Unknown);
+    // Two legs and no tag: both sides.
+    assert_eq!(quote.get_side(), Side::Both);
     assert_eq!(quote.get_bidpx(), Some("1.0842".parse()?));
     assert_eq!(quote.get_askccy().map(Ccy::as_str), Some("USD"));
     // An amount in the quote's currency divided by a rate is in its target.
@@ -517,8 +518,8 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
 
     # The pair lands canonical under the crate's own type.
     assert str(quote.securityids) == "[forex=EUR/USD]"
-    # Two prices and no side: a bid and an ask are facts, not a side.
-    assert quote.side is Side.UKNW
+    # Two legs and no tag: both sides.
+    assert quote.side is Side.BOTH
     assert quote.bidpx is not None and quote.bidpx.as_py() == Decimal("1.0842")
     assert quote.askccy is not None and quote.askccy.as_py() == "USD"
     # An amount in the quote's currency divided by a rate is in its target.
@@ -547,8 +548,8 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
 
     // The pair lands canonical under the crate's own type.
     assert.equal(quote.securityids.toString(), '[forex=EUR/USD]')
-    // Two prices and no side: a bid and an ask are facts, not a side.
-    assert.equal(quote.side, 'UKNW')
+    // Two legs and no tag: both sides.
+    assert.equal(quote.side, 'BOTH')
     assert.equal(quote.bidpx, '1.0842')
     assert.equal(quote.askccy, 'USD')
     // Rates cross as decimal text under their target currency.

@@ -7293,7 +7293,7 @@ binding.yaml = yaml
 
 // Which side of the market a trade took: FIX's Side(54), each member's
 // four-letter code under the code a `side` column stores - `UKNW` at zero,
-// then the seventeen sides in FIX's own order.
+// then the seventeen sides in FIX's own order, and BOTH (99), both sides at once.
 {
   const members = binding._sideMembersNative()
   delete binding._sideMembersNative

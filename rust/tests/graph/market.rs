@@ -222,6 +222,77 @@ fn following_carries_the_identifiers_only_of_the_same_instrument() {
     );
 }
 
+/// The strike of the option an element is about is an instrument fact: a
+/// follower of the same instrument stating none takes its chain's, one
+/// naming another ISIN takes none and a stated strike stands; a merge takes
+/// the strike either statement states; and the digest feeds it only where
+/// it is stated, so an element stating none digests as it did before.
+#[test]
+fn the_strike_follows_its_instrument_merges_and_digests_only_where_stated() {
+    let isin = |code: &str| securityids(&[("ISIN", code)]);
+    let mut previous = order(1);
+    previous
+        .set_securityids(isin("US0378331005"), true)
+        .unwrap();
+    previous.set_strikepx(Some(dec("4600.5")), true);
+    previous.finalize();
+
+    let silent = order(2)
+        .following_market(&previous)
+        .expect("a later event follows");
+    assert_eq!(silent.get_strikepx(), Some(dec("4600.5")));
+
+    let mut stated = order(2);
+    stated.set_strikepx(Some(dec("4700")), true);
+    stated.finalize();
+    let stated = stated
+        .following_market(&previous)
+        .expect("a later event follows");
+    assert_eq!(
+        stated.get_strikepx(),
+        Some(dec("4700")),
+        "a stated strike stands"
+    );
+
+    let mut other = order(2);
+    other.set_securityids(isin("GB0002634946"), true).unwrap();
+    other.finalize();
+    let other = other
+        .following_market(&previous)
+        .expect("a later event follows");
+    assert_eq!(other.get_strikepx(), None, "another instrument's strike");
+
+    // Two statements of one event, each stating what the other does not:
+    // the merge takes the strike either one states.
+    let plain = order(1);
+    let mut sized = plain.clone();
+    sized.set_quantity(Some(dec("5")), true);
+    sized.finalize();
+    let mut struck = plain.clone();
+    struck.set_strikepx(Some(dec("4600.5")), true);
+    struck.set_recdunix(Some(2));
+    struck.finalize();
+    struck.set_curruuid(sized.get_curruuid());
+    for (this, other) in [(sized.clone(), &struck), (struck.clone(), &sized)] {
+        let merged = this.merge_with(other).expect("one event stated twice");
+        assert_eq!(merged.get_strikepx(), Some(dec("4600.5")));
+        assert_eq!(merged.get_quantity(), Some(dec("5")));
+    }
+
+    // Fed only where stated.
+    let mut cleared = plain.clone();
+    cleared.set_strikepx(Some(dec("4600.5")), true);
+    assert_ne!(
+        cleared.digest_market_event().as_u64(),
+        plain.digest_market_event().as_u64()
+    );
+    cleared.set_strikepx(None, true);
+    assert_eq!(
+        cleared.digest_market_event().as_u64(),
+        plain.digest_market_event().as_u64()
+    );
+}
+
 /// A follower that derived its instrument's real number - a registry's
 /// fill - keeps it over the masked number its chain stated before it,
 /// under the base key or under a named source, which it carries as
@@ -1137,7 +1208,11 @@ fn a_quote_follower_takes_each_leg_it_states_nothing_of() {
     second.set_askqty(Some(dec("5")), true);
     second.finalize();
     let second = second.with_previous(&first).expect("a later statement");
-    assert_eq!(second.get_side(), Side::Unknown);
+    assert_eq!(
+        second.get_side(),
+        Side::Both,
+        "holding the bid it carried and the ask it states, it holds both sides"
+    );
     assert_eq!(
         (second.get_bidpx(), second.get_bidqty()),
         (Some(dec("99")), Some(dec("10"))),
@@ -1173,6 +1248,88 @@ fn a_quote_follower_takes_each_leg_it_states_nothing_of() {
         (third.get_askpx(), third.get_askqty()),
         (Some(dec("102")), Some(dec("5")))
     );
+}
+
+/// A quote tagging no side that quotes both its legs holds both sides: it
+/// states `BOTH` once finalized, quoting nothing onto one leg and storing
+/// its cross code under side `0`. A quote stating one leg, or tagging a
+/// side, is left as it is.
+#[test]
+fn a_quote_tagging_no_side_that_quotes_both_legs_states_both_sides() {
+    let two_sided = || {
+        let mut quote = QuoteEvent::at(1);
+        quote.set_crosscode("Q-1".to_owned());
+        quote.set_bidpx(Some(dec("99")), true);
+        quote.set_bidqty(Some(dec("10")), true);
+        quote.set_askpx(Some(dec("101")), true);
+        quote.set_askqty(Some(dec("20")), true);
+        quote
+    };
+    let legs = |quote: &QuoteEvent| {
+        (
+            quote.get_bidpx(),
+            quote.get_bidqty(),
+            quote.get_askpx(),
+            quote.get_askqty(),
+        )
+    };
+    let both = (
+        Some(dec("99")),
+        Some(dec("10")),
+        Some(dec("101")),
+        Some(dec("20")),
+    );
+
+    let mut quote = two_sided();
+    assert_eq!(quote.get_side(), Side::Unknown, "until it is finalized");
+    quote.finalize();
+    assert_eq!(quote.get_side(), Side::Both);
+    assert_eq!(quote.get_crosscode(), "14:0:Q-1");
+    assert_eq!(legs(&quote), both);
+    assert_eq!((quote.get_price(), quote.get_quantity()), (None, None));
+
+    // Stated as none again, the next finalize states it once more.
+    quote.set_side(Side::Unknown, true);
+    assert_eq!(quote.get_side(), Side::Unknown);
+    quote.finalize();
+    assert_eq!(quote.get_side(), Side::Both);
+    assert_eq!(legs(&quote), both);
+
+    // A tag it states stands.
+    let mut tagged = two_sided();
+    tagged.set_side(Side::Buy, true);
+    tagged.finalize();
+    assert_eq!(tagged.get_side(), Side::Buy);
+    assert_eq!(tagged.get_price(), Some(dec("99")));
+
+    // A quote stating one leg tags none.
+    let mut bid = QuoteEvent::at(1);
+    bid.set_crosscode("Q-2".to_owned());
+    bid.set_bidpx(Some(dec("99")), true);
+    bid.set_bidqty(Some(dec("10")), true);
+    bid.finalize();
+    assert_eq!(bid.get_side(), Side::Unknown);
+    assert_eq!(bid.get_crosscode(), "14:0:Q-2");
+}
+
+/// A sided element takes its chain's side where it states none, but never
+/// both sides at once: an order continuing an element that holds both - a
+/// two-sided quote's book entry - takes no side from it.
+#[test]
+fn a_sided_follower_takes_no_side_from_a_predecessor_holding_both() {
+    let mut first = OrderEvent::at(1);
+    first.set_crosscode("ORD-1".to_owned());
+    first.set_ticker(Some(SmolStr::new("AAPL")), true);
+    first.set_side(Side::Both, true);
+    first.finalize();
+    assert_eq!(first.get_side(), Side::Both);
+    let mut next = OrderEvent::at(2);
+    next.set_crosscode("ORD-1".to_owned());
+    next.finalize();
+    let next = next.with_previous(&first).expect("a later statement");
+    assert_eq!(next.get_ticker(), Some("AAPL"), "the chain's facts carry");
+    assert_eq!(next.get_side(), Side::Unknown);
+    assert_eq!(next.get_crosscode(), "10:0:ORD-1");
 }
 
 /// A quote statement tagging a side over a quote holding both legs - a

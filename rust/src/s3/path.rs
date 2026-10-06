@@ -27,6 +27,12 @@ use crate::{Error, IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result,
 /// between `lake/part` and the keys under `lake/part/` and hides them from the
 /// first answer.
 ///
+/// That is what its kind costs. Whether anything is there ([`Self::exists`])
+/// is asked even of a location spelled as a container, because the spelling
+/// settles the role and never the presence: one listing of one key under
+/// `lake/`, one `HEAD` for the bucket, and for a glob its listing up to the
+/// first match.
+///
 /// Resolution follows the laziness contract: construction touches nothing, a
 /// read of a location that does not exist yields nothing, and a write creates
 /// an object, because a byte write is what distinguishes a leaf from a
@@ -112,7 +118,8 @@ impl S3Path {
         self.client.snapshot()
     }
 
-    /// Return whether anything is at this location yet.
+    /// Return whether anything is at this location yet - a glob whether its
+    /// pattern selects an object.
     pub fn exists(&self) -> bool {
         self.path_exists()
     }
@@ -281,7 +288,15 @@ impl IOPath for S3Path {
         &self.url
     }
 
+    /// Whether a container is there: a location spelled as one - `lake/`, the
+    /// bucket, a glob - asks its prefix (one listing of one key, the bucket one
+    /// `HEAD`, a glob its listing up to the first match), because the spelling
+    /// settles the role and never the presence; any other asks what it
+    /// resolved to.
     fn is_folder(&self) -> bool {
+        if self.url.is_glob() || self.url.has_trailing_slash() || self.key.is_empty() {
+            return self.as_directory().is_ok_and(|folder| folder.exists());
+        }
         self.current_kind()
             .is_ok_and(|kind| kind == IOKind::Directory)
     }

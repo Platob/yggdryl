@@ -423,14 +423,20 @@ mod avro {
                 ),
                 Scalar::from(9)
             );
-            // Invalid decimal attributes degrade too, per the specification.
-            assert_eq!(
-                round_trip(
-                    r#"{"type":"bytes","logicalType":"decimal","precision":2,"scale":9}"#,
-                    Scalar::from(&[1_u8, 2][..])
-                ),
-                Scalar::from(&[1_u8, 2][..])
-            );
+            // Invalid decimal attributes degrade too, per the specification -
+            // a precision past the value model's thirty-eight digits, or
+            // past the width the leaf holds it at, among them.
+            for document in [
+                r#"{"type":"bytes","logicalType":"decimal","precision":2,"scale":9}"#,
+                r#"{"type":"bytes","logicalType":"decimal","precision":39,"scale":0}"#,
+                r#"{"type":"bytes","logicalType":"decimal","precision":300,"scale":0}"#,
+            ] {
+                assert_eq!(
+                    round_trip(document, Scalar::from(&[1_u8, 2][..])),
+                    Scalar::from(&[1_u8, 2][..]),
+                    "{document}"
+                );
+            }
         }
     }
 }

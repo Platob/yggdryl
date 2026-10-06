@@ -386,7 +386,7 @@ where
 /// is an acknowledgement of an execution, which states no fact of the order
 /// it is filed beside.
 fn contributes_to_market(message: &FixMsg) -> bool {
-    match message.msgcat() {
+    match message.marketdatakind() {
         MarketDataKind::Order | MarketDataKind::Quotation => !message.acknowledges_execution(),
         MarketDataKind::Execution => message.is_execution(),
         MarketDataKind::Book => matches!(message.header().msgtype(), "W" | "X"),
@@ -444,8 +444,9 @@ impl FixCodec {
         let admitted = messages
             .into_iter()
             .filter_map(|message| match message.into() {
-                Ok(message) => (contributes_to_market(&message) && message.msgcat().is_recorded())
-                    .then_some(Ok(message)),
+                Ok(message) => (contributes_to_market(&message)
+                    && message.marketdatakind().is_recorded())
+                .then_some(Ok(message)),
                 failure => Some(failure),
             });
         let operations =
@@ -673,7 +674,7 @@ fn expand_message(message: FixMsg, metadata: bool) -> MessageOperations {
 /// silence, since their leaves are the messages their parse splits off,
 /// any other message with a warning.
 fn is_book_message(message: &FixMsg) -> bool {
-    let category = message.msgcat();
+    let category = message.marketdatakind();
     let msgtype = message.header().msgtype();
     if category == MarketDataKind::Book && matches!(msgtype, "W" | "X") {
         return true;
@@ -700,7 +701,7 @@ fn is_book_message(message: &FixMsg) -> bool {
 /// and for the execution a trade's parse split off one side, that side's
 /// own members beside them.
 fn direct_unmapped(message: &FixMsg) -> Carried {
-    if message.header().msgtype() == "AE" && message.msgcat() == MarketDataKind::Execution {
+    if message.header().msgtype() == "AE" && message.marketdatakind() == MarketDataKind::Execution {
         return message.unmapped(Some(&TRADE_EXPANSION), true).leaf(0);
     }
     message.unmapped(None, true).into_carried()
@@ -770,7 +771,7 @@ impl FixMsg {
     /// book message, where the message is not exactly one leaf.
     pub fn into_market_leaf(self) -> Result<MarketData> {
         let message = self;
-        let path = if message.msgcat() == MarketDataKind::Book {
+        let path = if message.marketdatakind() == MarketDataKind::Book {
             "$.NoMDEntries(268)"
         } else {
             "$.MsgType(35)"
@@ -825,7 +826,7 @@ fn direct_of(message: &FixMsg) -> Option<Direct> {
     if message.acknowledges_execution() {
         return None;
     }
-    direct_kind(message.msgcat(), message.is_execution())
+    direct_kind(message.marketdatakind(), message.is_execution())
 }
 
 fn direct_kind(category: MarketDataKind, is_execution: bool) -> Option<Direct> {
@@ -1014,7 +1015,7 @@ fn batch_entries(batch: &FixMsg, instruments: Option<&IsinTable>) -> Vec<FixMsg>
     else {
         return Vec::new();
     };
-    let kind = batch.msgcat().item();
+    let kind = batch.marketdatakind().item();
     let mut answer = Vec::new();
     for (index, occurrence) in rows.iter().enumerate() {
         let Some(values) = occurrence.as_sequence() else {
@@ -1153,7 +1154,7 @@ impl FixMsg {
     ///   fill is stated by the execution alone. The report is then its
     ///   order's report, `ORDR`, or its quote's, `QUOT`, where it names a
     ///   `QuoteID(117)`, as an execution report of no fill is from its
-    ///   parse ([`FixMsg::msgcat`]).
+    ///   parse ([`Market::marketdatakind`]).
     ///
     /// - A batch - an order list, a mass order, a cross, a mass quote, a
     ///   bid list, a match report ([`MarketDataKind::is_batch`]) - splits
@@ -1172,7 +1173,7 @@ impl FixMsg {
     /// source's identity beside its source's sources as its own; the source
     /// keeps what it states, its own state included.
     pub(super) fn split(mut self, instruments: Option<&IsinTable>) -> (Self, Vec<Self>) {
-        let category = self.msgcat();
+        let category = self.marketdatakind();
         if category.is_batch() {
             let entries = batch_entries(&self, instruments);
             return (self, entries);
@@ -1678,7 +1679,22 @@ fn book_entries(message: &FixMsg) -> Vec<BookEntry> {
         );
         let mut accounts = Identifiers::new();
         if let Some(typed) = typed.as_ref() {
-            typed.accounts.read(roles, members, &mut accounts);
+            // A party the entry's key refuses - a `B` source that is no
+            // BIC, an `N` one no LEI - is no account, with a warning.
+            let mut refused = Vec::new();
+            typed
+                .accounts
+                .read(roles, members, &mut accounts, &mut refused);
+            for anomaly in refused {
+                warned!(
+                    "FIX book entry party refused",
+                    anomaly.field(),
+                    "{} at {}: {}",
+                    anomaly.field(),
+                    place(),
+                    anomaly.reason()
+                );
+            }
         }
         answer.push(BookEntry {
             facts,

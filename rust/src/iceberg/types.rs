@@ -26,6 +26,8 @@
 use std::fmt;
 use std::str::FromStr;
 
+#[cfg(feature = "iceberg")]
+use iceberg_official::spec::PrimitiveType as OfficialPrimitiveType;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::string::is_text_storage;
@@ -259,6 +261,56 @@ impl PrimitiveType {
     }
 }
 
+#[cfg(feature = "iceberg")]
+impl PrimitiveType {
+    /// This type as the official Iceberg crate spells it: the one door from
+    /// the crate's primitive vocabulary to the official one, which every
+    /// manifest literal, partition transform and bound reads through.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for `unknown` and `variant`, which name no concrete
+    /// primitive a value is encoded under.
+    pub(super) fn into_official(self) -> Result<OfficialPrimitiveType> {
+        Ok(match self {
+            Self::Boolean => OfficialPrimitiveType::Boolean,
+            Self::Int => OfficialPrimitiveType::Int,
+            Self::Long => OfficialPrimitiveType::Long,
+            Self::Float => OfficialPrimitiveType::Float,
+            Self::Double => OfficialPrimitiveType::Double,
+            Self::Decimal { precision, scale } => OfficialPrimitiveType::Decimal {
+                precision: u32::from(precision),
+                scale: u32::try_from(scale).map_err(|_| Error::Codec {
+                    format: "iceberg",
+                    position: 0,
+                    reason: format_smolstr!(
+                        "expected a non-negative Iceberg decimal scale, got {scale}"
+                    ),
+                })?,
+            },
+            Self::Date => OfficialPrimitiveType::Date,
+            Self::Time => OfficialPrimitiveType::Time,
+            Self::Timestamp => OfficialPrimitiveType::Timestamp,
+            Self::Timestamptz => OfficialPrimitiveType::Timestamptz,
+            Self::TimestampNs => OfficialPrimitiveType::TimestampNs,
+            Self::TimestamptzNs => OfficialPrimitiveType::TimestamptzNs,
+            Self::String => OfficialPrimitiveType::String,
+            Self::Uuid => OfficialPrimitiveType::Uuid,
+            Self::Fixed(width) => OfficialPrimitiveType::Fixed(u64::from(width)),
+            Self::Binary => OfficialPrimitiveType::Binary,
+            primitive @ (Self::Unknown | Self::Variant) => {
+                return Err(Error::Codec {
+                    format: "iceberg",
+                    position: 0,
+                    reason: format_smolstr!(
+                        "expected a concrete Iceberg primitive type, got {primitive}"
+                    ),
+                });
+            }
+        })
+    }
+}
+
 impl FromStr for PrimitiveType {
     type Err = Error;
 
@@ -286,16 +338,8 @@ impl FromStr for PrimitiveType {
 
         if let Some(rest) = trimmed.strip_prefix("decimal") {
             let (precision, scale) = parenthesized_pair(rest, "decimal")?;
-            let precision = u8::try_from(precision).map_err(|_| {
-                parse_error(format_smolstr!(
-                    "expected a decimal precision of 1 through 38, got {precision}"
-                ))
-            })?;
-            let scale = i8::try_from(scale).map_err(|_| {
-                parse_error(format_smolstr!(
-                    "expected a decimal scale that fits 8 bits, got {scale}"
-                ))
-            })?;
+            let (precision, scale) =
+                crate::decimal::decimal_parameters(precision, scale).map_err(parse_error)?;
             return Ok(Self::Decimal { precision, scale });
         }
 

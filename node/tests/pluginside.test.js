@@ -80,7 +80,8 @@ test('the dictionary renders the members as its intrinsic plugin side set', () =
     Object.entries(PluginSide).map(([name, code]) => [String(code), name]),
   )
   const field = fix.crateFields().find((held) => held.name === 'msgpluginside')
-  assert.equal(field.fix.tag, 65041)
+  // StrikePx keeps 65035; plugin ID is 65041 and plugin side follows at 65042.
+  assert.equal(field.fix.tag, 65042)
   assert.equal(field.dtype.id, 'pluginside')
   assert.equal(field.nullable, false)
   assert.equal(field.fix.codeset, 'msgpluginsidecodeset')

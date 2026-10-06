@@ -15,16 +15,21 @@ use crate::{Error, IOResult, Result};
 /// without counting anything itself: what the source yielded is read, what
 /// the destination pulled is written, and the difference - the rows the
 /// options' `where` kept out, the part of a last batch a bound cut off - is
-/// skipped. A write allocates its two counts once and each wrapper once,
-/// whatever its length, and a wrapper adds one atomic add per batch.
+/// skipped. A destination that pulls a row and then declines it - a keyed
+/// Iceberg append meeting a key the table already holds - says so through
+/// [`skip`](Self::skip), and that row moves from written to skipped. A write
+/// allocates its counts once and each wrapper once, whatever its length, and
+/// a wrapper adds one atomic add per batch.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct WriteCount(Arc<Rows>);
 
-/// The two counts of one write, shared by its two wrappers.
+/// The counts of one write, shared by its two wrappers.
 #[derive(Debug, Default)]
 struct Rows {
     read: AtomicU64,
     written: AtomicU64,
+    /// Rows the destination pulled and declined.
+    declined: AtomicU64,
 }
 
 impl WriteCount {
@@ -53,12 +58,26 @@ impl WriteCount {
         self.0.written.fetch_add(written as u64, Ordering::Relaxed);
     }
 
-    /// What the write did so far.
+    /// Count `rows` the destination pulled and declined to store: they were
+    /// counted as written when it pulled them, and are skipped instead.
+    #[cfg(feature = "iceberg")]
+    pub(crate) fn skip(&self, rows: u64) {
+        self.0.declined.fetch_add(rows, Ordering::Relaxed);
+    }
+
+    /// What the write did so far: written is what the destination pulled less
+    /// what it declined, and skipped is what the shaping kept from it plus
+    /// what it declined, so a write mapping one row to one row still reads
+    /// written plus skipped.
     pub(crate) fn result(&self) -> IOResult {
-        IOResult::new(
-            self.0.read.load(Ordering::Relaxed),
-            self.0.written.load(Ordering::Relaxed),
-        )
+        let read = self.0.read.load(Ordering::Relaxed);
+        let written = self.0.written.load(Ordering::Relaxed);
+        let declined = self.0.declined.load(Ordering::Relaxed);
+        IOResult {
+            read_rows: read,
+            written_rows: written.saturating_sub(declined),
+            skipped_rows: read.saturating_sub(written).saturating_add(declined),
+        }
     }
 }
 
@@ -483,7 +502,10 @@ fn prepare_leaf_arrow_write(
 /// source chunk, then temporarily pass the same handle back to [`push`](Self::push)
 /// or [`finish`](Self::finish). Complete cadences publish synchronously before
 /// either method returns; [`abort`](Self::abort) drops only the unpublished
-/// remainder.
+/// remainder. A table's cadences commit through the table the session locates
+/// off the handle - a held [`IcebergTable`](crate::iceberg::IcebergTable), a
+/// warehouse table - which is closed after each one, so it lets go of the
+/// document it read and reads the commits on its next verb.
 ///
 /// This is hidden because it is a narrow runtime bridge, not another write
 /// operation. Its mode is the same public [`crate::IOMode`] accepted by the
@@ -572,6 +594,11 @@ impl ArrowWriteSession {
     }
 
     /// Start a session for one explicit write mode.
+    ///
+    /// A session meets its destination only at its first push, so the
+    /// options alone decide here and a merge naming no key is refused. A
+    /// destination with a key of its own - an Iceberg table's identifier
+    /// columns - is asked first, through `IOMedia::write_options`.
     pub fn new(mode: crate::IOMode, options: &RecordOptions) -> Result<Self> {
         use crate::media::IORecordOptions;
 
@@ -998,29 +1025,42 @@ impl ArrowWriteSession {
             // where the table is addressed whole.
             ArrowWriteTarget::Iceberg {
                 located, replaced, ..
-            } => match self.mode {
-                crate::IOMode::Overwrite => {
-                    located.overwrite_prepared(batches, replaced, self.delegated.num_threads())?;
+            } => {
+                match self.mode {
+                    crate::IOMode::Overwrite => {
+                        located.overwrite_prepared(
+                            batches,
+                            replaced,
+                            self.delegated.num_threads(),
+                        )?;
+                    }
+                    crate::IOMode::Append => {
+                        // A keyed table leaves out a row whose key it holds:
+                        // pulled, so counted written, and declined here.
+                        self.count
+                            .skip(located.append_prepared(batches, self.delegated.num_threads())?);
+                    }
+                    crate::IOMode::Merge => located.merge_prepared(
+                        batches,
+                        self.delegated.merge_by(),
+                        self.delegated.safe(),
+                        replaced,
+                        self.delegated.num_threads(),
+                    )?,
+                    crate::IOMode::ReadOnly | crate::IOMode::Random => {
+                        return Err(crate::Error::InvalidRecord {
+                            path: smol_str::SmolStr::new_static("$.mode"),
+                            reason: smol_str::SmolStr::new_static(
+                                "write mode readonly or random is not supported for this operation",
+                            ),
+                        });
+                    }
                 }
-                crate::IOMode::Append => {
-                    located.append_prepared(batches, self.delegated.num_threads())?;
-                }
-                crate::IOMode::Merge => located.merge_prepared(
-                    batches,
-                    self.delegated.merge_by(),
-                    self.delegated.safe(),
-                    replaced,
-                    self.delegated.num_threads(),
-                )?,
-                crate::IOMode::ReadOnly | crate::IOMode::Random => {
-                    return Err(crate::Error::InvalidRecord {
-                        path: smol_str::SmolStr::new_static("$.mode"),
-                        reason: smol_str::SmolStr::new_static(
-                            "write mode readonly or random is not supported for this operation",
-                        ),
-                    });
-                }
-            },
+                // The commit went through the located table: closed, the
+                // handle lets go of the document its own table read, so its
+                // next verb sees it.
+                handle.close()?;
+            }
         }
         self.published = true;
         Ok(())
@@ -1284,13 +1324,19 @@ fn merge_leaf_onto(
         leaf_reader(handle, &rewrite)?
     };
     let merged = crate::media::merge::merged(stored, incoming, target, merge_by, options.safe())?;
+    // A merge that replaced no row with a different one and appended none
+    // leaves the leaf exactly as it was: nothing is written, so its bytes
+    // and its modification time stay.
+    if !merged.changed {
+        return Ok(());
+    }
     // The merged contents are the whole new value. The cloned options already
     // had its declared field popped by `prepare_arrow_write`; clear the key as
     // well so the required overwrite hook sees exactly one publication and
     // cannot recursively merge the result against itself.
     rewrite.take_field();
     rewrite.set_merge_by(crate::Selector::all());
-    handle.overwrite_prepared_arrow_reader(merged, &rewrite)
+    handle.overwrite_prepared_arrow_reader(merged.rows, &rewrite)
 }
 
 /// Add `incoming` after a leaf's current rows.

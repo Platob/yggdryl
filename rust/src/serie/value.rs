@@ -10,9 +10,10 @@ use crate::budget::{
 };
 use crate::string::is_text_storage;
 use crate::{
-    BBG_WIDTH, Bytes, BytesType, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH,
-    FOREX_WIDTH, ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, Str, StringType, UNIT_WIDTH,
-    ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
+    BBG_WIDTH, BIC_WIDTH, Bytes, BytesType, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH,
+    DTI_WIDTH, ELF_WIDTH, FIGI_WIDTH, FISN_WIDTH, FOREX_WIDTH, ISIN_WIDTH, LEI_WIDTH, MIC_WIDTH,
+    RIC_WIDTH, SEDOL_WIDTH, Str, StringType, UNIT_WIDTH, ascii_bytes, code_cell_text, uuid_bytes,
+    uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
 use arrow_array::builder::{BinaryBuilder, LargeStringBuilder, StringBuilder, StringViewBuilder};
@@ -177,6 +178,11 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
         }
         DataType::Unit => code_array::<UNIT_WIDTH>(dtype, values)?,
         DataType::Forex => code_array::<FOREX_WIDTH>(dtype, values)?,
+        DataType::Lei => code_array::<LEI_WIDTH>(dtype, values)?,
+        DataType::Bic => code_array::<BIC_WIDTH>(dtype, values)?,
+        DataType::Elf => code_array::<ELF_WIDTH>(dtype, values)?,
+        DataType::Dti => code_array::<DTI_WIDTH>(dtype, values)?,
+        DataType::Fisn => code_array::<FISN_WIDTH>(dtype, values)?,
         DataType::Uuid => uuid_array(values)?,
         DataType::Version => Arc::new(StringArray::from(
             values
@@ -586,6 +592,11 @@ read_code!(
     read_figi => Figi,
     read_unit => Unit,
     read_forex => Forex,
+    read_lei => Lei,
+    read_bic => Bic,
+    read_elf => Elf,
+    read_dti => Dti,
+    read_fisn => Fisn,
 );
 
 /// Emit one reader per unnumbered leaf in text or binary storage.
@@ -695,6 +706,11 @@ pub(crate) fn text_reading(dtype: &DataType) -> Result<RunReading<str>> {
         DataType::Figi => read_figi,
         DataType::Unit => read_unit,
         DataType::Forex => read_forex,
+        DataType::Lei => read_lei,
+        DataType::Bic => read_bic,
+        DataType::Elf => read_elf,
+        DataType::Dti => read_dti,
+        DataType::Fisn => read_fisn,
         DataType::Version => read_version,
         DataType::Url => read_url,
         DataType::Urn => read_urn,
@@ -868,7 +884,12 @@ pub(crate) fn value_from_array(
         | DataType::Ric
         | DataType::Figi
         | DataType::Unit
-        | DataType::Forex => cell!(StringArray, text_reading(dtype)?),
+        | DataType::Forex
+        | DataType::Lei
+        | DataType::Bic
+        | DataType::Elf
+        | DataType::Dti
+        | DataType::Fisn => cell!(StringArray, text_reading(dtype)?),
         DataType::Serie(child) => {
             list_value(child, downcast::<ListArray>(array)?.value(index).as_ref())?
         }

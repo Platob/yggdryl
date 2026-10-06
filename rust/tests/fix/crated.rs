@@ -181,6 +181,7 @@ mod table {
                 "askccy",
                 "fxrates",
                 "ticker",
+                "strikepx",
                 "ordqty",
                 "tradable",
                 "identifiers",
@@ -694,12 +695,12 @@ mod inferred {
 }
 
 /// The currency pair a message is about is one of the crate's instrument
-/// fields: a forex column, displayed `ForexCode`, under tag 65047, the
+/// fields: a forex column, displayed `ForexCode`, under tag 65048, the
 /// first of the fixed row's instrument band.
 #[test]
 fn the_currency_pair_is_an_instrument_field_after_the_isin() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
-    assert_eq!(held.len(), 50);
+    assert_eq!(held.len(), 51);
     let at = |name: &str| {
         held.iter()
             .position(|field| field.name() == name)
@@ -712,30 +713,51 @@ fn the_currency_pair_is_an_instrument_field_after_the_isin() {
     assert_eq!(pair.dtype(), &yggdryl::DataType::Forex);
     assert_eq!(pair.display(), Some("Forex Code"));
     assert!(pair.is_nullable());
-    assert_eq!(yggdryl::FOREXCODE_TAG_NAME, (65_047, "forexcode"));
+    assert_eq!(yggdryl::FOREXCODE_TAG_NAME, (65_048, "forexcode"));
     assert_eq!(
         pair.as_fix().tag().expect("a tag reading"),
         Some(yggdryl::FOREXCODE_TAG_NAME.0)
     );
 }
 
-/// The option strike a message identifies is the dictionary's own
-/// `StrikePrice(202)`, read as the decimal leaf straight off the field each
-/// call: the crate defines no column for it, and the fixed row's instrument
-/// band states the dictionary field where the crate's own used to stand. A
-/// row stating one is the field's own cell.
+/// The option strike a message identifies is the market fact `strikepx`,
+/// derived from the dictionary's own `StrikePrice(202)` as `prevpx` is from
+/// `PrevClosePx(140)`: a crate column no registry holds, tagged after the
+/// ticker in the shared prefix, while the dictionary's field keeps its place
+/// in the instrument band and its name. A row stating the column is the
+/// row's word, a write of the field states it again and a null clears it,
+/// and a strike that reads as no decimal is an anomaly the field names.
 #[test]
-fn the_strike_is_the_dictionarys_strikeprice_read_off_the_field_and_a_row_states_it_back() {
+fn strikepx_is_a_derived_market_column_beside_the_dictionarys_strikeprice() {
     use std::sync::Arc;
+    use yggdryl::graph::Market;
     use yggdryl::{Decimal, FixMsg, Scalar};
 
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
-    assert!(
-        held.iter().all(|field| field.name() != "strikepx"),
-        "no crate field restates the strike"
+    let strike = held
+        .iter()
+        .find(|field| field.name() == "strikepx")
+        .expect("the crate's strike column");
+    assert_eq!(yggdryl::STRIKEPX_TAG_NAME, (65_035, "strikepx"));
+    assert_eq!(
+        strike.as_fix().tag().expect("a tag reading"),
+        Some(yggdryl::STRIKEPX_TAG_NAME.0)
     );
+    assert!(yggdryl::is_derived_tag(yggdryl::STRIKEPX_TAG_NAME.0));
+    assert_eq!(strike.dtype(), &yggdryl::DataType::Decimal);
+    assert_eq!(strike.display(), Some("Strike Price"));
+    assert!(strike.is_nullable());
     let tags = yggdryl::fix_schema_tags();
     let place = |tag: i32| tags.iter().position(|held| *held == tag).expect("a band");
+    assert_eq!(
+        place(yggdryl::STRIKEPX_TAG_NAME.0),
+        place(yggdryl::TICKER_TAG_NAME.0) + 1,
+        "the strike follows the ticker in the shared prefix"
+    );
+    assert_eq!(
+        place(yggdryl::METADATA_TAG_NAME.0),
+        place(yggdryl::STRIKEPX_TAG_NAME.0) + 1
+    );
     assert_eq!(
         place(202),
         place(yggdryl::FIGICODE_TAG_NAME.0) + 1,
@@ -744,54 +766,116 @@ fn the_strike_is_the_dictionarys_strikeprice_read_off_the_field_and_a_row_states
     assert!(!yggdryl::is_crate_tag(202));
 
     let registry = committed_registry();
+    assert!(
+        registry
+            .get_field_by_tag(yggdryl::STRIKEPX_TAG_NAME.0)
+            .is_none(),
+        "no registry holds a derived column"
+    );
+    // The column's spelling still reaches StrikePrice(202) through the
+    // `px`/`price` words: a bridge writing `StrikePx` lands on the field.
+    assert_eq!(
+        registry
+            .get_field_by_name("strikepx")
+            .map(|field| field.as_fix().tag().expect("a tag reading")),
+        Some(Some(202))
+    );
     let codec = fixed_codec(Arc::clone(&registry));
     let schema = yggdryl::fix_schema(&registry, "fix").expect("a fixed schema");
-    let at = yggdryl::fix_column_of(&schema, 202).expect("the strike column");
+    let derived = schema.index_of("strikepx").expect("the derived column");
+    assert_eq!(
+        yggdryl::fix_column_of(&schema, yggdryl::STRIKEPX_TAG_NAME.0),
+        Some(derived)
+    );
+    assert_eq!(
+        schema.fields()[derived].dtype(),
+        &yggdryl::DataType::Decimal
+    );
+    let at = yggdryl::fix_column_of(&schema, 202).expect("the strike field's column");
     assert_eq!(schema.index_of("strikeprice"), Some(at));
-    assert!(schema.index_of("strikepx").is_none());
     let column = &schema.fields()[at];
     assert_eq!(
         column.dtype(),
         &yggdryl::DataType::decimal128(38, 18).expect("the dictionary's price type")
     );
-    assert!(column.is_nullable());
     assert_eq!(column.display(), Some("StrikePrice"));
 
     let option = codec
         .parse_fix_line(b"8=FIX.4.4|35=D|11=O|55=XAU|201=1|202=4600.5|10=0|")
         .expect("an option order");
+    let strike: Decimal = "4600.5".parse().unwrap();
+    assert_eq!(option.get_strikepx(), Some(strike));
+    // The leaf a message is states the strike once: as the fact, never
+    // beside it as the field's metadata key.
+    let leaf = option.clone().into_market_leaf().expect("an order leaf");
+    assert_eq!(leaf.get_strikepx(), Some(strike));
+    assert!(
+        !leaf.get_metadata().contains_key("strikeprice"),
+        "{:?}",
+        leaf.get_metadata()
+    );
     assert_eq!(
-        option.strikeprice(),
-        Some("4600.5".parse::<Decimal>().unwrap())
+        option.by_name("strikepx").unwrap(),
+        option.by_tag(202).unwrap()
     );
     let plain = codec
         .parse_fix_line(b"8=FIX.4.4|35=D|11=P|55=XAU|10=0|")
         .expect("an order");
-    assert_eq!(plain.strikeprice(), None);
+    assert_eq!(plain.get_strikepx(), None);
+    let cells = plain.into_row(&schema).unwrap();
+    let cells = cells.as_sequence().unwrap();
     assert!(
-        plain.into_row(&schema).unwrap().as_sequence().unwrap()[at].is_null(),
+        cells[at].is_null() && cells[derived].is_null(),
         "no strike stated, none written"
     );
 
     let row = option.into_row(&schema).expect("a fixed row");
     let mut cells = row.as_sequence().expect("a row").to_vec();
-    assert_eq!(
-        Decimal::from_scalar(&cells[at]),
-        Some("4600.5".parse().unwrap())
-    );
-    // A row stating another strike is the field's new value, answered by
-    // the same read.
-    cells[at] = Scalar::from(Decimal::from_int(4_700));
-    let restated = FixMsg::with_registry(
+    assert_eq!(Decimal::from_scalar(&cells[at]), Some(strike));
+    assert_eq!(Decimal::from_scalar(&cells[derived]), Some(strike));
+    // A row stating another strike under the column is the row's word; the
+    // field keeps what the message sent.
+    cells[derived] = Scalar::from(Decimal::from_int(4_700));
+    let mut restated = FixMsg::with_registry(
         Arc::clone(&registry),
         schema.clone(),
         Scalar::from_sequence(cells),
     )
     .expect("the row read back");
-    assert_eq!(restated.strikeprice(), Some(Decimal::from_int(4_700)));
-    assert_eq!(
-        restated.by_tag(202).unwrap(),
-        Scalar::from(Decimal::from_int(4_700))
+    assert_eq!(restated.get_strikepx(), Some(Decimal::from_int(4_700)));
+    assert_eq!(restated.by_tag(202).unwrap(), Scalar::from(strike));
+    // A write of the field moves the field and leaves the row's word.
+    restated
+        .set(202, Scalar::from("13"))
+        .expect("a strike the message can state");
+    assert_eq!(restated.get_strikepx(), Some(Decimal::from_int(4_700)));
+    // On a message whose strike is the field's, a write of the field states
+    // the fact again, and a null clears it.
+    let mut option = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=O|55=XAU|201=1|202=4600.5|10=0|")
+        .expect("an option order");
+    option
+        .set(202, Scalar::from("13"))
+        .expect("a strike the message can state");
+    assert_eq!(option.get_strikepx(), Some(Decimal::from_int(13)));
+    option
+        .set(202, Scalar::Null)
+        .expect("a strike the message can clear");
+    assert_eq!(option.get_strikepx(), None);
+
+    // A strike that reads as no decimal states none, and says so by the
+    // field's name.
+    let unread = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=U|55=XAU|201=1|202=abc|10=0|")
+        .expect("a readable line");
+    assert_eq!(unread.get_strikepx(), None);
+    assert!(
+        unread
+            .anomalies()
+            .iter()
+            .any(|anomaly| anomaly.field() == "strikeprice"),
+        "{:?}",
+        unread.anomalies()
     );
 }
 
@@ -803,16 +887,16 @@ fn the_strike_is_the_dictionarys_strikeprice_read_off_the_field_and_a_row_states
 fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_intrinsic_set() {
     use yggdryl::{DataType, PluginSide, Scalar};
 
-    assert_eq!(yggdryl::MSGPLUGINSIDE_TAG_NAME, (65_041, "msgpluginside"));
-    assert_eq!(yggdryl::MSGPLUGINID_TAG_NAME, (65_040, "msgpluginid"));
+    assert_eq!(yggdryl::MSGPLUGINSIDE_TAG_NAME, (65_042, "msgpluginside"));
+    assert_eq!(yggdryl::MSGPLUGINID_TAG_NAME, (65_041, "msgpluginid"));
     assert_eq!(
         yggdryl::MSGORIGINATOR_TAG_NAME,
-        (65_042, "msgoriginator"),
+        (65_043, "msgoriginator"),
         "every later crate tag moved up by one"
     );
-    assert_eq!(yggdryl::FIXMSG_TAG_NAME, (65_051, "fixmsg"));
+    assert_eq!(yggdryl::FIXMSG_TAG_NAME, (65_052, "fixmsg"));
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
-    assert_eq!(held.len(), 50);
+    assert_eq!(held.len(), 51);
     let at = held
         .iter()
         .position(|field| field.name() == "msgpluginside")
@@ -824,7 +908,7 @@ fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_int
     assert!(!field.is_nullable(), "every row states it");
     assert_eq!(field.display(), Some("Message Plugin Side"));
     assert_eq!(field.as_fix().codeset(), Some("msgpluginsidecodeset"));
-    assert_eq!(field.as_fix().tag().unwrap(), Some(65_041));
+    assert_eq!(field.as_fix().tag().unwrap(), Some(65_042));
     assert!(
         field
             .description()
@@ -852,13 +936,13 @@ fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_int
     assert!(!schema.fields()[column].is_nullable());
     assert_eq!(schema.fields()[column].dtype(), &DataType::PluginSide);
     let tags = yggdryl::fix_schema_tags();
-    let tag = tags.iter().position(|tag| *tag == 65_041).expect("the tag");
-    assert_eq!(tags[tag - 1], 65_040);
-    assert_eq!(tags[tag + 1], 65_042);
-    assert_eq!(yggdryl::fix_column_of(&schema, 65_041), Some(column));
+    let tag = tags.iter().position(|tag| *tag == 65_042).expect("the tag");
+    assert_eq!(tags[tag - 1], 65_041);
+    assert_eq!(tags[tag + 1], 65_043);
+    assert_eq!(yggdryl::fix_column_of(&schema, 65_042), Some(column));
     // Every registry holds it, reading by the intrinsic set it holds too.
     assert_eq!(
-        registry.field_by_tag(65_041).unwrap().name(),
+        registry.field_by_tag(65_042).unwrap().name(),
         "msgpluginside"
     );
     assert_eq!(

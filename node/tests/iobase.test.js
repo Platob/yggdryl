@@ -22,6 +22,8 @@ const {
   Uri,
   Url,
   Urn,
+  fields,
+  iceberg,
 } = require('yggdryl')
 
 const EVENT_COLUMNS = [
@@ -564,6 +566,23 @@ test('glob and rglob select the same leaves', (t) => {
   // One plain segment stays at one level, where there are no leaves.
   assert.deepEqual([...handle.glob('*.parquet')], [])
   assert.equal([...handle.rglob('*.parquet', true)].length, 5)
+})
+
+test('a pattern exists while it selects an entry, and is a container either way', (t) => {
+  const root = lake()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const handle = new IOBase(root)
+
+  // A glob is a container by its spelling, and there while its listing
+  // yields an entry - what `iterdir` answers and a read walks.
+  const years = handle.joinpath(['year=*'])
+  assert.ok(years.isDir())
+  assert.ok(years.exists())
+  const none = handle.joinpath(['*.csv'])
+  assert.ok(none.isDir())
+  assert.equal(none.exists(), false)
+  assert.deepEqual([...none.iterdir()], [])
+  assert.ok(handle.joinpath(['**', '*.parquet']).exists())
 })
 
 test('a write creates and a read returns it', (t) => {
@@ -1487,4 +1506,40 @@ test('fromUri reads an object store query as the store properties and takes it o
     IOBase.fromUri('http://127.0.0.1:9/lake/key.bin?version=3').url.toString(),
     'http://127.0.0.1:9/lake/key.bin?version=3',
   )
+})
+
+test('the native merge door takes the destination own key where the options name none', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-iobase-merge-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const rows = (ids, venues) =>
+    new arrow.Table({
+      id: arrow.vectorFromArray(ids, new arrow.Int64()),
+      venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
+    })
+  // A table keyed by `id`, the identifier column its schema states.
+  const schema = iceberg.assignFieldIds(
+    fields.struct('row', [Field.from('id: int64 not null'), Field.from('venue: utf8')], {
+      nullable: false,
+    }),
+  )
+  schema.set('ICEBERG:identifier-field-ids', '1')
+  const table = iceberg.IcebergTable.create(path.join(root, 'keyed'), schema)
+  table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+
+  const handle = IOBase.from(table.intoTable())
+  const merged = handle.mergeArrowReader(BatchReader.from(rows([2n, 3n], ['XASE', 'XLON'])))
+  assert.deepEqual([merged.readRows, merged.writtenRows, merged.skippedRows], [2, 2, 0])
+  const stored = handle.readArrowReader().intoTable()
+  assert.deepEqual(
+    [...stored.getChild('id')].sort((left, right) => Number(left - right)),
+    [1n, 2n, 3n],
+  )
+
+  // A leaf states no key of its own, so the same door refuses an empty one.
+  const leaf = new IOBase(path.join(root, 'quotes.arrows'))
+  assert.throws(
+    () => leaf.mergeArrowReader(BatchReader.from(rows([1n], ['XNAS']))),
+    /requires at least one merge_by column/,
+  )
+  assert.equal(fs.existsSync(path.join(root, 'quotes.arrows')), false)
 })

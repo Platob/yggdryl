@@ -791,7 +791,10 @@ fn a_walk_written_under_a_table_schema_keeps_its_enum_columns_as_their_codes() {
     for (name, code) in [
         ("state", i32::from(walked_message.get_state().code())),
         ("side", i32::from(walked_message.get_side().code())),
-        ("marketdatakind", i32::from(walked_message.msgcat().code())),
+        (
+            "marketdatakind",
+            i32::from(walked_message.marketdatakind().code()),
+        ),
     ] {
         assert_ne!(code, 0, "{name} states a member");
         let column = walked[0].column_by_name(name).unwrap();
@@ -1017,7 +1020,7 @@ fn a_walked_message_names_its_predecessor_and_keeps_its_own_source() {
     let (executions, walked): (Vec<FixMsg>, Vec<FixMsg>) = every
         .iter()
         .cloned()
-        .partition(|message| message.msgcat() == yggdryl::MarketDataKind::Execution);
+        .partition(|message| message.marketdatakind() == yggdryl::MarketDataKind::Execution);
     assert_eq!(walked.len(), 3);
     let identities: Vec<_> = walked.iter().map(Element::get_curruuid).collect();
     assert_eq!(
@@ -3432,6 +3435,68 @@ fn a_serie_face_refuses_a_run_before_a_row_is_read() {
     assert!(codec().lifecycle_serie(run.clone()).is_err());
     assert!(codec().market_data_serie(run.clone()).is_err());
     assert!(codec().messages_serie(run).is_err());
+}
+
+/// A bridge line's thread and level are the capture's own columns: no
+/// dictionary field is named for either, so the batch door carries both in
+/// front of every message the row answers for, as the row's own cells -
+/// outside the content, the entries, the wire and the digest - and the
+/// rows read back carry them again.
+#[test]
+fn a_bridge_lines_thread_and_level_ride_its_fix_row_and_fill_nothing() {
+    use yggdryl::IOMedia;
+    let codec = codec();
+    for own in ["msgthreadid", "loglevel"] {
+        assert!(
+            codec.registry().get_field_by_name(own).is_none(),
+            "{own} names no field, which is what keeps it out of every fill"
+        );
+    }
+    let (source, options) = bridge_capture();
+    let text = source.read_arrow_reader(&options).unwrap();
+    let text_schema = text.schema();
+    assert_eq!(
+        text_schema
+            .field_with_name("msgthreadid")
+            .unwrap()
+            .data_type(),
+        &arrow_schema::DataType::Int64
+    );
+    assert_eq!(
+        text_schema.field_with_name("loglevel").unwrap().data_type(),
+        &arrow_schema::DataType::Utf8
+    );
+    let parsed = codec.parse_text_arrow_reader(text).unwrap();
+    let root = yggdryl::Field::from_arrow_schema("fix", &parsed.schema()).unwrap();
+    let body = root.index_of("body").unwrap();
+    assert_eq!(root.index_of("msgthreadid"), Some(body + 1));
+    assert_eq!(root.index_of("loglevel"), Some(body + 2));
+    let tags = yggdryl::fix_column_tags(&root);
+    for own in ["msgthreadid", "loglevel"] {
+        let at = root.index_of(own).unwrap();
+        assert_eq!(tags[at], None, "{own}");
+        assert!(root.fields()[at].is_nullable(), "{own}");
+    }
+    // Every message carries both cells, and neither reaches the wire.
+    let messages: Vec<FixMsg> = codec
+        .messages(parsed)
+        .map(|message| message.expect("a message"))
+        .collect();
+    assert!(!messages.is_empty());
+    for message in &messages {
+        let carried: Vec<&str> = message
+            .carried()
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert!(carried.contains(&"msgthreadid"), "{carried:?}");
+        assert!(carried.contains(&"loglevel"), "{carried:?}");
+        let wire = String::from_utf8(message.into_bytes(b'|')).unwrap();
+        assert!(
+            !wire.contains("msgthreadid") && !wire.contains("loglevel"),
+            "{wire}"
+        );
+    }
 }
 
 /// The Arrow batch door stamps the codec's plugin role as the line doors

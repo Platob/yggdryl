@@ -1,5 +1,5 @@
 //! `rust/src/graph/operation_column.rs`: the five columns every operation
-//! on the market is stated in beside the market's thirty-four, each
+//! on the market is stated in beside the market's thirty-five, each
 //! stating back exactly the fact it read.
 
 use yggdryl::IdKey;

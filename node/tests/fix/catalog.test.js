@@ -161,7 +161,7 @@ test('the complete native catalog survives a snapshot and a store', (t) => {
   assert.deepEqual(document.sources, [{ file: 'venue.cfb', id: 'venue', pluginside: 'UKNW' }])
   assert.deepEqual(
     document.codesets.map((set) => set.name),
-    ['marketdatatypecodeset', 'msgcatcodeset', 'msgpluginsidecodeset', 'partyrolecodeset', 'statecodeset'],
+    ['marketdatakindcodeset', 'marketdatatypecodeset', 'msgpluginsidecodeset', 'partyrolecodeset', 'statecodeset'],
   )
   assert.deepEqual(document.fields.find((value) => value.name === 'Vendor').metadata['FIX:sources'], ['venue'])
   assert.ok(document.components.some((value) => value.name === 'Party'))
@@ -198,8 +198,9 @@ test('the complete native catalog survives a snapshot and a store', (t) => {
   // A code set is one document under its own name, which is how it is
   // addressed and what a field states.
   assert.deepEqual(documents('codesets'), [
+    // The renamed kind set precedes type in the catalog's sorted file list.
+    'marketdatakindcodeset.json',
     'marketdatatypecodeset.json',
-    'msgcatcodeset.json',
     'msgpluginsidecodeset.json',
     'partyrolecodeset.json',
     'statecodeset.json',

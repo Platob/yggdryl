@@ -263,7 +263,7 @@ impl MsgType {
     /// states one: its `FIX:msgcat`, the member of
     /// [`MarketDataKind`](crate::MarketDataKind) it names.
     #[must_use]
-    pub fn msgcat(&self) -> Option<crate::MarketDataKind> {
+    pub fn marketdatakind(&self) -> Option<crate::MarketDataKind> {
         self.field
             .as_fix()
             .msgcat()

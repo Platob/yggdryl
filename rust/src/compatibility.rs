@@ -85,6 +85,27 @@ impl Target {
     const fn supports_fixed_size_serie(self) -> bool {
         matches!(self, Self::Arrow | Self::Polars)
     }
+
+    /// The signed integer of `unsigned`'s width a column stating
+    /// `FIELD:representation=bits` is exchanged as: wherever the engine
+    /// names that width and no unsigned one - Spark every width, Iceberg
+    /// `int` and `long` - else none, and the matrix rewrites the column as
+    /// any other. Arrow, Polars and pandas hold unsigned integers themselves.
+    fn bits_twin(self, unsigned: &DataType) -> Option<DataType> {
+        let signed = match unsigned {
+            DataType::UInt8 => DataType::Int8,
+            DataType::UInt16 => DataType::Int16,
+            DataType::UInt32 => DataType::Int32,
+            DataType::UInt64 => DataType::Int64,
+            _ => return None,
+        };
+        let named = match self {
+            Self::Arrow | Self::Polars | Self::Pandas => false,
+            Self::Spark => true,
+            Self::Iceberg => matches!(signed, DataType::Int32 | DataType::Int64),
+        };
+        named.then_some(signed)
+    }
 }
 
 fn compatibility_vocabulary() -> String {
@@ -125,6 +146,36 @@ impl Field {
     /// Field name, nullability, metadata, and an unchanged Arrow projection
     /// cache are retained. A physical rewrite carrying Arrow extension
     /// storage metadata is rejected instead of relabeling the extension.
+    ///
+    /// An unsigned integer column, at any depth, stating
+    /// `FIELD:representation=bits` is exchanged as the signed integer of its
+    /// width wherever the target names that width - Spark every width,
+    /// Iceberg `uint32` and `uint64` - rather than widened, and keeps the
+    /// declaration, so a cast onto the rewritten field carries the bits:
+    /// a `uint64` digest is an Iceberg `long` rather than a `decimal(20, 0)`.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Representation, Scheme, StructType};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut digest = DataType::UInt64.required_field("digest");
+    /// digest.as_field_properties_mut().set_representation(Representation::Bits)?;
+    /// let row = DataType::from(StructType::from_fields([
+    ///     digest,
+    ///     DataType::UInt64.required_field("count"),
+    /// ])?)
+    /// .required_field("row");
+    ///
+    /// let exchanged = row.into_scheme_compat(&Scheme::ICEBERG)?;
+    /// assert_eq!(exchanged.fields()[0].dtype(), &DataType::Int64);
+    /// assert_eq!(
+    ///     exchanged.fields()[0].as_field_properties().representation(),
+    ///     Representation::Bits
+    /// );
+    /// assert_eq!(exchanged.fields()[1].dtype(), &DataType::decimal128(20, 0)?);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -222,7 +273,7 @@ fn normalize_struct(
 ) -> Result<(DataType, bool)> {
     for (index, field) in fields.iter().enumerate() {
         let child_path = path.field(field.name());
-        let (child_dtype, child_changed) = normalize_dtype(target, field.dtype(), &child_path)?;
+        let (child_dtype, child_changed) = normalize_field_dtype(target, field, &child_path)?;
         if !child_changed {
             continue;
         }
@@ -280,9 +331,16 @@ fn normalize_run_end_encoded(
 }
 
 /// Applies the target's scalar matrix to one leaf datatype.
+///
+/// Every foreign engine reads an enum member as the `int32` code of its
+/// leaf and a registered code as the text it stores - what it loses is the
+/// identity, never the bytes - so no matrix below states either family, and
+/// a leaf added to one needs no arm.
 fn normalize_scalar(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     match target {
         Target::Arrow => Ok((dtype.clone(), false)),
+        _ if dtype.is_enum() => Ok((DataType::Int32, true)),
+        _ if dtype.is_code() => Ok((DataType::utf8(), true)),
         Target::Spark => spark_scalar(dtype, path),
         Target::Polars => polars_scalar(dtype, path),
         Target::Pandas => pandas_scalar(dtype, path),
@@ -368,24 +426,8 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         // Plain `utf8` is the one string a foreign engine names, so it passes
         // unchanged. No fixed-width text and no charset to declare here, so
         // any other string exchanges as the characters it holds, the cast
-        // encodes them as UTF-8 and trims a fixed width's padding. A code
-        // already holds its characters; what it loses here is the identity,
-        // not the bytes.
-        crate::string_dtypes!()
-        | D::Country
-        | D::Ccy
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bbg
-        | D::Ric
-        | D::Figi
-        | D::Unit
-        | D::Forex => Ok((D::utf8(), *dtype != D::Utf8String)),
-        // An enum member is the code of its leaf, which every engine reads.
-        held if held.is_enum() => Ok((D::Int32, true)),
+        // encodes them as UTF-8 and trims a fixed width's padding.
+        crate::string_dtypes!() => Ok((D::utf8(), *dtype != D::Utf8String)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -524,21 +566,7 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // unchanged. No fixed-width text and no charset to declare here, so
         // any other string exchanges as the characters it holds, the cast
         // encodes them as UTF-8 and trims a fixed width's padding.
-        crate::string_dtypes!()
-        | D::Country
-        | D::Ccy
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bbg
-        | D::Ric
-        | D::Figi
-        | D::Unit
-        | D::Forex => Ok((D::utf8(), *dtype != D::Utf8String)),
-        // An enum member is the code of its leaf, which every engine reads.
-        held if held.is_enum() => Ok((D::Int32, true)),
+        crate::string_dtypes!() => Ok((D::utf8(), *dtype != D::Utf8String)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -652,21 +680,7 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // unchanged. No fixed-width text and no charset to declare here, so
         // any other string exchanges as the characters it holds, the cast
         // encodes them as UTF-8 and trims a fixed width's padding.
-        crate::string_dtypes!()
-        | D::Country
-        | D::Ccy
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bbg
-        | D::Ric
-        | D::Figi
-        | D::Unit
-        | D::Forex => Ok((D::utf8(), *dtype != D::Utf8String)),
-        // An enum member is the code of its leaf, which every engine reads.
-        held if held.is_enum() => Ok((D::Int32, true)),
+        crate::string_dtypes!() => Ok((D::utf8(), *dtype != D::Utf8String)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -779,24 +793,8 @@ incompatible(
         }),
         // Plain `utf8` is the one string a foreign engine names, so it passes
         // unchanged. Iceberg has `string` and `fixed[n]` and no charset to
-        // declare, so any other string exchanges as the characters it holds,
-        // and a code as the ones it already stores: every Iceberg reader sees
-        // `USD`, under a type it can name.
-        crate::string_dtypes!()
-        | D::Country
-        | D::Ccy
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bbg
-        | D::Ric
-        | D::Figi
-        | D::Unit
-        | D::Forex => Ok((D::utf8(), *dtype != D::Utf8String)),
-        // An enum member is the code of its leaf, which every engine reads.
-        held if held.is_enum() => Ok((D::Int32, true)),
+        // declare, so any other string exchanges as the characters it holds.
+        crate::string_dtypes!() => Ok((D::utf8(), *dtype != D::Utf8String)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -848,8 +846,26 @@ fn narrow_decimal(
     Ok((transformed, changed))
 }
 
+/// The datatype `field` is exchanged as: an unsigned integer stating
+/// `FIELD:representation=bits` the signed integer of its width where the
+/// target names one ([`Target::bits_twin`]) - its bits cross, so nothing is
+/// widened to a decimal - and every other field what the target's matrix
+/// rewrites its datatype to.
+fn normalize_field_dtype(
+    target: Target,
+    field: &Field,
+    path: &Path<'_>,
+) -> Result<(DataType, bool)> {
+    if let Some(signed) = target.bits_twin(field.dtype())
+        && field.as_field_properties().representation().is_bits()
+    {
+        return Ok((signed, true));
+    }
+    normalize_dtype(target, field.dtype(), path)
+}
+
 fn normalize_field(target: Target, field: &Field, path: &Path<'_>) -> Result<(Field, bool)> {
-    let (dtype, changed) = normalize_dtype(target, field.dtype(), path)?;
+    let (dtype, changed) = normalize_field_dtype(target, field, path)?;
     if !changed {
         return Ok((field.clone(), false));
     }

@@ -637,6 +637,10 @@ knobs those builders take cross as `IOBase.fromUri(url, options)` properties.
   whether or not `a` exists yet; a write creates the parents.
 - `mediaType`, `codec`, `parent`, `partitions`, `url` are getters; `size()`, `kind()`,
   `opened()`, `closed()`, `exists()`, `isDir()`, `isFile()` are methods.
+- `isDir()` is the role a spelling settles: a glob (`joinpath(['year=*'])`) or
+  a name ending in `/` is a container before anything is there. `exists()` is
+  presence: a glob exists while it selects an entry, its listing read up to the
+  first match.
 - `copyInto` answers a `bigint`; `compressInto`/`decompressInto` a `number`.
 - `moveInto` and the four `open*Stream` calls are the bridge's own: both
   handles come from `fromFs`. A native handle moves with `copyInto` then

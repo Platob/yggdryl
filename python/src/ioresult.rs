@@ -18,7 +18,9 @@ use crate::{compare, python_hash};
 /// Every record write of an `IOBase` answers one: `read_rows` is what the
 /// write pulled from its source, `written_rows` what reached the
 /// destination, `skipped_rows` what was read and not written - the rows a
-/// `where` kept out, the part of the last batch a bound cut off.
+/// `where` kept out, the part of the last batch a bound cut off, and the
+/// rows an append to an Iceberg table stating `identifier-field-ids` left
+/// out because their key was stored or met earlier in the write.
 #[pyclass(
     name = "IOResult",
     module = "yggdryl._native",

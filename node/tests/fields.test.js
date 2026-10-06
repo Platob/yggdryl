@@ -279,6 +279,11 @@ test('typed field factories cover every native datatype variant', () => {
     ['unit', fields.unit('value')],
     ['ric', fields.ric('value')],
     ['forex', fields.forex('value')],
+    ['lei', fields.lei('value')],
+    ['bic', fields.bic('value')],
+    ['elf', fields.elf('value')],
+    ['dti', fields.dti('value')],
+    ['fisn', fields.fisn('value')],
     ['uuid', fields.uuid('value')],
     ['version', fields.version('value')],
     ['url', fields.url('value')],
@@ -550,6 +555,11 @@ test('the registered codes build their own datatype at their own width', () => {
     ['bbg', [fields.bbg('bbg'), 32]],
     ['figi', [fields.figi('figi'), 12]],
     ['ric', [fields.ric('ric'), 32]],
+    ['lei', [fields.lei('issuer'), 20]],
+    ['bic', [fields.bic('counterparty'), 11]],
+    ['elf', [fields.elf('legal_form'), 4]],
+    ['dti', [fields.dti('token'), 9]],
+    ['fisn', [fields.fisn('short_name'), 35]],
   ])
 
   for (const [name, [value, width]] of declared) {
@@ -622,6 +632,25 @@ test('the registered codes build their own datatype at their own width', () => {
     () => castArray(fields.ric('sid'), utf8(['VOD L']), strict),
     /canonical spelling/,
   )
+  // The reference-data codes land under the same rule: the upper-case
+  // spelling enters, a check that does not close included, and a
+  // lower-case one is null under the safe default and refused when strict.
+  for (const [field, closed, typo, lower] of [
+    [fields.lei('sid'), 'HWUPKR0MPOU8FGXBT394', 'HWUPKR0MPOU8FGXBT395', 'hwupkr0mpou8fgxbt394'],
+    [fields.dti('sid'), 'X9J9K872S', 'X9J9K872T', 'x9j9k872s'],
+  ]) {
+    assert.deepEqual([...castArray(field, utf8([closed, typo, lower]))], [closed, typo, null])
+    assert.deepEqual([...castArray(field, utf8([typo]), strict)], [typo])
+    assert.throws(() => castArray(field, utf8([lower]), strict), /canonical spelling/)
+  }
+  for (const [field, kept, ill] of [
+    [fields.bic('sid'), 'DEUTDEFF500', 'DEUT1EFF'],
+    [fields.elf('sid'), '2HBR', '2HB'],
+    [fields.fisn('sid'), 'ACME CORP/SH', 'ACME CORP SH'],
+  ]) {
+    assert.deepEqual([...castArray(field, utf8([kept, ill]))], [kept, null])
+    assert.throws(() => castArray(field, utf8([ill]), strict), /row 0 of column sid/)
+  }
   assert.equal(declared.get('country')[0].name, 'venue_country')
   assert.equal(fields.ccy('ccy', { nullable: false }).nullable, false)
   assert.equal(fields.mic('venue', { metadata: { source: 'iso' } }).get('source'), 'iso')
@@ -629,13 +658,27 @@ test('the registered codes build their own datatype at their own width', () => {
 
   const root = fields.struct(
     'row',
-    [fields.ccy('settlement_ccy'), fields.bbg('bbg'), fields.ric('ric')],
+    [
+      fields.ccy('settlement_ccy'),
+      fields.bbg('bbg'),
+      fields.ric('ric'),
+      fields.lei('lei'),
+      fields.bic('bic'),
+      fields.elf('elf'),
+      fields.dti('dti'),
+      fields.fisn('fisn'),
+    ],
     { nullable: false },
   )
   const table = new arrow.Table({
     settlement_ccy: arrow.vectorFromArray(['USD'], new arrow.Utf8()),
     bbg: arrow.vectorFromArray(['VOD LN Equity'], new arrow.Utf8()),
     ric: arrow.vectorFromArray(['VOD.L'], new arrow.Utf8()),
+    lei: arrow.vectorFromArray(['HWUPKR0MPOU8FGXBT394'], new arrow.Utf8()),
+    bic: arrow.vectorFromArray(['DEUTDEFF'], new arrow.Utf8()),
+    elf: arrow.vectorFromArray(['2HBR'], new arrow.Utf8()),
+    dti: arrow.vectorFromArray(['X9J9K872S'], new arrow.Utf8()),
+    fisn: arrow.vectorFromArray(['ACME CORP/SH'], new arrow.Utf8()),
   })
   const batch = Serie.fromArrowBatch(table, root).intoArrowBatch()
   // Each code rides Arrow's text storage under its own extension name.
@@ -648,12 +691,32 @@ test('the registered codes build their own datatype at their own width', () => {
       [arrow.Type.Utf8, 'yggdryl.ccy'],
       [arrow.Type.Utf8, 'yggdryl.bbg'],
       [arrow.Type.Utf8, 'yggdryl.ric'],
+      [arrow.Type.Utf8, 'yggdryl.lei'],
+      [arrow.Type.Utf8, 'yggdryl.bic'],
+      [arrow.Type.Utf8, 'yggdryl.elf'],
+      [arrow.Type.Utf8, 'yggdryl.dti'],
+      [arrow.Type.Utf8, 'yggdryl.fisn'],
     ],
   )
   assert.deepEqual([...batch.getChild('ric')], ['VOD.L'])
+  assert.deepEqual([...batch.getChild('fisn')], ['ACME CORP/SH'])
   // The extension name is the identity the field reads back.
-  const landed = Serie.fromArrowBatch(batch).field
-  assert.equal(landed.getFieldAt(2).dtype.id, 'ric')
+  const landed = Serie.fromArrowBatch(batch)
+  assert.deepEqual(
+    Array.from({ length: 8 }, (_, index) => landed.field.getFieldAt(index).dtype.id),
+    ['ccy', 'bbg', 'ric', 'lei', 'bic', 'elf', 'dti', 'fisn'],
+  )
+  // A record row crosses each code back as the text it stores.
+  assert.deepEqual(landed.scalar(0).asJs(), [
+    'USD',
+    'VOD LN Equity',
+    'VOD.L',
+    'HWUPKR0MPOU8FGXBT394',
+    'DEUTDEFF',
+    '2HBR',
+    'X9J9K872S',
+    'ACME CORP/SH',
+  ])
 })
 
 test('nested factories preserve exact child metadata and dictionary state', () => {

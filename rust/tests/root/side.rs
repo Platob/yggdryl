@@ -116,7 +116,7 @@ fn a_side_is_one_byte_whose_code_is_the_position_of_its_wire_character() {
     assert_eq!(std::mem::size_of::<Side>(), 1);
     assert_eq!(std::mem::size_of::<Option<Side>>(), 1);
     assert_eq!(Side::default(), Side::Unknown);
-    assert_eq!(Side::ALL.len(), 18);
+    assert_eq!(Side::ALL.len(), 19);
     assert_eq!(<Side as EnumValue>::ALL, Side::ALL);
     assert_eq!(<Side as EnumValue>::KIND, "side");
     assert_eq!(<Side as EnumValue>::EXTENSION_NAME, "yggdryl.side");
@@ -142,16 +142,20 @@ fn a_side_is_one_byte_whose_code_is_the_position_of_its_wire_character() {
         assert!(!side.description().is_empty(), "{stored}");
         assert_eq!(Side::ALL[index], *side);
     }
-    // The members order as the wire codes do, `1`..=`9` then `A`..=`H`.
+    // The members order as the wire codes do, `1`..=`9` then `A`..=`H`,
+    // and `BOTH`, which has no wire code, stands last.
     let mut ordered: Vec<Side> = SIDES.iter().map(|(_, _, _, _, side)| *side).collect();
     ordered.reverse();
     ordered.sort_unstable();
-    assert_eq!(ordered, Side::ALL);
-    // The string listing of the same vocabulary is the eighteen stored
+    assert_eq!(ordered, &Side::ALL[..18]);
+    assert_eq!(Side::ALL[18], Side::Both);
+    // The string listing of the same vocabulary is the nineteen stored
     // codes, sorted: what a fixed-ASCII column may declare it holds.
     let mut listed: Vec<&str> = SIDES.iter().map(|(_, stored, _, _, _)| *stored).collect();
+    listed.push(Side::Both.as_str());
     listed.sort_unstable();
     assert_eq!(listed.as_slice(), StringEnum::SIDES);
+    assert!(StringEnum::prebuilt_values("side").contains(&"BOTH"));
 }
 
 #[test]
@@ -212,10 +216,11 @@ fn a_side_is_a_bid_an_ask_or_neither() {
         assert_eq!(side.is_ask(), ask.contains(&side), "{stored}");
         assert!(!(side.is_bid() && side.is_ask()), "{stored}");
     }
-    // A cross, `OPPO`, `ASDF`, `UNDI` and a side stated as none
-    // take no lane.
+    // A cross, `OPPO`, `ASDF`, `UNDI`, a side stated as none and both
+    // sides at once take no lane.
     for side in [
         Side::Unknown,
+        Side::Both,
         Side::Cross,
         Side::CrossSh,
         Side::CrossShX,
@@ -229,6 +234,43 @@ fn a_side_is_a_bid_an_ask_or_neither() {
     ] {
         assert!(!side.is_bid() && !side.is_ask(), "{side}");
     }
+}
+
+#[test]
+fn both_sides_at_once_is_its_own_member_with_no_wire_code() {
+    let both = Side::Both;
+    assert_eq!(both.code(), 99);
+    assert_eq!(both.as_str(), "BOTH");
+    assert_eq!(both.to_string(), "BOTH");
+    assert!(!both.description().is_empty());
+    assert_eq!(Side::from_code(99), Some(both));
+    assert_eq!(Side::read_code(99).unwrap(), both);
+    assert_eq!(Side::try_from(99_u8).unwrap(), both);
+    assert_eq!(u8::from(both), 99);
+    // No message carries it, so it has no wire character and takes neither
+    // leg.
+    assert_eq!(both.fix_code(), None);
+    assert!(!both.is_bid() && !both.is_ask());
+    // Its stored code, folded, and the word for it read; a stored code is
+    // an integer and never text.
+    for spelling in ["BOTH", "both", "Both", "two-sided", "TwoSided"] {
+        assert_eq!(Side::from_spelling(spelling), Some(both), "{spelling}");
+    }
+    assert_eq!(Side::from_spelling("99"), None);
+    // It is stated, so it stands over another side and a side stated as
+    // none takes it.
+    assert_eq!(both.merge_with(Side::Buy), both);
+    assert_eq!(Side::Unknown.merge_with(both), both);
+    // It serializes as its stored name and reads back by code or spelling.
+    assert_eq!(serde_json::to_string(&both).unwrap(), "\"BOTH\"");
+    assert_eq!(serde_json::from_str::<Side>("\"BOTH\"").unwrap(), both);
+    assert_eq!(serde_json::from_str::<Side>("99").unwrap(), both);
+    let value = Scalar::Side(both);
+    assert_eq!(
+        Scalar::decode_value_bytes(&value.into_value_bytes()).unwrap(),
+        value
+    );
+    assert_eq!(DataType::Side.scalar(Scalar::from(99_i32)).unwrap(), value);
 }
 
 #[test]

@@ -10,6 +10,7 @@ Field metadata the library reads: reserved keys, `SCHEME:name` properties behind
 | `FIELD:enum` | the `StringEnum` document ([Codes](codes/index.md)); accepted on a fixed US-ASCII string of at most sixteen bytes or a registered code, refused by name elsewhere. A second key beside it rather than a copy of it is FIX's `FIX:codeset`, which holds no members at all: it names the [code set](../fix/registry.md#a-field-names-the-code-set-it-reads-by) the dictionary holds them under, and a field may carry both |
 | `FIELD:init` | boolean, absent by default; `false` = declared but refused by constructors. Read at intake by the one [boolean reader](numeric/boolean.md#the-one-text-reader) - `no`, `False`, `0` - and stored `true` or `false`, so `is_init` compares the stored text and cannot fail |
 | `FIELD:partition` | boolean, read and stored as `FIELD:init` is; `true` on partition columns, absent elsewhere |
+| `FIELD:representation` | `value` (absent, the default) or `bits`, read case-insensitively and stored lower case. `bits` on an integer column says its integers are bit patterns: a same-width integer of the other signedness crosses into or out of it as its bits at the value door, the [cast](cast.md#a-column-that-states-its-bits) and the [compatibility rewrite](datatype.md#compatibility-rewriting) ([Integers stated as bits](#integers-stated-as-bits)). Refused on any other column by `set_representation`, and inert there |
 | `location` | [`Url`](../uri/url-urn.md), a straight key |
 | `alias`, `comment`, `display` | validated text; views fall back to straight `comment` and `display` |
 | `SCHEME:name` | protocol property; the prefix is a known [`Scheme`](scalar.md) spelled upper case, as `ARROW:extension:name` and `PARQUET:field_id` spell theirs, and a key written in any case folds to it |
@@ -310,6 +311,7 @@ its stored schema derives for every row written to it.
 | [`SortField`, `SortFieldMut`](#sort-order) | `by`, `declares_order`; `set_by`, `set_by_texts`, `remove_by`; a [plan](../expression/plans.md) moves the keys into its `order by` and an [Iceberg table](../media/iceberg.md#declared-partitioning-and-sort-order) into its default sort order |
 | [`TransformField`, `TransformFieldMut`](../expression/selectors.md#a-selector-declares-a-schema) | `term`, `function`, `by`, `is_derived`, `apply_arrow_batch`, `apply_arrow_reader` (Rust); `set_term`, `set_function`, `remove_term` |
 | `PythonField`, `PythonFieldMut` | `class`, `module`, `qualname`, `class_name`, `kind`, `import_path`, and their setters |
+| [`FieldPropertiesField`, `FieldPropertiesFieldMut`](#integers-stated-as-bits) | `representation`; `set_representation` (`field_properties.representation` in Python, `fieldProperties.representation` in JavaScript) |
 
 ## Digest holders and their by
 
@@ -667,9 +669,93 @@ as it arrived - so an Iceberg scan's root drops it while `IcebergTable::schema()
         [serie verbs](serie.md#sorting-uniqueness-and-partitions) take a plain
         `{ descending, nullsFirst }` object.
 
+## Integers stated as bits
+
+An XXH3-64 digest is a bit pattern nobody does arithmetic on, and a table with no unsigned type
+(Iceberg, Spark) can store it as the `long` of its width rather than widen it to
+`decimal(20, 0)`. `FIELD:representation=bits` is that statement, made by the column: on an
+integer column, a same-width integer of the other signedness crosses into it as its bits -
+`-1` under a `uint64` stating it is `u64::MAX`, and `u64::MAX` under such an `int64` is `-1`.
+`DataType::scalar` never reads bits, and neither does a column stating nothing, so the
+reinterpretation is explicit in both directions. A value both readings agree on is read by value
+and pays no metadata lookup.
+
+The same declaration is read by the [cast](cast.md#a-column-that-states-its-bits), which shares
+the buffer, by the [compatibility rewrite](datatype.md#compatibility-rewriting), which exchanges
+the column as the signed integer of its width, and by an
+[Iceberg table](../media/iceberg.md#integers-stated-as-bits), which keeps it.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Representation, Scalar};
+
+    let mut digest = DataType::UInt64.required_field("currhashcode");
+    assert_eq!(digest.as_field_properties().representation(), Representation::Value);
+    assert!(digest.scalar(-1_i64).is_err());
+
+    digest.as_field_properties_mut().set_representation(Representation::Bits)?;
+    assert_eq!(digest.get_metadata("FIELD:representation"), Some("bits"));
+    assert_eq!(digest.scalar(-1_i64)?, Scalar::from(u64::MAX));
+    // The datatype's own door reads no bits: only a column states them.
+    assert!(DataType::UInt64.scalar(Scalar::from(-1_i64)).is_err());
+
+    // `Value` removes the declaration; `Bits` on a column that is no integer
+    // is refused and changes nothing.
+    digest.as_field_properties_mut().set_representation(Representation::Value)?;
+    assert!(!digest.has_metadata("FIELD:representation"));
+    let mut text = DataType::utf8().required_field("text");
+    assert!(text.as_field_properties_mut().set_representation(Representation::Bits).is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    import pytest
+    from yggdryl import DataType, Field
+
+    digest = Field("currhashcode", "uint64", nullable=False)
+    assert digest.field_properties.representation == "value"
+
+    digest.field_properties.representation = "bits"
+    assert digest.metadata["FIELD:representation"] == "bits"
+    assert digest.scalar(-1).as_py() == 2**64 - 1
+    # The datatype's own door reads no bits: only a column states them.
+    with pytest.raises(ValueError):
+        DataType("uint64").scalar(-1)
+
+    # "value" or None removes the declaration.
+    digest.field_properties.representation = None
+    assert "FIELD:representation" not in digest.metadata
+    with pytest.raises(ValueError):
+        Field("text", "utf8").field_properties.representation = "bits"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field } = require('yggdryl')
+
+    const digest = new Field('currhashcode', 'uint64', false)
+    assert.equal(digest.fieldProperties.representation, 'value')
+
+    digest.fieldProperties.representation = 'bits'
+    assert.equal(digest.get('FIELD:representation'), 'bits')
+    assert.equal(digest.scalar(-1n).asJs(), 2n ** 64n - 1n)
+
+    // 'value' or null removes the declaration.
+    digest.fieldProperties.representation = null
+    assert.equal(digest.get('FIELD:representation'), null)
+    assert.throws(() => {
+      new Field('text', 'utf8').fieldProperties.representation = 'bits'
+    })
+    ```
+
 ## Edges
 
 - `"+00017"` to `PARQUET:field_id` -> stored as `"17"`; `"2147483648"` -> refused.
+- `FIELD:representation=bits` -> read only across one width: `-1_i32` under a `uint64` stating it is refused, as it is by value. Written by hand on a column that is no integer, it is inert.
 - `HTTPS:Content-Type`, `HTTP:content-type`, `HTTP:content-type` -> one entry, matched case-insensitively.
 - `https` -> no accessor; either scheme's view reports `http`.
 - Rust `field.location()` -> straight `location`; `as_http().location()` -> `HTTP:location` (`http_location` / `httpLocation` in the bindings).

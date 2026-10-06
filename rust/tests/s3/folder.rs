@@ -177,6 +177,31 @@ mod accounting {
     }
 
     #[test]
+    fn a_glob_prefix_exists_while_it_selects_an_object() {
+        let store = store();
+        logs(&store);
+
+        // A pattern is there while its listing yields one match, the walk
+        // stopping at the first.
+        let level = folder(&store, "logs/*.log");
+        store.clear_requests();
+        assert!(level.exists());
+        assert_eq!(asked(&store), vec![("GET".to_owned(), None)], "one listing");
+
+        let none = folder(&store, "logs/*.csv");
+        store.clear_requests();
+        assert!(!none.exists());
+        assert_eq!(store.request_count(), 1, "one page, read to its end");
+
+        // Under an absent prefix the pattern lists that prefix once and
+        // selects nothing.
+        let absent = folder(&store, "nowhere/*.log");
+        store.clear_requests();
+        assert!(!absent.exists());
+        assert_eq!(store.request_count(), 1);
+    }
+
+    #[test]
     fn a_listed_object_already_knows_its_size() {
         let store = store();
         for part in 0..3 {

@@ -51,7 +51,9 @@ impl<'field> IcebergField<'field> {
     /// Parses the identifier columns of a schema root.
     ///
     /// An absent property is an empty list: a schema states identifier columns
-    /// only when it has them.
+    /// only when it has them. They are the table's own match key: a merge
+    /// whose options name no `merge_by` matches on them, after the identity
+    /// partition columns ([`IOMedia::merge_by`](crate::IOMedia::merge_by)).
     ///
     /// # Errors
     ///

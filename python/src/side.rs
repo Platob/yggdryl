@@ -5,7 +5,7 @@ use yggdryl::Side;
 
 /// Every member of the core enum, in code order: its four-letter code, the
 /// code a column stores, what it means, its `Side(54)` wire character - `None` for
-/// `UKNW` - and whether it takes the bid and whether the ask.
+/// `UKNW` and `BOTH` - and whether it takes the bid and whether the ask.
 ///
 /// The Python enum is built from this once at import, so the binding lists
 /// no member and decides no side of its own.

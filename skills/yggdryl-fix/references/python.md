@@ -172,8 +172,8 @@ message = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|11=A1|55=AA
 
 assert (message.header().beginstring, message.header().msgtype) == ("FIX.4.4", "D")
 # The category its type files under, and the option strike it identifies.
-assert message.msgcat is MarketDataKind.ORDR
-assert message.strikeprice is not None and message.strikeprice.as_py() == Decimal(105)
+assert message.marketdatakind is MarketDataKind.ORDR
+assert message.strikepx is not None and message.strikepx.as_py() == Decimal(105)
 # A coded value reads as its member; the wire keeps its code.
 assert message.by_tag(54).as_py() is Side.BUYS
 assert message.side is Side.BUYS
@@ -389,7 +389,7 @@ with tempfile.TemporaryDirectory() as directory:
 
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
-its order and side under one `crossuuid`, within one market data kind (`msgcat`); a
+its order and side under one `crossuuid`, within one market data kind (`marketdatakind`); a
 report stating no side joins the one side alive under its identifiers. A fill's
 execution, split off at the parse, is a chain of its own and never restates,
 follows or ends its order. A codec pinned `sorted_lifecycle=True` reads a source already in
@@ -428,10 +428,10 @@ assert ack.prevuuid == order.curruuid and fill.prevuuid == ack.curruuid
 assert ack.crossuuid == fill.crossuuid == order.crossuuid
 # The reports stated no side: they joined the buy alive under A1 and O1.
 assert all(held.side is Side.BUYS and held.crosscode == "10:1:A1" for held in (ack, fill))
-assert (fill.msgcat, fill.state) == (MarketDataKind.ORDR, State.FILLED)
+assert (fill.marketdatakind, fill.state) == (MarketDataKind.ORDR, State.FILLED)
 # Every walked message states when its chain began.
 assert ack.creaunix == fill.creaunix == order.currunix
-assert (execution.msgcat, execution.state) == (MarketDataKind.EXEC, State.FILLED)
+assert (execution.marketdatakind, execution.state) == (MarketDataKind.EXEC, State.FILLED)
 assert (execution.seqnum, execution.prevuuid) == (1, None)
 
 # Rows already in Arrow chain in place, under the schema they were read with.
@@ -452,11 +452,14 @@ fixed. A codec without one learns into a registry of each walk's own;
 `isin_registry=` shares one across walks run one after another, bound to a
 store with `from_url` and written back with `commit()` only where it moved,
 and `FixCodec.from_env()` shares the process's own, `IsinRegistry.from_env()`.
+A structured product's EUSIPA category is learned off a bridge's own key
+(`EUSIPACode`, `OMS_SSPACategory`, ...) as the row's `eusipacode`, an `int`
+that `yggdryl.Eusipa` names; the key is lifted into no identifier map.
 
 ```python
 from pathlib import Path
 
-from yggdryl import IsinRegistry
+from yggdryl import Eusipa, IsinRegistry
 from yggdryl.fix import FixCodec, FixRegistry
 
 instruments = IsinRegistry()
@@ -466,6 +469,12 @@ codec = FixCodec(FixRegistry.from_handle(Path("config/fix")), isin_registry=inst
 stated = [b"8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|"]
 list(codec.lifecycle(codec.parse_lines(stated)))
 assert instruments.get("CH0012214059")["ric"] == "HOLN.S"
+
+# A bridge key states a structured product's category beside its ISIN.
+product = [b"8=FIX.4.4|35=D|11=C|22=4|48=CH0123456789|55=ACMEL|207=XSWX|OMS_SSPACategory=2300|10=0|"]
+list(codec.lifecycle(codec.parse_lines(product)))
+category = Eusipa(instruments.get("CH0123456789")["eusipacode"])
+assert (category.code, category.name) == (2300, "Constant Leverage Certificate")
 
 # A later parse naming only the ticker on the market takes the ISIN from the
 # table, derived; the walk fills the CFI code as a market fact.
@@ -519,11 +528,11 @@ assert all(message.crossuuid == chained[0].crossuuid for message in chained)
 ## Split fills and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
-fill twice: an execution report is its order's report (`msgcat` `ORDR`, its
+fill twice: an execution report is its order's report (`marketdatakind` `ORDR`, its
 own state; `QUOT` where it names a `QuoteID(117)`) - one of no fill from its
 parse - and one that fills adds one `EXEC` message reading `FILLED`, chained
 under its `ExecID(17)` as given, else `TradeID=<TradeID(1003)>`; a trade
-(`AE`) adds one sided execution per `NoSides(552)` occurrence; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+(`AE`) adds one sided execution per `NoSides(552)` occurrence; a batch (`marketdatakind` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
 an order list, a mass order, a cross, a mass quote, a match report) adds one
 message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`) - a
 mass quote's entry one quote holding both its legs - chained by the order the
@@ -543,15 +552,15 @@ codec = FixCodec(FixRegistry.from_handle(Path("config/fix")))
 
 fill = b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|10=0|"
 report, execution = codec.parse_line(fill)
-assert (report.msgcat, report.state) == (MarketDataKind.ORDR, State.PARTIALLY_FILLED)
-assert (execution.msgcat, execution.state) == (MarketDataKind.EXEC, State.FILLED)
+assert (report.marketdatakind, report.state) == (MarketDataKind.ORDR, State.PARTIALLY_FILLED)
+assert (execution.marketdatakind, execution.state) == (MarketDataKind.EXEC, State.FILLED)
 assert report.curruuid in execution.srcuuids
 # An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert (report.crosscode, execution.crosscode) == ("10:1:O-9", "8:1:E-1")
 
 [quote] = codec.parse_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|")
-assert (quote.msgcat, quote.side, quote.crosscode) == (MarketDataKind.QUOT, Side.UKNW, "14:0:Q1")
-# Both legs on the one message, each in its currency; neither is the quote's own price.
+assert (quote.marketdatakind, quote.side, quote.crosscode) == (MarketDataKind.QUOT, Side.BOTH, "14:0:Q1")
+# Both legs on the one message, each in its currency, tagged BOTH; neither is the quote's own price.
 assert quote.price is None
 assert quote.bidpx is not None and quote.bidpx.as_py() == Decimal(99)
 assert quote.askpx is not None and quote.askpx.as_py() == Decimal(101)
@@ -589,7 +598,7 @@ lines = [
     b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
 ]
 capture = list(codec.parse_lines(lines))
-assert all(message.msgcat is MarketDataKind.BOOK for message in capture)
+assert all(message.marketdatakind is MarketDataKind.BOOK for message in capture)
 
 leaves = list(codec.market_data(codec.lifecycle(capture)))
 assert len(leaves) == 4, "one leaf per entry"
@@ -744,7 +753,7 @@ with tempfile.TemporaryDirectory() as directory:
   `False` unless the source is in instant order; `default_sending_time=` takes an
   aware UTC `datetime` or a nanosecond `Scalar` - pin it for reproducible reads
   of undated frames.
-- `side`, `state` and `msgcat` answer `IntEnum` members (`Side.BUYS`,
+- `side`, `state` and `marketdatakind` answer `IntEnum` members (`Side.BUYS`,
   `State.FILLED`, `MarketDataKind.ORDR`): compare with `is`, never with text.
 - `book_arrow_reader(messages, snapshot_millis=0, filter=None)` takes no mode
   beyond the grid and the filter (a `Filter`, a `Term`, an `Expression` or a

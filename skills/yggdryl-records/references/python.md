@@ -146,21 +146,23 @@ assert next(handle.read_records()) == {"id": 1, "venue": "XNAS"}
 
 ## Append, and upsert by key
 
-Overwrite replaces, append keeps the stored rows, merge updates rows whose `merge_by` key matches and appends the rest. Merge without a key is refused.
+Overwrite replaces, append keeps the stored rows, merge updates rows whose `merge_by` key matches and appends the rest, replacing a stored row only where the last arrival for its key differs from it - a merge changing nothing leaves the file unwritten. Merge without a key is refused; `merge_by=True` names the destination's own key, which a leaf has none of, and `merge_by=False` no key at all.
 
 ```python
+import os
 import pathlib
 import tempfile
 
 import pyarrow as pa
 import pytest
 
-from yggdryl import IOBase
+from yggdryl import IOBase, IOResult, RecordOptions
 
 schema = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("symbol", pa.string())])
 rows = lambda ids, symbols: pa.record_batch({"id": ids, "symbol": symbols}, schema=schema)
 
-handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
+path = pathlib.Path(tempfile.mkdtemp()) / "trades.arrows"
+handle = IOBase(path)
 handle.overwrite_arrow_batch(rows([1, 2], ["AAPL", "MSFT"]))
 handle.append_arrow_batch(rows([3], ["NVDA"]))
 handle.merge_arrow_batch(rows([2, 9], ["MSFT.O", "AMD"]), merge_by=["id"])
@@ -168,8 +170,18 @@ handle.merge_arrow_batch(rows([2, 9], ["MSFT.O", "AMD"]), merge_by=["id"])
 stored = {row["id"]: row["symbol"] for row in handle.read_records()}
 assert stored == {1: "AAPL", 2: "MSFT.O", 3: "NVDA", 9: "AMD"}
 
+# Rows equal to the stored ones are counted, and the file is not rewritten.
+before = (handle.read_bytes(), os.stat(path).st_mtime_ns)
+assert handle.merge_arrow_batch(rows([2], ["MSFT.O"]), merge_by=["id"]) == IOResult(1, 1, 0)
+assert (handle.read_bytes(), os.stat(path).st_mtime_ns) == before
+
 with pytest.raises(ValueError, match="merge_by"):
     handle.merge_arrow_batch(rows([1], ["X"]))
+with pytest.raises(ValueError, match="merge_by"):
+    handle.merge_arrow_batch(rows([1], ["X"]), merge_by=True)   # a leaf states no key
+assert RecordOptions("trades.arrows", merge_by=True) == RecordOptions("trades.arrows")
+with pytest.raises(ValueError, match=r"\$\.merge_by"):
+    RecordOptions("trades.arrows", merge_by=False)
 ```
 
 ## Choose the write mode at run time
@@ -317,7 +329,10 @@ assert handle.read_arrow_reader(field=table.schema, sheet="Trades").read_all() =
 assert handle.read_arrow_reader(sheet="Trades").read_all().column("id").to_pylist() == [1.0, 2.0]
 
 # The workbook: any cell by its A1 reference, a sheet as a Serie and back.
-workbook = Workbook.open(path)
+# Keep the package in memory and release the file before replacing it.
+source = handle.read_bytes()
+handle.close()
+workbook = Workbook.from_bytes(source)
 sheet = workbook["Trades"]
 assert sheet["B2"].as_py() == "AAPL"
 sheet["B3"] = "MSFT"
@@ -468,7 +483,7 @@ assert filled.column("year").to_pylist() == [2024, 2025]
 
 ## Iceberg: create, append, upsert, scan
 
-A table is a folder reached through one `IOBase`; no catalog is required. Scans are `pyarrow.RecordBatchReader`s planned from metadata; `merge` keys are the identity partition columns plus `merge_by`.
+A table is a folder reached through one `IOBase`; no catalog is required. Scans are `pyarrow.RecordBatchReader`s planned from metadata; `merge` keys are the identity partition columns plus `merge_by`, else - `merge_by` left out, `None` or `True` - the columns the schema's `identifier-field-ids` names ([the table's own key](#iceberg-the-tables-own-key)).
 
 ```python
 import pathlib
@@ -500,6 +515,49 @@ assert table.scan_at(first).read_all().num_rows == 3  # time travel
 # The folder is also an ordinary record handle: filter and select push down.
 reopened = IOBase(root.url.into_path())
 assert reopened.read_arrow_reader(select=["id"], filter="venue = 'XNYS'").read_all().num_rows == 1
+```
+
+## Iceberg: the table's own key
+
+A table whose schema states `identifier-field-ids` keys every write by it: a merge naming no key - `merge_by` left out, `None` or `True` - matches on it, and an append writes only the rows whose key neither the table nor an earlier row of the write holds - the first arrival kept, the rest in `skipped_rows`, no stored file rewritten. A merge or an append that changes nothing commits no snapshot. `IcebergTable.append` answers `None`; the `IOBase` doors (`append_serie`, `append_arrow_*`) answer the `IOResult`. A keyed append beaten by a concurrent commit raises `ValueError` instead of rebasing.
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow as pa
+
+from yggdryl import IOBase, IOResult
+from yggdryl.iceberg import IcebergTable, assign_field_ids
+
+rows = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("venue", pa.string())])
+schema = assign_field_ids(rows)
+# The table's own key: `id`, named by the field id the numbering gave it.
+schema.iceberg.update({"identifier-field-ids": "1"})
+table = IcebergTable.create(IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades"), schema, None)
+trades = lambda ids, venues: pa.record_batch({"id": ids, "venue": venues}, schema=rows)
+
+assert table.append_serie(trades([1, 2], ["XNAS", "XNYS"])) == IOResult(2, 2, 0)
+# 2 is stored and 3 arrives twice: one row written, two skipped.
+assert table.append_serie(trades([2, 3, 3], ["XLON", "XPAR", "XAMS"])) == IOResult(3, 1, 2)
+
+# A merge naming no key matches on the table's own; `True` states it.
+table.merge(trades([1], ["XAMS"]), True)
+# Replaying it changes no row: counted as written, committed nowhere.
+snapshots = len(table.snapshots)
+assert table.merge_serie(trades([1], ["XAMS"]), merge_by=True) == IOResult(1, 1, 0)
+assert len(table.snapshots) == snapshots
+try:
+    table.merge(trades([4], ["XETR"]), False)
+except ValueError as refusal:
+    assert "$.merge_by" in str(refusal)
+else:
+    raise AssertionError("False names no key")
+
+assert table.scan().read_all().sort_by("id").to_pydict() == {
+    "id": [1, 2, 3],
+    "venue": ["XAMS", "XNYS", "XPAR"],
+}
 ```
 
 ## Evolve an Iceberg schema

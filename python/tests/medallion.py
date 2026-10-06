@@ -54,21 +54,21 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 import yggdryl
-from yggdryl import Catalog, ChunkedSerie, Field, IOBase, IOResult, Namespace, SerieReader, Table, TextOptions
-from yggdryl.http import process_stats
+from yggdryl import Catalog, ChunkedSerie, Field, IOBase, IOResult, IsinRegistry, Namespace, SerieReader, Table, TextOptions
 from yggdryl.fix import ULBRIDGE_ROWHEADER, FixCodec, FixRegistry
 from yggdryl.graph import MarketData
 from yggdryl.iceberg import IcebergCatalog
 
 NAMESPACE = "record_keeping"
 
-# The primary key every table of the pipeline declares: when a row happened
-# and the hash of what it states.
-PRIMARY_KEY = ("currunix", "currhashcode")
+# The primary key every table of the pipeline declares: when a row happened,
+# which object it came from, its place there and the hash of what it states -
+# the instant and the content alone repeat wherever two lines are one text.
+PRIMARY_KEY = ("currunix", "crosshashcode", "seqnum", "currhashcode")
 
-# What every table of the pipeline requires of each row: its key, its place
-# among the rows of its instant, and the code and hash of its chain.
-REQUIRED = (*PRIMARY_KEY, "seqnum", "crosscode", "crosshashcode")
+# What every table of the pipeline requires of each row: its key and the code
+# of its chain.
+REQUIRED = (*PRIMARY_KEY, "crosscode")
 
 # The partition every table computes for each row it is written: the quarter
 # of an hour the row's instant falls in.
@@ -124,7 +124,8 @@ def declared(row: Field, partition_by: Iterable[str] = (PARTUNIX,)) -> Field:
     Partitioned by `partunix` - the quarter hour the table computes for every
     row written to it - and whatever else `partition_by` names, sorted by it,
     the instant, the place within the instant and the content hash, with the
-    instant and the hash its primary key, every required column non-null,
+    instant, the object, the place and the hash its primary key, every
+    required column non-null,
     numbered by this table alone.
     """
     schema = unnumbered(row.into_scheme_compat("iceberg")).with_partition_by(list(partition_by))
@@ -213,6 +214,29 @@ def stored_rows(table: Table, start: dt.datetime, end: dt.datetime) -> SerieRead
     return table.read_serie(select="* exclude (partunix)", filter=window_filter(start, end))
 
 
+def instruments(silver: Catalog, namespace_name: str = NAMESPACE) -> IsinRegistry:
+    """The registry of the instruments the pipeline meets, bound to
+    `silver.record_keeping.instruments`: the table opened as it is or created
+    from the registry's own row, unpartitioned, so the registry loads what an
+    earlier run committed and commits what this run's lifecycle learns. Hand
+    it to the codec (`FixCodec(..., isin_registry=...)`) and commit it after
+    the lifecycle stage (`commit_instruments`)."""
+    namespace = silver.namespaces.open_or_create(namespace_name)
+    row = yggdryl.iceberg.assign_field_ids(
+        unnumbered(IsinRegistry.field().into_scheme_compat("iceberg"))
+    )
+    table = namespace.tables.open_or_create("instruments", row, **TABLE_PROPERTIES)
+    return IsinRegistry.from_url(table.url)
+
+
+def commit_instruments(registry: IsinRegistry) -> IOResult:
+    """What the lifecycle learned of the instruments it met, to the table the
+    registry is bound to - `silver.record_keeping.instruments` - as one
+    snapshot replacing every row, only where the registry moved: a run that
+    learned nothing new writes nothing."""
+    return registry.commit()
+
+
 def parse_log_messages(
     lake: Lake,
     start: dt.datetime,
@@ -282,6 +306,12 @@ def parse_events(lake: Lake, start: dt.datetime, end: dt.datetime) -> dict[str, 
     return written
 
 
+def parse_instruments(lake: Lake, _start: dt.datetime, _end: dt.datetime) -> dict[str, IOResult]:
+    """Commit the registry the lifecycle just taught, where one is bound."""
+    registry = lake.codec.isin_registry
+    return {} if registry is None else {"silver.instruments": commit_instruments(registry)}
+
+
 Stage = Callable[[Lake, dt.datetime, dt.datetime], dict[str, IOResult]]
 
 # Every stage in the diagram's order, each answering what it wrote keyed by
@@ -290,6 +320,7 @@ STAGES_OF: dict[str, Stage] = {
     "bronze.log_messages": lambda lake, start, end: {"bronze.log_messages": parse_log_messages(lake, start, end)},
     "bronze.fix_messages": lambda lake, start, end: {"bronze.fix_messages": parse_fix_messages_raw(lake, start, end)},
     "silver.fix_messages": lambda lake, start, end: {"silver.fix_messages": parse_fix_messages_refined(lake, start, end)},
+    "silver.instruments": parse_instruments,
     "silver.books": lambda lake, start, end: {"silver.books": parse_books(lake, start, end)},
     "silver.events": parse_events,
 }
@@ -349,27 +380,6 @@ def resident_bytes() -> int:
         if line.startswith("VmRSS:"):
             return int(line.split()[1]) * 1024
     return 0
-
-
-def requests_since(before: dict[str, Any]) -> dict[str, dict[str, int]]:
-    """What the process asked each host since `before`, a reading of
-    `process_stats`, host by host: the cost of a stage in round trips, the
-    control plane's apart from the store's."""
-    since: dict[str, dict[str, int]] = {}
-    for host, counts in process_stats().items():
-        earlier = before.get(host, {})
-        delta = {name: count - earlier.get(name, 0) for name, count in counts.items()}
-        if delta["requests"]:
-            since[host] = delta
-    return since
-
-
-def print_requests(indent: str, since: dict[str, dict[str, int]]) -> None:
-    for host, counts in since.items():
-        print(
-            f"{indent}{host:<52} {counts['requests']:>5}  GET {counts['gets']:>4}  PUT {counts['puts']:>4}"
-            f"  HEAD {counts['heads']:>3}  POST {counts['posts']:>3}  DELETE {counts['deletes']:>3}"
-        )
 
 
 class Sampler:
@@ -450,10 +460,16 @@ def main(argv: list[str] | None = None) -> int:
     # every store's requests beside the stages.
     logging.basicConfig(level=os.environ.get("YGGDRYL_LOG_LEVEL", "WARNING").upper(), format="%(levelname)s %(name)s: %(message)s")
 
-    codec = FixCodec(FixRegistry.from_handle(args.dictionary), exclude_msgtypes=[], threads=args.threads)
+    silver = catalog_of(args.silver, "silver")
+    codec = FixCodec(
+        FixRegistry.from_handle(args.dictionary),
+        exclude_msgtypes=[],
+        threads=args.threads,
+        isin_registry=instruments(silver, args.namespace),
+    )
     lake = Lake(
         catalog_of(args.bronze, "bronze"),
-        catalog_of(args.silver, "silver"),
+        silver,
         codec,
         IOBase(args.logs),
         namespace=args.namespace,
@@ -461,9 +477,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"window {args.start.isoformat()} -> {args.end.isoformat()}  resident at start {resident_bytes() >> 20} MiB")
     for run_at in range(1, args.runs + 1):
         print(f"run {run_at}")
-        run_before = process_stats()
         for stage, step in STAGES_OF.items():
-            before = process_stats()
             started = time.perf_counter()
             with Sampler() as sampler:
                 results = step(lake, args.start, args.end)
@@ -474,13 +488,8 @@ def main(argv: list[str] | None = None) -> int:
                     f"  skipped {result.skipped_rows:>6}"
                 )
             print(f"  {stage:<22} {seconds:7.2f}s  peak resident {sampler.peak >> 20:>6} MiB")
-            print_requests("      ", requests_since(before))
-        before = process_stats()
         report(lake)
         print("  report")
-        print_requests("      ", requests_since(before))
-        print(f"  run {run_at} requests")
-        print_requests("      ", requests_since(run_before))
     return 0
 
 

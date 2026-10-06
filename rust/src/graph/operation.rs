@@ -345,6 +345,14 @@ impl<K: OperationKind> Market for OperationElement<K> {
     fn set_stoppx(&mut self, value: Option<Decimal>, overwrite: bool) {
         self.data.set_stoppx(value, overwrite);
     }
+
+    fn get_strikepx(&self) -> Option<Decimal> {
+        self.data.get_strikepx()
+    }
+
+    fn set_strikepx(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.data.set_strikepx(value, overwrite);
+    }
     fn get_currency(&self) -> &crate::Ccy {
         self.data.get_currency()
     }
@@ -894,6 +902,14 @@ impl<K: OperationKind> Market for OperationEvent<K> {
 
     fn set_stoppx(&mut self, value: Option<Decimal>, overwrite: bool) {
         self.data.set_stoppx(value, overwrite);
+    }
+
+    fn get_strikepx(&self) -> Option<Decimal> {
+        self.data.get_strikepx()
+    }
+
+    fn set_strikepx(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.data.set_strikepx(value, overwrite);
     }
     fn get_currency(&self) -> &crate::Ccy {
         self.data.get_currency()

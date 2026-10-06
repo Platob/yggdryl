@@ -144,6 +144,14 @@ impl DataType {
         // The currency pair a foreign exchange instrument is: two legs of
         // `ccy`, the base and the quote.
         ("forex", DataType::Forex),
+        // The reference-data codes of ISO TC 68 beside the instrument codes:
+        // a legal entity, a business party, a legal form, a digital token and
+        // a short name. None is a word the Arrow or SQL grammar owns.
+        ("lei", DataType::Lei),
+        ("bic", DataType::Bic),
+        ("elf", DataType::Elf),
+        ("dti", DataType::Dti),
+        ("fisn", DataType::Fisn),
         // The rest are names over a fixed US-ASCII width, which is all they
         // need.
         ("language", fixed_ascii(2)),

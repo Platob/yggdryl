@@ -545,6 +545,10 @@ assert.deepEqual(payload.defaultJSValue(), [0, null])
 assert.equal(new DataType('utf8').defaultJSValue(), '')
 
 assert.equal(fields.uint8('small').intoSchemeCompat('spark').dtype.id, 'int16')
+// A column stating its bits is exchanged as the signed integer of its width, not widened.
+const digest = fields.uint64('digest', { nullable: false })
+digest.fieldProperties.representation = 'bits'
+assert.equal(digest.intoSchemeCompat('iceberg').dtype.id, 'int64')
 assert.throws(() => DataType.from('datetime64(ns)').intoSchemeCompat('spark'), /got ns/)
 ```
 
@@ -567,6 +571,8 @@ assert.throws(() => DataType.from('datetime64(ns)').intoSchemeCompat('spark'), /
   child.
 - `DataType.kind` is the family (`DataType.time('ms').kind === 'temporal'`);
   the leaf is `id` (`'time32'`).
+- No `Eusipa`: an `IsinRegistry` row crosses a structured product's
+  `eusipacode` as its number, which Rust's and Python's `Eusipa` name.
 - No `validateStructRoot`, `applyArrowBatch`, `pretty`, YAML/TOML schema
   writers, `uuidPacked`, `FieldScalar` or `FieldRecord`. A nullable struct
   root is accepted by `Serie.fromScalars`, `SerieReader` and

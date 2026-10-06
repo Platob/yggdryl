@@ -91,8 +91,7 @@ yggdryl fix --root scratch/catalog codesets write sidecodeset --merge --codes '[
 
 `write` replaces a set; `--merge` folds by wire value and keeps every spelling
 as an alias. `codesets delete` refuses a set a field still reads by and names
-that field. The crate-owned `msgcatcodeset`, `marketdatatypecodeset`,
-`statecodeset` and `msgpluginsidecodeset` are immutable.
+that field. The crate-owned `marketdatakindcodeset` and `statecodeset` are immutable.
 
 ## Ingest, sync, schema, check, diff
 

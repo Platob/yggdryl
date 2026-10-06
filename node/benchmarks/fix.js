@@ -183,7 +183,7 @@ if (parsed.identifiers.get('clordid') !== 'ORDER-000000') {
 if (orderType.identifierValues(parsed)[0][0].name !== 'clordid') {
   throw new Error('the compiled selector must reach the stated order identifier')
 }
-if (orderType.msgcat !== 'ORDR' || parsed.msgcat !== 'ORDR' || snapshotCodec.snapshotNs !== 1_000_000_000n) {
+if (orderType.marketdatakind !== 'ORDR' || parsed.marketdatakind !== 'ORDR' || snapshotCodec.snapshotNs !== 1_000_000_000n) {
   throw new Error('FIX category and exact snapshot boundary mismatch')
 }
 const parsedRow = parsed.intoRow(fixedSchema)
@@ -241,8 +241,8 @@ try {
   benchmark('fix/field_id', () => tagged.fix.id)
   benchmark('fix/declared_identifiers', () => orderDeclaration.fix.identifiers)
   benchmark('fix/field_msgcat', () => orderDeclaration.fix.msgcat)
-  benchmark('fix/msgtype_msgcat', () => orderType.msgcat)
-  benchmark('fix/message_msgcat', () => parsed.msgcat)
+  benchmark('fix/msgtype_marketdatakind', () => orderType.marketdatakind)
+  benchmark('fix/message_marketdatakind', () => parsed.marketdatakind)
   benchmark('fix/codec_snapshot_ns', () => snapshotCodec.snapshotNs)
   benchmark('fix/identifier_values', () => orderType.identifierValues(parsed))
   // The typed holders, each read once into the plain object it crosses as.

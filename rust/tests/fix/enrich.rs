@@ -1527,7 +1527,7 @@ fn an_acknowledgement_delivered_again_after_its_fill_adds_no_step() {
             .collect::<yggdryl::Result<Vec<_>>>()
             .expect("the walk")
             .into_iter()
-            .filter(|held| held.msgcat() == MarketDataKind::Order)
+            .filter(|held| held.marketdatakind() == MarketDataKind::Order)
             .collect::<Vec<_>>()
     };
     let every = orders(&codec.clone().with_dedup_window_ms(0));
@@ -1579,7 +1579,7 @@ fn an_acknowledgement_delivered_again_after_the_fill_that_ended_its_chain_adds_n
             .collect::<yggdryl::Result<Vec<_>>>()
             .expect("the walk")
             .into_iter()
-            .filter(|held| held.msgcat() == MarketDataKind::Order)
+            .filter(|held| held.marketdatakind() == MarketDataKind::Order)
             .collect::<Vec<_>>()
     };
     let every = orders(&codec.clone().with_dedup_window_ms(0));
@@ -2323,11 +2323,11 @@ fn a_fill_split_report_keeps_its_leaves_as_its_quantity() {
     let [report, execution] = messages.as_slice() else {
         panic!("the report and its execution, got {}", messages.len())
     };
-    assert_eq!(report.msgcat(), MarketDataKind::Order);
+    assert_eq!(report.marketdatakind(), MarketDataKind::Order);
     assert_eq!(report.get_leavesqty(), Some("60".parse().unwrap()));
     assert_eq!(report.get_quantity(), Some("60".parse().unwrap()));
     assert_eq!(report.get_bidqty(), Some("60".parse().unwrap()));
-    assert_eq!(execution.msgcat(), MarketDataKind::Execution);
+    assert_eq!(execution.marketdatakind(), MarketDataKind::Execution);
     assert_eq!(execution.get_quantity(), None);
     assert_eq!(execution.get_bidqty(), None);
     assert_eq!(execution.get_leavesqty(), Some("60".parse().unwrap()));
@@ -2431,6 +2431,226 @@ fn a_resend_flag_a_dictionary_left_as_text_marks_a_replay_as_a_boolean_does() {
     for flag in ["N", "no", "0", "maybe"] {
         assert_eq!(walked(flag), 2, "97={flag} is no replay");
     }
+}
+
+/// A walk learns the instrument a message's own is written on - its
+/// underlying - off the wire's `UnderlyingInstrument`, a related `Underlier`
+/// or a bridge's key, and lifts it nowhere: the message's security
+/// identifiers stay its own, and the wire is the parse's.
+#[test]
+fn a_walk_learns_the_underlying_a_message_names_and_lifts_it_nowhere() {
+    use std::sync::{Arc, Mutex};
+    use yggdryl::IsinRegistry;
+
+    let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
+    let codec = super::fixed_codec(super::committed_registry())
+        .with_isin_registry(Arc::clone(&instruments));
+    let line = |seq: i32, body: &str| {
+        format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|{body}|10=0|"
+        )
+    };
+    let walk = |body: &str, seq: i32| -> Vec<FixMsg> {
+        let parsed: Vec<FixMsg> = codec
+            .parse_lines([line(seq, body)])
+            .collect::<yggdryl::Result<_>>()
+            .expect("a message");
+        codec
+            .lifecycle(parsed)
+            .collect::<yggdryl::Result<_>>()
+            .expect("a walk")
+    };
+    let warrant = {
+        let body = "CH000000000";
+        format!("{body}{}", Isin::closing_digit(body).unwrap())
+    };
+    let underlying = || {
+        instruments
+            .lock()
+            .expect("the registry")
+            .get(&warrant)
+            .and_then(|row| row.underlyingisin().map(|code| code.as_str().to_owned()))
+    };
+    // The wire's `UnderlyingInstrument` in a `NoUnderlyings(711)` occurrence
+    // is learned and lifted nowhere.
+    let walked = walk(
+        &format!("22=4|48={warrant}|711=1|311=HOLN|309=CH0012214059|305=4"),
+        1,
+    );
+    assert_eq!(underlying().as_deref(), Some("CH0012214059"));
+    let message = &walked[0];
+    assert_eq!(message.get_isincode(), Some(warrant.as_str()));
+    let stated: Vec<String> = message
+        .get_securityids()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert!(
+        stated.iter().all(|id| !id.contains("CH0012214059")),
+        "lifted nowhere: {stated:?}"
+    );
+    assert!(
+        message
+            .into_bytes(b'|')
+            .windows(17)
+            .any(|w| w == b"309=CH0012214059|"),
+        "the wire is the parse's"
+    );
+    // A bridge key naming an underlying's ISIN replaces it.
+    walk(&format!("22=4|48={warrant}|UnderlyingISIN=US0378331005"), 2);
+    assert_eq!(underlying().as_deref(), Some("US0378331005"));
+    // An `UnderlyingSymbol(311)` shaped as an ISIN alone.
+    walk(&format!("22=4|48={warrant}|711=1|311=CH0012005267"), 3);
+    assert_eq!(underlying().as_deref(), Some("CH0012005267"));
+    // A related instrument typed `Underlier`; one typed otherwise states
+    // nothing.
+    walk(
+        &format!("22=4|48={warrant}|1647=1|1648=2|1650=US0378331005|1651=4"),
+        4,
+    );
+    assert_eq!(underlying().as_deref(), Some("US0378331005"));
+    walk(
+        &format!("22=4|48={warrant}|1647=1|1648=6|1650=CH0012005267|1651=4"),
+        5,
+    );
+    assert_eq!(underlying().as_deref(), Some("US0378331005"));
+    // A basket, the message's own ISIN, another source's code and a number
+    // that does not close each state nothing.
+    let unlearned = [
+        "711=2|311=A|309=CH0012214059|305=4|311=B|309=CH0012005267|305=4".to_owned(),
+        format!("309={warrant}|305=4"),
+        "309=037833100|305=1".to_owned(),
+        "309=CH0012214058|305=4".to_owned(),
+    ];
+    for (at, body) in unlearned.iter().enumerate() {
+        walk(&format!("22=4|48={warrant}|{body}"), 6 + at as i32);
+        assert_eq!(underlying().as_deref(), Some("US0378331005"), "{body}");
+    }
+    // A message stating no real ISIN of its own learns nothing.
+    walk("55=HOLN|711=1|311=HOLN|309=CH0012214059|305=4", 11);
+    assert_eq!(instruments.lock().expect("the registry").len(), 1);
+}
+
+/// A walk learns the EUSIPA product category a bridge's key states beside
+/// the message's ISIN - `EUSIPACode`, `OMS_SSPACategory`, SIX's
+/// `X-SWX-SSPA` - and lifts it nowhere: the key stays among the message's
+/// entries and its leaf's metadata, no identifier holds it, and a later
+/// message of the instrument is filled with nothing of it. Two categories,
+/// text of no category's shape, a key naming the category's name, a key
+/// naming another instrument's category - an underlying's, a leg's, a
+/// contra's, a related or a benchmark instrument's, by the words a security
+/// type is refused by - and a message stating no real ISIN of its own each
+/// learn none.
+#[test]
+fn a_walk_learns_the_product_category_a_bridge_key_states_and_lifts_it_nowhere() {
+    use std::sync::{Arc, Mutex};
+    use yggdryl::IsinRegistry;
+    use yggdryl::graph::{Market, Operation};
+
+    let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
+    let codec = super::fixed_codec(super::committed_registry())
+        .with_isin_registry(Arc::clone(&instruments));
+    let line = |seq: i32, body: &str| {
+        format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|{body}|10=0|"
+        )
+    };
+    let walk = |body: &str, seq: i32| -> Vec<FixMsg> {
+        let parsed: Vec<FixMsg> = codec
+            .parse_lines([line(seq, body)])
+            .collect::<yggdryl::Result<_>>()
+            .expect("a message");
+        codec
+            .lifecycle(parsed)
+            .collect::<yggdryl::Result<_>>()
+            .expect("a walk")
+    };
+    let mini = {
+        let body = "CH000000000";
+        format!("{body}{}", Isin::closing_digit(body).unwrap())
+    };
+    let category = || {
+        instruments
+            .lock()
+            .expect("the registry")
+            .get(&mini)
+            .and_then(|row| row.eusipacode())
+            .map(|code| code.code())
+    };
+    let walked = walk(&format!("22=4|48={mini}|EUSIPACode=2300"), 1);
+    assert_eq!(category(), Some(2300));
+    let message = &walked[0];
+    assert!(
+        message
+            .get_securityids()
+            .iter()
+            .chain(message.get_identifiers().iter())
+            .all(|id| id.value() != "2300"),
+        "lifted nowhere"
+    );
+    let wire = String::from_utf8(message.clone().into_bytes(b'|')).expect("a text wire");
+    assert!(
+        wire.to_ascii_lowercase().contains("|eusipacode=2300|"),
+        "the entry stays on the wire: {wire}"
+    );
+    // Either map's name, a namespace before it, replaces it.
+    walk(&format!("22=4|48={mini}|OMS_SSPACategory=1260"), 2);
+    assert_eq!(category(), Some(1260));
+    walk(&format!("22=4|48={mini}|X-SWX-SSPA= 2205 "), 3);
+    assert_eq!(category(), Some(2205));
+    // A category neither map lists is a category.
+    walk(&format!("22=4|48={mini}|firm.x.EUSIPA=2301"), 4);
+    assert_eq!(category(), Some(2301));
+    let unlearned = [
+        "EUSIPACode=2300|SSPACategory=1260",
+        "EUSIPACode=3100",
+        "EUSIPACode=Mini-Future",
+        "EUSIPA_Name=2300",
+    ];
+    for (at, body) in unlearned.iter().enumerate() {
+        walk(&format!("22=4|48={mini}|{body}"), 5 + at as i32);
+        assert_eq!(category(), Some(2301), "{body}");
+    }
+    // Another instrument's category - opening the key or spelled just
+    // before the category word, after any namespace - is never this one's.
+    let another = [
+        "UnderlyingEUSIPA=2300",
+        "LegSSPACategory=2300",
+        "ContraEUSIPA=2300",
+        "RelatedSSPA=2300",
+        "BenchmarkEUSIPACode=2300",
+        "OMS_UnderlyingEUSIPACode=2300",
+        "firm.x.LegSSPA=2300",
+    ];
+    for (at, body) in another.iter().enumerate() {
+        walk(&format!("22=4|48={mini}|{body}"), 20 + at as i32);
+        assert_eq!(category(), Some(2301), "{body}");
+    }
+    // Beside them, this instrument's own still learns.
+    walk(
+        &format!("22=4|48={mini}|UnderlyingEUSIPA=2300|OMS_EUSIPACode=1260"),
+        30,
+    );
+    assert_eq!(category(), Some(1260));
+    walk(&format!("22=4|48={mini}|firm.x.EUSIPA=2301"), 31);
+    assert_eq!(category(), Some(2301));
+    // The same category twice is one statement.
+    walk(&format!("22=4|48={mini}|EUSIPACode=2300|SSPA=2300"), 9);
+    assert_eq!(category(), Some(2300));
+    // A message stating no real ISIN of its own learns nothing.
+    walk("55=HOLN|EUSIPACode=2300", 10);
+    assert_eq!(instruments.lock().expect("the registry").len(), 1);
+    // `learn` alone states none: the reading is the lifecycle's.
+    let mut fresh = IsinRegistry::new();
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines([line(
+            11,
+            &format!("22=4|48={mini}|55=MINI|207=XSWX|EUSIPACode=2300"),
+        )])
+        .collect::<yggdryl::Result<_>>()
+        .expect("a message");
+    assert!(fresh.learn(&parsed[0]), "the ticker and the market");
+    assert_eq!(fresh.get(&mini).and_then(|row| row.eusipacode()), None);
 }
 
 /// A walk learns a message's country of issue - where it states one its
@@ -2542,4 +2762,435 @@ fn a_walk_learns_the_country_and_the_currency_and_fills_them_unsettled() {
     let row = held.get(&fx).expect("learned");
     assert_eq!(row.forexcode().map(|pair| pair.as_str()), Some("EUR/USD"));
     assert_eq!(row.currency(), None);
+}
+
+/// A pipeline's lake: a table laid out as `python/tests/medallion.py` lays
+/// one out - the row as Iceberg states it, numbered by this table alone,
+/// partitioned by the quarter hour, sorted by the instant, the place and
+/// the hash, the identity columns required - and the window a stage reads
+/// it back inside.
+#[cfg(feature = "iceberg")]
+mod lake {
+    use yggdryl::expression::{Ordering, Projection};
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{Field, IOMedia, Scheme};
+
+    /// A stage's table numbers its own schema: the identifiers a source
+    /// table's row carried come off at every depth, through the document.
+    fn unnumbered(row: &Field) -> Field {
+        fn strip(node: serde_json::Value) -> serde_json::Value {
+            match node {
+                serde_json::Value::Object(held) => serde_json::Value::Object(
+                    held.into_iter()
+                        .filter(|(key, _)| key != "PARQUET:field_id")
+                        .map(|(key, value)| (key, strip(value)))
+                        .collect(),
+                ),
+                serde_json::Value::Array(held) => {
+                    serde_json::Value::Array(held.into_iter().map(strip).collect())
+                }
+                other => other,
+            }
+        }
+        let document: serde_json::Value =
+            serde_json::from_str(&row.clone().into_json().unwrap()).unwrap();
+        Field::from_json(&strip(document).to_string()).unwrap()
+    }
+
+    pub(super) fn table(
+        name: &str,
+        row: &Field,
+    ) -> (IcebergTable<LocalFolder>, std::path::PathBuf) {
+        let mut schema = unnumbered(row)
+            .into_scheme_compat(&Scheme::ICEBERG)
+            .expect("the row as Iceberg states it")
+            .with_partition_by(["time_bucket('15 minutes', currunix) as partunix"
+                .parse::<Projection>()
+                .unwrap()])
+            .expect("partitioned by the quarter hour");
+        for name in [
+            "currunix",
+            "currhashcode",
+            "seqnum",
+            "crosscode",
+            "crosshashcode",
+        ] {
+            let mut column = schema.get_field(name).unwrap().clone();
+            column.set_nullable(false);
+            schema.set_field(name, column).unwrap();
+        }
+        schema
+            .as_sort_mut()
+            .set_by(
+                ["partunix", "currunix", "seqnum", "currhashcode"]
+                    .map(|key| key.parse::<Ordering>().unwrap()),
+            )
+            .unwrap();
+        assign_field_ids(&mut schema, 1).unwrap();
+        let path = LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap()
+            .join(format!("yggdryl-fix-lake-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        let spec = PartitionSpec::from_schema(0, &schema).unwrap();
+        (
+            IcebergTable::create(
+                LocalFolder::new(&path).unwrap(),
+                FormatVersion::V3,
+                schema.clone(),
+                spec,
+            )
+            .unwrap(),
+            path,
+        )
+    }
+
+    /// The capture's day, read in the table's own order with the partition
+    /// column it computed taken off.
+    pub(super) fn window(table: &IcebergTable<LocalFolder>) -> RecordOptions {
+        table
+            .record_options()
+            .unwrap()
+            .with_select("* exclude (partunix)")
+            .unwrap()
+            .with_filter("currunix >= '2026-08-14T00:00:00Z' and currunix < '2026-08-15T00:00:00Z'")
+            .unwrap()
+    }
+}
+
+/// A fill a bridge logged - its row header bracketing the session, the
+/// context and the sequence the lifecycle keys a session event by - parsed
+/// into its order's report and its execution, stored in an Iceberg table
+/// laid out as a pipeline lays one out (the row as Iceberg states it,
+/// partitioned by the quarter hour, sorted by the instant, the place and
+/// the hash), read back inside a window and walked, keeps the execution:
+/// the three rows that left the parse are the three the walk answers,
+/// whichever path they took.
+#[cfg(feature = "iceberg")]
+#[test]
+fn an_execution_split_off_a_fill_survives_a_lake_round_trip_into_the_lifecycle() {
+    use yggdryl::graph::Element;
+    use yggdryl::{IOMedia, MarketDataKind};
+
+    let registry = super::committed_registry();
+    let log = b"2026-08-14 09:00:15.000 [15254-e7254b11:9f03166699:0001] [ULBridge] (INFO) Sending >> 8=FIX.4.4|9=0|35=D|49=OMS|56=VENUE|34=1|11=ORD-1|55=SYM|48=US0378331005|22=4|54=2|38=500|40=2|44=95.00|59=0|52=20260814-09:00:15.000|60=20260814-09:00:15.000|10=000|
+2026-08-14 09:01:15.000 [15254-e7254b11:9f03166699:0002] [ULBridge] (INFO) Sending >> 8=FIX.4.4|9=0|35=8|49=VENUE|56=OMS|34=2|11=ORD-1|17=EXEC-1|37=ORD-1|150=F|39=2|55=SYM|48=US0378331005|22=4|54=2|38=100|32=100|31=95.08|151=0|14=100|44=95.08|52=20260814-09:01:15.000|60=20260814-09:01:15.000|10=000|
+";
+    let source = Buffer::from_bytes(log.to_vec())
+        .with_media_type(Url::from_str("file:///fill.log").unwrap().media_type());
+    let mut options = TextOptions::new()
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+        .unwrap()
+        .with_timezone(Timezone::UTC);
+    options.start_rownum = Some(1);
+    let codec = super::fixed_codec(Arc::clone(&registry))
+        .with_separator(b'|')
+        .with_capture_names(options.capture_names());
+    let kinds = |messages: &[FixMsg]| {
+        messages
+            .iter()
+            .map(FixMsg::marketdatakind)
+            .collect::<Vec<_>>()
+    };
+    let expected = [
+        MarketDataKind::Order,
+        MarketDataKind::Order,
+        MarketDataKind::Execution,
+    ];
+    // The text rows the lines make, as a pipeline stores them, and the FIX
+    // rows the parse over them makes - the capture columns carried in front
+    // of the fixed ones.
+    let text_options = yggdryl::media::RecordOptions::Text(Box::new(options.clone()));
+    let lake = lake::table;
+    let window = lake::window;
+    // The lines stored as the pipeline stores them, then read back.
+    let lines = source.read_serie(Some(&text_options)).unwrap();
+    let (mut logs, logs_path) = lake("logs", lines.field());
+    let result = logs.overwrite_serie(lines.into(), None).unwrap();
+    assert_eq!(result.written_rows, 2, "{result:?}");
+    let parse = || {
+        codec
+            .parse_text_serie(logs.read_serie(Some(&window(&logs))).unwrap())
+            .unwrap()
+    };
+    let parsed: Vec<FixMsg> = codec
+        .messages_serie(parse())
+        .unwrap()
+        .collect::<yggdryl::Result<_>>()
+        .expect("two readable lines");
+    assert_eq!(kinds(&parsed), expected, "the parse splits the fill");
+    assert!(
+        parsed
+            .iter()
+            .all(|held| held.capture().msgsesseventid().is_some()),
+        "the header keys every message's session event"
+    );
+    let walked: Vec<FixMsg> = codec
+        .lifecycle(parsed.iter().cloned().map(Ok))
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk over the parse");
+    assert_eq!(
+        kinds(&walked),
+        expected,
+        "the walk in memory keeps the fill"
+    );
+
+    let (mut table, path) = lake("fix", parse().field());
+    let result = table.overwrite_serie(parse().into(), None).unwrap();
+    assert_eq!(result.written_rows, 3, "{result:?}");
+
+    let options = window(&table);
+    let stored: Vec<FixMsg> = codec
+        .messages_serie(table.read_serie(Some(&options)).unwrap())
+        .unwrap()
+        .collect::<yggdryl::Result<_>>()
+        .expect("every stored row rebuilds");
+    assert_eq!(kinds(&stored), expected, "the table holds the fill");
+    for (held, back) in parsed.iter().zip(&stored) {
+        assert_eq!(
+            held.get_curruuid(),
+            back.get_curruuid(),
+            "{}: the identity crosses",
+            held.marketdatakind()
+        );
+        // The table holds the digests and the place as `decimal(20, 0)`,
+        // and each reads back as the `uint64` it was: a zero here is what
+        // folded the execution into its report's delivery.
+        assert_eq!(
+            held.get_currhashcode(),
+            back.get_currhashcode(),
+            "{}: the content digest crosses",
+            held.marketdatakind()
+        );
+        assert_ne!(back.get_currhashcode(), 0);
+        assert_eq!(held.get_crosshashcode(), back.get_crosshashcode());
+        assert_eq!(
+            held.get_seqnum(),
+            back.get_seqnum(),
+            "{}: the place crosses",
+            held.marketdatakind()
+        );
+        assert_eq!(held.get_crosscode(), back.get_crosscode());
+        assert_eq!(
+            held.capture().msgsesseventid(),
+            back.capture().msgsesseventid(),
+            "{}: the session event crosses",
+            held.marketdatakind()
+        );
+    }
+    let walked: Vec<FixMsg> = codec
+        .lifecycle(stored.iter().cloned().map(Ok))
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk over the stored rows");
+    assert_eq!(
+        kinds(&walked),
+        expected,
+        "the walk over the stored rows keeps the fill"
+    );
+    let walked: Vec<FixMsg> = codec
+        .messages_serie(
+            codec
+                .lifecycle_serie(table.read_serie(Some(&options)).unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+        .collect::<yggdryl::Result<_>>()
+        .expect("the serie walk over the stored rows");
+    assert_eq!(
+        kinds(&walked),
+        expected,
+        "the serie walk over the stored rows keeps the fill"
+    );
+    let _ = std::fs::remove_dir_all(&path);
+    let _ = std::fs::remove_dir_all(&logs_path);
+}
+
+/// The bridge's whole capture, stored as a pipeline stores it and read back
+/// inside its day, walks to the identities it walks to in memory. A table
+/// keeps a column's name, its datatype and its `doc` and no `FIX:` key, so
+/// every row comes back under columns the dictionary explains by name
+/// alone - and a row read back digests as the parse did, which is what the
+/// window folds a twin by: the three hops logged again under the identity
+/// they restate fold in the lake exactly as they fold in memory, and the
+/// stored rows are the parsed messages, identity for identity.
+#[cfg(feature = "iceberg")]
+#[test]
+fn the_capture_read_back_from_a_lake_walks_to_the_identities_it_walks_to_in_memory() {
+    use std::collections::BTreeSet;
+
+    use yggdryl::graph::Element;
+    use yggdryl::{IOMedia, Uuid};
+
+    let registry = super::committed_registry();
+    let source = Buffer::from_bytes(include_bytes!("ulbridge.log").to_vec()).with_media_type(
+        Url::from_str("file:///ulbridge.log")
+            .expect("a URL")
+            .media_type(),
+    );
+    let mut options = TextOptions::new()
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+        .expect("the bridge's row header compiles")
+        .with_timezone(Timezone::UTC);
+    options.start_rownum = Some(1);
+    let codec = super::fixed_codec(Arc::clone(&registry))
+        .with_exclude_msgtypes::<[&str; 0], &str>([])
+        .with_capture_names(options.capture_names());
+    let text_options = yggdryl::media::RecordOptions::Text(Box::new(options.clone()));
+    let parse = || {
+        codec
+            .parse_text_serie(source.read_serie(Some(&text_options)).unwrap())
+            .unwrap()
+    };
+    let messages = |reader: yggdryl::SerieReader| -> Vec<FixMsg> {
+        codec
+            .messages_serie(reader)
+            .unwrap()
+            .collect::<yggdryl::Result<_>>()
+            .expect("every row rebuilds")
+    };
+    let identities = |held: &[FixMsg]| -> BTreeSet<(i64, u64, Uuid, u64)> {
+        held.iter()
+            .map(|held| {
+                (
+                    held.get_currunix(),
+                    held.get_seqnum(),
+                    held.get_curruuid(),
+                    held.get_currhashcode(),
+                )
+            })
+            .collect()
+    };
+    let walk = |held: &[FixMsg], window_ms: i64| -> Vec<FixMsg> {
+        codec
+            .clone()
+            .with_dedup_window_ms(window_ms)
+            .lifecycle(held.iter().cloned().map(Ok))
+            .collect::<yggdryl::Result<_>>()
+            .expect("the walk")
+    };
+    let twins = |held: &[FixMsg]| -> BTreeSet<Uuid> {
+        let mut seen = BTreeSet::new();
+        held.iter()
+            .filter(|held| !seen.insert(held.get_curruuid()))
+            .map(Element::get_curruuid)
+            .collect()
+    };
+
+    // In memory: the parse, and the walk over it in the order the table
+    // hands it back - its instant, its place, its code - with the window
+    // and without: three twins restating the identity they repeat. Two
+    // messages of one instant keep the order they arrive in, so the walk
+    // in memory takes the table's order to answer what the table's walk
+    // answers.
+    let mut parsed = messages(parse());
+    assert_eq!(parsed.len(), 94 + 57, "the corpus");
+    parsed.sort_by_key(|held| {
+        (
+            held.get_currunix(),
+            held.get_seqnum(),
+            held.get_currhashcode(),
+        )
+    });
+    let walked = walk(&parsed, FixCodec::DEFAULT_DEDUP_WINDOW_MS);
+    let every = walk(&parsed, 0);
+    assert_eq!(
+        (walked.len(), every.len()),
+        (39, 42),
+        "three twins fold in memory"
+    );
+    assert_eq!(twins(&every).len(), 3);
+    assert_eq!(twins(&walked).len(), 0);
+
+    // Through the lake: the same rows, the same messages, the same walk.
+    let (mut table, path) = lake::table("capture", parse().field());
+    let result = table.overwrite_serie(parse().into(), None).unwrap();
+    assert_eq!(result.written_rows, 94 + 57, "{result:?}");
+    let stored = messages(table.read_serie(Some(&lake::window(&table))).unwrap());
+    assert_eq!(
+        identities(&stored),
+        identities(&parsed),
+        "the rows cross identity for identity"
+    );
+    // One row, settled again as the walk settles what it follows or
+    // restates: the wire re-emits every field under its tag - the row keeps
+    // no arrival order, so the fields are compared as a set - and the
+    // identity it settles to is the one the parse stamped.
+    let held = &parsed[0];
+    let mut back = stored
+        .iter()
+        .find(|back| back.get_curruuid() == held.get_curruuid())
+        .expect("the first parsed message is stored")
+        .clone();
+    let fields = |held: &FixMsg| {
+        let mut fields = held.into_bytes(b'|');
+        fields.pop();
+        let mut fields = fields
+            .split(|byte| *byte == b'|')
+            .map(<[u8]>::to_vec)
+            .collect::<Vec<_>>();
+        fields.sort();
+        fields
+    };
+    assert_eq!(
+        fields(&back),
+        fields(held),
+        "a row re-emits every field the parse did"
+    );
+    // What each feeds its identity: every entry, pre-order, as the digest
+    // reads it - the difference names what the round trip moved.
+    fn feed(entries: &[yggdryl::FixEntry], depth: usize, into: &mut Vec<String>) {
+        for entry in entries {
+            into.push(format!(
+                "{}{}:{}={:?}({})",
+                " ".repeat(depth),
+                entry.tag(),
+                entry.name(),
+                entry.value(),
+                entry.entries().len()
+            ));
+            feed(entry.entries(), depth + 1, into);
+        }
+    }
+    let mut settled = held.clone();
+    settled.finalize();
+    back.finalize();
+    let (mut parsed_feed, mut back_feed) = (Vec::new(), Vec::new());
+    feed(settled.entries(), 0, &mut parsed_feed);
+    feed(back.entries(), 0, &mut back_feed);
+    parsed_feed.sort();
+    back_feed.sort();
+    let only_parsed: Vec<&String> = parsed_feed
+        .iter()
+        .filter(|line| !back_feed.contains(line))
+        .collect();
+    let only_back: Vec<&String> = back_feed
+        .iter()
+        .filter(|line| !parsed_feed.contains(line))
+        .collect();
+    assert_eq!(
+        back.get_currhashcode(),
+        settled.get_currhashcode(),
+        "a row settles to the code the parse settles to; only the parse feeds {only_parsed:#?}, only the row {only_back:#?}"
+    );
+    assert_eq!(settled.get_currhashcode(), held.get_currhashcode());
+    let lake_walked = walk(&stored, FixCodec::DEFAULT_DEDUP_WINDOW_MS);
+    let lake_every = walk(&stored, 0);
+    assert_eq!(
+        (lake_walked.len(), lake_every.len()),
+        (walked.len(), every.len()),
+        "the twins fold in the lake as they fold in memory"
+    );
+    assert_eq!(twins(&lake_every), twins(&every), "the same twins");
+    let (lake_identities, memory_identities) = (identities(&lake_walked), identities(&walked));
+    let only_lake: Vec<_> = lake_identities.difference(&memory_identities).collect();
+    let only_memory: Vec<_> = memory_identities.difference(&lake_identities).collect();
+    assert!(
+        only_lake.is_empty() && only_memory.is_empty(),
+        "the walk over the stored rows answers the identities the walk in memory answers; only the lake {only_lake:#?}, only memory {only_memory:#?}"
+    );
+    let _ = std::fs::remove_dir_all(&path);
 }

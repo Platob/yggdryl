@@ -14,7 +14,7 @@ One string datatype in eighteen real leaves: six shapes in each of the three cha
 | Kinds | `DataTypeKind::Text`, ids `0x51`-`0x62`: one `DataTypeId` per leaf, laid out by family |
 | Bindings | `Str` is Rust only; Python and JavaScript read a value as a [`Scalar`](../scalar.md) and the declaration as the frozen `StringParameters` |
 
-The twelve [registered codes](../codes/index.md) are not strings: a currency is
+The seventeen [registered codes](../codes/index.md) are not strings: a currency is
 an identity over ISO 4217's codes and the digital-asset tickers past them that stores as the text it is, so it is
 `DataType::Ccy`, kind `Code`, answers `code_width`, and never
 `string_parameters`.
@@ -847,7 +847,7 @@ language.
     assert.equal(currencies.get('USD'), 'USD')
     ```
 
-The packing itself, the twelve registered codes and the generated enums each
+The packing itself, the seventeen registered codes and the generated enums each
 language builds are on [Codes](../codes/index.md).
 
 ## Regex captures

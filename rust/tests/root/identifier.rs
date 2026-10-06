@@ -130,6 +130,263 @@ fn a_value_that_states_nothing_is_refused_and_a_word_that_is_not_one_is_too() {
     assert!(Identifier::new(IdKey::base(IdType::Isin), &"9".repeat(65)).is_err());
 }
 
+/// Two sources are standards whose every value is a registered code: a
+/// value under `bic` is a BIC and one under `legalentityidentifier` an LEI,
+/// whatever type of name it is - a party's role, the account, a word no
+/// member names - refused by its shape and located on the key, held
+/// upper-cased where it is one. Every other source keeps its type's rule
+/// alone.
+#[test]
+fn a_value_under_the_bic_or_lei_source_is_refused_where_it_is_not_that_code() {
+    let refused = |key: &str, value: &str| {
+        Identifier::new(self::key(key), value)
+            .unwrap_err()
+            .to_string()
+    };
+    assert_eq!(
+        refused("bic:executingtrader", " T-1 "),
+        "invalid record value at bic:executingtrader: a value under the bic source is a BIC: \
+         expected eight or eleven characters, got \"T-1\""
+    );
+    assert_eq!(
+        refused("legalentityidentifier:clientid", "CL"),
+        "invalid record value at legalentityidentifier:clientid: a value under the \
+         legalentityidentifier source is an LEI: expected twenty characters, got \"CL\""
+    );
+    let wide = refused("bic:account", "ACCOUNT-0001");
+    assert!(
+        wide.starts_with(
+            "invalid record value at bic:account: a value under the bic source is a BIC: "
+        ),
+        "{wide}"
+    );
+    let foreign = refused("bic:executingfirm", "D\u{c9}UTDEFF");
+    assert!(
+        foreign.starts_with("invalid record value at bic:executingfirm: "),
+        "{foreign}"
+    );
+    // A word no member names is checked too: FIX's unnamed roles are such
+    // words, and the source is the standard of the value.
+    assert!(!kind("partyrole99").is_party());
+    assert!(Identifier::new(key("bic:partyrole99"), "ACC-1").is_err());
+    assert!(Identifier::new(key("legalentityidentifier:partyrole99"), "ACC-1").is_err());
+    // A key whose type has a rule of its own holds the value to both: an
+    // ISIN is no BIC, and an LEI's type and source agree.
+    assert!(Identifier::new(key("bic:isin"), "US0378331005").is_err());
+    assert!(Identifier::new(key("legalentityidentifier:lei"), "HWUPKR0MPOU8FGXBT3").is_err());
+    assert_eq!(
+        id("legalentityidentifier", "lei", "hwupkr0mpou8fgxbt394").value(),
+        "HWUPKR0MPOU8FGXBT394"
+    );
+    // Held as the code stores it: upper-cased, eight and eleven as stated,
+    // a check digit that does not close and an unlisted country admitted.
+    assert_eq!(
+        id("bic", "executingfirm", " deutdeff500 ").to_string(),
+        "bic:executingfirm=DEUTDEFF500"
+    );
+    assert_eq!(id("bic", "account", "DEUTDEFF").value(), "DEUTDEFF");
+    assert_eq!(id("bic", "account", "deutzzff").value(), "DEUTZZFF");
+    assert_eq!(
+        id("legalentityidentifier", "clientid", "HWUPKR0MPOU8FGXBT395").value(),
+        "HWUPKR0MPOU8FGXBT395"
+    );
+    // Every other source keeps the type's rule alone, case included.
+    assert_eq!(id("proprietary", "executingtrader", "T-1").value(), "T-1");
+    assert_eq!(id("base", "executingfirm", "deutdeff").value(), "deutdeff");
+    assert_eq!(id("oms", "account", "acc-1").value(), "acc-1");
+    // A type change goes through the same door, the source checked again.
+    let firm = id("bic", "executingfirm", "DEUTDEFF");
+    assert_eq!(
+        firm.with_kind(kind("clientid")).unwrap().to_string(),
+        "bic:clientid=DEUTDEFF"
+    );
+    // A bridge's key whose namespace folds to the source is held to it.
+    assert!(Identifier::from_key("BIC_ClOrdID", "C-1").is_none());
+    assert_eq!(
+        Identifier::from_key("BIC_ClOrdID", "deutdeff")
+            .unwrap()
+            .to_string(),
+        "bic:clordid=DEUTDEFF"
+    );
+}
+
+/// An identifier under `bic` or `legalentityidentifier` ranks by the lower
+/// of its type's rank and its code's - a BIC's listed country, an LEI's
+/// closing check digits - so a real code replaces a typo or an unassigned
+/// country under its key whichever was stated first; the base key it fills
+/// ranks as the statements holding its value, so it follows the real code
+/// too.
+#[test]
+fn a_bic_or_lei_ranks_by_its_code_and_a_real_one_replaces_another_whatever_the_order() {
+    const CLOSING: &str = "HWUPKR0MPOU8FGXBT394";
+    const TYPO: &str = "HWUPKR0MPOU8FGXBT395";
+    const OTHER: &str = "7LTWFZYICNSX8D621K86";
+    let lei = |value: &str| id("legalentityidentifier", "clientid", value);
+    let named = key("legalentityidentifier:clientid");
+
+    let mut held: Identifiers = [lei(TYPO)].into_iter().collect();
+    assert!(held.insert(lei(CLOSING)), "a closing code replaces a typo");
+    assert_eq!(held.get_from(&named), Some(CLOSING));
+    assert!(!held.insert(lei(TYPO)), "and is never replaced by it");
+    assert!(!held.insert(lei(OTHER)), "two closing codes keep the first");
+    assert_eq!(held.get_from(&named), Some(CLOSING));
+
+    // A merge keeps the closing code under its key and as the answer
+    // whichever map leads: the base key ranks as the code it holds.
+    for later in [false, true] {
+        let mut held: Identifiers = [lei(TYPO)].into_iter().collect();
+        assert!(held.merge(&[lei(CLOSING)].into_iter().collect(), later));
+        assert_eq!(held.get_from(&named), Some(CLOSING), "{later}");
+        assert_eq!(held.get(&IdType::ClientId), Some(CLOSING), "{later}");
+        let mut held: Identifiers = [lei(CLOSING)].into_iter().collect();
+        assert!(!held.merge(&[lei(TYPO)].into_iter().collect(), later));
+        assert_eq!(held.get_from(&named), Some(CLOSING), "{later}");
+        assert_eq!(held.get(&IdType::ClientId), Some(CLOSING), "{later}");
+    }
+
+    // A BIC of a country ISO 3166 does not list ranks below a listed one.
+    let bic = |value: &str| id("bic", "executingfirm", value);
+    let firm = key("bic:executingfirm");
+    let mut held: Identifiers = [bic("DEUTZZFF")].into_iter().collect();
+    assert!(held.insert(bic("DEUTDEFF")));
+    assert_eq!(held.get_from(&firm), Some("DEUTDEFF"));
+    assert!(!held.insert(bic("DEUTZZFF")));
+    // SWIFT's Kosovo is as real as a listed country.
+    let mut held: Identifiers = [bic("BKOSXKPR")].into_iter().collect();
+    assert!(
+        !held.insert(bic("DEUTDEFF")),
+        "two real codes keep the first"
+    );
+
+    // A map read raw closes the base key on the highest-ranked source.
+    let closed = Identifiers::from_scalar(&entries(&[
+        ("abc:clientid", "C-1"),
+        ("legalentityidentifier:clientid", TYPO),
+    ]))
+    .unwrap();
+    assert_eq!(
+        closed.get(&IdType::ClientId),
+        Some("C-1"),
+        "the first among equals"
+    );
+    let closed = Identifiers::from_scalar(&entries(&[
+        ("legalentityidentifier:clientid", TYPO),
+        ("zzz:clientid", "C-1"),
+    ]))
+    .unwrap();
+    assert_eq!(
+        closed.get(&IdType::ClientId),
+        Some("C-1"),
+        "a typo ranks below a word"
+    );
+
+    // The base key a named code filled ranks as that code: a later real
+    // code under the same key replaces the key and the answer with it.
+    let mut held: Identifiers = [lei(TYPO)].into_iter().collect();
+    assert_eq!(held.get(&IdType::ClientId), Some(TYPO));
+    assert!(held.insert(lei(CLOSING)));
+    assert_eq!(held.get(&IdType::ClientId), Some(CLOSING));
+    assert_eq!(keys(&held), ["clientid", "legalentityidentifier:clientid"]);
+}
+
+/// The base key a named code fills ranks as the statements holding its
+/// value - the highest rank among the keys of its type stating it, its
+/// type's alone where none does - so a BIC of a listed country and an LEI
+/// whose check digits close replace a typo as the type's answer too,
+/// whichever was stated first, inserted or merged; two values of one rank
+/// keep the order's rule.
+#[test]
+fn the_base_key_a_named_code_fills_follows_the_real_code_whatever_the_order() {
+    const LISTED: &str = "DEUTDEFF";
+    const UNLISTED: &str = "ABCDZZ11";
+    const CLOSING: &str = "5493001KJTIIGC8Y1R12";
+    const TYPO: &str = "5493001KJTIIGC8Y1R13";
+    let bic = |value: &str| id("bic", "executingfirm", value);
+    let cases = [
+        (
+            bic as fn(&str) -> Identifier,
+            IdType::ExecutingFirm,
+            UNLISTED,
+            LISTED,
+        ),
+        (
+            |value| id("legalentityidentifier", "account", value),
+            IdType::Account,
+            TYPO,
+            CLOSING,
+        ),
+    ];
+    for (code, kind, placeholder, real) in cases {
+        // Inserted, in either order.
+        let mut held = Identifiers::new();
+        assert!(held.insert(code(placeholder)));
+        assert_eq!(held.get(&kind), Some(placeholder), "{kind}");
+        assert!(
+            held.insert(code(real)),
+            "{kind}: the real code replaces the typo"
+        );
+        assert_eq!(
+            held.get(&kind),
+            Some(real),
+            "{kind}: and the answer with it"
+        );
+        assert_eq!(held.len(), 2, "{kind}: {held}");
+        let mut held = Identifiers::new();
+        assert!(held.insert(code(real)));
+        assert!(
+            !held.insert(code(placeholder)),
+            "{kind}: never replaced by the typo"
+        );
+        assert_eq!(held.get(&kind), Some(real), "{kind}");
+        assert!(!held.insert(Identifier::new(IdKey::base(kind.clone()), placeholder).unwrap()));
+        assert_eq!(
+            held.get(&kind),
+            Some(real),
+            "{kind}: nor by its base statement"
+        );
+
+        // Merged, either map leading, either later.
+        for later in [false, true] {
+            let mut held: Identifiers = [code(placeholder)].into_iter().collect();
+            assert!(held.merge(&[code(real)].into_iter().collect(), later));
+            assert_eq!(held.get(&kind), Some(real), "{kind} {later}");
+            let mut held: Identifiers = [code(real)].into_iter().collect();
+            assert!(
+                !held.merge(&[code(placeholder)].into_iter().collect(), later),
+                "{kind} {later}"
+            );
+            assert_eq!(held.get(&kind), Some(real), "{kind} {later}");
+            assert_eq!(held.len(), 2, "{kind} {later}: {held}");
+        }
+    }
+
+    // A real code replaces a typo another code source filled the answer
+    // with: the answer ranks as the typo, whoever stated it.
+    let mut held: Identifiers = [bic(UNLISTED)].into_iter().collect();
+    assert!(held.insert(id("legalentityidentifier", "executingfirm", CLOSING)));
+    assert_eq!(held.get(&IdType::ExecutingFirm), Some(CLOSING));
+    // Two real codes of one rank keep the first as the answer, and a value
+    // another source states makes no claim to be a code: it ranks as its
+    // type, so of it and a real code the first stands too.
+    let mut held: Identifiers = [bic(LISTED)].into_iter().collect();
+    assert!(held.insert(id("legalentityidentifier", "executingfirm", CLOSING)));
+    assert_eq!(held.get(&IdType::ExecutingFirm), Some(LISTED));
+    let mut held: Identifiers = [id("proprietary", "executingfirm", "T-1")]
+        .into_iter()
+        .collect();
+    assert!(held.insert(bic(LISTED)));
+    assert_eq!(held.get(&IdType::ExecutingFirm), Some("T-1"));
+    let mut held: Identifiers = [bic(LISTED)].into_iter().collect();
+    assert!(held.insert(id("proprietary", "executingfirm", "T-1")));
+    assert_eq!(held.get(&IdType::ExecutingFirm), Some(LISTED));
+    // A typo another source also states is no longer the code's alone.
+    let mut held: Identifiers = [bic(UNLISTED), id("proprietary", "executingfirm", UNLISTED)]
+        .into_iter()
+        .collect();
+    assert!(held.insert(bic(LISTED)));
+    assert_eq!(held.get(&IdType::ExecutingFirm), Some(UNLISTED));
+}
+
 #[test]
 fn words_fold_to_lower_case_and_values_trim() {
     let party = Identifier::new(
@@ -546,6 +803,13 @@ fn a_key_that_names_no_identifier_or_another_instruments_security_is_none() {
             "{key:?} names another instrument"
         );
     }
+    // A vendor's source spelling names a type of this instrument's own.
+    assert_eq!(
+        Identifier::from_key("X-SWX-VALOR", "1221405")
+            .expect("a Valor number")
+            .to_string(),
+        "valor=1221405"
+    );
     // Only a security type is refused there: an order identifier a leg or a
     // counterparty states is one of the element's own.
     assert_eq!(

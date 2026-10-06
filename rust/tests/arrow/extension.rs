@@ -126,7 +126,7 @@ fn the_names_are_one_per_extension_and_every_datatype_writes_its_own() {
     distinct.sort_unstable();
     distinct.dedup();
     assert_eq!(distinct.len(), names.len(), "{names:?}");
-    assert_eq!(names.len(), 31, "{names:?}");
+    assert_eq!(names.len(), 36, "{names:?}");
     for id in DataTypeId::ALL {
         if let Some(name) = id.arrow_extension_name() {
             assert!(names.contains(&name), "{id:?}");
@@ -135,6 +135,8 @@ fn the_names_are_one_per_extension_and_every_datatype_writes_its_own() {
     // Each name a datatype writes is its identifier's.
     for dtype in [
         DataType::Ccy,
+        DataType::Lei,
+        DataType::Fisn,
         DataType::State,
         DataType::Uuid,
         DataType::Decimal,

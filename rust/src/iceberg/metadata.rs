@@ -16,7 +16,7 @@
 //! ones, so the rest of the module never asks which version it is looking at.
 //! Writing emits exactly what the declared version requires.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
@@ -38,7 +38,7 @@ use super::partition::PartitionSpec;
 use super::snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
 use super::{Transform, schema_from_json, schema_into_json};
 use crate::expression::{Function, Literal, Ordering, Term};
-use crate::{DataType, Error, Field, Result, Scalar, Serie, SortOptions};
+use crate::{DataType, Error, Field, Representation, Result, Scalar, Serie, SortOptions};
 
 impl TableMetadata {
     /// The prefix of the table property holding one derived column's term:
@@ -47,6 +47,15 @@ impl TableMetadata {
     /// identifier, name, type and nullability and nothing else, so this is
     /// where a table keeps how one of its columns is computed.
     pub const TRANSFORM_PROPERTY_PREFIX: &'static str = "yggdryl.transform.";
+
+    /// The table property naming the columns whose integers are bits: the
+    /// sorted, comma-separated identifiers of every column, at any depth,
+    /// stating `FIELD:representation=bits` - an unsigned column stored as the
+    /// signed integer of its width. An Iceberg schema states neither an
+    /// unsigned type nor anything beside a type, so this is where a table
+    /// keeps which `long` holds a `uint64`'s bits, declared back on the
+    /// column wherever the document is read.
+    pub const REPRESENTATION_BITS_PROPERTY: &'static str = "yggdryl.representation.bits";
 }
 
 /// The properties stating the terms `schema`'s top-level columns derive
@@ -94,6 +103,101 @@ fn mark_transforms(schemas: &mut [Field], properties: &[(SmolStr, SmolStr)]) -> 
         }
     }
     Ok(())
+}
+
+/// The property naming every column of `schemas` stating bits, or none
+/// where no column does.
+fn representation_property<'a>(
+    schemas: impl IntoIterator<Item = &'a Field>,
+) -> Result<Option<(SmolStr, SmolStr)>> {
+    let mut ids = BTreeSet::new();
+    for schema in schemas {
+        bits_ids(schema, &mut ids)?;
+    }
+    Ok((!ids.is_empty()).then(|| {
+        let joined: Vec<String> = ids.iter().map(i32::to_string).collect();
+        (
+            SmolStr::new_static(TableMetadata::REPRESENTATION_BITS_PROPERTY),
+            SmolStr::from(joined.join(",")),
+        )
+    }))
+}
+
+/// Collect the identifiers of every integer column under `node` stating
+/// bits.
+fn bits_ids(node: &Field, ids: &mut BTreeSet<i32>) -> Result<()> {
+    for child in (0..node.dtype().field_len()).filter_map(|at| node.dtype().get_field(at)) {
+        if child.dtype().is_integer()
+            && child.as_field_properties().representation().is_bits()
+            && let Some(id) = child.parquet_field_id()?
+        {
+            ids.insert(id);
+        }
+        bits_ids(child, ids)?;
+    }
+    Ok(())
+}
+
+/// Declare `FIELD:representation=bits` on every integer column of every
+/// schema the table's property names by identifier; an identifier a schema
+/// does not hold declares nothing on it, and a property that is no list of
+/// identifiers is refused naming it.
+fn mark_representations(schemas: &mut [Field], properties: &[(SmolStr, SmolStr)]) -> Result<()> {
+    let Some((key, text)) = properties
+        .iter()
+        .find(|(key, _)| key == TableMetadata::REPRESENTATION_BITS_PROPERTY)
+    else {
+        return Ok(());
+    };
+    let ids = text
+        .split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(|id| {
+            crate::integer::integer_from_text_as::<i32>(id).ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected comma-separated column identifiers in the table property {key:?}, got {text:?}"
+                ))
+            })
+        })
+        .collect::<Result<BTreeSet<i32>>>()?;
+    for schema in schemas.iter_mut() {
+        declare_bits(schema, &ids)?;
+    }
+    Ok(())
+}
+
+/// Declare bits on every integer column under `node` whose identifier `ids`
+/// holds, rebuilding a level only where a column beneath it changed;
+/// whether one did.
+fn declare_bits(node: &mut Field, ids: &BTreeSet<i32>) -> Result<bool> {
+    let count = node.dtype().field_len();
+    if count == 0 {
+        return Ok(false);
+    }
+    let mut children = Vec::with_capacity(count);
+    let mut changed = false;
+    for child in (0..count).filter_map(|at| node.dtype().get_field(at)) {
+        let mut child = child.clone();
+        if child.dtype().is_integer()
+            && !child.as_field_properties().representation().is_bits()
+            && child
+                .parquet_field_id()?
+                .is_some_and(|id| ids.contains(&id))
+        {
+            child
+                .as_field_properties_mut()
+                .set_representation(Representation::Bits)?;
+            changed = true;
+        }
+        changed |= declare_bits(&mut child, ids)?;
+        children.push(child);
+    }
+    if changed {
+        let rebuilt = node.dtype().clone().with_fields(children)?;
+        node.set_dtype(rebuilt)?;
+    }
+    Ok(changed)
 }
 
 /// Which revision of the Iceberg table specification a table is written to.
@@ -928,9 +1032,12 @@ impl TableMetadata {
         // and the order its files keep is declared on it the same way.
         let schema = order.mark_order(&spec.mark_partitions(&schema)?)?;
         // An Iceberg schema has nowhere to state how a column is computed,
-        // so a derived column's term rides the table's properties and is
+        // or that a column's integers are bits, so a derived column's term
+        // and the columns stating bits ride the table's properties and are
         // declared back on the column wherever the document is read.
-        let properties = transform_properties(&schema)?;
+        let mut properties = transform_properties(&schema)?;
+        properties.extend(representation_property([&schema])?);
+        properties.sort_by(|left, right| left.0.cmp(&right.0));
         let last_partition_id = spec.last_field_id();
         let current_schema_id = schema
             .as_iceberg()
@@ -1133,6 +1240,20 @@ impl TableMetadata {
             )?;
             added.as_iceberg_mut().set_schema_id(schema_id)?;
         }
+        // The official schema states no declaration, so the columns stating
+        // bits are restated over every schema the table holds - identifiers
+        // are never reused, so the union is exact - and declared back on the
+        // one added.
+        updated
+            .properties
+            .retain(|(key, _)| key != Self::REPRESENTATION_BITS_PROPERTY);
+        updated.properties.extend(representation_property(
+            self.schemas.iter().chain([&schema]),
+        )?);
+        updated
+            .properties
+            .sort_by(|left, right| left.0.cmp(&right.0));
+        mark_representations(&mut updated.schemas, &updated.properties)?;
         *self = updated;
         Ok(schema_id)
     }
@@ -1301,6 +1422,7 @@ impl TableMetadata {
             .unwrap_or_default();
         properties.sort_by(|left, right| left.0.cmp(&right.0));
         mark_transforms(&mut schemas, &properties)?;
+        mark_representations(&mut schemas, &properties)?;
 
         let mut statistics = sequence(document, "statistics");
         statistics.sort();

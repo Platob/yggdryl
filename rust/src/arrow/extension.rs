@@ -115,6 +115,11 @@ marker_extension! {
     BbgType => Bbg,
     UnitType => Unit,
     ForexType => Forex,
+    LeiType => Lei,
+    BicType => Bic,
+    ElfType => Elf,
+    DtiType => Dti,
+    FisnType => Fisn,
 }
 
 /// [`ExtensionType`] for a view whose leaf is its document: `yggdryl.string`

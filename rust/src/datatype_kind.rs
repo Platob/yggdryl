@@ -137,7 +137,7 @@ impl DataTypeKind {
             Self::Temporal => 0x30,
             Self::Bytes => 0x40,
             Self::Text => 0x50,
-            Self::Code => 0x70,
+            Self::Code => 0x6a,
             Self::Uuid => 0x80,
             Self::Nested => 0x90,
             Self::Geospatial => 0xb0,
@@ -147,6 +147,20 @@ impl DataTypeKind {
 
     /// The last byte of the range the family owns: its leaves, stated or
     /// still placeholders, sit between [`Self::id`] and this.
+    ///
+    /// The code family opened at `0x70` until its sixteen bytes ran out; it
+    /// took the text family's tail, `0x6a` to `0x6f`, which no leaf had ever
+    /// held, so no leaf byte moved. Text keeps `0x69` and the code family
+    /// `0x70` as their one spare each; a family that outgrows its range next
+    /// owns several ranges rather than a retired byte, which is never
+    /// reused.
+    ///
+    /// ```
+    /// use yggdryl::DataTypeKind;
+    ///
+    /// assert_eq!(DataTypeKind::Text.range(), 0x50..=0x69);
+    /// assert_eq!(DataTypeKind::Code.range(), 0x6a..=0x7f);
+    /// ```
     pub const fn last(self) -> u8 {
         match self {
             Self::Null => 0x07,
@@ -156,7 +170,7 @@ impl DataTypeKind {
             Self::Decimal => 0x2f,
             Self::Temporal => 0x3f,
             Self::Bytes => 0x4f,
-            Self::Text => 0x6f,
+            Self::Text => 0x69,
             Self::Code => 0x7f,
             Self::Uuid => 0x8f,
             Self::Nested => 0xaf,

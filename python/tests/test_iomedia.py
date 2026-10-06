@@ -30,6 +30,7 @@ from yggdryl import (
     Serie,
     SerieReader,
     TextOptions,
+    combined,
     scalar,
 )
 
@@ -1421,3 +1422,183 @@ def test_an_options_value_is_built_with_its_properties_by_name() -> None:
         warnings.simplefilter("error")
         assert TextOptions(rowheader=...) == TextOptions()
 
+
+
+SHAPED_ROOT = Field("row", "struct<id:int64,year:int32>", nullable=False)
+
+
+def shaping_options(kind: str) -> RecordOptions | TextOptions:
+    """One options value of each kind, for the shaping both kinds answer."""
+    if kind == "record":
+        return RecordOptions("application/vnd.apache.arrow.stream")
+    return TextOptions()
+
+
+class TestOptionsShaping:
+    """Record and text options shape a batch, a reader and a bound one way."""
+
+    @pytest.mark.parametrize("kind", ["record", "text"])
+    def test_a_batch_and_a_reader_are_shaped_by_the_same_layers(self, kind: str) -> None:
+        options = shaping_options(kind)
+        options.field = SHAPED_ROOT
+        options.select = ["id"]
+        source = pa.Table.from_pydict(
+            {
+                "id": pa.array([1, 2], pa.int32()),
+                "year": pa.array([2024, 2025], pa.int32()),
+            }
+        ).to_batches()[0]
+
+        shaped = options.apply_arrow_batch(source)
+        assert shaped.schema.names == ["id"]
+        assert shaped.schema.field("id").type == pa.int64()
+        assert shaped.column("id").to_pylist() == [1, 2]
+
+        reader = options.apply_arrow_reader(
+            pa.RecordBatchReader.from_batches(source.schema, [source])
+        )
+        # The schema is known before a batch is pulled, and the rows are the
+        # batch door's.
+        assert reader.schema == shaped.schema
+        assert reader.read_all().to_batches()[0].equals(shaped)
+
+        # A stored root completes what the rows lack.
+        stored = Field("row", "struct<id:int64,venue:utf8>", nullable=False)
+        completed = options.apply_arrow_batch(source, stored)
+        assert completed.schema.names == ["id", "venue"]
+        assert completed.column("venue").to_pylist() == [None, None]
+
+    @pytest.mark.parametrize("kind", ["record", "text"])
+    def test_a_bound_is_the_last_layer_and_stops_pulling(self, kind: str) -> None:
+        options = shaping_options(kind)
+        options.max_row_size = 3
+        pulled: list[int] = []
+        batches = [pa.record_batch({"id": pa.array([index, index], pa.int64())}) for index in range(4)]
+
+        def stream() -> Iterator[pa.RecordBatch]:
+            for index, batch in enumerate(batches):
+                pulled.append(index)
+                yield batch
+
+        limited = options.limit_arrow_reader(
+            pa.RecordBatchReader.from_batches(batches[0].schema, stream())
+        )
+        assert sum(batch.num_rows for batch in limited) == 3
+        assert pulled == [0, 1]
+
+    @pytest.mark.parametrize("kind", ["record", "text"])
+    def test_the_reader_doors_take_a_reader_and_nothing_else(self, kind: str) -> None:
+        options = shaping_options(kind)
+        table = pa.table({"id": [1]})
+        with pytest.raises(TypeError, match="Arrow C stream reader"):
+            options.apply_arrow_reader(table)
+        with pytest.raises(TypeError, match="Arrow C stream reader"):
+            options.limit_arrow_reader(table)
+
+
+class TestGenericDoorShapes:
+    """A generic `write_<shape>` takes its shape alone, whatever the mode."""
+
+    @pytest.mark.parametrize("mode", ["overwrite", "append", "merge"])
+    def test_a_generic_door_refuses_another_shape_by_name(
+        self, tmp_path: pathlib.Path, mode: str, table: pa.Table, batch: pa.RecordBatch
+    ) -> None:
+        handle = IOBase(tmp_path / f"generic-{mode}.parquet")
+        keys = {"merge_by": ["id"]} if mode == "merge" else {}
+
+        with pytest.raises(TypeError, match="Arrow C stream reader"):
+            handle.write_arrow_reader(table, mode, **keys)
+        with pytest.raises(TypeError, match="pyarrow.Table"):
+            handle.write_arrow_table(batch, mode, **keys)
+        with pytest.raises(TypeError, match="pyarrow.RecordBatch"):
+            handle.write_arrow_batch(table, mode, **keys)
+        assert not handle.exists()
+
+
+class TestCombined:
+    """Two readers chained onto the root their two schemas merge into."""
+
+    def test_columns_unite_by_name_and_a_one_sided_one_turns_nullable(self) -> None:
+        left = pa.table({"id": pa.array([1], pa.int64())})
+        right = pa.table({"id": pa.array([2], pa.int64()), "venue": ["XPAR"]})
+
+        joined = combined(left, right)
+
+        assert isinstance(joined, pa.RecordBatchReader)
+        # The root is the two schemas' alone, answered before a batch is pulled.
+        assert joined.schema.names == ["id", "venue"]
+        assert joined.schema.field("venue").nullable
+        rows = joined.read_all()
+        assert rows.column("id").to_pylist() == [1, 2]
+        assert rows.column("venue").to_pylist() == [None, "XPAR"]
+
+    def test_both_sides_take_any_stream_shape(self) -> None:
+        left = pa.table({"id": pa.array([1], pa.int64())})
+        right = pa.table({"id": pa.array([2], pa.int64())})
+
+        joined = combined(left.to_reader(), Serie.from_(right)).read_all()
+
+        assert joined.column("id").to_pylist() == [1, 2]
+
+    def test_a_shared_column_whose_datatypes_disagree_is_refused(self) -> None:
+        left = pa.table({"id": pa.array([1], pa.int64())})
+        right = pa.table({"id": ["two"]})
+
+        with pytest.raises(ValueError, match="id"):
+            combined(left, right)
+
+    def test_a_declared_schema_is_the_root_both_sides_cast_onto(self) -> None:
+        schema = pa.schema(
+            [pa.field("id", pa.int64(), nullable=False), pa.field("venue", pa.string())]
+        )
+        left = pa.table({"id": pa.array([1], pa.int32())})
+        right = pa.table({"id": pa.array([2], pa.int16()), "venue": ["XPAR"]})
+
+        joined = combined(left, right, schema).read_all()
+
+        assert joined.schema.field("id").type == pa.int64()
+        assert joined.column("id").to_pylist() == [1, 2]
+        assert joined.column("venue").to_pylist() == [None, "XPAR"]
+
+
+class TestMergeKeySpellings:
+    """`True` is the destination's own key, as `None` is; `False` is refused."""
+
+    @pytest.mark.parametrize("make", [lambda: RecordOptions("trades.parquet"), TextOptions])
+    def test_true_is_the_key_the_options_name_when_none_is_set(self, make: Any) -> None:
+        options = make()
+        options.merge_by = ["id"]
+        options.merge_by = True
+        assert options.merge_by.is_all
+        # No flag is kept: the options equal ones never given a key.
+        assert options == make()
+        assert pickle.loads(pickle.dumps(options)) == make()
+        options.merge_by = ["id"]
+        options.merge_by = None
+        assert options == make()
+
+    def test_true_by_name_is_an_options_value_given_no_key(self) -> None:
+        assert RecordOptions("trades.parquet", merge_by=True) == RecordOptions("trades.parquet")
+        assert TextOptions(merge_by=True) == TextOptions()
+
+    @pytest.mark.parametrize("make", [lambda: RecordOptions("trades.parquet"), TextOptions])
+    def test_false_is_refused_naming_the_key_and_keeps_the_one_held(self, make: Any) -> None:
+        options = make()
+        options.merge_by = ["id"]
+        with pytest.raises(
+            ValueError,
+            match=r"\$\.merge_by: expected a column list, a selector text, null, or true "
+            r"\(the destination's own key\), got false",
+        ):
+            options.merge_by = False
+        assert options.merge_by.names == ["id"]
+        with pytest.raises(ValueError, match=r"\$\.merge_by"):
+            RecordOptions("trades.parquet", merge_by=False)
+
+    def test_an_integer_is_no_boolean(self) -> None:
+        options = RecordOptions("trades.parquet")
+        # Python's `True` is an `int`, but only a boolean reads as one: `1`
+        # stays a value no selector is spelled by.
+        with pytest.raises(ValueError, match="text of a select clause.*got Int64"):
+            options.merge_by = 1
+        assert options.merge_by.is_all

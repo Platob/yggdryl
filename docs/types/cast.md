@@ -7,7 +7,7 @@ The [field](field.md) is the cast target: an Arrow array, a record batch, a stre
 | Key | Value |
 | --- | --- |
 | Owns | `ArrowCastPlan`, `ArrowCastOptions`, `Representation`; `validate_value` and `canonicalize_value` for rows |
-| Ways in | `Serie::cast` for a column in hand; `ChunkedSerie::cast` for chunked columns, one plan over every chunk, and `ArrowCastPlan::apply_chunked` for a held one; `Serie::from_arrow_array`, `from_arrow_batch`, `from_arrow_reader` for Arrow buffers; `SerieReader::from_arrow_reader` for a stream; an `ArrowCastPlan` held and applied wherever one cast repeats |
+| Ways in | `Serie::cast` for a column in hand; `ChunkedSerie::cast` for chunked columns, one plan over every chunk, and `ArrowCastPlan::apply_chunked` for a held one; `Serie::from_arrow_array`, `from_arrow_batch`, `from_arrow_reader` for Arrow buffers; `SerieReader::from_arrow_reader` for a stream; an `ArrowCastPlan` held and applied wherever one cast repeats; `Field::apply_arrow_batch`, `apply_arrow_schema`, `apply_arrow_reader` and the record options' `apply_arrow_batch`, `apply_arrow_reader`, this same plan at its `RecordBatch` and `BatchReader` face ([Eager and lazy](#eager-and-lazy)) |
 | Target | The field, never the source. A `DataType` target is its required `value` field (`dtype.required_field("value")`), so a refusal names `$.value` |
 | Returns | A `Serie` under the target field - a `ChunkedSerie` of as many chunks from `ChunkedSerie::cast` and `apply_chunked`. A typed read is a narrowing of it: `as_int64().values()`, `as_utf8()`, `as_date32()`, `as_fixed_bytes()` |
 | Exact input | The identity plan: the same buffers, and a column already under the target is itself - where the source states every nullability the target requires; a nullable source under a required target is read for its nulls |
@@ -243,6 +243,84 @@ still says whether a value may be absent ([Required columns](#required-columns))
     // Four bytes are not eight, so this stays the ordinary numeric widening.
     const narrow = arrow.vectorFromArray([7], new arrow.Uint32())
     assert.deepEqual(Serie.fromArrowArray(narrow, fields.int64('id'), bits).asJs(), [7])
+    ```
+
+### A column that states its bits
+
+A column may ask for the bits itself, by stating
+[`FIELD:representation=bits`](protocol.md#integers-stated-as-bits): one node joining two
+integer layouts of one width is then the bit reading, whatever the whole cast asks, when the
+target column states it or the source's Arrow field does - the column a table stores a `uint64`
+digest in as a `long`, which its reader casts back. The decision is made once, where the node is
+planned, and the buffer is shared. It is the integers' alone: a float or a temporal meeting a
+column that states it is converted by value, where `representation="bits"` asked of a whole cast
+would share its bytes too. The plan-wide option is untouched, so a record whose digest states
+bits casts its other columns by value.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Float64Array, UInt64Array};
+    use yggdryl::{ArrowCastOptions, DataType, Representation, Serie};
+
+    let mut digest = DataType::Int64.required_field("digest");
+    digest.as_field_properties_mut().set_representation(Representation::Bits)?;
+
+    // A cast asking for values carries the bits of the column that states them.
+    let unsigned = UInt64Array::from(vec![0, 1 << 63, u64::MAX]);
+    let signed =
+        Serie::from_arrow_array(Some(&digest), Arc::new(unsigned.clone()), ArrowCastOptions::new())?;
+    let signed = signed.as_int64().expect("an int64 column").array().clone();
+    assert_eq!(signed.values(), &[0, i64::MIN, -1]);
+    assert!(signed.values().inner().ptr_eq(unsigned.values().inner()));
+
+    // A float meeting the column is the number it is.
+    let price = Serie::from_arrow_array(
+        Some(&digest),
+        Arc::new(Float64Array::from(vec![1.0])),
+        ArrowCastOptions::new(),
+    )?;
+    assert_eq!(price.as_int64().expect("an int64 column").values(), &[1]);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+    from yggdryl import Field, Serie
+
+    digest = Field("digest", "int64")
+    digest.field_properties.representation = "bits"
+
+    unsigned = pa.array([0, 2**63, 2**64 - 1], type=pa.uint64())
+    signed = Serie.from_arrow_array(unsigned, digest).into_arrow_array()
+    assert signed.to_pylist() == [0, -(2**63), -1]
+    assert signed.buffers()[1].address == unsigned.buffers()[1].address
+
+    # A float meeting the column is the number it is.
+    price = Serie.from_arrow_array(pa.array([1.0]), digest)
+    assert price.as_py() == [1]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Serie, fields } = require('yggdryl')
+
+    const digest = fields.int64('digest')
+    digest.fieldProperties.representation = 'bits'
+
+    const unsigned = arrow.vectorFromArray([0n, 2n ** 63n, 2n ** 64n - 1n], new arrow.Uint64())
+    const signed = Serie.fromArrowArray(unsigned, digest)
+    assert.deepEqual([...signed.intoArrowArray()], [0n, -(2n ** 63n), -1n])
+
+    // A float meeting the column is the number it is.
+    const price = Serie.fromArrowArray(arrow.vectorFromArray([1.0], new arrow.Float64()), digest)
+    assert.deepEqual([...price.intoArrowArray()], [1n])
     ```
 
 ## Row values
@@ -1110,6 +1188,18 @@ dropped at that point, which releases a C stream behind it.
 are pulled and never landed, so no row is read beyond what the cast itself reads. Over an
 identity plan it is the inner reader, handed back untouched.
 
+The schema doors are this plan at the same face, never a second cast.
+[`Field::apply_arrow_batch`](field.md#applying-a-schema) compiles the plan from the batch's schema
+and reconciles the batch through it, once per call; `apply_arrow_schema` answers the plan's target
+schema with no row read; and `Field::apply_arrow_reader` is
+`SerieReader::from_arrow_reader(Some(root), reader, options).into_arrow_reader()`, one plan for
+the stream. The record options' `apply_arrow_batch` and `apply_arrow_reader` run the same cast
+twice - onto the declared field, then onto the stored field a write completes onto - with the
+`where` and `select` sections between them ([Options](../media/index.md#options)). They take and
+answer `RecordBatch` and `BatchReader` because that is what their callers exchange; a loop holds
+the reader form, since `apply_arrow_batch` called per batch compiles per batch. Python binds them
+under the same names; JavaScript binds none of them.
+
 === "Rust"
 
     ```rust
@@ -1382,6 +1472,7 @@ What each binding door accepts, each resolved once at the door:
 - Text or bytes into a struct, serie or map -> each cell one JSON document under the target, never a one-item list wrapped around the cell; `""` and the document `null` are absence; a JSON object holds no order, so a map's entries come back in the order of their keys' text and a sorted map's in the order of its keys.
 - Text into a union or a variant -> the union's member that takes it, the variant's string; neither reads a document at the top of a cast.
 - `representation="bits"` over two different widths, or into a datatype with a value rule -> the ordinary conversion, range check and all.
+- A column stating `FIELD:representation=bits` met by a float or a temporal -> converted by value; the column's declaration is its integers' alone.
 - A required `bits` target over source nulls -> refused by path, exactly as under `value`.
 - A foreign column carrying a `yggdryl.*` extension label -> its rows read once under the field's rule, a refused row named with its column and row under every option; a label is never a proof.
 - A column of another layout handed to a compiled plan -> error naming both layouts; a plan is compiled for one source.

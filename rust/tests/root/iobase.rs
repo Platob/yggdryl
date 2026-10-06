@@ -1145,11 +1145,15 @@ mod create {
             let error = handle
                 .create_bytes(b"MSFT,410.10")
                 .expect_err("a value is already there");
-            assert!(matches!(error, Error::Conflict { .. }), "{error}");
-            assert!(error.is_conflict());
             assert!(
-                error.to_string().contains(location),
-                "{error} names {location}"
+                matches!(&error, Error::Conflict { path, .. } if path.as_str() == location),
+                "{error:?} does not carry path {location:?}"
+            );
+            assert!(error.is_conflict());
+            let quoted_location = format!("{location:?}");
+            assert!(
+                error.to_string().contains(&quoted_location),
+                "{error} names {quoted_location}"
             );
         }
 

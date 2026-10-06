@@ -65,7 +65,7 @@
 //! bridge row spelling `SESSIONID` lands on the crate's own column, and a
 //! name every registry carries is never an unknown key. [`is_crate_tag`] is
 //! the whole test. A field is its tag and its name, so each is declared as
-//! both - `MSGPLUGINID_TAG_NAME` is `(65_040, "msgpluginid")` - and a
+//! both - `MSGPLUGINID_TAG_NAME` is `(65_041, "msgpluginid")` - and a
 //! caller reads the half it needs.
 //!
 //! # What is FIX's own is not here
@@ -140,11 +140,11 @@ pub const CURRUNIX_TAG_NAME: (i32, &str) = (65_007, "currunix");
 
 /// The tag and name carrying the message context a bridge handled the
 /// message in.
-pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_043, "msgctxid");
+pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_044, "msgctxid");
 
 /// The tag and name carrying the plugin that logged the line, as a bridge
 /// names it.
-pub const MSGPLUGINID_TAG_NAME: (i32, &str) = (65_040, "msgpluginid");
+pub const MSGPLUGINID_TAG_NAME: (i32, &str) = (65_041, "msgpluginid");
 
 /// The tag and name carrying the role of the FIX plugin whose session
 /// produced the message, as the member of [`crate::PluginSide`] its code
@@ -155,7 +155,7 @@ pub const MSGPLUGINID_TAG_NAME: (i32, &str) = (65_040, "msgpluginid");
 /// never off a FIX tag, and independent of `Side(54)`; every row states
 /// it, and a row stating one is the row's word. The intrinsic
 /// `msgpluginsidecodeset` names what each code stands for.
-pub const MSGPLUGINSIDE_TAG_NAME: (i32, &str) = (65_041, "msgpluginside");
+pub const MSGPLUGINSIDE_TAG_NAME: (i32, &str) = (65_042, "msgpluginside");
 
 /// The tag and name carrying the code the message's content digests to:
 /// the XXH3-64 of what the event states and the named FIX content behind it.
@@ -196,7 +196,7 @@ pub const SNAPUNIX_TAG_NAME: (i32, &str) = (65_012, "snapunix");
 /// message's about itself, so it travels beside the row as one of the
 /// capture's own columns, with the body the line was cut from and its place
 /// in the object, and no column of the message restates it.
-pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_050, "sourceurl");
+pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_051, "sourceurl");
 
 /// The tag and name carrying the session instance a bridge handled a line on.
 ///
@@ -205,7 +205,7 @@ pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_050, "sourceurl");
 /// the bridge's own connection instance, and the two are separate facts -
 /// one message states its session once, while two connections to one
 /// counterparty are two instances.
-pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_044, "msgsessionid");
+pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_045, "msgsessionid");
 
 /// The tag and name carrying the message's identity: UUIDv7 ordered by its
 /// millisecond and sequence, with a content payload seeded by its cross hash.
@@ -249,7 +249,7 @@ pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_003, "crosscode");
 /// `TECH.` and `AMON.` keys and their kin - and, in a row, every key no
 /// dictionary resolved; each under the key as it was spelled, folded, in
 /// sorted order.
-pub const METADATA_TAG_NAME: (i32, &str) = (65_035, "metadata");
+pub const METADATA_TAG_NAME: (i32, &str) = (65_036, "metadata");
 
 /// The tag and name of the fixed row every message answers as, as a store
 /// dumps it: `components/fixmsg.json` states the columns
@@ -258,7 +258,7 @@ pub const METADATA_TAG_NAME: (i32, &str) = (65_035, "metadata");
 /// reader passes the document over, as it passes the crate's own fields -
 /// so the dump is what a consumer reads the row's shape from without
 /// running this crate, and nothing this crate reads back.
-pub const FIXMSG_TAG_NAME: (i32, &str) = (65_051, "fixmsg");
+pub const FIXMSG_TAG_NAME: (i32, &str) = (65_052, "fixmsg");
 
 /// The tag and name carrying the identities of the elements the message
 /// was read from: its provenance, never its lineage.
@@ -326,17 +326,17 @@ pub const EXPRUNIX_TAG_NAME: (i32, &str) = (65_010, "exprunix");
 
 /// The tag and name carrying the business category of the message type, as
 /// the member of [`crate::MarketDataKind`] its code stores: the one
-/// [`FixMsg::msgcat`](super::FixMsg::msgcat) answers, under the
+/// [`Market::marketdatakind`](crate::graph::Market::marketdatakind) answers on a message, under the
 /// [`MarketColumn`] name every market row states it by.
 pub const MARKETDATAKIND_TAG_NAME: (i32, &str) = (65_016, "marketdatakind");
 /// The crate-owned vocabulary registered for the `marketdatakind` column to
 /// read by:
 /// every member of [`crate::MarketDataKind`], its stored name, the code it
 /// stores and what it stands for. Intrinsic and immutable in a registry.
-pub(super) const MSGCAT_CODESET_NAME: &str = "msgcatcodeset";
+pub(super) const MARKETDATAKIND_CODESET_NAME: &str = "marketdatakindcodeset";
 
-/// The canonical MsgCat document every registry shares.
-static MSGCAT_CODESET: LazyLock<Option<Arc<str>>> = LazyLock::new(|| {
+/// The canonical `marketdatakind` document every registry shares.
+static MARKETDATAKIND_CODESET: LazyLock<Option<Arc<str>>> = LazyLock::new(|| {
     let codes = crate::MarketDataKind::ALL
         .iter()
         .map(|kind| {
@@ -347,14 +347,14 @@ static MSGCAT_CODESET: LazyLock<Option<Arc<str>>> = LazyLock::new(|| {
     match super::FixCodes::render(&codes) {
         Ok(document) => Some(Arc::from(document)),
         Err(error) => {
-            log::warn!("building FIX MsgCat code set: {error}");
+            log::warn!("building FIX marketdatakind code set: {error}");
             None
         }
     }
 });
 
-pub(super) fn msgcat_codeset() -> Option<Arc<str>> {
-    MSGCAT_CODESET.as_ref().map(Arc::clone)
+pub(super) fn marketdatakind_codeset() -> Option<Arc<str>> {
+    MARKETDATAKIND_CODESET.as_ref().map(Arc::clone)
 }
 
 /// The type of its kind the message is, as the member of
@@ -420,11 +420,11 @@ pub(super) fn msgpluginside_codeset() -> Option<Arc<str>> {
 /// The tag and name carrying the normalized ISIN the message identifies.
 pub const ISINCODE_TAG_NAME: (i32, &str) = (65_021, "isincode");
 /// The tag and name carrying the normalized Bloomberg identifier the message identifies.
-pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_048, "bloombergcode");
+pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_049, "bloombergcode");
 /// The tag and name carrying the normalized market MIC the message identifies.
 pub const MICCODE_TAG_NAME: (i32, &str) = (65_022, "miccode");
 /// The tag and name carrying the normalized FIGI the message identifies.
-pub const FIGICODE_TAG_NAME: (i32, &str) = (65_049, "figicode");
+pub const FIGICODE_TAG_NAME: (i32, &str) = (65_050, "figicode");
 /// The tag and name carrying when the message last executed, where one of
 /// its FIX facts states it - a `TransactTime(60)` stating a day alone
 /// states none - else - on a message reporting an execution that states
@@ -440,16 +440,16 @@ pub const RECDUNIX_TAG_NAME: (i32, &str) = (65_009, "recdunix");
 /// The tag and name carrying the session event a bridge delivered the
 /// message as: its `MsgType(35)`, session instance, message context and
 /// `MsgSeqNum(34)` joined by `:`, where all four are stated.
-pub const MSGSESSEVENTID_TAG_NAME: (i32, &str) = (65_045, "msgsesseventid");
+pub const MSGSESSEVENTID_TAG_NAME: (i32, &str) = (65_046, "msgsesseventid");
 
 /// The tag and name carrying the plugin a message came into a bridge
 /// through, as the bridge's own log line names it: provenance the capture
 /// holds, never content and never a digest input.
-pub const MSGORIGINATOR_TAG_NAME: (i32, &str) = (65_042, "msgoriginator");
+pub const MSGORIGINATOR_TAG_NAME: (i32, &str) = (65_043, "msgoriginator");
 
 /// The tag and name carrying the conversation a bridge filed the message
 /// under, as it stated it: provenance the capture holds, never content.
-pub const CONVERSATIONID_TAG_NAME: (i32, &str) = (65_046, "conversationid");
+pub const CONVERSATIONID_TAG_NAME: (i32, &str) = (65_047, "conversationid");
 
 /// The tag and name carrying the currency pair the message is about,
 /// canonical `CCY1/CCY2`: the `FOREX` entry of the message's security
@@ -459,7 +459,7 @@ pub const CONVERSATIONID_TAG_NAME: (i32, &str) = (65_046, "conversationid");
 /// `securityids` column, a pair the message's reading answers states
 /// nothing, the pair its symbol names where nothing else names one is that
 /// detection, and any other replaces its type's answer, the base key.
-pub const FOREXCODE_TAG_NAME: (i32, &str) = (65_047, "forexcode");
+pub const FOREXCODE_TAG_NAME: (i32, &str) = (65_048, "forexcode");
 
 /// The tag and name carrying the part of the quantity an iceberg keeps from
 /// the market, which the row derives: the quantity past `DisplayQty(1138)`,
@@ -525,24 +525,28 @@ pub const FXRATES_TAG_NAME: (i32, &str) = (65_033, "fxrates");
 /// row derives from `Symbol(55)`.
 pub const TICKER_TAG_NAME: (i32, &str) = (65_034, "ticker");
 
+/// The tag and name carrying the strike price of the option the message
+/// identifies, which the row derives from `StrikePrice(202)`.
+pub const STRIKEPX_TAG_NAME: (i32, &str) = (65_035, "strikepx");
+
 /// The tag and name carrying the quantity the operation ordered, which the
 /// row derives from `OrderQty(38)`.
-pub const ORDQTY_TAG_NAME: (i32, &str) = (65_036, "ordqty");
+pub const ORDQTY_TAG_NAME: (i32, &str) = (65_037, "ordqty");
 
 /// The tag and name carrying whether the instrument can trade, which the
 /// row derives from `SecurityTradingStatus(326)`, `TradingSessionStatus(340)`
 /// or `SecurityStatus(965)`.
-pub const TRADABLE_TAG_NAME: (i32, &str) = (65_037, "tradable");
+pub const TRADABLE_TAG_NAME: (i32, &str) = (65_038, "tradable");
 
 /// The tag and name carrying the operation's alternate identifiers, each
 /// typed under the `FIX` source, which the row derives from the fields the
 /// dictionary files under `FIX:idmap`.
-pub const IDENTIFIERS_TAG_NAME: (i32, &str) = (65_038, "identifiers");
+pub const IDENTIFIERS_TAG_NAME: (i32, &str) = (65_039, "identifiers");
 
 /// The tag and name carrying the parties the operation names, each typed by
 /// its role and sourced by its issuer, which the row derives from the
 /// `Parties` groups and `Account(1)`.
-pub const PARTYIDS_TAG_NAME: (i32, &str) = (65_039, "partyids");
+pub const PARTYIDS_TAG_NAME: (i32, &str) = (65_040, "partyids");
 
 /// The graph element column one crate tag is, for the six that are one.
 ///
@@ -659,7 +663,7 @@ static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
 /// Everything else the crate owns is about the session or the chain the
 /// message stands in - the identifiers it resolved, the keys a bridge
 /// stated, the plugin, the context and the session instance - and carries.
-const SETTLED_TO_ONE_MESSAGE: [i32; 37] = [
+const SETTLED_TO_ONE_MESSAGE: [i32; 38] = [
     MARKETDATATYPE_TAG_NAME.0,
     HIDDENQTY_TAG_NAME.0,
     UNIT_TAG_NAME.0,
@@ -675,6 +679,7 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 37] = [
     ASKCCY_TAG_NAME.0,
     FXRATES_TAG_NAME.0,
     TICKER_TAG_NAME.0,
+    STRIKEPX_TAG_NAME.0,
     ORDQTY_TAG_NAME.0,
     TRADABLE_TAG_NAME.0,
     IDENTIFIERS_TAG_NAME.0,
@@ -745,7 +750,7 @@ enum Holds {
     Operation(OperationColumn),
     /// A fact no graph event states - what a bridge's row header said and
     /// the session event it joins to, where the line was read from, the
-    /// normalized identifiers and the strike - which therefore spells its
+    /// normalized identifiers - which therefore spells its
     /// own.
     Own {
         datatype: fn() -> Result<DataType>,
@@ -927,7 +932,7 @@ impl Crated {
 /// and [`fix_crate_fields`] all walk them in - and the tags are numbered in
 /// the fixed row's band order, so this is that order too. A row that only names a tag
 /// and a column is a column this crate adds nothing to but the tag.
-const CRATED: [Crated; 50] = [
+const CRATED: [Crated; 51] = [
     Crated::element(CURRUUID_TAG_NAME, ElementColumn::CurrUuid),
     Crated::element(CROSSUUID_TAG_NAME, ElementColumn::CrossUuid),
     Crated::element(CROSSCODE_TAG_NAME, ElementColumn::CrossCode).saying(
@@ -1008,7 +1013,7 @@ const CRATED: [Crated; 50] = [
          once the parse split its fill off as an EXEC, and a batch entry the \
          parse split off its item's; a row stating one is the row's word.",
     )
-    .reading(MSGCAT_CODESET_NAME),
+    .reading(MARKETDATAKIND_CODESET_NAME),
     Crated::market(
         MARKETDATATYPE_TAG_NAME,
         MarketColumn::MarketDataType,
@@ -1118,6 +1123,11 @@ const CRATED: [Crated; 50] = [
         TICKER_TAG_NAME,
         MarketColumn::Ticker,
         "The ticker the instrument goes by: Symbol, trimmed. Derived from the message's fields; a row stating one is the row's word.",
+    ),
+    Crated::derived_market(
+        STRIKEPX_TAG_NAME,
+        MarketColumn::StrikePx,
+        "The strike price of the option the message identifies: StrikePrice, the one its chain names for the same instrument once followed. Derived from the message's fields; a row stating one is the row's word.",
     ),
     Crated::own(
         METADATA_TAG_NAME,
@@ -1276,7 +1286,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 50);
+/// assert_eq!(held.len(), 51);
 /// assert_eq!(held[0].name(), "curruuid");
 /// assert_eq!(held[0].display(), Some("Current UUID"));
 /// assert_eq!(held[6].name(), "currunix");

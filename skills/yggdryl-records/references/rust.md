@@ -203,7 +203,7 @@ assert_eq!(venues, [Scalar::from("XNYS"), Scalar::from("XLON")]);
 
 ## Append, and upsert by key
 
-Overwrite replaces, append keeps the stored rows, merge updates rows whose `merge_by` key matches and appends the rest; it holds only the stored side in memory. Merge without a key is refused.
+Overwrite replaces, append keeps the stored rows, merge updates rows whose `merge_by` key matches and appends the rest; it holds only the stored side in memory, and replaces a stored row only where the last arrival for its key differs from it, so a merge changing nothing leaves the leaf unwritten. Merge without a key is refused, and so is a boolean `false` key.
 
 ```rust
 use std::sync::Arc;
@@ -211,7 +211,7 @@ use std::sync::Arc;
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
-use yggdryl::{arrow, DataType, IOBase, IOMedia, MimeType, StructType};
+use yggdryl::{arrow, DataType, IOBase, IOMedia, IOResult, MimeType, Scalar, StructType};
 
 let schema = DataType::from(StructType::from_fields([
     DataType::Int64.required_field("id"),
@@ -232,11 +232,20 @@ let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
 let options = handle.record_options()?.with_field(schema);
 handle.overwrite_arrow_reader(rows(vec![1, 2], vec!["AAPL", "MSFT"]), &options)?;
 handle.append_arrow_reader(rows(vec![3], vec!["NVDA"]), &options)?;
-handle.merge_arrow_reader(rows(vec![2, 9], vec!["MSFT.O", "AMD"]), &options.clone().with_merge_by(["id"])?)?;
+let keyed = options.clone().with_merge_by(["id"])?;
+handle.merge_arrow_reader(rows(vec![2, 9], vec!["MSFT.O", "AMD"]), &keyed)?;
 assert_eq!(handle.row_size()?, 4);
+
+// A merge whose rows equal the stored ones still counts them, and writes nothing.
+let before = handle.read_all_bytes()?;
+assert_eq!(handle.merge_arrow_reader(rows(vec![2], vec!["MSFT.O"]), &keyed)?, IOResult::new(1, 1));
+assert_eq!(handle.read_all_bytes()?, before);
 
 let refused = handle.merge_arrow_reader(rows(vec![1], vec!["X"]), &options).unwrap_err();
 assert!(refused.to_string().contains("merge_by"), "{refused}");
+// `true` is the destination's own key - none on a leaf - and `false` names no key.
+assert_eq!(options.clone().with_merge_by_scalar(&Scalar::from(true))?, options);
+assert!(options.clone().with_merge_by_scalar(&Scalar::from(false)).is_err());
 ```
 
 ## Choose the write mode at run time
@@ -651,6 +660,55 @@ assert_eq!(count(table.scan_at(first, &[], None)?)?, 3); // time travel
 
 let reopened = IcebergTable::open(LocalFolder::new(&path)?)?;
 assert_eq!(reopened.current_snapshot()?.expect("a snapshot").operation(), "overwrite");
+let _ = std::fs::remove_dir_all(&path);
+```
+
+## Iceberg: the table's own key
+
+A table whose schema states `identifier-field-ids` keys every write by it: a merge naming no key matches on it (`with_merge_by_scalar(&Scalar::from(true))` states it outright), and an append writes only the rows whose key neither the table nor an earlier row of the write holds - the first arrival kept, the rest in `skipped_rows`, no stored file rewritten. A merge or an append that changes nothing commits no snapshot. A keyed append beaten by a concurrent commit fails with `CommitConflict` instead of rebasing.
+
+```rust
+use yggdryl::iceberg::{assign_field_ids, FormatVersion, IcebergTable, PartitionSpec};
+use yggdryl::local::LocalFolder;
+use yggdryl::media::IORecordOptions;
+use yggdryl::{DataType, IOMedia, IOResult, Scalar, Serie, StructType};
+
+let row = DataType::from(StructType::from_fields([
+    DataType::Int64.required_field("id"),
+    DataType::utf8().nullable_field("venue"),
+])?)
+.required_field("row");
+let mut schema = row.clone();
+assign_field_ids(&mut schema, 1)?;
+// The table's own key: `id`, named by the field id the numbering gave it.
+schema.as_iceberg_mut().set_identifier_field_ids(&[1])?;
+
+let path = LocalFolder::temporary()?.path()?.join("yggdryl-skill-records-iceberg-keyed");
+let _ = std::fs::remove_dir_all(&path);
+let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema, PartitionSpec::unpartitioned())?;
+let trade = |id: i64, venue: &str| Scalar::from_sequence([Scalar::from(id), Scalar::from(venue)]);
+let trades = |rows: Vec<Scalar>| Serie::from_scalars(row.clone(), rows);
+
+assert_eq!(table.append_serie(trades(vec![trade(1, "XNAS"), trade(2, "XNYS")])?.into(), None)?, IOResult::new(2, 2));
+// 2 is stored and 3 arrives twice: one row written, two skipped.
+let appended = table.append_serie(trades(vec![trade(2, "XLON"), trade(3, "XPAR"), trade(3, "XAMS")])?.into(), None)?;
+assert_eq!((appended.read_rows, appended.written_rows, appended.skipped_rows), (3, 1, 2));
+
+// A merge naming no key matches on the table's own; `true` states it.
+let own = table.record_options()?.with_merge_by_scalar(&Scalar::from(true))?;
+table.merge_serie(trades(vec![trade(1, "XAMS")])?.into(), Some(&own))?;
+// Replaying it changes no row: counted as written, committed nowhere.
+let snapshots = table.metadata()?.snapshots().len();
+assert_eq!(table.merge_serie(trades(vec![trade(1, "XAMS")])?.into(), None)?, IOResult::new(1, 1));
+assert_eq!(table.metadata()?.snapshots().len(), snapshots);
+assert!(own.with_merge_by_scalar(&Scalar::from(false)).is_err());
+
+let mut rows: Vec<Scalar> = Vec::new();
+for batch in table.read_serie(None)? {
+    rows.extend(batch?.rows().into_owned());
+}
+rows.sort();
+assert_eq!(rows, [trade(1, "XAMS"), trade(2, "XNYS"), trade(3, "XPAR")]);
 let _ = std::fs::remove_dir_all(&path);
 ```
 

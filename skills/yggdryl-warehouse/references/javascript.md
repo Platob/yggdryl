@@ -125,9 +125,16 @@ const rows = new arrow.Table({ id: arrow.vectorFromArray([1n, 2n], new arrow.Int
 // property bag or a `RecordOptions` beside the rows is this write's settings.
 const written = out.tables().append('rows', rows)
 assert.equal(String(written), 'lake.out.rows')
-assert.equal(IOBase.from(written).rowSize(), 2)
-assert.equal(IOBase.from(out.tables().append('rows', rows)).rowSize(), 4)
-assert.equal(IOBase.from(out.tables().overwrite('rows', rows)).rowSize(), 2)
+// Close each mapped read before the next write resizes or replaces the file.
+const first = IOBase.from(written)
+assert.equal(first.rowSize(), 2)
+first.close()
+const appended = IOBase.from(out.tables().append('rows', rows))
+assert.equal(appended.rowSize(), 4)
+appended.close()
+const overwritten = IOBase.from(out.tables().overwrite('rows', rows))
+assert.equal(overwritten.rowSize(), 2)
+overwritten.close()
 
 // A memory level creates nothing: register the table first.
 assert.throws(() => out.tables().append('absent', rows), /"MemoryNamespace" does not support creating a table/)

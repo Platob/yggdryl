@@ -164,6 +164,11 @@ mod stream {
             text("sedol", "B0YBKJ7"),
             text("bbg", "AAPL US Equity"),
             text("ric", "AAPL.OQ"),
+            text("lei", "HWUPKR0MPOU8FGXBT394"),
+            text("bic", "DEUTDEFFXXX"),
+            text("elf", "2HBR"),
+            text("dti", "X9J9K872S"),
+            text("fisn", "ACME CORP/SH"),
             text("side", "BUY"),
             text("state", "NEW"),
             text("timeinforce", "GTC"),
@@ -220,6 +225,18 @@ mod stream {
             assert_eq!(chunks.concat(), bytes);
             assert_eq!(Scalar::decode_value_stream_bytes(&chunks).unwrap(), value);
         }
+    }
+
+    #[test]
+    fn a_code_in_the_text_range_tail_states_its_own_byte() {
+        // The code family took 0x6a..0x6f from the text family: a stream
+        // byte there reads as the code it names.
+        let lei = Scalar::Lei(yggdryl::Lei::new("HWUPKR0MPOU8FGXBT394").unwrap());
+        let bytes = lei.clone().into_value_bytes();
+        assert_eq!(bytes[1], 0x6b);
+        assert_eq!(Scalar::decode_value_bytes(&bytes).unwrap(), lei);
+        let fisn = Scalar::Fisn(yggdryl::Fisn::new("ACME CORP/SH").unwrap());
+        assert_eq!(fisn.into_value_bytes()[1], 0x6f);
     }
 
     #[test]

@@ -186,8 +186,8 @@ let message = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|11=A1|5
 
 assert_eq!((message.header().beginstring(), message.header().msgtype()), ("FIX.4.4", "D"));
 // The category its type files under, and the option strike it identifies.
-assert_eq!(message.msgcat(), MarketDataKind::Order);
-assert_eq!(message.strikeprice(), Some(Decimal::from_int(105)));
+assert_eq!(message.marketdatakind(), MarketDataKind::Order);
+assert_eq!(message.get_strikepx(), Some(Decimal::from_int(105)));
 // A coded value reads as its name; the wire keeps its code.
 assert_eq!(message.by_tag(54)?.as_str(), Some("BUYS"));
 assert_eq!(message.get_side().as_str(), "BUYS");
@@ -420,7 +420,7 @@ assert!(String::from_utf8(sink)?.starts_with("8=FIX.4.4|35=D|11=ORDER-1|18=G|999
 
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
-its order and side under one `crossuuid`, within one market data kind (`msgcat`); a
+its order and side under one `crossuuid`, within one market data kind (`marketdatakind`); a
 report stating no side joins the one side alive under its identifiers. A fill's
 execution, split off at the parse, is a chain of its own and never restates,
 follows or ends its order. A codec pinned `with_sorted_lifecycle(true)` reads a source already in
@@ -464,10 +464,10 @@ assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
 assert!([&ack, &fill].iter().all(|held| held.get_crossuuid() == order.get_crossuuid()));
 // The reports stated no side: they joined the buy alive under A1 and O1.
 assert!([&ack, &fill].iter().all(|held| held.get_side() == Side::Buy && held.get_crosscode() == "10:1:A1"));
-assert_eq!((fill.msgcat(), *fill.get_state()), (MarketDataKind::Order, State::Filled));
+assert_eq!((fill.marketdatakind(), *fill.get_state()), (MarketDataKind::Order, State::Filled));
 // Every walked message states when its chain began.
 assert!([&ack, &fill].iter().all(|held| held.get_creaunix() == Some(order.get_currunix())));
-assert_eq!((execution.msgcat(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
+assert_eq!((execution.marketdatakind(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
 assert_eq!((execution.get_seqnum(), execution.get_prevuuid()), (1, None));
 
 // Rows already in Arrow chain in place, under the schema they were read with.
@@ -487,13 +487,16 @@ through the same codec fills derived identifiers from the table its door
 fixed. A codec without one learns into a registry of each walk's own;
 `with_isin_registry` shares one across walks run one after another, bound to
 a store with `from_url` and written back with `commit` only where it moved.
+A structured product's EUSIPA category is learned off a bridge's own key
+(`EUSIPACode`, `OMS_SSPACategory`, ...) as the row's `eusipacode`, an
+`Eusipa`; the key is lifted into no identifier map.
 
 ```rust
 use std::sync::{Arc, Mutex};
 
 use yggdryl::graph::Market;
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, IsinRegistry};
+use yggdryl::{Eusipa, FixCodec, FixMsg, FixRegistry, IsinEntry, IsinRegistry};
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
@@ -505,6 +508,14 @@ let stated = ["8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|4
 let parsed: Vec<FixMsg> = codec.parse_lines(stated).collect::<yggdryl::Result<_>>()?;
 codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
 assert_eq!(instruments.lock().unwrap().get("CH0012214059").and_then(|row| row.get(&yggdryl::IdType::Ric)), Some("HOLN.S"));
+
+// A bridge key states a structured product's category beside its ISIN.
+let product = ["8=FIX.4.4|35=D|11=C|22=4|48=CH0123456789|55=ACMEL|207=XSWX|OMS_SSPACategory=2300|10=0|"];
+let parsed: Vec<FixMsg> = codec.parse_lines(product).collect::<yggdryl::Result<_>>()?;
+codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
+let category = instruments.lock().unwrap().get("CH0123456789").and_then(IsinEntry::eusipacode);
+assert_eq!(category, Some(Eusipa::new(2300)?));
+assert_eq!(category.and_then(|code| code.name()), Some("Constant Leverage Certificate"));
 
 // A later parse naming only the ticker on the market takes the ISIN from
 // the table, derived; the walk fills the CFI code as a market fact.
@@ -562,11 +573,11 @@ assert!(chained.iter().all(|message| message.get_crossuuid() == chained[0].get_c
 ## Split fills and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
-fill twice: an execution report is its order's report (`msgcat` `ORDR`, its
+fill twice: an execution report is its order's report (`marketdatakind` `ORDR`, its
 own state; `QUOT` where it names a `QuoteID(117)`) - one of no fill from its
 parse - and one that fills adds one `EXEC` message reading `FILLED`, chained
 under its `ExecID(17)` as given, else `TradeID=<TradeID(1003)>`; a trade
-(`AE`) adds one sided execution per `NoSides(552)` occurrence; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+(`AE`) adds one sided execution per `NoSides(552)` occurrence; a batch (`marketdatakind` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
 an order list, a mass order, a cross, a mass quote, a match report) adds one
 message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`) - a
 mass quote's entry one quote holding both its legs - chained by the order the
@@ -587,16 +598,16 @@ let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(di
 
 let fill = b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|10=0|";
 let [report, execution]: [FixMsg; 2] = codec.parse_line(fill)?.collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("two");
-assert_eq!((report.msgcat(), *report.get_state()), (MarketDataKind::Order, State::PartiallyFilled));
-assert_eq!((execution.msgcat(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
+assert_eq!((report.marketdatakind(), *report.get_state()), (MarketDataKind::Order, State::PartiallyFilled));
+assert_eq!((execution.marketdatakind(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
 assert!(execution.get_srcuuids().contains(&report.get_curruuid()));
 // An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert_eq!((report.get_crosscode(), execution.get_crosscode()), ("10:1:O-9", "8:1:E-1"));
 
 let quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|";
 let [quote]: [FixMsg; 1] = codec.parse_line(quote)?.collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("one");
-assert_eq!((quote.msgcat(), quote.get_side(), quote.get_crosscode()), (MarketDataKind::Quotation, Side::Unknown, "14:0:Q1"));
-// Both legs on the one message, each in its currency; neither is the quote's own price.
+assert_eq!((quote.marketdatakind(), quote.get_side(), quote.get_crosscode()), (MarketDataKind::Quotation, Side::Both, "14:0:Q1"));
+// Both legs on the one message, each in its currency, tagged `BOTH`; neither is the quote's own price.
 assert_eq!(quote.get_price(), None);
 assert_eq!((quote.get_bidpx(), quote.get_askpx(), quote.get_askqty()), (Some("99".parse()?), Some("101".parse()?), Some("8".parse()?)));
 assert_eq!(quote.get_askccy().map(|ccy| ccy.as_str()), Some("USD"));
@@ -621,7 +632,7 @@ Arrow.
 ```rust
 use std::sync::Arc;
 
-use yggdryl::graph::{BookIterator, MarketData, MarketKind};
+use yggdryl::graph::{BookIterator, Market, MarketData, MarketKind};
 use yggdryl::local::LocalFolder;
 use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, Side, fix_schema};
 
@@ -634,7 +645,7 @@ let lines = [
     "8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
 ];
 let capture: Vec<FixMsg> = codec.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
-assert!(capture.iter().all(|message| message.msgcat() == MarketDataKind::Book));
+assert!(capture.iter().all(|message| message.marketdatakind() == MarketDataKind::Book));
 
 let leaves: Vec<MarketData> = codec.market_data(codec.lifecycle(capture.clone())).collect::<yggdryl::Result<_>>()?;
 assert_eq!(leaves.len(), 4, "one leaf per entry");

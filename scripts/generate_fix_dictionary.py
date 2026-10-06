@@ -108,7 +108,7 @@ MSGCAT_BY_TYPE = {
 
 # The category set itself - every name, its code and its description - is
 # `MarketDataKind`'s in `rust/src/marketdatakind.rs`, which renders the
-# `msgcatcodeset` document: this table only files each type under a name,
+# `marketdatakindcodeset` document: this table only files each type under a name,
 # and a name that enum does not know refuses when the dictionary loads.
 
 # Pinned commits. A branch would make the output unreproducible.
@@ -1595,7 +1595,7 @@ CRATE_TAG_MIN = 65_000
 # shard `crate_owned` reads by its tag range.
 CRATE_DOCUMENTS = frozenset(
     {
-        "codesets/msgcatcodeset.json",
+        "codesets/marketdatakindcodeset.json",
         "codesets/msgpluginsidecodeset.json",
         "components/fixmsg.json",
         "groups/metadata.json",

@@ -148,6 +148,11 @@ from .codes import (
     SedolField as SedolField,
     ForexField as ForexField,
     UnitField as UnitField,
+    LeiField as LeiField,
+    BicField as BicField,
+    ElfField as ElfField,
+    DtiField as DtiField,
+    FisnField as FisnField,
     bbg as bbg,
     cfi as cfi,
     country as country,
@@ -160,6 +165,11 @@ from .codes import (
     sedol as sedol,
     forex as forex,
     unit as unit,
+    lei as lei,
+    bic as bic,
+    elf as elf,
+    dti as dti,
+    fisn as fisn,
 )
 from .decimal import (
     Decimal32Field as Decimal32Field,
@@ -364,6 +374,9 @@ from .identifier import (
 )
 from .isin_registry import (
     IsinRegistry as IsinRegistry,
+)
+from .eusipa import (
+    Eusipa as Eusipa,
 )
 
 __all__: list[str]

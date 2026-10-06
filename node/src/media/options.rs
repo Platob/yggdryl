@@ -171,14 +171,26 @@ impl JsRecordOptions {
     ///
     /// The loader captures and removes this private bridge, then calls it ahead
     /// of every representation adapter so an invalid mode never consumes a
-    /// one-shot reader, iterable, or async iterable.
+    /// one-shot reader, iterable, or async iterable. Where the destination is
+    /// given, a merge naming no key is checked against its own key
+    /// (`IOMedia::merge_by`: an Iceberg table's identity partition columns,
+    /// then its identifier columns) and refused only where it states none.
     #[napi(js_name = "_requireWritePreflightNative", skip_typescript)]
-    pub fn require_write_preflight(&self, intent: String) -> Result<u32> {
+    pub fn require_write_preflight(
+        &self,
+        intent: String,
+        handle: Option<&crate::iobase::JsIOBase>,
+    ) -> Result<u32> {
         let mode = IOMode::from_str(&intent).map_err(napi_error)?;
-        self.inner.require_write_mode(mode).map_err(napi_error)?;
-        self.inner.require_commit_batch_num().map_err(napi_error)?;
-        self.inner.require_num_threads().map_err(napi_error)?;
-        self.inner.require_write_limits().map_err(napi_error)?;
+        let options = if let Some(handle) = handle {
+            yggdryl::IOMedia::write_options(handle.core(), mode, &self.inner).map_err(napi_error)?
+        } else {
+            self.inner.require_write_mode(mode).map_err(napi_error)?;
+            std::borrow::Cow::Borrowed(&self.inner)
+        };
+        options.require_commit_batch_num().map_err(napi_error)?;
+        options.require_num_threads().map_err(napi_error)?;
+        options.require_write_limits().map_err(napi_error)?;
         u32::try_from(DEFAULT_RECORD_BATCH_ROW_SIZE).map_err(napi_error)
     }
 

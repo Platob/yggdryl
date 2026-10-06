@@ -1127,6 +1127,16 @@ fn a_warning_quotes_the_element_and_the_content_it_read() {
             "the declaration is dropped",
         ),
         (
+            // The one tag parser the crate has is strict: a signed spelling
+            // the writer never emits is no tag here either.
+            r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary><vocabulary-tag name="+35" alt="MsgType" type="string" /></vocabulary>
+</cplugin-configuration>"#,
+            vec!["a decimal tag", "\"+35\""],
+            "the declaration is dropped",
+        ),
+        (
             r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
 	<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" /></vocabulary>
@@ -1600,7 +1610,7 @@ fn a_refused_cfb_field_cannot_replace_a_builtin_code_set() {
 </cplugin-configuration>"#;
     let baseline = FixRegistry::new();
     let codes = baseline
-        .codeset("msgcatcodeset")
+        .codeset("marketdatakindcodeset")
         .expect("the builtin categories")
         .document()
         .to_owned();
@@ -1609,7 +1619,7 @@ fn a_refused_cfb_field_cannot_replace_a_builtin_code_set() {
     let (registry, _) = read.expect("the rejected declaration is a warning");
     assert!(registry.get_field_by_tag(9001).is_none());
     let held = registry
-        .codeset("msgcatcodeset")
+        .codeset("marketdatakindcodeset")
         .expect("the builtin categories");
     assert_eq!(held.document(), codes);
     assert_eq!(held.codes().count(), 26);

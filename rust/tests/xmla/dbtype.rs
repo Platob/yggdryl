@@ -227,6 +227,11 @@ fn every_datatype() -> Vec<DataType> {
         DataType::Ric,
         DataType::Unit,
         DataType::Forex,
+        DataType::Lei,
+        DataType::Bic,
+        DataType::Elf,
+        DataType::Dti,
+        DataType::Fisn,
         DataType::Uuid,
         DataType::serie(item(DataType::Int32)),
         DataType::large_serie(item(DataType::utf8())),
@@ -963,6 +968,11 @@ fn every_registered_code_is_wstr() {
         (DataType::MarketDataType, DbType::Wstr),
         (DataType::Unit, DbType::Wstr),
         (DataType::Forex, DbType::Wstr),
+        (DataType::Lei, DbType::Wstr),
+        (DataType::Bic, DbType::Wstr),
+        (DataType::Elf, DbType::Wstr),
+        (DataType::Dti, DbType::Wstr),
+        (DataType::Fisn, DbType::Wstr),
     ]);
 }
 

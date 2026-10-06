@@ -11,8 +11,18 @@
 //! expression tier. The key is then encoded through Arrow's own row format, so
 //! two rows compare equal exactly when every key column holds the same value,
 //! including nulls and nested values, without rendering anything as text.
+//!
+//! A matched row is replaced only where the row arriving for it differs from
+//! the one it holds, compared whole through the same row format, and the
+//! merge changes it only where the row it ends with differs from the row it
+//! was stored as, so a merge whose rows end as they were stored says so
+//! ([`Merged::changed`]) and its destination rewrites nothing. `absent` is
+//! the other policy over the same key: the incoming rows whose key is
+//! neither stored nor met earlier, the first arrival kept - what an append
+//! to a table that states its own key writes.
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
@@ -22,7 +32,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use arrow_array::{ArrayRef, RecordBatch, UInt32Array};
 use arrow_ipc::reader::FileReader;
 use arrow_ipc::writer::FileWriter;
-use arrow_row::{RowConverter, SortField};
+use arrow_row::{RowConverter, Rows, SortField};
 use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, from_reader_error};
@@ -45,13 +55,40 @@ struct SpooledPosition {
 }
 
 /// Mutable state accumulated while incoming rows are folded into a merge.
-#[derive(Default)]
 struct MergeState {
     held: Vec<RecordBatch>,
     index: HashMap<Box<[u8]>, Positions>,
     spill: Option<FileWriter<TemporaryFile>>,
     spill_batches: usize,
     appended: HashMap<Box<[u8]>, SpooledPosition>,
+    /// The whole-row encoding a matched pair is compared through, where
+    /// Arrow's row format has one for every column of the field; without
+    /// it every matched pair counts as changed.
+    rows: Option<RowConverter>,
+    /// Each held row, as `(batch, row)`, that a replacement left differing
+    /// from what was stored, with the whole-row encoding it was stored as:
+    /// an arrival that returns the row to it takes it out again, so the map
+    /// is empty exactly when every replaced row ends as it was stored. It
+    /// holds one encoded row per replaced row at most - never more than the
+    /// held rows themselves.
+    originals: HashMap<(usize, usize), Box<[u8]>>,
+    /// Whether a row was replaced by an arrival the row format could not
+    /// compare with it, which counts as a change whatever follows.
+    unsettled: bool,
+}
+
+/// What [`merged`] answers: the merged rows, and whether they differ from
+/// what was stored.
+pub(crate) struct Merged {
+    /// The stored rows with the matched ones replaced, then the new keys.
+    pub(crate) rows: BatchReader,
+    /// Whether a stored row ends differing from the row it was stored as or
+    /// a new key was appended, across every batch the merge pulled. `false`
+    /// says the rows are exactly the stored ones, so a destination holding
+    /// them has nothing to rewrite. A pair the comparison cannot settle - a
+    /// layout Arrow's row format does not encode, a float zero of the other
+    /// sign, a NaN of other bits - counts as changed.
+    pub(crate) changed: bool,
 }
 
 /// Merge `incoming` into `stored`, matching rows on the `merge_by` columns.
@@ -69,6 +106,16 @@ struct MergeState {
 /// key that is new applies to the row its first arrival appended, so a merge
 /// never introduces a duplicate the incoming side did not already store.
 ///
+/// A stored row is replaced only by an arrival that differs from what it
+/// holds, every column compared through Arrow's row format - the arrivals of
+/// one batch for one row reduced to the last first - and the merge changes
+/// it only where the row it ends with differs from the row it was stored
+/// as: a replaced row keeps the encoding it was stored as until an arrival
+/// returns it there, so a first arrival that differs and a last that does
+/// not leave the row as it was, in one batch or across several.
+/// [`Merged::changed`] says whether a row ends changed or a new key was
+/// appended.
+///
 /// # Errors
 ///
 /// Returns an error when `merge_by` is empty or does not bind against `field`,
@@ -80,19 +127,12 @@ pub(crate) fn merged(
     field: &Field,
     merge_by: &Selector,
     safe: bool,
-) -> Result<BatchReader> {
+) -> Result<Merged> {
     let schema = arrow_schema_from_field(field)?;
     // The key binds against the merged rows' root with the fold the cast
     // that shaped those rows matched their columns by.
     let keys = merge_by.bind_key(field, "$.merge_by", "merge on")?;
-    let converter = RowConverter::new(
-        arrow_schema_from_field(keys.output())?
-            .fields()
-            .iter()
-            .map(|key| SortField::new(key.data_type().clone()))
-            .collect(),
-    )
-    .map_err(Error::Arrow)?;
+    let converter = key_converter(&keys)?;
 
     // The stored side is what has to be held. Updating a row means finding it
     // by key, and a reader cannot be rewound to a row it has already yielded,
@@ -102,7 +142,16 @@ pub(crate) fn merged(
     // because a later duplicate must replace the first arrival without adding
     // another row. The temporary file is unlinked when the returned reader is
     // dropped, including on an encoding failure.
-    let mut state = MergeState::default();
+    let mut state = MergeState {
+        held: Vec::new(),
+        index: HashMap::new(),
+        spill: None,
+        spill_batches: 0,
+        appended: HashMap::new(),
+        rows: row_converter(&schema),
+        originals: HashMap::new(),
+        unsettled: false,
+    };
     for batch in stored {
         let batch = batch.map_err(from_reader_error)?;
         if batch.num_rows() == 0 {
@@ -136,22 +185,126 @@ pub(crate) fn merged(
         held,
         spill,
         appended,
+        originals,
+        unsettled,
         ..
     } = state;
+    let changed = unsettled || !originals.is_empty() || !appended.is_empty();
     let Some(spill) = spill else {
-        return Ok(crate::arrow::batch_reader(schema, held));
+        return Ok(Merged {
+            rows: crate::arrow::batch_reader(schema, held),
+            changed,
+        });
     };
     let file = spill.into_inner().map_err(Error::Arrow)?;
     let spilled = FileReader::try_new(file, None).map_err(Error::Arrow)?;
     let mut positions: Vec<SpooledPosition> = appended.into_values().collect();
     positions.sort_unstable_by_key(|position| position.ordinal);
-    Ok(Box::new(SpilledMergeReader {
-        schema,
-        stored: held.into_iter(),
-        spilled,
-        positions: positions.into_iter().peekable(),
-        current_batch: None,
-    }))
+    Ok(Merged {
+        rows: Box::new(SpilledMergeReader {
+            schema,
+            stored: held.into_iter(),
+            spilled,
+            positions: positions.into_iter().peekable(),
+            current_batch: None,
+        }),
+        changed,
+    })
+}
+
+/// The row encoding of a bound key's columns.
+fn key_converter(keys: &BoundSelector) -> Result<RowConverter> {
+    RowConverter::new(
+        arrow_schema_from_field(keys.output())?
+            .fields()
+            .iter()
+            .map(|key| SortField::new(key.data_type().clone()))
+            .collect(),
+    )
+    .map_err(Error::Arrow)
+}
+
+/// The row encoding of every column of `schema`, where Arrow's row format
+/// encodes each of them: what a matched pair is compared whole through.
+fn row_converter(schema: &SchemaRef) -> Option<RowConverter> {
+    let fields: Vec<SortField> = schema
+        .fields()
+        .iter()
+        .map(|column| SortField::new(column.data_type().clone()))
+        .collect();
+    if !RowConverter::supports_fields(&fields) {
+        return None;
+    }
+    RowConverter::new(fields).ok()
+}
+
+/// The rows of `incoming` whose key is neither among `stored`'s nor an
+/// earlier incoming row's: an insert-if-absent over the match key, the first
+/// arrival of a key kept.
+///
+/// `stored` holds the rows already kept - only the columns the key reads -
+/// laid out as `stored_root`, and the key binds against it as it binds
+/// against `field`, the incoming rows' root, so both sides encode alike;
+/// `incoming` is already laid out as `field`. What is held is the key bytes
+/// of every stored and every kept row, in one set - never a stored payload.
+/// An empty `merge_by` is one key every row shares: present when `stored`
+/// yields a row, else the first incoming row's.
+///
+/// Answers the mask over `incoming`'s rows, in order - `true` kept - and
+/// how many it drops.
+///
+/// # Errors
+///
+/// Returns an error when `merge_by` does not bind against either root, when
+/// a key column's datatype has no row encoding, or on the first read failure
+/// of `stored`.
+#[cfg(feature = "iceberg")]
+pub(crate) fn absent(
+    stored: BatchReader,
+    stored_root: &Field,
+    incoming: &[RecordBatch],
+    field: &Field,
+    merge_by: &Selector,
+) -> Result<(arrow_array::BooleanArray, u64)> {
+    let total: usize = incoming.iter().map(RecordBatch::num_rows).sum();
+    let mut kept = Vec::with_capacity(total);
+    if merge_by.is_empty() {
+        let mut present = false;
+        for batch in stored {
+            present = present || batch.map_err(from_reader_error)?.num_rows() > 0;
+        }
+        kept.extend((0..total).map(|row| !present && row == 0));
+    } else {
+        let keys = merge_by.bind_key(field, "$.merge_by", "append by")?;
+        let stored_keys = merge_by.bind_key(stored_root, "$.merge_by", "append by")?;
+        let converter = key_converter(&keys)?;
+        let mut seen: std::collections::HashSet<Box<[u8]>> = std::collections::HashSet::new();
+        for batch in stored {
+            let batch = batch.map_err(from_reader_error)?;
+            if batch.num_rows() == 0 {
+                continue;
+            }
+            let rows = converter
+                .convert_columns(&key_columns(&batch, &stored_keys)?)
+                .map_err(Error::Arrow)?;
+            for row in 0..batch.num_rows() {
+                seen.insert(Box::from(rows.row(row).as_ref()));
+            }
+        }
+        for batch in incoming {
+            if batch.num_rows() == 0 {
+                continue;
+            }
+            let rows = converter
+                .convert_columns(&key_columns(batch, &keys)?)
+                .map_err(Error::Arrow)?;
+            for row in 0..batch.num_rows() {
+                kept.push(seen.insert(Box::from(rows.row(row).as_ref())));
+            }
+        }
+    }
+    let skipped = kept.iter().filter(|keep| !**keep).count() as u64;
+    Ok((arrow_array::BooleanArray::from(kept), skipped))
 }
 
 /// The match-key columns of one batch, each computed once.
@@ -209,6 +362,17 @@ impl MergeState {
         }
 
         for (position, rows) in updates {
+            // The arrivals of this batch for one held row reduce to the last,
+            // which alone decides what the row becomes; the rows it would
+            // leave as they are are no change.
+            let mut last: HashMap<usize, usize> = HashMap::with_capacity(rows.len());
+            for (held_row, incoming_row) in rows {
+                last.insert(held_row, incoming_row);
+            }
+            let rows = self.differing(position, batch, last.into_iter().collect());
+            if rows.is_empty() {
+                continue;
+            }
             self.held[position] = replace_rows(&self.held[position], batch, &rows)?;
         }
         if !appends.is_empty() {
@@ -250,6 +414,75 @@ impl MergeState {
         }
         Ok(())
     }
+}
+
+impl MergeState {
+    /// The `(held, incoming)` row pairs of the held batch at `position`
+    /// whose rows differ, compared whole through the row format, each
+    /// replacement recorded against the row it was stored as; every pair
+    /// where the format cannot compare them, which leaves the merge
+    /// unsettled.
+    fn differing(
+        &mut self,
+        position: usize,
+        incoming: &RecordBatch,
+        pairs: Vec<(usize, usize)>,
+    ) -> Vec<(usize, usize)> {
+        let encoded = self
+            .rows
+            .as_ref()
+            .and_then(|converter| encoded_pairs(converter, &self.held[position], incoming, &pairs));
+        let Some((held_rows, incoming_rows)) = encoded else {
+            self.unsettled = true;
+            return pairs;
+        };
+        let mut differing = Vec::with_capacity(pairs.len());
+        for (index, (held_row, incoming_row)) in pairs.into_iter().enumerate() {
+            let (current, arriving) = (held_rows.row(index), incoming_rows.row(index));
+            if current == arriving {
+                continue;
+            }
+            match self.originals.entry((position, held_row)) {
+                // The row holds what was stored, and is about to differ.
+                Entry::Vacant(slot) => {
+                    slot.insert(Box::from(current.as_ref()));
+                }
+                // The row was replaced before; an arrival equal to what was
+                // stored returns it there.
+                Entry::Occupied(original) => {
+                    if original.get().as_ref() == arriving.as_ref() {
+                        original.remove();
+                    }
+                }
+            }
+            differing.push((held_row, incoming_row));
+        }
+        differing
+    }
+}
+
+/// The whole-row encodings of each pair's held and incoming row, in pair
+/// order; `None` where a take or the encoding fails.
+fn encoded_pairs(
+    converter: &RowConverter,
+    held: &RecordBatch,
+    incoming: &RecordBatch,
+    pairs: &[(usize, usize)],
+) -> Option<(Rows, Rows)> {
+    let encoded = |batch: &RecordBatch, rows: Vec<u32>| {
+        let taken = arrow_select::take::take_record_batch(batch, &UInt32Array::from(rows)).ok()?;
+        converter.convert_columns(taken.columns()).ok()
+    };
+    let indices = |side: fn(&(usize, usize)) -> usize| -> Option<Vec<u32>> {
+        pairs
+            .iter()
+            .map(|pair| u32::try_from(side(pair)).ok())
+            .collect()
+    };
+    Some((
+        indices(|pair| pair.0).and_then(|rows| encoded(held, rows))?,
+        indices(|pair| pair.1).and_then(|rows| encoded(incoming, rows))?,
+    ))
 }
 
 /// Yield held stored batches, then the latest spooled row for each new key.
@@ -456,6 +689,22 @@ pub mod internals {
         merge_by: &Selector,
         safe: bool,
     ) -> Result<BatchReader> {
-        super::merged(stored, incoming, field, merge_by, safe)
+        super::merged(stored, incoming, field, merge_by, safe).map(|merged| merged.rows)
+    }
+
+    /// Whether merging `incoming` into `stored` changes a row: what decides
+    /// that a destination is left as it was.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`merged`] does.
+    pub fn changes(
+        stored: BatchReader,
+        incoming: BatchReader,
+        field: &Field,
+        merge_by: &Selector,
+        safe: bool,
+    ) -> Result<bool> {
+        super::merged(stored, incoming, field, merge_by, safe).map(|merged| merged.changed)
     }
 }

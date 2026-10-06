@@ -33,7 +33,7 @@ use crate::metadata::{
     PropertyIter, ProtocolMetadata, SORT_BY_KEY, for_each_well_known_protocol,
     parse_content_length, property_key, property_name, protocol_metadata_prefix,
 };
-use crate::{Charset, Error, MediaType, Metadata, MimeType, Result, Scheme, Url};
+use crate::{Charset, Error, MediaType, Metadata, MimeType, Representation, Result, Scheme, Url};
 
 // ------------------------------------------------------------------------
 // The `HTTP:` vocabulary, on the field views that own it.
@@ -818,6 +818,78 @@ impl SortFieldMut<'_> {
     /// Removes the declaration, answering the text it held.
     pub fn remove_by(&mut self) -> Option<String> {
         self.remove(BY)
+    }
+}
+
+// ------------------------------------------------------------------------
+// The `FIELD:` vocabulary a column states about its own values.
+// ------------------------------------------------------------------------
+
+/// The bare name `FIELD:representation` is stored under.
+const REPRESENTATION: &str = "representation";
+
+impl FieldPropertiesField<'_> {
+    /// What crosses when a same-width integer of the other signedness meets
+    /// this integer column: [`Representation::Bits`] where the column states
+    /// `FIELD:representation=bits` - its integers are bit patterns, an
+    /// XXH3-64 digest a table with no unsigned type stores as the `int64` of
+    /// its width - and [`Representation::Value`], the default, where it
+    /// states nothing. Read by [`Field::scalar`], the cast and
+    /// [`Field::into_scheme_compat`], and kept by an Iceberg table; inert on
+    /// a column that is no integer.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Representation, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut digest = DataType::UInt64.required_field("currhashcode");
+    /// assert_eq!(digest.as_field_properties().representation(), Representation::Value);
+    /// assert!(digest.scalar(Scalar::from(-1_i64)).is_err());
+    ///
+    /// digest.as_field_properties_mut().set_representation(Representation::Bits)?;
+    /// assert_eq!(digest.get_metadata("FIELD:representation"), Some("bits"));
+    /// assert_eq!(digest.scalar(Scalar::from(-1_i64))?, Scalar::from(u64::MAX));
+    /// // The datatype's own door reads no bits: only a column states them.
+    /// assert!(DataType::UInt64.scalar(Scalar::from(-1_i64)).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn representation(&self) -> Representation {
+        if self.get(REPRESENTATION) == Some(Representation::Bits.as_str()) {
+            Representation::Bits
+        } else {
+            Representation::Value
+        }
+    }
+}
+
+impl FieldPropertiesFieldMut<'_> {
+    /// States what crosses when a same-width integer of the other signedness
+    /// meets this integer column; `Value` removes the declaration, its
+    /// absence being the value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidMetadataValue`] naming the key and the
+    /// datatype when `Bits` is stated on a column that is no integer,
+    /// leaving the field unchanged.
+    pub fn set_representation(&mut self, representation: Representation) -> Result<()> {
+        if !representation.is_bits() {
+            self.remove(REPRESENTATION);
+            return Ok(());
+        }
+        if !self.dtype().is_integer() {
+            return Err(Error::InvalidMetadataValue {
+                key: SmolStr::new(self.key(REPRESENTATION)),
+                reason: crate::text::expected_got(
+                    "bits on an integer column",
+                    format_args!("a {} column {:?}", self.dtype(), self.name()),
+                ),
+            });
+        }
+        self.insert(REPRESENTATION, representation.as_str())?;
+        Ok(())
     }
 }
 

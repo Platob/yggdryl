@@ -936,7 +936,7 @@ impl FixCodec {
     /// row, byte and batch doors alike, the FIX rows [`Self::messages`]
     /// rebuilds and every reader composed over it included - states as its
     /// `msgpluginside`. A row-header capture or a row cell named
-    /// `msgpluginside` - a line spelling the crate tag `65041` itself
+    /// `msgpluginside` - a line spelling the crate tag `65042` itself
     /// included, as every crate tag a line spells is the row's word, and
     /// the cell a FIX row carries - is the row's word over the stamp. A
     /// codec told no source stamps `UKNW`.
@@ -1516,14 +1516,14 @@ impl FixCodec {
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
     /// # use yggdryl::{FixCodec, FixRegistry, MarketDataKind, State};
-    /// # use yggdryl::graph::{Element, Event};
+    /// # use yggdryl::graph::{Element, Event, Market};
     /// let codec = FixCodec::new(Arc::new(FixRegistry::new()));
     /// let fill = b"8=FIX.4.4|35=8|17=E1|37=O1|39=1|150=F|32=2|31=10|10=0|";
     /// let read: Vec<_> = codec.parse_line(fill)?.collect::<yggdryl::Result<_>>()?;
     /// let [report, execution] = read.as_slice() else { panic!("two messages") };
-    /// assert_eq!(report.msgcat(), MarketDataKind::Order);
+    /// assert_eq!(report.marketdatakind(), MarketDataKind::Order);
     /// assert_eq!(*report.get_state(), State::PartiallyFilled);
-    /// assert_eq!(execution.msgcat(), MarketDataKind::Execution);
+    /// assert_eq!(execution.marketdatakind(), MarketDataKind::Execution);
     /// assert_eq!(*execution.get_state(), State::Filled);
     /// assert!(execution.get_srcuuids().contains(&report.get_curruuid()));
     /// # Ok(())

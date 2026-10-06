@@ -926,6 +926,91 @@ mod batches {
         )
     }
 
+    /// A kernel's output is one slot per row of the batch the caller sized,
+    /// so a batch casts whole however many rows and cast columns it has:
+    /// the materialization budget bounds what a cast builds beyond its
+    /// input - the slots a null hides, a column the source lacks, a
+    /// vocabulary built fresh, a masked kernel's scratch - never the
+    /// visible rows. Sixty-five thousand rows of twenty `uint64` columns
+    /// widened to `decimal(20, 0)` are over a million output slots, and
+    /// cast as one batch.
+    #[test]
+    fn a_batch_of_the_default_row_size_casts_however_many_columns_it_has() {
+        use yggdryl::Scheme;
+        const ROWS: usize = 65_536;
+        const COLUMNS: usize = 20;
+        let source = root((0..COLUMNS).map(|i| DataType::UInt64.nullable_field(format!("c{i}"))));
+        let arrays: Vec<arrow_array::ArrayRef> = (0..COLUMNS)
+            .map(|i| {
+                Arc::new(arrow_array::UInt64Array::from_iter_values(
+                    (0..ROWS as u64).map(|row| row + i as u64),
+                )) as arrow_array::ArrayRef
+            })
+            .collect();
+        let batch =
+            RecordBatch::try_new(source.clone().into_arrow_schema().unwrap(), arrays).unwrap();
+        let target = source.into_scheme_compat(&Scheme::ICEBERG).unwrap();
+        let cast = Serie::from_arrow_batch(Some(&target), &batch, ArrowCastOptions::new())
+            .expect("the batch casts whole");
+        assert_eq!(cast.len(), ROWS);
+        assert_eq!(
+            cast.field().unwrap().get_field("c19").unwrap().dtype(),
+            &DataType::decimal128(20, 0).unwrap()
+        );
+        assert_eq!(
+            cast.scalar(ROWS - 1).unwrap().as_sequence().unwrap()[19],
+            yggdryl::Scalar::decimal128(i128::try_from(ROWS - 1 + 19).unwrap(), 0)
+        );
+    }
+
+    /// The same for the rows a nested column holds: a list column whose
+    /// items are over a million rows of three cast columns is the shape a
+    /// stream of books lays its alive entries out as, and casts as one
+    /// batch.
+    #[test]
+    fn nested_rows_past_the_hidden_slot_ceiling_cast_whole() {
+        use arrow_array::{ListArray, StructArray};
+        use arrow_buffer::OffsetBuffer;
+        use yggdryl::Scheme;
+        const ROWS: usize = 2;
+        const ITEMS: usize = 600_000;
+        let item = DataType::from(
+            StructType::from_fields(
+                (0..3).map(|i| DataType::UInt64.nullable_field(format!("c{i}"))),
+            )
+            .unwrap(),
+        )
+        .nullable_field("item");
+        let source = root([DataType::serie(item.clone()).nullable_field("items")]);
+        let columns: Vec<arrow_array::ArrayRef> = (0..3)
+            .map(|i| {
+                Arc::new(arrow_array::UInt64Array::from_iter_values(
+                    (0..(ROWS * ITEMS) as u64).map(|row| row + i as u64),
+                )) as arrow_array::ArrayRef
+            })
+            .collect();
+        let item_arrow = item.as_arrow_field_ref().unwrap();
+        let ArrowDataType::Struct(fields) = item_arrow.data_type() else {
+            panic!("an item is a struct");
+        };
+        let items = Arc::new(StructArray::try_new(fields.clone(), columns, None).unwrap());
+        let offsets = OffsetBuffer::from_lengths([ITEMS; ROWS]);
+        let list =
+            Arc::new(ListArray::try_new(Arc::clone(item_arrow), offsets, items, None).unwrap());
+        let batch = RecordBatch::try_new(
+            source.clone().into_arrow_schema().unwrap(),
+            vec![list as arrow_array::ArrayRef],
+        )
+        .unwrap();
+        let target = source.into_scheme_compat(&Scheme::ICEBERG).unwrap();
+        let cast = Serie::from_arrow_batch(Some(&target), &batch, ArrowCastOptions::new())
+            .expect("the nested rows cast whole");
+        assert_eq!(cast.len(), ROWS);
+        let last = cast.scalar(ROWS - 1).unwrap();
+        let items = last.as_sequence().unwrap()[0].clone();
+        assert_eq!(items.as_serie().unwrap().len(), ITEMS);
+    }
+
     #[test]
     fn a_missing_column_is_null_where_nullable_and_refused_where_required() {
         let source = Arc::new(Schema::new(vec![ArrowField::new(
@@ -4415,5 +4500,160 @@ mod declared_order {
                 "chunk 1 of row opens out of the order its field declares, `id`".to_owned()
             ))
         );
+    }
+}
+
+mod stated_bits {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use arrow_array::{Array, ArrayRef, Float64Array, Int64Array, RecordBatch, UInt64Array};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Representation, Serie};
+
+    use super::root;
+
+    /// A column of `dtype` stating its integers are bits.
+    fn stating(dtype: DataType, name: &str) -> Field {
+        let mut field = dtype.required_field(name);
+        field
+            .as_field_properties_mut()
+            .set_representation(Representation::Bits)
+            .unwrap();
+        field
+    }
+
+    const DIGESTS: [u64; 3] = [0, 1 << 63, u64::MAX];
+
+    #[test]
+    fn a_column_stating_bits_casts_its_integers_by_bits_without_copying() {
+        // The whole cast asks for values; the column asks for its bits.
+        let source = UInt64Array::from(DIGESTS.to_vec());
+        let signed = Serie::from_arrow_array(
+            Some(&stating(DataType::Int64, "digest")),
+            Arc::new(source.clone()),
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+        let signed = signed.as_int64().expect("an int64 column").array().clone();
+        assert_eq!(signed.values(), &[0, i64::MIN, -1]);
+        assert!(signed.values().inner().ptr_eq(source.values().inner()));
+
+        let restored = Serie::from_arrow_array(
+            Some(&stating(DataType::UInt64, "digest")),
+            Arc::new(signed.clone()),
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+        let restored = restored.as_uint64().expect("a uint64 column").array();
+        assert_eq!(restored.values(), source.values());
+        assert!(restored.values().inner().ptr_eq(source.values().inner()));
+
+        // The source states it: a stored long read into a column stating
+        // nothing takes the bits the stored column declares.
+        let stored = Serie::from_arrow_array(
+            Some(&stating(DataType::Int64, "digest")),
+            Arc::new(signed.clone()),
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+        let read = stored
+            .cast(
+                &DataType::UInt64.required_field("digest"),
+                ArrowCastOptions::new(),
+            )
+            .unwrap();
+        let read = read.as_uint64().expect("a uint64 column").array();
+        assert_eq!(read.values(), source.values());
+        assert!(read.values().inner().ptr_eq(source.values().inner()));
+
+        // A batch whose Arrow field states it, as a table's scan answers.
+        let declared =
+            ArrowField::new("digest", ArrowDataType::Int64, false).with_metadata(HashMap::from([
+                ("FIELD:representation".to_owned(), "bits".to_owned()),
+            ]));
+        let batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![declared])),
+            vec![Arc::new(signed.clone()) as ArrayRef],
+        )
+        .unwrap();
+        let landed = Serie::from_arrow_batch(
+            Some(&root([DataType::UInt64.required_field("digest")])),
+            &batch,
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+        let landed = landed
+            .into_arrow_batch()
+            .unwrap()
+            .column(0)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .expect("a uint64 column")
+            .clone();
+        assert_eq!(landed.values(), source.values());
+
+        // Neither side stating it, the value is read and refused by path.
+        let refused = Serie::from_arrow_array(
+            Some(&DataType::Int64.required_field("digest")),
+            Arc::new(source),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(refused.contains("$.digest"), "{refused}");
+    }
+
+    #[test]
+    fn a_stated_column_converts_a_float_by_value() {
+        let cast = Serie::from_arrow_array(
+            Some(&stating(DataType::Int64, "digest")),
+            Arc::new(Float64Array::from(vec![1.0, 42.0])),
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+        // Not 0x3ff0_0000_0000_0000: the declaration is the integers', so a
+        // float meeting it crosses as the number it is.
+        assert_eq!(cast.as_int64().expect("an int64 column").values(), &[1, 42]);
+    }
+
+    #[test]
+    fn a_struct_child_stating_bits_takes_them_while_its_sibling_converts_by_value() {
+        let digests = UInt64Array::from(vec![u64::MAX, 7]);
+        let prices = Float64Array::from(vec![2.0, 3.0]);
+        let batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![
+                ArrowField::new("d", ArrowDataType::UInt64, false),
+                ArrowField::new("f", ArrowDataType::Float64, false),
+            ])),
+            vec![
+                Arc::new(digests.clone()) as ArrayRef,
+                Arc::new(prices) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        // The write session's shape: the stored record states bits on its
+        // digest alone, under a cast asking for values.
+        let stored = root([
+            stating(DataType::Int64, "d"),
+            DataType::Int64.required_field("f"),
+        ]);
+        let cast = Serie::from_arrow_batch(Some(&stored), &batch, ArrowCastOptions::new())
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
+        let d = cast
+            .column(0)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .expect("an int64 digest");
+        assert_eq!(d.values(), &[-1, 7]);
+        assert!(d.values().inner().ptr_eq(digests.values().inner()));
+        let f = cast
+            .column(1)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .expect("an int64 price");
+        assert_eq!(f.values(), &[2, 3]);
     }
 }

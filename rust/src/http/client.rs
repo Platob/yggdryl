@@ -14,13 +14,10 @@
 //! so a hundred handles against one origin share connections; a client whose
 //! timeouts, proxy or trust roots differ gets a pool of its own.
 
-use std::collections::BTreeMap;
 use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
-
-use smol_str::SmolStr;
 
 use super::request::{Attempt, AttemptHeaders, ResendOn, RetryOn};
 use super::retry::{self, RETRY_COST, RETRY_REFUND, RetryBudget, fresh_jitter};
@@ -75,145 +72,6 @@ impl Stats {
             Method::Options | Method::Trace | Method::Connect => &self.others,
         };
         counter.fetch_add(1, Ordering::Relaxed);
-    }
-}
-
-/// Every request this process sent, by the host and port it went to: the
-/// one ledger a pipeline's cost is read off whatever handles sent them - a
-/// table's store, a catalog's control plane, a capture's bucket. Every
-/// client of the crate - this one and the object stores' - records here as
-/// it records its own counters, under a lock taken once per request, which
-/// a round trip dwarfs; the hosts a process speaks to are few, so the
-/// ledger is bounded by them.
-static PROCESS: Mutex<BTreeMap<SmolStr, HostStats>> = Mutex::new(BTreeMap::new());
-
-/// Count one request of `method` to `host` in the process ledger.
-pub(crate) fn record_process(host: &str, method: &str) {
-    if let Ok(mut hosts) = PROCESS.lock() {
-        hosts.entry(SmolStr::new(host)).or_default().record(method);
-    }
-}
-
-/// Every request this process has sent so far, by host, as of now.
-///
-/// ```
-/// use yggdryl::http::process_stats;
-///
-/// let before = process_stats();
-/// // ... a stage runs ...
-/// let since = process_stats().since(&before);
-/// assert_eq!(since.total().requests, 0);
-/// ```
-#[must_use]
-pub fn process_stats() -> ProcessStats {
-    ProcessStats {
-        hosts: PROCESS
-            .lock()
-            .map(|hosts| hosts.clone())
-            .unwrap_or_default(),
-    }
-}
-
-/// How many requests of each method went to one host.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct HostStats {
-    /// Every request, retries, resumes and redirect hops included.
-    pub requests: u64,
-    /// `GET` requests, whole or ranged, listings included.
-    pub gets: u64,
-    /// `HEAD` requests.
-    pub heads: u64,
-    /// `PUT` requests, whole objects and multipart parts.
-    pub puts: u64,
-    /// `POST` requests.
-    pub posts: u64,
-    /// `DELETE` requests.
-    pub deletes: u64,
-    /// Every other method.
-    pub others: u64,
-}
-
-impl HostStats {
-    fn record(&mut self, method: &str) {
-        self.requests += 1;
-        *match method {
-            "GET" => &mut self.gets,
-            "HEAD" => &mut self.heads,
-            "PUT" => &mut self.puts,
-            "POST" => &mut self.posts,
-            "DELETE" => &mut self.deletes,
-            _ => &mut self.others,
-        } += 1;
-    }
-
-    fn add(&mut self, other: &Self) {
-        self.requests += other.requests;
-        self.gets += other.gets;
-        self.heads += other.heads;
-        self.puts += other.puts;
-        self.posts += other.posts;
-        self.deletes += other.deletes;
-        self.others += other.others;
-    }
-
-    /// What this reading adds to `earlier`: the requests between the two.
-    #[must_use]
-    pub fn since(&self, earlier: &Self) -> Self {
-        Self {
-            requests: self.requests.saturating_sub(earlier.requests),
-            gets: self.gets.saturating_sub(earlier.gets),
-            heads: self.heads.saturating_sub(earlier.heads),
-            puts: self.puts.saturating_sub(earlier.puts),
-            posts: self.posts.saturating_sub(earlier.posts),
-            deletes: self.deletes.saturating_sub(earlier.deletes),
-            others: self.others.saturating_sub(earlier.others),
-        }
-    }
-}
-
-/// Every request the process sent, by host, as of one reading.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ProcessStats {
-    hosts: BTreeMap<SmolStr, HostStats>,
-}
-
-impl ProcessStats {
-    /// The hosts spoken to, in byte order, each with its counts.
-    pub fn hosts(&self) -> impl Iterator<Item = (&str, &HostStats)> {
-        self.hosts
-            .iter()
-            .map(|(host, stats)| (host.as_str(), stats))
-    }
-
-    /// The counts of one host, zero for one never spoken to.
-    #[must_use]
-    pub fn host(&self, host: &str) -> HostStats {
-        self.hosts.get(host).copied().unwrap_or_default()
-    }
-
-    /// Every host's counts summed.
-    #[must_use]
-    pub fn total(&self) -> HostStats {
-        let mut total = HostStats::default();
-        for stats in self.hosts.values() {
-            total.add(stats);
-        }
-        total
-    }
-
-    /// What this reading adds to `earlier`, host by host: a host spoken to
-    /// only since appears whole, one spoken to no more is left out.
-    #[must_use]
-    pub fn since(&self, earlier: &Self) -> Self {
-        Self {
-            hosts: self
-                .hosts
-                .iter()
-                .map(|(host, stats)| (host.clone(), stats.since(&earlier.host(host))))
-                .filter(|(_, stats)| stats.requests > 0)
-                .collect(),
-        }
     }
 }
 
@@ -800,7 +658,6 @@ impl Client {
     fn attempt(&self, wire: &Wire<'_>, payload: Option<Payload<'_>>) -> Outcome {
         let proxy = self.proxy_for(wire).map_err(Failure::Refused)?;
         self.inner.stats.record(wire.method);
-        record_process(wire.url.authority().host_port(), wire.method.as_str());
         #[cfg(feature = "http2")]
         let mut payload = payload;
         #[cfg(feature = "http2")]

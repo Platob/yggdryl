@@ -614,6 +614,19 @@
         }
       },
       {
+        "name": "strikepx",
+        "dtype": {
+          "type": "decimal"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65035",
+          "FIX:transient": "false",
+          "description": "The strike price of the option the message identifies: StrikePrice, the one its chain names for the same instrument once followed. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Strike Price"
+        }
+      },
+      {
         "name": "metadata",
         "dtype": {
           "type": "null"
@@ -630,7 +643,7 @@
         },
         "nullable": true,
         "metadata": {
-          "FIX:tag": "65036",
+          "FIX:tag": "65037",
           "FIX:transient": "false",
           "description": "The quantity the operation ordered: OrderQty; working, CumQty plus LeavesQty where it states none. Derived from the message's fields; a row stating one is the row's word.",
           "display": "Order Quantity"
@@ -654,7 +667,7 @@
         },
         "nullable": true,
         "metadata": {
-          "FIX:tag": "65037",
+          "FIX:tag": "65038",
           "FIX:transient": "false",
           "description": "Whether the instrument can trade: SecurityTradingStatus, else TradingSessionStatus or SecurityStatus. Derived from the message's fields; a row stating one is the row's word.",
           "display": "Tradable"
@@ -694,7 +707,7 @@
         },
         "nullable": true,
         "metadata": {
-          "FIX:tag": "65038",
+          "FIX:tag": "65039",
           "FIX:transient": "false",
           "description": "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap, the parties that name one, and the keys no dictionary resolved whose names spell one - a bridge's PARENTORDERID, its firm.x.ParentOrderID - which ride fixentries under 0:key. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
           "display": "Identifiers"
@@ -734,7 +747,7 @@
         },
         "nullable": true,
         "metadata": {
-          "FIX:tag": "65039",
+          "FIX:tag": "65040",
           "FIX:transient": "false",
           "description": "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, Account under AcctIDSource, and the keys no dictionary resolved whose names spell a party - a bridge's OMS_UserID, its TECH.CLIENTID - which ride fixentries under 0:key. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
           "display": "Party IDs"
@@ -913,7 +926,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgpluginid",
-          "FIX:tag": "65040"
+          "FIX:tag": "65041"
         }
       },
       {
@@ -924,7 +937,7 @@
         "nullable": false,
         "metadata": {
           "FIX:field": "msgpluginside",
-          "FIX:tag": "65041"
+          "FIX:tag": "65042"
         }
       },
       {
@@ -935,7 +948,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgoriginator",
-          "FIX:tag": "65042"
+          "FIX:tag": "65043"
         }
       },
       {
@@ -946,7 +959,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgctxid",
-          "FIX:tag": "65043"
+          "FIX:tag": "65044"
         }
       },
       {
@@ -957,7 +970,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgsessionid",
-          "FIX:tag": "65044"
+          "FIX:tag": "65045"
         }
       },
       {
@@ -968,7 +981,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgsesseventid",
-          "FIX:tag": "65045"
+          "FIX:tag": "65046"
         }
       },
       {
@@ -979,7 +992,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "conversationid",
-          "FIX:tag": "65046"
+          "FIX:tag": "65047"
         }
       },
       {
@@ -1001,7 +1014,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "forexcode",
-          "FIX:tag": "65047"
+          "FIX:tag": "65048"
         }
       },
       {
@@ -1012,7 +1025,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "bloombergcode",
-          "FIX:tag": "65048"
+          "FIX:tag": "65049"
         }
       },
       {
@@ -1023,7 +1036,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "figicode",
-          "FIX:tag": "65049"
+          "FIX:tag": "65050"
         }
       },
       {
@@ -1836,7 +1849,7 @@
   },
   "nullable": false,
   "metadata": {
-    "FIX:tag": "65051",
+    "FIX:tag": "65052",
     "description": "The fixed row every message answers as: the crate's own columns, the standard header, the fields a financial consumer reads, the groups persisted whole, the trailer, and the arrival record that closes it.",
     "display": "FIX Message"
   }

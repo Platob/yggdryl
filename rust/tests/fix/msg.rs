@@ -2202,7 +2202,7 @@ fn a_fix_message_and_its_typed_twin_complete_alike() {
     let (_, reader) = reader();
     for line in CORPUS {
         let message = reader.sole_line(line.as_bytes()).expect("a message");
-        let twin = match message.msgcat() {
+        let twin = match message.marketdatakind() {
             MarketDataKind::Order => typed_twin(OrderEvent::at(0), &message, line),
             MarketDataKind::Quotation => typed_twin(QuoteEvent::at(0), &message, line),
             MarketDataKind::Execution => typed_twin(ExecutionEvent::at(0), &message, line),
@@ -2648,6 +2648,82 @@ mod identifier_maps {
         );
     }
 
+    /// A bridge's party key whose namespace is the `bic` standard holds its
+    /// value as a BIC, upper-cased, and the leaf drops the key from its
+    /// metadata as it drops every key a map holds; a value that is no BIC is
+    /// held by no map and stays in the metadata as it arrived.
+    #[test]
+    fn a_bridges_bic_keyed_party_is_held_as_a_bic_and_leaves_the_metadata() {
+        let user = yggdryl::IdKey::new(yggdryl::IdSource::Bic, IdType::UserId);
+        let held = parsed("8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|38=5|40=2|BIC_UserID=deutdeff|10=0|");
+        assert_eq!(held.get_partyids().get_from(&user), Some("DEUTDEFF"));
+        let metadata = leaf_metadata(&held);
+        assert!(
+            !metadata.iter().any(|(key, _)| key.contains("userid")),
+            "{metadata:?}"
+        );
+        let refused = parsed("8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|38=5|40=2|BIC_UserID=T-1|10=0|");
+        assert!(refused.get_partyids().get_from(&user).is_none());
+        let metadata = leaf_metadata(&refused);
+        assert!(
+            metadata
+                .iter()
+                .any(|(key, value)| key.contains("userid") && value == "T-1"),
+            "{metadata:?}"
+        );
+    }
+
+    /// `FinancialInstrumentShortName(2737)` states the instrument's ISO
+    /// 18774 short name, which FIX gives no `SecurityIDSource(22)` code: it
+    /// lands in `securityids` under the base `fisn` key, upper-cased, beside
+    /// the primary the message states; one that is no short name is an
+    /// anomaly of the field, which stays on the wire as it arrived.
+    #[test]
+    fn a_financial_instrument_short_name_lands_in_securityids_as_its_fisn() {
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|55=AAPL|48=US0378331005|22=4|2737=apple inc/sh|54=1|38=5|\
+             40=2|10=0|",
+        );
+        let ids = held.get_securityids();
+        assert_eq!(ids.get(&IdType::Fisn), Some("APPLE INC/SH"));
+        assert_eq!(ids.get(&IdType::Isin), Some("US0378331005"));
+        assert_eq!(ids.of_kind(&IdType::Fisn).count(), 1, "the base key alone");
+        assert!(held.anomalies().is_empty(), "{:?}", held.anomalies());
+        let wire = String::from_utf8(held.into_bytes(b'|')).expect("a text wire");
+        assert!(wire.contains("|2737=apple inc/sh|"), "{wire}");
+
+        let refused = parsed(
+            "8=FIX.4.4|35=D|11=C1|55=AAPL|48=US0378331005|22=4|2737=APPLE INC SH|54=1|38=5|\
+             40=2|10=0|",
+        );
+        assert!(refused.get_securityids().get(&IdType::Fisn).is_none());
+        assert_eq!(
+            refused.get_securityids().get(&IdType::Isin),
+            Some("US0378331005")
+        );
+        let anomalies = refused.anomalies();
+        assert_eq!(anomalies.len(), 1, "{anomalies:?}");
+        assert_eq!(anomalies[0].field(), "financialinstrumentshortname");
+        assert!(
+            anomalies[0].reason().contains("'/'"),
+            "{}",
+            anomalies[0].reason()
+        );
+        let wire = String::from_utf8(refused.into_bytes(b'|')).expect("a text wire");
+        assert!(wire.contains("|2737=APPLE INC SH|"), "{wire}");
+
+        // A message stating the short name alone holds it as its one
+        // security identifier, and a null-like one states nothing.
+        let alone = parsed("8=FIX.4.4|35=D|11=C1|55=AAPL|2737=APPLE INC/SH|54=1|38=5|40=2|10=0|");
+        assert_eq!(
+            alone.get_securityids().get(&IdType::Fisn),
+            Some("APPLE INC/SH")
+        );
+        let none = parsed("8=FIX.4.4|35=D|11=C1|55=AAPL|2737=N/A|54=1|38=5|40=2|10=0|");
+        assert!(none.get_securityids().get(&IdType::Fisn).is_none());
+        assert!(none.anomalies().is_empty(), "{:?}", none.anomalies());
+    }
+
     #[test]
     fn the_parties_a_message_names_keep_the_first_of_a_role_and_a_second_stays() {
         let held = parsed(
@@ -2745,20 +2821,22 @@ mod identifier_maps {
     /// sourced by its `RootPartyIDSource(1118)`, `base` for none.
     #[test]
     fn an_account_is_sourced_by_its_acctidsource_name_and_root_parties_are_parties() {
-        for (source, expected) in [
-            ("1", "bic:account=ACC-1"),
-            ("6", "spsaid:account=ACC-1"),
-            ("99", "other:account=ACC-1"),
+        for (account, source, expected) in [
+            (
+                "deutdeff",
+                "1",
+                ["account=DEUTDEFF", "bic:account=DEUTDEFF"],
+            ),
+            ("ACC-1", "6", ["account=ACC-1", "spsaid:account=ACC-1"]),
+            ("ACC-1", "99", ["account=ACC-1", "other:account=ACC-1"]),
         ] {
             let held = parsed(&format!(
-                "8=FIX.4.4|35=D|11=C1|1=ACC-1|660={source}|55=AAPL|54=1|38=5|40=2|10=0|"
+                "8=FIX.4.4|35=D|11=C1|1={account}|660={source}|55=AAPL|54=1|38=5|40=2|10=0|"
             ));
-            // The source fills the base key, the account's answer.
-            assert_eq!(
-                shown(held.get_partyids()),
-                ["account=ACC-1", expected],
-                "660={source}"
-            );
+            // The source fills the base key, the account's answer; a BIC
+            // source holds its value as a BIC, upper-cased.
+            assert_eq!(shown(held.get_partyids()), expected, "660={source}");
+            assert!(held.anomalies().is_empty(), "{:?}", held.anomalies());
         }
         let quoted = parsed(
             "8=FIX.4.4|35=R|131=QR1|303=2|55=AAPL|1116=2|1117=R1|1118=D|1119=12|1117=R2|1119=3|10=0|",
@@ -2771,6 +2849,85 @@ mod identifier_maps {
                 "proprietary:executingtrader=R1"
             ]
         );
+    }
+
+    /// A party sourced `B` by `PartyIDSource(447)` is a BIC and one sourced
+    /// `N` an LEI, as `AcctIDSource(660)` `1` makes an account a BIC: a
+    /// value of the code's shape is held upper-cased under the source's key
+    /// and fills the role's answer, and one that is not is no party - kept
+    /// on the wire and in the leaf's metadata, and recorded as an anomaly
+    /// of its identifier field naming the key, never dropped silently.
+    #[test]
+    fn a_party_under_a_bic_or_lei_source_is_held_to_that_code_and_a_refusal_is_an_anomaly() {
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|38=5|40=2|453=2|448=deutdeff|447=B|452=1|\
+             448=hwupkr0mpou8fgxbt394|447=N|452=3|10=0|",
+        );
+        assert_eq!(
+            shown(held.get_partyids()),
+            [
+                "bic:executingfirm=DEUTDEFF",
+                "clientid=HWUPKR0MPOU8FGXBT394",
+                "executingfirm=DEUTDEFF",
+                "legalentityidentifier:clientid=HWUPKR0MPOU8FGXBT394",
+            ]
+        );
+        assert!(held.anomalies().is_empty(), "{:?}", held.anomalies());
+
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|1=ACC-1|660=1|55=AAPL|54=1|38=5|40=2|453=3|448=ACME|447=B|\
+             452=1|448=CL|447=N|452=3|448=T1|447=D|452=12|10=0|",
+        );
+        assert_eq!(
+            shown(held.get_partyids()),
+            ["executingtrader=T1", "proprietary:executingtrader=T1"],
+            "only the proprietary party stands"
+        );
+        let anomalies: Vec<(String, String)> = held
+            .anomalies()
+            .iter()
+            .map(|anomaly| (anomaly.field().to_owned(), anomaly.reason().to_owned()))
+            .collect();
+        assert_eq!(
+            anomalies
+                .iter()
+                .map(|(field, _)| field.as_str())
+                .collect::<Vec<_>>(),
+            ["partyid", "partyid", "account"]
+        );
+        assert_eq!(
+            anomalies[0].1,
+            "states \"ACME\", which no identifier holds: invalid record value at \
+             bic:executingfirm: a value under the bic source is a BIC: expected eight or eleven \
+             characters, got \"ACME\""
+        );
+        assert!(
+            anomalies[1].1.contains("legalentityidentifier:clientid")
+                && anomalies[1].1.contains("an LEI"),
+            "{}",
+            anomalies[1].1
+        );
+        assert!(anomalies[2].1.contains("bic:account"), "{}", anomalies[2].1);
+        // The wire is as it arrived, and the refused parties stay in the
+        // leaf's metadata, since no map holds them.
+        let wire = String::from_utf8(held.clone().into_bytes(b'|')).expect("a text wire");
+        assert!(
+            wire.contains("|448=ACME|447=B|452=1|") && wire.contains("|1=ACC-1|660=1|"),
+            "{wire}"
+        );
+        let metadata = leaf_metadata(&held);
+        let parties = metadata.get("parties").map(|held| held.as_str().to_owned());
+        assert!(
+            parties
+                .as_deref()
+                .is_some_and(|parties| parties.contains("ACME")
+                    && parties.contains("\"CL\"")
+                    && !parties.contains("T1")),
+            "{parties:?}"
+        );
+        // A settle states the same anomalies again, never twice.
+        let restated = parsed(&String::from_utf8(held.into_bytes(b'|')).expect("a text wire"));
+        assert_eq!(restated.anomalies().len(), 3, "{:?}", restated.anomalies());
     }
 
     /// A regulatory trade identifier is typed by its
@@ -2956,15 +3113,22 @@ mod identifier_maps {
 /// A message naming no currency pair digests exactly as it did before FX
 /// detection existed: detection writes nothing where it finds no pair.
 ///
-/// The pin last moved when an event's place left its content code: the
-/// code no longer feeds `seqnum`, which this message states as zero.
+/// The pin moved when an event's place left its content code: the code no
+/// longer feeds `seqnum`, which this message states as zero. It last moved
+/// when the category the content code feeds took the column's own name:
+/// the label `msgcat` became `marketdatakind`, its value the same code.
+/// That relabelling moves every message's `currhashcode` and `curruuid`, a
+/// `crossuuid` that is its own `curruuid`, the `srcuuids` and `prevuuid`
+/// naming a moved message, and the cross code of an execution split off a
+/// report naming no `ExecID` or `TradeID` (it derives from its report's
+/// `currhashcode`); never the wire, the digest's entries or `seqnum`.
 #[test]
 fn a_message_naming_no_pair_digests_as_it_did_before_detection() {
     let (_, reader) = reader();
     let message = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=100|40=2|44=10.5|15=USD|167=CS|10=0|")
         .expect("an order");
-    assert_eq!(message.get_currhashcode(), 12_856_949_354_363_238_690);
+    assert_eq!(message.get_currhashcode(), 11_376_276_928_047_898_508);
 }
 
 /// What settle derives about the market a message is in: the rates it
@@ -3210,11 +3374,11 @@ mod settled_market {
         let category = |code: &str| {
             registry
                 .get_msgtype(code)
-                .and_then(|held| held.msgcat())
+                .and_then(|held| held.marketdatakind())
                 .unwrap_or(MarketDataKind::Unknown)
         };
         let mut order = parsed("8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=10|10=0|");
-        assert_eq!(order.msgcat(), MarketDataKind::Order);
+        assert_eq!(order.marketdatakind(), MarketDataKind::Order);
         assert_eq!(
             order.get_by_tag(yggdryl::MARKETDATAKIND_TAG_NAME.0),
             Some(Scalar::MarketDataKind(MarketDataKind::Order))
@@ -3237,25 +3401,25 @@ mod settled_market {
             &Scalar::from_sequence(cells),
         )
         .unwrap();
-        assert_eq!(stated.msgcat(), MarketDataKind::Book);
+        assert_eq!(stated.marketdatakind(), MarketDataKind::Book);
         // A written type derives its own.
         order.set(35, Scalar::from("S")).unwrap();
-        assert_eq!(order.msgcat(), category("S"));
-        assert_ne!(order.msgcat(), MarketDataKind::Order);
+        assert_eq!(order.marketdatakind(), category("S"));
+        assert_ne!(order.marketdatakind(), MarketDataKind::Order);
         // An execution report of no fill is its order's report, whatever
         // category its type files it under.
         order.set(35, Scalar::from("8")).unwrap();
         assert_eq!(category("8"), MarketDataKind::Execution);
-        assert_eq!(order.msgcat(), MarketDataKind::Order);
+        assert_eq!(order.marketdatakind(), MarketDataKind::Order);
         order.set(117, Scalar::from("Q-1")).unwrap();
         assert_eq!(
-            order.msgcat(),
+            order.marketdatakind(),
             MarketDataKind::Quotation,
             "its quote's, naming one"
         );
         order.set(150, Scalar::from("F")).unwrap();
         assert_eq!(
-            order.msgcat(),
+            order.marketdatakind(),
             MarketDataKind::Execution,
             "a fill's report states its fill"
         );
@@ -3329,4 +3493,96 @@ mod settled_market {
             );
         }
     }
+}
+
+/// A row states a message's identity by its digests and its place: a cell
+/// its column cannot read as the `uint64` it is - a widened column holding
+/// a fraction, a text - refuses the row by name rather than reading as
+/// zero, because a zero digest is another message's delivery, which the
+/// lifecycle folds the message into.
+#[test]
+fn a_row_stating_a_digest_its_column_cannot_read_is_refused_by_name() {
+    let (registry, reader) = reader();
+    let message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|")
+        .unwrap();
+    // The fixed row with the content digest widened, as a table with no
+    // unsigned type stores it, to a scale that can hold a fraction beside
+    // the twenty digits.
+    let mut schema = fix_schema(&registry, "fix").unwrap();
+    let name = yggdryl::CURRHASHCODE_TAG_NAME.1;
+    let widened = DataType::decimal128(22, 2).unwrap().nullable_field(name);
+    schema.set_field(name, widened).unwrap();
+    let at = schema.index_of(name).expect("a currhashcode column");
+    let row = message.into_row(&schema).unwrap();
+    // Whole, the digest reads back as the number it was.
+    let read = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(read.get_currhashcode(), message.get_currhashcode());
+    assert_ne!(read.get_currhashcode(), 0);
+    // With a fraction, the row is refused by its column.
+    let cells = row.as_sequence().expect("a row");
+    let broken = Scalar::from_sequence(cells.iter().enumerate().map(|(index, cell)| {
+        if index == at {
+            Scalar::decimal128(150, 2)
+        } else {
+            cell.clone()
+        }
+    }));
+    let error = FixMsg::from_row(Arc::clone(&registry), &schema, &broken)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("$.currhashcode"), "{error}");
+    assert!(error.contains("uint64"), "{error}");
+}
+
+/// A table with no unsigned type may store a digest as the `long` of its
+/// width, so a row reads an `int64` digest cell as its bits; the place is a
+/// count, read by value alone, so a negative one refuses the row by name.
+#[test]
+fn a_row_reads_a_long_digest_as_its_bits_and_refuses_a_negative_place() {
+    let (registry, reader) = reader();
+    let message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|")
+        .unwrap();
+    // The fixed row as a table of longs lays it out, stating nothing.
+    let mut schema = fix_schema(&registry, "fix").unwrap();
+    for name in [yggdryl::CURRHASHCODE_TAG_NAME.1, yggdryl::SEQNUM_TAG_NAME.1] {
+        let mut long = schema.get_field(name).expect("an identity column").clone();
+        long.set_dtype(DataType::Int64).unwrap();
+        schema.set_field(name, long).unwrap();
+    }
+    let digest_at = schema
+        .index_of(yggdryl::CURRHASHCODE_TAG_NAME.1)
+        .expect("a currhashcode column");
+    let place_at = schema
+        .index_of(yggdryl::SEQNUM_TAG_NAME.1)
+        .expect("a seqnum column");
+    let fixed = fix_schema(&registry, "fix").unwrap();
+    let row = message.into_row(&fixed).unwrap();
+    let cells = |digest: Scalar, place: Scalar| {
+        Scalar::from_sequence(row.as_sequence().expect("a row").iter().enumerate().map(
+            |(index, cell)| match index {
+                index if index == digest_at => digest.clone(),
+                index if index == place_at => place.clone(),
+                _ => cell.clone(),
+            },
+        ))
+    };
+
+    let read = FixMsg::from_row(
+        Arc::clone(&registry),
+        &schema,
+        &cells(Scalar::from(-1_i64), Scalar::from(0_i64)),
+    )
+    .unwrap();
+    assert_eq!(read.get_currhashcode(), u64::MAX);
+
+    let error = FixMsg::from_row(
+        Arc::clone(&registry),
+        &schema,
+        &cells(Scalar::from(-1_i64), Scalar::from(-1_i64)),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("$.seqnum"), "{error}");
 }

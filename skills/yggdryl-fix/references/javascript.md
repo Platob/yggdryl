@@ -168,7 +168,7 @@ const message = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|52=20260102-10:15
 
 assert.deepEqual([message.header().beginstring, message.header().msgtype], ['FIX.4.4', 'D'])
 // The category its type files under, and the option strike it identifies.
-assert.deepEqual([message.msgcat, message.strikeprice], ['ORDR', '105'])
+assert.deepEqual([message.marketdatakind, message.strikepx], ['ORDR', '105'])
 // A coded value reads as its name; the wire keeps its code.
 assert.equal(message.byTag(54).asJs(), 'BUYS')
 assert.equal(message.side, 'BUYS')
@@ -382,7 +382,7 @@ fs.rmSync(directory, { recursive: true, force: true })
 
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
-its order and side under one `crossuuid`, within one market data kind (`msgcat`); a
+its order and side under one `crossuuid`, within one market data kind (`marketdatakind`); a
 report stating no side joins the one side alive under its identifiers. A fill's
 execution, split off at the parse, is a chain of its own and never restates,
 follows or ends its order. A codec pinned `{ sortedLifecycle: true }` reads a source already in
@@ -421,10 +421,10 @@ assert.equal(fill.prevuuid, ack.curruuid)
 assert.ok([ack, fill].every((held) => held.crossuuid === order.crossuuid))
 // The reports stated no side: they joined the buy alive under A1 and O1.
 assert.ok([ack, fill].every((held) => held.side === 'BUYS' && held.crosscode === '10:1:A1'))
-assert.deepEqual([fill.msgcat, fill.state], ['ORDR', 'FILLED'])
+assert.deepEqual([fill.marketdatakind, fill.state], ['ORDR', 'FILLED'])
 // Every walked message states when its chain began.
 assert.ok([ack, fill].every((held) => held.creaunix === order.currunix))
-assert.deepEqual([execution.msgcat, execution.state], ['EXEC', 'FILLED'])
+assert.deepEqual([execution.marketdatakind, execution.state], ['EXEC', 'FILLED'])
 assert.deepEqual([execution.seqnum, execution.prevuuid], [1, null])
 
 // Rows already in Arrow chain in place, under the schema they were read with.
@@ -509,11 +509,11 @@ assert.ok(chained.every((message) => message.crossuuid === chained[0].crossuuid)
 ## Split fills and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
-fill twice: an execution report is its order's report (`msgcat` `ORDR`, its
+fill twice: an execution report is its order's report (`marketdatakind` `ORDR`, its
 own state; `QUOT` where it names a `QuoteID(117)`) - one of no fill from its
 parse - and one that fills adds one `EXEC` message reading `FILLED`, chained
 under its `ExecID(17)` as given, else `TradeID=<TradeID(1003)>`; a trade
-(`AE`) adds one sided execution per `NoSides(552)` occurrence; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+(`AE`) adds one sided execution per `NoSides(552)` occurrence; a batch (`marketdatakind` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
 an order list, a mass order, a cross, a mass quote, a match report) adds one
 message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`) - a
 mass quote's entry one quote holding both its legs - chained by the order the
@@ -531,16 +531,16 @@ const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config',
 
 const fill = '8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|10=0|'
 const [report, execution] = codec.parseLine(Buffer.from(fill))
-assert.deepEqual([report.msgcat, report.state], ['ORDR', 'PARTIALLY_FILLED'])
-assert.deepEqual([execution.msgcat, execution.state], ['EXEC', 'FILLED'])
+assert.deepEqual([report.marketdatakind, report.state], ['ORDR', 'PARTIALLY_FILLED'])
+assert.deepEqual([execution.marketdatakind, execution.state], ['EXEC', 'FILLED'])
 assert.ok(execution.srcuuids.includes(report.curruuid))
 // An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert.deepEqual([report.crosscode, execution.crosscode], ['10:1:O-9', '8:1:E-1'])
 
 const stated = '8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|'
 const [quote] = codec.parseLine(Buffer.from(stated))
-assert.deepEqual([quote.msgcat, quote.side, quote.crosscode], ['QUOT', 'UKNW', '14:0:Q1'])
-// Both legs on the one message, each in its currency; neither is the quote's own price.
+assert.deepEqual([quote.marketdatakind, quote.side, quote.crosscode], ['QUOT', 'BOTH', '14:0:Q1'])
+// Both legs on the one message, each in its currency, tagged BOTH; neither is the quote's own price.
 assert.equal(quote.price, null)
 assert.deepEqual([quote.bidpx, quote.askpx, quote.askqty, quote.askccy], ['99', '101', '8', 'USD'])
 
@@ -574,7 +574,7 @@ const lines = [
   '8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|',
 ]
 const capture = [...codec.parseLines(lines)]
-assert.ok(capture.every((message) => message.msgcat === 'BOOK'))
+assert.ok(capture.every((message) => message.marketdatakind === 'BOOK'))
 
 const leaves = [...codec.marketData(codec.lifecycle(capture))]
 assert.equal(leaves.length, 4, 'one leaf per entry')
@@ -687,7 +687,7 @@ fs.rmSync(folder, { recursive: true, force: true })
   it truncates every character above U+00FF.
 - Decimals come back as exact text (`'100'`, `'10.5'`), instants and 64-bit
   hashes as `bigint`: compare with `1_767_348_930_000_000_000n`, never a number.
-- `side`, `state` and `msgcat` answer the member's stored name (`'BUYS'`,
+- `side`, `state` and `marketdatakind` answer the member's stored name (`'BUYS'`,
   `'FILLED'`, `'ORDR'`); an Arrow column stores its code (`Side.BUYS`,
   `MarketDataKind.ORDR`).
 - `FixMessages` is a one-shot iterable: spread it once (`[...codec.parseLines(x)]`);

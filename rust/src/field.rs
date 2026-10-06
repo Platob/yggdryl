@@ -15,14 +15,14 @@ use crate::metadata::{
     parse_field_id, property_key, write_json_string as write_quoted,
 };
 use crate::{
-    BbgType, BooleanType, BytesType, CcyType, CfiType, CountryType, CusipType, DateTimeType,
-    DateType, DecimalType, DurationType, EnumType, FigiType, Float16Type, Float32Type, Float64Type,
-    ForexType, GeographyType, GeometryType, Int8Type, Int16Type, Int32Type, Int64Type,
-    IntervalType, IsinType, MappingType, MarketDataKindType, MarketDataTypeType, MediaTypeType,
-    MicType, MimeTypeType, NullType, PluginSideType, RicType, RunEndType, SedolType, SerieType,
-    SideType, StateType, StringType, StructType, TimeInForceType, TimeType, TimezoneType,
-    UInt8Type, UInt16Type, UInt32Type, UInt64Type, UnionType, UnitType, UriType, UuidType,
-    VariantType, VersionType,
+    BbgType, BicType, BooleanType, BytesType, CcyType, CfiType, CountryType, CusipType,
+    DateTimeType, DateType, DecimalType, DtiType, DurationType, ElfType, EnumType, FigiType,
+    FisnType, Float16Type, Float32Type, Float64Type, ForexType, GeographyType, GeometryType,
+    Int8Type, Int16Type, Int32Type, Int64Type, IntervalType, IsinType, LeiType, MappingType,
+    MarketDataKindType, MarketDataTypeType, MediaTypeType, MicType, MimeTypeType, NullType,
+    PluginSideType, RicType, RunEndType, SedolType, SerieType, SideType, StateType, StringType,
+    StructType, TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type,
+    UInt64Type, UnionType, UnitType, UriType, UuidType, VariantType, VersionType,
 };
 use crate::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -1646,6 +1646,11 @@ field_leaves! {
     [Figi] => FigiField / FigiType,
     [Unit] => UnitField / UnitType,
     [Forex] => ForexField / ForexType,
+    [Lei] => LeiField / LeiType,
+    [Bic] => BicField / BicType,
+    [Elf] => ElfField / ElfType,
+    [Dti] => DtiField / DtiType,
+    [Fisn] => FisnField / FisnType,
 }
 
 // A field compares and hashes as the leaf it holds. Two fields of different

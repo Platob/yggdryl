@@ -26,13 +26,10 @@ use yggdryl::geospatial::{Geography, Geometry};
 use yggdryl::interval::Interval;
 use yggdryl::string::{Str, StringType};
 use yggdryl::{
-    Bbg, Ccy, Cfi, Country, Cusip, Figi, Forex, Isin, MarketDataKind, MarketDataType, Mic,
-    PluginSide, Ric, Sedol, Side, State, TimeInForce, Unit,
-};
-use yggdryl::{
     DataType as CoreDataType, DataTypeId, Error as CoreError, Field as CoreField, Float16, Float32,
-    Float64, Scalar, Serie, TimeUnit, Timezone, Vocabulary, i256,
+    Float64, PluginSide, Ric, Scalar, Serie, TimeUnit, Timezone, Unit, Vocabulary, i256,
 };
+use yggdryl::{MarketDataKind, MarketDataType, Side, State, TimeInForce};
 
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::field::{PyField, core_field_from_value};
@@ -669,6 +666,13 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         }
     };
 
+    // A code reads back through its datatype's value door, named by the
+    // core's own listing, so a code the core adds needs no arm here.
+    if let Some((_, code, _)) = CoreDataType::CODES.iter().find(|(name, ..)| *name == tag) {
+        return code
+            .scalar(Scalar::from(payload()?.extract::<String>()?))
+            .map_err(value_error);
+    }
     match tag.as_str() {
         "null" if state.len() == 1 => Ok(Scalar::Null),
         "null" => Err(PyValueError::new_err("null Scalar state has no payload")),
@@ -755,36 +759,6 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .map_err(value_error)?;
             parameters.scalar(Str::new(text)).map_err(value_error)
         }
-        "country" => Country::new(payload()?.extract::<String>()?)
-            .map(Scalar::Country)
-            .map_err(value_error),
-        "ccy" => Ccy::new(payload()?.extract::<String>()?)
-            .map(Scalar::Ccy)
-            .map_err(value_error),
-        "mic" => Mic::new(payload()?.extract::<String>()?)
-            .map(Scalar::Mic)
-            .map_err(value_error),
-        "cfi" => Cfi::new(payload()?.extract::<String>()?)
-            .map(Scalar::Cfi)
-            .map_err(value_error),
-        "isin" => Isin::new(payload()?.extract::<String>()?)
-            .map(Scalar::Isin)
-            .map_err(value_error),
-        "cusip" => Cusip::new(payload()?.extract::<String>()?)
-            .map(Scalar::Cusip)
-            .map_err(value_error),
-        "sedol" => Sedol::new(payload()?.extract::<String>()?)
-            .map(Scalar::Sedol)
-            .map_err(value_error),
-        "bbg" => Bbg::new(payload()?.extract::<String>()?)
-            .map(Scalar::Bbg)
-            .map_err(value_error),
-        "figi" => Figi::new(payload()?.extract::<String>()?)
-            .map(Scalar::Figi)
-            .map_err(value_error),
-        "forex" => Forex::new(payload()?.extract::<String>()?)
-            .map(Scalar::Forex)
-            .map_err(value_error),
         "side" => Side::read(&payload()?.extract::<String>()?)
             .map(Scalar::Side)
             .map_err(value_error),

@@ -62,8 +62,9 @@ use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 
 use crate::parser::Parser;
 use crate::{
-    BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, FOREX_WIDTH,
-    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, UNIT_WIDTH,
+    BBG_WIDTH, BIC_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, DTI_WIDTH, ELF_WIDTH,
+    FIGI_WIDTH, FISN_WIDTH, FOREX_WIDTH, ISIN_WIDTH, LEI_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH,
+    UNIT_WIDTH,
 };
 
 use crate::parser;
@@ -644,9 +645,10 @@ pub(crate) mod casts {
                 Err(error) => refused(error.to_string()),
             };
         }
-        // A column of securities identifiers holds the canonical spelling -
-        // upper case, the type's shape - which is what `new` admits and
-        // what a read answers; the check digit is a reading (`is_closed`) a
+        // A column of securities identifiers or of the reference-data codes
+        // holds the canonical spelling - upper case, the type's shape - which
+        // is what `new` admits and what a read answers; a check digit or
+        // character is a reading (`is_closed`) a
         // merge ranks by, never the gate, so a masked number lands as the
         // value it is and the case is settled here rather than on every
         // read of the cell.
@@ -657,11 +659,17 @@ pub(crate) mod casts {
             DataType::Bbg => crate::Bbg::is_canonical(text),
             DataType::Ric => crate::Ric::is_canonical(text),
             DataType::Figi => crate::Figi::is_canonical(text),
+            DataType::Lei => crate::Lei::is_canonical(text),
+            DataType::Bic => crate::Bic::is_canonical(text),
+            DataType::Elf => crate::Elf::is_canonical(text),
+            DataType::Dti => crate::Dti::is_canonical(text),
+            DataType::Fisn => crate::Fisn::is_canonical(text),
             _ => true,
         };
         if !canonical {
             return refused(format!(
-                "expected a securities identifier in its canonical spelling, got {text:?}"
+                "expected {dtype} in its canonical spelling, got {text:?}",
+                dtype = field.dtype()
             ));
         }
         Ok(Some(Cow::Borrowed(text)))
@@ -736,6 +744,11 @@ impl DataType {
         ("unit", DataType::Unit, UNIT_WIDTH),
         ("ric", DataType::Ric, RIC_WIDTH),
         ("forex", DataType::Forex, FOREX_WIDTH),
+        ("lei", DataType::Lei, LEI_WIDTH),
+        ("bic", DataType::Bic, BIC_WIDTH),
+        ("elf", DataType::Elf, ELF_WIDTH),
+        ("dti", DataType::Dti, DTI_WIDTH),
+        ("fisn", DataType::Fisn, FISN_WIDTH),
     ];
 }
 
@@ -2349,8 +2362,8 @@ impl StringEnum {
 
     /// Every side of the market a text column may hold, sorted: the stored
     /// four-letter codes of [`Side`](crate::Side)'s members, one per side
-    /// FIX's `Side(54)` code set names across every version, and `UKNW` for
-    /// a side stated as none.
+    /// FIX's `Side(54)` code set names across every version, `UKNW` for a
+    /// side stated as none and `BOTH` for both sides at once.
     ///
     /// A `side` column stores its member's `int32` code; this listing is the
     /// codes a `FIELD:enum` text column declares, never FIX's one-character
@@ -2360,8 +2373,8 @@ impl StringEnum {
     /// name reaches the member through
     /// [`Side::from_spelling`](crate::Side::from_spelling).
     pub const SIDES: &'static [&'static str] = &[
-        "ASDF", "BORR", "BUYM", "BUYS", "CROS", "CRSH", "CRSX", "LEND", "OPPO", "REDM", "SELL",
-        "SELP", "SELU", "SSEX", "SSHT", "SUBS", "UKNW", "UNDI",
+        "ASDF", "BORR", "BOTH", "BUYM", "BUYS", "CROS", "CRSH", "CRSX", "LEND", "OPPO", "REDM",
+        "SELL", "SELP", "SELU", "SSEX", "SSHT", "SUBS", "UKNW", "UNDI",
     ];
 
     /// Which way a captured line moved.

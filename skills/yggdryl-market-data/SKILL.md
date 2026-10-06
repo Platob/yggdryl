@@ -8,7 +8,7 @@ description: Models and streams market data with yggdryl's graph layer in Rust, 
 The graph layer is market data as **elements that name each other by
 identity**, never by reference. Four Rust traits say what an element answers -
 `Element` (identity, cross code, digest, sources), `Event` (instant, state,
-place at its instant, clocks), `Market` (thirty-four facts: the `marketdatatype` of its kind, price, stop price,
+place at its instant, clocks), `Market` (thirty-five facts: the `marketdatatype` of its kind, price, stop price, the `strikepx` of the option it is about,
 quantity and its shown and hidden parts, currency, unit, side, the security's identifiers `securityids` and the `isincode` they hold, classification, market,
 the `execunix` it last executed at, last-trade, progress, FX parts, the stated bid and ask - `bidpx`, `bidqty`,
 `bidccy`, `askpx`, `askqty`, `askccy` - the `fxrates`, ticker, metadata) and
@@ -17,7 +17,7 @@ the `execunix` it last executed at, last-trade, progress, FX parts, the stated b
 typed leaves answer them: `Order`/`OrderEvent`, `Quote`/`QuoteEvent`,
 `Execution`/`ExecutionEvent`, the composite `TradeEvent`, and the book types
 `BookEvent` and `SnapshotEvent`. `MarketData` is the one value over every
-leaf, and the lifted **`marketdata` Arrow row** (62 columns: the element,
+leaf, and the lifted **`marketdata` Arrow row** (63 columns: the element,
 event, market and operation columns every generated row opens with, the book
 controls `bookscope`, `bookaction` and `bookposition`, then the nested
 `alive`, `deltas`, `executions`, `bidlimits` and `asklimits` -
@@ -41,15 +41,14 @@ Hold these facts:
   state their side there (`MarketDataKind::is_sided`, Rust-only), so the two
   sides of one order identifier are two chains. Every other kind stores side
   `0` whatever side it states: a quote (`14:0:Q-7`), a trade (`21:0:T-1`), a
-  book (`3:0:AAPL`), a snapshot control. A `PluginSide` (`BUYS`, `SELL`) is no
-  side: it is the role of the FIX plugin a capture came through, a FIX
-  message's `msgpluginside`, and no market element states it.
+  book (`3:0:AAPL`), a snapshot control. A book holds both sides, so its side
+  is always `BOTH` (code 99), and still stores side `0`.
 - **A quote is one element holding two legs.** Its bid is `bidpx`/`bidqty`/
   `bidccy`, its ask `askpx`/`askqty`/`askccy`, and its `side` is a tag: a
   quote stating a side and a `price`/`quantity` states the leg that side
-  takes, a two-sided quote tags none. Every statement of one quote is one
-  chain under its code, whatever side it tags; a follower stating nothing of
-  a leg carries that leg from its chain.
+  takes, and a two-sided quote tagging none states `BOTH` once finalized.
+  Every statement of one quote is one chain under its code, whatever side it
+  tags; a follower stating nothing of a leg carries that leg from its chain.
 - **Chains are walked, not rebuilt.** An event names only its predecessor
   (`prevuuid`); `seqnum` is its place among the events of its instant, which
   orders the identities of one millisecond, and a step keeps its own unless
@@ -58,7 +57,9 @@ Hold these facts:
   `mdentryrefid` (a book entry's reference to its predecessor, which names one
   step) and every `partyids` source and role, its own values standing, each
   identifier a follower states anew keeping its own value - and its identity
-  digests what it took. Parents move along a chain: a
+  digests what it took, and a follower naming no other ISIN than its
+  predecessor takes its instrument facts too - the security identifiers it
+  lacks and an option's `strikepx`. Parents move along a chain: a
   changed `orderid` leaves its previous value as `parentorderid` and the
   chain's first as `origorderid`, a changed `clordid` leaves `origclordid`
   (`FIX:parents` states the list a FIX field has). A FIX lifecycle message takes the `metadata` keys and
@@ -91,7 +92,16 @@ Hold these facts:
   fill). The base key is the type's answer: a named source fills it where it
   is empty (`ullink:isin=X` alone is also `isin=X`), a statement takes back
   the type's derivation, and it moves only through its own key - removing it
-  removes the type. On a `marketdata` row the cell holds the base keys alone,
+  removes the type. A value under the `bic` source is held to a BIC's shape
+  and one under `legalentityidentifier` to an LEI's, whatever its type
+  (`Identifier("bic:executingfirm", "deutdeff")` is `DEUTDEFF`; `"T-1"` is
+  refused on its key), and ranks by the lower of its type's rank and the
+  code's (a BIC's listed country, an LEI's closing check digits); every other
+  source follows its type's rule alone. `fisn` (also `fisncode`,
+  `financialinstrumentshortname`) is a security type of the FISN's shape -
+  FIX's `FinancialInstrumentShortName(2737)` lands in `securityids` under it -
+  and `elf` (`entitylegalform`) an entity legal form's, neither a security
+  nor a party. On a `marketdata` row the cell holds the base keys alone,
   one per type; every other key is side information in `metadata` under its
   map's name and its `src:type` spelling (`securityids.ullink:isin`), read
   back into the map the name says. Build one with
@@ -155,12 +165,14 @@ Hold these facts:
 | security, own and party identifiers | `insert_securityid(id)?`, `insert_identifier(id)?`, `insert_partyid(id)?` (Rust-only verbs) | `securityids=[Identifier("isin", ...)]`, `identifiers=[...]`, `partyids=[...]` at build | `securityids: [new Identifier('isin', ...)]`, `identifiers: [...]`, `partyids: [...]` at build |
 | read an identifier map | `get_securityids().get(&IdType::Isin)`, `get_from(&src, &kind)` | `order.securityids.get("isin")`, `get_from(src, type)`, iterate `Identifier`s | `order.securityids.get('isin')`, `getFrom(src, type)`, `toArray()` |
 | FX rates (nothing fills them) | `insert_fxrate(ccy, rate)`, `set_fxrates(map)` | `fxrates={"EUR": Decimal("1.1")}` at build | `fxrates: { EUR: '1.1' }` at build |
+| an option's strike price (a follower of the same instrument carries it) | `set_strikepx(Some(px), overwrite)`, `get_strikepx()` (`Market`) | `strikepx=Decimal("190")` at build, `.strikepx` | `strikepx: '190'` at build, `.strikepx` |
+| a structured product's category, as a registry row holds it | `registry.get(isin).and_then(IsinEntry::eusipacode)` -> `Eusipa`, `entry.with_eusipacode(Some(code))`; `name()`, `sspa_name()` | `registry.get(isin)["eusipacode"]` (an `int`), `Eusipa(code).name`, `.sspa_name`; `merge({..., "eusipacode": 2300})` | `registry.get(isin).eusipacode` (a number); no `Eusipa` |
 | a composite trade | `TradeEvent::from_parts(&root, executions)?` | `graph.TradeEvent.from_parts(root, executions)` | `graph.TradeEvent.fromParts(root, executions)` |
 | follow a predecessor | `event.with_previous(&prev)` | `event.with_previous(prev)` | `event.withPrevious(prev)` |
 | merge two statements of one event | `event.merge_with(&other)` | `event.merge_with(other)` | `event.mergeWith(other)` |
 | walk a stream into chains | `EventIterator::new(items, sorted)`, `.with_snapshot_ns(ns)` | `graph.EventIterator(items, sorted=True, snapshot_ns=None)` | `new graph.EventIterator(items, sorted, snapshotNs)` (sorted defaults to `true`) |
 | any leaf as one value | `MarketData::from(leaf)`, `kind()`, `marketdatakind()`, `as_order_event()`, `TryFrom` | `graph.MarketData(leaf)`, `.kind`, `.marketdatakind`, `.as_order_event()`, `.into_leaf()` | `new graph.MarketData(leaf)`, `.kind`, `.marketdatakind`, `.asOrderEvent()`, `.intoLeaf()` |
-| a FIX message held whole | `MarketData::from(msg)` (kind `fix`, its `msgcat`), `as_fix()`, `FixMsg::try_from(value)?`; written and folded as the leaves it splits into | `graph.MarketData(msg)`, `.as_fix()` | `new graph.MarketData(msg)`, `.asFix()` |
+| a FIX message held whole | `MarketData::from(msg)` (kind `fix`, its `marketdatakind`), `as_fix()`, `FixMsg::try_from(value)?`; written and folded as the leaves it splits into | `graph.MarketData(msg)`, `.as_fix()` | `new graph.MarketData(msg)`, `.asFix()` |
 | the `marketdata` row schema | `MarketData::field()?` | `graph.MarketData.field()` | `graph.MarketData.field()` |
 | leaves to Arrow batches | `MarketData::arrow_reader(values, None, None)?` | `graph.MarketData.arrow_reader(values)` | `graph.MarketData.arrowReader(values)` |
 | Arrow batches to leaves | `MarketData::from_arrow_reader(reader)?` | `graph.MarketData.from_arrow_reader(source)` | `graph.MarketData.fromArrowReader(reader)` |
@@ -170,6 +182,7 @@ Hold these facts:
 | whether a book holds its sides | `is_complete()` | `book.is_complete` | `book.isComplete` |
 | rebuild a delta book whole | `book.with_previous(&previous)` | `book.with_previous(previous)` | `book.withPrevious(previous)` |
 | a book's entries | `alive()`, `alive_on(Side::Buy)`, `deltas()` | `book.alive`, `book.alive_on(Side.BUYS)`, `book.deltas` | `book.alive()`, `book.aliveOn('BUYS')`, `book.deltas()` |
+| a book's entries by kind | `ordlive()`, `orddelta()`, `quotes()`, `executions()`, `events()` (every other delta) | `book.ordlive`, `book.orddelta`, `book.quotes`, `book.executions`, `book.events` | `book.ordlive()`, `book.orddelta()`, `book.quotes()`, `book.executions()`; no `events` |
 | read a side | `limits(Side::Buy)`, `best_price(Side::Buy)`, `best_quantity(..)`, `depth(Side::Buy, n)` | `book.limits(Side.BUYS)`, `book.best_price(Side.BUYS)`, `book.depth(Side.BUYS, n)` | `book.limits('BUYS')`, `book.bestPrice('BUYS')`, `book.depth('BUYS', n)` |
 | read both sides | `get_bidpx()`, `get_askpx()`, `spread()`, `is_crossed()`, `imbalance(n)` | `book.bidpx`, `book.askpx`, `book.spread`, `book.is_crossed`, `book.imbalance(n)` | `book.bidpx`, `book.askpx`, `book.spread`, `book.isCrossed`, `book.imbalance(n)` |
 | clear a scope with a snapshot | `SnapshotEvent::snapshot(&event, scope)` | `graph.SnapshotEvent.snapshot(event, scope=None)` | `graph.SnapshotEvent.snapshot(event, scope)` |
@@ -218,8 +231,14 @@ Hold these facts:
    book is yielded where it holds a delta, or at a snapshot tick where it
    holds an entry (a snapshot emptying a book is yielded too, empty and
    complete); an instant that only repeats what the book holds yields none.
-   Depth persists; `deltas` carry only that instant's orders and quotes, in
-   the order applied. A positive `snapshot_millis` adds the complete live book
+   Depth persists; `deltas` carry only that instant's orders, quotes and
+   executions, in the order applied - `orddelta`, `quotes`, `executions` and
+   `events` (Rust and Python) read them by kind and partition them, and
+   `ordlive` the orders resting on a complete book. `events` - every delta
+   no order, quote or execution event - is empty: a book records nothing
+   else, a trade or a batch pruned and an undated leaf or a book refused
+   before the fold; it is where a kind the fold comes to record would land.
+   A positive `snapshot_millis` adds the complete live book
    at every crossed epoch-aligned tick.
 6. A book row nests `deltas` (operation rows, in the order applied) and, on a
    complete book, `alive` and `bidlimits`, `asklimits` (one `Limit` per price
@@ -269,6 +288,13 @@ Hold these facts:
 
 ## Pitfalls
 
+- `currhashcode` and `crosshashcode` read back from any layout a table stored
+  them in: a whole `decimal(20, 0)` as the number, an `int64` cell as its
+  bits - the `long` an Iceberg column stating `FIELD:representation=bits`
+  holds - at the root and in `alive`, `deltas` and `executions`, every
+  identity still verified against the rebuilt leaf. `MarketData::field()`
+  states no declaration, so `into_scheme_compat` widens unless the caller
+  states it on the digests at every depth (`set_field_by_path`).
 - A millisecond or second timestamp where nanoseconds are expected lands in
   1970: `graph.OrderEvent(1_700_000_000_000, ...)` is 28 minutes after the
   epoch. Multiply to nanoseconds first.
@@ -285,14 +311,22 @@ Hold these facts:
   `FixCodec.market_data`. The walk leaves out, never fails on, a group the
   book refuses; only a source's own failure ends it, and so does a value no
   book folds (the next bullet).
-- A book folds dated orders, dated quotes and snapshot controls. An
-  execution, a trade or a batch is pruned - no error, no book, no instant -
-  and a filter (`with_filter`, `filter=`) narrows what is left, never
-  admitting them back. An undated `Order` or a `BookEvent` is refused - by
+- A book folds dated orders, dated quotes and snapshot controls, and
+  records a dated execution among its deltas, resting on no side. A trade or
+  a batch is pruned - no error, no book, no instant - and a filter
+  (`with_filter`, `filter=`) narrows what is left, never admitting them
+  back. An undated `Order` or a `BookEvent` is refused - by
   `BookIterator` at `$.operation.kind`, by `with_operations`/`add_operations`
   at `$.operations[i].kind`. An order or a quote resting on neither the bid
   nor the ask (an order of side `UKNW`, a quote stating no leg, a leg sized zero) is
   placed nowhere, with a warning, and still counts as the book's delta.
+- A grid multiplies: every tick `snapshot_millis` crosses yields every live
+  book complete, each repeating every alive entry it holds, so a fine grid
+  over deep books is `alive entries x ticks` nested rows whatever the input's
+  size. A batch of books is bounded by the codec's row and byte bounds
+  (`with_batch_row_size`, `with_batch_byte_size`, each nested row charged)
+  and casts to a table's stored layout whole; to hold fewer rows, coarsen the
+  grid or narrow the fold with `with_filter`.
 - A delta book (`is_complete` false) answers `alive`, `alive_on` and
   `limits` empty and `depth`/`imbalance` as none, and `with_operations`/
   `add_operations` refuse it at `$.alive`: rebuild it with `with_previous`
@@ -321,7 +355,13 @@ Hold these facts:
   leading to it on its market, a RIC or a Bloomberg symbol only an equivalent
   - as `derived` identifiers, so a filled code reads back `is_derived`, plus
   the ticker, the CFI code and the listing's currency as market facts; a
-  valid stated value fills and replaces whatever the time. The bindings'
+  valid stated value fills and replaces whatever the time; a row also holds
+  the `underlyingisin` and the `eusipacode` - a structured product's EUSIPA
+  category, `int32`, read as an `Eusipa` (`yggdryl-types`) - a FIX lifecycle
+  learned - never the bindings' `learn` - which nothing fills, and which no
+  listing switch clears; `merge` takes either as stated. A store written
+  before `eusipacode` was a column loads it null and keeps its own row on
+  `commit()`, so the category reaches only a store laid out afresh. The bindings'
   `learn`/`fill`/`enrich` take a `FixMsg`, a FIX lifecycle runs them on every
   message, and a parse fills the identifiers from the table its door fixed.
   Bind one to a store with `from_url` and write it back with `commit()`.

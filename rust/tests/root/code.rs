@@ -29,7 +29,7 @@ mod datatypes {
     }
 
     /// The codes, each with its width and one value its standard names.
-    const CODED: [(&str, DataType, usize, &str); 11] = [
+    const CODED: [(&str, DataType, usize, &str); 16] = [
         ("country", DataType::Country, 2, "US"),
         ("ccy", DataType::Ccy, 8, "USDT"),
         ("mic", DataType::Mic, 4, "XPAR"),
@@ -41,6 +41,11 @@ mod datatypes {
         ("bbg", DataType::Bbg, 32, "AAPL US Equity"),
         ("ric", DataType::Ric, 32, "AAPL.OQ"),
         ("forex", DataType::Forex, 7, "EUR/USD"),
+        ("lei", DataType::Lei, 20, "HWUPKR0MPOU8FGXBT394"),
+        ("bic", DataType::Bic, 11, "DEUTDEFFXXX"),
+        ("elf", DataType::Elf, 4, "2HBR"),
+        ("dti", DataType::Dti, 9, "X9J9K872S"),
+        ("fisn", DataType::Fisn, 35, "APPLE INC/SH"),
     ];
 
     #[test]
@@ -875,6 +880,7 @@ mod datatypes {
     fn the_code_family_stands_for_every_registered_code() {
         use yggdryl::Forex;
         use yggdryl::{Bbg, Ccy, Cfi, Country, Cusip, Figi, Isin, Mic, Ric, Sedol};
+        use yggdryl::{Bic, Dti, Elf, Fisn, Lei};
 
         crate::scalar::assert_family_round_trip(
             vec![
@@ -889,6 +895,11 @@ mod datatypes {
                 crate::family_leaf!(Ric, Ric::new("AAPL.OQ").unwrap()),
                 crate::family_leaf!(Figi, Figi::new("BBG000BLNQ16").unwrap()),
                 crate::family_leaf!(Forex, Forex::new("EUR/USD").unwrap()),
+                crate::family_leaf!(Lei, Lei::new("HWUPKR0MPOU8FGXBT394").unwrap()),
+                crate::family_leaf!(Bic, Bic::new("DEUTDEFFXXX").unwrap()),
+                crate::family_leaf!(Elf, Elf::new("2HBR").unwrap()),
+                crate::family_leaf!(Dti, Dti::new("X9J9K872S").unwrap()),
+                crate::family_leaf!(Fisn, Fisn::new("APPLE INC/SH").unwrap()),
             ],
             DataTypeKind::Code,
             // The text a code is made of is not the code.
@@ -1240,7 +1251,14 @@ mod securities {
     fn the_identifiers_sit_in_the_code_family() {
         // The discriminant is a wire contract laid out by family: every code
         // is in the code family's range, beside the codes stated before it.
-        assert_eq!(DataTypeKind::Code.id(), 0x70);
+        // The family opened at 0x70 and took the text range's tail, which
+        // no leaf had ever held, when its own bytes ran out.
+        assert_eq!(DataTypeKind::Code.id(), 0x6a);
+        assert_eq!(DataTypeId::Lei.as_u8(), 0x6b);
+        assert_eq!(DataTypeId::Bic.as_u8(), 0x6c);
+        assert_eq!(DataTypeId::Elf.as_u8(), 0x6d);
+        assert_eq!(DataTypeId::Dti.as_u8(), 0x6e);
+        assert_eq!(DataTypeId::Fisn.as_u8(), 0x6f);
         assert_eq!(DataTypeId::Cusip.as_u8(), 0x79);
         assert_eq!(DataTypeId::Sedol.as_u8(), 0x7a);
         assert_eq!(DataTypeId::Bbg.as_u8(), 0x7b);
@@ -1253,6 +1271,11 @@ mod securities {
             DataTypeId::Bbg,
             DataTypeId::Figi,
             DataTypeId::Ric,
+            DataTypeId::Lei,
+            DataTypeId::Bic,
+            DataTypeId::Elf,
+            DataTypeId::Dti,
+            DataTypeId::Fisn,
         ] {
             assert_eq!(
                 DataTypeKind::of_u8(id.as_u8()),

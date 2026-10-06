@@ -64,7 +64,9 @@ test('BookEvent: limits fold the live entries one level a price', () => {
   assert.throws(() => book.depth('BUYS', -1), /levels must be a non-negative whole number/)
   assert.throws(() => book.depth('BUYS', 1.5), /levels must be a non-negative whole number/)
   assert.throws(() => book.limits('SIDEWAYS'), /side/)
-  assert.throws(() => book.limits(99), /side/)
+  assert.throws(() => book.limits(98), /side/)
+  // 99 is BOTH, a side no level rests on.
+  assert.deepEqual(book.limits(99), [])
 })
 
 test('BookEvent: the best bid and ask are the best tradable levels', () => {
@@ -127,10 +129,13 @@ test('BookEvent: an empty book', () => {
   assert.equal(book.currunix, CLOCK)
   assert.equal(book.crosscode, '3:0:IBM')
   assert.equal(book.marketdatakind, 'BOOK')
-  assert.equal(book.side, 'UKNW')
+  // A book holds both sides.
+  assert.equal(book.side, 'BOTH')
+  assert.deepEqual(book.aliveOn('BOTH'), [])
   assert.deepEqual(book.alive(), [])
   assert.deepEqual(book.aliveOn('BUYS'), [])
   assert.deepEqual(book.deltas(), [])
+  assert.deepEqual([book.ordlive(), book.orddelta(), book.quotes(), book.executions()], [[], [], [], []])
   assert.equal(book.isComplete, true, 'a book a caller builds holds its sides')
   assert.equal(book.bestPrice('BUYS'), null)
   assert.equal(book.bestQuantity('SELL'), null)
@@ -173,6 +178,9 @@ test('BookEvent: MarketData folds, read from any iterable, and an execution is r
   assert.equal(recorded.currunix, CLOCK + 10n)
   assert.deepEqual(recorded.deltas().map((held) => held.crosscode), ['8:1:E-1'])
   assert.deepEqual(recorded.alive().map((held) => held.crosscode), ['10:1:O-1'])
+  // Read by kind, the execution is an `ExecutionEvent` among the deltas.
+  assert.ok(recorded.executions()[0] instanceof graph.ExecutionEvent)
+  assert.deepEqual(recorded.executions().map((held) => held.crosscode), ['8:1:E-1'])
   // Beside an order, both are the deltas, in the order applied.
   const later = book.withOperations([
     execution,
@@ -180,8 +188,41 @@ test('BookEvent: MarketData folds, read from any iterable, and an execution is r
   ])
   assert.equal(later.currunix, CLOCK + 10n)
   assert.deepEqual(later.deltas().map((held) => held.crosscode), ['8:1:E-1', '10:2:O-2'])
+  assert.deepEqual(later.orddelta().map((held) => held.crosscode), ['10:2:O-2'])
   assert.equal(later.alive().length, 2)
   assert.equal(later.execunix, null)
+})
+
+test('BookEvent: ordlive, orddelta, quotes and executions read the entries by kind', () => {
+  const book = new graph.BookEvent(CLOCK, 'IBM').withOperations([
+    order(CLOCK, '101', 'B-1'),
+    order(CLOCK, '100', 'B-2'),
+    quote(),
+  ])
+  const later = book.withOperations([
+    new graph.OrderEvent(CLOCK + 1n, {
+      crosscode: 'B-1', side: 'BUYS', price: '101', quantity: 10, ticker: 'IBM', state: 'CANCELED',
+    }),
+    new graph.ExecutionEvent(CLOCK + 1n, { crosscode: 'E-1', side: 'BUYS', lastpx: '100', lastqty: 1, ticker: 'IBM' }),
+    quote(CLOCK + 1n, '103', 'Q-2'),
+  ])
+  const codes = (entries) => entries.map((entry) => entry.crosscode)
+  assert.ok([...later.ordlive(), ...later.orddelta()].every((entry) => entry instanceof graph.OrderEvent))
+  // Resting: the orders alive now. Changed: the orders the instant applied.
+  assert.deepEqual(codes(later.ordlive()), ['10:1:B-2'])
+  assert.deepEqual(later.orddelta().map((entry) => [entry.crosscode, entry.state]), [['10:1:B-1', 'CANCELED']])
+  assert.ok(later.quotes()[0] instanceof graph.QuoteEvent)
+  assert.deepEqual(codes(later.quotes()), ['14:0:Q-2'])
+  assert.deepEqual(codes(later.executions()), ['8:1:E-1'])
+  // Q-1 still rests: it is alive, not a delta of this instant.
+  assert.ok(codes(later.alive()).includes('14:0:Q-1'))
+  // The three partition the deltas, which hold nothing else.
+  assert.equal(later.orddelta().length + later.quotes().length + later.executions().length, later.deltas().length)
+  // A delta book states its changed orders and no resting one.
+  const books = [...new graph.BookIterator([order(), order(CLOCK + 1n, '100', 'B-2')])]
+  assert.deepEqual([books[1].ordlive(), codes(books[1].orddelta())], [[], ['10:1:B-2']])
+  const rebuilt = books[1].withPrevious(books[0].withPrevious(graph.BookEvent.keyed(CLOCK, 'IBM')))
+  assert.deepEqual(codes(rebuilt.ordlive()), ['10:1:O-1', '10:1:B-2'])
 })
 
 test('BookEvent: aliveOn reads one side best first, and alive the bids then the asks', () => {

@@ -151,7 +151,7 @@ pub const FIXENTRIES_COLUMN: &str = "fixentries";
 /// Opened by the columns every generated schema of the crate opens with, in
 /// the order of the traits that answer them - the six
 /// [`ElementColumn`](crate::graph::ElementColumn)s, the nine
-/// [`EventColumn`](crate::graph::EventColumn)s, the thirty-four
+/// [`EventColumn`](crate::graph::EventColumn)s, the thirty-five
 /// [`MarketColumn`](crate::graph::MarketColumn)s and the five
 /// [`OperationColumn`](crate::graph::OperationColumn)s - under the names
 /// those columns have, so a FIX row, a text line's batch and a `marketdata`
@@ -164,7 +164,8 @@ pub const FIXENTRIES_COLUMN: &str = "fixentries";
 /// holding what the message states there; every other one is the crate's
 /// own, and the ones FIX states under a name of its own are derived from
 /// those fields and stated again - `ticker` beside `Symbol(55)`, `askpx`
-/// beside `OfferPx(133)`, `ordqty` beside `OrderQty(38)`.
+/// beside `OfferPx(133)`, `strikepx` beside `StrikePrice(202)`, `ordqty`
+/// beside `OrderQty(38)`.
 ///
 /// Then the message's own, in seven bands: the **clocks** FIX states,
 /// **which message** carried it and over which session, **which
@@ -533,7 +534,7 @@ pub(super) fn rooted(
     }
     fields.push(entries_field()?);
     let schema = DataType::from(StructType::from_fields(fields)?).required_field(name);
-    column_plan(&schema, registry)?;
+    column_plan_reading(&schema, registry, false)?;
     Ok(schema)
 }
 
@@ -687,10 +688,19 @@ pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>> {
 /// other column answers for the tag its field carries; one carrying neither
 /// is a capture's own. Both are metadata reads, and a row is filled through
 /// this so a batch of a million rows reads the schema once.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(super) struct Column {
     pub(super) tag: Option<i32>,
     pub(super) counter: Option<i32>,
+    /// The column stating what the plan resolved of it, where the column
+    /// itself does not: a table's schema keeps a column's name and
+    /// datatype and no `FIX:` key, so a row read back from one carries
+    /// columns the dictionary explains by name alone, and a member built
+    /// off such a column would digest and re-emit as an unresolved key.
+    /// The plan resolved the column once; the member it builds states it,
+    /// at every depth a group or a component nests. `None` where the column
+    /// states its own facts, which every root a parse builds does.
+    pub(super) member: Option<Arc<Field>>,
     /// Whether the column is the crate's own residual record, declared
     /// exactly as [`entries_field`] declares it: only then does a column
     /// representing an entry take it out of the record. A caller's own
@@ -712,6 +722,14 @@ pub(super) struct Column {
 pub(super) type ColumnPlan = Arc<[Column]>;
 
 pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<ColumnPlan> {
+    column_plan_reading(schema, registry, true)
+}
+
+/// [`column_plan`], reading a column stating no `FIX:` key as the fixed
+/// row's column of its name only where `fixed` says so: never while the
+/// fixed row itself is laid out, which validates through this and would
+/// otherwise lay itself out again without end.
+fn column_plan_reading(schema: &Field, registry: &FixRegistry, fixed: bool) -> Result<ColumnPlan> {
     let DataType::Struct(fields) = schema.dtype() else {
         return Err(super::identity::refused(
             schema.name(),
@@ -721,21 +739,63 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
     };
     refuse_counters_beside_groups(registry, schema.fields(), &crate::path::Path::root())?;
     let mut columns = Vec::with_capacity(fields.len());
+    // The fixed row this registry lays out, built once per plan and only
+    // where a column states no `FIX:` key: a table keeps a column's name,
+    // its datatype and its `doc`, so a bare name is read as the fixed
+    // row's column of that name - the crate's derived `price` or `bidqty`,
+    // never the dictionary's `Price(44)` or `BidSize(134)` the name index
+    // would answer - and the dictionary is asked only for a name the fixed
+    // row has no column for.
+    let mut fixed_row: Option<Option<Field>> = None;
     for column in fields.iter() {
-        let tag = super::identity::resolve_tag(column, registry)?;
+        let declared = if fixed
+            && column
+                .as_metadata()
+                .iter()
+                .all(|(key, _)| !key.starts_with("FIX:"))
+        {
+            fixed_row
+                .get_or_insert_with(|| fix_schema(registry, schema.name()).ok())
+                .as_ref()
+                .and_then(|row| row.get_field(column.name()))
+        } else {
+            None
+        };
+        let (tag, counter, member) = match declared {
+            Some(declared) => {
+                let (tag, counter) = tag_and_counter(registry, declared);
+                (tag, counter, Some(Arc::new(restated(column, declared)?)))
+            }
+            None => {
+                let tag = super::identity::resolve_tag(column, registry)?;
+                let counter = match registry.facts_of(column) {
+                    Some(facts) => facts.counter,
+                    None if column.as_metadata().is_empty() => None,
+                    None => column.as_fix().counter()?,
+                };
+                let member = match tag {
+                    Some(tag) if tag_and_counter(registry, column) != (Some(tag), counter) => {
+                        registry
+                            .get_field_by_tag(tag)
+                            .or_else(|| registry.get_message_field_by_name(column.name()))
+                            .map(|declared| restated(column, declared))
+                            .transpose()?
+                            .map(Arc::new)
+                    }
+                    _ => None,
+                };
+                (tag, counter, member)
+            }
+        };
         if let Some(tag) = tag {
             super::identity::validate_field(column, tag)?;
         }
-        let counter = match registry.facts_of(column) {
-            Some(facts) => facts.counter,
-            None if column.as_metadata().is_empty() => None,
-            None => column.as_fix().counter()?,
-        };
         let entries = column.name() == FIXENTRIES_COLUMN
             && entries_field().is_ok_and(|declared| declared.dtype() == column.dtype());
         columns.push(Column {
             tag,
             counter,
+            member,
             entries,
             shared: false,
         });
@@ -749,6 +809,51 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
         });
     }
     Ok(Arc::from(columns))
+}
+
+/// `column` stating every metadata key `declared` - the dictionary's own
+/// field for it - states and it lacks, and below it, paired by name, every
+/// member of a group's occurrence or a component the same; the name, the
+/// datatype and the nullability stay the column's, because the value it
+/// holds was landed under them - but a group's occurrence, which takes the
+/// declared item's name, since a value names no item of its own.
+fn restated(column: &Field, declared: &Field) -> Result<Field> {
+    let mut member = column.clone();
+    let missing: Vec<(&str, &str)> = declared
+        .as_metadata()
+        .iter()
+        .filter(|(key, _)| column.get_metadata(key).is_none())
+        .collect();
+    if !missing.is_empty() {
+        member.set_metadata(missing)?;
+    }
+    if column.dtype().is_struct() && declared.dtype().is_struct() {
+        let members = column
+            .fields()
+            .iter()
+            .map(|ours| match declared.get_field(ours.name()) {
+                Some(theirs) => restated(ours, theirs),
+                None => Ok(ours.clone()),
+            })
+            .collect::<Result<Vec<Field>>>()?;
+        member.set_dtype(DataType::from(StructType::from_unique_fields(members)))?;
+        return Ok(member);
+    }
+    // A group's occurrence is named as the fixed row names it: a table
+    // names every list item `element`, and an occurrence entry carries no
+    // tag, so its name is what the identity feed reads of it.
+    match (column.dtype(), declared.dtype()) {
+        (DataType::Serie(ours), DataType::Serie(theirs) | DataType::LargeSerie(theirs)) => {
+            let item = restated(ours, theirs)?.with_name(theirs.name().to_owned());
+            member.set_dtype(DataType::Serie(Arc::new(item)))?;
+        }
+        (DataType::LargeSerie(ours), DataType::Serie(theirs) | DataType::LargeSerie(theirs)) => {
+            let item = restated(ours, theirs)?.with_name(theirs.name().to_owned());
+            member.set_dtype(DataType::LargeSerie(Arc::new(item)))?;
+        }
+        _ => {}
+    }
+    Ok(member)
 }
 
 /// Refuses a NumInGroup counter standing beside the group it counts, at the
@@ -2464,6 +2569,9 @@ impl super::FixMsg {
         let mut carried: Vec<(smol_str::SmolStr, crate::Scalar)> = Vec::new();
         let held = value.as_sequence().unwrap_or_default();
         for ((column, planned), value) in schema.fields().iter().zip(plan.iter()).zip(held) {
+            // What the row's column states, or the column stating what the
+            // plan resolved of it where the column itself does not.
+            let member = || planned.member.as_deref().unwrap_or(column).clone();
             if column.name() == FIXENTRIES_COLUMN {
                 let root = crate::path::Path::root();
                 residual = Some(entries_from_map(
@@ -2481,11 +2589,11 @@ impl super::FixMsg {
                 // as one - the wire, the digest and a read by name then
                 // answer what the line's did.
                 Some(tag) if tag == super::METADATA_TAG_NAME.0 => {
-                    members.push(column.clone());
+                    members.push(member());
                     values.push(split_unresolved(value, &mut unresolved)?);
                 }
                 Some(tag) if super::identity::is_typed_tag(tag) => {
-                    members.push(column.clone());
+                    members.push(member());
                     values.push(value.clone());
                 }
                 // The one the crate tags - `sourceurl` - is the capture's
@@ -2502,7 +2610,7 @@ impl super::FixMsg {
                 Some(tag) => {
                     let value = without_empty_groups(column, value.clone());
                     if !value.is_null() {
-                        projected.push((planned.counter.unwrap_or(tag), column.clone(), value));
+                        projected.push((planned.counter.unwrap_or(tag), member(), value));
                     }
                 }
                 None if planned.counter.is_some() => {
@@ -2510,7 +2618,7 @@ impl super::FixMsg {
                     if !value.is_null() {
                         projected.push((
                             planned.counter.expect("the guarded counter"),
-                            column.clone(),
+                            member(),
                             value,
                         ));
                     }
@@ -2792,6 +2900,9 @@ impl super::FixMsg {
                     if planned.shared || values[index].is_null() {
                         continue;
                     }
+                    // Judged by what the column states of itself, or by
+                    // the fixed row's column where it states nothing.
+                    let column = planned.member.as_deref().unwrap_or(column);
                     let source = match planned.counter {
                         Some(counter) => self.index_of_group(counter),
                         None => self.unique_index_of_tag(tag),
