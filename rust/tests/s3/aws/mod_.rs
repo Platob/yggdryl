@@ -92,6 +92,81 @@ mod protocol {
     }
 
     #[test]
+    fn a_redirect_stating_its_region_only_in_its_document_is_signed_again_for_it() {
+        let store = store();
+        store.omit_bucket_region_header(true);
+        store.set_bucket_region(BUCKET, Some("eu-west-3"));
+        store.put(BUCKET, "lake/part.parquet", b"PAR1");
+        let handle = file(&store, "lake/part.parquet");
+
+        store.clear_requests();
+        assert_eq!(handle.read_all_bytes().expect("the object"), b"PAR1");
+        let recorded = store.requests();
+        assert_eq!(
+            recorded.len(),
+            2,
+            "the document's region is read, and the bucket is not asked"
+        );
+        assert!(
+            authorization(&recorded[1]).contains("/eu-west-3/s3/"),
+            "{}",
+            authorization(&recorded[1])
+        );
+    }
+
+    #[test]
+    fn a_bucket_in_an_opt_in_region_is_found_by_its_head_and_signed_for_it() {
+        let store = store();
+        store.answer_location_constraint(true);
+        store.set_bucket_region(BUCKET, Some("eu-central-2"));
+        store.put(BUCKET, "lake/part.parquet", b"PAR1");
+        let handle = file(&store, "lake/part.parquet");
+
+        store.clear_requests();
+        assert_eq!(handle.read_all_bytes().expect("the object"), b"PAR1");
+        let recorded = store.requests();
+        assert_eq!(
+            recorded.len(),
+            3,
+            "the refusal names no region, so the bucket is asked once and the read sent again: {recorded:?}"
+        );
+        assert_eq!(recorded[1].method, "HEAD");
+        assert_eq!(recorded[1].key, None, "the bucket, not the object");
+        assert!(
+            authorization(&recorded[2]).contains("/eu-central-2/s3/"),
+            "{}",
+            authorization(&recorded[2])
+        );
+
+        store.clear_requests();
+        handle.read_all_bytes().expect("the object");
+        assert_eq!(store.request_count(), 1, "the region is learned once");
+    }
+
+    #[test]
+    fn a_permanent_redirect_naming_no_region_asks_the_bucket_where_it_is() {
+        let store = store();
+        store.omit_bucket_region_header(true);
+        store.set_bucket_region(BUCKET, Some("eu-west-3"));
+        store.put(BUCKET, "lake/part.parquet", b"PAR1");
+        let handle = file(&store, "lake/part.parquet");
+
+        store.clear_requests();
+        store.fail_next(301, "PermanentRedirect", 1);
+        // A `HEAD` on the object, which the redirect answers with no body.
+        assert_eq!(handle.size(), 4);
+        let recorded = store.requests();
+        assert_eq!(recorded.len(), 3, "the object, the bucket, the object");
+        assert_eq!(recorded[1].method, "HEAD");
+        assert_eq!(recorded[1].key, None, "the bucket, not the object");
+        assert!(
+            authorization(&recorded[2]).contains("/eu-west-3/s3/"),
+            "{}",
+            authorization(&recorded[2])
+        );
+    }
+
+    #[test]
     fn a_bulk_delete_carries_the_digest_s3_requires() {
         let store = store();
         for part in 0..3 {
@@ -399,9 +474,10 @@ mod protocol {
         let message = handle.read_all_bytes().expect_err("a refusal").to_string();
         assert!(
             message.contains("shared credentials file")
-                && message.contains("a store refused its key ASIA...DUMP")
+                && message.contains("refused its key ASIA...DUMP")
+                && message.contains("in us-east-1")
                 && message.contains("write a fresh set under [default]"),
-            "the refusal names the file, the key and the way out, not the store's code alone: {message}"
+            "the refusal names the file, the key, the service and region that refused it, and the way out, not the store's code alone: {message}"
         );
         assert_eq!(
             store.request_count(),
@@ -433,7 +509,7 @@ mod protocol {
             .expect_err("an unknown key")
             .to_string();
         assert!(
-            message.contains("a store refused its key AKIA...MADE"),
+            message.contains("refused its key AKIA...MADE") && message.contains("in us-east-1"),
             "{message}"
         );
 
@@ -479,6 +555,69 @@ mod protocol {
         handle.open().expect_err("the store's answer");
         assert_eq!(store.request_count(), 1);
         let _ = std::fs::remove_dir_all(&directory);
+    }
+}
+
+/// A store's refusal behind the infallible verbs - `size`, `kind`, `exists` -
+/// which answer emptiness by the `IOBase` contract, and so say the refusal
+/// as a warning, counted through `yggdryl::internals`.
+#[cfg(feature = "internals")]
+mod internal {
+    use yggdryl::internals::logging_warning::count;
+    use yggdryl::{IOBase, IOKind};
+
+    use crate::mod_::{BUCKET, file, path, store};
+
+    const OBJECT: &str = "an S3 object could not be read and answers as empty";
+    const LOCATION: &str = "an S3 location could not be read and answers as empty";
+
+    /// The location a handle reports, which a warning is counted under.
+    fn location_of(handle: &dyn IOBase) -> String {
+        handle.url().expect("a location").to_string()
+    }
+
+    #[test]
+    fn a_refused_head_answers_an_empty_object_and_warns_naming_it() {
+        let store = store();
+        store.put(BUCKET, "lake/refused-head.bin", b"PAR1");
+        store.require_access_key(Some("AKIANOTTHEFIXTURE"));
+        let handle = file(&store, "lake/refused-head.bin");
+        let location = location_of(&handle);
+
+        assert_eq!(handle.size(), 0);
+        assert_eq!(handle.kind(), IOKind::Unknown);
+        assert_eq!(
+            count("yggdryl::s3::file", OBJECT, &location),
+            2,
+            "each refusal is counted, and the first one logged"
+        );
+
+        // A store saying no object is there is an answer, not a refusal.
+        store.require_access_key(None);
+        let absent = file(&store, "lake/absent-head.bin");
+        assert_eq!(absent.size(), 0);
+        assert_eq!(count("yggdryl::s3::file", OBJECT, &location_of(&absent)), 0);
+    }
+
+    #[test]
+    fn a_refused_probe_answers_an_unknown_location_and_warns_naming_it() {
+        let store = store();
+        store.put(BUCKET, "lake/refused-probe.bin", b"PAR1");
+        store.require_access_key(Some("AKIANOTTHEFIXTURE"));
+        let handle = path(&store, "lake/refused-probe.bin");
+        let location = location_of(&handle);
+
+        assert_eq!(handle.kind(), IOKind::Unknown);
+        assert_eq!(handle.size(), 0);
+        assert_eq!(count("yggdryl::s3::path", LOCATION, &location), 2);
+
+        store.require_access_key(None);
+        let absent = path(&store, "lake/absent-probe.bin");
+        assert_eq!(absent.kind(), IOKind::Unknown);
+        assert_eq!(
+            count("yggdryl::s3::path", LOCATION, &location_of(&absent)),
+            0
+        );
     }
 }
 

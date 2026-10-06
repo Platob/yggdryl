@@ -2,6 +2,9 @@
 //! it does, and the expiry spellings.
 
 use std::cell::Cell;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Barrier, mpsc};
+use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use yggdryl::internals::auth_lease::{
@@ -9,6 +12,7 @@ use yggdryl::internals::auth_lease::{
 };
 
 const WINDOW: Duration = Duration::from_secs(15 * 60);
+const MANDATORY: Duration = Duration::from_secs(10 * 60);
 const PAUSE: Duration = Duration::from_secs(30);
 const HOLD: Duration = Duration::from_secs(300);
 
@@ -21,6 +25,7 @@ fn at(seconds: u64) -> SystemTime {
 struct Token {
     value: String,
     expires_at: Option<SystemTime>,
+    window: Option<Duration>,
 }
 
 impl Token {
@@ -28,7 +33,15 @@ impl Token {
         Self {
             value: value.into(),
             expires_at,
+            window: None,
         }
+    }
+
+    /// A token whose source replaces it `window` before it lapses, as a
+    /// sign-in's fifteen-minute sets are.
+    fn with_window(mut self, window: Duration) -> Self {
+        self.window = Some(window);
+        self
     }
 
     fn value(&self) -> &str {
@@ -40,10 +53,14 @@ impl Expiring for Token {
     fn expires_at(&self) -> Option<SystemTime> {
         self.expires_at
     }
+
+    fn refresh_window(&self) -> Option<Duration> {
+        self.window
+    }
 }
 
 fn lease() -> Lease<Token> {
-    Lease::new("token", WINDOW, PAUSE, HOLD)
+    Lease::new("token", WINDOW, MANDATORY, PAUSE, HOLD)
 }
 
 fn refusal(text: &str) -> yggdryl::Error {
@@ -110,8 +127,9 @@ fn a_failed_refresh_keeps_a_value_that_still_stands_and_pauses() {
         calls.set(calls.get() + 1);
         Err(refusal("the endpoint is down"))
     };
-    // Inside the window the failure is logged and the held value answered.
-    let inside = at(3600 - 10 * 60);
+    // Inside the advisory window and outside the mandatory one the failure
+    // is logged and the held value answered.
+    let inside = at(3600 - 12 * 60);
     assert_eq!(
         lease.get(inside, failing).unwrap().unwrap().value(),
         "first"
@@ -238,6 +256,173 @@ fn a_held_value_that_lapses_with_nothing_to_replace_it_becomes_nothing() {
     // Lapsed, and nothing new: nothing.
     assert!(lease.get(at(120), || Ok(None)).unwrap().is_none());
     assert!(lease.peek().is_none());
+}
+
+#[test]
+fn a_failed_refresh_inside_the_mandatory_window_is_the_answer() {
+    let calls = Cell::new(0);
+    let failing = || {
+        calls.set(calls.get() + 1);
+        Err(refusal("the endpoint is down"))
+    };
+    // The window's edge is inside it.
+    let edge = Lease::new("token", WINDOW, MANDATORY, PAUSE, HOLD);
+    edge.get(at(0), || Ok(Some(Token::new("first", Some(at(3600))))))
+        .unwrap();
+    assert!(edge.get(at(3600 - 600), failing).is_err());
+    assert_eq!(calls.get(), 1);
+
+    let lease = lease();
+    lease
+        .get(at(0), || Ok(Some(Token::new("first", Some(at(3600))))))
+        .unwrap();
+    // Two minutes from its end the held value is not signed with.
+    let late = at(3600 - 120);
+    let error = lease.get(late, failing).unwrap_err();
+    assert!(
+        error.to_string().contains("the endpoint is down"),
+        "{error}"
+    );
+    assert_eq!(calls.get(), 2);
+    assert!(lease.is_holding(late), "the failure is held for the pause");
+    // Inside the pause the failure is answered again, not obtained again.
+    let again = lease
+        .get(late + Duration::from_secs(5), failing)
+        .unwrap_err();
+    assert!(
+        again.to_string().contains("the endpoint is down"),
+        "{again}"
+    );
+    assert_eq!(calls.get(), 2);
+    // The held value is kept for a refresh that succeeds.
+    assert_eq!(lease.peek().unwrap().value(), "first");
+    let second = || Ok(Some(Token::new("second", Some(at(7200)))));
+    assert_eq!(
+        lease.get(late + PAUSE, second).unwrap().unwrap().value(),
+        "second"
+    );
+}
+
+#[test]
+fn without_a_mandatory_window_a_failed_refresh_keeps_the_value_until_it_lapses() {
+    let failing = || Err(refusal("the endpoint is down"));
+    // A lease stating none.
+    let zero = Lease::new("token", WINDOW, Duration::ZERO, PAUSE, HOLD);
+    zero.get(at(0), || Ok(Some(Token::new("first", Some(at(3600))))))
+        .unwrap();
+    assert_eq!(
+        zero.get(at(3600 - 120), failing).unwrap().unwrap().value(),
+        "first"
+    );
+    assert!(zero.get(at(3600) + PAUSE, failing).is_err(), "lapsed");
+    // A value whose source keeps its own refresh window, as a sign-in's
+    // sets do, states none under a lease that does.
+    let signin = lease();
+    signin
+        .get(at(0), || {
+            Ok(Some(
+                Token::new("signin", Some(at(900))).with_window(Duration::from_secs(300)),
+            ))
+        })
+        .unwrap();
+    assert_eq!(
+        signin.get(at(900 - 120), failing).unwrap().unwrap().value(),
+        "signin"
+    );
+}
+
+#[test]
+fn concurrent_readers_inside_the_window_obtain_once() {
+    const READERS: usize = 8;
+    // Inside the mandatory window, and with nothing held, every reader
+    // needs the next value.
+    for (held, now) in [(true, at(3600 - 5 * 60)), (false, at(0))] {
+        let lease = lease();
+        if held {
+            lease
+                .get(at(0), || Ok(Some(Token::new("token-1", Some(at(3600))))))
+                .unwrap();
+        }
+        let obtained = AtomicUsize::new(0);
+        let barrier = Barrier::new(READERS);
+        let (lease, obtained, barrier) = (&lease, &obtained, &barrier);
+        let answers: Vec<String> = thread::scope(|scope| {
+            let readers: Vec<_> = (0..READERS)
+                .map(|_| {
+                    scope.spawn(move || {
+                        barrier.wait();
+                        lease
+                            .get(now, || {
+                                thread::sleep(Duration::from_millis(50));
+                                obtained.fetch_add(1, Ordering::SeqCst);
+                                Ok(Some(Token::new("token-2", Some(at(7200)))))
+                            })
+                            .map(|token| token.map(|token| token.value().to_owned()))
+                            .map_err(|error| error.to_string())
+                    })
+                })
+                .collect();
+            readers
+                .into_iter()
+                .map(|reader| reader.join().unwrap().unwrap().unwrap())
+                .collect()
+        });
+        assert_eq!(obtained.load(Ordering::SeqCst), 1, "held: {held}");
+        assert!(
+            answers.iter().all(|answer| answer == "token-2"),
+            "held: {held}: {answers:?}"
+        );
+    }
+}
+
+#[test]
+fn a_refresh_in_the_advisory_window_never_blocks_a_reader_of_the_held_value() {
+    let lease = lease();
+    lease
+        .get(at(0), || Ok(Some(Token::new("token-1", Some(at(3600))))))
+        .unwrap();
+    let advisory = at(3600 - 12 * 60);
+    let others = AtomicUsize::new(0);
+    let (held, others) = (&lease, &others);
+    thread::scope(|scope| {
+        let (started_tx, started) = mpsc::channel();
+        let (release, released) = mpsc::channel::<()>();
+        let refreshing = scope.spawn(move || {
+            held.get(advisory, move || {
+                started_tx.send(()).unwrap();
+                released.recv().unwrap();
+                Ok(Some(Token::new("token-2", Some(at(7200)))))
+            })
+            .map(|token| token.map(|token| token.value().to_owned()))
+            .map_err(|error| error.to_string())
+        });
+        started
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the refresh started");
+        let (answered_tx, answered) = mpsc::channel();
+        scope.spawn(move || {
+            let answer = held
+                .get(advisory, || {
+                    others.fetch_add(1, Ordering::SeqCst);
+                    Ok(Some(Token::new("token-3", Some(at(7200)))))
+                })
+                .map(|token| token.map(|token| token.value().to_owned()))
+                .map_err(|error| error.to_string());
+            answered_tx.send(answer).unwrap();
+        });
+        let reader = answered.recv_timeout(Duration::from_secs(5));
+        // Released whatever the reader did, so a reader that waited fails
+        // the test rather than hanging it.
+        release.send(()).unwrap();
+        let reader = reader.expect("a reader of the held value waited on the refresh");
+        assert_eq!(reader.unwrap().as_deref(), Some("token-1"));
+        assert_eq!(others.load(Ordering::SeqCst), 0, "one request obtains");
+        assert_eq!(
+            refreshing.join().unwrap().unwrap().as_deref(),
+            Some("token-2")
+        );
+    });
+    assert_eq!(lease.peek().unwrap().value(), "token-2");
 }
 
 #[test]

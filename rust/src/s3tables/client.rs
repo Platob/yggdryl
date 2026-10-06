@@ -14,10 +14,11 @@ use std::time::Duration;
 
 use smol_str::format_smolstr;
 
+use crate::aws::credentials::Refusal;
 use crate::aws::sigv4::{canonical_query, encode_query_component};
 use crate::aws::{Answer, Session};
 use crate::http::{Headers, Method};
-use crate::{Arn, DateTime64, Error, Result, Scalar, Timezone, Url};
+use crate::{Arn, ArnPartition, DateTime64, Error, Result, Scalar, Timezone, Url};
 
 /// The service's name: in every credential scope, in every endpoint host,
 /// and in every refusal.
@@ -34,6 +35,14 @@ const ATTEMPTS: u32 = 3;
 /// The longest text a refusal repeats, so a caller's mistake is quoted and a
 /// megabyte of it is not.
 const ECHO_BYTES: usize = 64;
+
+/// The most of the service's own message a refusal repeats: with the
+/// endpoint, the region, where it came from and the opt-in note after it,
+/// the whole stays under the 512 bytes `Error::remote` keeps.
+const MESSAGE_BYTES: usize = 160;
+
+/// The most of the endpoint a refusal names after the service's message.
+const ENDPOINT_BYTES: usize = 96;
 
 /// The error types botocore's standard retry mode reads as throttling,
 /// whatever the status they come under.
@@ -162,11 +171,19 @@ impl S3Tables {
     /// # Errors
     ///
     /// Returns a refusal naming every way to state a region when none of
-    /// the three answers, and [`Error::Parse`] naming where the region came
-    /// from when it is not a host label - 1 to 63 of the ASCII letters, the
-    /// digits and `-`, not at either end and not digits alone - because the
-    /// region names the host the signed request is sent to.
+    /// the three answers, and [`Error::Parse`] targeting `region` and naming
+    /// where the region came from - `S3Tables::with_region`, the table
+    /// bucket's ARN, the session - when it is not a host label: 1 to 63 of
+    /// the ASCII letters, the digits and `-`, not at either end and not
+    /// digits alone, the one rule every AWS host is built under, because
+    /// the region names the host the signed request is sent to.
     pub fn region_of(&self, bucket: Option<&Arn>) -> Result<String> {
+        self.located_region(bucket).map(|(region, _)| region)
+    }
+
+    /// [`Self::region_of`], with where the region came from, for a refusal
+    /// to name.
+    fn located_region(&self, bucket: Option<&Arn>) -> Result<(String, &'static str)> {
         let (region, source) = if let Some(region) = &self.region {
             (region.clone(), "S3Tables::with_region")
         } else if let Some(region) = bucket.and_then(Arn::region) {
@@ -181,8 +198,8 @@ impl S3Tables {
                     .to_owned(),
             ));
         };
-        check_region(&region, source)?;
-        Ok(region)
+        ArnPartition::check_region(&region, source)?;
+        Ok((region, source))
     }
 
     /// The endpoint requests for `region` go to: what was stated on the
@@ -227,11 +244,13 @@ impl S3Tables {
     /// when it answers no credential set, each naming the operation;
     /// [`Error::Absent`] or [`Error::Conflict`] where the call says the
     /// service's `NotFoundException` or `ConflictException` means one;
-    /// [`Error::Remote`] for every other refusal of the service; and
-    /// [`Error::Io`] when nothing answered.
+    /// [`Error::Remote`] for every other refusal of the service, its
+    /// message the service's own followed by the endpoint the request went
+    /// to and the region it was signed for with where that region came from
+    /// ([`Call::refusal`]); and [`Error::Io`] when nothing answered.
     pub(crate) fn send(&self, call: &Call<'_>) -> Result<Reply> {
-        let region = self
-            .region_of(call.bucket)
+        let (region, source) = self
+            .located_region(call.bucket)
             .map_err(|error| call.located(error))?;
         let endpoint = self
             .endpoint(&region)
@@ -256,7 +275,7 @@ impl S3Tables {
         if (200..300).contains(&answer.status) {
             return Reply::read(call, &answer);
         }
-        Err(call.refusal(&Refused::read(&answer)))
+        Err(call.refusal(&Refused::read(&answer), &endpoint, &region, source))
     }
 }
 
@@ -327,35 +346,6 @@ impl Endpoint {
         } else {
             format!("{}{path}?{query}", self.0)
         }
-    }
-}
-
-/// Refuse `region` unless it is a host label: it is spelled into the host a
-/// signed request is sent to, so a `/`, a `.` or an `@` in it would send the
-/// request - its signature and its session token - somewhere else.
-fn check_region(region: &str, source: &'static str) -> Result<()> {
-    let bytes = region.as_bytes();
-    let position = bytes
-        .iter()
-        .position(|byte| !(byte.is_ascii_alphanumeric() || *byte == b'-'))
-        .or_else(|| match bytes {
-            [] | [b'-', ..] => Some(0),
-            _ if bytes.len() > 63 => Some(63),
-            [.., b'-'] => Some(bytes.len() - 1),
-            _ if bytes.iter().all(u8::is_ascii_digit) => Some(0),
-            _ => None,
-        });
-    match position {
-        None => Ok(()),
-        Some(position) => Err(Error::Parse {
-            target: "s3tables region",
-            position,
-            reason: format_smolstr!(
-                "expected the region {source} states to be a host label - 1 to 63 of a-z, A-Z, \
-                 0-9 and '-', not at either end and not digits alone - got {:?}",
-                echo(region)
-            ),
-        }),
     }
 }
 
@@ -511,23 +501,50 @@ impl<'a> Call<'a> {
     /// endpoint's - says nothing about what the service holds, and reading
     /// it as an absence would make a delete that reached no service a
     /// success.
-    fn refusal(&self, refused: &Refused) -> Error {
+    ///
+    /// Any other refusal is [`Error::Remote`] at what the call addressed,
+    /// its code the service's, its message the first line of the service's
+    /// own - at most [`MESSAGE_BYTES`] of it - then the `endpoint` the
+    /// request was sent to, the `region` it was signed for and the `source`
+    /// that region came from. A code that refuses the key that signed
+    /// (`UnrecognizedClientException`, `InvalidClientTokenId`) in an opt-in
+    /// region adds that AWS answers it for every key there until the
+    /// account enables the region, since the key may be sound.
+    fn refusal(&self, refused: &Refused, endpoint: &Endpoint, region: &str, source: &str) -> Error {
         match (refused.error_type.as_deref(), self.absent, self.conflict) {
             (Some("NotFoundException"), Some(kind), _) => Error::absent(kind, &self.addressed),
             (Some("ConflictException"), _, Some(kind)) => {
                 Error::conflict(kind, kind, &self.addressed)
             }
-            _ => Error::remote(
-                SERVICE,
-                self.operation,
-                refused.status,
-                refused
-                    .error_type
-                    .as_deref()
-                    .unwrap_or_else(|| status_code_name(refused.status)),
-                &refused.message,
-                &self.addressed,
-            ),
+            (error_type, _, _) => {
+                let said = refused.message.lines().next().unwrap_or_default();
+                let sent = format!(
+                    "{} (sent to {}, signed for the region {region} {source} states)",
+                    clip(said, MESSAGE_BYTES),
+                    clip(&endpoint.0, ENDPOINT_BYTES)
+                );
+                let refuses_key = matches!(
+                    error_type.and_then(Refusal::from_code),
+                    Some(Refusal::Unrecognized)
+                );
+                let message = if refuses_key && ArnPartition::is_opt_in(region) {
+                    format!(
+                        "{sent}; {region} is an opt-in region: AWS refuses every key there with \
+                         this code until the account enables the region, so check the region \
+                         before the key"
+                    )
+                } else {
+                    sent
+                };
+                Error::remote(
+                    SERVICE,
+                    self.operation,
+                    refused.status,
+                    error_type.unwrap_or_else(|| status_code_name(refused.status)),
+                    message,
+                    &self.addressed,
+                )
+            }
         }
     }
 
@@ -831,9 +848,10 @@ pub(crate) fn check_version_token(token: &str) -> Result<()> {
 
 /// At most [`ECHO_BYTES`] of `text`, for a refusal to quote.
 pub(crate) fn echo(text: &str) -> &str {
-    let mut end = text.len().min(ECHO_BYTES);
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    &text[..end]
+    clip(text, ECHO_BYTES)
+}
+
+/// At most `bytes` of `text`, cut on a character boundary.
+fn clip(text: &str, bytes: usize) -> &str {
+    &text[..text.floor_char_boundary(bytes)]
 }

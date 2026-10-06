@@ -793,6 +793,10 @@ impl ArnPartition {
     /// otherwise - the Sign-In service, Amazon S3's own dual-stack form -
     /// builds them from [`Self::dns_suffix`] and
     /// [`Self::dualstack_dns_suffix`] instead.
+    ///
+    /// `region` is written as given, its surrounding blanks trimmed: the
+    /// crate's clients prove it is one host label first, and name where it
+    /// was stated when it is not.
     pub fn service_host(self, service: &str, region: &str, fips: bool, dualstack: bool) -> String {
         let service = if fips {
             format!("{service}-fips")
@@ -806,7 +810,95 @@ impl ArnPartition {
         };
         format!("{service}.{}.{suffix}", region.trim())
     }
+
+    /// Refuse `region` unless it is one host label - 1 to 63 of the ASCII
+    /// letters, the digits and `-`, not at either end and not digits alone,
+    /// botocore's `validate_region_name` - because every AWS client spells
+    /// it into the host a signed request is sent to, and a `/`, a `.` or an
+    /// `@` in it would send the request, its signature and its session
+    /// token somewhere else. Nothing is trimmed: a blank is a byte the rule
+    /// refuses. `source` names where the region was stated - a door, a
+    /// variable, a profile - for the refusal to say.
+    ///
+    /// A region that is a label but no region AWS runs (`eu-wset-3`) passes:
+    /// it builds a host under `aws`, as botocore builds one, and fails where
+    /// that host does not answer.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Parse`] targeting `region`, at the first byte that breaks
+    /// the rule, naming `source` and repeating at most 64 bytes of `region`.
+    #[cfg(feature = "aws")]
+    pub(crate) fn check_region(region: &str, source: &str) -> Result<()> {
+        let bytes = region.as_bytes();
+        let position = bytes
+            .iter()
+            .position(|byte| !(byte.is_ascii_alphanumeric() || *byte == b'-'))
+            .or_else(|| match bytes {
+                [] | [b'-', ..] => Some(0),
+                _ if bytes.len() > MAX_REGION_BYTES => Some(MAX_REGION_BYTES),
+                [.., b'-'] => Some(bytes.len() - 1),
+                _ if bytes.iter().all(u8::is_ascii_digit) => Some(0),
+                _ => None,
+            });
+        match position {
+            None => Ok(()),
+            Some(position) => Err(Error::Parse {
+                target: "region",
+                position,
+                reason: smol_str::format_smolstr!(
+                    "expected the region {source} states to be one host label - 1 to 63 of a-z, \
+                     A-Z, 0-9 and '-', not at either end and not digits alone - got {:?}",
+                    &region[..region.floor_char_boundary(ECHO_BYTES)]
+                ),
+            }),
+        }
+    }
+
+    /// Whether `region` is one of the regions of `aws` an account must
+    /// enable before it can use them (`OPT_IN_REGIONS`): until it does, AWS
+    /// refuses every key there - valid or not - with the code an unknown key
+    /// earns, so such a refusal says nothing of the key. Surrounding blanks
+    /// and case are ignored, as [`Self::from_region`] ignores them.
+    #[cfg(feature = "aws")]
+    pub(crate) fn is_opt_in(region: &str) -> bool {
+        let region = region.trim();
+        OPT_IN_REGIONS
+            .iter()
+            .any(|opt_in| opt_in.eq_ignore_ascii_case(region))
+    }
 }
+
+/// The longest region `ArnPartition::check_region` accepts: one DNS label.
+#[cfg(feature = "aws")]
+const MAX_REGION_BYTES: usize = 63;
+
+/// The most of a refused region a refusal repeats.
+#[cfg(feature = "aws")]
+const ECHO_BYTES: usize = 64;
+
+/// The regions of `aws` that stay disabled until an account opts in - every
+/// one AWS launched from March 2019 on - and the one table of them.
+#[cfg(feature = "aws")]
+const OPT_IN_REGIONS: [&str; 17] = [
+    "af-south-1",
+    "ap-east-1",
+    "ap-east-2",
+    "ap-south-2",
+    "ap-southeast-3",
+    "ap-southeast-4",
+    "ap-southeast-5",
+    "ap-southeast-6",
+    "ap-southeast-7",
+    "ca-west-1",
+    "eu-central-2",
+    "eu-south-1",
+    "eu-south-2",
+    "il-central-1",
+    "me-central-1",
+    "me-south-1",
+    "mx-central-1",
+];
 
 impl FromStr for ArnPartition {
     type Err = Error;
@@ -976,6 +1068,30 @@ impl Serialize for Arn {
         S: Serializer,
     {
         self.0.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/uri/arn.rs` pins and a caller cannot reach: the
+    //! region rules every AWS client builds a host through. Each item
+    //! forwards.
+
+    /// `ArnPartition::check_region`.
+    ///
+    /// # Errors
+    ///
+    /// A region that is not one host label, naming `source`.
+    #[cfg(feature = "aws")]
+    pub fn check_region(region: &str, source: &str) -> crate::Result<()> {
+        super::ArnPartition::check_region(region, source)
+    }
+
+    /// `ArnPartition::is_opt_in`.
+    #[cfg(feature = "aws")]
+    pub fn is_opt_in(region: &str) -> bool {
+        super::ArnPartition::is_opt_in(region)
     }
 }
 

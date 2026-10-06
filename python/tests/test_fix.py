@@ -5376,7 +5376,8 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     with pytest.raises(ValueError, match="after"):
         medallion.window_filter(end, start)
 
-    written = medallion.run(bronze, silver, codec, IOBase(logs / "*.log"), start, end)
+    lake = medallion.Lake(bronze, silver, codec, IOBase(logs / "*.log"))
+    written = medallion.run(lake, start, end)
     assert list(written) == [
         "bronze.log_messages",
         "bronze.fix_messages",
@@ -5407,14 +5408,14 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     assert books > 0
     # The three event tables are the books' deltas laid out by kind: every
     # delta of every book lands in exactly one of them.
-    events = sum(written[f"silver.{name}"].written_rows for name in ("orders", "quotes", "executions"))
+    laid_out = sum(written[f"silver.{name}"].written_rows for name in ("orders", "quotes", "executions"))
     deltas = sum(
         len(data.as_book_event().deltas)  # type: ignore[union-attr]
         for data in MarketData.from_arrow_reader(
             silver.table("record_keeping.books").read_serie(select="* exclude (partunix)").into_arrow_reader()
         )
     )
-    assert events == deltas > 0
+    assert laid_out == deltas > 0
     assert written["silver.executions"].written_rows > 0, "executions are recorded among the deltas"
 
     # Every table is laid out as the pipeline declares: the quarter-hour
@@ -5432,7 +5433,7 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         table = catalog.table(f"record_keeping.{name}")
         assert isinstance(table, yggdryl.iceberg.IcebergTable), name
         stored = table.schema
-        partitioned = '["partunix","cficode"]' if name == "books" else '["partunix"]'
+        partitioned = '["partunix"]'
         assert stored.metadata["PARTITION:by"] == partitioned, name
         assert stored.metadata["SORT:by"] == '["partunix","currunix","seqnum","currhashcode"]', name
         assert not any(stored[column].nullable for column in medallion.REQUIRED), name
@@ -5454,7 +5455,7 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
 
     # Running every stage again over the window rewrites what it wrote: the
     # same rows under one more snapshot, never the two runs together.
-    again = medallion.run(bronze, silver, codec, IOBase(logs / "*.log"), start, end)
+    again = medallion.run(lake, start, end)
     assert again == written
     for catalog, name in ((bronze, "log_messages"), (silver, "books"), (silver, "executions")):
         table = catalog.table(f"record_keeping.{name}")
@@ -5464,7 +5465,7 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     # A narrower window reads the quarters it covers alone and rewrites
     # those partitions alone: the rows past it keep their files.
     half = dt.datetime(2026, 8, 14, 19, 0, tzinfo=utc)
-    partial = medallion.run(bronze, silver, codec, IOBase(logs / "*.log"), start, half)
+    partial = medallion.run(lake, start, half)
     assert 0 < partial["bronze.log_messages"].written_rows < 144
     assert bronze.table("record_keeping.log_messages").row_size() == 144
     assert partial["silver.books"].written_rows <= books

@@ -4,19 +4,24 @@
 //! Every walk runs over the identity fake, reached through a sealed session
 //! that states nothing else, or over a loopback port that answers nothing -
 //! released, silent, or hanging up - so "not an instance" is exercised
-//! without a link-local address. The requests a walk makes are the contract,
-//! so they are counted: the service is asked for an `IMDSv2` token, then the
-//! role's name, then the role's keys, and nothing more.
+//! without a link-local address, or through a front of the fake that takes
+//! the token request and never answers it, which is what a hop limit of one
+//! does to a container on an instance. The requests a walk makes are the
+//! contract, so they are counted: the service is asked for an `IMDSv2`
+//! token, then the role's name, then the role's keys, and nothing more.
 
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use yggdryl::aws::{Credentials, Session};
+use yggdryl::logging::{self, Handler, Level};
 
-use crate::identity::{IMDS_TOKEN, Identity};
+use crate::identity::{IMDS_TOKEN, Identity, iso8601};
+use crate::logging::{Collect, serial};
 use crate::mod_::{scratch, sealed};
 
 /// What one walk that ends at the instance metadata service asks it, in order.
@@ -133,6 +138,161 @@ impl Drop for Hangup {
             let _ = thread.join();
         }
     }
+}
+
+/// A loopback front of the identity fake that takes every token request and
+/// never answers it, holding the connection open, and passes every other
+/// request through to the fake: a hop limit of one, which drops the token's
+/// answer on its way into a container and lets the reads' arrive. Dropping
+/// it stops the listener and closes every connection it holds.
+struct TokenBlackhole {
+    address: String,
+    held: Arc<Mutex<Vec<TcpStream>>>,
+    stopping: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl TokenBlackhole {
+    fn start(upstream: &Identity) -> Self {
+        let upstream = upstream.endpoint().trim_start_matches("http://").to_owned();
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind a loopback listener");
+        let address = listener
+            .local_addr()
+            .expect("a bound listener has an address")
+            .to_string();
+        let held = Arc::new(Mutex::new(Vec::new()));
+        let stopping = Arc::new(AtomicBool::new(false));
+        let (holding, stop) = (Arc::clone(&held), Arc::clone(&stopping));
+        let thread = std::thread::spawn(move || {
+            for connection in listener.incoming() {
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
+                let Ok(mut client) = connection else {
+                    continue;
+                };
+                let _ = client.set_read_timeout(Some(Duration::from_secs(5)));
+                let head = read_head(&mut client);
+                if head.starts_with(b"PUT /latest/api/token ") {
+                    holding
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .push(client);
+                    continue;
+                }
+                let upstream = upstream.clone();
+                std::thread::spawn(move || {
+                    if let Ok(mut server) = TcpStream::connect(&upstream) {
+                        // The fake answers `Connection: close`, so the copy
+                        // ends with its answer.
+                        let _ = server.write_all(&head);
+                        let _ = std::io::copy(&mut server, &mut client);
+                    }
+                });
+            }
+        });
+        Self {
+            address,
+            held,
+            stopping,
+            thread: Some(thread),
+        }
+    }
+
+    fn endpoint(&self) -> String {
+        format!("http://{}", self.address)
+    }
+
+    /// The token requests taken and never answered so far.
+    fn held(&self) -> usize {
+        self.held
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
+    }
+}
+
+impl Drop for TokenBlackhole {
+    fn drop(&mut self) {
+        self.stopping.store(true, Ordering::SeqCst);
+        // Wake the accept loop so it sees the flag.
+        let _ = TcpStream::connect(&self.address);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+/// A request's head as it arrived, through the blank line that ends it; a
+/// metadata request carries no body past it.
+fn read_head(stream: &mut TcpStream) -> Vec<u8> {
+    let mut head = Vec::new();
+    let mut byte = [0_u8; 1];
+    while !head.ends_with(b"\r\n\r\n") && head.len() < 64 * 1024 {
+        match stream.read(&mut byte) {
+            Ok(1) => head.push(byte[0]),
+            _ => break,
+        }
+    }
+    head
+}
+
+/// The records the crate logs under `yggdryl.aws.metadata` at `WARNING` and
+/// above, while this is held. The tree is the process's, so this holds it.
+struct Warnings {
+    collect: Arc<Collect>,
+    _tree: std::sync::MutexGuard<'static, ()>,
+}
+
+/// The logger the metadata module's records reach.
+const LOGGER: &str = "yggdryl.aws.metadata";
+
+impl Warnings {
+    fn collect() -> Self {
+        let tree = serial();
+        // A record nobody collects is dropped rather than written to
+        // standard error by the last resort.
+        logging::set_last_resort(None);
+        logging::install().expect("the tree is the facade's backend");
+        let logger = logging::get_logger(LOGGER);
+        logger.set_level(Level::WARNING);
+        let collect = Collect::shared();
+        logger.add_handler(collect.clone());
+        Self {
+            collect,
+            _tree: tree,
+        }
+    }
+
+    /// The warnings kept so far, as their lines.
+    fn lines(&self) -> Vec<String> {
+        self.collect
+            .take()
+            .into_iter()
+            .filter(|kept| kept.level >= Level::WARNING)
+            .map(|kept| kept.line)
+            .collect()
+    }
+}
+
+impl Drop for Warnings {
+    fn drop(&mut self) {
+        let logger = logging::get_logger(LOGGER);
+        let handler: Arc<dyn Handler> = self.collect.clone();
+        logger.remove_handler(&handler);
+        logger.set_level(Level::NOTSET);
+    }
+}
+
+/// Seconds since the epoch at `instant`.
+fn epoch_seconds(instant: SystemTime) -> i64 {
+    i64::try_from(
+        instant
+            .duration_since(UNIX_EPOCH)
+            .expect("after the epoch")
+            .as_secs(),
+    )
+    .expect("a count of seconds that fits")
 }
 
 /// How many connections one walk toward a hanging-up service made, for a
@@ -270,6 +430,173 @@ fn a_service_that_will_not_issue_a_token_is_read_without_one_unless_v1_is_disabl
     );
 }
 
+#[test]
+fn the_profile_s_ec2_metadata_v1_disabled_keeps_reads_behind_the_token() {
+    let identity = Identity::start();
+    identity.fail_next(403, 1);
+    let session = sealed(&identity, "imds-v1-disabled-profile")
+        .with_config_text("[default]\nec2_metadata_v1_disabled = true\n");
+    assert_eq!(answered(&session), None);
+    assert_eq!(
+        shape(&identity),
+        ["PUT /latest/api/token"],
+        "the profile's spelling disables IMDSv1 as the variable does"
+    );
+
+    let identity = Identity::start();
+    identity.fail_next(403, 1);
+    let session = sealed(&identity, "imds-v1-enabled-over-profile")
+        .with_variables([("AWS_EC2_METADATA_V1_DISABLED", "false")])
+        .with_config_text("[default]\nec2_metadata_v1_disabled = true\n");
+    assert_eq!(
+        found(&session).access_key_id(),
+        INSTANCE_KEY,
+        "the variable beats the profile"
+    );
+    assert_eq!(shape(&identity), IMDS_WALK);
+}
+
+#[test]
+fn a_token_request_the_service_refuses_with_400_is_no_credentials_and_no_read() {
+    let identity = Identity::start();
+    identity.fail_next(400, 1);
+    let session = sealed(&identity, "imds-token-400");
+
+    assert_eq!(
+        answered(&session),
+        None,
+        "a refused token request is no credentials, not a failure"
+    );
+    assert_eq!(session.credential_source(), None);
+    assert_eq!(
+        shape(&identity),
+        ["PUT /latest/api/token"],
+        "a 400 is a refusal, never a service to read as IMDSv1"
+    );
+    assert_eq!(identity.requests()[0].status, 400);
+
+    let identity = Identity::start();
+    identity.fail_next(400, 1);
+    let session = sealed(&identity, "imds-token-400-region");
+    assert_eq!(session.instance_region(), None);
+    assert_eq!(shape(&identity), ["PUT /latest/api/token"]);
+}
+
+#[test]
+fn a_token_that_never_arrives_is_read_as_imdsv1_unless_v1_is_disabled() {
+    let identity = Identity::start();
+    let front = TokenBlackhole::start(&identity);
+    let session = toward(&front.endpoint(), "imds-token-stalled", &[])
+        .with_metadata_timeout(Duration::from_secs(1));
+
+    let started = Instant::now();
+    assert_eq!(
+        found(&session).access_key_id(),
+        INSTANCE_KEY,
+        "the reads answer although the token never did"
+    );
+    let elapsed = started.elapsed();
+    assert_eq!(session.credential_source(), Some("instance metadata"));
+    assert_eq!(front.held(), 1, "the token was asked for once");
+    assert_eq!(
+        shape(&identity),
+        IMDS_WALK[1..],
+        "the listing and the role's keys follow the token that never came"
+    );
+    for read in identity.requests() {
+        assert_eq!(
+            read.header("x-aws-ec2-metadata-token"),
+            None,
+            "without a token the reads go out as IMDSv1: {read:?}"
+        );
+    }
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "the token is waited on for its one-second deadline alone: {elapsed:?}"
+    );
+
+    let identity = Identity::start();
+    let front = TokenBlackhole::start(&identity);
+    let session = toward(
+        &front.endpoint(),
+        "imds-token-stalled-v1-disabled",
+        &[("AWS_EC2_METADATA_V1_DISABLED", "true")],
+    )
+    .with_metadata_timeout(Duration::from_secs(1));
+    assert_eq!(answered(&session), None);
+    assert_eq!(front.held(), 1);
+    assert_eq!(
+        identity.request_count(),
+        0,
+        "with IMDSv1 disabled no read goes out without the token"
+    );
+}
+
+// --- a lapsed set the service still serves ------------------------------------
+
+#[test]
+fn an_instance_role_set_past_its_expiration_is_extended_and_warned() {
+    let warnings = Warnings::collect();
+    let identity = Identity::start();
+    let now = SystemTime::now();
+    let lapsed = iso8601(epoch_seconds(now) - 3600);
+    identity.set_imds_expiry(&lapsed);
+    let session = sealed(&identity, "imds-stale");
+
+    let keys = session
+        .credentials(now)
+        .expect("a lapsed set the service serves is no failure")
+        .expect("the lapsed set, carried");
+    assert_eq!(keys.access_key_id(), INSTANCE_KEY);
+    assert_eq!(session.credential_source(), Some("instance metadata"));
+    let expiry = keys.expires_at().expect("a carried set still lapses");
+    assert!(
+        expiry >= now + Duration::from_secs(600 + 120)
+            && expiry <= now + Duration::from_secs(600 + 600),
+        "carried to now plus ten minutes and two to ten more: {:?} past now",
+        expiry.duration_since(now)
+    );
+    assert_eq!(shape(&identity), IMDS_WALK);
+
+    let lines = warnings.lines();
+    let warned = lines
+        .iter()
+        .find(|line| line.contains("ASIA...ROLE"))
+        .unwrap_or_else(|| panic!("the carried set is warned about by name: {lines:#?}"));
+    assert!(
+        warned.contains(&format!("lapsed at {lapsed}")),
+        "the warning states when the set lapsed: {warned}"
+    );
+    assert!(
+        !warned.contains(INSTANCE_KEY),
+        "the key id is named masked: {warned}"
+    );
+}
+
+#[test]
+fn a_set_the_service_serves_before_its_expiration_is_kept_as_stated_and_not_warned() {
+    let warnings = Warnings::collect();
+    let identity = Identity::start();
+    let now = SystemTime::now();
+    let lasting = epoch_seconds(now) + 3600;
+    identity.set_imds_expiry(&iso8601(lasting));
+    let session = sealed(&identity, "imds-not-stale");
+
+    let keys = found(&session);
+    assert_eq!(
+        keys.expires_at().map(epoch_seconds),
+        Some(lasting),
+        "a set that has not lapsed keeps the document's expiry"
+    );
+    assert!(
+        !warnings
+            .lines()
+            .iter()
+            .any(|line| line.contains("ASIA...ROLE")),
+        "nothing is carried, so nothing is warned"
+    );
+}
+
 // --- disabled -----------------------------------------------------------------
 
 #[test]
@@ -358,9 +685,11 @@ fn an_address_nobody_listens_on_is_no_instance_answered_at_once() {
 }
 
 #[test]
-fn a_service_that_accepts_and_never_answers_is_no_instance_after_the_timeout() {
-    // Bound and never accepted from: the kernel completes the connection,
-    // and the request waits for an answer that never comes.
+fn a_service_that_accepts_and_never_answers_is_no_instance_after_the_token_and_the_listing_time_out()
+ {
+    // Bound and never accepted from: the kernel completes each connection,
+    // and each request waits for an answer that never comes - the token's,
+    // read as one not issued, then the listing's.
     let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind a loopback listener");
     let address = listener
         .local_addr()
@@ -377,7 +706,7 @@ fn a_service_that_accepts_and_never_answers_is_no_instance_after_the_timeout() {
     let elapsed = started.elapsed();
     assert!(
         elapsed < Duration::from_secs(5),
-        "one attempt bounded by the one-second timeout: {elapsed:?}"
+        "two requests, each bounded by the one-second timeout: {elapsed:?}"
     );
     drop(listener);
 }
@@ -411,6 +740,23 @@ fn the_profile_s_ec2_metadata_service_endpoint_points_the_session_at_the_service
     let session = Session::new()
         .with_variables::<&str, &str>([])
         .with_directory(scratch("imds-endpoint-profile"))
+        .with_endpoint_url(identity.endpoint())
+        .with_config_text(config);
+
+    assert_eq!(found(&session).access_key_id(), INSTANCE_KEY);
+    assert_eq!(shape(&identity), IMDS_WALK);
+}
+
+#[test]
+fn the_profile_s_endpoint_beats_its_endpoint_mode() {
+    let identity = Identity::start();
+    let config = format!(
+        "[default]\nec2_metadata_service_endpoint_mode = IPv6\nec2_metadata_service_endpoint = {}\n",
+        identity.endpoint()
+    );
+    let session = Session::new()
+        .with_variables::<&str, &str>([])
+        .with_directory(scratch("imds-endpoint-over-mode-profile"))
         .with_endpoint_url(identity.endpoint())
         .with_config_text(config);
 
@@ -538,4 +884,44 @@ fn a_token_the_service_fails_to_issue_with_a_5xx_is_asked_for_again_within_the_a
         .map(|request| request.status)
         .collect();
     assert_eq!(statuses, [503_u16, 200, 200, 200]);
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    use yggdryl::aws::Session;
+    use yggdryl::internals::aws_session::imds_endpoint;
+
+    use crate::mod_::scratch;
+
+    #[test]
+    fn the_profile_s_endpoint_mode_picks_the_address_family_and_the_variable_beats_it() {
+        let endpoint = |pairs: &[(&str, &str)], config: &str| {
+            imds_endpoint(
+                &Session::new()
+                    .with_variables(pairs.iter().copied())
+                    .with_directory(scratch("imds-mode-profile"))
+                    .with_config_text(config),
+            )
+        };
+        let ipv6 = "[default]\nec2_metadata_service_endpoint_mode = IPv6\n";
+        assert_eq!(
+            endpoint(&[], ipv6).as_deref(),
+            Some("http://[fd00:ec2::254]"),
+            "the profile's ec2_metadata_service_endpoint_mode"
+        );
+        assert_eq!(
+            endpoint(&[("AWS_EC2_METADATA_SERVICE_ENDPOINT_MODE", "IPv4")], ipv6).as_deref(),
+            Some("http://169.254.169.254"),
+            "the variable beats the profile"
+        );
+        assert_eq!(
+            endpoint(
+                &[],
+                "[default]\nec2_metadata_service_endpoint_mode = IPv4\nimds_use_ipv6 = true\n"
+            )
+            .as_deref(),
+            Some("http://169.254.169.254"),
+            "a mode the profile states wins over its older switch"
+        );
+    }
 }

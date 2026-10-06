@@ -82,8 +82,10 @@ const POINT_LEN: usize = 1 + 2 * SCALAR_LEN;
 ///
 /// # Errors
 ///
-/// A region that is not one host label: it chooses the host a refresh
-/// token is posted to, so nothing else may.
+/// A region, its surrounding blanks trimmed, that is not one host label -
+/// `ArnPartition::check_region`'s refusal, the session named as where it
+/// was stated: it chooses the host a refresh token is posted to, so nothing
+/// else may.
 pub(crate) fn endpoint(
     region: &str,
     fips: bool,
@@ -92,18 +94,8 @@ pub(crate) fn endpoint(
     use crate::ArnPartition;
 
     let region = region.trim();
-    let label = !region.is_empty()
-        && region.len() <= 63
-        && !region.starts_with('-')
-        && !region.ends_with('-')
-        && region
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-');
-    if !label {
-        return Err(format!(
-            "the region {region:?} is not one host label, so it names no Sign-In service"
-        ));
-    }
+    ArnPartition::check_region(region, "the session")
+        .map_err(|error| format!("no Sign-In service to refresh a sign-in at: {error}"))?;
     let partition = ArnPartition::from_region(region);
     Ok(match (fips, dualstack) {
         (false, false) => {

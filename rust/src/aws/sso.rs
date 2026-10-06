@@ -40,6 +40,9 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_LIFETIME: Duration = Duration::from_secs(90 * 86_400);
 /// Attempts at one request before its failure is the answer.
 const ATTEMPTS: u32 = 3;
+/// The most of the portal's own message a refusal naming its way out
+/// quotes.
+const MAX_PORTAL_MESSAGE: usize = 256;
 
 /// One IAM Identity Center sign-in and the role it is traded for.
 ///
@@ -184,8 +187,8 @@ impl Sso {
 ///
 /// The device flow needs a person: somebody has to open a URL and confirm a
 /// code. A library cannot know where that person is, so a session is told,
-/// and the default is to refuse - the chain then walks on to its other
-/// sources and the refusal names `aws sso login` as the way out.
+/// and the default is to refuse - a stated sign-in is a configured source, so
+/// its refusal ends the walk, naming `aws sso login` as the way out.
 #[derive(Clone, Default)]
 pub enum SsoLogin {
     /// Never sign in; a lapsed sign-in is a source that failed.
@@ -566,7 +569,10 @@ pub(crate) fn login(
 /// # Errors
 ///
 /// The portal's refusal - a lapsed token answers 401 - the transport's
-/// failure, or an answer without a credential set.
+/// failure, or an answer without a credential set. A refusal's code is the
+/// body's `error` or `code`, else the `x-amzn-ErrorType` header the portal's
+/// protocol states it in; a 401 or 403 ends with the way out, `aws sso
+/// login` for the sign-in's `[sso-session]` where it belongs to one.
 pub(crate) fn role_credentials(
     http: &crate::http::Session,
     portal: &str,
@@ -584,19 +590,42 @@ pub(crate) fn role_credentials(
         .with_timeout(TIMEOUT)
         .with_max_attempts(ATTEMPTS);
     let answer = super::Answer::of(&request).map_err(|error| transport_failure(portal, &error))?;
-    let (status, body) = (answer.status, answer.body);
-    let document: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+    let status = answer.status;
+    let document: serde_json::Value = serde_json::from_slice(&answer.body).unwrap_or_default();
     if status != 200 {
+        let code = text(&document, "error")
+            .or_else(|| text(&document, "code"))
+            .or(answer.error_type)
+            .unwrap_or_else(|| "GetRoleCredentialsFailed".to_owned());
+        let said = text(&document, "error_description")
+            .or_else(|| text(&document, "message"))
+            .unwrap_or_default();
+        let message = if matches!(status, 401 | 403) {
+            // The portal's text is bounded first, so the remedy survives the
+            // bound `Error::remote` puts on the whole message.
+            let said = said.lines().next().unwrap_or_default();
+            let end = said
+                .char_indices()
+                .map(|(index, _)| index)
+                .find(|index| *index >= MAX_PORTAL_MESSAGE)
+                .unwrap_or(said.len());
+            let login = sso.session_name.as_ref().map_or_else(
+                || "aws sso login".to_owned(),
+                |name| format!("aws sso login --sso-session {name}"),
+            );
+            format!(
+                "{} - the sign-in is no longer accepted: run `{login}`",
+                &said[..end]
+            )
+        } else {
+            said
+        };
         return Err(Error::remote(
             "sso",
             "GetRoleCredentials",
             status,
-            text(&document, "error")
-                .or_else(|| text(&document, "code"))
-                .unwrap_or_else(|| "GetRoleCredentialsFailed".to_owned()),
-            text(&document, "error_description")
-                .or_else(|| text(&document, "message"))
-                .unwrap_or_default(),
+            code,
+            message,
             &sso.start_url,
         ));
     }

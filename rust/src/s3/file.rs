@@ -7,6 +7,7 @@ use super::client::Client;
 use super::folder::S3Folder;
 use super::request::Precondition;
 use crate::holder::Holder;
+use crate::logging::warning::warned;
 use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Url};
 
 /// An S3 object addressed by offset.
@@ -184,6 +185,25 @@ impl S3File {
             state.meta = Some(meta.clone());
         }
         Ok(meta)
+    }
+
+    /// The metadata an infallible verb answers from: `None` where no object
+    /// is, and `None` after a warning naming this location and the refusal
+    /// where the store refused to say - logged once per location, later ones
+    /// counted - so a refused key or a region the store answers `400` for is
+    /// never a silent empty read. A store saying nothing is there is an
+    /// answer, and warns nothing.
+    fn heard(&self, meta: Result<Option<S3Meta>>) -> Option<S3Meta> {
+        meta.unwrap_or_else(|error| {
+            if !error.is_absent() {
+                warned!(
+                    "an S3 object could not be read and answers as empty",
+                    &self.url.to_string(),
+                    "{error}"
+                );
+            }
+            None
+        })
     }
 
     /// Record what a read has just learned about the object's length.
@@ -420,10 +440,12 @@ impl IOFile for S3File {
         &self.url
     }
 
+    /// Whether the object is there: `false` where the store says it is not,
+    /// and `false` with a warning where the store refused to say
+    /// ([`Self::heard`]).
     fn file_exists(&self) -> bool {
-        self.state()
-            .and_then(|mut state| self.meta(&mut state))
-            .is_ok_and(|meta| meta.is_some())
+        let meta = self.state().and_then(|mut state| self.meta(&mut state));
+        self.heard(meta).is_some()
     }
 
     /// Empty the object, which on a store without a truncate is writing no
@@ -518,6 +540,24 @@ impl IOBase for S3File {
         }
         drop(state);
         self.byte_stream(position, batch_size)
+    }
+
+    /// The bytes [`Self::pstream_bytes`] streams, as a reader that outlives
+    /// the handle: a staged value copied out, anything else one resuming
+    /// `GET` for the whole drain.
+    fn owned_stream_bytes(
+        &self,
+        position: u64,
+    ) -> Result<Option<Box<dyn std::io::Read + Send + 'static>>> {
+        if let Some(bytes) = self.staged_from(position)? {
+            return Ok(Some(Box::new(std::io::Cursor::new(bytes))));
+        }
+        Ok(Some(lazy_object_stream(
+            Arc::clone(&self.client),
+            self.bucket.clone(),
+            self.key.clone(),
+            position,
+        )))
     }
 
     /// Read the whole object with one `GET`.
@@ -721,18 +761,20 @@ impl IOBase for S3File {
         Ok(offset)
     }
 
-    /// The object's byte length: cached while open, otherwise one `HEAD`.
+    /// The object's byte length: cached while open, otherwise one `HEAD`;
+    /// `0` where no object is, and `0` with a warning where the store refused
+    /// the `HEAD` ([`Self::heard`]).
     fn size(&self) -> u64 {
-        let Ok(mut state) = self.state() else {
-            return 0;
+        let mut state = match self.state() {
+            Ok(state) => state,
+            Err(error) => return self.heard(Err(error)).map_or(0, |meta| meta.size),
         };
         if let Some(stage) = state.stage.as_ref() {
             return stage.bytes.len() as u64;
         }
-        self.meta(&mut state)
-            .ok()
-            .flatten()
-            .map_or(0, |meta| meta.size)
+        let meta = self.meta(&mut state);
+        drop(state);
+        self.heard(meta).map_or(0, |meta| meta.size)
     }
 
     /// The staged allocation, or the stored length when nothing is staged.
@@ -972,5 +1014,47 @@ pub mod internals {
         length: u64,
     ) -> Result<()> {
         file.upload_from(source, length)
+    }
+}
+
+/// The object's bytes from `position` as a stream opened on its first read:
+/// the one resuming `GET` goes out when a byte is asked for, so a reader
+/// built over the object - a schema declared, nothing pulled yet - asks the
+/// store nothing, and a reader never pulled costs no request at all.
+pub(super) fn lazy_object_stream(
+    client: Arc<Client>,
+    bucket: String,
+    key: String,
+    position: u64,
+) -> Box<dyn std::io::Read + Send + 'static> {
+    Box::new(LazyObjectStream {
+        open: Some((client, bucket, key, position)),
+        opened: None,
+    })
+}
+
+/// [`lazy_object_stream`]'s reader: what opens the stream until the first
+/// read, the stream after it.
+struct LazyObjectStream {
+    open: Option<(Arc<Client>, String, String, u64)>,
+    opened: Option<Box<dyn std::io::Read + Send>>,
+}
+
+impl std::io::Read for LazyObjectStream {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        if self.opened.is_none() {
+            let Some((client, bucket, key, position)) = self.open.take() else {
+                return Ok(0);
+            };
+            self.opened = Some(
+                client
+                    .open_resuming_reader(&bucket, &key, position, None)
+                    .map_err(std::io::Error::other)?,
+            );
+        }
+        match self.opened.as_mut() {
+            Some(stream) => stream.read(buffer),
+            None => Ok(0),
+        }
     }
 }

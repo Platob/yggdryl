@@ -7,11 +7,20 @@
 //! environment for its own knobs under `AWS_` and leaves these to the
 //! session - and every name an endpoint is stated under, under any prefix
 //! (`EndpointName` in `properties.rs`), to the reader that places it.
+//!
+//! The list also holds the key spellings botocore never reads -
+//! `AWS_ACCESS_KEY`/`AWS_SECRET_KEY`, which the Java SDK v1 and the EC2 API
+//! tools left behind, and `AWS_S3_ACCESS_KEY_ID`/`AWS_S3_SECRET_ACCESS_KEY` -
+//! because the sweep strips the `AWS_` and would read the rest as the S3
+//! options' own key pair, an explicit set beating `AWS_ACCESS_KEY_ID`, a
+//! profile and every other source. Left to the session, they are read by
+//! nobody, as botocore reads them.
 
-/// Whether `name` is a variable the session reads for itself, in any case:
-/// on Windows the session reads `aws_endpoint_url_s3` as
-/// `AWS_ENDPOINT_URL_S3`, and on POSIX it is a name the AWS tools never
-/// read - neither is the sweep's to turn into a knob of its own.
+/// Whether `name` is a variable the session reads for itself, or a key
+/// spelling the AWS tools leave unread, in any case: on Windows the session
+/// reads `aws_endpoint_url_s3` as `AWS_ENDPOINT_URL_S3`, and on POSIX it is
+/// a name the AWS tools never read - neither is the sweep's to turn into a
+/// knob of its own.
 pub(crate) fn is_native(name: &str) -> bool {
     const SERVICE_ENDPOINT: &str = "AWS_ENDPOINT_URL_";
     NATIVE
@@ -22,11 +31,17 @@ pub(crate) fn is_native(name: &str) -> bool {
             .is_some_and(|head| head.eq_ignore_ascii_case(SERVICE_ENDPOINT))
 }
 
-const NATIVE: [&str; 37] = [
+const NATIVE: [&str; 41] = [
     "AWS_PROFILE",
     "AWS_DEFAULT_PROFILE",
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
+    // Read by nobody: kept from the sweep, which would read each pair as the
+    // S3 options' explicit keys.
+    "AWS_ACCESS_KEY",
+    "AWS_SECRET_KEY",
+    "AWS_S3_ACCESS_KEY_ID",
+    "AWS_S3_SECRET_ACCESS_KEY",
     "AWS_SESSION_TOKEN",
     "AWS_SECURITY_TOKEN",
     "AWS_CREDENTIAL_EXPIRATION",
@@ -67,7 +82,8 @@ const NATIVE: [&str; 37] = [
 pub mod internals {
     //! What `rust/tests/aws/environment.rs` pins and a caller cannot reach.
 
-    /// Whether `name` is a variable the session reads for itself.
+    /// Whether `name` is a variable the session reads for itself, or a key
+    /// spelling the AWS tools leave unread.
     pub fn is_native(name: &str) -> bool {
         super::is_native(name)
     }

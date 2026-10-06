@@ -387,6 +387,8 @@ pub mod internals {
     #[cfg(feature = "aws")]
     pub use crate::aws::login::internals as aws_login;
     #[cfg(feature = "aws")]
+    pub use crate::aws::process::internals as aws_process;
+    #[cfg(feature = "aws")]
     pub use crate::aws::profile::internals as aws_profile;
     #[cfg(feature = "aws")]
     pub use crate::aws::request::internals as aws_request;
@@ -532,6 +534,7 @@ pub mod internals {
     pub use crate::toml::wire::internals as toml_wire;
     pub use crate::txhash::arrow::internals as txhash_arrow;
     pub use crate::txhash::internals as txhash;
+    pub use crate::uri::arn::internals as uri_arn;
     pub use crate::uri::pattern::internals as uri_pattern;
     pub use crate::uri::url::internals as uri_url;
     pub use crate::utf8::internals as utf8;

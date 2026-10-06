@@ -21,14 +21,18 @@ use crate::{Error, Result};
 impl Session {
     /// The names [`Self::with_properties`] reads, in this crate's own
     /// vocabulary - the `aws_` and `client.` spellings and the aliases it
-    /// also reads aside. What a binding suggests a mistyped keyword against.
-    pub const PROPERTY_NAMES: [&'static str; 32] = [
+    /// also reads aside, and the `endpoint_url_<service>` family, which is
+    /// one name per service id. What a binding suggests a mistyped keyword
+    /// against.
+    pub const PROPERTY_NAMES: [&'static str; 34] = [
         "region",
+        "default_region",
         "access_key_id",
         "secret_access_key",
         "session_token",
         "anonymous",
         "profile",
+        "default_profile",
         "role_arn",
         "role_session_name",
         "external_id",
@@ -74,13 +78,13 @@ impl Session {
     ///
     /// | states | names |
     /// | --- | --- |
-    /// | the region | `region` |
+    /// | the region | `region`, else `default_region` |
     /// | a credential set | `access_key_id`, `secret_access_key`, `session_token`; `anonymous` for none |
-    /// | a profile | `profile` |
-    /// | a role to assume | `role_arn`, with `role_session_name`, `external_id`, `role_duration`, `sts_region`, `sts_endpoint`, `mfa_serial`, `source_profile`, `credential_source`, `web_identity_token_file` |
-    /// | an IAM Identity Center sign-in | `sso_start_url`, `sso_region`, `sso_account_id`, `sso_role_name`, with `sso_session` |
+    /// | a profile | `profile`, else `default_profile` |
+    /// | a role to assume | `role_arn`, with `role_session_name`, `external_id`, `role_duration` (or the profile key `duration_seconds`), `sts_region`, `sts_endpoint`, `mfa_serial`, one of `source_profile` and `credential_source`, `web_identity_token_file` |
+    /// | an IAM Identity Center sign-in | `sso_account_id` and `sso_role_name`, with `sso_start_url` and `sso_region`, or with the `sso_session` whose `[sso-session]` section holds them |
     /// | the shared files and a process | `config_file`, `shared_credentials_file`, `credential_process`, `ca_bundle` |
-    /// | the endpoints | `use_fips_endpoint`, `use_dualstack_endpoint`, `sts_regional_endpoints`, `sts_endpoint` |
+    /// | the endpoints | `use_fips_endpoint`, `use_dualstack_endpoint`, `sts_regional_endpoints` (`regional` or `legacy`), `sts_endpoint`, `endpoint_url_<service>` |
     /// | the instance metadata service | `ec2_metadata_disabled`, `ec2_metadata_service_endpoint`, `metadata_service_timeout`, `metadata_service_num_attempts` |
     ///
     /// Names are matched loosely: case, `-`, `_` and `.` are the same, and a
@@ -88,9 +92,24 @@ impl Session {
     /// and PyIceberg's `client.region` are one name, as are
     /// `client.access-key-id`, `client.secret-access-key`,
     /// `client.session-token`, `client.profile-name` and `client.role-arn`
-    /// and the bare names they fold to. A name under another prefix - `s3.`
-    /// is the object store's own - is not read here, and neither is a bare
-    /// `token`, which a catalog spells its own bearer token by.
+    /// and the bare names they fold to, and `AWS_DEFAULT_REGION` and
+    /// `AWS_DEFAULT_PROFILE` are `default_region` and `default_profile`. A
+    /// name under another prefix - `s3.` is the object store's own - is not
+    /// read here, and neither is a bare `token`, which a catalog spells its
+    /// own bearer token by.
+    ///
+    /// `default_region` and `default_profile` are read where the bag states
+    /// no `region` or `profile`, whatever their order. A name
+    /// `endpoint_url_<service>`, such as `AWS_ENDPOINT_URL_STS`,
+    /// `AWS_ENDPOINT_URL_S3TABLES` or `AWS_ENDPOINT_URL_SSO_OIDC`, is
+    /// [`Self::with_service_endpoint_url`] for that service id, below an
+    /// `sts_endpoint` for STS; `endpoint_url_s3` is the object store's
+    /// reader's and is not read here.
+    ///
+    /// An `sso_session` stated without `sso_start_url` and `sso_region`
+    /// takes them, and its `sso_registration_scopes`, from the
+    /// `[sso-session]` section of that name when a walk signs in, as a
+    /// profile naming the section does; this door reads no file.
     ///
     /// A name this does not know is ignored; a later pair of one name
     /// replaces an earlier one; an empty value states nothing.
@@ -119,9 +138,13 @@ impl Session {
     /// # Errors
     ///
     /// A refusal naming the property whose value does not read as what the
-    /// name means; half a credential set, naming the half that is missing;
-    /// an IAM Identity Center sign-in that lacks one of its four values,
-    /// naming them.
+    /// name means - a `role_arn` that is not an ARN, an
+    /// `sts_regional_endpoints` that is neither `regional` nor `legacy`
+    /// included; half a credential set, naming the half that is missing; a
+    /// role naming both `source_profile` and `credential_source`; an IAM
+    /// Identity Center sign-in that lacks its account or role, or states
+    /// neither a session nor both its start URL and region, naming what is
+    /// missing.
     pub fn with_properties<K, V>(
         &self,
         properties: impl IntoIterator<Item = (K, V)>,
@@ -163,11 +186,18 @@ impl Session {
 #[derive(Default)]
 pub(crate) struct Identity {
     region: Option<String>,
+    /// Read only where `region` is not stated.
+    default_region: Option<String>,
     access_key: Option<String>,
     secret_key: Option<String>,
     session_token: Option<String>,
     anonymous: Option<bool>,
     profile: Option<String>,
+    /// Read only where `profile` is not stated.
+    default_profile: Option<String>,
+    /// `endpoint_url_<service>`: the service id as folded, and the endpoint,
+    /// in the order stated, so a later pair for one service replaces it.
+    service_endpoints: Vec<(String, String)>,
     role_arn: Option<String>,
     role_session: Option<String>,
     external_id: Option<String>,
@@ -208,18 +238,37 @@ impl Identity {
         let text = || Some(value.to_owned());
         match key {
             "region" => self.region = text(),
+            "default_region" => self.default_region = text(),
             "access_key" | "access_key_id" => self.access_key = text(),
             "secret_key" | "secret_access_key" => self.secret_key = text(),
             "session_token" => self.session_token = text(),
             "anonymous" | "no_sign_request" => self.anonymous = Some(flag(name, value)?),
             "profile" | "profile_name" => self.profile = text(),
-            "role_arn" => self.role_arn = text(),
+            "default_profile" => self.default_profile = text(),
+            "role_arn" => {
+                // Read once where it is stated, as a profile's is, so a typo
+                // is this property's refusal rather than one STS words.
+                value.parse::<crate::Arn>().map_err(|error| {
+                    refusal(&format!(
+                        "{name} {value:?} is not an ARN, which a role is named by: {error}"
+                    ))
+                })?;
+                self.role_arn = text();
+            }
             "session_name" | "role_session_name" => self.role_session = text(),
             "external_id" | "role_external_id" => self.external_id = text(),
-            "role_duration" | "role_session_duration" | "assume_role_duration_seconds" => {
+            "role_duration"
+            | "role_session_duration"
+            | "assume_role_duration_seconds"
+            | "duration_seconds" => {
                 self.role_duration = Some(seconds(name, value)?);
             }
             key if EndpointName::of(key) == Some(EndpointName::Sts) => self.sts_endpoint = text(),
+            key if EndpointName::of(key) == Some(EndpointName::Service) => {
+                let service = key.strip_prefix(SERVICE_ENDPOINT).unwrap_or(key);
+                self.service_endpoints
+                    .push((service.to_owned(), value.to_owned()));
+            }
             "sts_region" | "role_region" => self.sts_region = text(),
             "mfa_serial" | "role_mfa_serial" => self.mfa_serial = text(),
             "source_profile" | "role_source_profile" => self.source_profile = text(),
@@ -237,7 +286,13 @@ impl Identity {
             "use_dualstack_endpoint" | "dualstack_endpoint" => {
                 self.use_dualstack = Some(flag(name, value)?);
             }
-            "sts_regional_endpoints" => self.sts_regional = Some(regional(name, value)?),
+            "sts_regional_endpoints" => {
+                self.sts_regional = Some(regional(value).ok_or_else(|| {
+                    refusal(&format!(
+                        "expected {REGIONAL_SPELLINGS} for {name}, got {value}"
+                    ))
+                })?);
+            }
             "ec2_metadata_disabled" | "metadata_disabled" => {
                 self.metadata_disabled = Some(flag(name, value)?);
             }
@@ -266,11 +321,12 @@ impl Identity {
     ///
     /// # Errors
     ///
-    /// Half a credential set, or a sign-in that lacks one of its four
-    /// values, each naming what is missing.
+    /// Half a credential set, a role naming two sources, or a sign-in
+    /// lacking its account, its role or where it signs in, each naming what
+    /// is wrong.
     pub(crate) fn apply(&self, session: &Session) -> Result<Session> {
         let mut session = session.clone();
-        if let Some(region) = &self.region {
+        if let Some(region) = self.region.as_ref().or(self.default_region.as_ref()) {
             session = session.with_region(region);
         }
         match (&self.access_key, &self.secret_key) {
@@ -304,7 +360,7 @@ impl Identity {
         if let Some(anonymous) = self.anonymous {
             session = session.with_anonymous(anonymous);
         }
-        if let Some(profile) = &self.profile {
+        if let Some(profile) = self.profile.as_ref().or(self.default_profile.as_ref()) {
             session = session.with_profile(profile);
         }
         if let Some(command) = &self.credential_process {
@@ -340,11 +396,22 @@ impl Identity {
         if let Some(attempts) = self.metadata_attempts {
             session = session.with_metadata_attempts(attempts);
         }
-        // An STS endpoint stated without a role still says where STS is.
+        for (service, endpoint) in &self.service_endpoints {
+            session = session.with_service_endpoint_url(service, endpoint);
+        }
+        // An STS endpoint stated without a role still says where STS is,
+        // over an `endpoint_url_sts`.
         if let (Some(endpoint), None) = (&self.sts_endpoint, &self.role_arn) {
             session = session.with_service_endpoint_url("sts", endpoint);
         }
         if let Some(role_arn) = &self.role_arn {
+            // A role is traded with the keys of one source, as a profile's is.
+            if self.source_profile.is_some() && self.credential_source.is_some() {
+                return Err(refusal(
+                    "the role names both source_profile and credential_source, \
+                     and a role has one source",
+                ));
+            }
             let mut role = AssumedRole::new(role_arn);
             if let Some(name) = &self.role_session {
                 role = role.with_session_name(name);
@@ -375,38 +442,91 @@ impl Identity {
             }
             session = session.with_assumed_role(role);
         }
-        // A sign-in is four values or none of them, so it is assembled here
-        // rather than one property at a time.
-        let named = [
-            ("sso_start_url", &self.sso_start_url),
-            ("sso_region", &self.sso_region),
-            ("sso_account_id", &self.sso_account_id),
-            ("sso_role_name", &self.sso_role_name),
-        ];
-        if self.sso_session.is_some() || named.iter().any(|(_, value)| value.is_some()) {
-            let missing: Vec<&str> = named
-                .iter()
-                .filter(|(_, value)| value.is_none())
-                .map(|(key, _)| *key)
-                .collect();
-            if !missing.is_empty() {
-                return Err(refusal(&format!(
-                    "an IAM Identity Center sign-in needs {}",
-                    missing.join(", ")
-                )));
-            }
-            let mut sso = Sso::new(
-                self.sso_start_url.as_deref().unwrap_or_default(),
-                self.sso_region.as_deref().unwrap_or_default(),
-                self.sso_account_id.as_deref().unwrap_or_default(),
-                self.sso_role_name.as_deref().unwrap_or_default(),
-            );
-            if let Some(name) = &self.sso_session {
-                sso = sso.with_session_name(name);
-            }
+        if let Some(sso) = self.sso()? {
             session = session.with_sso(sso);
         }
         Ok(session)
+    }
+
+    /// The sign-in the `sso_*` properties state, assembled once all are in
+    /// hand: an account and a role, signed in for at a start URL in a
+    /// region - stated, or held by the `[sso-session]` section
+    /// `sso_session` names, which the walk reads ([`sso_section`]).
+    ///
+    /// # Errors
+    ///
+    /// A sign-in lacking its account or its role, or stating one of its
+    /// start URL and region without the other, or neither without a
+    /// session, naming what is missing.
+    fn sso(&self) -> Result<Option<Sso>> {
+        let place = [
+            ("sso_start_url", &self.sso_start_url),
+            ("sso_region", &self.sso_region),
+        ];
+        let named = [
+            ("sso_account_id", &self.sso_account_id),
+            ("sso_role_name", &self.sso_role_name),
+        ];
+        if self.sso_session.is_none()
+            && !place.iter().chain(&named).any(|(_, value)| value.is_some())
+        {
+            return Ok(None);
+        }
+        // The section holds the start URL and the region together, so a
+        // session leaves both to it or states both over it.
+        let from_section =
+            self.sso_session.is_some() && place.iter().all(|(_, value)| value.is_none());
+        let needed: &[(&str, &Option<String>)] = if from_section { &[] } else { &place };
+        let missing_place = needed.iter().any(|(_, value)| value.is_none());
+        let missing: Vec<&str> = needed
+            .iter()
+            .chain(&named)
+            .filter(|(_, value)| value.is_none())
+            .map(|(key, _)| *key)
+            .collect();
+        if !missing.is_empty() {
+            return Err(refusal(&format!(
+                "an IAM Identity Center sign-in needs {}{}",
+                missing.join(", "),
+                match &self.sso_session {
+                    Some(name) if missing_place => format!(
+                        ", or neither sso_start_url nor sso_region for the \
+                         [sso-session {name}] section to hold them"
+                    ),
+                    _ => String::new(),
+                }
+            )));
+        }
+        // Left empty, the start URL and the region are the section's to
+        // fill when a walk signs in.
+        let mut sso = Sso::new(
+            self.sso_start_url.as_deref().unwrap_or_default(),
+            self.sso_region.as_deref().unwrap_or_default(),
+            self.sso_account_id.as_deref().unwrap_or_default(),
+            self.sso_role_name.as_deref().unwrap_or_default(),
+        );
+        if let Some(name) = &self.sso_session {
+            sso = sso.with_session_name(name);
+        }
+        Ok(Some(sso))
+    }
+}
+
+/// The `[sso-session]` section a sign-in stated as properties still takes
+/// its start URL, region and scopes from: its name, where the properties
+/// named the section and stated neither the start URL nor the region; `None`
+/// for a sign-in that states where it signs in.
+///
+/// The walk reads the section when it signs in, as [`Profile::sso`]
+/// reads the one a profile names, and refuses a section no file defines;
+/// the property door reads no file.
+///
+/// [`Profile::sso`]: super::Profile::sso
+pub(crate) fn sso_section(sso: &Sso) -> Option<&str> {
+    if sso.start_url().is_empty() && sso.region().is_empty() {
+        sso.session_name()
+    } else {
+        None
     }
 }
 
@@ -421,15 +541,23 @@ pub(crate) enum EndpointName {
     Sts,
     /// The instance metadata service: this reader.
     Metadata,
+    /// Any other service, by the service id after [`SERVICE_ENDPOINT`]
+    /// (`endpoint_url_sts`, `endpoint_url_s3tables`): this reader.
+    Service,
 }
+
+/// What a service's own endpoint name is the service id after, once folded:
+/// `AWS_ENDPOINT_URL_<SERVICE>` without its `AWS_`.
+const SERVICE_ENDPOINT: &str = "endpoint_url_";
 
 impl EndpointName {
     /// Every name an endpoint is stated under, once folded, and what it
-    /// places: the one list the two property readers match an endpoint by,
-    /// and the S3 options' environment sweep turns no name of into a knob -
-    /// a stated endpoint outranks `AWS_ENDPOINT_URL_<SERVICE>` and the
-    /// profile and survives `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`, which a
-    /// variable the environment merely holds must not.
+    /// places - beside [`SERVICE_ENDPOINT`] before any service id, which is
+    /// [`Self::Service`]: the one list the two property readers match an
+    /// endpoint by, and the S3 options' environment sweep turns no name of
+    /// into a knob - a stated endpoint outranks `AWS_ENDPOINT_URL_<SERVICE>`
+    /// and the profile and survives `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`,
+    /// which a variable the environment merely holds must not.
     const ALL: [(&'static str, Self); 14] = [
         ("endpoint", Self::Store),
         ("endpoint_url", Self::Store),
@@ -453,6 +581,11 @@ impl EndpointName {
             .iter()
             .find(|(name, _)| *name == key)
             .map(|(_, placed)| *placed)
+            .or_else(|| {
+                key.strip_prefix(SERVICE_ENDPOINT)
+                    .is_some_and(|service| !service.is_empty())
+                    .then_some(Self::Service)
+            })
     }
 }
 
@@ -478,12 +611,24 @@ pub(crate) fn flag(name: &str, value: &str) -> Result<bool> {
     })
 }
 
-/// Whether STS is reached in the region: `regional`, `legacy`, or a boolean.
-fn regional(name: &str, value: &str) -> Result<bool> {
-    match value.to_ascii_lowercase().as_str() {
-        "regional" => Ok(true),
-        "legacy" => Ok(false),
-        _ => flag(name, value),
+/// The spellings [`regional`] reads, for a refusal to list.
+pub(crate) const REGIONAL_SPELLINGS: &str = "regional/legacy, or true/false";
+
+/// Whether STS is reached in the region, read off an
+/// `sts_regional_endpoints` setting: `regional` is `true`, `legacy` is
+/// `false`, in any case and trimmed; anything else is `None`, which each
+/// reader - this property, `AWS_STS_REGIONAL_ENDPOINTS`, the profile key -
+/// refuses naming itself, as botocore refuses a value outside the two.
+pub(crate) fn regional(text: &str) -> Option<bool> {
+    let text = text.trim();
+    if text.eq_ignore_ascii_case("regional") {
+        Some(true)
+    } else if text.eq_ignore_ascii_case("legacy") {
+        Some(false)
+    } else {
+        // A flag's spellings say the same two things, through the one
+        // boolean table every setting reads.
+        crate::boolean::bool_from_text(text)
     }
 }
 

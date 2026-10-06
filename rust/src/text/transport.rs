@@ -16,25 +16,84 @@ use smol_str::SmolStr;
 
 use crate::{Charset, Codec, Cursor, Error, IOBase, Result, charset};
 
-/// The decoded transport over a handle the reader owns, for a read that
-/// outlives the call: a located handle streams from its location, any
-/// other through a cursor over itself.
+/// The decoded transport over a handle, for a read that outlives the call:
+/// the stream the handle owns where it has one ([`IOBase::owned_stream_bytes`],
+/// an object store's one `GET`), else a handle of the reader's own - a bound
+/// location streamed from its filesystem, any other reopened at its location
+/// and read through a cursor over itself.
 ///
 /// One ask of the handle answers both the codings the transport peels and
 /// the charset it decodes under, the one `media_type` read the call-count
 /// pins hold every text-shaped read to.
-pub(crate) fn owned_decoded<H: IOBase + 'static>(handle: H) -> Box<dyn Read + Send + 'static> {
+///
+/// # Errors
+///
+/// Returns the handle's refusal to stream or to be reopened.
+pub(crate) fn decoded_over(
+    handle: &(impl IOBase + ?Sized),
+) -> Result<Box<dyn Read + Send + 'static>> {
+    if let Some(stream) = handle.owned_stream_bytes(0)? {
+        let media_type = crate::iobase::stored_media_type(handle)?;
+        return Ok(decoded_stream(stream, &media_type));
+    }
+    owned_decoded(crate::iobase::owned_handle(handle)?)
+}
+
+/// [`decoded_over`] for a handle the reader already owns: its own stream
+/// where it has one, else a cursor over itself.
+///
+/// # Errors
+///
+/// Returns the handle's refusal to stream.
+pub(crate) fn owned_decoded<H: IOBase + 'static>(
+    handle: H,
+) -> Result<Box<dyn Read + Send + 'static>> {
+    if let Some(stream) = handle.owned_stream_bytes(0)? {
+        let media_type = crate::iobase::stored_media_type(&handle)?;
+        return Ok(decoded_stream(stream, &media_type));
+    }
     let media_type = handle.media_type();
     let codings = media_type.encodings().to_vec();
     let charset = Charset::from_media_type(media_type);
-    match handle.bound_location().cloned() {
+    Ok(match handle.bound_location().cloned() {
         Some(bound) => Box::new(BoundReader::new(bound, codings, charset)),
         None => Box::new(NonemptySendDecodedReader::new(
             Box::new(Cursor::new(handle)),
             codings,
             charset,
         )),
+    })
+}
+
+/// A transport that answers one refusal and nothing else: what a listed
+/// leaf whose stream was refused decodes as, so the refusal reaches the
+/// reader as that leaf's first line rather than ending the listing.
+pub(crate) struct Refused(Option<Error>);
+
+impl Refused {
+    pub(crate) fn new(error: Error) -> Self {
+        Self(Some(error))
     }
+}
+
+impl Read for Refused {
+    fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+        match self.0.take() {
+            Some(error) => Err(std::io::Error::other(error)),
+            None => Ok(0),
+        }
+    }
+}
+
+/// The decoded transport over a raw stream of the bytes `media_type`
+/// describes: its codings peeled, its charset laid over them.
+fn decoded_stream(
+    raw: Box<dyn Read + Send + 'static>,
+    media_type: &crate::MediaType,
+) -> Box<dyn Read + Send + 'static> {
+    let codings = media_type.encodings().to_vec();
+    let charset = Charset::from_media_type(media_type);
+    Box::new(NonemptySendDecodedReader::new(raw, codings, charset))
 }
 
 /// The same transport borrowed, for a read that ends inside the call - a

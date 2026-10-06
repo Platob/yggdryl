@@ -23,7 +23,7 @@ use smol_str::{SmolStr, SmolStrBuilder};
 use crate::{Error, Result, Str, hashing::stable_hash_display};
 use crate::{MediaType, MimeType, Scheme};
 
-mod arn;
+pub(crate) mod arn;
 mod authority;
 mod datatype;
 mod extensions;

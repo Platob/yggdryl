@@ -236,7 +236,7 @@ mod transfer;
 
 pub use bytes::{Reader, Writer};
 pub(crate) use bytes::{UNRESOLVED_MEDIA_TYPE, rest_of};
-pub(crate) use hierarchy::{container_is_tabular, owned_handle};
+pub(crate) use hierarchy::{container_is_tabular, owned_handle, stored_media_type};
 use hierarchy::{descend, no_children};
 pub(crate) use lifecycle::{coding_mime, not_atomic, oversized, reject_container};
 pub use lifecycle::{not_empty, skip_absent};
@@ -307,6 +307,23 @@ pub trait IOBase: Send + IOMedia {
     /// Returns [`std::io::ErrorKind::InvalidInput`] when `batch_size` is zero.
     fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>> {
         ByteStream::from_handle(self, position, batch_size)
+    }
+
+    /// The bytes from `position` as a reader that outlives the handle, where
+    /// the backend has one of its own: an object store's one resuming `GET`
+    /// for the whole drain. `None` says the handle streams only through
+    /// itself, and a reader that must own its stream reopens the handle at
+    /// its location and reads through a cursor over that.
+    ///
+    /// # Errors
+    ///
+    /// Returns the backend's refusal to open the stream.
+    fn owned_stream_bytes(
+        &self,
+        position: u64,
+    ) -> Result<Option<Box<dyn std::io::Read + Send + 'static>>> {
+        let _ = position;
+        Ok(None)
     }
 
     /// Write `bytes` at `offset`, returning the bytes written.

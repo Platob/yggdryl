@@ -149,9 +149,10 @@ Rust only: Python and Node expose no `Session`; an S3 handle there takes the
 same knobs by name through `options` and walks the same chain.
 
 The credential chain is botocore's, in botocore's order, with the console
-sign-in where botocore has it; a configured but broken source is recorded and
-passed over, and the walk refuses only when every source has been asked,
-naming each.
+sign-in where botocore has it; a source the caller configured ends the walk
+when it fails - a named profile nobody wrote, a role that cannot be assumed,
+a lapsed sign-in, a failing `credential_process`, half a key pair - naming
+the source and why, and only an absent source lets the walk go on.
 
 | Order | Source |
 | --- | --- |
@@ -169,8 +170,8 @@ naming each.
 | Behavior | Rule |
 | --- | --- |
 | laziness | `Session::new()` states nothing; the chain is walked once, on the first request, and cached |
-| refresh | a temporary set is replaced 15 minutes before it lapses (a console sign-in's, 5 minutes); a failed refresh keeps the set until it actually lapses; an unsigned answer is held 5 minutes, a failure 30 seconds |
-| shared files | `~/.aws/config` and `~/.aws/credentials` are read again whenever either moved (length or modification time) at every walk, after a store's refusal (`invalidate`, `invalidate_if`) and while an unsigned or failed answer is held: a set dumped anew is picked up with no restart |
+| refresh | a temporary set is replaced 15 minutes before it lapses (a console sign-in's, 5 minutes); a failed refresh keeps the set down to 10 minutes before it lapses (the mandatory window, inside which the failure is the refusal), and a refresh in progress never blocks a request the held set can still sign; an unsigned answer is held 5 minutes, a failure 30 seconds |
+| shared files | `~/.aws/config` and `~/.aws/credentials` are read again whenever either moved (length or modification time) at every walk, after a store's refusal (`invalidate`, `invalidate_if`) and while an unsigned or failed answer is held: a set dumped anew is picked up at the next walk, with no restart |
 | passed over | a set whose expiry is before the machine's clock, or whose key a store refused, is passed over by name (key masked as `ASIA...DUMP`, with `write a fresh set under [default] in <path>, or sign in again`) and the sources after it are asked; `with_credentials` is never passed over |
 | store refusals | `ExpiredToken`, `ExpiredTokenException`, `TokenRefreshRequired`: for good; `InvalidAccessKeyId`, `InvalidToken`, `InvalidClientTokenId`: 30 seconds or until the files move; the S3 client signs once more only when the session now answers another set |
 | dumped expiry | read under `aws_credential_expiration`, `x_security_token_expires`, `aws_session_expiration`, `aws_expiration` or `expiration`; two that disagree, or one nothing reads, is a named refusal |

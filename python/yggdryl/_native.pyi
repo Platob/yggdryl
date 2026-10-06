@@ -4275,7 +4275,17 @@ class HttpStats(TypedDict):
     redirects: int
     retry_tokens: int
 
+class HostStats(TypedDict):
+    requests: int
+    gets: int
+    heads: int
+    puts: int
+    posts: int
+    deletes: int
+    others: int
+
 def http_session() -> Session: ...
+def http_process_stats() -> dict[str, HostStats]: ...
 
 class Headers:
     """An HTTP header section: names compared ignoring case."""

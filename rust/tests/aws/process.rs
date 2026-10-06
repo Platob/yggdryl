@@ -2,11 +2,13 @@
 //! names, run the way a shell would split its line.
 //!
 //! The processes are `sh` running `printf` over a document handed to it as an
-//! argument, so every one is a real program on a real pipe, and the tests
-//! that spawn one are Unix-only. A session that states only its process and
-//! consults no environment walks nothing else, so most of these need no
-//! socket; the one that proves the chain walks on past a program that cannot
-//! be started ends at the identity fake's instance metadata service.
+//! argument on Unix, and `powershell.exe` building one on Windows, so every
+//! one is a real program on a real pipe. A session that states only its
+//! process and consults no environment walks nothing else, so most of these
+//! need no socket; the one that proves a program that cannot be started ends
+//! the walk counts the identity fake's requests, none of which the instance's
+//! role answers. The bound a process runs under is pinned through
+//! `yggdryl::internals`, since no session states one below the default.
 
 use std::time::SystemTime;
 #[cfg(unix)]
@@ -24,9 +26,6 @@ use crate::mod_::sealed;
 const FAR: &str = "2099-01-01T00:00:00Z";
 #[cfg(unix)]
 const FAR_SECONDS: u64 = 4_070_908_800;
-
-/// The keys the fake's instance role answers.
-const INSTANCE_KEY: &str = "ASIAINSTANCEROLE";
 
 /// A program no machine has.
 const MISSING: &str = "yggdryl-no-such-credential-helper";
@@ -202,27 +201,22 @@ fn the_standard_error_a_refusal_quotes_is_bounded() {
 }
 
 #[test]
-fn an_unknown_program_is_a_recorded_failure_and_the_chain_walks_on() {
+fn an_unknown_program_is_refused_by_name_and_ends_the_walk() {
+    // The fake's instance has a role: a walk that went on would answer it.
     let identity = Identity::start();
     let session = sealed(&identity, "process-unknown")
         .with_credential_process(format!("{MISSING} --profile trading"));
 
-    assert_eq!(found(&session).access_key_id(), INSTANCE_KEY);
-    assert_eq!(session.credential_source(), Some("instance metadata"));
-    assert_eq!(
-        identity.request_count(),
-        3,
-        "the instance's token, listing and role, after the process failed to start"
-    );
-
-    let identity = Identity::start();
-    identity.set_imds_role(None);
-    let session = sealed(&identity, "process-unknown-refused").with_credential_process(MISSING);
     let message = refused(&session);
     assert!(message.contains("credential process"), "{message}");
     assert!(
         message.contains(&format!("could not run credential_process {MISSING}")),
         "the program is named: {message}"
+    );
+    assert_eq!(
+        identity.request_count(),
+        0,
+        "a configured process that fails ends the walk: the instance is never asked"
     );
 }
 
@@ -258,21 +252,30 @@ fn quoted_and_escaped_arguments_cross_the_shell_style_split_whole() {
 
 #[cfg(unix)]
 #[test]
-fn the_process_reads_nothing_on_its_standard_input() {
-    let json = document("AKIASTDIN");
-    // `cat` returns at once only because its input is empty, not inherited.
+fn the_process_is_handed_a_terminal_and_reads_nothing_from_anything_else() {
+    use std::io::IsTerminal;
+
+    let (null, terminal) = (document("AKIASTDIN"), document("AKIATERMINAL"));
+    // On a terminal the helper may prompt, so it is handed this one; on
+    // anything else `cat` returns at once only because its input is empty,
+    // not inherited.
     let session = stated().with_credential_process(format!(
-        "sh -c 'cat > /dev/null; printf %s \"$0\"' '{json}'"
+        "sh -c 'if test -t 0; then printf %s \"$1\"; else cat > /dev/null; printf %s \"$0\"; fi' '{null}' '{terminal}'"
     ));
 
-    assert_eq!(found(&session).access_key_id(), "AKIASTDIN");
+    let expected = if std::io::stdin().is_terminal() {
+        "AKIATERMINAL"
+    } else {
+        "AKIASTDIN"
+    };
+    assert_eq!(found(&session).access_key_id(), expected);
 }
 
 // --- where a process sits in the chain ----------------------------------------------
 
 #[cfg(unix)]
 #[test]
-fn a_stated_process_answers_ahead_of_the_environment_keys_and_a_failing_one_is_passed_over() {
+fn a_stated_process_answers_ahead_of_the_environment_keys_and_a_failing_one_ends_the_walk() {
     let pairs = [
         ("AWS_ACCESS_KEY_ID", "AKIAENVIRONMENT"),
         ("AWS_SECRET_ACCESS_KEY", "environment-secret"),
@@ -283,9 +286,13 @@ fn a_stated_process_answers_ahead_of_the_environment_keys_and_a_failing_one_is_p
     assert_eq!(found(&answering).access_key_id(), "AKIAPROCESS");
     assert_eq!(answering.credential_source(), Some("credential process"));
 
-    let failing = local("process-passed-over", &pairs).with_credential_process("sh -c 'exit 1'");
-    assert_eq!(found(&failing).access_key_id(), "AKIAENVIRONMENT");
-    assert_eq!(failing.credential_source(), Some("environment"));
+    // The keys behind it never answer for a configured process that failed.
+    let failing = local("process-ends-the-walk", &pairs)
+        .with_credential_process("sh -c 'echo vault-said-no >&2; exit 1'");
+    let message = refused(&failing);
+    assert!(message.contains("credential process"), "{message}");
+    assert!(message.contains("vault-said-no"), "{message}");
+    assert!(!message.contains("AKIAENVIRONMENT"), "{message}");
 }
 
 #[cfg(unix)]
@@ -321,4 +328,116 @@ fn a_profile_s_process_answers_behind_the_credentials_file_s_keys_and_ahead_of_t
         marker.exists(),
         "the process ran ahead of the config file's keys"
     );
+}
+
+// --- on Windows ---------------------------------------------------------------------
+
+/// A `credential_process` line running `script` under `powershell.exe`,
+/// the program named by its quoted path the way an installed helper's is.
+#[cfg(windows)]
+fn powershell(script: &str) -> String {
+    let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_owned());
+    format!(
+        r#""{root}\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "{script}""#
+    )
+}
+
+/// A `powershell.exe` script printing the document for `access_key`, built with no
+/// double quote for the Windows split to take.
+#[cfg(windows)]
+fn windows_document(access_key: &str) -> String {
+    format!(
+        "@{{Version=1;AccessKeyId='{access_key}';SecretAccessKey='windows-secret';\
+         SessionToken='windows-token';Expiration='2099-01-01T00:00:00Z'}} | ConvertTo-Json -Compress"
+    )
+}
+
+#[cfg(windows)]
+#[test]
+fn a_windows_credential_process_line_runs_and_its_document_is_read() {
+    let session = stated().with_credential_process(powershell(&windows_document("AKIAWINDOWS")));
+
+    let keys = found(&session);
+    assert_eq!(keys.access_key_id(), "AKIAWINDOWS");
+    assert_eq!(keys.session_token(), Some("windows-token"));
+    assert_eq!(session.credential_source(), Some("credential process"));
+}
+
+#[cfg(windows)]
+#[test]
+fn a_windows_process_that_exits_non_zero_is_refused_quoting_its_standard_error_and_status() {
+    let session = stated().with_credential_process(powershell(
+        "[Console]::Error.WriteLine('the vault is sealed'); exit 3",
+    ));
+
+    let message = refused(&session);
+    assert!(message.contains("credential process"), "{message}");
+    assert!(message.contains("the vault is sealed"), "{message}");
+    assert!(message.contains("exit code: 3"), "{message}");
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    use std::time::{Duration, Instant};
+
+    use yggdryl::internals::aws_process::run_with;
+
+    /// The program a line runs, as a refusal names it, and the line: it
+    /// prints the document for `AKIABOUND` only after a pause.
+    #[cfg(unix)]
+    fn pausing() -> (String, String) {
+        let json = super::document("AKIABOUND");
+        (
+            "sh".to_owned(),
+            format!("sh -c 'sleep 1; printf %s \"$0\"' '{json}'"),
+        )
+    }
+
+    #[cfg(windows)]
+    fn pausing() -> (String, String) {
+        let line = super::powershell(&format!(
+            "Start-Sleep -Seconds 1; {}",
+            super::windows_document("AKIABOUND")
+        ));
+        let program = line
+            .split('"')
+            .nth(1)
+            .expect("the line opens with the quoted program")
+            .to_owned();
+        (program, line)
+    }
+
+    #[test]
+    fn a_process_that_outlives_its_bound_is_killed_and_named() {
+        let (program, line) = pausing();
+        let started = Instant::now();
+
+        let message = run_with(&line, Some(Duration::from_millis(200)))
+            .expect_err("the process outlives its bound")
+            .to_string();
+
+        assert!(
+            message.contains(&format!(
+                "credential_process {program} did not exit within 200ms, so it was killed"
+            )),
+            "the program and the bound are named: {message}"
+        );
+        assert!(
+            !message.contains("AKIABOUND"),
+            "nothing it printed is read: {message}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "the refusal comes at the bound, not when the process would have ended"
+        );
+    }
+
+    #[test]
+    fn an_unbounded_process_is_waited_for_however_long_it_takes() {
+        let (_, line) = pausing();
+
+        let keys = run_with(&line, None).expect("no bound kills nothing");
+
+        assert_eq!(keys.access_key_id(), "AKIABOUND");
+    }
 }

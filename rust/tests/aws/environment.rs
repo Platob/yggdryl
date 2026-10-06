@@ -249,6 +249,58 @@ mod internal {
     }
 
     #[test]
+    fn a_key_spelling_botocore_never_reads_is_kept_from_the_sweep() {
+        use yggdryl::internals::s3_properties::swept;
+        use yggdryl::s3::S3Options;
+
+        // Stripped of `AWS_`, each pair would read as the S3 options' own
+        // keys - an explicit set beating `AWS_ACCESS_KEY_ID`, a profile and
+        // every other source - where botocore reads none of them.
+        let spellings = [
+            "AWS_ACCESS_KEY",
+            "AWS_SECRET_KEY",
+            "AWS_S3_ACCESS_KEY_ID",
+            "AWS_S3_SECRET_ACCESS_KEY",
+        ];
+        for name in spellings {
+            assert!(is_native(name), "{name} is no knob of the sweep's");
+            assert!(
+                is_native(&name.to_ascii_lowercase()),
+                "{name} in lower case is no knob of the sweep's either"
+            );
+        }
+
+        let variables: Vec<(String, String)> = [
+            ("AWS_ACCESS_KEY", "AKIALEGACY"),
+            ("AWS_SECRET_KEY", "legacy-secret"),
+            ("AWS_S3_ACCESS_KEY_ID", "AKIAS3ONLY"),
+            ("AWS_S3_SECRET_ACCESS_KEY", "s3-secret"),
+            ("aws_access_key", "AKIALOWER"),
+            ("aws_secret_key", "lower-secret"),
+            ("AWS_ACCESS_KEY_ID", "AKIAENV"),
+            ("AWS_SECRET_ACCESS_KEY", "env-secret"),
+            // A knob the sweep does read, so an empty answer is the
+            // spellings kept out rather than a sweep that read nothing.
+            ("AWS_S3_FORCE_PATH_STYLE", "true"),
+        ]
+        .iter()
+        .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+        .collect();
+        let found = swept(&S3Options::default(), variables);
+        assert_eq!(
+            found,
+            [("S3_FORCE_PATH_STYLE".to_owned(), "true".to_owned())]
+        );
+        let options = S3Options::default()
+            .with_properties(found)
+            .expect("readable properties");
+        assert!(
+            options.credentials().is_none(),
+            "no swept spelling states a key pair"
+        );
+    }
+
+    #[test]
     fn the_crate_s_own_knobs_and_foreign_variables_are_not_the_session_s() {
         for name in [
             "AWS_SSE_TYPE",
