@@ -232,3 +232,39 @@ fn a_source_is_the_first_half_of_an_identifiers_key_and_the_base_source_is_never
     assert!(ids.remove(&IdKey::base(IdType::Isin)).is_none());
     assert!(ids.is_empty());
 }
+
+/// The source owns one rule beside its type's: every value `bic` gives is a
+/// BIC and every value `legalentityidentifier` gives an LEI, held by the
+/// code's shape and upper-cased; every other source the crate names - and
+/// any other word - holds a value to its type's rule alone.
+#[test]
+fn only_the_bic_and_lei_sources_hold_their_values_to_a_code() {
+    let held = |src: &IdSource, value: &str| {
+        Identifier::new(IdKey::new(src.clone(), IdType::ExecutingFirm), value)
+            .map(|id| id.value().to_owned())
+    };
+    for src in IdSource::KNOWN.iter().chain([&source("firm.x")]) {
+        match src {
+            IdSource::Bic => {
+                assert!(held(src, "T-1").is_err());
+                assert_eq!(held(src, "deutdeff").unwrap(), "DEUTDEFF");
+                assert!(
+                    held(src, "HWUPKR0MPOU8FGXBT394").is_err(),
+                    "an LEI is no BIC"
+                );
+            }
+            IdSource::LegalEntityIdentifier => {
+                assert!(held(src, "T-1").is_err());
+                assert_eq!(
+                    held(src, "hwupkr0mpou8fgxbt394").unwrap(),
+                    "HWUPKR0MPOU8FGXBT394"
+                );
+                assert!(held(src, "DEUTDEFF").is_err(), "a BIC is no LEI");
+            }
+            other => {
+                assert_eq!(held(other, "t-1").unwrap(), "t-1", "{other}");
+                assert_eq!(held(other, "deutdeff").unwrap(), "deutdeff", "{other}");
+            }
+        }
+    }
+}

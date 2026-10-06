@@ -13,11 +13,11 @@ from yggdryl import Identifier, Identifiers, Scalar
 
 
 def test_an_identifier_reads_its_key_exactly_and_trims_its_value() -> None:
-    held = Identifier("bic:executing_trader", " T-1 ")
-    assert (held.src, held.type, held.value) == ("bic", "executingtrader", "T-1")
-    assert held.key == "bic:executingtrader"
-    assert str(held) == "bic:executingtrader=T-1"
-    assert repr(held) == "Identifier('bic:executingtrader', 'T-1')"
+    held = Identifier("proprietary:executing_trader", " T-1 ")
+    assert (held.src, held.type, held.value) == ("proprietary", "executingtrader", "T-1")
+    assert held.key == "proprietary:executingtrader"
+    assert str(held) == "proprietary:executingtrader=T-1"
+    assert repr(held) == "Identifier('proprietary:executingtrader', 'T-1')"
     for spelled in ("clordid", "ClOrdID", "base:clordid", "BASE:CLORDID", "fix:clordid", "FIX:ClOrdID"):
         bare = Identifier(spelled, "C-2")
         assert (bare.src, bare.type, bare.key) == ("base", "clordid", "clordid"), spelled
@@ -64,6 +64,101 @@ def test_a_security_type_checks_its_code() -> None:
     assert Identifier("isinnumber", "US0378331005").type == "isin"
 
 
+def test_a_value_under_the_bic_or_lei_source_is_refused_where_it_is_not_that_code() -> None:
+    # Two sources are standards whose every value is a registered code: a
+    # value under `bic` is a BIC and one under `legalentityidentifier` an LEI,
+    # whatever type of name it is, refused by its shape and located on the key.
+    with pytest.raises(ValueError) as refused:
+        Identifier("bic:executingtrader", " T-1 ")
+    assert str(refused.value) == (
+        "invalid record value at bic:executingtrader: a value under the bic source is a BIC: "
+        'expected eight or eleven characters, got "T-1"'
+    )
+    with pytest.raises(ValueError) as refused:
+        Identifier("legalentityidentifier:clientid", "CL")
+    assert str(refused.value) == (
+        "invalid record value at legalentityidentifier:clientid: a value under the "
+        'legalentityidentifier source is an LEI: expected twenty characters, got "CL"'
+    )
+    for key, value in (
+        ("bic:account", "ACCOUNT-0001"),
+        ("bic:partyrole99", "ACC-1"),
+        ("legalentityidentifier:partyrole99", "ACC-1"),
+    ):
+        with pytest.raises(ValueError, match=key):
+            Identifier(key, value)
+    # A key whose type has a rule of its own holds the value to both: an ISIN
+    # is no BIC, and an LEI's type and source agree.
+    for key, value in (("bic:isin", "US0378331005"), ("legalentityidentifier:lei", "HWUPKR0MPOU8FGXBT3")):
+        with pytest.raises(ValueError):
+            Identifier(key, value)
+    # Held as the code stores it: upper-cased, eight and eleven as stated, a
+    # check digit that does not close and an unlisted country admitted.
+    assert str(Identifier("bic:executingfirm", " deutdeff500 ")) == "bic:executingfirm=DEUTDEFF500"
+    assert Identifier("bic:account", "deutzzff").value == "DEUTZZFF"
+    assert Identifier("legalentityidentifier:lei", "hwupkr0mpou8fgxbt394").value == "HWUPKR0MPOU8FGXBT394"
+    assert Identifier("legalentityidentifier:clientid", "HWUPKR0MPOU8FGXBT395").value == "HWUPKR0MPOU8FGXBT395"
+    # Every other source keeps the type's rule alone, case included.
+    assert Identifier("base:executingfirm", "deutdeff").value == "deutdeff"
+    assert Identifier("oms:account", "acc-1").value == "acc-1"
+    # A bridge's key whose namespace folds to the source is held to it.
+    assert Identifier.from_key("BIC_ClOrdID", "C-1") is None
+    assert str(Identifier.from_key("BIC_ClOrdID", "deutdeff")) == "bic:clordid=DEUTDEFF"
+
+
+def test_a_bic_or_lei_ranks_by_its_code_and_a_real_one_replaces_a_typo_whatever_the_order() -> None:
+    closing, typo, other = "HWUPKR0MPOU8FGXBT394", "HWUPKR0MPOU8FGXBT395", "7LTWFZYICNSX8D621K86"
+    for stated in ((typo, closing), (closing, typo), (typo, closing, other)):
+        held = Identifiers([Identifier("legalentityidentifier:clientid", value) for value in stated])
+        assert held.get_from("legalentityidentifier:clientid") == closing, stated
+    # A BIC of a country ISO 3166 does not list ranks below a listed one.
+    for stated in (("DEUTZZFF", "DEUTDEFF"), ("DEUTDEFF", "DEUTZZFF")):
+        held = Identifiers([Identifier("bic:executingfirm", value) for value in stated])
+        assert held.get_from("bic:executingfirm") == "DEUTDEFF", stated
+        # The base key the code filled ranks as the code it holds, so the
+        # real one is the role's answer too.
+        assert held.get("executingfirm") == "DEUTDEFF", stated
+    for stated in (("5493001KJTIIGC8Y1R13", "5493001KJTIIGC8Y1R12"), ("5493001KJTIIGC8Y1R12", "5493001KJTIIGC8Y1R13")):
+        held = Identifiers([Identifier("legalentityidentifier:account", value) for value in stated])
+        assert (held.get("account"), len(held)) == ("5493001KJTIIGC8Y1R12", 2), stated
+    # A map read raw closes the base key on the highest-ranked source: a typo
+    # ranks below a word.
+    assert Identifiers.from_dict({"legalentityidentifier:clientid": typo, "zzz:clientid": "C-1"}).get("clientid") == "C-1"
+    assert Identifiers.from_dict({"abc:clientid": "C-1", "legalentityidentifier:clientid": typo}).get("clientid") == "C-1"
+    assert (
+        Identifiers.from_dict({"legalentityidentifier:clientid": closing, "zzz:clientid": "C-1"}).get("clientid")
+        == closing
+    ), "a closing code is as real as a word, and comes first"
+
+
+def test_a_short_name_and_a_legal_form_are_held_by_their_codes() -> None:
+    # An ISO 18774 short name is a security identifier with no FIX source
+    # code; an ISO 20275 legal form is neither a security nor a party.
+    for spelling in ("fisn", "FISN", "FISNCode", "FinancialInstrumentShortName"):
+        held = Identifier(spelling, "acme corp/sh")
+        assert (held.key, held.value) == ("fisn", "ACME CORP/SH"), spelling
+    assert Identifier("fisn", "ACME CORP/AMORT PN W/P/C").value == "ACME CORP/AMORT PN W/P/C"
+    assert Identifier("fisn", "ACME/" + "S" * 30).value == "ACME/" + "S" * 30, "35 bytes"
+    for refused in ("ACME CORP SH", "/SH", "ACME/" + "S" * 31):
+        with pytest.raises(ValueError, match="fisn"):
+            Identifier("fisn", refused)
+    for spelling in ("elf", "ELF", "EntityLegalForm", "entity_legal_form_code"):
+        held = Identifier(spelling, "2hbr")
+        assert (held.key, held.value) == ("elf", "2HBR"), spelling
+    for refused in ("2HB", "2H-R"):
+        with pytest.raises(ValueError, match="elf"):
+            Identifier("elf", refused)
+    # A bridge's key names a short name by its code's spelling, or whole as a
+    # bare ISIN is, and never a legal form or a product category, which name
+    # no security.
+    assert str(Identifier.from_key("OMS_FISNCODE", "acme corp/sh")) == "oms:fisn=ACME CORP/SH"
+    for key in ("FISN", "FinancialInstrumentShortName"):
+        assert str(Identifier.from_key(key, "acme corp/sh")) == "fisn=ACME CORP/SH", key
+    assert Identifier.from_key("OMS_FISN", "acme corp/sh") is None, "a bare short name ends no key"
+    for key in ("OMS_ELFCODE", "EntityLegalFormCode", "EUSIPACode", "SSPACategory"):
+        assert Identifier.from_key(key, "2HBR") is None, key
+
+
 def test_a_name_no_key_spells_is_read_for_the_identifier_name_it_ends_with() -> None:
     def read(key: str, value: str) -> str:
         keyed = Identifier.from_key(key, value)
@@ -79,6 +174,8 @@ def test_a_name_no_key_spells_is_read_for_the_identifier_name_it_ends_with() -> 
     assert read("ISINCode", "US0378331005") == "isin=US0378331005"
     assert read("security_cusip", "037833100") == "cusip=037833100"
     assert read("firm.isin", "us0378331005") == "firm:isin=US0378331005"
+    assert read("X-SWX-VALOR", "1221405") == "valor=1221405", "a vendor's source spelling"
+    assert read("OMS_SIXSymbol", "HOLN") == "oms:exchsymb=HOLN"
     for key in ("underlyingisin", "legisin", "transversalkey", "symbol", ""):
         assert Identifier.from_key(key, "US0378331005") is None, key
     assert Identifier.from_key("ClOrdID", "null") is None

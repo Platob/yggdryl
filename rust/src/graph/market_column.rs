@@ -1,4 +1,4 @@
-//! The thirty-four columns every market element is stated in.
+//! The thirty-five columns every market element is stated in.
 //!
 //! One column per fact [`Market`] answers, under one name and one datatype
 //! each, in one order, so every generated schema of a market - an
@@ -88,6 +88,8 @@ pub enum MarketColumn {
     FxRates,
     /// The ticker the instrument goes by.
     Ticker,
+    /// The strike price of the option the element is about.
+    StrikePx,
     /// The free-form facts it carries, key to value, sorted.
     Metadata,
 }
@@ -96,7 +98,7 @@ impl MarketColumn {
     /// Every market column in canonical row order: the category and the
     /// type first, then what the element is about - its prices, then its
     /// quantities - the instrument, the execution and the quote.
-    pub const ALL: [Self; 34] = [
+    pub const ALL: [Self; 35] = [
         Self::MarketDataKind,
         Self::MarketDataType,
         Self::Price,
@@ -130,6 +132,7 @@ impl MarketColumn {
         Self::AskCcy,
         Self::FxRates,
         Self::Ticker,
+        Self::StrikePx,
         Self::Metadata,
     ];
 
@@ -170,6 +173,7 @@ impl MarketColumn {
             Self::AskCcy => "askccy",
             Self::FxRates => "fxrates",
             Self::Ticker => "ticker",
+            Self::StrikePx => "strikepx",
             Self::Metadata => "metadata",
         }
     }
@@ -211,6 +215,7 @@ impl MarketColumn {
             Self::AskCcy => "Ask Currency",
             Self::FxRates => "FX Rates",
             Self::Ticker => "Ticker",
+            Self::StrikePx => "Strike Price",
             Self::Metadata => "Metadata",
         }
     }
@@ -220,10 +225,10 @@ impl MarketColumn {
     pub const fn description(self) -> &'static str {
         match self {
             Self::MarketDataKind => {
-                "The category the element is filed under: an order, a quote, an execution, a trade, a book or another market data kind; UNKN where none is stated."
+                "The category the element is filed under: an order, a quote, an execution, a trade, a book or another market data kind; UKNW where none is stated."
             }
             Self::MarketDataType => {
-                "The type of its kind the element is: its order, quote, trade or book entry type; UNKN where none is stated."
+                "The type of its kind the element is: its order, quote, trade or book entry type; UKNW where none is stated."
             }
             Self::Price => "The price the element is about.",
             Self::StopPx => "The price a stop order triggers at.",
@@ -234,7 +239,7 @@ impl MarketColumn {
                 "The part of the quantity kept from the market: an iceberg's reserve."
             }
             Self::Unit => "The unit the quantity is counted in; empty where it states none.",
-            Self::Side => "The side the element takes; UNKN where it states none.",
+            Self::Side => "The side the element takes; UKNW where it states none.",
             Self::SecurityIds => {
                 "The security identifiers the element names, one per type, sorted by key: the type to its value, the type's answer; what each source stated of a type is side information in metadata under securityids.src:type."
             }
@@ -264,6 +269,7 @@ impl MarketColumn {
                 "The FX rates the element states: a target currency to the rate an amount is divided by."
             }
             Self::Ticker => "The ticker the instrument goes by.",
+            Self::StrikePx => "The strike price of the option the element is about.",
             Self::Metadata => {
                 "The free-form facts the element carries beside the side information of its identifier maps - what each source stated of a type, under the map's name and the key, securityids.src:type - sorted by key."
             }
@@ -285,6 +291,7 @@ impl MarketColumn {
             Self::MarketDataType => DataType::MarketDataType,
             Self::Price
             | Self::StopPx
+            | Self::StrikePx
             | Self::Quantity
             | Self::DisplayQty
             | Self::HiddenQty
@@ -322,8 +329,8 @@ impl MarketColumn {
 
     /// Whether a row may leave the column null: never for the category,
     /// the type, the currency, the unit and the side, which every market
-    /// element states, if only as nothing - `UNKN`, `UNKN`, `XXX`, the empty
-    /// unit, `UNKN`.
+    /// element states, if only as nothing - `UKNW`, `UKNW`, `XXX`, the empty
+    /// unit, `UKNW`.
     #[must_use]
     pub const fn nullable(self) -> bool {
         !matches!(
@@ -370,6 +377,7 @@ impl MarketColumn {
             Self::MarketDataType => Some(Scalar::MarketDataType(element.get_marketdatatype())),
             Self::Price => element.get_price().map(Scalar::from),
             Self::StopPx => element.get_stoppx().map(Scalar::from),
+            Self::StrikePx => element.get_strikepx().map(Scalar::from),
             Self::DisplayQty => element.get_displayqty().map(Scalar::from),
             Self::HiddenQty => element.get_hiddenqty().map(Scalar::from),
             Self::CxlQty => element.get_cxlqty().map(Scalar::from),
@@ -523,6 +531,7 @@ impl MarketColumn {
                 element.set_execunix(value.temporal_count_at(TimeUnit::Nanosecond), true);
             }
             Self::StopPx => element.set_stoppx(decimal(), true),
+            Self::StrikePx => element.set_strikepx(decimal(), true),
             Self::DisplayQty => element.set_displayqty(decimal(), true),
             Self::HiddenQty => element.set_hiddenqty(decimal(), true),
             Self::CxlQty => element.set_cxlqty(decimal(), true),

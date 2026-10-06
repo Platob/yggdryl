@@ -15,6 +15,7 @@ import {
   type FixEntryView,
   type FixHeaderView,
   type FixRegistry,
+  type FixSourceView,
   type FixMessages,
   type MsgType,
   type FixValueInput,
@@ -73,6 +74,16 @@ const walk: Generator<Field> = loaded.keys()
 const drained: Field[] = [...loaded]
 const forOf: Field[] = [...loaded.keys()]
 const dialects: string[] = loaded.dialects()
+// The sources catalog: one entry per id, `file` where one is known and the
+// plugin side always stated; an entry is recorded by its id and options.
+const catalog: FixSourceView[] = loaded.sources()
+const sourceFile: string | undefined = catalog[0].file
+const catalogSide: string = catalog[0].pluginside
+const arrived: boolean = loaded.addSource('cme', { file: 'cme.cfb', pluginside: 'SELL' })
+loaded.addSource('ice', { pluginside: 2 })
+loaded.addSource('ms')
+// @ts-expect-error a source is recorded by its id, never an entry
+loaded.addSource({ id: 'cme' })
 const same: boolean = loaded.equals(built)
 const registryHash: bigint = loaded.stableHash()
 const copy: FixRegistry = loaded.clone()
@@ -111,6 +122,10 @@ void walk
 void drained
 void forOf
 void dialects
+void catalog
+void sourceFile
+void catalogSide
+void arrived
 void same
 void registryHash
 void copy
@@ -168,6 +183,13 @@ const firstOperation: OrderEvent | null = operations[0].asOrderEvent()
 declare const event: OrderEvent
 const header: FixHeaderView = message.header()
 const capture: FixCaptureView = message.capture()
+// The plugin side is always stated - a PluginSide member's name, the
+// neutral member included - as every enum fact crosses, never null.
+const pluginside: string = capture.msgpluginside
+// @ts-expect-error never null: the neutral member is a stated value
+const absentSide: null = capture.msgpluginside
+void absentSide
+void pluginside
 const text: string | null = message.text
 const metadata: Record<string, string> = message.metadata
 // The graph facts a message answers directly.
@@ -196,10 +218,12 @@ const spotrate: string | null = message.spotrate
 const forwardpoints: string | null = message.forwardpoints
 const bidpx: string | null = message.bidpx
 const askccy: string | null = message.askccy
-const messageCategory: string = message.msgcat
-const strikeprice: string | null = message.strikeprice
-// @ts-expect-error the strike price is the dictionary's StrikePrice(202), no crate field
-message.strikepx
+const messageCategory: string = message.marketdatakind
+const strikepx: string | null = message.strikepx
+// @ts-expect-error the strike is strikepx
+message.strikeprice
+// @ts-expect-error the category is marketdatakind
+message.msgcat
 // The instants the message states, as the leaf does.
 const messageCreated: bigint | null = message.creaunix
 const messageExecuted: bigint | null = message.execunix
@@ -290,7 +314,7 @@ void forwardpoints
 void bidpx
 void askccy
 void messageCategory
-void strikeprice
+void strikepx
 void eventCurrunix
 void eventCreated
 void eventExecuted
@@ -402,10 +426,10 @@ const heldCodec: FixCodec = fix.FixCodec.fromEnv({ threads: 1 })
 void [held, heldCodec]
 
 // The typed FIX vocabulary lives on the protocol view a field already answers.
-const branches: string[] = field.fix.branches
-field.fix.branches = ['cme', 'ice']
-field.fix.addBranch('bloomberg')
-const member: boolean = field.fix.hasBranch('cme')
+const sources: string[] = field.fix.sources
+field.fix.sources = ['cme', 'ice']
+field.fix.addSource('bloomberg')
+const member: boolean = field.fix.hasSource('cme')
 const identity: number | null = field.fix.id
 const tag: number | null = field.fix.tag
 field.fix.tag = 55
@@ -431,7 +455,7 @@ field.fix.directions = []
 // @ts-expect-error the derivation property is gone
 void field.fix.derivation
 
-void branches
+void sources
 void member
 void identity
 void tag
@@ -445,10 +469,10 @@ void directions
 
 // @ts-expect-error a tag crosses as a number, never a bigint
 field.fix.tag = 55n
-// @ts-expect-error membership is a list of names, never one name
-field.fix.branches = 'cme'
-// @ts-expect-error membership is a list of names, never numbers
-field.fix.branches = [55]
+// @ts-expect-error membership is a list of source ids, never one id
+field.fix.sources = 'cme'
+// @ts-expect-error membership is a list of source ids, never numbers
+field.fix.sources = [55]
 // @ts-expect-error the identifier is derived from the tag and the name, never assigned
 field.fix.id = 5001
 // @ts-expect-error aliases are strings
@@ -486,9 +510,16 @@ const pinned: FixCodec = new fix.FixCodec(loaded, {
 // @ts-expect-error a codec pins no version: a row states one, or the line implies it
 const stalePin: FixCodec = new fix.FixCodec(loaded, { version: '4.2' })
 void stalePin
-// @ts-expect-error no pin names a dialect: the dictionary is one namespace
+// @ts-expect-error no pin selects a dialect: the dictionary is one namespace
 const dialectPin: FixCodec = new fix.FixCodec(loaded, { branch: 'cme' })
 void dialectPin
+// A codec reads under one source of the catalog, whose plugin side every
+// message it builds states; the source is its id, never an entry.
+const sourced: FixCodec = new fix.FixCodec(loaded, { source: 'cme' })
+const sourceId: string | null = sourced.source
+// @ts-expect-error a source is named by its id
+void new fix.FixCodec(loaded, { source: { id: 'cme' } })
+void sourceId
 // The SendingTime an undated message takes is a `Scalar` or a `Date`, read
 // back as the native clock or `null` where each new message reads now.
 const dated: FixCodec = new fix.FixCodec(loaded, { defaultSendingTime: value })
@@ -656,7 +687,7 @@ const order: MsgType = loaded.msgtype('D')
 const optionalOrder: MsgType | null = loaded.getMsgtype('newordersingle')
 const registered: MsgType = loaded.registerMsgtype('BridgeReport', 'bridgereport')
 const wireCode: string = order.asStr()
-const orderCategory: string | null = order.msgcat
+const orderCategory: string | null = order.marketdatakind
 const messageDefinition: Field = order.asField()
 const identifierValues: Array<[Field, Scalar]> = order.identifierValues(fromText)
 for (const [identifierField, identifierValue] of identifierValues) {

@@ -1,6 +1,6 @@
 //! A stream's rows cut by a key into partitions, held apart under the process
 //! spill bound, at most a bounded number open at once, closed as they
-//! complete: [`SerieReader::partition_by`] and the one partitioner every
+//! complete: [`StreamChunkedSerie::partition_by`] and the one partitioner every
 //! writer that splits a stream by partition runs through.
 //!
 //! Each batch is landed, keyed and cut into the pieces its partitions take on
@@ -28,11 +28,10 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::arrow::{BatchReader, Result};
-use crate::expression::IntoSelector;
-use crate::{ChunkedSerie, Field, Scalar, Serie, SerieReader, SpillOptions};
+use crate::arrow::Result;
+use crate::{ChunkedSerie, Field, Serie, SpillOptions, StreamChunkedSerie};
 
-/// How [`SerieReader::partition_by`] cuts a stream: how many partitions it
+/// How [`StreamChunkedSerie::partition_by`] cuts a stream: how many partitions it
 /// keeps open at once, and the threads its batches are cut on.
 ///
 /// `Default` keeps every partition open until the stream ends - each closed
@@ -107,155 +106,187 @@ impl PartitionOptions {
     }
 }
 
-/// One closed partition of a stream: its key and its rows, in the order they
-/// arrived, held as the chunks the stream's batches gave it.
-#[derive(Clone, Debug)]
-pub struct SeriePartition {
-    key: Scalar,
-    rows: ChunkedSerie,
-}
-
-impl SeriePartition {
-    /// The key every row of the partition computes to: the record of the key
-    /// cells, as [`ChunkedSerie::window_by`] states a key.
-    #[must_use]
-    pub const fn key(&self) -> &Scalar {
-        &self.key
-    }
-
-    /// The partition's rows.
-    #[must_use]
-    pub const fn rows(&self) -> &ChunkedSerie {
-        &self.rows
-    }
-
-    /// The key and the rows, owned.
-    #[must_use]
-    pub fn into_parts(self) -> (Scalar, ChunkedSerie) {
-        (self.key, self.rows)
-    }
-
-    /// The rows as an Arrow stream of one batch per chunk, sharing their
-    /// buffers.
+impl StreamChunkedSerie {
+    /// Group lazy rows, closing the lowest keys past `max_open`, or closing
+    /// each clustered key as the next arrives. Source rows remain chunked.
     ///
     /// # Errors
-    ///
-    /// [`ChunkedSerie::into_arrow_reader`]'s refusal.
-    pub fn into_arrow_reader(&self) -> Result<BatchReader> {
-        self.rows.into_arrow_reader()
-    }
-}
-
-/// The partitions [`SerieReader::partition_by`] cuts a stream into, lazily:
-/// each closed partition as soon as it closes - past the bound on open
-/// partitions, the lowest keys first, or, clustered, once another key
-/// arrives - and every partition still open when the stream ends, in
-/// ascending key order. Fused after its first error.
-pub struct SerieReaderPartitions {
-    partitions: Partitions<Scalar>,
-}
-
-impl SerieReaderPartitions {
-    /// The record root every partition's rows are held under.
-    #[must_use]
-    pub fn field(&self) -> &Field {
-        self.partitions.root()
-    }
-}
-
-impl Iterator for SerieReaderPartitions {
-    type Item = Result<SeriePartition>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.partitions
-            .next()
-            .map(|closed| closed.map(|(key, rows)| SeriePartition { key, rows }))
-    }
-}
-
-impl SerieReader {
-    /// This stream's rows cut by `by` into partitions, each closed as it
-    /// completes: one [`SeriePartition`] per partition, its key the record of
-    /// the cells `by` computes and its rows held apart, in the order they
-    /// arrived, as a [`ChunkedSerie`] under this reader's root.
-    ///
-    /// `by` is bound once against the root, as [`Self::window_by`] binds its
-    /// key; each batch's key column is computed on one of
-    /// [`PartitionOptions::threads`] threads and cut there - one zero-copy
-    /// slice per run of a key, one take per key otherwise - and the batches
-    /// are answered in order. The open partitions are held under the process
-    /// spill bound, settled after each batch, heaviest first. Past
-    /// [`PartitionOptions::max_open`] open partitions, the lowest keys close
-    /// and are yielded; a stream in key order therefore closes each
-    /// partition once it has been read whole, and a key arriving again after
-    /// its partition closed opens a new piece of it, yielded again under the
-    /// same key. When the stream ends, every partition still open closes in
-    /// ascending key order. A closed partition's rows are the caller's: they
-    /// are no longer counted against the bound.
-    ///
-    /// A clustered stream keeps one partition open, each yielded as soon as
-    /// another key arrives, in arrival order: one stated
-    /// [`PartitionOptions::with_clustered`], or one whose root declares an
-    /// order - proven as its batches land - whose leading keys are the
-    /// terms `by` projects, uncast, in any order.
-    ///
-    /// ```
-    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, PartitionOptions, Scalar, Serie, SerieReader, StructType};
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let root = DataType::from(StructType::from_fields([
-    ///     DataType::utf8().required_field("venue"),
-    ///     DataType::Int64.required_field("qty"),
-    /// ])?)
-    /// .required_field("row");
-    /// let fill = |venue: &str, qty: i64| Scalar::from_sequence(vec![Scalar::from(venue), Scalar::from(qty)]);
-    /// let batches = vec![
-    ///     Serie::from_scalars(root.clone(), [fill("XNAS", 1), fill("XLON", 2)])?,
-    ///     Serie::from_scalars(root.clone(), [fill("XNAS", 3), fill("XPAR", 4)])?,
-    /// ];
-    /// let stream = SerieReader::from_chunked(ChunkedSerie::from_series(Some(&root), batches, ArrowCastOptions::new())?)?;
-    ///
-    /// // At most two open at once: the third venue closes the lowest, XLON.
-    /// let options = PartitionOptions::new().with_max_open(2).with_threads(1);
-    /// let closed: Vec<(Scalar, usize)> = stream
-    ///     .partition_by("venue", options)?
-    ///     .map(|partition| partition.map(|partition| {
-    ///         let (key, rows) = partition.into_parts();
-    ///         (key, rows.len())
-    ///     }))
-    ///     .collect::<Result<_, _>>()?;
-    /// let venue = |name: &str| Scalar::from_sequence(vec![Scalar::from(name)]);
-    /// assert_eq!(closed, [(venue("XLON"), 1), (venue("XNAS"), 2), (venue("XPAR"), 1)]);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Before any batch is pulled: the text's own parse error, and the
-    /// binder's refusals of `by` naming this reader's root, as
-    /// [`Self::window_by`] refuses them. While the partitions are pulled: the
-    /// stream's own failure, and a spill that cannot be written.
+    /// Refuses an invalid key before pulling. Source and spill failures are
+    /// answered while pulling; the iterator is fused after a failure.
     pub fn partition_by(
         self,
-        by: impl IntoSelector,
+        by: impl crate::IntoKeyBy,
         options: PartitionOptions,
-    ) -> Result<SerieReaderPartitions> {
+    ) -> Result<crate::StreamKeySerie> {
         let root = Arc::new(self.field().clone());
-        let selector = by.into_selector()?;
-        let closing = if options.is_clustered() || declares_clustering(&root, &selector) {
+        let by = by.into_key_by()?;
+        let clustered = match &by {
+            crate::KeyBy::Selector(selector) => declares_clustering(&root, selector),
+            crate::KeyBy::External(_) => false,
+        };
+        let plan = crate::key_serie::KeyPlan::bind(&root, by, None, "partition by")?;
+        self.partition_by_planned_with_clustering(plan, options, clustered)
+    }
+
+    fn partition_by_planned_with_clustering(
+        self,
+        plan: crate::key_serie::KeyPlan,
+        options: PartitionOptions,
+        clustered: bool,
+    ) -> Result<crate::StreamKeySerie> {
+        let layout = Arc::clone(&plan.layout);
+        let closing = if options.is_clustered() || clustered {
             Closing::Clustered
         } else {
             options.max_open().map_or(Closing::Never, Closing::Bounded)
         };
-        let key = Arc::new(selector.bind_key(&root, root.name(), "partition by")?);
+        let key = plan.into_bound()?;
+        let cut_layout = Arc::clone(&layout);
         let pieces = self.map_landed(options.threads(), move |record: Serie| {
             let keys = key.apply_serie(&record)?;
-            Ok(record.partition_by(&keys)?)
+            Ok(cut_layout.split_piece(record).cut_partitions(&keys)?)
         });
-        Ok(SerieReaderPartitions {
-            partitions: Partitions::new(root, pieces, closing),
-        })
+        let partitions = Partitions::new(Arc::clone(&layout.serie_field), pieces, closing);
+        let item_layout = Arc::clone(&layout);
+        Ok(crate::StreamKeySerie::new(
+            layout,
+            partitions.map(move |closed| {
+                closed.map(|(key, rows)| {
+                    crate::KeySerie::new(key, Arc::clone(&item_layout), Serie::from(rows), None)
+                })
+            }),
+        ))
+    }
+}
+
+impl crate::StreamSerie {
+    pub(crate) fn partition_by_planned(
+        self,
+        plan: crate::key_serie::KeyPlan,
+        selector: &crate::Selector,
+        options: PartitionOptions,
+    ) -> Result<crate::StreamKeySerie> {
+        let clustered = declares_clustering(self.field(), selector);
+        self.partition_by_planned_with_clustering(plan, options, clustered)
+    }
+    /// Partition native rows, holding only open keys and closing at their
+    /// natural key boundary or the stated open-key bound.
+    ///
+    /// # Errors
+    /// Field and key refusals before pulling; source and spill failures while pulling.
+    pub fn partition_by(
+        self,
+        by: impl crate::IntoKeyBy,
+        options: PartitionOptions,
+    ) -> Result<crate::StreamKeySerie> {
+        self.require_record_field()?;
+        let root = Arc::new(self.field().clone());
+        let by = by.into_key_by()?;
+        let clustered = match &by {
+            crate::KeyBy::Selector(selector) => declares_clustering(&root, selector),
+            crate::KeyBy::External(_) => false,
+        };
+        let plan = crate::key_serie::KeyPlan::bind(&root, by, None, "partition by")?;
+        self.partition_by_planned_with_clustering(plan, options, clustered)
+    }
+
+    fn partition_by_planned_with_clustering(
+        self,
+        plan: crate::key_serie::KeyPlan,
+        options: PartitionOptions,
+        clustered: bool,
+    ) -> Result<crate::StreamKeySerie> {
+        let layout = Arc::clone(&plan.layout);
+        let closing = if options.is_clustered() || clustered {
+            Closing::Clustered
+        } else {
+            options.max_open().map_or(Closing::Never, Closing::Bounded)
+        };
+        let key = plan.into_bound()?;
+        let cut_layout = Arc::clone(&layout);
+        let pieces: Pieces<crate::Scalar> = Box::new(self.map(move |row| {
+            let row = row?;
+            let key = key.apply_scalar(&row)?;
+            Ok(vec![(key, Serie::new([cut_layout.split_row(&row)]))])
+        }));
+        let partitions = Partitions::new(Arc::clone(&layout.serie_field), pieces, closing);
+        let item_layout = Arc::clone(&layout);
+        Ok(crate::StreamKeySerie::new(
+            layout,
+            partitions.map(move |closed| {
+                closed.map(|(key, rows)| {
+                    crate::KeySerie::new(key, Arc::clone(&item_layout), Serie::from(rows), None)
+                })
+            }),
+        ))
+    }
+}
+
+/// Native rows accumulate under the same closing and spill rules as columns.
+struct PartitionHold {
+    chunks: ChunkedSerie,
+    rows: Vec<crate::Scalar>,
+    row_bytes: usize,
+}
+impl PartitionHold {
+    fn new(root: Arc<Field>) -> Self {
+        Self {
+            chunks: ChunkedSerie::from_landed(root, Vec::new()),
+            rows: Vec::new(),
+            row_bytes: 0,
+        }
+    }
+    fn push(&mut self, piece: Serie) -> crate::Result<()> {
+        match piece {
+            Serie::Run(run) => {
+                self.row_bytes = self.row_bytes.saturating_add(
+                    run.as_slice()
+                        .iter()
+                        .map(crate::arrow::scalar_memory_size)
+                        .sum::<usize>(),
+                );
+                self.rows.extend_from_slice(run.as_slice());
+                Ok(())
+            }
+            column => {
+                self.flush()?;
+                self.chunks.push_landed(column)
+            }
+        }
+    }
+    fn flush(&mut self) -> crate::Result<()> {
+        if !self.rows.is_empty() {
+            let piece =
+                Serie::from_scalars(self.chunks.field().clone(), std::mem::take(&mut self.rows))?;
+            self.row_bytes = 0;
+            self.chunks.push_landed(piece)?;
+        }
+        Ok(())
+    }
+    fn finish(mut self) -> crate::Result<ChunkedSerie> {
+        self.flush()?;
+        Ok(self.chunks)
+    }
+}
+trait SpillHold {
+    fn resident_size(&self) -> usize;
+    fn spill(&mut self, options: &SpillOptions) -> crate::Result<()>;
+}
+impl SpillHold for ChunkedSerie {
+    fn resident_size(&self) -> usize {
+        ChunkedSerie::resident_size(self)
+    }
+    fn spill(&mut self, options: &SpillOptions) -> crate::Result<()> {
+        ChunkedSerie::spill(self, options).map(|_| ())
+    }
+}
+impl SpillHold for PartitionHold {
+    fn resident_size(&self) -> usize {
+        self.chunks.resident_size().saturating_add(self.row_bytes)
+    }
+    fn spill(&mut self, options: &SpillOptions) -> crate::Result<()> {
+        self.flush()?;
+        self.chunks.spill(options).map(|_| ())
     }
 }
 
@@ -337,9 +368,11 @@ pub(crate) type Pieces<K> = Box<dyn Iterator<Item = Result<Vec<(K, Serie)>>> + S
 pub(crate) struct Partitions<K> {
     root: Arc<Field>,
     pieces: Option<Pieces<K>>,
-    open: BTreeMap<K, ChunkedSerie>,
+    open: BTreeMap<K, PartitionHold>,
     closing: Closing,
-    closed: VecDeque<(K, ChunkedSerie)>,
+    closed: VecDeque<(K, PartitionHold)>,
+    resident: usize,
+    spill: Option<&'static SpillOptions>,
 }
 
 impl<K: Ord> Partitions<K> {
@@ -353,12 +386,9 @@ impl<K: Ord> Partitions<K> {
             open: BTreeMap::new(),
             closing,
             closed: VecDeque::new(),
+            resident: 0,
+            spill: None,
         }
-    }
-
-    /// The record root every partition's rows are held under.
-    pub(crate) fn root(&self) -> &Field {
-        &self.root
     }
 
     /// Push one batch's pieces to their open partitions, close what the
@@ -370,27 +400,39 @@ impl<K: Ord> Partitions<K> {
             // the partitions close in the order they arrived.
             if clustered && !self.open.contains_key(&key) {
                 while let Some(done) = self.open.pop_first() {
+                    self.resident = self.resident.saturating_sub(done.1.resident_size());
                     self.closed.push_back(done);
                 }
             }
-            match self.open.get_mut(&key) {
-                Some(hold) => hold.push_landed(piece)?,
-                None => {
-                    let mut hold = ChunkedSerie::from_landed(Arc::clone(&self.root), Vec::new());
-                    hold.push_landed(piece)?;
-                    self.open.insert(key, hold);
-                }
-            }
+            let hold = self
+                .open
+                .entry(key)
+                .or_insert_with(|| PartitionHold::new(Arc::clone(&self.root)));
+            let before = hold.resident_size();
+            hold.push(piece)?;
+            self.resident = self
+                .resident
+                .saturating_sub(before)
+                .saturating_add(hold.resident_size());
         }
         if let Some(max_open) = bound {
             while self.open.len() > max_open {
                 let Some(lowest) = self.open.pop_first() else {
                     break;
                 };
+                self.resident = self.resident.saturating_sub(lowest.1.resident_size());
                 self.closed.push_back(lowest);
             }
         }
-        settle_holds(self.open.values_mut())
+        let options = match &self.spill {
+            Some(options) => *options,
+            None => *self.spill.insert(SpillOptions::from_env()?),
+        };
+        if !options.is_never() && self.resident as u64 > options.byte_size() {
+            settle_holds_with_options(self.open.values_mut(), options)?;
+            self.resident = self.open.values().map(SpillHold::resident_size).sum();
+        }
+        Ok(())
     }
 
     /// Fuse: drop the pieces and everything held.
@@ -406,8 +448,12 @@ impl<K: Ord> Iterator for Partitions<K> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if let Some(closed) = self.closed.pop_front() {
-                return Some(Ok(closed));
+            if let Some((key, rows)) = self.closed.pop_front() {
+                let result = rows.finish().map(|rows| (key, rows)).map_err(Into::into);
+                if result.is_err() {
+                    self.fuse();
+                }
+                return Some(result);
             }
             let pieces = self.pieces.as_mut()?;
             match pieces.next() {
@@ -437,16 +483,16 @@ impl<K: Ord> Iterator for Partitions<K> {
 /// which settles alone as it is pushed to. The resident total is read once
 /// and kept as each spill lowers it, so a settle costs one pass and a sort
 /// of the holds, never a pass per spill.
-pub(crate) fn settle_holds<'a>(
-    holds: impl IntoIterator<Item = &'a mut ChunkedSerie>,
+fn settle_holds_with_options<'a, H: SpillHold + 'a>(
+    holds: impl IntoIterator<Item = &'a mut H>,
+    options: &SpillOptions,
 ) -> crate::Result<()> {
-    let options = SpillOptions::from_env()?;
     if options.is_never() {
         return Ok(());
     }
     let bound = options.byte_size();
-    let bytes = |hold: &ChunkedSerie| u64::try_from(hold.resident_size()).unwrap_or(u64::MAX);
-    let mut holds: Vec<&mut ChunkedSerie> = holds.into_iter().collect();
+    let bytes = |hold: &H| u64::try_from(hold.resident_size()).unwrap_or(u64::MAX);
+    let mut holds: Vec<&mut H> = holds.into_iter().collect();
     let mut resident = holds
         .iter()
         .map(|hold| bytes(hold))

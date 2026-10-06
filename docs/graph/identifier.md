@@ -11,7 +11,7 @@
 | Reading a key | `"text".parse::<IdKey>()` reads exactly: `src:type` is that source and that type, each folded, and a bare word is that type from the base source - `ISIN`, `ISIN_Number`, `base:isin`, `BASE:ISIN` and `fix:isin` are all `isin`, `marketorderid` is the type `marketorderid`. An empty half (`fix:`, `:isin`), a second `:` and a word no fold reads are refused, `expected an identifier key src:type or type`. Nothing is inferred: an inferred reading is [`Identifier::from_key`](#reading-a-name)'s |
 | Words | a source and a type are trimmed and lower-cased, the `_`, `-`, space and `#` a spelling breaks them with dropped - `Executing Trader` and `executing_trader` are `executingtrader` - ASCII letters, digits and `.` only, at most 64 bytes (`IDENTIFIER_WORD_WIDTH`); anything else is refused. A value is never folded to lower case - an ISIN is still `US0378331005` |
 | Members | a word the crate names is a member of the enum - `IdType::Isin`, `IdType::ClOrdId`, `IdSource::Proprietary` - held statically, and every other word is `Other(IdWord)`; `"text".parse::<IdType>()` folds and reads the member a spelling or an alias names (`isinnumber` and `isincode` are `isin`), `as_str()` is the folded word, `is_known()` tells a member from an `Other`, and a word equals a `&str`: `id.kind() == "isin"` |
-| Value | trimmed text that states something, at most 64 bytes (`IDENTIFIER_VALUE_WIDTH`): empty or null-like (`null`, `none`, `n/a`) is no identifier and is refused; then [checked by its type](#per-type-value-checks) - the shape of a code, never whether its check digit closes, which is its [rank](#ranks) |
+| Value | trimmed text that states something, at most 64 bytes (`IDENTIFIER_VALUE_WIDTH`): empty or null-like (`null`, `none`, `n/a`) is no identifier and is refused; then [checked by its type](#per-type-value-checks) - the shape of a code, never whether its check digit closes, which is its [rank](#ranks) - and, under the `bic` and `legalentityidentifier` sources, by the code that source gives ([Under a source](#under-a-source)) |
 | Named sources | `base` (`IdSource::Base`) where nothing names the source - what a FIX field or group states, the standard being the base, so the word `fix` reads as `base` and is never written; `derived` (`IdSource::Derived`) where the crate derived the value rather than read it - the CUSIP, SEDOL, WKN or Valor an ISIN embeds, what a ticker's shape names, a currency pair detected off a symbol, a code an [`IsinRegistry`](isin-registry.md) filled; any other source is the one a message names - a bridge namespace (`oms`, `ullink`), a `PartyIDSource(447)` (`proprietary`) or an `AcctIDSource(660)` (`bic`) |
 | Display | `key=value` - `isin=US0378331005`, `ullink:isin=US0378331005`; a map `[a=b, ...]` in key order |
 | Order, equality | by the key as it is spelled, then by value, so `a.b:c` sorts before `a:z`, which a (source, type) pair would not; equality and hash read the key and the value |
@@ -229,7 +229,7 @@ Replacing or removing a named source of one rank leaves the base key as it was. 
 
 ## Ranks
 
-A value's rank is how real it is as a value of its type: `IdType::rank(value)` answers from zero to `IdType::max_rank()`, and `IdType::is_real(value)` whether it reaches it. A registered [code](../types/codes/index.md#rank) ranks by its own `CodeValue::rank` - an ISIN two where its check digit closes under a listed prefix, one for a typo under a listed prefix or a closing `ZZ` number, zero for a masked number such as `XX0000000001` or the number that states none, `XX0000000000`; a CUSIP, a SEDOL or a FIGI one where its check digit closes; a CFI code two where detailed and one where it only classifies; an ISO country one where ISO 3166 lists it; an ISO currency zero for `XXX` alone - and every other type one for any value it holds; a value the type refuses is zero. A lower-case spelling ranks as the upper-case one it folds to, and nothing allocates.
+A value's rank is how real it is as a value of its type: `IdType::rank(value)` answers from zero to `IdType::max_rank()`, and `IdType::is_real(value)` whether it reaches it. A registered [code](../types/codes/index.md#rank) ranks by its own `CodeValue::rank` - an ISIN two where its check digit closes under a listed prefix, one for a typo under a listed prefix or a closing `ZZ` number, zero for a masked number such as `XX0000000001` or the number that states none, `XX0000000000`; a CUSIP, a SEDOL or a FIGI one where its check digit closes, an LEI or a DTI one where its check closes; a CFI code two where detailed and one where it only classifies; an ISO country one where ISO 3166 lists it; an ISO currency zero for `XXX` alone - and every other type one for any value it holds; a value the type refuses is zero. Under the `bic` and `legalentityidentifier` sources an identifier ranks by the lower of its type's rank and the code's own - a BIC one where ISO 3166 lists its country, an LEI one where its check digits close - so a map decides a restated `bic:executingfirm` by the BIC. A base key ranks from the statements of the same value - the highest rank among its type's nonbase keys, or the type's rank where there are none; a same-valued statement from a source without a registered code gives it the type's rank. So a base answer filled by a BIC or LEI typo is ranked by that named code source, and a listed-country BIC or closing LEI under the same named key replaces it whichever arrives first ([Under a source](#under-a-source)). A lower-case spelling ranks as the upper-case one it folds to, and nothing allocates.
 
 | Where | Rule |
 | --- | --- |
@@ -304,10 +304,10 @@ So a real value replaces a placeholder wherever the two meet - a lifecycle, a me
 | Reading | Rule |
 | --- | --- |
 | Explicit | `src:type`, each half read as a word folds: `oms:clordid`, `firm.x:house code`, `fix:clordid` the base key `clordid` |
-| A whole security name | a key a security type is spelled by - `ISINCode`, `security_cusip`, `#ISINCODE`, a leading `#` dropped - is that type from the base source ([`IdType::from_field_name`](#vocabularies)) |
+| A whole security name | a key a security type is spelled by - `ISINCode`, `security_cusip`, `#ISINCODE`, a leading `#` dropped ([`IdType::from_field_name`](#vocabularies)), or any spelling of a security type FIX gives no source code, `FISN`, `FinancialInstrumentShortName` and `CFI` as a bare `ISIN` is - is that type from the base source |
 | The name it ends with | the key folds - lower case, no `_`, `-`, space or `#` - and the longest identifier name it ends with is the type: a spelling the crate reads a type by, an [alias](#vocabularies) included, that ends with `id`; `account`, `isin`, `cusip`, `sedol`, `figi`; or a security type's spelling ending with `code`, `symbol`, `number` or `ticker` - `riccode`, `isincode`, `bbgsymbol`, `bloombergticker` - so a bridge's `OMS_RICCODE` names its `ric`. A bare `ric` or `cfi` ends no key - `GENERIC` names nothing - and `ticker` alone is no type's spelling. A parentage word spelled right before it - `parent`, `orig`, `origin`, `original` - stays in the type. The source is the rest of the folded key with its `.` trimmed at both ends and kept inside, the base source where nothing is left or where it folds to a source the crate reserves - `base`, `fix`, `derived` - which names no namespace: `Derived_ISIN` and `FIX.ISIN` are `isin`, so a namespace spelled before the name never files a code under `derived`, while an explicit `src:type` keeps the source it spells, `derived:isin` included; the source and the type are each a word of at most 64 bytes, never the key they spell together |
 
-A security type is refused where another instrument's word - `leg`, `underlying`, `contra`, `related`, `benchmark` - opens the key or ends what the folded key spells before the type, after any namespace, since it names that instrument's code: `UnderlyingISIN`, `OMS_UnderlyingISIN`, `FIX.LegISIN` and `firm.x.ContraCUSIP` name no security identifier. An operation identifier a leg or a counterparty states (`contraorderid`) is the element's own. A key ending with no identifier name - `transversalkey`, `ticker`, `symbol` - names none.
+A security type is refused where another instrument's word - `leg`, `underlying`, `contra`, `related`, `benchmark` - opens the key or ends what the folded key spells before the type, after any namespace, since it names that instrument's code: `UnderlyingISIN`, `OMS_UnderlyingISIN`, `FIX.LegISIN` and `firm.x.ContraCUSIP` name no security identifier. An operation identifier a leg or a counterparty states (`contraorderid`) is the element's own. A key ending with no identifier name - `transversalkey`, `ticker`, `symbol` - names none. What a derivative is written on is not lost: an [`IsinRegistry`](isin-registry.md#the-underlying) learns an underlying's ISIN as the row's `underlyingisin`. A structured product's category - `EUSIPACode`, `OMS_SSPACategory` - names no identifier either: the registry learns it as the row's [`eusipacode`](isin-registry.md#the-product-category).
 
 | Key | Reads as |
 | --- | --- |
@@ -320,8 +320,9 @@ A security type is refused where another instrument's word - `leg`, `underlying`
 | `ISINCode` | `isin` |
 | `OMS_RICCODE`, `ULLINK.ISINCODE`, `OMS_BloombergTicker` | `oms:ric`, `ullink:isin`, `oms:bloomberg` |
 | `Derived_ISIN`, `FIX.ISIN` | `isin` |
+| `FISN`, `FISNCode`, `OMS_FISNCODE` | `fisn`, `fisn`, `oms:fisn` |
 | `fix:clordid` | `clordid` |
-| `underlyingisin`, `OMS_UnderlyingISIN`, `FIX.LegISIN`, `transversalkey`, `OMS_RIC`, `TICKERCODE` | none |
+| `underlyingisin`, `OMS_UnderlyingISIN`, `FIX.LegISIN`, `transversalkey`, `OMS_RIC`, `OMS_FISN`, `TICKERCODE`, `EUSIPACode` | none |
 
 === "Rust"
 
@@ -409,7 +410,8 @@ A security type is refused where another instrument's word - `leg`, `underlying`
 | `IdType` group | Members |
 | --- | --- |
 | Security types FIX's `SecurityIDSource(22)` names, with the code in parentheses | `cusip` (1), `sedol` (2), `quik` (3), `isin` (4), `ric` (5), `isoccy` (6), `isoctry` (7), `exchsymb` (8), `cta` (9), `bloomberg` (A), `wkn` (B), `dutch` (C), `valor` (D), `sicovam` (E), `belgian` (F), `common` (G), `clearinghouse` (H, also its full name `Clearing House / Clearing Organization`; `ClearingOrganization` alone is the party role `PartyRole(452)` `21`), `fpmlspec` (I), `opra` (J), `fpmlurl` (K), `loc` (L), `mktassigned` (M), `redentity` (N), `redpair` (P), `cftc` (Q), `isdacommodity` (R), `figi` (S), `lei` (T), `synthetic` (U), `fim` (V), `index` (W), `umtf` (X), `dti` (Y) |
-| The crate's own security types | `forex` (a currency pair, no FIX code; also `ccypair`, `currencypair`), `cfi`, `instrumentid` (a venue's or a bridge's own instrument key) |
+| The crate's own security types | `forex` (a currency pair, no FIX code; also `ccypair`, `currencypair`), `cfi`, `fisn` (an ISO 18774 [financial instrument short name](../types/codes/fisn.md), no FIX code - FIX states it in `FinancialInstrumentShortName(2737)`), `instrumentid` (a venue's or a bridge's own instrument key) |
+| Reference data | `elf` (an ISO 20275 [entity legal form](../types/codes/elf.md) - what kind of entity a party is - also `elfcode`, `entitylegalform`, `entitylegalformcode`): neither a security nor a party, so an operation's `identifiers` hold it |
 | Operation identifiers | `orderid`, `clordid`, `origclordid` (`clordid`'s one parent, also spelled `parentclordid`), `secondaryorderid`, `secondaryclordid`, `secondaryexecid`, `secondaryquoteid`, `secondarytradeid`, `secondaryfirmtradeid`, `secondaryallocid`, `secondaryindividualallocid`, `execid`, `quoteid`, `quotereqid`, `mdreqid`, `trdmatchid`, `tradeid`, `tradereportid`, `mdentryid`, `mdentryrefid` |
 | Regulatory trade identifiers, by `RegulatoryTradeIDType(1906)` | `regtradeid` (0), `prevregtradeid` (1), `blockregtradeid` (2), `relatedregtradeid` (3), `clearedregtradeid` (4), `tvtic` (5), `reporttrackingnumber` (6) |
 | Parties and accounts | `account`, `party` (a role nothing states), `userid`, and the `PartyRole(452)` roles `executingfirm`, `clientid`, `clearingfirm`, `investorid`, `enteringfirm`, `orderoriginationtrader`, `executingtrader`, `orderoriginationfirm`, `executingsystem`, `contrafirm`, `clearingorganization`, `exchange`, `customeraccount`, `enteringtrader`, `contratrader`, `positionaccount`, `orderentryoperatorid`, `executionvenue`, `deskid`, `investmentdecisionmaker`, `algorithm` |
@@ -430,20 +432,21 @@ A security type also reads by the spellings a bridge writes its code under, each
 | `bloomberg` | `bbgsymb`, `bloombergsymbol`, `bloombergcode`, `bbg`, `bbgcode`, `bbgsymbol`, `bloombergid`, `bloombergticker` |
 | `figi` | `financialinstrumentglobalidentifier`, `figicode`, `figiid`, `openfigi` |
 | `wkn` | `wertpapier`, `wkncode`, `wknnumber` |
-| `valor` | `valoren`, `valorcode`, `valornumber`, `valorid` |
-| `exchsymb` | `exchangesymbol`, `exchsymbol` |
+| `valor` | `valoren`, `valorcode`, `valornumber`, `valorid`, `xswxvalor` (SIX's source spelling `X-SWX-VALOR`), `valorennummer`, `valorennumber` |
+| `exchsymb` | `exchangesymbol`, `exchsymbol`, `sixsymbol`, `valorsymbol`, `valorensymbol` (SIX's symbol, a listing code on the market it is stated on) |
 | `cta` | `consolidatedtapeassociation`, `ctasymbol`, `consolidatedtapeassociationsymbol` |
 | `isoccy`, `isoctry` | `isocurrencycode`, `isocountrycode` |
 | `common` | `commoncode` |
 | `forex` | `forexcode`, `ccypair`, `currencypair` |
 | `cfi` | `cficode` |
+| `fisn` | `fisncode`, `financialinstrumentshortname` |
 | `instrumentid` | `instrumentcode` |
 
 Every one ending with `id`, `code`, `symbol`, `number` or `ticker` also names its type at the end of a longer key - `OMS_RICCODE` is `oms:ric` ([Reading a name](#reading-a-name)) - which is how a FIX message captures a bridge's own security keys ([Where identifiers come from](#where-identifiers-come-from)).
 
 Any other source or type is held as a word - `venue`, `firm.x`, `oms`, `housecode` - and works everywhere a member does, but no check runs beyond the generic one.
 
-Two predicates sort a type into the set it belongs to: `IdType::is_security()` is true for the types FIX's `SecurityIDSource(22)` names, `forex`, `cfi` and `instrumentid` - what a market's `securityids` hold - and `IdType::is_party()` for `account`, `party`, `userid` and the `PartyRole(452)` roles - what an operation's `partyids` hold. Every other type is the operation's own and belongs to `identifiers`.
+Two predicates sort a type into the set it belongs to: `IdType::is_security()` is true for the types FIX's `SecurityIDSource(22)` names, `forex`, `cfi`, `fisn` and `instrumentid` - what a market's `securityids` hold - and `IdType::is_party()` for `account`, `party`, `userid` and the `PartyRole(452)` roles - what an operation's `partyids` hold. Every other type is the operation's own and belongs to `identifiers`.
 
 === "Rust"
 
@@ -480,6 +483,11 @@ Two predicates sort a type into the set it belongs to: `IdType::is_security()` i
     assert!(IdType::Isin.is_security() && IdType::InstrumentId.is_security());
     assert!(IdType::ExecutingTrader.is_party() && IdType::Account.is_party());
     assert!(!IdType::ClOrdId.is_security() && !IdType::ClOrdId.is_party());
+    // A short name is a security's; a legal form is neither a security's nor a party's.
+    assert_eq!("FinancialInstrumentShortName".parse::<IdType>()?, IdType::Fisn);
+    assert!(IdType::Fisn.is_security() && IdType::Fisn.fix_security_source().is_none());
+    assert_eq!("EntityLegalForm".parse::<IdType>()?, IdType::Elf);
+    assert!(!IdType::Elf.is_security() && !IdType::Elf.is_party());
     ```
 
 ## Per-type value checks
@@ -489,7 +497,11 @@ A value is held as its type stores it, and a value its type refuses is no identi
 | Type | Stored as |
 | --- | --- |
 | `isin`, `cusip`, `sedol`, `figi` | upper-cased, of the code's shape - twelve, nine, seven and twelve bytes, the check digit in its place - whether that digit closes the code being its rank |
+| `lei` | upper-cased, of the [LEI](../types/codes/lei.md)'s shape - twenty bytes, eighteen letters or digits and two check digits - whether ISO 7064 MOD 97-10 closes it being its rank |
+| `dti` | upper-cased, of the [DTI](../types/codes/dti.md)'s shape - nine bytes of its thirty-symbol alphabet, the first not `0` - whether hybrid MOD 31,30 closes it being its rank |
 | `cfi` | upper-cased, six letters; how much it classifies is its rank |
+| `fisn` | upper-cased, of the [FISN](../types/codes/fisn.md)'s shape - an issuer and a description either side of the first `/`, at most 35 printable ASCII bytes; every such value of one rank |
+| `elf` | upper-cased, of the [ELF](../types/codes/elf.md)'s shape - four letters or digits; every such value of one rank |
 | `ric` | one token of printable ASCII, its case kept, at most 32 bytes |
 | `bloomberg` | printable ASCII, at most 32 bytes |
 | `wkn` | six of `[0-9A-HJ-NP-Z]`, upper-cased |
@@ -499,9 +511,86 @@ A value is held as its type stores it, and a value its type refuses is no identi
 | every other security type FIX names - an FpML product URL, an index name among them | printable ASCII, at most 64 bytes |
 | every other type | any text, at most 64 bytes |
 
-`IdType::max_value_width` answers the bound of each. `IdType::check_security` refuses the one word no security type is, `ticker`: the name a person knows an instrument by lives on `set_ticker`.
+`IdType::max_value_width` answers the bound of each - `fisn` 35, `elf` 4. `IdType::check_security` refuses the one word no security type is, `ticker`: the name a person knows an instrument by lives on `set_ticker`.
 
-`IdType::from_security_source` reads a `SecurityIDSource(22)` or `SecurityAltIDSource(456)` value - the FIX 4 field `IDSource(22)` included - as its one-character code, case-sensitive (`4`, `K`), or as any name the code set writes, its spacing, punctuation and parenthesized remarks passed over: `ISIN number`, `Wertpapier`, `Clearing House / Clearing Organization`, `ISDA/FpML Product Specification (XML in EncodedSecurityDesc <351>)`, `ISDA/FpML Product URL (URL in SecurityID)` and `Letter of Credit` are `isin`, `wkn`, `clearinghouse`, `fpmlspec`, `fpmlurl` and `loc`. A source no member names is kept as it was stated, the word it folds to: a private code `100` is the type `100`, a letter FIX gives nothing (`Z`) the type `z`, a venue's `House Key` the type `housekey`; what no word holds - `House/Key`, a byte past ASCII - is refused, never reshaped, and so is a member naming another kind of identifier - `ClOrdID`, the party role `Exchange`. The reading is the crate's own, over the code set it ships; a dictionary whose `securityidsourcecodeset` was edited does not change it. A FIX message states `SecurityID(48)` under that type's base key and each `SecAltIDGrp(454)` occurrence likewise - except a source spelled `{NAMESPACE}INSTRUMENTID`, a venue's own instrument key, which is an `instrumentid` from that namespace, read as a key's source is read: folded, the dots at its ends dropped, a word of at most 64 bytes before the `INSTRUMENTID` it is spelled with, so `ULLINKINSTRUMENTID`, `ULLINK.INSTRUMENTID` and `Ullink Instrument ID` are all `ullink:instrumentid`, and a namespace folding to a source the crate reserves - `DERIVEDINSTRUMENTID`, `Base Instrument ID`, `FIX.INSTRUMENTID` - names no venue and is read as none, the base `instrumentid`, by the rule a [name's source](#reading-a-name) is read by, so neither field states a code under `derived`; a source or a value its type refuses states nothing and is an anomaly, the fields staying on the wire as sent. An [`IsinRegistry`](isin-registry.md) learns the types the crate names; a word of a venue's own is held by the message that states it.
+`IdType::from_security_source` reads a `SecurityIDSource(22)` or `SecurityAltIDSource(456)` value - the FIX 4 field `IDSource(22)` included - as its one-character code, case-sensitive (`4`, `K`), or as any name the code set writes, its spacing, punctuation and parenthesized remarks passed over: `ISIN number`, `Wertpapier`, `X-SWX-VALOR`, `Clearing House / Clearing Organization`, `ISDA/FpML Product Specification (XML in EncodedSecurityDesc <351>)`, `ISDA/FpML Product URL (URL in SecurityID)` and `Letter of Credit` are `isin`, `wkn`, `valor`, `clearinghouse`, `fpmlspec`, `fpmlurl` and `loc`. A source no member names is kept as it was stated, the word it folds to: a private code `100` is the type `100`, a letter FIX gives nothing (`Z`) the type `z`, a venue's `House Key` the type `housekey`; what no word holds - `House/Key`, a byte past ASCII - is refused, never reshaped, and so is a member naming another kind of identifier - `ClOrdID`, the party role `Exchange`. The reading is the crate's own, over the code set it ships; a dictionary whose `securityidsourcecodeset` was edited does not change it. A FIX message states `SecurityID(48)` under that type's base key and each `SecAltIDGrp(454)` occurrence likewise - except a source spelled `{NAMESPACE}INSTRUMENTID`, a venue's own instrument key, which is an `instrumentid` from that namespace, read as a key's source is read: folded, the dots at its ends dropped, a word of at most 64 bytes before the `INSTRUMENTID` it is spelled with, so `ULLINKINSTRUMENTID`, `ULLINK.INSTRUMENTID` and `Ullink Instrument ID` are all `ullink:instrumentid`, and a namespace folding to a source the crate reserves - `DERIVEDINSTRUMENTID`, `Base Instrument ID`, `FIX.INSTRUMENTID` - names no venue and is read as none, the base `instrumentid`, by the rule a [name's source](#reading-a-name) is read by, so neither field states a code under `derived`; a source or a value its type refuses states nothing and is an anomaly, the fields staying on the wire as sent. An [`IsinRegistry`](isin-registry.md) learns the types the crate names; a word of a venue's own is held by the message that states it.
+
+### Under a source
+
+Two sources are standards whose every value is a registered code: a value under `bic` - `PartyIDSource(447)` `B`, `AcctIDSource(660)` `1` - is an ISO 9362 [BIC](../types/codes/bic.md), and one under `legalentityidentifier` - `PartyIDSource(447)` `N` - an ISO 17442 [LEI](../types/codes/lei.md), whatever type of name it is: a party's role, the account, a word no member names. `Identifier::new`, and every door that builds an identifier through it, holds such a value to that code's shape beside its type's rule, upper-cased, and refuses another on its key: `invalid record value at bic:executingtrader: a value under the bic source is a BIC: expected eight or eleven characters, got "T-1"`. Every other source leaves a value to its type's rule alone, so `proprietary:executingtrader=T-1` stands.
+
+The code's rank is read beside the type's, and the identifier ranks by the lower of the two: a BIC whose country ISO 3166 lists ranks above one whose country it does not, and an LEI whose check digits close above one whose digits do not. A base key ranks from the statements of the same value - the highest rank among its type's nonbase keys, or the type's rank where there are none. So a base answer filled by a BIC or LEI typo is ranked by that named code source, and a listed-country BIC or closing LEI under the same named key replaces it whichever arrives first. A same-valued statement from a source without a registered code gives the base key the type's rank. A value from another source makes no claim to be a code and ranks as its type, so of it and a real code - or of two real codes - the first stated stays the answer. A FIX party the rule refuses stays on the wire as an [anomaly](../fix/message.md#parties-and-regulatory-trade-identifiers).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{IdKey, IdSource, IdType, Identifier, Identifiers};
+
+    let firm = |value: &str| Identifier::new(IdKey::new(IdSource::Bic, IdType::ExecutingFirm), value);
+    // A value under `bic` is a BIC whatever its role: upper-cased, or refused on its key.
+    assert_eq!(firm("deutdeff500")?.value(), "DEUTDEFF500");
+    let refused = firm("T-1").unwrap_err().to_string();
+    assert!(refused.contains("bic:executingfirm") && refused.contains("is a BIC"), "{refused}");
+    // The same value from another source follows its type's rule alone.
+    let house = IdKey::new(IdSource::Proprietary, IdType::ExecutingFirm);
+    assert_eq!(Identifier::new(house, "T-1")?.value(), "T-1");
+    // Under `legalentityidentifier`, an LEI.
+    let client = IdKey::new(IdSource::LegalEntityIdentifier, IdType::ClientId);
+    assert_eq!(Identifier::new(client.clone(), "hwupkr0mpou8fgxbt394")?.value(), "HWUPKR0MPOU8FGXBT394");
+    assert!(Identifier::new(client, "CL").is_err());
+
+    // A BIC of a listed country outranks one of an unlisted country under its
+    // key and against the base answer, whichever value arrived first.
+    let ids: Identifiers = [firm("ABCDXX22")?, firm("DEUTDEFF")?].into_iter().collect();
+    assert_eq!(ids.get_from(&IdKey::new(IdSource::Bic, IdType::ExecutingFirm)), Some("DEUTDEFF"));
+    assert_eq!(ids.get(&IdType::ExecutingFirm), Some("DEUTDEFF"));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Identifier, Identifiers
+
+    # A value under `bic` is a BIC whatever its role: upper-cased, or refused on its key.
+    assert Identifier("bic:executingfirm", "deutdeff500").value == "DEUTDEFF500"
+    try:
+        Identifier("bic:executingfirm", "T-1")
+    except ValueError as error:
+        assert "bic:executingfirm" in str(error) and "is a BIC" in str(error)
+    else:
+        raise AssertionError("a value under bic that is no BIC")
+    # The same value from another source follows its type's rule alone.
+    assert Identifier("proprietary:executingfirm", "T-1").value == "T-1"
+    # Under `legalentityidentifier`, an LEI.
+    assert Identifier("legalentityidentifier:clientid", "hwupkr0mpou8fgxbt394").value == "HWUPKR0MPOU8FGXBT394"
+
+    # A BIC of a listed country outranks one of an unlisted country under its
+    # key and against the base answer, whichever value arrived first.
+    ids = Identifiers([Identifier("bic:executingfirm", "ABCDXX22"), Identifier("bic:executingfirm", "DEUTDEFF")])
+    assert ids.get_from("bic:executingfirm") == "DEUTDEFF"
+    assert ids.get("executingfirm") == "DEUTDEFF"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Identifier, Identifiers } = require('yggdryl')
+
+    // A value under `bic` is a BIC whatever its role: upper-cased, or refused on its key.
+    assert.equal(new Identifier('bic:executingfirm', 'deutdeff500').value, 'DEUTDEFF500')
+    assert.throws(() => new Identifier('bic:executingfirm', 'T-1'), /bic:executingfirm.*is a BIC/)
+    // The same value from another source follows its type's rule alone.
+    assert.equal(new Identifier('proprietary:executingfirm', 'T-1').value, 'T-1')
+    // Under `legalentityidentifier`, an LEI.
+    assert.equal(new Identifier('legalentityidentifier:clientid', 'hwupkr0mpou8fgxbt394').value, 'HWUPKR0MPOU8FGXBT394')
+
+    // A BIC of a listed country outranks one of an unlisted country under its
+    // key and against the base answer, whichever value arrived first.
+    const ids = new Identifiers([new Identifier('bic:executingfirm', 'ABCDXX22'), new Identifier('bic:executingfirm', 'DEUTDEFF')])
+    assert.equal(ids.getFrom('bic:executingfirm'), 'DEUTDEFF')
+    assert.equal(ids.get('executingfirm'), 'DEUTDEFF')
+    ```
 
 ## Parentage
 
@@ -692,9 +781,9 @@ An element that states where it came from but not what it is now is what it came
 | Holder | Rule |
 | --- | --- |
 | A graph leaf | what a caller states: the `insert_`/`set_`/`remove_` verbs of [`Market`](market.md#security-identifiers) (`insert_securityid`), [`Operation`](operation.md#identifiers) (`insert_identifier`) and [party ids](operation.md#party-identifiers) (`insert_partyid`), or the `securityids`, `identifiers` and `partyids` facts a binding builds a leaf from; finalizing derives the national code a stated ISIN embeds, from `derived`, and fills a type from its parents ([Parentage](#parentage)); an [`IsinRegistry`](isin-registry.md) fills what a lifecycle learned, from `derived` |
-| A FIX message | logical facts read off its fields at every settle, the wire kept as sent and never written back ([FIX](../fix/message.md#the-identifier-maps)): an identifier its field's `FIX:idmap` entry names is the base key of its type (`clordid`, `orderid`), a regulatory trade identifier by its `RegulatoryTradeIDType(1906)` too; a security identifier is `SecurityID(48)` under its `SecurityIDSource(22)`'s type - a `{NAMESPACE}INSTRUMENTID` source an `instrumentid` from that namespace - each `SecAltIDGrp(454)` occurrence, and the codes an ISIN embeds from `derived`. The first value stated under a key fills it, in reading order - the fields, the groups, then the unmapped entries - a later value that [outranks](#ranks) it replaces it, recorded as an anomaly naming what it replaced, and a later different value of no higher rank is dropped as a `dropped_identifier` anomaly, staying on the wire; a caller's write is the message's word and moves no field |
+| A FIX message | logical facts read off its fields at every settle, the wire kept as sent and never written back ([FIX](../fix/message.md#the-identifier-maps)): an identifier its field's `FIX:idmap` entry names is the base key of its type (`clordid`, `orderid`), a regulatory trade identifier by its `RegulatoryTradeIDType(1906)` too; a security identifier is `SecurityID(48)` under its `SecurityIDSource(22)`'s type - a `{NAMESPACE}INSTRUMENTID` source an `instrumentid` from that namespace - each `SecAltIDGrp(454)` occurrence, `FinancialInstrumentShortName(2737)` under the base `fisn` key, and the codes an ISIN embeds from `derived`. The first value stated under a key fills it, in reading order - the fields, the groups, then the unmapped entries - a later value that [outranks](#ranks) it replaces it, recorded as an anomaly naming what it replaced, and a later different value of no higher rank is dropped as a `dropped_identifier` anomaly, staying on the wire; a caller's write is the message's word and moves no field |
 | A FIX entry no dictionary maps | each `metadata` key and each top-level untagged scalar of the message, and the keys its message type declares under `FIX:identifiers`, is read as [`Identifier::from_key`](#reading-a-name) reads a name: a security type is a `securityids` identifier (a value its type refuses is an anomaly), a party type a `partyids` one, any other type an `identifiers` one (a value either type refuses is no identifier and no anomaly) - `OMS_InstrumentID` is `oms:instrumentid` in `securityids`, `OMS_RICCODE` `oms:ric` and `ULLINK.ISINCODE` `ullink:isin` there too - every key whose folded name ends with a security type's spelling - `OMS_UserID` `oms:userid` in `partyids`, `firm.x.ParentOrderID` `firm.x:parentorderid` in `identifiers`, each filling its type's base key where nothing states it, and a whole security name such as `#ISINCODE` the base key itself. A captured entry leaves the fixed row's `metadata` cell and rides `fixentries` under `0:<key>`, the key as it arrived; it stays on the wire as it arrived |
-| A FIX party | each `Parties(453)` or `RootParties(1116)` occurrence: its `PartyID(448)` typed by its `PartyRole(452)` code's name folded (`ExecutingFirm` is `executingfirm`, a code the set names nothing for `partyrole{code}`, no role `party`), from its `PartyIDSource(447)` code's name folded (`D` is `proprietary`, `C` `generalidentifier`; a spelling the set resolves nothing for is its own spelling where it is a word, `MyVenue` `myvenue`, and a bare code the set names nothing for - one character, or digits - `partyidsource{code}`, `W` `partyidsourcew`; none the base source), so `proprietary:executingtrader` also fills `executingtrader`; `Account(1)` is a party typed `account` from its `AcctIDSource(660)` code's name, by the same rule (`1` is `bic`, a code the set names nothing for `acctidsource{code}`). A second party of one role and source stays on the wire, no anomaly |
+| A FIX party | each `Parties(453)` or `RootParties(1116)` occurrence: its `PartyID(448)` typed by its `PartyRole(452)` code's name folded (`ExecutingFirm` is `executingfirm`, a code the set names nothing for `partyrole{code}`, no role `party`), from its `PartyIDSource(447)` code's name folded (`D` is `proprietary`, `C` `generalidentifier`; a spelling the set resolves nothing for is its own spelling where it is a word, `MyVenue` `myvenue`, and a bare code the set names nothing for - one character, or digits - `partyidsource{code}`, `W` `partyidsourcew`; none the base source), so `proprietary:executingtrader` also fills `executingtrader`; `Account(1)` is a party typed `account` from its `AcctIDSource(660)` code's name, by the same rule (`1` is `bic`, a code the set names nothing for `acctidsource{code}`). A party under `bic` or `legalentityidentifier` is held to that code's shape ([Under a source](#under-a-source)), one of another shape an anomaly that stays on the wire. A second party of one role and source stays on the wire, no anomaly |
 | A leaf a FIX message becomes | the message's sets, a book entry's or a trade side's own party ids leading, plus each unmapped scalar whose key names an identifier - a dictionary-tagged child only by the identifiers its message's type declares (`RefOrderID(1080)`'s `reforderid`), an untagged key by the crate's identifier names too - typed by `Identifier::from_key` and lifted into the set its type belongs to where that set holds its key free or with the same value; otherwise it stays in the leaf's metadata ([What a leaf's metadata holds](../fix/message.md#what-a-leafs-metadata-holds)) |
 
 ## Arrow

@@ -33,6 +33,7 @@ mod chunked_serie;
 mod coding;
 mod datatype;
 mod enums;
+mod eusipa;
 mod excel;
 mod expression;
 mod field;
@@ -48,11 +49,13 @@ mod iomedia;
 mod ioresult;
 mod isin_registry;
 mod join;
+mod key_serie;
 mod logging;
 mod marketdatakind;
 mod marketdatatype;
 mod media;
 mod parameters;
+mod pluginside;
 mod properties;
 mod protocol;
 mod scalar;
@@ -60,6 +63,8 @@ mod serie;
 mod side;
 mod spill;
 mod state;
+mod stream_chunked_serie;
+mod stream_serie;
 mod text;
 mod timeinforce;
 mod timezone;
@@ -578,7 +583,7 @@ fn register_expression(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<expression::PyBoundSelector>()?;
     module.add_class::<expression::PyPlan>()?;
     module.add_class::<expression::PyExpression>()?;
-    module.add_class::<expression::PyRecords>()?;
+    module.add_class::<stream_serie::PyStreamSerie>()?;
     module.add_class::<expression::PyBounds>()?;
     module.add_function(wrap_pyfunction!(
         expression::expression_needs_quoting,
@@ -604,8 +609,9 @@ fn register_expression(module: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-/// Register the member tables the three enum-family classes are built from
-/// at import: `State`, `MarketDataKind`, `MarketDataType` and `Side`.
+/// Register the member tables the enum-family classes are built from at
+/// import: `State`, `MarketDataKind`, `MarketDataType`, `Side`, `TimeInForce`
+/// and `PluginSide`.
 fn register_enum_members(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(state::state_members, module)?)?;
     module.add_function(wrap_pyfunction!(state::state_from_spelling, module)?)?;
@@ -629,6 +635,9 @@ fn register_enum_members(module: &Bound<'_, PyModule>) -> PyResult<()> {
         wrap_pyfunction!(timeinforce::timeinforce_members, module)?,
         wrap_pyfunction!(timeinforce::timeinforce_from_spelling, module)?,
         wrap_pyfunction!(timeinforce::timeinforce_from_fix, module)?,
+        wrap_pyfunction!(pluginside::pluginside_members, module)?,
+        wrap_pyfunction!(pluginside::pluginside_from_spelling, module)?,
+        wrap_pyfunction!(pluginside::pluginside_from_plugin_type, module)?,
     ] {
         module.add_function(function)?;
     }
@@ -655,9 +664,10 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<serie::PyFixedSizeSerieSerie>()?;
     module.add_class::<serie::PyMapSerie>()?;
     module.add_class::<serie::PyStructSerie>()?;
-    module.add_class::<serie::PySerieReader>()?;
-    module.add_class::<serie::PySerieReaderPartitions>()?;
-    module.add_class::<serie::PySerieReaderWindows>()?;
+    module.add_class::<stream_chunked_serie::PyStreamChunkedSerie>()?;
+    module.add_class::<key_serie::PyKeySerie>()?;
+    module.add_class::<key_serie::PyKeySeries>()?;
+    module.add_class::<key_serie::PyStreamKeySerie>()?;
     module.add_class::<window_serie::PyWindowSerie>()?;
     module.add_class::<chunked_serie::PyChunkedSerie>()?;
     module.add_class::<spill::PySpillOptions>()?;
@@ -683,6 +693,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<identifier::PyIdentifier>()?;
     module.add_class::<identifier::PyIdentifiers>()?;
     module.add_class::<isin_registry::PyIsinRegistry>()?;
+    module.add_class::<eusipa::PyEusipa>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;
     module.add_class::<fix::PyFixMsgIterator>()?;

@@ -38,8 +38,8 @@ use std::num::NonZeroU32;
 use std::str::FromStr;
 
 use iceberg_official::spec::{
-    Datum as OfficialDatum, PrimitiveLiteral as OfficialLiteral,
-    PrimitiveType as OfficialPrimitiveType, Transform as OfficialTransform, Type as OfficialType,
+    Datum as OfficialDatum, PrimitiveLiteral as OfficialLiteral, Transform as OfficialTransform,
+    Type as OfficialType,
 };
 use iceberg_official::transform::{BoxedTransformFunction, create_transform_function};
 use smol_str::{SmolStr, format_smolstr};
@@ -367,7 +367,7 @@ impl Transform {
             return Ok(DataType::utf8());
         }
         if self.is_bridged() {
-            official_primitive_type(source)?;
+            super::PrimitiveType::from_dtype(source)?.into_official()?;
             let period = self
                 .epoch_period()
                 .expect("a bridged transform is a period");
@@ -390,7 +390,8 @@ impl Transform {
         }
 
         let transform = self.into_official()?;
-        let input = OfficialType::Primitive(official_primitive_type(source)?);
+        let input =
+            OfficialType::Primitive(super::PrimitiveType::from_dtype(source)?.into_official()?);
         transform.result_type(&input).map_err(Error::from_iceberg)?;
 
         Ok(match self {
@@ -1321,41 +1322,8 @@ impl PartitionTransform {
     }
 }
 
-fn official_primitive_type(dtype: &DataType) -> Result<OfficialPrimitiveType> {
-    Ok(match super::PrimitiveType::from_dtype(dtype)? {
-        super::PrimitiveType::Boolean => OfficialPrimitiveType::Boolean,
-        super::PrimitiveType::Int => OfficialPrimitiveType::Int,
-        super::PrimitiveType::Long => OfficialPrimitiveType::Long,
-        super::PrimitiveType::Float => OfficialPrimitiveType::Float,
-        super::PrimitiveType::Double => OfficialPrimitiveType::Double,
-        super::PrimitiveType::Decimal { precision, scale } => OfficialPrimitiveType::Decimal {
-            precision: u32::from(precision),
-            scale: u32::try_from(scale).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected a non-negative Iceberg decimal scale, got {scale}"
-                ))
-            })?,
-        },
-        super::PrimitiveType::Date => OfficialPrimitiveType::Date,
-        super::PrimitiveType::Time => OfficialPrimitiveType::Time,
-        super::PrimitiveType::Timestamp => OfficialPrimitiveType::Timestamp,
-        super::PrimitiveType::Timestamptz => OfficialPrimitiveType::Timestamptz,
-        super::PrimitiveType::TimestampNs => OfficialPrimitiveType::TimestampNs,
-        super::PrimitiveType::TimestamptzNs => OfficialPrimitiveType::TimestamptzNs,
-        super::PrimitiveType::String => OfficialPrimitiveType::String,
-        super::PrimitiveType::Uuid => OfficialPrimitiveType::Uuid,
-        super::PrimitiveType::Fixed(width) => OfficialPrimitiveType::Fixed(u64::from(width)),
-        super::PrimitiveType::Binary => OfficialPrimitiveType::Binary,
-        primitive @ (super::PrimitiveType::Unknown | super::PrimitiveType::Variant) => {
-            return Err(invalid(format_smolstr!(
-                "expected a concrete Iceberg partition source type, got {primitive}"
-            )));
-        }
-    })
-}
-
 fn official_datum(value: &Scalar, dtype: &DataType) -> Result<OfficialDatum> {
-    let primitive = official_primitive_type(dtype)?;
+    let primitive = super::PrimitiveType::from_dtype(dtype)?.into_official()?;
     let bytes = if let DataType::Decimal32 { scale, .. }
     | DataType::Decimal64 { scale, .. }
     | DataType::Decimal128 { scale, .. } = dtype

@@ -164,7 +164,7 @@ assert!(refused.contains("$.v"), "{refused}");
 
 ## Write and read rows as values
 
-`*_records` takes anything `Into<Scalar>` in the field's column order; `read_serie` answers a `SerieReader`, one record `Serie` per batch, whose children are the columns.
+`*_records` takes anything `Into<Scalar>` in the field's column order; `read_serie` answers a `StreamChunkedSerie`, one record `Serie` per batch, whose children are the columns.
 
 ```rust
 use yggdryl::holder::Buffer;
@@ -191,7 +191,7 @@ handle.overwrite_records([Trade(1, "XNAS"), Trade(2, "XNYS")], &options)?;
 handle.append_records([Trade(3, "XLON")], &options)?;
 
 let mut venues = Vec::new();
-for records in handle.read_serie(Some(&options.clone().with_filter("id >= 2")?))? {
+for records in handle.read_serie(Some(&options.clone().with_filter("id >= 2")?))?.into_chunked_stream(None, None)?.into_chunks() {
     let records = records?;
     let venue = records.child("venue").expect("a venue column");
     for row in 0..venue.len() {
@@ -203,7 +203,7 @@ assert_eq!(venues, [Scalar::from("XNYS"), Scalar::from("XLON")]);
 
 ## Append, and upsert by key
 
-Overwrite replaces, append keeps the stored rows, merge updates rows whose `merge_by` key matches and appends the rest; it holds only the stored side in memory. Merge without a key is refused.
+Overwrite replaces, append keeps the stored rows, merge updates rows whose `merge_by` key matches and appends the rest; it holds only the stored side in memory, and replaces a stored row only where the last arrival for its key differs from it, so a merge changing nothing leaves the leaf unwritten. Merge without a key is refused, and so is a boolean `false` key.
 
 ```rust
 use std::sync::Arc;
@@ -211,7 +211,7 @@ use std::sync::Arc;
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
-use yggdryl::{arrow, DataType, IOBase, IOMedia, MimeType, StructType};
+use yggdryl::{arrow, DataType, IOBase, IOMedia, IOResult, MimeType, Scalar, StructType};
 
 let schema = DataType::from(StructType::from_fields([
     DataType::Int64.required_field("id"),
@@ -232,21 +232,30 @@ let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
 let options = handle.record_options()?.with_field(schema);
 handle.overwrite_arrow_reader(rows(vec![1, 2], vec!["AAPL", "MSFT"]), &options)?;
 handle.append_arrow_reader(rows(vec![3], vec!["NVDA"]), &options)?;
-handle.merge_arrow_reader(rows(vec![2, 9], vec!["MSFT.O", "AMD"]), &options.clone().with_merge_by(["id"])?)?;
+let keyed = options.clone().with_merge_by(["id"])?;
+handle.merge_arrow_reader(rows(vec![2, 9], vec!["MSFT.O", "AMD"]), &keyed)?;
 assert_eq!(handle.row_size()?, 4);
+
+// A merge whose rows equal the stored ones still counts them, and writes nothing.
+let before = handle.read_all_bytes()?;
+assert_eq!(handle.merge_arrow_reader(rows(vec![2], vec!["MSFT.O"]), &keyed)?, IOResult::new(1, 1));
+assert_eq!(handle.read_all_bytes()?, before);
 
 let refused = handle.merge_arrow_reader(rows(vec![1], vec!["X"]), &options).unwrap_err();
 assert!(refused.to_string().contains("merge_by"), "{refused}");
+// `true` is the destination's own key - none on a leaf - and `false` names no key.
+assert_eq!(options.clone().with_merge_by_scalar(&Scalar::from(true))?, options);
+assert!(options.clone().with_merge_by_scalar(&Scalar::from(false)).is_err());
 ```
 
 ## Choose the write mode at run time
 
-`write_arrow_reader`/`write_arrow_batch`/`write_records` take an `IOMode`, and so does `write_serie`, whose `overwrite_serie`/`append_serie`/`merge_serie` name it: they take a `Serie`, a `ChunkedSerie` or a `SerieReader` as one `SerieSource` (`.into()`), written as the batches it already is, and with `read_serie` are also the record door of JSON, JSON Lines, YAML, TOML and XML handles. `None` options are the handle's own.
+`write_arrow_reader`/`write_arrow_batch`/`write_records` take an `IOMode`, and so does `write_serie`, whose `overwrite_serie`/`append_serie`/`merge_serie` name it: they take a `Serie`, a `ChunkedSerie` or a `StreamChunkedSerie` as one `Serie` (`.into()`), written as the batches it already is, and with `read_serie` are also the record door of JSON, JSON Lines, YAML, TOML and XML handles. `None` options are the handle's own.
 
 ```rust
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{ChunkedSerie, DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Serie, SerieReader, StructType, Url};
+use yggdryl::{ChunkedSerie, DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Serie, StreamChunkedSerie, StructType, Url};
 
 let root = DataType::from(StructType::from_fields([
     DataType::utf8().required_field("symbol"),
@@ -261,7 +270,7 @@ let rows = Serie::from_scalars(
 let mut stream = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
 let options = stream.record_options()?;
 for mode in [IOMode::Overwrite, IOMode::Append] {
-    stream.write_arrow_reader(SerieReader::from_serie(rows.clone())?.into_arrow_reader(), mode, &options)?;
+    stream.write_arrow_reader(StreamChunkedSerie::from_serie(rows.clone())?.into_arrow_reader(), mode, &options)?;
 }
 assert_eq!(stream.row_size()?, 2);
 
@@ -272,9 +281,9 @@ assert_eq!(stream.row_size()?, 4);
 
 // A JSON Lines handle takes rows as documents through overwrite_serie.
 let mut lines = Buffer::new().with_media_type(Url::from_str("file:///quotes.jsonl")?.media_type());
-lines.overwrite_serie(SerieReader::from_serie(rows.clone())?.into(), None)?;
+lines.overwrite_serie(StreamChunkedSerie::from_serie(rows.clone())?.into(), None)?;
 let declared = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(root);
-assert_eq!(lines.read_serie(Some(&declared))?.collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
+assert_eq!(lines.read_serie(Some(&declared))?.into_chunked_stream(None, None)?.into_chunks().collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
 
 // A document is written whole: write_serie on it takes IOMode::Overwrite only.
 let refused = lines.append_serie(rows.into(), None).unwrap_err();
@@ -451,7 +460,7 @@ text_options.set_rowheader(Some(r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+) "))?;
 text_options.set_framing(true);
 let text = source.into_text_with(text_options);
 
-let records = text.read_serie(None)?.next().expect("one batch")?;
+let records = text.read_serie(None)?.into_chunked_stream(None, None)?.next_chunk().expect("one batch")?;
 let body = records.child("body").expect("the body column");
 let id = records.child("id").expect("a capture column");
 assert_eq!(body.scalar(0)?, Scalar::from("first\n detail A"));
@@ -494,7 +503,7 @@ assert_eq!((handle.row_size()?, handle.column_size()?), (3, 2));
 
 // Declared, every cell crosses the column's contract; a null and "" stay apart.
 let mut symbols = Vec::new();
-for records in handle.read_serie(Some(&declared))? {
+for records in handle.read_serie(Some(&declared))?.into_chunked_stream(None, None)?.into_chunks() {
     let records = records?;
     let symbol = records.child("symbol").expect("a symbol column");
     for row in 0..symbol.len() {
@@ -651,6 +660,55 @@ assert_eq!(count(table.scan_at(first, &[], None)?)?, 3); // time travel
 
 let reopened = IcebergTable::open(LocalFolder::new(&path)?)?;
 assert_eq!(reopened.current_snapshot()?.expect("a snapshot").operation(), "overwrite");
+let _ = std::fs::remove_dir_all(&path);
+```
+
+## Iceberg: the table's own key
+
+A table whose schema states `identifier-field-ids` keys every write by it: a merge naming no key matches on it (`with_merge_by_scalar(&Scalar::from(true))` states it outright), and an append writes only the rows whose key neither the table nor an earlier row of the write holds - the first arrival kept, the rest in `skipped_rows`, no stored file rewritten. A merge or an append that changes nothing commits no snapshot. A keyed append beaten by a concurrent commit fails with `CommitConflict` instead of rebasing.
+
+```rust
+use yggdryl::iceberg::{assign_field_ids, FormatVersion, IcebergTable, PartitionSpec};
+use yggdryl::local::LocalFolder;
+use yggdryl::media::IORecordOptions;
+use yggdryl::{DataType, IOMedia, IOResult, Scalar, Serie, StructType};
+
+let row = DataType::from(StructType::from_fields([
+    DataType::Int64.required_field("id"),
+    DataType::utf8().nullable_field("venue"),
+])?)
+.required_field("row");
+let mut schema = row.clone();
+assign_field_ids(&mut schema, 1)?;
+// The table's own key: `id`, named by the field id the numbering gave it.
+schema.as_iceberg_mut().set_identifier_field_ids(&[1])?;
+
+let path = LocalFolder::temporary()?.path()?.join("yggdryl-skill-records-iceberg-keyed");
+let _ = std::fs::remove_dir_all(&path);
+let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema, PartitionSpec::unpartitioned())?;
+let trade = |id: i64, venue: &str| Scalar::from_sequence([Scalar::from(id), Scalar::from(venue)]);
+let trades = |rows: Vec<Scalar>| Serie::from_scalars(row.clone(), rows);
+
+assert_eq!(table.append_serie(trades(vec![trade(1, "XNAS"), trade(2, "XNYS")])?.into(), None)?, IOResult::new(2, 2));
+// 2 is stored and 3 arrives twice: one row written, two skipped.
+let appended = table.append_serie(trades(vec![trade(2, "XLON"), trade(3, "XPAR"), trade(3, "XAMS")])?.into(), None)?;
+assert_eq!((appended.read_rows, appended.written_rows, appended.skipped_rows), (3, 1, 2));
+
+// A merge naming no key matches on the table's own; `true` states it.
+let own = table.record_options()?.with_merge_by_scalar(&Scalar::from(true))?;
+table.merge_serie(trades(vec![trade(1, "XAMS")])?.into(), Some(&own))?;
+// Replaying it changes no row: counted as written, committed nowhere.
+let snapshots = table.metadata()?.snapshots().len();
+assert_eq!(table.merge_serie(trades(vec![trade(1, "XAMS")])?.into(), None)?, IOResult::new(1, 1));
+assert_eq!(table.metadata()?.snapshots().len(), snapshots);
+assert!(own.with_merge_by_scalar(&Scalar::from(false)).is_err());
+
+let mut rows: Vec<Scalar> = Vec::new();
+for batch in table.read_serie(None)?.into_chunked_stream(None, None)?.into_chunks() {
+    rows.extend(batch?.rows().into_owned());
+}
+rows.sort();
+assert_eq!(rows, [trade(1, "XAMS"), trade(2, "XNYS"), trade(3, "XPAR")]);
 let _ = std::fs::remove_dir_all(&path);
 ```
 

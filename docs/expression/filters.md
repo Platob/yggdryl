@@ -58,7 +58,7 @@
     ```python
     import pyarrow as pa
 
-    from yggdryl import Field, Filter
+    from yggdryl import Field, Filter, Serie
 
     root = Field("rows", "struct<ccy:utf8,size:int64>", False)
     filter = Filter("where ccy = 'EUR' and size > 1")
@@ -73,7 +73,7 @@
     assert Filter.always_true().apply_arrow_batch(batch) is batch
 
     kept = filter.apply_records([{"ccy": "EUR", "size": 5}, {"ccy": "USD", "size": 5}], root)
-    assert list(kept) == [{"ccy": "EUR", "size": 5}]
+    assert Serie.from_(kept).as_py() == [{"ccy": "EUR", "size": 5}]
 
     # Normalization keeps the answer in fewer nodes.
     assert str(Filter("size = 1 or size = 2 or size = 3").simplify()) == "size in (1, 2, 3)"

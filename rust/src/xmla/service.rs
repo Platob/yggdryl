@@ -36,7 +36,8 @@ use crate::soap::{Fault, FaultCode, Fragment};
 use crate::warehouse::{holds, no_catalog, path_text};
 use crate::{
     ArrowCastOptions, Catalog, CatalogValue, DataType, Error, Field, Namespace, NamespaceValue,
-    Object, ObjectValue, Result, Scalar, Serie, SerieReader, Table, TableValue, Uuid, Warehouse,
+    Object, ObjectValue, Result, Scalar, Serie, StreamChunkedSerie, Table, TableValue, Uuid,
+    Warehouse,
 };
 
 /// The error codes this provider's faults carry.
@@ -141,7 +142,7 @@ pub enum Execution {
         /// The columns.
         rowset: Rowset,
         /// The rows, one record column per batch.
-        rows: SerieReader,
+        rows: StreamChunkedSerie,
     },
     /// Nothing: a `Content` of `None`, or a write.
     Empty,
@@ -260,7 +261,7 @@ impl Service {
                     &header,
                     Method::Execute,
                     &rowset,
-                    rows,
+                    rows.into_chunks(),
                     content_of(execute.properties()).unwrap_or(Content::DEFAULT),
                 )
                 .map(|(writer, _)| writer),
@@ -925,8 +926,9 @@ impl Service {
         let batches = plan
             .execute_in(&self.warehouse)
             .map_err(|error| server_fault(code::EXECUTION_FAILED, error))?;
-        let rows = SerieReader::from_arrow_reader(None, batches, ArrowCastOptions::default())
-            .map_err(|error| server_fault(code::EXECUTION_FAILED, error))?;
+        let rows =
+            StreamChunkedSerie::from_arrow_reader(None, batches, ArrowCastOptions::default())
+                .map_err(|error| server_fault(code::EXECUTION_FAILED, error))?;
         let rowset = Rowset::new(rows.field().clone())
             .map_err(|error| server_fault(code::EXECUTION_FAILED, error))?;
         if plan.write_section().is_some() || plan.create_target().is_some() {

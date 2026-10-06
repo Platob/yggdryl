@@ -1,6 +1,6 @@
 # Codes
 
-The twelve registered codes: an identity over a published registry, the width its standard fixes, and the Arrow extension name that identity rides.
+The seventeen registered codes: an identity over a published registry, the width its standard fixes, and the Arrow extension name that identity rides.
 
 A code is not a string with a charset - a currency is ISO 4217's, or a digital-asset ticker's, the way a [URL](../../uri/url-urn.md) is RFC 3986. It stores as the US-ASCII text it is, Arrow's `Utf8` under the code's own extension name, held to the width its standard fixes. It is its own datatype, kind `code`, answers `is_code`, `code_name` and `code_width`, and never `string_parameters`. The width is a maximum rather than a layout, so `fixed_byte_width` answers `None`. Text of any length in that repertoire is the [`ascii` string](../text/string.md).
 
@@ -8,7 +8,7 @@ A code is not a string with a charset - a currency is ISO 4217's, or a digital-a
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | Twelve `DataType` variants, twelve `Field` leaves, twelve `Scalar` variants, and the `CodeValue` contract their leaf values answer; the family is the code range of `DataTypeId` bytes, not a type |
+| Owns | Seventeen `DataType` variants, seventeen `Field` leaves, seventeen `Scalar` variants, and the `CodeValue` contract their leaf values answer; the family is the code range of `DataTypeId` bytes, not a type |
 | Validates | At the value door, once: US-ASCII, no NUL, at most the code's width, then the code's own shape - a fixed length, character classes, the case folded where the code folds it, a published spelling. Validity - a closing check digit, a listed country, a classified CFI - is a [rank](#rank), never a gate |
 | Lazy | Nothing - a code has no children, no registry lookup and no deferred parse |
 | Cached | The Arrow projection of a [`Field`](../field.md), built once per field |
@@ -16,10 +16,10 @@ A code is not a string with a charset - a currency is ISO 4217's, or a digital-a
 | Errors | Rust `Error::InvalidDataType { kind, reason }` where `kind` is the code's own name; Python `ValueError`; JavaScript throws |
 | Storage | The text itself: nothing padded, nothing to trim, so a column dictionary-encodes and carries string statistics like any other text |
 | Identity | The extension *name*, never the storage: `yggdryl.ccy` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
-| Value rank | The twelve share one value rank, so what separates two codes of the same bytes is the identity their datatypes sort by: `Forex("EUR/USD")` and `Bbg("EUR/USD")` are two values |
-| Rust only | `DataType::CODES`, the twelve leaf value types, `CodeValue` with its `MAX_RANK`, `rank`, `is_real` and `merge_with`, `IdType::rank`, `max_rank` and `is_real`, `Scalar::code_storage` and `Scalar::is_code` |
+| Value rank | The seventeen share one value rank, so what separates two codes of the same bytes is the identity their datatypes sort by: `Forex("EUR/USD")` and `Bbg("EUR/USD")` are two values |
+| Rust only | `DataType::CODES`, the seventeen leaf value types, `CodeValue` with its `MAX_RANK`, `rank`, `is_real` and `merge_with`, `IdType::rank`, `max_rank` and `is_real`, `Scalar::code_storage` and `Scalar::is_code` |
 
-The contract every registered code answers lives in `rust/src/code.rs`: the `CodeValue` trait - `WIDTH`, `as_str`, `storage`, `MAX_RANK`, `rank`, `is_real`, `merge_with` - and the two crate-internal builders `code_leaf!` and `code_value!` that a code file declares its value with. Each of the twelve is then one file of its own, holding its datatype, its field marker and its value in that order.
+The contract every registered code answers lives in `rust/src/code.rs`: the `CodeValue` trait - `WIDTH`, `as_str`, `storage`, `MAX_RANK`, `rank`, `is_real`, `merge_with` - and the two crate-internal builders `code_leaf!` and `code_value!` that a code file declares its value with. Each of the seventeen is then one file of its own, holding its datatype, its field marker and its value in that order.
 
 ## Pages
 
@@ -37,6 +37,11 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
 | [RIC](ric.md) | LSEG's Refinitiv Identification Code, one token no standard closes | 32 | `yggdryl.ric` |
 | [Forex](forex.md) | ISO 4217 currency pair, `CCY/CCY` | 7 | `yggdryl.forex` |
 | [Unit](unit.md) | FIX `UnitOfMeasure(996)`, the text it is | 32 | `yggdryl.unit` |
+| [LEI](lei.md) | ISO 17442 legal entity identifier, ranked by its check digits | 20 | `yggdryl.lei` |
+| [BIC](bic.md) | ISO 9362 business identifier code, ranked by its country | 11 | `yggdryl.bic` |
+| [ELF](elf.md) | ISO 20275 entity legal form | 4 | `yggdryl.elf` |
+| [DTI](dti.md) | ISO 24165 digital token identifier, ranked by its check character | 9 | `yggdryl.dti` |
+| [FISN](fisn.md) | ISO 18774 financial instrument short name, `ISSUER/DESCRIPTION` | 35 | `yggdryl.fisn` |
 
 ## What every code answers
 
@@ -76,6 +81,11 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
             ("unit", DataType::Unit, 32),
             ("ric", DataType::Ric, 32),
             ("forex", DataType::Forex, 7),
+            ("lei", DataType::Lei, 20),
+            ("bic", DataType::Bic, 11),
+            ("elf", DataType::Elf, 4),
+            ("dti", DataType::Dti, 9),
+            ("fisn", DataType::Fisn, 35),
         ]
     );
 
@@ -108,10 +118,12 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert currency != DataType.fixed_ascii(8)
     assert [(DataType(name).id, DataType(name).code_width) for name in
             ("country", "ccy", "mic", "cfi", "isin", "cusip", "sedol",
-             "bbg", "figi", "unit", "ric", "forex")] == [
+             "bbg", "figi", "unit", "ric", "forex", "lei", "bic", "elf",
+             "dti", "fisn")] == [
         ("country", 2), ("ccy", 8), ("mic", 4), ("cfi", 6), ("isin", 12),
         ("cusip", 9), ("sedol", 7), ("bbg", 32),
         ("figi", 12), ("unit", 32), ("ric", 32), ("forex", 7),
+        ("lei", 20), ("bic", 11), ("elf", 4), ("dti", 9), ("fisn", 35),
     ]
 
     # A value is the text, and carries its identity.
@@ -141,9 +153,10 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert.equal(currency.stringParameters, null)
     assert.ok(!currency.equals(DataType.fixedAscii(8)))
     assert.deepEqual(
-      ['country', 'ccy', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'bbg', 'figi', 'unit', 'ric', 'forex']
+      ['country', 'ccy', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'bbg', 'figi', 'unit', 'ric', 'forex',
+        'lei', 'bic', 'elf', 'dti', 'fisn']
         .map((name) => new DataType(name).codeWidth),
-      [2, 8, 4, 6, 12, 9, 7, 32, 12, 32, 32, 7],
+      [2, 8, 4, 6, 12, 9, 7, 32, 12, 32, 32, 7, 20, 11, 4, 9, 35],
     )
 
     // A value is the text, and carries its identity.
@@ -156,7 +169,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
 
 ## Shape and rank { #rank }
 
-A code's `new` and its value door admit the code's shape and refuse only that. What the shape leaves open - whether a number closes on its check digit, whether a registry lists the code, whether the text is the one that states no value - is a rank: `CodeValue::rank` answers it from zero to the code's `MAX_RANK`, and `is_real` whether it is at `MAX_RANK`. A masked line's `XX0000000001`, a typo and an unlisted country are values of a lower rank rather than refusals, every [merge](#the-code-family-value) reads the rank, so a real value replaces a placeholder whichever was stated first, and a derivation that needs a real value asks the reading first. An identifier carried as text is ranked by its type: `IdType::rank(value)`, `max_rank()` and `is_real(value)` answer the registered code's rank for `isin`, `cusip`, `sedol`, `figi`, `cfi`, `isoccy` and `isoctry`, a lower-case spelling ranking as the upper case the type stores it under, zero for a value the type refuses, and one for every other type - which is what a [graph element's identifiers](../../graph/identifier.md) decide a restated key by. `is_canonical` (ISIN, CUSIP, SEDOL, FIGI, Bbg, RIC, Forex) is the strict question a column's bytes are held to: upper case where the code folds it, and the shape. Rust only.
+A code's `new` and its value door admit the code's shape and refuse only that. What the shape leaves open - whether a number closes on its check digit, whether a registry lists the code, whether the text is the one that states no value - is a rank: `CodeValue::rank` answers it from zero to the code's `MAX_RANK`, and `is_real` whether it is at `MAX_RANK`. A masked line's `XX0000000001`, a typo and an unlisted country are values of a lower rank rather than refusals, every [merge](#the-code-family-value) reads the rank, so a real value replaces a placeholder whichever was stated first, and a derivation that needs a real value asks the reading first. An identifier carried as text is ranked by its type: `IdType::rank(value)`, `max_rank()` and `is_real(value)` answer the registered code's rank for `isin`, `cusip`, `sedol`, `figi`, `lei`, `dti`, `cfi`, `isoccy` and `isoctry`, a lower-case spelling ranking as the upper case the type stores it under, zero for a value the type refuses, and one for every other type - which is what a [graph element's identifiers](../../graph/identifier.md) decide a restated key by, beside the code a source gives: under the `bic` and `legalentityidentifier` sources a value is held to a BIC's or an LEI's shape whatever its type, and ranks by the lower of its type's rank and that code's ([Under a source](../../graph/identifier.md#under-a-source)). `is_canonical` (ISIN, CUSIP, SEDOL, FIGI, Bbg, RIC, Forex, LEI, BIC, ELF, DTI, FISN) is the strict question a column's bytes are held to: upper case where the code folds it, and the shape. Rust only.
 
 | Code | Shape: what `new` admits | Rank | `MAX_RANK` |
 | --- | --- | --- | ---: |
@@ -169,7 +182,10 @@ A code's `new` and its value door admit the code's shape and refuse only that. W
 | [`sedol`](sedol.md) | six alphanumerics, a digit; upper-cased | 1 where `Sedol::is_closed`, else 0 | 1 |
 | [`figi`](figi.md) | two unreserved consonants, `G`, eight consonants or digits, a digit; upper-cased | 1 where `Figi::is_closed`, else 0 | 1 |
 | [`unit`](unit.md) | at most 32 bytes | empty (`Unit::none()`, `is_none()`) 0, any other 1 | 1 |
-| [`bbg`](bbg.md), [`ric`](ric.md), [`forex`](forex.md) | each its own shape | 1: nothing partial about a value | 1 |
+| [`lei`](lei.md) | eighteen alphanumerics, two digits; upper-cased | 1 where `Lei::is_closed` (MOD 97-10), else 0 | 1 |
+| [`bic`](bic.md) | four alphanumerics, two letters, two alphanumerics, an optional three; upper-cased, eight or eleven kept as stated | 1 where ISO 3166 lists the country or it is `XK`, else 0 | 1 |
+| [`dti`](dti.md) | nine of `0123456789BCDFGHJKLMNPQRSTVWXZ`, the first not `0`; upper-cased | 1 where `Dti::is_closed` (hybrid MOD 31,30), else 0 | 1 |
+| [`bbg`](bbg.md), [`ric`](ric.md), [`forex`](forex.md), [`elf`](elf.md), [`fisn`](fisn.md) | each its own shape | 1: nothing partial about a value | 1 |
 
 ```rust
 use yggdryl::{CodeValue, Country, Cusip, IdType, Isin};
@@ -190,9 +206,9 @@ assert_eq!(IdType::Isin.rank("not an isin"), 0);
 
 ## `CodeValue::merge_with` { #the-code-family-value }
 
-The twelve share no value type: each is its own `Scalar` variant over its own leaf value, the family is the code range of identifiers - `DataTypeKind::Code.contains(id)`, which is what `is_code` asks ([Scalar](../scalar.md#families)) - and what the leaves share is the `CodeValue` contract. Python and JavaScript read the family off the value itself, as `family` above.
+The seventeen share no value type: each is its own `Scalar` variant over its own leaf value, the family is the code range of identifiers - `DataTypeKind::Code.contains(id)`, which is what `is_code` asks ([Scalar](../scalar.md#families)) - and what the leaves share is the `CodeValue` contract. Python and JavaScript read the family off the value itself, as `family` above.
 
-`CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph/market.md#following-and-merging) folds two statements of one fact with. It reads the [rank](#rank): the other value where it outranks this one, else this one, so a real value replaces a lower one whichever leads and two values of one rank keep the one that leads. A `ccy` `XXX`, a `mic` `XXXX` and a `unit` stated as none take any stated one; an unlisted `country` takes a listed one; an `isin`, `cusip`, `sedol` or `figi` its digit does not close takes one it closes, and an `isin` listed nowhere - `ZZ`, ISO 6166's placeholder for a derivative no agency has numbered yet, or a masked `XX` - one an agency numbers; a `cfi` folds further, filling every `X` from the other where the two describe one instrument ([CFI](cfi.md#two-statements-of-one-instrument)); and every other code stands as it is. Rust only.
+`CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph/market.md#following-and-merging) folds two statements of one fact with. It reads the [rank](#rank): the other value where it outranks this one, else this one, so a real value replaces a lower one whichever leads and two values of one rank keep the one that leads. A `ccy` `XXX`, a `mic` `XXXX` and a `unit` stated as none take any stated one; an unlisted `country` takes a listed one; an `isin`, `cusip`, `sedol` or `figi` its digit does not close takes one it closes, and an `lei` or `dti` its check does not close one it closes; a `bic` of an unlisted country takes a listed one; and an `isin` listed nowhere - `ZZ`, ISO 6166's placeholder for a derivative no agency has numbered yet, or a masked `XX` - one an agency numbers; a `cfi` folds further, filling every `X` from the other where the two describe one instrument ([CFI](cfi.md#two-statements-of-one-instrument)); and every other code stands as it is. Rust only.
 
 ```rust
 use yggdryl::{CodeValue, Ccy, Cfi, Country, DataTypeKind, Isin, Mic, Scalar};
@@ -522,20 +538,22 @@ subclasses for a vocabulary of its own: `Ccy`, `Country`, `Mic` and `Cfi`;
 FIX tag 35 stores complete `utf8` text, including codes such as `P Report Ack`.
 The [FIX registry](../../fix/registry.md) owns `MsgType`: the registry's
 immutable message Struct definition, a component carrying `FIX:msgtype` and
-an optional four-character `FIX:msgcat`, which `MsgType::msgcat` reads as the
+an optional four-character `FIX:msgcat`, which `MsgType::marketdatakind` reads as the
 [`MarketDataKind`](../enum/marketdatakind.md) member it names. Its wire code
 stays intact; message definitions have no generic datatype or code field
-helper. A fixed row carries that member in its `marketdatakind`-typed `msgcat`
+helper. A fixed row carries that member in its `marketdatakind`
 column at crate tag 65016, and five normalized identifier columns:
-`isincode(65021)`, `forexcode(65046)`, `bloombergcode(65047)`,
-`figicode(65048)` and `miccode(65022)` ([the crate's own
+`isincode(65021)`, `forexcode(65047)`, `bloombergcode(65048)`,
+`figicode(65049)` and `miccode(65022)` ([the crate's own
 columns](../../fix/capture.md#the-crates-own-columns)). A CUSIP or a SEDOL is
 one more security identifier of its own type, with no column of its own, and
 `CFICode(461)` is the standard classification field, so no crate column
 carries one. `SecurityIDSource(22)=S` and `SecurityAltIDSource(456)=S` lift a
 valid FIGI; source `A` remains Bloomberg, and source `5` is a [RIC](ric.md),
-held to that code's own rule. A currency pair has no FIX source: it is the
-crate's own [`forex`](forex.md#the-forex-security-identifier) key.
+held to that code's own rule. Source `T` is an [LEI](lei.md) and source `Y` a [DTI](dti.md), each held to that code's shape. A currency pair has no FIX source: it is the
+crate's own [`forex`](forex.md#the-forex-security-identifier) key. Nor has a short name:
+`FinancialInstrumentShortName(2737)` is a [FISN](fisn.md), read into `securityids`
+under the base `fisn` key.
 
 ## Edges
 
@@ -544,7 +562,7 @@ crate's own [`forex`](forex.md#the-forex-security-identifier) key.
 - `Scalar::kind()` -> the code's id: `ccy`, `forex`, `unit`; a plain `utf8` string's kind is `string`, and any other leaf's is its name, `fixed_utf8` or `cp1252`.
 - A code's equality, order and hash carry the identity first, then the text: `Forex("EUR/USD") != Bbg("EUR/USD")`. A code and a plain string of the same bytes are two values.
 - `utf8` under `yggdryl.ccy` -> `ccy`; under `yggdryl.string` with a document -> the string it describes; under no name -> `utf8`. The extension *name* is what separates them, so `yggdryl.ccy` over any other storage imports as that storage.
-- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar, and an empty text cell entering the column reads as that member ([Cast](../cast.md#empty-text)). [ISIN](isin.md), [CUSIP](cusip.md), [SEDOL](sedol.md), [FIGI](figi.md), [Bbg](bbg.md), [RIC](ric.md) and [Forex](forex.md) are the exceptions, because the empty text is not their shape, so none has a neutral member: `default_value` refuses naming the code rather than answering a value no registry issued, and an empty text cell entering one of them is null, as it is for a UUID.
+- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar, and an empty text cell entering the column reads as that member ([Cast](../cast.md#empty-text)). [ISIN](isin.md), [CUSIP](cusip.md), [SEDOL](sedol.md), [FIGI](figi.md), [Bbg](bbg.md), [RIC](ric.md), [Forex](forex.md), [LEI](lei.md), [BIC](bic.md), [ELF](elf.md), [DTI](dti.md) and [FISN](fisn.md) are the exceptions, because the empty text is not their shape, so none has a neutral member: `default_value` refuses naming the code rather than answering a value no registry issued, and an empty text cell entering one of them is null, as it is for a UUID.
 - A cast refusal -> null in a nullable column under `safe`; in a required column whatever `safe` says, or under `safe=False` -> the row and the column, never the default, for a code exactly as for a string ([Cast](../cast.md#required-columns)).
 - [Merged](../field.md#merging-two-schemas) widening: a code beside itself -> kept; beside `fixed_ascii(n)`, `ascii` or `utf8` -> that string. Narrowing (`upscale=false`): a code beside any plainer shape storing it -> the code; beside narrower text -> that text.
 - `ccy` beside `country` -> `sized_ascii(8)` widening and `sized_ascii(2)` narrowing, the bounded text both fit, never one code holding the other's values.
@@ -555,7 +573,7 @@ crate's own [`forex`](forex.md#the-forex-security-identifier) key.
 - An Arrow cast out of a code -> every string leaf and every byte framing, each reading the text the column holds; a byte width the text does not fill -> refused naming both sides and the row.
 - `ascii_packed` on a variable string, on UTF-8, or on a width past 16 bytes -> refused, `at most 16 bytes`; otherwise an `i32`, an `i64`, or a whole `i128` by width, and the integer a stable hash hashes.
 - A `StringEnum` on a string that is not fixed US-ASCII of at most sixteen bytes -> refused by name at `set_string_enum` and `into_members`; error kind `string-enum`. The `FIELD:enum` document never carries the width, so one enum is one canonical text.
-- `from_logical_name` -> the shipped `COUNTRIES`, `CURRENCIES`, `MICS`, `SIDES`, `DIRECTIONS`, `TIMESINFORCE` listings, `prebuilt()` in either binding; `"Exchange"` -> `MICS`; a registered name with no listing, such as `tenor`, `forex` or any of the six securities identifiers, -> an empty enum.
+- `from_logical_name` -> the shipped `COUNTRIES`, `CURRENCIES`, `MICS`, `SIDES`, `DIRECTIONS`, `TIMESINFORCE` listings, `prebuilt()` in either binding; `"Exchange"` -> `MICS`; a registered name with no listing, such as `tenor`, `forex`, any of the six securities identifiers or `lei`, `bic`, `elf`, `dti` and `fisn`, -> an empty enum.
 - JavaScript `readRecords` -> Arrow JS rows carry no extension identity, so a code column arrives as the text it stores, under no identity.
 - A dictionary-encoded code keeps its identity: Arrow's dictionary holds a bare datatype for its values, so the field is where the extension name rides.
 - Digests: a code value feeds its own id as the tag, so a stored digest of a code cell differs from the same bytes under `fixed_ascii(n)`.
@@ -565,7 +583,7 @@ crate's own [`forex`](forex.md#the-forex-security-identifier) key.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- ascii::fields ascii::leaves bbg::value bbg::datatype cfi::coded code::datatypes forex:: code::securities cusip::securities figi::securities ric::value:: ric::datatype:: sedol::securities string::enumerated string::listings
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- ascii::fields ascii::leaves bbg::value bbg::datatype cfi::coded code::datatypes forex:: code::securities cusip::securities figi::securities ric::value:: ric::datatype:: sedol::securities lei:: bic:: elf:: dti:: fisn:: string::enumerated string::listings
     cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- string::codes
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^ascii/'
     ```
@@ -573,7 +591,7 @@ crate's own [`forex`](forex.md#the-forex-security-identifier) key.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "registered_code or prebuilt_vocabulary or enum_member or code_datatype"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "registered_code or reference_data_code or prebuilt_vocabulary or enum_member or code_datatype"
     python/.venv/bin/python -m pytest python/tests/enums/test_init.py
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
@@ -581,6 +599,6 @@ crate's own [`forex`](forex.md#the-forex-security-identifier) key.
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="registered code|vocabulary|enum|packs" node/tests/datatype.test.js node/tests/fields.test.js
+    node --test --test-name-pattern="registered code|reference-data codes|vocabulary|enum|packs" node/tests/datatype.test.js node/tests/fields.test.js
     npm run --prefix node bench:types
     ```

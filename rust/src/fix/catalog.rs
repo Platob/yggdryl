@@ -618,6 +618,11 @@ pub(super) struct Documents {
     journal: Vec<Replaced>,
     /// How many checkpoints are open.
     open: usize,
+    /// What the source a fold reads states under a name the documents held,
+    /// by the folded name a reference reaches it by: where an incoming
+    /// member's target is read from ([`Self::incoming`]). Empty outside
+    /// [`FixRegistry::merge_catalog`].
+    source: HashMap<(FixCategory, u64), Vec<Field>>,
 }
 
 /// What one write to [`Documents`] replaced.
@@ -638,6 +643,7 @@ impl Documents {
             tags: HashMap::new(),
             journal: Vec::new(),
             open: 0,
+            source: HashMap::new(),
         };
         for (key, document) in registry.compact_catalog()? {
             documents.put(key, document);
@@ -702,6 +708,26 @@ impl Documents {
         self.release(mark);
     }
 
+    /// Takes the document `key` holds out, answering it: undone by the
+    /// rollback of a checkpoint open over it. The key stays indexed, which
+    /// [`Self::get`] rechecks against the documents and [`Self::put`] adds no
+    /// second of.
+    fn remove(&mut self, key: &DefinitionKey) -> Option<Field> {
+        let document = self.raw.remove(key)?;
+        let tag = document.as_fix().tag().ok().flatten().map(|tag| {
+            self.tags.remove(&tag);
+            (tag, Some(key.clone()))
+        });
+        if self.open > 0 {
+            self.journal.push(Replaced {
+                key: key.clone(),
+                document: Some(document.clone()),
+                tag,
+            });
+        }
+        Some(document)
+    }
+
     /// The document one folded name reaches, with its key.
     fn get(&self, category: FixCategory, name: &str) -> Option<(&DefinitionKey, &Field)> {
         self.keys
@@ -709,6 +735,43 @@ impl Documents {
             .iter()
             .find(|key| folds_equal(&key.1, name))
             .and_then(|key| self.raw.get_key_value(key))
+    }
+
+    /// Holds `documents` as what the source being folded states, until
+    /// [`Self::unstate`].
+    fn state<'a>(&mut self, documents: impl IntoIterator<Item = (FixCategory, &'a Field)>) {
+        self.source.clear();
+        for (category, document) in documents {
+            self.source
+                .entry(Catalog::key(category, document.name()))
+                .or_default()
+                .push(document.clone());
+        }
+    }
+
+    /// Forgets what [`Self::state`] held.
+    fn unstate(&mut self) {
+        self.source.clear();
+    }
+
+    /// The definition an incoming member's reference reaches: what the source
+    /// being folded states under that name, else the document held - an
+    /// arrival of the source, or a definition no source restates.
+    ///
+    /// A source's member is read as the source states its target, never as
+    /// the dictionary held it before the source's own definition of that name
+    /// merged into it - which, definitions folding in name order, the member
+    /// would otherwise meet whenever its owner sorts first. A definition
+    /// written alone reads what is held, its targets being held already.
+    fn incoming(&self, category: FixCategory, name: &str) -> Option<&Field> {
+        self.source
+            .get(&Catalog::key(category, name))
+            .and_then(|stated| {
+                stated
+                    .iter()
+                    .find(|document| folds_equal(document.name(), name))
+            })
+            .or_else(|| self.get(category, name).map(|(_, document)| document))
     }
 
     /// Rewrites every member reading a field the fold renamed, so a document
@@ -833,7 +896,7 @@ pub(super) fn catalog_name(spelling: &str) -> Option<SmolStr> {
 /// target's exact datatype, so the occurrence can only be a clone of the
 /// stored definition - so the tag is dropped here instead. One shape whatever
 /// built it: a hand-built catalog equals the catalog a store reads back.
-fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
+pub(super) fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
     if !root
         && field.as_fix().field_ref().is_none()
         && (field.as_fix().group().is_some() || field.as_fix().component().is_some())
@@ -865,6 +928,221 @@ fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
     }
     field.as_fix_mut().normalize_identifiers()?;
     Ok(field)
+}
+
+/// The structure of a named definition, rendered as one text an index can
+/// key on: what two grammars declaring one component or one group have to
+/// agree on to be declaring one definition.
+///
+/// A record is its members in order, `(` to `)` with `,` between; a member
+/// reading a wire field is `tag:name`, the field's tag and its folded name
+/// (`?` for a tag it does not state); a leaf stated inline is `tag=datatype`;
+/// a repeating group is its counter, its layout - `*` a serie, `**` a large
+/// serie, `#` a map - and the structure of its occurrence,
+/// `453*(448:partyid,447:partyidsource)`. A member referencing a component
+/// or a group is that definition's structure, read through `lookup`, so a
+/// group drawing on a component keys as the component's members whatever
+/// the component is called, and a message holding the group keys the group
+/// inline where it holds it.
+///
+/// Nothing else is in it: not a name, a nullability, a display, a
+/// description or the sources that contributed a side - each a fact about
+/// where a declaration came from or how strictly it was stated, never about
+/// what is on the wire - and not the derived tag a definition is stamped
+/// with, which is the catalog's identity for its name. Read on a resolved
+/// definition and on the compact document a store writes for it alike,
+/// since a reference is read through its target either way.
+///
+/// `memo` holds the structure of every definition a reference reached, by
+/// category and folded name, so keying a whole catalog renders each
+/// definition's tree once rather than once per definition reading it. One
+/// memo per `lookup`, never shared between two: a name two lookups answer
+/// with two definitions is two structures.
+///
+/// # Errors
+///
+/// Returns the absence of a definition a member references and `lookup`
+/// does not answer, and the refusal of a reference graph nested past 64
+/// levels, as the resolver refuses one - counted as rendered, so a tree the
+/// memo answers is read at the depth it was first rendered at, the resolver
+/// being what refuses the depth of a graph the fold assembles.
+pub(super) fn structural_key<'a>(
+    field: &Field,
+    lookup: &impl Fn(FixCategory, &str) -> Option<&'a Field>,
+    memo: &mut StructureMemo,
+) -> Result<SmolStr> {
+    let mut rendered = String::new();
+    write_structure(&mut rendered, field, true, lookup, memo, 0)?;
+    Ok(SmolStr::new(rendered))
+}
+
+/// The [structure](structural_key) of every definition one lookup answered a
+/// reference with, by category and folded name.
+pub(super) type StructureMemo = HashMap<DefinitionKey, SmolStr>;
+
+fn write_structure<'a>(
+    out: &mut String,
+    field: &Field,
+    root: bool,
+    lookup: &impl Fn(FixCategory, &str) -> Option<&'a Field>,
+    memo: &mut StructureMemo,
+    depth: usize,
+) -> Result<()> {
+    use std::fmt::Write as _;
+
+    if depth > 64 {
+        return Err(Error::InvalidRecord {
+            path: field.name().into(),
+            reason: "expected an acyclic FIX reference graph nested at most 64 levels".into(),
+        });
+    }
+    let view = field.as_fix();
+    // A definition names its component or its counter on its own root and is
+    // still the definition: only a member is a reference.
+    if !root && let Some((category, name)) = reference(field) {
+        if category == FixCategory::Fields {
+            match view.tag()? {
+                Some(tag) => write!(out, "{tag}:"),
+                None => write!(out, "?:"),
+            }
+            .expect("a String takes every write");
+            out.extend(crate::parser::folded(name));
+            return Ok(());
+        }
+        let key = (category, crate::parser::folded(name).collect::<String>());
+        if let Some(rendered) = memo.get(&key) {
+            out.push_str(rendered);
+            return Ok(());
+        }
+        // At the member's own depth: a reference stands where its target's
+        // tree stands, and the levels counted are the tree's, as the
+        // resolver counts them, so what the catalog resolved keys.
+        let target =
+            lookup(category, name).ok_or_else(|| Error::absent(category.as_str(), name))?;
+        let mut rendered = String::new();
+        write_structure(&mut rendered, target, true, lookup, memo, depth)?;
+        out.push_str(&rendered);
+        memo.insert(key, SmolStr::new(rendered));
+        return Ok(());
+    }
+    match field.dtype() {
+        DataType::Struct(children) => {
+            out.push('(');
+            for (index, child) in children.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                write_structure(out, child, false, lookup, memo, depth + 1)?;
+            }
+            out.push(')');
+        }
+        dtype @ (DataType::Serie(_)
+        | DataType::LargeSerie(_)
+        | DataType::Map(_)
+        | DataType::SortedMap(_)) => {
+            let layout = match dtype {
+                DataType::Serie(_) => "*",
+                DataType::LargeSerie(_) => "**",
+                _ => "#",
+            };
+            match view.counter()? {
+                Some(counter) => write!(out, "{counter}{layout}"),
+                None => write!(out, "?{layout}"),
+            }
+            .expect("a String takes every write");
+            let item = occurrence_of(field).expect("the variant was just matched");
+            write_structure(out, item, false, lookup, memo, depth + 1)?;
+        }
+        dtype => {
+            match view.tag()? {
+                Some(tag) => write!(out, "{tag}={dtype}"),
+                None => write!(out, "?={dtype}"),
+            }
+            .expect("a String takes every write");
+        }
+    }
+    Ok(())
+}
+
+/// Two definitions of one [structure](structural_key) as one: the held
+/// definition - its name, its tag, its own nullability, its display and
+/// every other fact of its own - with each member's nullability, at every
+/// level, relaxed to the more permissive side and the sources of both sides
+/// listed at each level.
+///
+/// The one fold two declarations of one structure take, whatever names they
+/// were declared under: a member one grammar states as required and another
+/// does not is nullable, because the dictionary serves both, and every
+/// dialect that declared the structure is a source of it. The definition's
+/// own nullability is the held one's, as [`merge_root`] keeps it, so a
+/// dialect's group folding into one the specification declares rewrites
+/// nothing of the store but what the members state.
+///
+/// Read on resolved definitions and on the compact documents a fold writes
+/// alike, so a level one side states where the other references - a group
+/// held inline against a member reading a group of that structure, which a
+/// document states as the placeholder naming its target - keeps the held
+/// side's statement, relaxed and sourced like every level and read no
+/// further: what lies beneath a reference is its target's, folded where
+/// the target is.
+///
+/// # Errors
+///
+/// Returns a refusal naming both where two records are not of one
+/// structure, which a caller that keyed them never meets, and the sources
+/// write's otherwise.
+pub(super) fn fold_alike(held: &Field, incoming: &Field) -> Result<Field> {
+    fold_alike_at(held, incoming, true)
+}
+
+fn fold_alike_at(held: &Field, incoming: &Field, root: bool) -> Result<Field> {
+    let mut merged = held.clone();
+    if !root {
+        merged.set_nullable(held.is_nullable() || incoming.is_nullable());
+    }
+    let sources: Vec<&str> = held
+        .as_fix()
+        .sources()
+        .chain(incoming.as_fix().sources())
+        .collect();
+    if !sources.is_empty() {
+        merged.as_fix_mut().set_sources(sources)?;
+    }
+    let dtype = match (held.dtype(), incoming.dtype()) {
+        (DataType::Struct(ours), DataType::Struct(theirs)) => {
+            if ours.len() != theirs.len() {
+                return Err(invalid(
+                    incoming,
+                    format_args!("the structure of {} ({} members)", held.name(), ours.len()),
+                ));
+            }
+            let members = ours
+                .iter()
+                .zip(theirs.iter())
+                .map(|(held, incoming)| fold_alike_at(held, incoming, false))
+                .collect::<Result<Vec<_>>>()?;
+            Some(DataType::from(StructType::from_fields(members)?))
+        }
+        (
+            DataType::Serie(_)
+            | DataType::LargeSerie(_)
+            | DataType::Map(_)
+            | DataType::SortedMap(_),
+            DataType::Serie(_)
+            | DataType::LargeSerie(_)
+            | DataType::Map(_)
+            | DataType::SortedMap(_),
+        ) => {
+            let ours = occurrence_of(held).expect("the variant was just matched");
+            let theirs = occurrence_of(incoming).expect("the variant was just matched");
+            Some(group_dtype(held, fold_alike_at(ours, theirs, false)?)?)
+        }
+        _ => None,
+    };
+    if let Some(dtype) = dtype {
+        merged.set_dtype(dtype)?;
+    }
+    Ok(merged)
 }
 
 impl FixRegistry {
@@ -1172,6 +1450,12 @@ impl FixRegistry {
     /// definition over into `drops` - the way a fold with another dictionary
     /// does - rather than refusing the definition whole, where `drops` is
     /// given.
+    ///
+    /// Where `drops` is given, the fold is followed by the pass a fold with
+    /// another dictionary ends with ([`fold_alike_definitions`]): a held
+    /// definition the fold widened into the structure of another held one is
+    /// one definition, so a CBlock binding one wire type twice holds no two
+    /// definitions of one structure whichever message it binds first.
     pub(super) fn fold_definition_into(
         &mut self,
         category: FixCategory,
@@ -1188,7 +1472,16 @@ impl FixRegistry {
         // whose Null placeholders no longer carry their scalar tags.
         let field = canonical_occurrences(field, true)?;
         let mut documents = Documents::from_registry(self)?;
+        let reading = drops.is_some();
+        let before = if reading {
+            structures_of(&documents)
+        } else {
+            HashMap::new()
+        };
         self.fold_document(&mut documents, category, &field, &mut { drops })?;
+        if reading {
+            fold_alike_definitions(&mut documents, &before, &[(category, field, false)])?;
+        }
         self.resolve_catalog(documents.raw)?;
         self.validate_catalog()?;
         Ok(false)
@@ -1347,7 +1640,9 @@ impl FixRegistry {
     }
 
     /// The stored children, then every incoming child no stored one answers
-    /// to.
+    /// to - by name, or, in a fold with another dictionary, by the counter
+    /// of the group it reads, which a stored member reading a group on that
+    /// counter answers for.
     ///
     /// Order is the stored definition's, because a message's members are read
     /// positionally by everything that walks it; what arrives is appended in
@@ -1381,6 +1676,28 @@ impl FixRegistry {
             {
                 Some(held) => {
                     if let Some(error) = self.disagreement(documents, owner, &held, child)? {
+                        // A member is the field it reads before the name it
+                        // carries. An incoming member reading a field under
+                        // a name a stored member reads another field by - a
+                        // spelling two tags share, numbered on one side and
+                        // not the other - is the stored member reading that
+                        // field where one does, and a member of its own
+                        // beside the stored ones otherwise, since two tags
+                        // are two tags on the wire. Only a fold with another
+                        // dictionary reads it so, as `beside` does: a
+                        // definition written alone is refused as before.
+                        if drops.is_some()
+                            && let (Some(reads), Some(_)) =
+                                (field_reference(child), field_reference(&held))
+                        {
+                            if !merged.iter().any(|standing| {
+                                field_reference(standing)
+                                    .is_some_and(|name| folds_equal(name, reads))
+                            }) {
+                                push_member(&mut merged, child.clone());
+                            }
+                            continue;
+                        }
                         match self.beside(documents, &held, child, drops)? {
                             // One member per counter: one already reading a
                             // group on this counter - a fold placed it beside
@@ -1409,7 +1726,33 @@ impl FixRegistry {
                         }
                     }
                 }
-                None => merged.push(child.clone()),
+                None => {
+                    // One member per counter, here too: an incoming member no
+                    // stored member answers to by name, reading a group on a
+                    // counter a member already reads, is that member read
+                    // another way - a dialect naming the group after its own
+                    // `rg-name` - and folds into it rather than standing
+                    // beside it as a second member of one counter. Only a
+                    // fold with another dictionary reads it so, as `beside`
+                    // does: a definition written alone appends what it states.
+                    let standing = match (drops.is_some(), group_counter(documents, child)) {
+                        (true, Some(counter)) => merged
+                            .iter()
+                            .find(|standing| group_counter(documents, standing) == Some(counter))
+                            .cloned(),
+                        _ => None,
+                    };
+                    match standing {
+                        Some(standing) => {
+                            if let Some(error) =
+                                self.disagreement(documents, owner, &standing, child)?
+                            {
+                                self.reconcile(documents, &standing, child, error, drops, depth)?;
+                            }
+                        }
+                        None => merged.push(child.clone()),
+                    }
+                }
             }
         }
         Ok(merged)
@@ -1458,9 +1801,10 @@ impl FixRegistry {
     /// differently for one message, and names the split after that message -
     /// so what the incoming target declares folds into the target the stored
     /// member already reads, under these same rules. Anything else is passed
-    /// over into `drops`: a reference against an inline child, a field
-    /// against a field, a group against a component, two groups on two
-    /// counters.
+    /// over into `drops`: a reference against an inline child, a group
+    /// against a component, two groups on two counters - a field against a
+    /// field of its name is read by the field before this is asked, and
+    /// stands beside.
     fn reconcile(
         &self,
         documents: &mut Documents,
@@ -1480,7 +1824,8 @@ impl FixRegistry {
     }
 
     /// Folds the definition `child` references into the one `held` does, both
-    /// of one nested category: whether it could.
+    /// of one nested category: whether it could. `child`'s target is read as
+    /// the source states it ([`Documents::incoming`]), `held`'s as held.
     ///
     /// Only the members fold: the target's own identity - its name, its tag,
     /// its counter - is the stored one's, and an incoming group on another
@@ -1503,7 +1848,7 @@ impl FixRegistry {
         if category != other || category == FixCategory::Fields || depth >= 64 {
             return Ok(false);
         }
-        let Some((_, target)) = documents.get(category, incoming) else {
+        let Some(target) = documents.incoming(category, incoming) else {
             return Ok(false);
         };
         let target = target.clone();
@@ -1544,8 +1889,9 @@ impl FixRegistry {
     }
 
     /// Folds the members `incoming` declares - its own children, or the
-    /// children of the component it references - into the stored definition
-    /// `name`: a component's own children, or an inline group occurrence's.
+    /// children of the component it references, as the source states it
+    /// ([`Documents::incoming`]) - into the stored definition `name`: a
+    /// component's own children, or an inline group occurrence's.
     fn fold_members(
         &self,
         documents: &mut Documents,
@@ -1578,8 +1924,8 @@ impl FixRegistry {
         let member = occurrence_of(incoming).unwrap_or(incoming);
         let members = match reference(member) {
             Some((FixCategory::Components, component)) => {
-                match documents.get(FixCategory::Components, component) {
-                    Some((_, target)) => target.fields().to_vec(),
+                match documents.incoming(FixCategory::Components, component) {
+                    Some(target) => target.fields().to_vec(),
                     None => return Ok(false),
                 }
             }
@@ -1679,7 +2025,7 @@ impl FixRegistry {
     /// extended earlier in the same fold answers extended.
     fn referenced_dtype(&self, documents: &Documents, field: &Field) -> Result<DataType> {
         let (category, name) = reference(field)
-            .ok_or_else(|| Error::absent("a field, component, or group reference", field.name()))?;
+            .ok_or_else(|| Error::absent("field, component, or group reference", field.name()))?;
         if category == FixCategory::Fields {
             return Ok(self.definition(category, name)?.dtype().clone());
         }
@@ -1824,6 +2170,7 @@ impl FixRegistry {
         // The alternate names are read infallibly everywhere else, so this is
         // where a text the read would walk as nothing is refused.
         field.as_fix().validate_names()?;
+        field.as_fix().validate_sources()?;
         field.as_fix().validate_parents()?;
         // So is an identifier-map document; a role names a `Parties`
         // occurrence, whose `PartyID(448)` is the one member it reads.
@@ -2128,6 +2475,26 @@ impl FixRegistry {
         Documents::from_registry(self)
     }
 
+    /// Replaces the definition `field` names - its own name, which the
+    /// catalog holds - with `field`, and resolves every reference to it
+    /// again, so a group drawing on a component relaxed here holds the
+    /// relaxed occurrence, as every message holding that group does.
+    ///
+    /// The document path a change to a definition's shape takes, where
+    /// [`Self::insert_definition`] replaces the one definition and proves the
+    /// occurrences other definitions hold of it against the replacement.
+    /// Staged, so a refusal leaves the catalog as it was.
+    pub(super) fn restate_definition(&mut self, category: FixCategory, field: Field) -> Result<()> {
+        let mut raw = self.compact_catalog()?;
+        raw.insert((category, field.name().to_owned()), compact(field, true)?);
+        let mut staged = self.clone();
+        staged.resolve_catalog(raw)?;
+        staged.validate_catalog()?;
+        staged.forget_answers();
+        *self = staged;
+        Ok(())
+    }
+
     /// Resolves the documents a fold wrote into this catalog, and proves it.
     pub(super) fn settle(&mut self, documents: Documents) -> Result<()> {
         // The documents were rewritten for every rename as the fold made it.
@@ -2162,6 +2529,17 @@ impl FixRegistry {
     /// own, and every other definition of the source still folds. A
     /// definition that arrives new and goes is passed over with every member
     /// of the source reading it, as a group refused its counter is.
+    ///
+    /// **One structure is one definition.** Every definition folds by name
+    /// first, as it always has; once every one of the source folded, each
+    /// pair of definitions of one [structure](structural_key) the fold made
+    /// folds into the definition held before the fold: an arrival stating
+    /// the structure of a held definition, or a held definition the fold
+    /// widened until it states another's. The kept one is relaxed to the
+    /// more permissive side and lists both sources, and every document
+    /// reading the other reads it ([`fold_alike_definitions`]). Two
+    /// definitions held as they were, or two arrivals of one source, stay
+    /// two: a dictionary stating two definitions of one structure states two.
     pub(super) fn merge_catalog(
         &self,
         documents: &mut Documents,
@@ -2283,6 +2661,16 @@ impl FixRegistry {
             }
             kept = reading;
         }
+        // What the documents state before this source folds, so the pass
+        // after it folds only the pairs the fold made.
+        let before = if kept.iter().any(|(category, document)| {
+            matches!(category, FixCategory::Components | FixCategory::Groups)
+                && document.as_fix().msgtype().is_none()
+        }) {
+            structures_of(documents)
+        } else {
+            HashMap::new()
+        };
         // What arrives new is put before anything merges, so a member that
         // references it on one side and states it inline on the other is
         // compared against it whatever category it belongs to.
@@ -2295,11 +2683,31 @@ impl FixRegistry {
                 folding.push((category, document));
             }
         }
-        for (category, document) in arriving.into_iter().chain(folding) {
+        let mut folded = Vec::with_capacity(arriving.len() + folding.len());
+        // A member of the source reads its target as the source states it,
+        // whichever of the two folds first: an arrival lands before anything
+        // merges, so only a definition of a held name has to be held apart.
+        documents.state(
+            folding
+                .iter()
+                .map(|(category, document)| (*category, document)),
+        );
+        let landing = arriving
+            .into_iter()
+            .map(|(category, document)| (category, document, true))
+            .chain(
+                folding
+                    .into_iter()
+                    .map(|(category, document)| (category, document, false)),
+            );
+        for (category, document, landed) in landing {
             let mark = documents.checkpoint();
             let passed = dropped.len();
             match self.fold_document(documents, category, &document, &mut Some(&mut *dropped)) {
-                Ok(()) => documents.release(mark),
+                Ok(()) => {
+                    documents.release(mark);
+                    folded.push((category, document, landed));
+                }
                 Err(error) => {
                     documents.rollback(mark);
                     dropped.truncate(passed);
@@ -2307,7 +2715,8 @@ impl FixRegistry {
                 }
             }
         }
-        Ok(())
+        documents.unstate();
+        fold_alike_definitions(documents, &before, &folded)
     }
 
     /// Whether one incoming definition can stand beside what the fold holds:
@@ -2449,6 +2858,14 @@ fn reads_definition(field: &Field, category: FixCategory, name: &str, depth: usi
     })
 }
 
+/// The field a member reads by reference, where it reads one.
+fn field_reference(member: &Field) -> Option<&str> {
+    match reference(member) {
+        Some((FixCategory::Fields, name)) => Some(name),
+        _ => None,
+    }
+}
+
 /// The counter of the group a member reads by reference, where it reads one
 /// the documents hold.
 fn group_counter(documents: &Documents, member: &Field) -> Option<i32> {
@@ -2531,6 +2948,284 @@ fn rename_document(
     Ok(rewritten)
 }
 
+/// The [structure](structural_key) of every component and group the
+/// documents hold, by category and name - a message is its wire type's and
+/// never another's, so none is keyed, and a definition stating no member
+/// keys none, since an empty record says nothing two declarations could
+/// share. A definition keying no structure - one reading a definition the
+/// documents do not hold - is logged and left out.
+fn structures_of(documents: &Documents) -> HashMap<DefinitionKey, SmolStr> {
+    let mut structures = HashMap::new();
+    let mut memo = StructureMemo::new();
+    let lookup = |category, name: &str| documents.get(category, name).map(|(_, document)| document);
+    for (key, document) in &documents.raw {
+        if !matches!(key.0, FixCategory::Components | FixCategory::Groups)
+            || document.as_fix().msgtype().is_some()
+        {
+            continue;
+        }
+        match structural_key(document, &lookup, &mut memo) {
+            Ok(structure) if structure != EMPTY_STRUCTURE => {
+                structures.insert(key.clone(), structure);
+            }
+            Ok(_) => {}
+            Err(error) => log::debug!("{:?} keys no structure: {error}", key.1),
+        }
+    }
+    structures
+}
+
+/// The structure of a record stating no member.
+pub(super) const EMPTY_STRUCTURE: &str = "()";
+
+/// Folds every pair of definitions one source's fold left as one
+/// [structure](structural_key) into one, once every definition of the
+/// source folded: the components first, then the groups, whose structure is
+/// their counter over the component they draw on.
+///
+/// `before` is the structure of every definition the documents held before
+/// this source's fold. A definition the fold *made* - one that arrived, or a
+/// held one whose structure the fold changed by widening it - is the only
+/// kind that can make a new pair, so a class of one structure folds only
+/// where it holds one, and only into a definition held before the fold:
+/// - the survivor is the first definition, in name order, that the fold
+///   reshaped, else the first one it left as it was - so a name a source's
+///   merge by name widened keeps answering for its structure, and the next
+///   fold of that source finds it there;
+/// - every definition of the class that arrived, or that the fold reshaped,
+///   folds into the survivor, and so does every one held as it was where
+///   the survivor is reshaped, since that pair is new; two definitions held
+///   as they were stay two where the survivor is one of them, because a
+///   dictionary stating two definitions of one structure states two;
+/// - a class of arrivals alone stays as it arrived, for the same reason: a
+///   source stating two definitions of one structure states two, and it
+///   folds into an empty dictionary as itself.
+///
+/// A fold is [`fold_alike`]: the survivor's identity and its own
+/// nullability kept, each member's relaxed to the more permissive side, the
+/// sources of both listed; the other's document taken out, and every
+/// document reading it reading the survivor - a member by its marker, a
+/// group by the component it draws on, wherever the reference stands.
+///
+/// A definition that merged into the held one of its own name and states
+/// its structure relaxes it the same way, which the merge by name, keeping
+/// the held side's members as stated, does not.
+///
+/// The survivor is a name the dictionary held, so the name a structure is
+/// filed under, and the order of its members, are the first source's, as
+/// every name a fold keeps is.
+fn fold_alike_definitions(
+    documents: &mut Documents,
+    before: &HashMap<DefinitionKey, SmolStr>,
+    folded: &[(FixCategory, Field, bool)],
+) -> Result<()> {
+    // Nothing was held, so everything arrived and stays as it arrived.
+    if before.is_empty() {
+        return Ok(());
+    }
+    // Merged by name: the held side's strictness, relaxed to the incoming
+    // side's where the two are of one structure.
+    {
+        let mut memo = StructureMemo::new();
+        let mut relaxed = Vec::new();
+        {
+            let lookup =
+                |category, name: &str| documents.get(category, name).map(|(_, document)| document);
+            for (category, incoming, landed) in folded {
+                if *landed
+                    || !matches!(category, FixCategory::Components | FixCategory::Groups)
+                    || incoming.as_fix().msgtype().is_some()
+                {
+                    continue;
+                }
+                let Some((key, document)) = documents.get(*category, incoming.name()) else {
+                    continue;
+                };
+                let (Ok(held), Ok(stated)) = (
+                    structural_key(document, &lookup, &mut memo),
+                    structural_key(incoming, &lookup, &mut memo),
+                ) else {
+                    continue;
+                };
+                if held == stated && held != EMPTY_STRUCTURE {
+                    let merged = fold_alike(document, incoming)?;
+                    if &merged != document {
+                        relaxed.push((key.clone(), merged));
+                    }
+                }
+            }
+        }
+        for (key, merged) in relaxed {
+            documents.put(key, merged);
+        }
+    }
+    for category in [FixCategory::Components, FixCategory::Groups] {
+        let after: Vec<(DefinitionKey, SmolStr)> = {
+            let mut after: Vec<_> = structures_of(documents)
+                .into_iter()
+                .filter(|(key, _)| key.0 == category)
+                .collect();
+            after.sort();
+            after
+        };
+        let reshaped =
+            |key: &DefinitionKey, structure: &SmolStr| before.get(key) != Some(structure);
+        // One class per structure, its members in name order.
+        let mut classes: Vec<(SmolStr, Vec<DefinitionKey>)> = Vec::new();
+        let mut at: HashMap<SmolStr, usize> = HashMap::new();
+        for (key, structure) in after {
+            match at.get(&structure) {
+                Some(&position) => classes[position].1.push(key),
+                None => {
+                    at.insert(structure.clone(), classes.len());
+                    classes.push((structure, vec![key]));
+                }
+            }
+        }
+        let mut renamed: Vec<(String, String)> = Vec::new();
+        for (structure, class) in classes {
+            if class.len() < 2 || !class.iter().any(|key| reshaped(key, &structure)) {
+                continue;
+            }
+            let held: Vec<&DefinitionKey> = class
+                .iter()
+                .filter(|key| before.contains_key(*key))
+                .collect();
+            let Some(survivor) = held
+                .iter()
+                .find(|key| reshaped(key, &structure))
+                .or_else(|| held.first())
+                .map(|key| (*key).clone())
+            else {
+                continue;
+            };
+            let survivor_reshaped = reshaped(&survivor, &structure);
+            for other in &class {
+                if *other == survivor
+                    || (!survivor_reshaped
+                        && before.contains_key(other)
+                        && !reshaped(other, &structure))
+                {
+                    continue;
+                }
+                log::debug!(
+                    "{:?} folds into the {} {:?} it states alike",
+                    other.1,
+                    category.as_str(),
+                    survivor.1
+                );
+                let alike = fold_alike(&documents.raw[&survivor], &documents.raw[other])?;
+                documents.put(survivor.clone(), alike);
+                documents.remove(other);
+                renamed.push((other.1.clone(), survivor.1.clone()));
+            }
+        }
+        if !renamed.is_empty() {
+            let renames: Vec<(&str, &str)> = renamed
+                .iter()
+                .map(|(from, to)| (from.as_str(), to.as_str()))
+                .collect();
+            rename_definition_references(documents, category, &renames)?;
+        }
+    }
+    Ok(())
+}
+
+/// Every document reading a definition `renamed` names reading the one it
+/// folded into, wherever the reference stands ([`rename_references_in`]). A
+/// rename moves no member, so nothing here is passed over.
+fn rename_definition_references(
+    documents: &mut Documents,
+    category: FixCategory,
+    renamed: &[(&str, &str)],
+) -> Result<()> {
+    let keys: Vec<DefinitionKey> = documents.raw.keys().cloned().collect();
+    for key in keys {
+        let Some(document) = documents.raw.get(&key) else {
+            continue;
+        };
+        let mut rewritten = document.clone();
+        if rename_references_in(&mut rewritten, category, renamed, true)? {
+            documents.put(key, rewritten);
+        }
+    }
+    Ok(())
+}
+
+/// Every reference `field` holds to a definition of `category` that
+/// `renamed` names, rewritten to the name it folded into: a member by its
+/// marker, a group's own root by the component it draws on, and the
+/// occurrence of a group a document states inline, a map's entries and
+/// every level beneath them alike - wherever a reference stands, because a
+/// document names its target at any depth and one left naming a removed
+/// document refuses the whole fold when it resolves. Answers whether
+/// anything was rewritten.
+fn rename_references_in(
+    field: &mut Field,
+    category: FixCategory,
+    renamed: &[(&str, &str)],
+    root: bool,
+) -> Result<bool> {
+    let target = |name: &str| {
+        renamed
+            .iter()
+            .find(|(from, _)| folds_equal(from, name))
+            .map(|(_, to)| SmolStr::new(to))
+    };
+    let mut changed = false;
+    // A definition names its component on its own root and is still the
+    // definition: a group draws on the renamed component there, and only a
+    // member is a reference.
+    let to = if root {
+        (category == FixCategory::Components)
+            .then(|| field.as_fix().component().and_then(target))
+            .flatten()
+    } else {
+        match reference(field) {
+            Some((held, name)) if held == category => target(name),
+            _ => None,
+        }
+    };
+    if let Some(to) = to {
+        match category {
+            FixCategory::Groups => field.as_fix_mut().set_group(&to)?,
+            _ => field.as_fix_mut().set_component(&to)?,
+        }
+        changed = true;
+    }
+    let dtype = match field.dtype() {
+        DataType::Struct(children) => {
+            let mut children: Vec<Field> = children.iter().cloned().collect();
+            let mut moved = false;
+            for child in &mut children {
+                moved |= rename_references_in(child, category, renamed, false)?;
+            }
+            moved
+                .then(|| StructType::from_fields(children).map(DataType::from))
+                .transpose()?
+        }
+        DataType::Serie(_)
+        | DataType::LargeSerie(_)
+        | DataType::Map(_)
+        | DataType::SortedMap(_) => {
+            let mut item = occurrence_of(field)
+                .expect("the variant was just matched")
+                .clone();
+            if rename_references_in(&mut item, category, renamed, false)? {
+                Some(group_dtype(field, item)?)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
+    if let Some(dtype) = dtype {
+        field.set_dtype(dtype)?;
+        changed = true;
+    }
+    Ok(changed)
+}
+
 /// A member reading a field the scalar fold did not keep under the identity
 /// it names: rewritten to the identity that holds it now, or the refusal it
 /// is passed over with.
@@ -2568,21 +3263,27 @@ fn remapped(
     }
 }
 
-/// Keeps two members of one struct reading one field in wire order under
-/// distinct names: the first keeps its name, a later one the first free
+/// Keeps two members of one struct in wire order under names no two of
+/// which fold to one: the first keeps its name, a later one the first free
 /// `{name}2`, `{name}3`... Their `FIX:tag` still names the wire field.
 ///
 /// The one rule a duplicate member is named by, whether a grammar binds one
-/// tag twice or a fold lands two of a source's fields on one held field.
+/// tag twice, a fold lands two of a source's fields on one held field, or a
+/// fold places a member reading another tag beside the held one of its name.
 pub(super) fn push_member(children: &mut Vec<Field>, mut field: Field) {
-    if !children.iter().any(|held| held.name() == field.name()) {
+    let taken = |children: &[Field], candidate: &str| {
+        children
+            .iter()
+            .any(|held| folds_equal(held.name(), candidate))
+    };
+    if !taken(children, field.name()) {
         children.push(field);
         return;
     }
     let base = field.name().to_owned();
     for suffix in 2..u32::MAX {
         let candidate = format!("{base}{suffix}");
-        if !children.iter().any(|held| held.name() == candidate) {
+        if !taken(children, &candidate) {
             field.set_name(candidate);
             children.push(field);
             return;
@@ -2689,13 +3390,32 @@ fn members_read(
 #[cfg(feature = "internals")]
 #[doc(hidden)]
 pub mod internals {
-    //! What `rust/tests/fix/group_plan.rs` pins and a caller cannot reach.
+    //! What `rust/tests/fix/catalog.rs` and `rust/tests/fix/group_plan.rs`
+    //! pin and a caller cannot reach.
     //!
     //! [`FixRegistry`] is published and its definition doors with it; the
     //! compiled group plan a definition carries is not, because a plan is the
-    //! layout a row is laid out by rather than anything a caller states.
+    //! layout a row is laid out by rather than anything a caller states, and
+    //! neither is the structure two declarations of one definition agree on,
+    //! which a caller meets as one definition where it declared two.
     use super::super::group_plan::GroupPlan;
     use crate::{Field, FixCategory, FixRegistry, Result};
+
+    /// The structure of a definition, read through the registry's own
+    /// definitions: what two grammars have to agree on to be declaring one.
+    ///
+    /// # Errors
+    ///
+    /// Returns the absence of a definition a member references and the
+    /// registry does not hold.
+    pub fn structural_key(registry: &FixRegistry, field: &Field) -> Result<String> {
+        super::structural_key(
+            field,
+            &|category, name| registry.get_definition(category, name),
+            &mut super::StructureMemo::new(),
+        )
+        .map(|key| key.to_string())
+    }
 
     /// The group definition a counter tag names.
     #[must_use]

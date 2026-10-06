@@ -218,16 +218,17 @@ mod vocabulary {
         assert_eq!(held.row_size().unwrap(), 2);
         assert_eq!(held.column_size().unwrap(), 2);
 
-        let rows: Vec<String> = held
-            .read_serie(Some(&options))
-            .unwrap()
-            .flat_map(|serie| {
-                let serie = serie.unwrap();
-                (0..serie.len())
-                    .map(|index| serie.scalar(index).unwrap().into_json().unwrap())
-                    .collect::<Vec<_>>()
-            })
-            .collect();
+        let rows: Vec<String> =
+            yggdryl::StreamChunkedSerie::from_serie(held.read_serie(Some(&options)).unwrap())
+                .expect("native record stream")
+                .into_chunks()
+                .flat_map(|serie| {
+                    let serie = serie.unwrap();
+                    (0..serie.len())
+                        .map(|index| serie.scalar(index).unwrap().into_json().unwrap())
+                        .collect::<Vec<_>>()
+                })
+                .collect();
         assert_eq!(rows, ["[1,\"AAPL\"]", "[2,null]"]);
 
         // Undeclared, the sheet states its own field: the header names the

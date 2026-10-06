@@ -69,7 +69,7 @@ impl MarketData {
     #[must_use]
     pub fn marketdatakind(&self) -> crate::MarketDataKind {
         match self {
-            Self::Fix(message) => message.msgcat(),
+            Self::Fix(message) => message.marketdatakind(),
             other => other.kind().marketdatakind(),
         }
     }
@@ -306,6 +306,14 @@ impl Market for MarketData {
     fn set_stoppx(&mut self, value: Option<crate::Decimal>, overwrite: bool) {
         delegate_by_variant!(self, set_stoppx, value, overwrite);
     }
+
+    fn get_strikepx(&self) -> Option<crate::Decimal> {
+        delegate_by_variant!(self, get_strikepx)
+    }
+
+    fn set_strikepx(&mut self, value: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_strikepx, value, overwrite);
+    }
     fn get_currency(&self) -> &crate::Ccy {
         delegate_by_variant!(self, get_currency)
     }
@@ -347,7 +355,7 @@ impl Market for MarketData {
         delegate_by_variant!(self, set_side, side, overwrite);
     }
     fn marketdatakind(&self) -> crate::MarketDataKind {
-        self.kind().marketdatakind()
+        MarketData::marketdatakind(self)
     }
     fn get_marketdatatype(&self) -> crate::MarketDataType {
         delegate_by_variant!(self, get_marketdatatype)

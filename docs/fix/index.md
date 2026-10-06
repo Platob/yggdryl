@@ -20,18 +20,18 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Lifecycle](lifecycle.md) | `FixCodec::lifecycle` and the [graph](../graph/event.md#lifecycle-walk)'s one walk: chains named by the cross code, their creation and history, twins folded, and grid snapshots across a stream |
 | [CLI](cli.md) | `yggdryl`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 
-`MsgType(35)` has a `msgcat(65016)` companion in the fixed row: the
+`MsgType(35)` has a `marketdatakind(65016)` companion in the fixed row: the
 [`MarketDataKind`](../types/enum/marketdatakind.md) member the dictionary
-files the type under, stored as its `int32` code. Each committed message
+files the type under, stored as its `uint8` code. Each committed message
 component carries its four-character `FIX:msgcat` metadata, and the builtin
-`msgcatcodeset` names every member the row may store (`UNKN=0`, `BOOK=3`,
+`marketdatakindcodeset` names every member the row may store (`UKNW=0`, `BOOK=3`,
 `EXEC=8`, `ORDR=10`, `QUOT=14`, `TRAD=21`, `ORDB=22`, and so on); the
 [filing](#a-message-type-is-filed-under-one-category) says which types each
 holds. The normalized
-instrument columns are `isincode(65021)`, `forexcode(65046)`,
-`bloombergcode(65047)`, `figicode(65048)` and `miccode(65022)` - the first
+instrument columns are `isincode(65021)`, `forexcode(65047)`,
+`bloombergcode(65048)`, `figicode(65049)` and `miccode(65022)` - the first
 four views of the message's security identifiers, the last its market -
-beside the strike, the dictionary's own `StrikePrice(202)`; CFI remains standard `CFICode(461)`,
+beside the strike, the [derived](capture.md#a-derived-column-restates-a-fix-field) market column `strikepx(65035)` read off the dictionary's own `StrikePrice(202)`, which keeps its column (Rust `Market::get_strikepx`, Python and JavaScript `msg.strikepx`); CFI remains standard `CFICode(461)`,
 and a CUSIP or a SEDOL is one more security identifier of its own type,
 in the message's `securityids`.
 
@@ -40,9 +40,9 @@ The protocol view exposes the category beside the message type: Rust
 `field.fix.msgcat`, each the four-character text. Set it with Rust
 `field.as_fix_mut().set_msgcat("ORDR")?` or the corresponding Python/JavaScript
 property. The closed category set includes `ORDR`, `QUOT`, `EXEC`, `TRAD`,
-`BOOK` and the batches `ORDB`, `QUOB`, `EXEB` and `TRDB`; `MsgType::msgcat` answers the definition's member - Rust
+`BOOK` and the batches `ORDB`, `QUOB`, `EXEB` and `TRDB`; `MsgType::marketdatakind` answers the definition's member - Rust
 `Option<MarketDataKind>`, Python the `MarketDataKind` member or `None`,
-JavaScript its name or `null` - and `FixMsg::msgcat` the message's own, which
+JavaScript its name or `null` - and `Market::marketdatakind` (Python and JavaScript `marketdatakind`) the message's own, which
 a [market data leaf](message.md#market-data) states again as its
 `marketdatakind`.
 
@@ -51,16 +51,16 @@ a [market data leaf](message.md#market-data) states again as its
 | Aspect | Rule |
 | --- | --- |
 | Owns | `FixField` / `FixFieldMut` (`as_fix()` / `as_fix_mut()`), `FixId`; no second field class |
-| Keys | `FIX:tag`, `FIX:tags`, `FIX:names`, `FIX:branches`, `FIX:identifiers`, `FIX:msgtype`, `FIX:msgcat`; name, datatype, `display` and `description` stay the field's own |
+| Keys | `FIX:tag`, `FIX:tags`, `FIX:names`, `FIX:sources`, `FIX:identifiers`, `FIX:msgtype`, `FIX:msgcat`; name, datatype, `display` and `description` stay the field's own |
 | Identity | A field is its tag and its name, and nothing else. `FixId` is one `i32`: the signed XXH32 of the tag's four little-endian bytes followed by the folded name; `FixId::of(tag, name)` builds it and refuses a tag that is not positive; `Copy`, four bytes, its own hash key |
 | Spelling | Rendered as its decimal digest wherever it crosses a boundary - `FixKey::Id`, `FixMsg::get_by_id`, Python `int`, JavaScript `number`, a row column; `FixId::from_digest` reads that integer back; a bare integer anywhere else (`FixKey::from(i32)`, `registry.field(55)`, `msg.get(55)`) is a tag |
 | Fold | ASCII case, `_`, `-` and space are not part of the name, so `Msg_Type`, `msgtype` and `MsgType` under tag 35 are one id, the one every name lookup already answers |
 | Derived | Computed on every read from `FIX:tag` and the field's name, never stored (no `FIX:id` key), so a rename is never stale; `None` without a tag; read-only in every binding |
-| Membership | `FIX:branches` lists the dictionaries that contributed a field: each name non-empty and without a comma, folded to ASCII lowercase, deduplicated under the fold, kept sorted and comma-joined, so registries built from the same dictionaries in any order hash alike; empty input removes the key |
-| Dialect | The name `from_cfb_file(handle, Some("cme"))` stamps on every field, group, component and message the file produces, standard tags included; `FixRegistry::dialects()` lists the distinct names; provenance a caller filters on, never consulted by a lookup, and never part of the identity |
+| Membership | `FIX:sources` lists the ids of the sources that contributed a field, a compact JSON array - `["cme","globex"]` - each id a non-empty word holding no quote, backslash or control character, folded to ASCII lowercase, deduplicated under the fold and kept sorted, so registries built from the same sources in any order hash alike; each id names an entry of the registry's [sources catalog](registry.md#membership), which a store writes as [`sources.json`](store.md#membership); empty input removes the key |
+| Dialect | The source id `from_cfb_file(handle, Some("cme"))` stamps in `FIX:sources` on every field, group, component and message the file produces, standard tags included, recording the catalog entry for it - the file's name and its plugin's [`PluginSide`](../types/enum/pluginside.md); `FixRegistry::dialects()` lists the distinct ids the definitions name; provenance a caller filters on, never consulted by a lookup, and never part of the identity |
 | Tag range | Any positive tag holds an identity; nothing gates a tag on its dictionary. `set_tag`, `set_tags` and `set_counter` refuse zero and negative tags, naming their key: tag 0 marks only an [unresolved arrival entry](capture.md#nothing-is-lost-at-the-end), never a definition. Derived definition tags take `FixId::DEFINITION_TAG_MIN..FixId::DEFINITION_TAG_MAX`, `[100000, 1100000)` |
 | Order | Tag-major, the tag's holder first, then id: `FixFieldIter`, `next_field_after`, the bindings' iteration and the store all follow it, so the bare tag comes back to the field that held it across a round trip |
-| List properties | `FIX:names` and `FIX:tags` are compact JSON arrays, `["Qty","Quantity"]` and `[1088]`, crossed by a store as the arrays they are; `names()` walks the array lazily and `tags()` parses it to a `Vec`. `FIX:branches`, `FIX:identifiers` and `FIX:nulls` stay comma-separated text, `branches()`, `identifiers()` and `nulls()` lazy slices of it. An empty list removes the key |
+| List properties | `FIX:names`, `FIX:sources` and `FIX:tags` are compact JSON arrays, `["Qty","Quantity"]`, `["cme"]` and `[1088]`, crossed by a store as the arrays they are; `names()` and `sources()` walk the array lazily and `tags()` parses it to a `Vec`. `FIX:identifiers` and `FIX:nulls` stay comma-separated text, `identifiers()` and `nulls()` lazy slices of it. An empty list removes the key |
 | Identifiers | A component declares its own direct scalar members through `FIX:identifiers`; names, aliases and decimal tags resolve once to canonical names in component order, never by flattening a group |
 | Errors | `InvalidMetadataValue` naming the full key; the field stays unchanged |
 | Categories | `fields/` stores tagged scalar fields; `components/` named Structs, a message being the one that carries `FIX:msgtype`; `groups/` Serie/LargeSerie occurrences and Map entries. Every one is reached through the registry's [field doors](registry.md#accessors). `codesets/` is beside them and is no category: it holds the [vocabularies](registry.md#a-field-names-the-code-set-it-reads-by) the fields read by, each under its own name, reached through the registry's code set doors |
@@ -205,7 +205,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 
 | Property | Key | Type | Meaning |
 | --- | --- | --- | --- |
-| `branches` | `FIX:branches` | sorted lowercase name list | the dictionaries that contributed this field; absent for a field the specification alone defines |
+| `sources` | `FIX:sources` | JSON array of lowercase ids, sorted | the sources that contributed this field, each an entry of the registry's catalog; absent for a field the specification alone defines |
 | `tag` | `FIX:tag` | `i32` | canonical tag, always positive |
 | `tags` | `FIX:tags` | JSON array of positive `i32` | alternate tags, highest priority first |
 | `names` | `FIX:names` | JSON array of names | alternate names, highest priority first |
@@ -217,12 +217,12 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `field_ref` / `fieldRef` | `FIX:field` | name | scalar field reference in a definition |
 | `group` | `FIX:group` | name | group reference in a definition |
 | `msgtype` | `FIX:msgtype` | text | complete case-sensitive wire code on a message Struct |
-| `msgcat` | `FIX:msgcat` | four-character symbolic code | business-category metadata on a message definition; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat`. The crate row projects it through `msgcatcodeset` into the separate `msgcat(65016)` field, a `MarketDataKind` member |
+| `msgcat` | `FIX:msgcat` | four-character symbolic code | business-category metadata on a message definition; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat`. The crate row projects it through `marketdatakindcodeset` into the separate `marketdatakind(65016)` field, a `MarketDataKind` member |
 | `directions` | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults; see [Registry](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) |
 
 ## A message type is filed under one category
 
-The committed dictionary files every standard message type under one [`MarketDataKind`](../types/enum/marketdatakind.md) member, written by `scripts/generate_fix_dictionary.py` as the message definition's `FIX:msgcat`; a message whose type is filed under none is `UNKN`. An order or an execution message stores its cross code under its side ([sided](../types/enum/marketdatakind.md#sided-kinds-and-batches)), and every other message - a quote, which holds its bid and its offer and tags a side, among them - under side `0`; a batch message is split at the parse into one message per entry, filed under the batch's item ([Message](message.md#a-batch-splits-per-entry)).
+The committed dictionary files every standard message type under one [`MarketDataKind`](../types/enum/marketdatakind.md) member, written by `scripts/generate_fix_dictionary.py` as the message definition's `FIX:msgcat`; a message whose type is filed under none is `UKNW`. An order or an execution message stores its cross code under its side ([sided](../types/enum/marketdatakind.md#sided-kinds-and-batches)), and every other message - a quote, which holds its bid and its offer and tags a side, among them - under side `0`; a batch message is split at the parse into one message per entry, filed under the batch's item ([Message](message.md#a-batch-splits-per-entry)).
 
 | Category | `MsgType(35)` |
 | --- | --- |
@@ -260,11 +260,11 @@ The committed dictionary files every standard message type under one [`MarketDat
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
-    assert_eq!(registry.msgtype("D")?.msgcat(), Some(MarketDataKind::Order));
-    assert_eq!(registry.msgtype("E")?.msgcat(), Some(MarketDataKind::OrderBatch));
-    assert_eq!(registry.msgtype("i")?.msgcat(), Some(MarketDataKind::QuoteBatch));
-    assert_eq!(registry.msgtype("DC")?.msgcat(), Some(MarketDataKind::TradeBatch));
-    assert_eq!(registry.msgtype("BU")?.msgcat(), Some(MarketDataKind::MarketStructure));
+    assert_eq!(registry.msgtype("D")?.marketdatakind(), Some(MarketDataKind::Order));
+    assert_eq!(registry.msgtype("E")?.marketdatakind(), Some(MarketDataKind::OrderBatch));
+    assert_eq!(registry.msgtype("i")?.marketdatakind(), Some(MarketDataKind::QuoteBatch));
+    assert_eq!(registry.msgtype("DC")?.marketdatakind(), Some(MarketDataKind::TradeBatch));
+    assert_eq!(registry.msgtype("BU")?.marketdatakind(), Some(MarketDataKind::MarketStructure));
     ```
 
 === "Python"
@@ -276,10 +276,10 @@ The committed dictionary files every standard message type under one [`MarketDat
     from yggdryl.fix import FixRegistry
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
-    assert registry.msgtype("D").msgcat is MarketDataKind.ORDR
-    assert registry.msgtype("E").msgcat is MarketDataKind.ORDB
-    assert registry.msgtype("i").msgcat is MarketDataKind.QUOB
-    assert registry.msgtype("AW").msgcat is MarketDataKind.POSN
+    assert registry.msgtype("D").marketdatakind is MarketDataKind.ORDR
+    assert registry.msgtype("E").marketdatakind is MarketDataKind.ORDB
+    assert registry.msgtype("i").marketdatakind is MarketDataKind.QUOB
+    assert registry.msgtype("AW").marketdatakind is MarketDataKind.POSN
     ```
 
 === "JavaScript"
@@ -290,9 +290,9 @@ The committed dictionary files every standard message type under one [`MarketDat
     const { fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-    assert.equal(registry.msgtype('D').msgcat, 'ORDR')
-    assert.equal(registry.msgtype('E').msgcat, 'ORDB')
-    assert.equal(registry.msgtype('DC').msgcat, 'TRDB')
+    assert.equal(registry.msgtype('D').marketdatakind, 'ORDR')
+    assert.equal(registry.msgtype('E').marketdatakind, 'ORDB')
+    assert.equal(registry.msgtype('DC').marketdatakind, 'TRDB')
     ```
 
 ## Identity is a tag and a name
@@ -307,7 +307,7 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     let mut trade = DataType::utf8().nullable_field("TradeID");
     // No membership means the specification alone, and there is no
     // identity without a tag.
-    assert_eq!(trade.as_fix().branches().count(), 0);
+    assert_eq!(trade.as_fix().sources().count(), 0);
     assert_eq!(trade.as_fix().id()?, None);
 
     trade.as_fix_mut().set_tag(5001)?;
@@ -337,17 +337,18 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     assert!(FixId::of(i32::MAX, "MsgType").is_ok());
 
     // Membership is provenance and no half of the identity: folded to
-    // ASCII lowercase, deduplicated, sorted, stored comma-joined.
-    trade.as_fix_mut().set_branches(["Globex", "CME", "cme"])?;
-    assert_eq!(trade.get_metadata("FIX:branches"), Some("cme,globex"));
-    assert!(trade.as_fix().has_branch("CME"));
+    // ASCII lowercase, deduplicated, sorted, stored as a JSON array.
+    trade.as_fix_mut().set_sources(["Globex", "CME", "cme"])?;
+    assert_eq!(trade.get_metadata("FIX:sources"), Some(r#"["cme","globex"]"#));
+    assert!(trade.as_fix().has_source("CME"));
     assert_eq!(trade.as_fix().id()?, Some(id));
-    trade.as_fix_mut().add_branch("blp")?;
-    assert_eq!(trade.as_fix().branches().collect::<Vec<_>>(), ["blp", "cme", "globex"]);
-    // Held to the membership grammar: non-empty, no comma; a refusal names the key.
-    let error = trade.as_fix_mut().set_branches(["c,me"]).unwrap_err();
-    assert!(error.to_string().contains("FIX:branches"), "{error}");
-    assert_eq!(trade.get_metadata("FIX:branches"), Some("blp,cme,globex"));
+    trade.as_fix_mut().add_source("blp")?;
+    assert_eq!(trade.as_fix().sources().collect::<Vec<_>>(), ["blp", "cme", "globex"]);
+    // Held to the id grammar: a non-empty word holding no quote, backslash or
+    // control character; a refusal names the key.
+    let error = trade.as_fix_mut().set_sources(["c\"me"]).unwrap_err();
+    assert!(error.to_string().contains("FIX:sources"), "{error}");
+    assert_eq!(trade.get_metadata("FIX:sources"), Some(r#"["blp","cme","globex"]"#));
 
     // A rename under the fold is the same identity; another name is another.
     trade.set_name("Trade_ID");
@@ -367,7 +368,7 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     trade = Field("TradeID", "utf8")
     # No membership means the specification alone, and there is no identity
     # without a tag.
-    assert trade.fix.branches == []
+    assert trade.fix.sources == []
     assert trade.fix.id is None
 
     trade.fix.tag = 5001
@@ -389,18 +390,19 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     assert Field("MsgSeqNum", "utf8", metadata={"FIX:tag": "35"}).fix.id != msgtype
 
     # Membership is provenance and no half of the identity: folded to ASCII
-    # lowercase, deduplicated, sorted, stored comma-joined.
-    trade.fix.branches = ["Globex", "CME", "cme"]
-    assert trade.fix.branches == ["cme", "globex"]
-    assert trade.metadata["FIX:branches"] == "cme,globex"
-    assert trade.fix.has_branch("CME")
-    trade.fix.add_branch("blp")
-    assert trade.fix.branches == ["blp", "cme", "globex"]
+    # lowercase, deduplicated, sorted, stored as a JSON array.
+    trade.fix.sources = ["Globex", "CME", "cme"]
+    assert trade.fix.sources == ["cme", "globex"]
+    assert trade.metadata["FIX:sources"] == '["cme","globex"]'
+    assert trade.fix.has_source("CME")
+    trade.fix.add_source("blp")
+    assert trade.fix.sources == ["blp", "cme", "globex"]
     assert trade.fix.id == held
-    # Held to the membership grammar: non-empty, no comma; a refusal names the key.
-    with pytest.raises(ValueError, match="FIX:branches"):
-        trade.fix.branches = ["c,me"]
-    assert trade.fix.branches == ["blp", "cme", "globex"]
+    # Held to the id grammar: a non-empty word holding no quote, backslash or
+    # control character; a refusal names the key.
+    with pytest.raises(ValueError, match="FIX:sources"):
+        trade.fix.sources = ['c"me']
+    assert trade.fix.sources == ["blp", "cme", "globex"]
 
     # A rename under the fold is the same identity; another name is another.
     trade.set_name("Trade_ID")
@@ -418,7 +420,7 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     const trade = Field.from('TradeID: utf8')
     // No membership means the specification alone, and there is no identity
     // without a tag.
-    assert.deepEqual(trade.fix.branches, [])
+    assert.deepEqual(trade.fix.sources, [])
     assert.equal(trade.fix.id, null)
 
     trade.fix.tag = 5001
@@ -444,19 +446,20 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     assert.notEqual(idOf('MsgSeqNum', 35), msgtype)
 
     // Membership is provenance and no half of the identity: folded to ASCII
-    // lowercase, deduplicated, sorted, stored comma-joined.
-    trade.fix.branches = ['Globex', 'CME', 'cme']
-    assert.deepEqual(trade.fix.branches, ['cme', 'globex'])
-    assert.equal(trade.get('FIX:branches'), 'cme,globex')
-    assert.equal(trade.fix.hasBranch('CME'), true)
-    trade.fix.addBranch('blp')
-    assert.deepEqual(trade.fix.branches, ['blp', 'cme', 'globex'])
+    // lowercase, deduplicated, sorted, stored as a JSON array.
+    trade.fix.sources = ['Globex', 'CME', 'cme']
+    assert.deepEqual(trade.fix.sources, ['cme', 'globex'])
+    assert.equal(trade.get('FIX:sources'), '["cme","globex"]')
+    assert.equal(trade.fix.hasSource('CME'), true)
+    trade.fix.addSource('blp')
+    assert.deepEqual(trade.fix.sources, ['blp', 'cme', 'globex'])
     assert.equal(trade.fix.id, held)
-    // Held to the membership grammar: non-empty, no comma; a refusal names the key.
+    // Held to the id grammar: a non-empty word holding no quote, backslash or
+    // control character; a refusal names the key.
     assert.throws(() => {
-      trade.fix.branches = ['c,me']
-    }, /FIX:branches/)
-    assert.deepEqual(trade.fix.branches, ['blp', 'cme', 'globex'])
+      trade.fix.sources = ['c"me']
+    }, /FIX:sources/)
+    assert.deepEqual(trade.fix.sources, ['blp', 'cme', 'globex'])
 
     // A rename under the fold is the same identity; another name is another.
     trade.setName('Trade_ID')
@@ -474,7 +477,7 @@ the group: the group's length is its count. Fields, components and groups are
 the three registry categories, a message being a component that carries
 `FIX:msgtype`.
 
-The crate's `metadata(65035)` is also a group: a nullable, sorted-key
+The crate's `metadata(65036)` is also a group: a nullable, sorted-key
 `map<utf8, utf8>` whose occurrence is its non-null entries Struct, with no
 separate scalar counter and no invented numeric tags for its key or value. A
 parse fills it from the
@@ -506,10 +509,10 @@ names are folded; `display` keeps the specification's spelling.
     assert!(!registry.field_by_name("Party")?.fields().is_empty());
     assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("PartyID")?.as_fix().tag()?, Some(448));
-    let metadata = registry.field_by_counter(65_035)?;
+    let metadata = registry.field_by_counter(65_036)?;
     assert_eq!(metadata.name(), "metadata");
-    assert_eq!(metadata.as_fix().counter()?, Some(65_035));
-    assert!(registry.get_field_by_tag(65_035).is_none(), "a Map group is no scalar");
+    assert_eq!(metadata.as_fix().counter()?, Some(65_036));
+    assert!(registry.get_field_by_tag(65_036).is_none(), "a Map group is no scalar");
     ```
 
 === "Python"
@@ -528,10 +531,10 @@ names are folded; `display` keeps the specification's spelling.
     assert registry.field_by_name("Party").is_struct
     assert registry.field_by_path("Parties.PartyID").fix.tag == 448
     assert registry.field_by_name("PartyID").fix.tag == 448
-    metadata = registry.field_by_counter(65_035)
+    metadata = registry.field_by_counter(65_036)
     assert metadata.name == "metadata"
-    assert metadata.fix.counter == 65_035
-    assert registry.get_field_by_tag(65_035) is None, "a Map group is no scalar"
+    assert metadata.fix.counter == 65_036
+    assert registry.get_field_by_tag(65_036) is None, "a Map group is no scalar"
     ```
 
 === "JavaScript"
@@ -551,10 +554,10 @@ names are folded; `display` keeps the specification's spelling.
     assert.ok(registry.fieldByName('Party').fieldLen > 0)
     assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
     assert.equal(registry.fieldByName('PartyID').fix.tag, 448)
-    const metadata = registry.fieldByCounter(65035)
+    const metadata = registry.fieldByCounter(65036)
     assert.equal(metadata.name, 'metadata')
-    assert.equal(metadata.fix.counter, 65035)
-    assert.equal(registry.getFieldByTag(65035), null, 'a Map group is no scalar')
+    assert.equal(metadata.fix.counter, 65036)
+    assert.equal(registry.getFieldByTag(65036), null, 'a Map group is no scalar')
     ```
 
 ## Edges
@@ -567,7 +570,7 @@ names are folded; `display` keeps the specification's spelling.
 - Python `tag = True` -> `TypeError`; `2**31` -> `OverflowError`. JavaScript `2 ** 31` -> "signed 32-bit integer"; `field.iceberg.tag` -> `TypeError`.
 - Any positive tag holds an identity, whatever dictionary spoke it; the only tag refusal is a zero or negative one, from `set_tag`, `set_tags`, `set_counter` or `FixId::of`, naming `FIX:tag` / `FIX:tags` / `FIX:counter`. Tag 0 appears only on an arrival entry no dictionary resolved.
 - The id is read, never assigned: Python `trade.fix.id = 7` -> `AttributeError`; the JavaScript property has no setter; there is no `FIX:id` key and no id key spelling in the CLI.
-- A membership name that is empty or carries a comma -> refused naming `FIX:branches`; field unchanged. Names fold to ASCII lowercase on the way in and `has_branch` folds its argument the same way; a number is never a name (`TypeError` in Python, a `String` conversion failure in JavaScript).
+- A source id that is empty or holds a quote, a backslash or a control character -> refused naming `FIX:sources`; field unchanged. An id may hold a comma, since the array frames it. Ids are stored ASCII lowercase, each once under the crate's fold - case, and the `_`, `-` and space separators dropped - and `has_source` matches its argument under that fold, so `Ve_Nue` is a member where `venue` is; a number is never an id (`TypeError` in Python, a `String` conversion failure in JavaScript). A field naming an id is the field's statement alone: the catalog entry it names is the registry's, and [`yggdryl fix check`](cli.md#schema-check-and-diff) fails an id no entry holds.
 - `FixKey::Id` is the one spelling of an id in Rust; a bare `i32` is a tag through `FixKey::from`, `registry.field(55)` and `msg.get(55)`. Python `field_by_id(int)` / `get_by_id(int)` and JavaScript `fieldById(number)` / `getById(number)` are exact: no alias, alternate tag or fold is consulted on the way.
 - Two identities digesting to one 32-bit id are a typed conflict on insert, and every id hit is rechecked against the tag and the folded name before it counts.
 - A message root the codec builds carries no membership: a message is not a dictionary member.
@@ -582,7 +585,7 @@ names are folded; `display` keeps the specification's spelling.
     cargo test --features internals -p yggdryl --test fix -- mod_::internal
     cargo test --features internals -p yggdryl --test fix -- mod_::internal::name_indexes_fold_ascii mod_::internal::three_spellings_of_one_name mod_::internal::an_identifier_is_one_integer mod_::internal::membership_folds_once mod_::internal::membership_round_trips mod_::internal::properties_round_trip mod_::internal::a_property_write mod_::internal::the_fold_table_holds mod_::internal::iteration_and_the_cursor_are_tag_major mod_::internal::a_corrupt_stored mod_::internal::a_path_reaches
     cargo bench -p yggdryl --bench fix -- fix/mutate/set_
-    cargo bench -p yggdryl --bench fix -- fix/mutate/add_branch
+    cargo bench -p yggdryl --bench fix -- fix/mutate/add_source
     cargo bench -p yggdryl --bench fix -- fix/resolve/id_
     ```
 

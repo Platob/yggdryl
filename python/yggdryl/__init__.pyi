@@ -65,7 +65,6 @@ from .expression import (
     Expression as Expression,
     Filter as Filter,
     Plan as Plan,
-    Records as Records,
     Selector as Selector,
     Term as Term,
 )
@@ -148,6 +147,11 @@ from .codes import (
     SedolField as SedolField,
     ForexField as ForexField,
     UnitField as UnitField,
+    LeiField as LeiField,
+    BicField as BicField,
+    ElfField as ElfField,
+    DtiField as DtiField,
+    FisnField as FisnField,
     bbg as bbg,
     cfi as cfi,
     country as country,
@@ -160,6 +164,11 @@ from .codes import (
     sedol as sedol,
     forex as forex,
     unit as unit,
+    lei as lei,
+    bic as bic,
+    elf as elf,
+    dti as dti,
+    fisn as fisn,
 )
 from .decimal import (
     Decimal32Field as Decimal32Field,
@@ -248,9 +257,6 @@ from .serie import (
     MapSerie as MapSerie,
     Serie as Serie,
     SerieField as SerieField,
-    SerieReader as SerieReader,
-    SerieReaderPartitions as SerieReaderPartitions,
-    SerieReaderWindows as SerieReaderWindows,
     SerieSerie as SerieSerie,
     WindowSerie as WindowSerie,
     SerieViewField as SerieViewField,
@@ -344,6 +350,11 @@ from .timeinforce import (
     TimeInForceField as TimeInForceField,
     timeinforce as timeinforce,
 )
+from .pluginside import (
+    PluginSide as PluginSide,
+    PluginSideField as PluginSideField,
+    pluginside as pluginside,
+)
 from .side import (
     Side as Side,
     SideField as SideField,
@@ -360,6 +371,17 @@ from .identifier import (
 )
 from .isin_registry import (
     IsinRegistry as IsinRegistry,
+)
+from .eusipa import (
+    Eusipa as Eusipa,
+)
+
+from .stream_serie import StreamSerie as StreamSerie
+from .stream_chunked_serie import StreamChunkedSerie as StreamChunkedSerie
+from .key_serie import (
+    KeySerie as KeySerie,
+    KeySeries as KeySeries,
+    StreamKeySerie as StreamKeySerie,
 )
 
 __all__: list[str]

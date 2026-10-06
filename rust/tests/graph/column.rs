@@ -37,6 +37,29 @@ fn every_column_states_back_what_it_read() {
 }
 
 #[test]
+fn a_place_a_table_stored_as_a_whole_decimal_reads_back_as_the_number_it_was() {
+    // The place is stored as the digests are, `decimal(20, 0)` where a
+    // table has no unsigned type, and reads back through the same door; a
+    // cell the door refuses is the first place, as a null is.
+    let mut event = OrderEvent::at(7);
+    EventColumn::SeqNum.record(&mut event, &Scalar::decimal128(6, 0));
+    assert_eq!(event.get_seqnum(), 6);
+    EventColumn::SeqNum.record(&mut event, &Scalar::decimal128(65, 1));
+    assert_eq!(event.get_seqnum(), 0);
+}
+
+#[test]
+fn a_negative_place_is_still_the_first_place() {
+    // A digest stored as a long reads back as its bits; a place is a count
+    // and is read by value alone, so a negative cell states no place.
+    let mut event = OrderEvent::at(7);
+    EventColumn::SeqNum.record(&mut event, &Scalar::from(4_i64));
+    assert_eq!(event.get_seqnum(), 4);
+    EventColumn::SeqNum.record(&mut event, &Scalar::from(-1_i64));
+    assert_eq!(event.get_seqnum(), 0);
+}
+
+#[test]
 fn a_null_clears_and_nothing_stated_is_none() {
     let mut event = OrderEvent::at(7);
     event.set_seqnum(3);

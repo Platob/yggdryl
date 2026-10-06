@@ -8,7 +8,7 @@
 | --- | --- |
 | Variants | `Order`, `Quote`, `Execution`, `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, `TradeEvent`, `BookEvent` (boxed), `SnapshotEvent`, and `Fix` - a boxed [`FixMsg`](../fix/message.md) held whole ([below](#a-fix-message-held-whole)) - in `graph::market_data` |
 | `kind()` | the `MarketKind`, in `graph::kind`: `as_str` = `order`, `quote`, `execution`, `order_event`, `quote_event`, `execution_event`, `trade_event`, `book_event`, `snapshot_event`, `fix`; `read` = same (any case); `is_event` = one of the six dated leaves or a FIX message, echoed by the value's `is_event()` |
-| `marketdatakind()` | the [`MarketDataKind`](../types/enum/marketdatakind.md) the leaf stands under, `MarketKind::marketdatakind`: an order `ORDR` (`10`), a quote `QUOT` (`14`), an execution `EXEC` (`8`), a trade `TRAD` (`21`), a book and a snapshot control `BOOK` (`3`), a FIX message the category its dictionary files it under (`FixMsg::msgcat`); the first market column of the row, and what an operation's digest feeds, so the same facts as an order and as a quote are two operations |
+| `marketdatakind()` | the [`MarketDataKind`](../types/enum/marketdatakind.md) the leaf stands under, `MarketKind::marketdatakind`: an order `ORDR` (`10`), a quote `QUOT` (`14`), an execution `EXEC` (`8`), a trade `TRAD` (`21`), a book and a snapshot control `BOOK` (`3`), a FIX message the category its dictionary files it under (`Market::marketdatakind` on the message); the first market column of the row, and what an operation's digest feeds, so the same facts as an order and as a quote are two operations |
 | Conversions | `From<leaf>` builds one from every leaf; `TryFrom<MarketData>` takes it back, else `InvalidRecord` at `$.kind` (names expected/found); `as_order()` ... `as_snapshot_event()` and `as_fix()` borrow a variant; `book()` = the [control](order.md#book-control) of an operation event or snapshot |
 | Traits | `Element`/`Market` delegate to the leaf held, so a resolved boundary reads it generically |
 | Order, following, merging | `is_after` orders two dated values by instant, none if either undated; `with_previous`/`merge_with` are the leaf's own for one variant; an operation event also follows another kind via shared facts, keeping its own kind (an execution follows its filled order); a merge never crosses variants |
@@ -75,14 +75,14 @@
 
 ### A FIX message held whole
 
-`MarketData::from(message)` holds a [`FixMsg`](../fix/message.md) as it is - its fields, its capture and every fact its dictionary reads - rather than the leaves it reports. It answers `Element`, `Event` and `Market` as the message does, its kind is `fix`, its `marketdatakind` the message's `msgcat`, and it walks and merges as itself: an event walk follows it by its own identity, and a merge meets only another FIX message. Where a leaf is the only thing that can stand, it is split there: the Arrow writer and the [book fold](book.md#book-fold) take the leaves `FixMsg::into_market_data` answers - one per entry of a `W` or `X`, nothing for a trade or a batch, whose parse already split them off - so a row is always a leaf. `FixMsg::into_market_leaf` is the one leaf a message is, refused where it is not exactly one; `TryFrom<MarketData> for FixMsg` takes the message back.
+`MarketData::from(message)` holds a [`FixMsg`](../fix/message.md) as it is - its fields, its capture and every fact its dictionary reads - rather than the leaves it reports. It answers `Element`, `Event` and `Market` as the message does, its kind is `fix`, its `marketdatakind` the message's own, and it walks and merges as itself: an event walk follows it by its own identity, and a merge meets only another FIX message. Where a leaf is the only thing that can stand, it is split there: the Arrow writer and the [book fold](book.md#book-fold) take the leaves `FixMsg::into_market_data` answers - one per entry of a `W` or `X`, nothing for a trade or a batch, whose parse already split them off - so a row is always a leaf. `FixMsg::into_market_leaf` is the one leaf a message is, refused where it is not exactly one; `TryFrom<MarketData> for FixMsg` takes the message back.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, MarketData, MarketKind};
+    use yggdryl::graph::{Element, Market, MarketData, MarketKind};
     use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind};
 
@@ -107,7 +107,7 @@
         .map(|batch| batch.map(|batch| batch.num_rows()))
         .sum::<Result<usize, _>>()?;
     assert_eq!(rows, 2);
-    assert_eq!(FixMsg::try_from(value)?.msgcat(), MarketDataKind::Book);
+    assert_eq!(FixMsg::try_from(value)?.marketdatakind(), MarketDataKind::Book);
     ```
 
 === "Python"
@@ -172,15 +172,15 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
 | --- | --- |
 | `ElementColumn` (6) | `curruuid`, `crossuuid` ([`uuid`](../types/uuid.md)), `crosscode` (`utf8`), `currhashcode`, `crosshashcode` (`uint64`), `srcuuids` (`serie<uuid>`, item `srcuuid`) |
 | `EventColumn` (9) | `currunix`, `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix` (nanosecond UTC clocks); `prevuuid` ([`uuid`](../types/uuid.md)), `seqnum` (`uint64`); `state` ([`state`](../types/enum/state.md#the-code-is-the-rank)) |
-| `MarketColumn` (34) | `marketdatakind`, `marketdatatype`, `price`, `stoppx`, `currency`, `quantity`, `displayqty`, `hiddenqty`, `unit`, `side`, `securityids`, `isincode`, `cficode`, `miccode`, `execunix`, `lastpx`, `lastqty`, `avgpx`, `cumqty`, `leavesqty`, `cxlqty`, `prevpx`, `prevqty`, `spotrate`, `forwardpoints`, `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy`, `fxrates`, `ticker`, `metadata`: `marketdatakind` and `marketdatatype` the [`marketdatakind`](../types/enum/marketdatakind.md) and [`marketdatatype`](../types/enum/marketdatatype.md) enums, `quantity` `Quantity(53)` or, where none is stated, what is left to work, `execunix` a nanosecond UTC clock like the event's, numbers are [`decimal`](../types/numeric/decimal.md#decimal), each [code](../types/codes/index.md) its own leaf (`ccy` for the three currencies, `unit`, `isin`, `cfi`, `mic`), `side` the [`side`](../types/enum/side.md) enum, `securityids` a sorted `map<utf8, utf8>` of [identifiers](identifier.md#arrow), the key's text to its value (`Identifiers::dtype()`), a sorted `map<utf8, utf8>` for the metadata, a sorted `map<ccy, decimal>` for the rates, `utf8` for the ticker |
+| `MarketColumn` (35) | `marketdatakind`, `marketdatatype`, `price`, `stoppx`, `currency`, `quantity`, `displayqty`, `hiddenqty`, `unit`, `side`, `securityids`, `isincode`, `cficode`, `miccode`, `execunix`, `lastpx`, `lastqty`, `avgpx`, `cumqty`, `leavesqty`, `cxlqty`, `prevpx`, `prevqty`, `spotrate`, `forwardpoints`, `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy`, `fxrates`, `ticker`, `strikepx`, `metadata`: `marketdatakind` and `marketdatatype` the [`marketdatakind`](../types/enum/marketdatakind.md) and [`marketdatatype`](../types/enum/marketdatatype.md) enums, `quantity` `Quantity(53)` or, where none is stated, what is left to work, `execunix` a nanosecond UTC clock like the event's, numbers are [`decimal`](../types/numeric/decimal.md#decimal), each [code](../types/codes/index.md) its own leaf (`ccy` for the three currencies, `unit`, `isin`, `cfi`, `mic`), `side` the [`side`](../types/enum/side.md) enum, `securityids` a sorted `map<utf8, utf8>` of [identifiers](identifier.md#arrow), the key's text to its value (`Identifiers::dtype()`), a sorted `map<utf8, utf8>` for the metadata, a sorted `map<ccy, decimal>` for the rates, `utf8` for the ticker |
 | `OperationColumn` (5) | `ordqty` (`decimal`, the quantity ordered, `OrderQty(38)`), `timeinforce` (`timeinforce`), `tradable` (`boolean`), `identifiers`, `partyids` (each `Identifiers::dtype()`, a sorted `map<utf8, utf8>` from a type's base key to the value, one per type - every other key [side information](#side-information) in `metadata`) |
 
 | Key | Rule |
 | --- | --- |
 | Verbs | each enum answers `ALL`, `name`, `display`, `datatype`, `nullable`, `field`, `fields`, `of_name` (any case), `fact` (what an element states, nothing if none), `record` (states a cell back: null clears it, unreadable leaves it unchanged); `ElementColumn` and `EventColumn` also `description`, each taking its trait: `Element`/`Event`/`Market`/`Operation` |
-| Nullability | never null: `currunix`, `seqnum` (the first place is `0`), `curruuid`, `crossuuid`, `crosscode` (the empty text where the element names none), `currhashcode`, `crosshashcode`, `marketdatakind`, `marketdatatype`, `currency`, `unit`, `side` - a type stated as none is `UNKN`, and a side stated as none is the cell `UNKN` (code `0`); every other column is null where nothing is stated (an empty market code, serie or map, an absent instant); `state` also admits null - no neutral member for an empty cell |
+| Nullability | never null: `currunix`, `seqnum` (the first place is `0`), `curruuid`, `crossuuid`, `crosscode` (the empty text where the element names none), `currhashcode`, `crosshashcode`, `marketdatakind`, `marketdatatype`, `currency`, `unit`, `side` - a type stated as none is `UKNW`, and a side stated as none is the cell `UKNW` (code `0`), while a book's side and a two-sided quote's is `BOTH` (code `99`); every other column is null where nothing is stated (an empty market code, serie or map, an absent instant); `state` also admits null - no neutral member for an empty cell |
 | `execunix` | when the element last executed: a market fact, so an undated leaf states it too and a text line, which is an event and no market element, states none ([Market](market.md#contract)) |
-| `isincode` | a projection of `securityids`: `fact` is the value of its `isin` identifier, and `record` fills an absent `isin` base key and ignores a disagreeing one - the strict door is the [row reader](#arrow) |
+| `isincode` | a projection of `securityids`: `fact` is the value of its `isin` identifier, and `record` inserts through `Identifiers::insert`: it fills an absent key, replaces a lower-ranked ISIN, and leaves an equal- or higher-ranked one standing - the strict door is the [row reader](#arrow) |
 | Order | `ALL` is the canonical order `fields()` and event-native schemas use; a FIX row holds the same columns through the crate's own fields, each at its datatype, in protocol-oriented time/identity bands rather than reordered around `ALL` |
 | Round trip | a line read back from its batch, a message from its row, restate all six element and nine event columns - identities and clocks survive |
 | Bindings | Python `enums.ELEMENT_COLUMNS`, `EVENT_COLUMNS`, `MARKET_COLUMNS`, `OPERATION_COLUMNS`; JavaScript `enums.elementColumns`, `eventColumns`, `marketColumns`, `operationColumns`; column verbs are Rust-only. The whole row is listed on [Row schemas](schemas.md#the-marketdata-row) |
@@ -193,7 +193,7 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
 
     assert_eq!(
         (ElementColumn::ALL.len(), EventColumn::ALL.len(), MarketColumn::ALL.len(), OperationColumn::ALL.len()),
-        (6, 9, 34, 5)
+        (6, 9, 35, 5)
     );
     assert_eq!((EventColumn::ALL[0].name(), EventColumn::ALL[8].name()), ("currunix", "state"));
     assert_eq!((MarketColumn::ALL[0].name(), MarketColumn::ALL[1].name()), ("marketdatakind", "marketdatatype"));
@@ -204,7 +204,7 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
 
     // The lifted row states them in that order.
     let field = MarketData::field()?;
-    let names: Vec<&str> = field.fields()[..54].iter().map(|child| child.name()).collect();
+    let names: Vec<&str> = field.fields()[..55].iter().map(|child| child.name()).collect();
     let listed: Vec<&str> = ElementColumn::ALL.map(ElementColumn::name).into_iter()
         .chain(EventColumn::ALL.map(EventColumn::name))
         .chain(MarketColumn::ALL.map(MarketColumn::name))
@@ -223,7 +223,7 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
     ElementColumn::CrossCode.record(&mut again, &code);
     MarketColumn::Side.record(&mut again, &side);
     assert_eq!((again.get_crosscode(), again.get_side()), ("10:1:O-1001", Side::Buy));
-    // Nothing stated is a null, except a side: stated as none, it is UNKN.
+    // Nothing stated is a null, except a side: stated as none, it is UKNW.
     assert_eq!(EventColumn::PrevUuid.fact(&order), None);
     assert_eq!(MarketColumn::Price.fact(&order), None);
     assert_eq!(MarketColumn::Side.fact(&OrderEvent::at(1)), Some(Scalar::from(Side::Unknown)));
@@ -235,7 +235,7 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
     from yggdryl import enums, graph
 
     counts = [len(enums.ELEMENT_COLUMNS), len(enums.EVENT_COLUMNS), len(enums.MARKET_COLUMNS), len(enums.OPERATION_COLUMNS)]
-    assert counts == [6, 9, 34, 5]
+    assert counts == [6, 9, 35, 5]
     assert (enums.EVENT_COLUMNS[0], enums.EVENT_COLUMNS[-1]) == ("currunix", "state")
     assert enums.MARKET_COLUMNS[:2] == ("marketdatakind", "marketdatatype")
     assert enums.OPERATION_COLUMNS == ("ordqty", "timeinforce", "tradable", "identifiers", "partyids")
@@ -244,10 +244,10 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
 
     # The lifted row states them in that order.
     names = [child.name for child in graph.MarketData.field()]
-    assert names[:54] == [
+    assert names[:55] == [
         *enums.ELEMENT_COLUMNS, *enums.EVENT_COLUMNS, *enums.MARKET_COLUMNS, *enums.OPERATION_COLUMNS
     ]
-    assert names[54:] == ["bookscope", "bookaction", "bookposition", "alive", "deltas", "executions", "bidlimits", "asklimits"]
+    assert names[55:] == ["bookscope", "bookaction", "bookposition", "alive", "deltas", "executions", "bidlimits", "asklimits"]
     ```
 
 === "JavaScript"
@@ -257,7 +257,7 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
     const { enums, graph } = require('yggdryl')
 
     const lists = [enums.elementColumns, enums.eventColumns, enums.marketColumns, enums.operationColumns]
-    assert.deepEqual(lists.map((list) => list.length), [6, 9, 34, 5])
+    assert.deepEqual(lists.map((list) => list.length), [6, 9, 35, 5])
     assert.deepEqual([enums.eventColumns[0], enums.eventColumns[8]], ['currunix', 'state'])
     assert.deepEqual(enums.marketColumns.slice(0, 2), ['marketdatakind', 'marketdatatype'])
     assert.deepEqual([...enums.operationColumns], ['ordqty', 'timeinforce', 'tradable', 'identifiers', 'partyids'])
@@ -267,8 +267,8 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
     // The lifted row states them in that order.
     const field = graph.MarketData.field()
     const names = Array.from({ length: field.fieldLen }, (_, at) => field.fieldAt(at).name)
-    assert.deepEqual(names.slice(0, 54), lists.flat())
-    assert.deepEqual(names.slice(54), [
+    assert.deepEqual(names.slice(0, 55), lists.flat())
+    assert.deepEqual(names.slice(55), [
       'bookscope', 'bookaction', 'bookposition', 'alive', 'deltas', 'executions', 'bidlimits', 'asklimits',
     ])
     ```
@@ -277,17 +277,17 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
 
 | Key | Rule |
 | --- | --- |
-| `MarketData::field()` | in `graph::arrow`: the required `marketdata` struct, 62 columns - `[0..6]` `ElementColumn::ALL` and `[6..15]` `EventColumn::ALL`, nullable here (an undated leaf has no clock); `[15..49]` `MarketColumn::ALL`, opening with the required `marketdatakind` and `marketdatatype`; `[49..54]` `OperationColumn::ALL`; `[54..57]` the [book control](order.md#book-control) a market-data entry states, which a book's deltas replay by - `bookscope` (`utf8`), `bookaction` (`utf8`, the `MDUpdateAction(279)` code or `snapshot`), `bookposition` (`uint32`); `[57..62]` the nullable nested columns `alive`, `deltas`, `executions`, `bidlimits`, `asklimits`. Every column is listed on [Row schemas](schemas.md#the-marketdata-row) |
-| Operation rows | the item of `alive`, `deltas` and `executions`: the root's first 57 columns, nothing nested |
+| `MarketData::field()` | in `graph::arrow`: the required `marketdata` struct, 63 columns - `[0..6]` `ElementColumn::ALL` and `[6..15]` `EventColumn::ALL`, nullable here (an undated leaf has no clock); `[15..50]` `MarketColumn::ALL`, opening with the required `marketdatakind` and `marketdatatype`; `[50..55]` `OperationColumn::ALL`; `[55..58]` the [book control](order.md#book-control) a market-data entry states, which a book's deltas replay by - `bookscope` (`utf8`), `bookaction` (`utf8`, the `MDUpdateAction(279)` code or `snapshot`), `bookposition` (`uint32`); `[58..63]` the nullable nested columns `alive`, `deltas`, `executions`, `bidlimits`, `asklimits`. Every column is listed on [Row schemas](schemas.md#the-marketdata-row) |
+| Operation rows | the item of `alive`, `deltas` and `executions`: the root's first 58 columns, nothing nested |
 | Nested columns | a [complete](book.md#complete-books-and-delta-books) book's `alive` is every live order and quote, each once - the bid side's best first, then the ask side's - and its `bidlimits`, `asklimits` its price levels, one [`Limit`](book.md#limits) each, best first and the unpriced last, an empty side an empty list; every book's `deltas` is what it applied since the book before, in the order applied, and a delta book leaves `alive` and both limits null; `executions` is a trade's alone, null on a book row; a leaf leaves null each list it does not hold |
 | Rows | every fact is its own typed column, null where the leaf states none; a book states its best tradable bid and ask in `bidpx`/`bidqty`/`bidccy` and `askpx`/`askqty`/`askccy`; `isincode` is the `isin` of `securityids`; every decimal is the registered [`decimal`](../types/numeric/decimal.md#decimal) |
 | `arrow_reader(values, batch_row_size, batch_byte_size)` | streams `IntoIterator` of `MarketData`/`Result<MarketData>` into bounded `BatchReader` batches, lazily - a [FIX message held whole](#a-fix-message-held-whole) written as the leaves it splits into - column by column, no per-row `Scalar`; no row bound = shared default, zero = one row; a byte bound closes a nonempty batch once reached; values write only as their canonical self - stale derived facts refused at their row; a source/refusal error follows the completed prefix, fuses the reader |
-| `from_arrow_reader(batches)` | one value per row, tolerant of shape: root columns resolved by name once per stream (any case, subset, order); an unnamed column ignored; a castable column cast via one plan compiled before the first batch; two columns naming one fact refused before a row is read |
-| `deltas_serie(source, kind)` | the deltas of the books `source` holds - any `SerieSource`: a table's `read_serie`, a held `Serie` - laid out as `marketdata` rows in book order, as a `SerieReader` pulled with the rows: every event each book states among its deltas, of `kind` where one is stated, every kind otherwise; a row that is no book is refused by its kind as an item of the stream. What a stage reads a window's orders, quotes or executions out of a table of books with |
+| `from_arrow_reader(batches)` | one value per row, tolerant of shape: root columns resolved by name once per stream (any case, subset, order); an unnamed column ignored; a castable column cast via one plan compiled before the first batch; two columns naming one fact refused before a row is read; `currhashcode` and `crosshashcode` read an `int64` cell as its bits at the root and in every nested row, whatever the schema states - the `long` a table with no unsigned type stores a digest in ([Integers stated as bits](../types/protocol.md#integers-stated-as-bits)), a negative cell being no other `u64` - and every identity read so is verified against the rebuilt leaf as any other; `seqnum` is a count and is read by value |
+| `deltas_serie(source, kind)` | the deltas of the books `source` holds - any `Serie`: a table's `read_serie`, a held `Serie` - laid out as `marketdata` rows in book order, as a `StreamChunkedSerie` pulled with the rows: every event each book states among its deltas, of `kind` where one is stated, every kind otherwise; a row that is no book is refused by its kind as an item of the stream. What a stage reads a window's orders, quotes or executions out of a table of books with; a held book reads the same split as `orddelta`, `quotes` and `executions` ([Book](book.md#entries)) |
 | Leaves | a row's `marketdatakind` and `currunix` name its leaf - [below](#the-leaf-a-row-names); each batch lands once as one record [`Serie`](../types/serie.md), so no cell decodes twice; a refused value is named by row and path - `$[0].alive[0].miccode` - before any leaf is rebuilt |
-| Canonical rows | a trade rebuilds only via `TradeEvent::from_parts`, a book from its `alive` and `deltas` directly - a complete book's sides from its `alive`, a delta book's deltas alone - never by replaying deltas; every stated identity must match the rebuilt leaf's (null `curruuid`/`crossuuid`/`currhashcode`/`crosshashcode` refused, absent = nothing); every other stated fact - the stored `crosscode`, a book's `bidlimits`/`asklimits` and bid/ask included - must match the leaf, else refused with `expected the value derived from the row ...` (a dated order stating no side and the code `O-1001` is refused at `$[0].crosscode`: expected `10:0:O-1001`); a reader failure or refused row returns once, fuses the iterator |
+| Canonical rows | a trade rebuilds only via `TradeEvent::from_parts`, a book from its `alive` and `deltas` directly - a complete book's sides from its `alive`, a delta book's deltas alone - never by replaying deltas; every stated identity must match the rebuilt leaf's (null `curruuid`/`crossuuid`/`currhashcode`/`crosshashcode` refused, absent = nothing); every other stated fact - the stored `crosscode`, a book's `bidlimits`/`asklimits` and bid/ask included - must match the leaf, else refused with `expected the value derived from the row ...` (a dated order stating no side and the code `O-1001` is refused at `$[0].crosscode`: expected `10:0:O-1001`; a book row stating another side than `BOTH`, or a two-sided quote row stating `UKNW`, is refused at `$[0].side`); a reader failure or refused row returns once, fuses the iterator |
 | `isincode`, `fxrates` | a stated `isincode` fills an absent `isin` base key and must equal the `securityids` answer (`expected the securityids isin "US0378331005", got ...`); `securityids`, `identifiers` and `partyids` are read raw beside the side information `metadata` files under their names and closed once, and refuse a key that reads as none, a value `Identifier::new` refuses and two spellings of one key with two values, located at the row's column and key (`$[0].identifiers['fix:']`); `fxrates` refuses a null key or rate and a target stated twice |
-| Bindings | Python `graph.MarketData.field()`, `arrow_reader(items, batch_row_size=None, batch_byte_size=None)` - a `pyarrow.RecordBatchReader` - `from_arrow_reader(source)` and `deltas_serie(source, kind=None)` - a native `SerieReader` over any source `read_serie` answers; JavaScript `graph.MarketData.field()`, `arrowReader(items, batchRowSize, batchByteSize)` - a `BatchReader` - `fromArrowReader(reader)`, any source `BatchReader.from` accepts, and `deltasSerie(source, kind)` over a `Serie`, a `ChunkedSerie` or a `SerieReader` |
+| Bindings | Python `graph.MarketData.field()`, `arrow_reader(items, batch_row_size=None, batch_byte_size=None)` - a `pyarrow.RecordBatchReader` - `from_arrow_reader(source)` and `deltas_serie(source, kind=None)` - a native `StreamChunkedSerie` over any source `read_serie` answers; JavaScript `graph.MarketData.field()`, `arrowReader(items, batchRowSize, batchByteSize)` - a `BatchReader` - `fromArrowReader(reader)`, any source `BatchReader.from` accepts, and `deltasSerie(source, kind)` over a `Serie`, a `ChunkedSerie` or a `StreamChunkedSerie` |
 
 ### Side information
 
@@ -304,7 +304,7 @@ What each source stated of an identifier type is side information, stated once a
 | `BOOK` | refused at `$[i].marketdatakind`: `expected a dated BOOK row, got currunix null` | a complete `BookEvent` where `alive` holds an entry; a delta `BookEvent` where `alive` is null and `deltas` a list; a `SnapshotEvent` where both are null. A table may store a null list as an empty one, as PyIceberg does, so an empty `alive` reads as the `SnapshotEvent` where the row states no delta and the `curruuid` a snapshot control derives, which no book shares, as a delta book where it states a delta and no `snapunix` - which every complete book a walk yields states - and as a complete book otherwise. A batch with no `alive` column is refused at `$[i].alive`: `expected the alive column that tells a book_event from a snapshot_event, got none`. A `BOOK` row states no `executions`: a null or empty cell reads as none, and a cell holding any is refused there |
 | another member, or null | refused at `$[i].marketdatakind`: `expected ORDR, QUOT, EXEC, TRAD or BOOK, got ACCT` (`got null`) | the same |
 
-A nested row names its leaf the same way: `alive` and `deltas` items must be `ORDR` or `QUOT` (`expected ORDR or QUOT on a book, got EXEC`), and an `executions` item `EXEC` or null.
+A nested row names its leaf the same way: `alive` items must be `ORDR` or `QUOT` and `deltas` items `ORDR`, `QUOT` or `EXEC` - another member refused on either (`expected ORDR, QUOT or EXEC on a book, got TRAD`), an `EXEC` alive by the book (`expected an order or quote on a book side`) - and an `executions` item `EXEC` or null.
 
 The one loss: a complete book holding no live entry that states deltas and no `snapunix` - one built or rebuilt, never one a walk yields - reads back as a delta book, its identity and its deltas kept; a row does not carry the completeness of an empty book.
 
@@ -342,11 +342,11 @@ The one loss: a complete book holding no live entry that states deltas and no `s
     let kinds: Vec<MarketKind> = read.iter().map(MarketData::kind).collect();
     assert_eq!(kinds, [MarketKind::Order, MarketKind::OrderEvent, MarketKind::BookEvent, MarketKind::SnapshotEvent]);
 
-    // The row: 6 element, 9 event, 34 market and 5 operation columns,
+    // The row: 6 element, 9 event, 35 market and 5 operation columns,
     // the three book controls, then the five nested columns.
     let field = MarketData::field()?;
-    assert_eq!(field.field_len(), 6 + 9 + 34 + 5 + 3 + 5);
-    let nested: Vec<&str> = field.fields()[57..].iter().map(|child| child.name()).collect();
+    assert_eq!(field.field_len(), 6 + 9 + 35 + 5 + 3 + 5);
+    let nested: Vec<&str> = field.fields()[58..].iter().map(|child| child.name()).collect();
     assert_eq!(nested, ["alive", "deltas", "executions", "bidlimits", "asklimits"]);
 
     // A foreign shape: a few columns in another order, one it does not name.
@@ -396,11 +396,11 @@ The one loss: a complete book holding no live entry that states deltas and no `s
     assert [value.kind for value in read] == ["order", "order_event", "book_event", "snapshot_event"]
     assert [value.marketdatakind for value in read] == [MarketDataKind.ORDR] * 2 + [MarketDataKind.BOOK] * 2
 
-    # The row: 6 element, 9 event, 34 market and 5 operation columns,
+    # The row: 6 element, 9 event, 35 market and 5 operation columns,
     # the three book controls, then the five nested columns.
     names = [child.name for child in graph.MarketData.field()]
-    assert len(names) == 6 + 9 + 34 + 5 + 3 + 5
-    assert names[57:] == ["alive", "deltas", "executions", "bidlimits", "asklimits"]
+    assert len(names) == 6 + 9 + 35 + 5 + 3 + 5
+    assert names[58:] == ["alive", "deltas", "executions", "bidlimits", "asklimits"]
 
     # A foreign shape: a few columns in another order, one it does not name.
     foreign = pa.table(
@@ -439,11 +439,11 @@ The one loss: a complete book holding no live entry that states deltas and no `s
     assert.deepEqual(read.map((value) => value.kind), ['order', 'order_event', 'book_event', 'snapshot_event'])
     assert.deepEqual(read.map((value) => value.marketdatakind), ['ORDR', 'ORDR', 'BOOK', 'BOOK'])
 
-    // The row: 6 element, 9 event, 34 market and 5 operation columns,
+    // The row: 6 element, 9 event, 35 market and 5 operation columns,
     // the three book controls, then the five nested columns.
     const field = graph.MarketData.field()
-    assert.equal(field.fieldLen, 6 + 9 + 34 + 5 + 3 + 5)
-    assert.deepEqual([57, 58, 59, 60, 61].map((at) => field.fieldAt(at).name), [
+    assert.equal(field.fieldLen, 6 + 9 + 35 + 5 + 3 + 5)
+    assert.deepEqual([58, 59, 60, 61, 62].map((at) => field.fieldAt(at).name), [
       'alive', 'deltas', 'executions', 'bidlimits', 'asklimits',
     ])
 
@@ -498,6 +498,7 @@ A table of books holds every event of each book's tick among its `deltas`; `delt
     // Every delta of every book, in book order; the executions alone.
     let count = |kind: Option<MarketDataKind>| -> yggdryl::Result<usize> {
         MarketData::deltas_serie(rows.clone(), kind)?
+            .into_chunks()
             .map(|serie| -> yggdryl::Result<usize> { Ok(serie?.len()) })
             .sum()
     };

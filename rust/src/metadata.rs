@@ -47,6 +47,10 @@ pub(crate) const LOCATION_KEY: &str = "location";
 pub(crate) const FIELD_ENUM_KEY: &str = "FIELD:enum";
 pub(crate) const FIELD_INIT_KEY: &str = "FIELD:init";
 pub(crate) const FIELD_PARTITION_KEY: &str = "FIELD:partition";
+/// What a same-width integer of the other signedness carries into or out of
+/// an integer column: `bits` where the column states it, its value - the
+/// default, stated by nothing - otherwise.
+pub(crate) const FIELD_REPRESENTATION_KEY: &str = "FIELD:representation";
 pub(crate) const PARQUET_FIELD_ID_KEY: &str = "PARQUET:field_id";
 /// The projections a struct's rows partition by, in order, as expression
 /// texts: a bare column an identity partition, a term a derived one.

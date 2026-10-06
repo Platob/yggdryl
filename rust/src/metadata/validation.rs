@@ -317,6 +317,13 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
         FIELD_ENUM_KEY => parse_string_enum(&value)?.into_json(),
         FIELD_INIT_KEY => parse_reserved_bool(FIELD_INIT_KEY, &value)?.to_string(),
         FIELD_PARTITION_KEY => parse_reserved_bool(FIELD_PARTITION_KEY, &value)?.to_string(),
+        FIELD_REPRESENTATION_KEY => crate::Representation::from_str(&value)
+            .map_err(|_| Error::InvalidMetadataValue {
+                key: SmolStr::new_static(FIELD_REPRESENTATION_KEY),
+                reason: crate::text::expected_got("value or bits", format_args!("{value:?}")),
+            })?
+            .as_str()
+            .to_owned(),
         PARQUET_FIELD_ID_KEY => parse_field_id(&value)?.to_string(),
         _ => {
             if key.starts_with("HTTP:") {

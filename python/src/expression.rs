@@ -16,7 +16,6 @@
 
 use pyo3::class::basic::CompareOp;
 use pyo3::prelude::*;
-use pyo3::sync::MutexExt;
 use pyo3::types::{PyDict, PyList, PyString, PyTuple};
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -25,9 +24,8 @@ use yggdryl::expression::{
     Bound as CoreBound, BoundSelector as CoreBoundSelector, Bounds as CoreBounds,
     ColumnBounds as CoreColumnBounds, Comparison as CoreComparison, FieldSegment as CoreSegment,
     Function as CoreFunction, IntoFilter, IntoPlan, IntoSelector, Operator,
-    Ordering as CoreOrdering, Plan as CorePlan, Projection as CoreProjection,
-    Records as CoreRecords, Source as CoreSource, Target as CoreTarget, Term as CoreTerm,
-    Verb as CoreVerb, Write as CoreWrite,
+    Ordering as CoreOrdering, Plan as CorePlan, Projection as CoreProjection, Source as CoreSource,
+    Target as CoreTarget, Term as CoreTerm, Verb as CoreVerb, Write as CoreWrite,
 };
 use yggdryl::expression::{
     FunctionSignature as CoreFunctionSignature, UserFunction as CoreUserFunction,
@@ -48,6 +46,7 @@ use crate::iomedia::{
     batch_to_pyarrow, record_batch_from_value,
 };
 use crate::scalar::PyScalar;
+use crate::stream_serie::PyStreamSerie;
 use crate::value_error;
 use crate::warehouse::PyWarehouse;
 
@@ -1304,10 +1303,10 @@ impl PyFilter {
         &self,
         rows: &Bound<'_, PyAny>,
         schema: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<PyRecords> {
+    ) -> PyResult<PyStreamSerie> {
         let schema = schema.map(core_field_from_value).transpose()?;
         let rows = rows_from_value(rows)?;
-        Ok(PyRecords::from_core(
+        Ok(PyStreamSerie::from_core(
             self.inner
                 .apply_records(schema.as_ref(), rows)
                 .map_err(value_error)?,
@@ -1659,10 +1658,10 @@ impl PySelector {
         &self,
         rows: &Bound<'_, PyAny>,
         schema: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<PyRecords> {
+    ) -> PyResult<PyStreamSerie> {
         let schema = schema.map(core_field_from_value).transpose()?;
         let rows = rows_from_value(rows)?;
-        Ok(PyRecords::from_core(
+        Ok(PyStreamSerie::from_core(
             self.inner
                 .apply_records(schema.as_ref(), rows)
                 .map_err(value_error)?,
@@ -2201,11 +2200,11 @@ impl PyPlan {
         &self,
         rows: &Bound<'_, PyAny>,
         schema: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<PyRecords> {
+    ) -> PyResult<PyStreamSerie> {
         let schema = schema.map(core_field_from_value).transpose()?;
         let rows = rows_from_value(rows)?;
         let expression = CoreExpression::Plan(Box::new(self.inner.clone()));
-        Ok(PyRecords::from_core(
+        Ok(PyStreamSerie::from_core(
             expression
                 .apply_records(schema.as_ref(), rows)
                 .map_err(value_error)?,
@@ -2501,10 +2500,10 @@ impl PyExpression {
         &self,
         rows: &Bound<'_, PyAny>,
         schema: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<PyRecords> {
+    ) -> PyResult<PyStreamSerie> {
         let schema = schema.map(core_field_from_value).transpose()?;
         let rows = rows_from_value(rows)?;
-        Ok(PyRecords::from_core(
+        Ok(PyStreamSerie::from_core(
             self.inner
                 .apply_records(schema.as_ref(), rows)
                 .map_err(value_error)?,
@@ -2559,110 +2558,6 @@ impl PyExpression {
 
     fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
         self.clone()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Records
-// ---------------------------------------------------------------------------
-
-/// Native rows streaming out of an expression, each a mapping under `field`.
-#[pyclass(name = "Records", module = "yggdryl._native", frozen)]
-pub(crate) struct PyRecords {
-    field: CoreField,
-    // A mutex, not for contention: the row stream is `Send` and not `Sync`,
-    // and a class Python may share across threads has to be both.
-    rows: std::sync::Mutex<Option<CoreRecords>>,
-}
-
-impl PyRecords {
-    fn from_core(records: CoreRecords) -> Self {
-        Self {
-            field: records.field().clone(),
-            rows: std::sync::Mutex::new(Some(records)),
-        }
-    }
-
-    /// The next row, the lock taken and the stream advanced detached: a row
-    /// may call a registered user function, which takes the GIL and may
-    /// release it, and a thread waiting on the lock attached would keep the
-    /// advancing thread from taking it back.
-    fn next_row(&self, py: Python<'_>) -> PyResult<Option<Scalar>> {
-        let next = py.detach(|| {
-            self.rows
-                .lock()
-                .map(|mut rows| rows.as_mut().and_then(Iterator::next))
-                .map_err(drop)
-        });
-        match next
-            .map_err(|()| value_error("the record stream was poisoned by an earlier panic"))?
-        {
-            Some(row) => Ok(Some(row.map_err(value_error)?)),
-            None => Ok(None),
-        }
-    }
-
-    /// Take the stream, its lock waited on detached: another thread may hold
-    /// it across a row that runs Python.
-    fn take(&self, py: Python<'_>) -> PyResult<CoreRecords> {
-        self.rows
-            .lock_py_attached(py)
-            .map_err(|_| value_error("the record stream was poisoned by an earlier panic"))?
-            .take()
-            .ok_or_else(|| value_error("these records were already consumed"))
-    }
-}
-
-#[pymethods]
-impl PyRecords {
-    /// The struct root every row is shaped under.
-    #[getter]
-    fn field(&self) -> PyField {
-        PyField::from_inner(self.field.clone())
-    }
-
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-
-    fn __next__(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
-        match self.next_row(py)? {
-            Some(row) => Ok(Some(crate::scalar::as_py_with_field(
-                py,
-                &row,
-                &self.field,
-            )?)),
-            None => Ok(None),
-        }
-    }
-
-    /// Every remaining row, as a list of mappings.
-    fn collect(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
-        let mut rows = Vec::new();
-        while let Some(row) = self.__next__(py)? {
-            rows.push(row);
-        }
-        Ok(rows)
-    }
-
-    /// The remaining rows as a `pyarrow.RecordBatchReader`, batched lazily.
-    #[allow(clippy::wrong_self_convention)]
-    fn into_arrow_reader<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.take(py)?.into_arrow_reader().map_err(value_error)?;
-        batch_reader_to_pyarrow(py, reader)
-    }
-
-    /// The records a `pyarrow.RecordBatchReader` holds, one row at a time.
-    #[staticmethod]
-    fn from_arrow_reader(reader: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let reader = batch_reader_from_arrow_reader(reader)?;
-        Ok(Self::from_core(
-            CoreRecords::from_arrow_reader(reader).map_err(value_error)?,
-        ))
-    }
-
-    fn __repr__(&self) -> String {
-        format!("Records({:?})", self.field.to_string())
     }
 }
 

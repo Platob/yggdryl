@@ -615,6 +615,11 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
             bencher.iter(|| black_box(&column).into_unique().expect("unique"));
         });
         let keys = venues_column()
+            .cast(
+                &DataType::utf8().required_field("partition_key"),
+                ArrowCastOptions::new(),
+            )
+            .expect("external keys have their own name")
             .into_sorted(SortOptions::default())
             .expect("sorted keys");
         group.bench_function(format!("partition_by/{name}"), |bencher| {
@@ -734,13 +739,16 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
                     .expect("sixteen groups")
             });
         });
-        group.bench_function(format!("chunked_partition_by_chunked/{name}"), |bencher| {
-            bencher.iter(|| {
-                black_box(&chunked)
-                    .partition_by_chunked(black_box(&chunked_keys))
-                    .expect("sixteen groups")
-            });
-        });
+        group.bench_function(
+            format!("chunked_partition_by_external_chunks/{name}"),
+            |bencher| {
+                bencher.iter(|| {
+                    black_box(&chunked)
+                        .partition_by(black_box(&chunked_keys))
+                        .expect("sixteen groups")
+                });
+            },
+        );
         group.bench_function(format!("chunked_as_sorted/{name}"), |bencher| {
             bencher.iter_batched(
                 || chunked.clone(),
@@ -860,7 +868,7 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
     // same over four children and over forty-eight: a column and a record
     // path key as the landed cells they reach, a period term over a batch of
     // the one column it reads.
-    let order_venue: Selector = "order.venue".parse().expect("a path key");
+    let order_venue: Selector = "order.venue as order_venue".parse().expect("a path key");
     for (width, record) in [
         (4, order_ticks_column(false)),
         (48, order_ticks_column(true)),

@@ -44,6 +44,17 @@ assert_eq!(order.get_bidpx(), order.get_price(), "a buy's price is its bid");
 assert!(order.get_fxrates().is_empty(), "nothing fills the rates");
 assert_eq!(*order.get_state(), State::Unknown);
 assert_eq!(order.kind().marketdatakind(), MarketDataKind::Order);
+
+// Under the `bic` source a value is a BIC whatever its type, and under
+// `legalentityidentifier` an LEI: upper-cased, or refused on its key.
+let desk = Identifier::new("bic:executingfirm".parse()?, "deutdeff")?;
+assert_eq!(desk.to_string(), "bic:executingfirm=DEUTDEFF");
+let refused = Identifier::new("bic:executingfirm".parse()?, "T-1").unwrap_err().to_string();
+assert!(refused.contains("bic:executingfirm") && refused.contains("is a BIC"), "{refused}");
+assert_eq!(Identifier::new("proprietary:executingfirm".parse()?, "T-1")?.value(), "T-1"); // any other source: the type's rule
+// A short name (FISN) is a security identifier; a legal form (ELF) neither a security's nor a party's.
+assert!(IdType::Fisn.is_security() && !IdType::Elf.is_security() && !IdType::Elf.is_party());
+assert_eq!(Identifier::new(IdKey::base("FinancialInstrumentShortName".parse()?), "Apple Inc/Sh")?.to_string(), "fisn=APPLE INC/SH");
 ```
 
 ## Build undated leaves, quotes and book entries
@@ -68,7 +79,8 @@ assert_eq!(order.get_curruuid(), Uuid::from_v8(u128::from(order.get_currhashcode
 let event: OrderEvent = order.at(T);
 assert!(!event.is_after(&event));
 
-// A two-sided quote: its bid and ask are its two legs, and it tags no side.
+// A two-sided quote: its bid and ask are its two legs, and tagging neither it
+// holds both sides, `BOTH`.
 let mut quote = QuoteEvent::at(T);
 quote.set_crosscode("Q-7".to_owned());
 quote.set_ticker(Some("AAPL".into()), true);
@@ -79,7 +91,7 @@ quote.set_askpx(Some("189.52".parse()?), true);
 quote.set_askqty(Some(Decimal::from_int(100)), true);
 quote.set_askccy(Some(Ccy::new("USD")?), true);
 quote.finalize();
-assert_eq!((quote.get_side(), quote.get_crosscode()), (Side::Unknown, "14:0:Q-7"));
+assert_eq!((quote.get_side(), quote.get_crosscode()), (Side::Both, "14:0:Q-7"));
 assert_eq!(quote.kind().marketdatakind(), MarketDataKind::Quotation);
 
 // An offer: tagged `SELL`, its price is its ask leg; a quote's code stays under side 0.
@@ -134,6 +146,14 @@ assert_eq!(filled.get_crossuuid(), placed.get_crossuuid(), "one chain");
 assert_eq!(filled.get_prevpx(), Some("189.50".parse()?));
 // Never itself, never one that happened after it.
 assert!(placed.clone().with_previous(&filled).is_none());
+
+// An instrument fact travels along the chain: a follower naming no other
+// ISIN takes the option's strike it does not state.
+let mut option = event(T, "New")?;
+option.set_strikepx(Some(Decimal::from_int(190)), true);
+option.finalize();
+let next = event(T + 1_000_000_000, "PartiallyFilled")?.with_previous(&option).expect("a later event follows");
+assert_eq!(next.get_strikepx(), Some(Decimal::from_int(190)));
 
 // One report recorded by two hops: recording clocks and sources are not content.
 let hop = |recorded: i64, line: u128| -> yggdryl::Result<OrderEvent> {
@@ -330,10 +350,10 @@ let values = vec![
     MarketData::from(BookEvent::new(1_700_000_001_000_000_000, "AAPL")),
 ];
 
-// 62 columns: 6 element, 9 event, 34 market (marketdatakind first), 5 operation,
+// 63 columns: 6 element, 9 event, 35 market (marketdatakind first), 5 operation,
 // the book controls bookscope, bookaction and bookposition, 5 nested.
 let field = MarketData::field()?;
-assert_eq!(field.field_len(), 62);
+assert_eq!(field.field_len(), 63);
 assert_eq!(field.fields()[15].name(), "marketdatakind");
 let batches: Vec<RecordBatch> = MarketData::arrow_reader(values.clone(), Some(1_000), None)?.collect::<Result<_, _>>()?;
 let read: Vec<MarketData> = MarketData::from_arrow_reader(batch_reader(batches[0].schema(), batches))?
@@ -463,10 +483,13 @@ assert!(BookIterator::new([undated].into_iter(), 0)?.next().expect("one result")
 ## Read a book
 
 A complete book answers each side as its `limits` (one per price, best
-first, the unpriced market level last) and its entries as `alive_on(side)`;
-every book answers the readings of the first level that can trade:
-`best_price`, `best_quantity`, the `bidpx`/`askpx` it states, `spread`; a
-complete one `depth` and `imbalance` too. A book built by hand is complete.
+first, the unpriced market level last) and its entries as `alive_on(side)`,
+the orders resting as `ordlive`; every book answers the readings of the first
+level that can trade: `best_price`, `best_quantity`, the `bidpx`/`askpx` it
+states, `spread`; a complete one `depth` and `imbalance` too. Its deltas read
+by kind as `orddelta`, `quotes`, `executions` and `events` - every delta that
+is none of the three, empty because a book records nothing else - which
+partition them. A book built by hand is complete.
 
 ```rust
 use yggdryl::graph::{BookEvent, Element, Market, MarketData, Operation, OrderEvent};
@@ -514,6 +537,12 @@ assert!(book.is_complete());
 assert_eq!((book.alive().count(), book.alive_on(Side::Buy).len(), book.alive_on(Side::Sell).len()), (5, 4, 1));
 // The deltas are the five orders, in the order applied.
 assert_eq!(book.deltas().map(Element::get_crosscode).collect::<Vec<_>>(), ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:2:A-1", "10:1:MKT"]);
+// By kind: the orders resting in book order - the bids best first and the
+// market order last, then the offer - and every delta an order.
+assert_eq!(book.ordlive().map(Element::get_crosscode).collect::<Vec<_>>(), ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:1:MKT", "10:2:A-1"]);
+assert_eq!((book.orddelta().count(), book.quotes().count(), book.executions().count()), (book.deltas().len(), 0, 0));
+// The four kinds partition the deltas; a book records no other kind.
+assert_eq!(book.events().count(), 0);
 ```
 
 ## Replace a scope with a snapshot
@@ -603,7 +632,8 @@ assert_eq!(rows(MarketData::apply_view(&lifecycle, &[], stream()?)?.collect::<Re
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `book_arrow_reader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries, a trade entry (`269=2`) recorded as the
+execution it is - and
 `MarketData::from_arrow_reader` reads the books back. A `W` full refresh is a
 snapshot input, so its book is complete; the `X` after it states its delta.
 
@@ -802,8 +832,9 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
   `Result<BookEvent>`; `with_filter(filter)` binds an expression over the
   `marketdata` row once, refusing a column the row does not carry. An `Err`
   item is a source's own failure or a value no book folds (an undated order, a
-  `BookEvent`); every input `MarketDataKind::is_booked` refuses - an
-  execution, a trade, a batch - is pruned in silence. An operation dated before
+  `BookEvent`); an execution is recorded among its book's deltas, and every
+  input `MarketDataKind::is_recorded` refuses - a trade, a batch - is pruned
+  in silence. An operation dated before
   its book and a group the book refuses are left out with a `log` warning, and
   an order or a quote resting on neither side is placed nowhere with one, yet
   still counts as the book's delta.

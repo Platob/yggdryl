@@ -5,8 +5,8 @@
 
 use arrow_array::{Array, Int64Array};
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, PartitionOptions, Scalar, Serie, SerieReader,
-    StructType,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, PartitionOptions, Scalar, Serie,
+    StreamChunkedSerie, StructType,
 };
 
 fn root() -> Field {
@@ -31,8 +31,8 @@ fn batch(root: &Field, rows: &[(&str, i64)]) -> Serie {
 }
 
 /// One stream of `batches` under `root`, a chunk per batch.
-fn stream(root: &Field, batches: Vec<Serie>) -> SerieReader {
-    SerieReader::from_chunked(
+fn stream(root: &Field, batches: Vec<Serie>) -> StreamChunkedSerie {
+    StreamChunkedSerie::from_chunked(
         ChunkedSerie::from_series(Some(root), batches, ArrowCastOptions::new()).unwrap(),
     )
     .unwrap()
@@ -44,12 +44,18 @@ fn venue(name: &str) -> Scalar {
 
 /// Every partition `by` closes, in the order it closes: its key, and the
 /// quantities of its rows in the order they are held.
-fn closed(stream: SerieReader, by: &str, options: PartitionOptions) -> Vec<(Scalar, Vec<i64>)> {
+fn closed(
+    stream: StreamChunkedSerie,
+    by: &str,
+    options: PartitionOptions,
+) -> Vec<(Scalar, Vec<i64>)> {
     stream
         .partition_by(by, options)
         .unwrap()
         .map(|partition| {
-            let (key, rows) = partition.unwrap().into_parts();
+            let partition = partition.unwrap();
+            let key = partition.key().clone();
+            let rows = Serie::from(partition);
             let quantities = rows
                 .into_arrow_reader()
                 .unwrap()
@@ -230,8 +236,7 @@ fn a_key_the_root_cannot_bind_is_refused_before_a_batch_is_pulled() {
     let root = root();
     let refused = stream(&root, vec![batch(&root, &[("XNAS", 1)])])
         .partition_by("missing", PartitionOptions::new())
-        .err()
-        .expect("an unbound key");
+        .expect_err("an unbound key");
     assert!(refused.to_string().contains("missing"), "{refused}");
     let partitions = stream(&root, vec![batch(&root, &[("XNAS", 1)])])
         .partition_by("venue", PartitionOptions::new())

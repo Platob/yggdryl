@@ -174,7 +174,15 @@ fn record_options_of_another_encoding_are_refused_naming_both() {
     assert_eq!(
         refusal(
             media
-                .overwrite_prepared_arrow_reader(two_batches(), &ipc)
+                .overwrite_prepared_serie(
+                    yggdryl::StreamChunkedSerie::from_arrow_reader(
+                        None,
+                        two_batches(),
+                        yggdryl::ArrowCastOptions::new()
+                    )
+                    .unwrap(),
+                    &ipc
+                )
                 .unwrap_err()
         ),
         expected
@@ -735,6 +743,9 @@ fn a_local_csv_file_is_written_read_appended_and_reopened() {
         rows_of(read_batch_reader(&reopened, None, &CsvOptions::new()).expect("a reader")),
         four_rows()
     );
+
+    // An append resizes the file: finish the reader's mapping first.
+    drop(reopened);
 
     // Through the holder's own record surface: the name picks the encoding.
     let mut holder = Holder::file(&path).expect("a file");

@@ -1,9 +1,9 @@
 ---
 name: yggdryl-arrow
-description: Moves columns, tables and streams across the Apache Arrow boundary with yggdryl's Serie (one column), ChunkedSerie (chunked arrays and tables kept apart) and SerieReader (a stream under one compiled plan), and casts them with ArrowCastPlan and ArrowCastOptions (safe, representation). Use when landing arrow-rs arrays / RecordBatches / readers, pyarrow or Arrow JS (apache-arrow) tables and vectors under a Field (from_arrow_array / fromArrowArray, from_arrow_batch, SerieReader.from_arrow_reader), taking pyarrow, pandas, polars or NumPy in via Serie.from_, reading typed buffers (as_int64().values()), casting a column or a stream, sorting, deduplicating, grouping or windowing a column (sort_indices / into_sorted, into_unique, partition_by, window), cutting a column or stream into windows of equal keys (window_by / windowBy, static_values), or handing data back (into_arrow_array / intoArrowTable, into_pandas / into_polars). Covers Rust, Python and Node.js.
+description: Moves columns, tables and streams across the Apache Arrow boundary with yggdryl's Serie (one column), ChunkedSerie (chunked arrays and tables kept apart) and StreamChunkedSerie (a stream under one compiled plan), and casts them with ArrowCastPlan and ArrowCastOptions (safe, representation). Use when landing arrow-rs arrays / RecordBatches / readers, pyarrow or Arrow JS (apache-arrow) tables and vectors under a Field (from_arrow_array / fromArrowArray, from_arrow_batch, StreamChunkedSerie.from_arrow_reader), taking pyarrow, pandas, polars or NumPy in via Serie.from_, reading typed buffers (as_int64().values()), casting a column or a stream, sorting, deduplicating, grouping or windowing a column (sort_indices / into_sorted, into_unique, partition_by, window), cutting a column or stream into windows of equal keys (window_by / windowBy, KeySerie key context), or handing data back (into_arrow_array / intoArrowTable, into_pandas / into_polars). Covers Rust, Python and Node.js.
 ---
 
-# yggdryl Arrow: Serie, ChunkedSerie, SerieReader, casts
+# yggdryl Arrow: Serie, ChunkedSerie, StreamChunkedSerie, casts
 
 Every value that crosses Apache Arrow lands in one of three holders, and
 every cast runs through them:
@@ -14,7 +14,7 @@ every cast runs through them:
 - **`ChunkedSerie`** - `Serie` columns of one field held apart: a chunked
   array, or a table of one batch per chunk. Nothing is concatenated until
   `into_serie`.
-- **`SerieReader`** - a stream: one record `Serie` per batch, every batch cast
+- **`StreamChunkedSerie`** - a stream: one record `Serie` per batch, every batch cast
   by one `ArrowCastPlan` compiled from the stream's schema before the first
   pull. At most one source batch is held.
 
@@ -27,8 +27,15 @@ the target field's nullability; `safe` only decides whether a present value
 that fails to convert becomes null.
 
 `RecordBatch`, `ArrayRef`, `BatchReader` and their pyarrow / Arrow JS
-counterparts are transport, never a second collection API. Install and
-cross-language conventions: see the `yggdryl` entry skill.
+counterparts are transport, never a second collection API. `Field`'s
+`apply_arrow_batch`, `apply_arrow_schema` and `apply_arrow_reader`, and the
+record options' `apply_arrow_batch` and `apply_arrow_reader`, take and answer
+those types because their callers exchange them: they are the transport face
+of the same `ArrowCastPlan` - `Field::apply_arrow_reader` is a `StreamChunkedSerie`
+over the stream, and the options run the cast onto the declared field, the
+`where` and `select`, then the cast onto the stored field - never a second
+cast and nothing to migrate away from (Rust and Python; JavaScript binds
+none). Install and cross-language conventions: see the `yggdryl` entry skill.
 
 ## Choose the door
 
@@ -41,8 +48,8 @@ cross-language conventions: see the `yggdryl` entry skill.
 | One batch / table -> record column | `Serie::from_arrow_batch(Some(&root), &batch, options)?` | `Serie.from_arrow_batch(batch, root=None, ...)` | `Serie.fromArrowBatch(batchOrTable, root?, options?)` |
 | Drain a stream into one column | `Serie::from_arrow_reader(Some(&root), reader, options)?` | `Serie.from_arrow_reader(reader, root=None, ...)` | `Serie.fromArrowReader(batchReader, root?, options?)` |
 | Any columnar runtime object -> column | - (use the three doors above) | `Serie.from_(value, field=None, ...)` - pyarrow, pandas, polars, NumPy, Arrow C exporters | - (Arrow JS doors above) |
-| Stream lazily, one plan, bounded memory | `SerieReader::from_arrow_reader(Some(&root), reader, options)?` | `SerieReader.from_arrow_reader(reader, root=None, ...)`, `SerieReader.from_(value, root=None, ...)` | `SerieReader.fromArrowReader(batchReader, root?, options?)` |
-| Held column / chunks as a stream | `SerieReader::from_serie(serie)?`, `SerieReader::from_chunked(chunked)?` | `SerieReader.from_serie(serie)`, `SerieReader.from_chunked(chunked)` | `SerieReader.fromSerie(serie)`, `SerieReader.fromChunked(chunked)` |
+| Stream lazily, one plan, bounded memory | `StreamChunkedSerie::from_arrow_reader(Some(&root), reader, options)?` | `StreamChunkedSerie.from_arrow_reader(reader, root=None, ...)`, `StreamChunkedSerie.from_(value, root=None, ...)` | `StreamChunkedSerie.fromArrowReader(batchReader, root?, options?)` |
+| Held column / chunks as a stream | `StreamChunkedSerie::from_serie(serie)?`, `StreamChunkedSerie::from_chunked(chunked)?` | `StreamChunkedSerie.from_serie(serie)`, `StreamChunkedSerie.from_chunked(chunked)` | `StreamChunkedSerie.fromSerie(serie)`, `StreamChunkedSerie.fromChunked(chunked)` |
 | Re-root a stream under another field | `reader.cast(&target, options)?` | `reader.cast(field, ...)` | `reader.cast(field, options?)` |
 | Stream out (transport, never landed) | `reader.into_arrow_reader()` -> `BatchReader` | `reader.into_arrow_reader()` -> `pyarrow.RecordBatchReader` | `reader.intoArrowReader()` -> `BatchReader` |
 | Chunked array, chunks kept apart | `ChunkedSerie::from_arrow_arrays(Some(&field), arrays, options)?` | `ChunkedSerie.from_arrow_chunked_array(chunked, field=None, ...)`, `ChunkedSerie.from_(value)` | `ChunkedSerie.fromArrowArray(vector, field?, options?)` (one chunk per `Data`) |
@@ -62,16 +69,16 @@ cross-language conventions: see the `yggdryl` entry skill.
 | Read or write a stretch where it stands | `serie.window(offset, len)?`, `window_mut(offset, len)?` (`set`, `fill`, `swap`, `as_sorted`, ...) | `serie.window(offset, length)` -> `WindowSerie` | `serie.window(offset, length)` -> `WindowSerie` |
 | Sort, order, deduplicate, take, filter (a new serie) | `sort_indices(options)?`, `into_sorted(options)?`, `into_unique()?`, `into_reversed()`, `into_taken(&indices)?`, `into_filtered(&mask)?`, `is_sorted(options)`, `is_unique()`, `unique_count()` | same names; `options` are `descending=False, nulls_first=False` keywords | `sortIndices`, `intoSorted`, `intoUnique`, `intoReversed`, `intoTaken`, `intoFiltered`, `isSorted`, `isUnique`, `uniqueCount`; `options` is `{ descending, nullsFirst }` |
 | The same, in place and chained | `serie.as_sorted(options)?.as_unique()?.as_reversed()?`, `as_taken`, `as_filtered` | `serie.as_sorted().as_unique().as_reversed()`, `as_taken`, `as_filtered` | `serie.asSorted().asUnique().asReversed()`, `asTaken`, `asFiltered` |
-| Group rows by a key | `partition_by(&keys)?`, `partition_by_paths(&paths)?`; a chunked serie's keys held in chunks: `partition_by_chunked` | `partition_by(keys)`, `partition_by_paths("venue")` | `partitionBy(keys)`, `partitionByPaths('venue')` |
-| Sort a record by `order by` keys | `sort_indices_by("venue, price desc")?`, `into_sort_by(by)?`, `as_sort_by(by)?`; `by` a text, texts, `Ordering`s or a `Selector`; also on `ChunkedSerie` (a merge, no join), `WindowSerie`, and `SerieReader::into_sorted`/`into_sort_by` (drained, merged, streamed back) | `sort_indices_by(by)`, `into_sort_by(by)`, `as_sort_by(by)`; `reader.into_sorted(...)`, `reader.into_sort_by(by)` | `sortIndicesBy(by)`, `intoSortBy(by)`, `asSortBy(by)`; `reader.intoSorted(options?)`, `reader.intoSortBy(by)` |
+| Group rows by a key | `partition_by(by)?` -> `KeySeries`, selector, paths or typed external keys | `partition_by(by)` -> `KeySeries` | `partitionBy(by)` -> `KeySeries` |
+| Sort a record by `order by` keys | `sort_indices_by("venue, price desc")?`, `into_sort_by(by)?`, `as_sort_by(by)?`; `by` a text, texts, `Ordering`s or a `Selector`; also on `ChunkedSerie` (a merge, no join), `WindowSerie`, and `StreamChunkedSerie::into_sorted`/`into_sort_by` (drained, merged, streamed back) | `sort_indices_by(by)`, `into_sort_by(by)`, `as_sort_by(by)`; `reader.into_sorted(...)`, `reader.into_sort_by(by)` | `sortIndicesBy(by)`, `intoSortBy(by)`, `asSortBy(by)`; `reader.intoSorted(options?)`, `reader.intoSortBy(by)` |
 | The order a record's rows are proven to be in | `serie.declared_order()?` -> `Option<Vec<Ordering>>`: the root's `SORT:by`, written by the sorts, kept, flipped or cleared by the verbs, verified where foreign rows land | `declared_order()` -> `list[str] \| None` | `declaredOrder()` -> `string[] \| null` |
-| Move a column's buffers to disk | `serie.spill(&SpillOptions::new().with_byte_size(n))?`, `as_spilled(&o)?` (chains), `into_spilled(&o)?` (a spilled copy), `resident_size()`, `is_spilled()`; `SpillOptions::install_env(..)` for the default every door settles under; also on `ChunkedSerie` and `SerieReader` (whose `into_spilled` consumes it) | `serie.spill(SpillOptions(byte_size=n))` or `spill(byte_size=n)`, `as_spilled(byte_size=n)`, `into_spilled(byte_size=n)`, `resident_size()`, `is_spilled()`; `SpillOptions.install_env(options)` | `serie.spill(new SpillOptions({ byteSize: n }))`, `asSpilled(o)`, `intoSpilled(o)`, `residentSize()`, `isSpilled()`; `SpillOptions.installEnv(options)` |
+| Move a column's buffers to disk | `serie.spill(&SpillOptions::new().with_byte_size(n))?`, `as_spilled(&o)?` (chains), `into_spilled(&o)?` (a spilled copy), `resident_size()`, `is_spilled()`; `SpillOptions::install_env(..)` for the default every door settles under; also on `ChunkedSerie` and `StreamChunkedSerie` (whose `into_spilled` consumes it) | `serie.spill(SpillOptions(byte_size=n))` or `spill(byte_size=n)`, `as_spilled(byte_size=n)`, `into_spilled(byte_size=n)`, `resident_size()`, `is_spilled()`; `SpillOptions.install_env(options)` | `serie.spill(new SpillOptions({ byteSize: n }))`, `asSpilled(o)`, `intoSpilled(o)`, `residentSize()`, `isSpilled()`; `SpillOptions.installEnv(options)` |
 | Join two record columns on keys | `left.join_with(&right, "id", JoinKind::Inner, &JoinOptions::new().with_build(Some(JoinSide::Right)))?`; `by` a shared column (`using`, coalesced), `"l = r and ..."`, texts, pairs; `how` `Inner`/`Left`/`Right`/`Full`/`Semi`/`Anti`; `chunked.join_with` keeps batches apart, `reader.join_with(other, ..)` probes lazily | `left.join_with(right, "id", "inner", build="right")`, `JoinOptions(...)` | `left.joinWith(right, 'id', 'inner', { build: 'right' })` |
-| Rows into windows of equal keys, as views | `serie.window_by("venue", sorted)?` -> `SerieWindows`; `for (key, window) in &windows`, each a `WindowSerie`; also on a `WindowSerie` | `serie.window_by("venue", sorted=False)` -> `[(key, WindowSerie)]` | `serie.windowBy('venue', sorted?)` -> `[[key, WindowSerie]]` |
-| The same across chunks, no join | `chunked.window_by("venue", sorted)?` -> `Vec<(Scalar, ChunkedSerie)>` | `chunked.window_by("venue", sorted=False)` | `chunked.windowBy('venue', sorted?)` |
-| A stream's windows, lazily, in order | `reader.window_by("venue", sorted)?` -> `SerieReaderWindows` of `SerieReader` | `reader.window_by(...)` -> `SerieReaderWindows` | `reader.windowBy(...)` -> `SerieReaderWindows` |
-| A stream cut into partitions, each as it closes | `reader.partition_by("venue", PartitionOptions::new().with_max_open(n))?` -> `SerieReaderPartitions` of `SeriePartition` (`key()`, `rows()`) | `reader.partition_by("venue", max_open=None, threads=None, clustered=False)` -> `(Scalar, ChunkedSerie)` pairs | `reader.partitionBy('venue', { maxOpen, threads, clustered })` -> `[Scalar, ChunkedSerie]` pairs |
-| The values constant over a window | `window.static_values()` / `reader.static_values()` -> `Option<FieldScalar>`: `get_key_str("venue")`, `windownum`, `rownum` | `window.static_values` -> struct `Scalar` or `None`, `record["venue"]` | `window.staticValues` -> struct `Scalar` or `null`, `record.get('venue')` |
+| Rows into windows of equal keys | `window_by(by, sorted)?` -> `KeySeries` of `KeySerie` | `window_by(by, sorted=False)` -> `KeySeries` | `windowBy(by, sorted?)` -> `KeySeries` |
+| The same across chunks, no join | `chunked.window_by(by, sorted)?` -> `KeySeries`, native payload pieces | `chunked.window_by(by, sorted=False)` | `chunked.windowBy(by, sorted?)` |
+| A stream's windows, lazily, in order | `window_by(by, sorted)?` -> `StreamKeySerie` of borrowed `KeySerie` | `window_by(...)` -> `StreamKeySerie` | `windowBy(...)` -> `StreamKeySerie` |
+| A stream cut into partitions, each as it closes | `partition_by(by, options)?` -> `StreamKeySerie` of `KeySerie` | `partition_by(by, max_open=None, threads=None, clustered=False)` -> `StreamKeySerie` | `partitionBy(by, { maxOpen, threads, clustered })` -> `StreamKeySerie` |
+| Explicit key context | `item.key()`, `key_field()`, `rows()`, `serie_field()`, `rownum()` | `item.key`, `key_field`, `rows`, `serie_field`, `rownum` | `item.key`, `keyField`, `rows`, `serieField`, `rownum` |
 | Bytes a column occupies | `serie.memory_size()` | `serie.memory_size()` | `serie.memorySize()` |
 | Column -> Arrow | `into_arrow_array()` (`None` for a run), `require_arrow_array()?`, `into_arrow_batch()?`, `into_arrow_reader()?`, `into_arrow_scalar()?` | `into_arrow_array()`, `into_arrow_batch()`, `into_arrow_table()`, `into_arrow_reader()`, `into_arrow_scalar()`, `into_pandas()`, `into_polars()`, `into_numpy()`; PyCapsule: `pa.array(serie)`, `pa.table(record)` | `intoArrowArray()`, `intoArrowBatch()`, `intoArrowReader()`, `intoArrowScalar()` |
 | Chunked -> Arrow | `into_arrow_arrays()`, `into_arrow_reader()?` | `into_arrow_chunked_array()`, `into_arrow_table()`, `into_arrow_reader()` | `intoArrowArray()`, `intoArrowTable()`, `intoArrowReader()` |
@@ -91,7 +98,7 @@ the record `row`.
 ## Rules for fast, correct use
 
 1. **One plan per stream.** `serie.cast` and every `Serie` Arrow door compile
-   a plan per call. A batch loop holds a `SerieReader` or an `ArrowCastPlan`
+   a plan per call. A batch loop holds a `StreamChunkedSerie` or an `ArrowCastPlan`
    instead: 1.7x faster at 1,000 batches of 64 rows, and the gap grows with
    the batch count.
 2. **Declare the layout you already have.** An exact layout is the identity
@@ -103,7 +110,7 @@ the record `row`.
    once.
 3. **Pick the holder by shape.** Contiguous and held: `Serie`. Chunks or
    batches you want kept apart: `ChunkedSerie` (a clone or slice moves chunk
-   pointers, never a row). Larger than memory or read once: `SerieReader`.
+   pointers, never a row). Larger than memory or read once: `StreamChunkedSerie`.
    `Serie.from_arrow_reader` / `Serie.from_` drain the whole stream.
 4. **Narrow once, read per row.** In Rust, `as_<leaf>()` once, then
    `values()` / `value(i)` per row: a bounds check and a load, no value built.
@@ -135,12 +142,12 @@ the record `row`.
    shared, `u64::MAX` reads `-1`. Different widths or rule-governed targets
    (codes, UUIDs, fixed strings) convert as usual.
 10. **Missing required columns fail at compile time; nulls fail at the pull.**
-   `ArrowCastPlan` / `SerieReader` constructors refuse what the two schemas
+   `ArrowCastPlan` / `StreamChunkedSerie` constructors refuse what the two schemas
    alone refuse; a batch's null or bad value surfaces when that batch is
    pulled, and the reader is fused after the first failure.
 11. **A stream is never a `Scalar`.** A held column becomes one value with
     `Scalar::from(serie)` / `into_scalar()` at no copy; `Scalar.from_(reader)`
-    drains the stream. `SerieReader`s are one-shot: iterating,
+    drains the stream. `StreamChunkedSerie`s are one-shot: iterating,
     `into_arrow_reader` and `cast` each consume them.
 12. **Python is zero copy; JavaScript is copied IPC.** Python crosses the Arrow
     C Data Interface and PyCapsule interface, sharing buffers, and lands,
@@ -159,7 +166,7 @@ the record `row`.
 14. **`into_serie` joins the chunks**: no chunk is the empty column (no
     buffers), one chunk is itself (shared, zero copy), and only two or more
     chunks are concatenated into new buffers. `into_arrow_batch`,
-    `into_arrow_reader` and `SerieReader.from_serie` refuse a record column
+    `into_arrow_reader` and `StreamChunkedSerie.from_serie` refuse a record column
     holding a null row, because a batch states no row validity.
 15. **Schema-changing loops compile one plan per distinct source schema.** A
     plan refuses an input of another layout by name; key your plans by the
@@ -224,14 +231,14 @@ the record `row`.
     key order: keys already in order copy nothing, a held serie gathers its
     rows once only where the keys descend, a `ChunkedSerie` regroups its
     runs as zero-copy pieces, and a stream verifies the order and refuses a
-    key going backwards. Every window a `Serie`, a `WindowSerie` or a
-    `SerieReader` cuts states its record - the key cells, `windownum` and
-    `rownum` (null after a gather) - as `static_values`; a chunked window
-    states none, its key and index being its record. A key cell named
-    `windownum` or `rownum` is refused wherever a record is stated: alias it.
+    key going backwards. Each item has explicit key context and native
+    payload, with an optional absolute `rownum` cleared by a gather. Keys
+    named `rownum` or `windownum` are ordinary aliases. A name folding onto
+    another key or remaining payload child is refused. Read a borrowed
+    stream payload before advancing its walk.
 17. **Partition a stream instead of holding it.** `reader.partition_by(by,
     options)` cuts each batch on the stream's threads and yields every
-    partition as soon as it closes - a `ChunkedSerie` of its rows under the
+    partition as soon as it closes - a `KeySerie` retaining native rows under the
     spill bound. `max_open` closes the lowest keys past it; a stream sorted
     on the key, or stated `clustered`, holds one partition at a time and
     yields them in arrival order; a root that declares an order leading with
@@ -243,10 +250,13 @@ the record `row`.
 
 - **Wrong:** `for batch in reader: Serie.from_arrow_batch(batch, root)` (or
   `serie.cast(...)` per batch). **Right:** `for s in
-  SerieReader.from_arrow_reader(reader, root)`, or compile
+  StreamChunkedSerie.from_arrow_reader(reader, root)`, or compile
   `ArrowCastPlan(schema, root)` once and `plan.apply(batch)`.
+- **Wrong:** `for batch in reader: root.apply_arrow_batch(batch)` - each
+  call compiles the plan again. **Right:** `root.apply_arrow_reader(reader)`,
+  one plan for the stream.
 - **Wrong:** `Serie.from_arrow_reader(huge_reader)` to process a large file.
-  **Right:** `SerieReader` (one batch held), or
+  **Right:** `StreamChunkedSerie` (one batch held), or
   `ChunkedSerie.from_arrow_reader` when you need random access without a join.
 - **Wrong:** summing `serie.scalar(i)` in a loop. **Right:** Rust
   `serie.as_int64().ok_or("not an int64 column")?.values()`; Python `pyarrow.compute.sum(serie.into_arrow_array())`
@@ -268,7 +278,7 @@ the record `row`.
   - `fromArrowReader` takes only a native `BatchReader`, and consumes it.
 - **Wrong (JS):** `new ChunkedSerie()`. **Right:** a static:
   `ChunkedSerie.fromSeries`, `fromArrowArray`, `fromArrowBatch`, `empty`.
-- **Wrong:** reusing a `SerieReader` after `into_arrow_reader()`, `cast` or a
+- **Wrong:** reusing a `StreamChunkedSerie` after `into_arrow_reader()`, `cast` or a
   full iteration. **Right:** build a new one; a stream is read once.
 - **Wrong:** `Serie([1, 2]).cast(field)` / `Serie::new(rows).cast(..)`. A
   schema-free run lays out no buffers and is refused. **Right:**

@@ -152,14 +152,14 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .field(counter)
             .unwrap()
             .as_fix()
-            .has_branch(dialect)
+            .has_source(dialect)
     );
     assert!(
         registry
             .field_by_name("VendorEntries")
             .unwrap()
             .as_fix()
-            .has_branch(dialect)
+            .has_source(dialect)
     );
     assert!(
         registry

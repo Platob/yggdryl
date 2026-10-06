@@ -60,19 +60,7 @@ impl Cusip {
     /// Returns an error when the text is not nine ASCII bytes of the
     /// identifier's shape: eight alphanumerics and a closing digit.
     pub fn new(value: impl AsRef<str>) -> Result<Self> {
-        let value = crate::ascii_text(CUSIP_WIDTH, value.as_ref().as_bytes())?;
-        let mut bytes = [0_u8; CUSIP_WIDTH];
-        for (target, byte) in bytes.iter_mut().zip(value.bytes()) {
-            *target = byte.to_ascii_uppercase();
-        }
-        let folded = std::str::from_utf8(&bytes[..value.len()]).expect("validated ASCII");
-        if let Some(reason) = Self::refusal(folded) {
-            return Err(crate::Error::InvalidDataType {
-                kind: "cusip",
-                reason: smol_str::format_smolstr!("{reason}, got {value:?}"),
-            });
-        }
-        Ok(Self(SmolStr::new(folded)))
+        crate::code::folded_code::<CUSIP_WIDTH>("cusip", value.as_ref(), Self::refusal).map(Self)
     }
 
     /// Borrow the identifier.

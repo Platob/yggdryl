@@ -20,7 +20,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Holder | [Filesystems](holder/index.md#filesystems-performance) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |
 | Holder | [Object stores](holder/index.md#object-stores-performance) | Both clients against one in-process store over a real socket: reads, writes under either payload policy, and listings, beside `object_store` 0.13.2 |
 | Holder | [Bytes](holder/index.md#bytes-performance) | Criterion measured medians on one 8 MiB decoded fixture: Windows 11 x86_64, AMD Ryzen 5 150 (6 cores/12 thr... |
-| Holder | [Records](holder/index.md#records-performance) | Write-mode dispatch, 4,096 rows, one local Windows x86_64 release run (Criterion point estimates; regenerat... |
+| Holder | [StreamSerie](holder/index.md#records-performance) | Write-mode dispatch, 4,096 rows, one local Windows x86_64 release run (Criterion point estimates; regenerat... |
 | Holder | [Values](holder/index.md#values-performance) | Criterion measured one 16,384-record JSON value through `IOBase`; each compressed case includes coding and... |
 | Holder | [Call counts](holder/index.md#call-counts-performance) | One run of each operation over a 4 MiB in-memory value, wall clock beside the `IOBase` calls it makes |
 | Holder | [ZIP](holder/index.md#zip-performance) | `io_zip`: positional, whole and streamed member reads and writes, restart strides and a 2,000-member archive; one containerized x86_64 Linux release run |

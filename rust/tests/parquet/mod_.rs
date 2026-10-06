@@ -2651,6 +2651,22 @@ mod pruning {
             rows(&media, "id between 100 and 199 and note is not null").unwrap(),
             100
         );
+        let options = media
+            .record_options()
+            .unwrap()
+            .with_select("id as key, note")
+            .unwrap()
+            .with_filter("key >= 0 and id < 10")
+            .unwrap();
+        let kept = media
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum::<usize>();
+        assert_eq!(
+            kept, 10,
+            "a source conjunct still prunes beside a selected alias"
+        );
         assert!(
             rows(&media, "id >= 0").is_err(),
             "the broken group is decoded"

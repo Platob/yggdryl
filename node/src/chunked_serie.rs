@@ -9,15 +9,15 @@
 //! leaf's class. Arrow crosses as copied IPC, one batch per chunk, and
 //! nothing is joined but by `intoSerie`.
 
+use crate::key_serie::{JsKeySeries, KeyInput, key_by};
 use std::sync::Arc;
 
 use napi::bindgen_prelude::{Buffer, ClassInstance, Either, Result, Uint8Array};
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
-use yggdryl::{ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, SerieReader};
+use yggdryl::{ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, StreamChunkedSerie};
 
 use crate::datatype::JsDataType;
-use crate::expression::{SelectorInput, selector_from_input};
 use crate::field::JsField;
 use crate::iomedia::JsBatchReader;
 use crate::join::{JoinOptionsInput, join_kind, join_options};
@@ -382,7 +382,7 @@ impl JsChunkedSerie {
     #[napi]
     pub fn into_arrow_reader(&self) -> Result<JsBatchReader> {
         let reader = self.inner.into_arrow_reader().map_err(napi_error)?;
-        let root = SerieReader::root_of(self.inner.field()).map_err(napi_error)?;
+        let root = StreamChunkedSerie::root_of(self.inner.field()).map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, root.name()))
     }
 
@@ -633,48 +633,21 @@ impl JsChunkedSerie {
             .map_err(napi_error)
     }
 
-    /// The rows grouped by a key serie as long as the whole, one `[key,
-    /// rows]` pair per distinct key in order of first occurrence, each
-    /// group's rows the chunks each chunk contributed.
+    /// Groups equal keys under the same key layout, retaining native payloads.
     #[napi(js_name = "_partitionByNative", skip_typescript)]
-    pub fn partition_by_native(&self, keys: &JsSerie) -> Result<Vec<(JsScalar, Self)>> {
+    pub fn partition_by_native(&self, by: KeyInput<'_>) -> Result<JsKeySeries> {
         self.inner
-            .partition_by(&keys.inner)
-            .map(chunked_groups)
+            .partition_by(key_by(by)?)
+            .map(JsKeySeries::from_core)
             .map_err(napi_error)
     }
 
-    /// The rows grouped by keys held in chunks, as long as the whole,
-    /// exactly as a serie of keys groups them: each chunk of rows by the
-    /// chunk of keys beside it where both are cut at the same rows, with no
-    /// join; the keys joined once and cut to the rows' chunks otherwise.
-    #[napi(js_name = "_partitionByChunkedNative", skip_typescript)]
-    pub fn partition_by_chunked_native(
-        &self,
-        keys: &JsChunkedSerie,
-    ) -> Result<Vec<(JsScalar, Self)>> {
-        self.inner
-            .partition_by_chunked(&keys.inner)
-            .map(chunked_groups)
-            .map_err(napi_error)
-    }
-
-    /// The windows `by` cuts the rows into across the chunks: one
-    /// `[key, rows]` pair per run of equal adjacent keys - a run crossing a
-    /// chunk edge one window - or, `sorted`, each key once in key order,
-    /// its runs regrouped; each window's rows the pieces of the chunks it
-    /// spans, no row copied. A chunked window states no record: its key is
-    /// the pair's first half and its place the pair's index. `sorted`
-    /// absent or `null` is `false`.
+    /// Cuts adjacent equal keys under one selector, path, or typed external-key layout.
     #[napi(js_name = "_windowByNative", skip_typescript)]
-    pub fn window_by_native(
-        &self,
-        by: SelectorInput<'_>,
-        sorted: Option<bool>,
-    ) -> Result<Vec<(JsScalar, Self)>> {
+    pub fn window_by_native(&self, by: KeyInput<'_>, sorted: Option<bool>) -> Result<JsKeySeries> {
         self.inner
-            .window_by(selector_from_input(by)?, sorted.unwrap_or(false))
-            .map(chunked_groups)
+            .window_by(key_by(by)?, sorted.unwrap_or(false))
+            .map(JsKeySeries::from_core)
             .map_err(napi_error)
     }
 
@@ -733,10 +706,31 @@ impl JsChunkedSerie {
     }
 }
 
-/// The groups a chunked partition answers, each its key and its chunks.
-fn chunked_groups(groups: Vec<(yggdryl::Scalar, ChunkedSerie)>) -> Vec<(JsScalar, JsChunkedSerie)> {
-    groups
-        .into_iter()
-        .map(|(key, rows)| (JsScalar::from_core(key), JsChunkedSerie::from_core(rows)))
-        .collect()
+#[napi]
+impl JsChunkedSerie {
+    /// Moves these values into a native scalar-row stream.
+    #[napi]
+    pub fn into_stream(&self) -> Result<crate::expression::JsStreamSerie> {
+        self.inner
+            .clone()
+            .into_stream()
+            .map(crate::expression::JsStreamSerie::from_core)
+            .map_err(napi_error)
+    }
+    /// Moves these values into native chunks under optional row and byte bounds.
+    #[napi]
+    pub fn into_chunked_stream(
+        &self,
+        row_size: Option<f64>,
+        byte_size: Option<f64>,
+    ) -> Result<crate::serie::JsStreamChunkedSerie> {
+        self.inner
+            .clone()
+            .into_chunked_stream(
+                crate::key_serie::row_bound(row_size)?,
+                crate::key_serie::byte_bound(byte_size)?,
+            )
+            .map_err(napi_error)
+            .map(crate::serie::JsStreamChunkedSerie::from_core)
+    }
 }

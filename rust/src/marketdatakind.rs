@@ -9,11 +9,11 @@ use crate::typed::define_field_types;
 enum_leaf! {
     /// The business category of a market data element: the FIX MsgCat code
     /// set, one member per category the standard files its message types
-    /// under, and `UNKN` for a type it files under none.
+    /// under, and `UKNW` for a type it files under none.
     ///
     /// This is the one owner of that set. A FIX dictionary's `FIX:msgcat`
     /// resolves to a member through [`Self::from_name`], the crate's
-    /// `msgcatcodeset` renders from [`Self::ALL`], and a market data row
+    /// `marketdatakindcodeset` renders from [`Self::ALL`], and a market data row
     /// states its leaf's category as one of these - an order `ORDR`, a quote
     /// `QUOT`, an execution `EXEC`, a trade `TRAD`, a book `BOOK` - so a
     /// reader tells the leaves apart by one column every FIX engine already
@@ -25,7 +25,7 @@ enum_leaf! {
     /// quote, a match report - which a parse splits into one message of the
     /// single category per entry ([`Self::is_batch`]).
     ///
-    /// The code is the set's own value, `UNKN` at zero, `TRAD` at twenty-one
+    /// The code is the set's own value, `UKNW` at zero, `TRAD` at twenty-one
     /// and the batches after it, and what a column stores; the four-letter
     /// code is the stored name.
     ///
@@ -45,7 +45,7 @@ enum_leaf! {
     #[non_exhaustive]
     pub enum MarketDataKind: u8, kind = "marketdatakind", extension = MARKETDATAKIND_EXTENSION_NAME, aliases = marketdatakind_aliases {
         #[default]
-        Unknown = 0 as "UNKN": "No published category: a message type the dictionary does not file.",
+        Unknown = 0 as "UKNW": "No published category: a message type the dictionary does not file.",
         Account = 1 as "ACCT": "Account reporting.",
         Allocation = 2 as "ALLO": "Allocation instructions, reports and acknowledgements.",
         Book = 3 as "BOOK": "Market data: books, their snapshots, increments and requests.",
@@ -159,9 +159,9 @@ impl MarketDataKind {
 
     /// The side a cross code and a chain of this kind are keyed by: the
     /// stated `side` of a sided kind ([`Self::is_sided`]), and
-    /// [`Side::Unknown`] for every other kind, whatever side it states. The
-    /// one owner of that reading, so the stored code, the walk's chain key
-    /// and a session's key never disagree on it.
+    /// [`Side::Unknown`] for every other kind, whatever side it states -
+    /// `BOTH` included. The one owner of that reading, so the stored code,
+    /// the walk's chain key and a session's key never disagree on it.
     #[must_use]
     pub(crate) const fn stored_side(self, side: Side) -> Side {
         if self.is_sided() { side } else { Side::Unknown }

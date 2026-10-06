@@ -49,19 +49,22 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | raw metadata | `insert_metadata(k, v)?`, `get_metadata(k)` | `field.metadata[k] = v` | `field.set(k, v)`, `field.get(k)` |
 | reserved properties | `set_parquet_field_id(17)`, `set_comment(..)?` | `set_parquet_field_id(17)`, `set_comment(..)` | `setParquetFieldId(17)`, `setComment(..)` |
 | one protocol's keys | `as_iceberg_mut().insert("doc", ..)?` | `field.iceberg["doc"] = ..` | `field.iceberg.set('doc', ..)` |
-| a registered enum (`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`) | `DataType::Side.scalar("BUYS")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()`, `TimeInForce::from_fix("0")` | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")`, `TimeInForce.from_fix("0")` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object), `timeInForceFromFix('0')` |
+| a registered enum (`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`, `pluginside`) | `DataType::Side.scalar("BUYS")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()`, `TimeInForce::from_fix("0")`, `PluginSide::from_plugin_type(class)` | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")`, `TimeInForce.from_fix("0")`, `PluginSide.from_plugin_type(class)` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object), `timeInForceFromFix('0')`, `pluginSideFromPluginType(class)` |
 | a free enum spelling (`order fill`, `Part-Filled`, `pending cxl`) | `State::from_spelling("order fill")` - read by its words once the exact vocabularies miss, cached | `State.from_spelling("order fill")`, `DataType("state").scalar(...)` | `new DataType('state').scalar('order fill')` |
-| a registered code's validity (`isin`, `cusip`, `sedol`, `figi`, `country`, `ccy`, `mic`, `cfi`) | `code.rank()`, `code.is_real()` (`CodeValue`), `IdType::Isin.rank(text)`, `Isin::rank_of(text)`, `Isin::is_closed`, `Isin::is_listed_prefix`, `Isin::NONE`, `Country::is_listed`, `Ccy::is_none`, `Mic::is_none` | Rust only: a value of the right shape is accepted whatever its rank | Rust only |
+| a registered code's validity (`isin`, `cusip`, `sedol`, `figi`, `lei`, `dti`, `bic`, `country`, `ccy`, `mic`, `cfi`) | `code.rank()`, `code.is_real()` (`CodeValue`), `IdType::Isin.rank(text)`, `Isin::rank_of(text)`, `Isin::is_closed`, `Lei::is_closed`, `Dti::is_closed`, `Isin::is_listed_prefix`, `Isin::NONE`, `Country::is_listed`, `Ccy::is_none`, `Mic::is_none` | Rust only: a value of the right shape is accepted whatever its rank | Rust only |
+| a structured product's EUSIPA/SSPA category (a value, not a datatype) | `Eusipa::new(2300)?`, `"2300".parse::<Eusipa>()?`; `code()`, `group()`, `level()`, `name()`, `sspa_name()`, `is_listed()` | `Eusipa(2300)`, `Eusipa("2300")`; `.code`, `.group`, `.level`, `.name`, `.sspa_name`, `.is_listed`, `int(c)` | no `Eusipa`: a registry row's `eusipacode` is a number |
 | an enumerated column (`FIELD:enum`) | `StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?` + `Field::new("side", DataType::fixed_ascii(4)?, false).try_with_string_enum(&side)?`; `string_enum()?`; `StringEnum::from_logical_name("ccy")?` | `StringEnum("Side", {"BUY": "B", "SELL": "S"})` + `field.set_string_enum(side)`; `field.string_enum`; `StringEnum.from_logical_name("ccy")`; `yggdryl.enums.Ccy` / `Country` bases | `new StringEnum('Side', { BUY: 'B', SELL: 'S' })` + `field.setStringEnum(side)`; `field.stringEnum`; `StringEnum.fromLogicalName('ccy')` |
 | compare, diff | `equals(&o, true)`, `show_diffs(&o, true, false)` | `equals(o, with_metadata=False)`, `show_diffs(o)` | `equals(o, false)`, `showDiffs(o)` |
 | merge two schemas | `a.merge_with(&b, true)?` | `a.merge_with(b)` | `a.mergeWith(b)` |
 | stable value hash | `stable_hash()` | `stable_hash()` | `stableHash()` (a `bigint`) |
 | schema as a document | `into_json()?` / `Field::from_json`, YAML, TOML | `into_json()` / `from_json`, `into_dict`, YAML, TOML | `toJSON()` / `Field.fromJSON` (JSON only) |
 | one value as bytes | `into_value_bytes()`, `Scalar::decode_value_bytes(&b)?` | `into_value_bytes()`, `Scalar.from_value_bytes(b)`, `pickle` | `intoValueBytes()`, `Scalar.fromValueBytes(b)` |
+| cast a batch or a stream onto a root, `RecordBatch` in and out | `root.apply_arrow_batch(&b, options)?`, `apply_arrow_schema(s, options)?`, `apply_arrow_reader(r, options)?` - the transport face of the one `ArrowCastPlan` (`yggdryl-arrow`) | `root.apply_arrow_batch(b)`, `apply_arrow_schema(s)`, `apply_arrow_reader(r)` | not bound: `Serie.fromArrowBatch(b, root)`, `serie.cast(root)` |
 | Arrow schema in and out | `Field::from_arrow_field(&f)?`, `into_arrow_field()?` | `Field.from_arrow(f)`, `Field.from_arrow_schema(s, name=)`, `into_arrow()`, `into_arrow_schema()` | schemas cross with batches (`yggdryl-arrow`): `Serie.fromArrowBatch(batch).field`; `Field.fromArrow(f)` and `field.intoArrow()` cross an Arrow JS field through a real IPC round trip, keeping `nullable: false` and its extension; `DataType.fromArrow(t)` takes only a bare type, which carries neither in Arrow JS - import the **field** instead to keep them |
 | Arrow extension type of a datatype | `DataTypeId::Ccy.arrow_extension_name()`, `DataTypeId::arrow_extension_names()`; `arrow_field.try_extension_type::<CcyType>()?`, `.with_extension_type(CcyType)` (every marker, `StringType`, `BytesType`) | registered on `import yggdryl`: `DataType("ccy").into_arrow()` is a `yggdryl.extension.YggdrylType`, `.datatype` reads it back; `DataType.ARROW_EXTENSION_NAMES` | metadata only: `field.intoArrow().metadata.get('ARROW:extension:name')` |
 | canonical default | `default_value()?` | `default_scalar()` | `defaultJSValue()` |
 | engine compatibility | `into_scheme_compat(&Scheme::SPARK)?` | `into_scheme_compat("spark")` | `intoSchemeCompat('spark')` |
+| an integer column stored as bits (a `uint64` digest as an Iceberg `long`) | `field.as_field_properties_mut().set_representation(Representation::Bits)?` | `field.field_properties.representation = "bits"` | `field.fieldProperties.representation = 'bits'` |
 
 Every spelling the grammar reads - Arrow, SQL, Hive, Spark, Iceberg and FIX names, the
 string and byte leaves, the legacy `list` words - is in
@@ -149,6 +152,12 @@ string and byte leaves, the legacy `list` words - is in
 
 ## Pitfalls
 
+- A `uint64` digest under `into_scheme_compat("iceberg")` is a
+  `decimal(20, 0)` unless its column states
+  `FIELD:representation=bits`, which makes it the `long` of its bits; then
+  `field.scalar(-1)` under the `uint64` is `2**64 - 1`, while
+  `DataType("uint64").scalar(-1)` and a column stating nothing still refuse it.
+  State it on a digest only: a count past `i64::MAX` would read negative.
 - Python `DataType("float64").scalar(100)` -> refused (`expected float64,
   got i64`): pass `100.0`. JavaScript cannot write an integral float, so
   `new DataType('float64').scalar(100)` is refused too: pass
@@ -201,31 +210,49 @@ string and byte leaves, the legacy `list` words - is in
   `string_parameters is None`), not `fixed_ascii(8)`, and holds ISO 4217's
   three letters or a digital-asset ticker (`USDT`, `BABYDOGE`) of at most eight
   bytes, case kept. A code is held to its **shape** and its validity is a
-  **rank**, never a refusal: an `isin`, `cusip`, `sedol` or `figi` whose
-  check digit does not close, a masked `XX0000000001`, a `country` ISO 3166
-  does not list, `XXX` and `XXXX` (no currency, no market) are accepted at a
+  **rank**, never a refusal: an `isin`, `cusip`, `sedol`, `figi`, `lei` or
+  `dti` whose check does not close, a masked `XX0000000001`, a `country` - or
+  a `bic`'s country - ISO 3166 does not list, `XXX` and `XXXX` (no currency, no market) are accepted at a
   lower rank, and a merge keeps the real value whichever was stated first;
   only another shape (`US037833100`, eleven characters) is refused. `isin`,
-  `cusip`, `sedol`, `figi`, `bbg` and `ric` have no default value
+  `cusip`, `sedol`, `figi`, `bbg`, `ric`, `lei`, `bic`, `elf`, `dti` and
+  `fisn` have no default value
   (`default_scalar()` raises), so a record that omits such a required child is
   refused rather than defaulted - make the child nullable or always supply
-  it.
+  it. Two codes are also identifier types holding the code's shape: `fisn`
+  (`fisncode`, `financialinstrumentshortname`) a security's, `elf`
+  (`entitylegalform`) neither a security's nor a party's; and under the
+  `bic` and `legalentityidentifier` sources an identifier of any type holds
+  a BIC's or an LEI's shape, refused on its key otherwise
+  (`yggdryl-market-data`, Identifiers).
+- `Eusipa` is a value, not a datatype: there is no `eusipa` column type, and
+  a column of categories is an integer (the registry's `eusipacode` is
+  `int32`). A code is held by its shape alone - four digits, `1` an
+  investment product and `2` a leverage product (`1000` to `2999`) - so a
+  code no map lists is accepted with `name()`/`sspa_name()` none and
+  `is_listed()` false; `3100` and `"23x0"` are refused. The European map
+  (February 2024) and the Swiss map (2023 and 2026) name `1260` apart -
+  Express Certificates against a Conditional Coupon Barrier Reverse
+  Convertible - so keep the code, never a name.
 - A Python `uuid.UUID` passed to `Scalar.from_` infers as text: declare the
   column `uuid` and read through it. A JavaScript `Date` is
   `datetime64(ms,"UTC")` and a `date32` column refuses it.
 - A `StringEnum` (`FIELD:enum`) is only accepted on a `fixed_ascii(n)` field
-  with n <= 16 or on a registered code; on `utf8` it is refused ("at most 16
-  bytes"). It is a declared vocabulary, not a validator: `field.scalar("X")`
+  with n <= 16 or on a registered code of at most sixteen bytes; on `utf8`,
+  `lei`, `fisn`, `bbg`, `ric` or `unit` it is refused ("at most 16 bytes"). It is a declared vocabulary, not a validator: `field.scalar("X")`
   is accepted on the `StringEnum("Side", ...)` field above. Check membership
   yourself (`side.get_member(v)` / `getMember(v)` answers the member name or
   none) when non-members must fail.
-- `side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are
-  not text: each is a `uint8` (`side`, `marketdatakind`, `timeinforce`) or
+- `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` and
+  `pluginside` are not text: each is a `uint8` (`side`, `marketdatakind`,
+  `timeinforce`, `pluginside`) or
   `uint16` (`state`, `marketdatatype`) column of member codes (kind `enum`),
   any integer column casting in and a code naming no member refused, which a value reads as the member -
   Python's `IntEnum` (`Side.BUYS`), JavaScript's name (`'BUYS'`), Rust's variant
   (`Side::Buy`). Text reads through the vocabulary (`"1"` is FIX's `BUYS`); a
-  `marketdatakind` code is an integer, never the text `"10"`.
+  `marketdatakind` code is an integer, never the text `"10"`. A `pluginside`
+  (`UKNW`, `BUYS`, `SELL`: a FIX plugin's role) is no `side` though two names
+  are spelled alike: a cast between the two is refused by name.
 - `forex` is a code, not a string: one pair `CCY/CCY` of two distinct ISO 4217
   currencies, however a feed spells it; a digital-asset ticker is a `ccy` but no
   leg, so `BTC/USDT` is no `forex`. A symbol with a tenor or a RIC
@@ -233,14 +260,21 @@ string and byte leaves, the legacy `list` words - is in
   `FxSymbol::from_symbol`, Rust-only.
 - JavaScript `asJs()` on a decimal (and on values with no JS spelling) answers
   the `Scalar` itself: read `unscaled`/`scale`, or `toString()`.
+- `Field.apply_arrow_batch` compiles its cast per call: in a loop hold
+  `apply_arrow_reader` (one plan per stream) or a `StreamChunkedSerie`. It is the
+  cast alone - no `TRANSFORM:` or `DIGEST:` column is filled.
 - Rust `DataType::from_arrow_datatype` loses the extension name (an arrow-rs
   datatype carries no metadata): import the **field** to keep `ccy`, `uuid`,
   `decimal`, `version` identity. Python's `DataType.from_arrow` and
   `DataType(...)` read the C schema's root as a field and keep it, and every
   `yggdryl.*` name is a registered pyarrow extension type once `yggdryl` is
-  imported - so pyarrow sees `extension<yggdryl.ccy>` where it used to see a
+  imported - so pyarrow holds an extension type where it used to see a
   string with field metadata, and a `yggdryl.ccy` type over `large_string`
   reads as plain `large_utf8` (the name is a foreign field's there).
+  `str(DataType("ccy").into_arrow())` is `extension<yggdryl.ccy>`, a string
+  or bytes leaf its leaf in brackets (`extension<yggdryl.string[fixed_ascii(4)]>`);
+  a pyarrow field or schema still renders `extension<yggdryl.ccy<YggdrylType>>`
+  (Arrow C++ prints the registered class).
   pyarrow kernels (`pc.equal`, `pc.unique`) refuse an extension column: run
   them on `.storage`. On pyarrow before 21 a view leaf (`ascii_view`,
   `large_utf8_view`) nested below a column's top level is refused by name -

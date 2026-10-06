@@ -90,6 +90,48 @@ fn a_key_is_read_exactly_and_a_bare_word_is_a_base_key() {
     );
 }
 
+/// The inferred reading takes a whole name a security type is spelled by -
+/// one FIX gives a source code, or one it gives none, a short name or a
+/// CFI code - as that type from the base source, as a bare `ISIN` is; a
+/// namespace before a bare spelling that is no identifier name reads as
+/// none, and a type that names no security - a legal form - is never one.
+#[test]
+fn a_whole_name_a_security_type_is_spelled_by_is_that_type_from_the_base_source() {
+    let read = |name: &str, value: &str| Identifier::from_key(name, value).map(|id| id.to_string());
+    for (name, value, expected) in [
+        ("ISIN", "US0378331005", "isin=US0378331005"),
+        ("FISN", "acme corp/sh", "fisn=ACME CORP/SH"),
+        ("fisn", "ACME CORP/SH", "fisn=ACME CORP/SH"),
+        (
+            "FinancialInstrumentShortName",
+            "ACME CORP/SH",
+            "fisn=ACME CORP/SH",
+        ),
+        (
+            "Financial_Instrument_Short_Name",
+            "ACME CORP/SH",
+            "fisn=ACME CORP/SH",
+        ),
+        ("FISNCode", "ACME CORP/SH", "fisn=ACME CORP/SH"),
+        ("OMS_FISNCode", "ACME CORP/SH", "oms:fisn=ACME CORP/SH"),
+        ("CFI", "esvufr", "cfi=ESVUFR"),
+        ("CFICode", "ESVUFR", "cfi=ESVUFR"),
+    ] {
+        assert_eq!(read(name, value).as_deref(), Some(expected), "{name}");
+    }
+    // A bare short name or CFI code after a namespace ends no key, as a bare
+    // RIC does not: only the security codes that close on a check digit and
+    // the spellings ending `code`, `symbol`, `number` or `ticker` end one.
+    for name in ["OMS_FISN", "firm.x.FISN", "OMS_CFI", "OMS_RIC"] {
+        assert_eq!(read(name, "ACME CORP/SH"), None, "{name}");
+    }
+    // A value the type refuses is none, and a legal form names no security.
+    assert_eq!(read("FISN", "ACME CORP SH"), None);
+    for name in ["ELF", "EntityLegalForm", "OMS_ELFCODE"] {
+        assert_eq!(read(name, "2HBR"), None, "{name}");
+    }
+}
+
 #[test]
 fn a_text_no_key_spells_is_refused_and_names_it() {
     for refused in [

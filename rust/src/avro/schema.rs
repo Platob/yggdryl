@@ -190,10 +190,10 @@ pub(crate) struct FixedType {
 /// A `decimal` annotation over bytes or over a named fixed.
 #[derive(Debug)]
 pub(crate) struct DecimalType {
-    /// Maximum number of decimal digits.
-    pub(crate) precision: u32,
-    /// Digits after the decimal point.
-    pub(crate) scale: u32,
+    /// Maximum number of decimal digits, 1 through 38.
+    pub(crate) precision: u8,
+    /// Digits after the decimal point, 0 through the precision.
+    pub(crate) scale: i8,
     /// The underlying fixed type, when the decimal is not over bytes.
     pub(crate) fixed: Option<Arc<FixedType>>,
 }
@@ -430,20 +430,7 @@ impl Node {
                 timezone: Timezone::NAIVE,
             },
             Self::Uuid | Self::UuidFixed(_) => DataType::Uuid,
-            Self::Decimal(decimal) => DataType::decimal(
-                u8::try_from(decimal.precision).map_err(|_| {
-                    invalid(format_smolstr!(
-                        "expected an Avro decimal precision fitting u8, got {}",
-                        decimal.precision
-                    ))
-                })?,
-                i8::try_from(decimal.scale).map_err(|_| {
-                    invalid(format_smolstr!(
-                        "expected an Avro decimal scale fitting i8, got {}",
-                        decimal.scale
-                    ))
-                })?,
-            )?,
+            Self::Decimal(decimal) => DataType::decimal(decimal.precision, decimal.scale)?,
             Self::Duration(_) => DataType::interval(TimeUnit::MonthDayNano)?,
             Self::Fixed(fixed) => {
                 DataType::fixed_binary(u32::try_from(fixed.size).map_err(|_| {
@@ -927,6 +914,10 @@ fn decimal_over(fixed: Option<Arc<FixedType>>, document: &Scalar) -> Option<Node
     {
         return None;
     }
+    // Narrowed last, once every bound above has held: thirty-eight digits
+    // and a scale at most the precision fit the leaf's widths, so this is
+    // the one narrowing and it cannot refuse.
+    let (precision, scale) = crate::decimal::decimal_parameters(precision, scale).ok()?;
     Some(Node::Decimal(Arc::new(DecimalType {
         precision,
         scale,

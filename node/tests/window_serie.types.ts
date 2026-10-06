@@ -1,4 +1,4 @@
-import { Field, Scalar, Serie, WindowSerie, type SortOptions } from '..'
+import { Field, Scalar, KeySeries, Serie, WindowSerie, type SortOptions } from '..'
 
 const prices: Serie = Serie.fromScalars(new Field('price', 'int64', true), [3, null, 1])
 const window: WindowSerie = prices.window(0, 3)
@@ -35,7 +35,7 @@ const deduplicated: Serie = window.intoUnique()
 const reversed: Serie = window.intoReversed()
 const taken: Serie = window.intoTaken([0])
 const filtered: Serie = window.intoFiltered([true, false, true])
-const groups: Array<[Scalar, Serie]> = window.partitionBy(['a', 'b', 'a'])
+const groups: KeySeries = window.partitionBy(Serie.from(['a', 'b', 'a']))
 const same: boolean = window.equals(prices)
 
 // The writes go through the serie and never grow or shrink the window; the
@@ -49,10 +49,11 @@ window.splice(0, 1, [6])
 const chained: WindowSerie = window.asSorted().asReversed().asTaken([2, 1, 0])
 
 // The windows of a window, each stating its record; a plain window states none.
-const lent: Array<[Scalar, WindowSerie]> = window.windowBy('price')
-const lentSorted: Array<[Scalar, WindowSerie]> = window.windowBy(['price'], true)
-const lentCleared: Array<[Scalar, WindowSerie]> = window.windowBy('price', null)
-const record: Scalar | null = lent[0][1].staticValues
+const lent: KeySeries = window.windowBy('price')
+const lentSorted: KeySeries = window.windowBy(['price'], true)
+const lentCleared: KeySeries = window.windowBy('price', null)
+const record: Scalar = lent.get(0)!.key
+// @ts-expect-error plain windows have no key context
 const plainRecord: Scalar | null = window.staticValues
 
 // @ts-expect-error `sorted` is a boolean

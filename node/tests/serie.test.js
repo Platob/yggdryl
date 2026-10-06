@@ -1,7 +1,7 @@
 'use strict'
 
 // Pins node/src/serie.rs: the Serie Arrow doors, the one cast a column takes,
-// and the SerieReader stream, each redirected into the core with the three
+// and the StreamChunkedSerie stream, each redirected into the core with the three
 // cast answers the caller gave.
 
 const assert = require('node:assert/strict')
@@ -16,9 +16,8 @@ const {
   Field,
   Selector,
   Serie,
-  SerieReader,
-  SerieReaderPartitions,
-  SerieReaderWindows,
+  StreamChunkedSerie,
+  StreamKeySerie,
   SpillOptions,
   StructSerie,
   Term,
@@ -56,11 +55,11 @@ test('the private Arrow bridges stay outside the public surface', () => {
   for (const name of ['_castNative', '_intoArrowScalarIpcNative']) {
     assert.equal(name in Serie.prototype, false, name)
   }
-  assert.equal(Object.hasOwn(SerieReader, '_fromArrowReaderNative'), false)
-  assert.equal(Object.hasOwn(SerieReader, '_fromSerieNative'), false)
-  assert.equal(Object.hasOwn(SerieReader, '_fromChunkedNative'), false)
-  assert.equal('_nextNative' in SerieReader.prototype, false)
-  assert.equal('_castNative' in SerieReader.prototype, false)
+  assert.equal(Object.hasOwn(StreamChunkedSerie, '_fromArrowReaderNative'), false)
+  assert.equal(Object.hasOwn(StreamChunkedSerie, '_fromSerieNative'), false)
+  assert.equal(Object.hasOwn(StreamChunkedSerie, '_fromChunkedNative'), false)
+  assert.equal('_nextNative' in StreamChunkedSerie.prototype, false)
+  assert.equal('_castNative' in StreamChunkedSerie.prototype, false)
   // The retired Field and DataType casts have no alias.
   for (const name of [
     'cast',
@@ -285,9 +284,9 @@ test('a cast failure inside a stream reports the failure, not the envelope', () 
   for (const drain of [
     () => Serie.fromArrowBatch(source, target, strict),
     () => Serie.fromArrowReader(BatchReader.from(source), target, strict),
-    () => [...SerieReader.fromArrowReader(BatchReader.from(source), target, strict)],
+    () => [...StreamChunkedSerie.fromArrowReader(BatchReader.from(source), target, strict)],
     () =>
-      SerieReader.fromArrowReader(BatchReader.from(source), target, strict)
+      StreamChunkedSerie.fromArrowReader(BatchReader.from(source), target, strict)
         .intoArrowReader()
         .intoIpc(),
   ]) {
@@ -308,14 +307,14 @@ test('a cast failure inside a stream reports the failure, not the envelope', () 
   )
 })
 
-test('a SerieReader yields one record serie per batch under one root', () => {
+test('a StreamChunkedSerie yields one record serie per batch under one root', () => {
   const first = narrow([1, 2], ['AAPL', 'MSFT'])
   const second = narrow([3], ['NVDA'])
   const source = new arrow.Table([...first.batches, ...second.batches])
   assert.equal(source.batches.length, 2)
 
   const stream = BatchReader.from(source)
-  const reader = SerieReader.fromArrowReader(stream, trades())
+  const reader = StreamChunkedSerie.fromArrowReader(stream, trades())
   assert.equal(stream.consumed, true)
   assert.ok(reader.field.equals(trades()))
 
@@ -331,14 +330,14 @@ test('a SerieReader yields one record serie per batch under one root', () => {
   assert.ok(reader.field.equals(trades()))
 
   // Its own schema, named `row`, when no root is given.
-  const own = SerieReader.fromArrowReader(BatchReader.from(source))
+  const own = StreamChunkedSerie.fromArrowReader(BatchReader.from(source))
   assert.equal(own.field.name, 'row')
   assert.equal([...own].length, 2)
 })
 
-test('a SerieReader hands its stream back as a reader, read once', () => {
+test('a StreamChunkedSerie hands its stream back as a reader, read once', () => {
   const source = narrow([1, 2], ['AAPL', 'MSFT'])
-  const reader = SerieReader.fromArrowReader(BatchReader.from(source), trades())
+  const reader = StreamChunkedSerie.fromArrowReader(BatchReader.from(source), trades())
   const batches = reader.intoArrowReader()
   assert.ok(batches instanceof BatchReader)
   assert.ok(batches.field.equals(trades()))
@@ -358,7 +357,7 @@ test('a SerieReader hands its stream back as a reader, read once', () => {
     { nullable: false },
   )
   assert.throws(
-    () => SerieReader.fromArrowReader(BatchReader.from(source), required),
+    () => StreamChunkedSerie.fromArrowReader(BatchReader.from(source), required),
     /required Arrow field \$\.venue is missing from the source/,
   )
   // A null is a property of rows, so the reader is built and refuses at the
@@ -367,18 +366,18 @@ test('a SerieReader hands its stream back as a reader, read once', () => {
     id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
     venue: arrow.vectorFromArray(['XNAS', null], new arrow.Utf8()),
   })
-  const strict = SerieReader.fromArrowReader(BatchReader.from(partial), required)
+  const strict = StreamChunkedSerie.fromArrowReader(BatchReader.from(partial), required)
   assert.throws(() => [...strict], /required Arrow field \$\.venue holds 1 null values/)
-  assert.throws(() => new SerieReader(), /no `constructor`/)
+  assert.throws(() => new StreamChunkedSerie(), /no `constructor`/)
   assert.throws(
-    () => SerieReader.fromArrowReader(partial, required),
-    /SerieReader\.fromArrowReader takes a native BatchReader/,
+    () => StreamChunkedSerie.fromArrowReader(partial, required),
+    /StreamChunkedSerie\.fromArrowReader takes a native BatchReader/,
   )
 })
 
 test('a held record column is a stream of the one serie it is', () => {
   const records = Serie.fromArrowBatch(narrow([1, 2], ['AAPL', 'MSFT']), trades())
-  const reader = SerieReader.fromSerie(records)
+  const reader = StreamChunkedSerie.fromSerie(records)
   assert.ok(reader.field.equals(trades()))
   const series = [...reader]
   assert.equal(series.length, 1)
@@ -388,14 +387,14 @@ test('a held record column is a stream of the one serie it is', () => {
   assert.deepEqual([...reader], [])
 
   // Handed back as a reader, the held column is the one batch it is.
-  const table = SerieReader.fromSerie(records).intoArrowReader().intoTable()
+  const table = StreamChunkedSerie.fromSerie(records).intoArrowReader().intoTable()
   assert.equal(table.batches.length, 1)
   assert.deepEqual([...table.getChild('symbol')], ['AAPL', 'MSFT'])
 })
 
 test('a held column that is not a record comes back under a record root', () => {
   const ids = Serie.fromScalars(fields.int64('id'), [1n, 2n, null])
-  const reader = SerieReader.fromSerie(ids)
+  const reader = StreamChunkedSerie.fromSerie(ids)
   assert.equal(reader.field.name, 'row')
   assert.equal(reader.field.nullable, false)
   assert.deepEqual(
@@ -412,13 +411,13 @@ test('a held record column with an absent row, and a run, are refused', () => {
   const nullable = Field.from('row: struct<id: int64>')
   const absent = Serie.fromScalars(nullable, [{ id: 1n }, null])
   assert.throws(
-    () => SerieReader.fromSerie(absent),
+    () => StreamChunkedSerie.fromSerie(absent),
     /record column "row" holds 1 absent rows, which a table cannot state/,
   )
-  assert.throws(() => SerieReader.fromSerie(new Serie([1, 2])), /run/)
+  assert.throws(() => StreamChunkedSerie.fromSerie(new Serie([1, 2])), /run/)
   assert.throws(
-    () => SerieReader.fromSerie(narrow([1], ['AAPL'])),
-    /SerieReader\.fromSerie takes a Serie/,
+    () => StreamChunkedSerie.fromSerie(narrow([1], ['AAPL'])),
+    /StreamChunkedSerie\.fromSerie takes a Serie/,
   )
 })
 
@@ -430,7 +429,7 @@ test('a held chunked column is a stream of one record serie per chunk', () => {
   const chunked = ChunkedSerie.fromArrowBatch(source, trades())
   assert.equal(chunked.numChunks, 2)
 
-  const reader = SerieReader.fromChunked(chunked)
+  const reader = StreamChunkedSerie.fromChunked(chunked)
   assert.ok(reader.field.equals(trades()))
   const series = [...reader]
   assert.equal(series.length, chunked.numChunks)
@@ -439,7 +438,7 @@ test('a held chunked column is a stream of one record serie per chunk', () => {
   assert.deepEqual([...reader], [])
 
   // Handed back as a reader, each chunk is the one batch it is.
-  const table = SerieReader.fromChunked(chunked).intoArrowReader().intoTable()
+  const table = StreamChunkedSerie.fromChunked(chunked).intoArrowReader().intoTable()
   assert.equal(table.batches.length, chunked.numChunks)
   assert.deepEqual(
     table.batches.map((batch) => batch.numRows),
@@ -448,7 +447,7 @@ test('a held chunked column is a stream of one record serie per chunk', () => {
   assert.deepEqual([...table.getChild('symbol')], ['AAPL', 'MSFT', 'NVDA'])
 
   // A leaf column's chunks are each the one child of a `row` record.
-  const leaf = SerieReader.fromChunked(chunked.child('id'))
+  const leaf = StreamChunkedSerie.fromChunked(chunked.child('id'))
   assert.equal(leaf.field.name, 'row')
   assert.deepEqual(
     [...leaf].map((records) => records.child('id').asJs()),
@@ -456,7 +455,7 @@ test('a held chunked column is a stream of one record serie per chunk', () => {
   )
 
   // No chunk is the empty stream of the root.
-  const empty = SerieReader.fromChunked(ChunkedSerie.empty(trades()))
+  const empty = StreamChunkedSerie.fromChunked(ChunkedSerie.empty(trades()))
   assert.ok(empty.field.equals(trades()))
   assert.deepEqual([...empty], [])
 
@@ -465,20 +464,20 @@ test('a held chunked column is a stream of one record serie per chunk', () => {
   const nullable = Field.from('row: struct<id: int64>')
   const absent = ChunkedSerie.fromSerie(Serie.fromScalars(nullable, [{ id: 1n }, null]))
   assert.throws(
-    () => SerieReader.fromChunked(absent),
+    () => StreamChunkedSerie.fromChunked(absent),
     /record column "row" holds 1 absent rows, which a table cannot state/,
   )
   assert.throws(
-    () => SerieReader.fromChunked(chunked.intoSerie()),
-    /SerieReader\.fromChunked takes a ChunkedSerie/,
+    () => StreamChunkedSerie.fromChunked(chunked.intoSerie()),
+    /StreamChunkedSerie\.fromChunked takes a ChunkedSerie/,
   )
 })
 
-test('a SerieReader cast under its own root yields the same records', () => {
+test('a StreamChunkedSerie cast under its own root yields the same records', () => {
   const records = Serie.fromArrowBatch(narrow([1, 2], ['AAPL', 'MSFT']), trades())
-  const held = SerieReader.fromSerie(records)
+  const held = StreamChunkedSerie.fromSerie(records)
   const same = held.cast(trades())
-  assert.ok(same instanceof SerieReader)
+  assert.ok(same instanceof StreamChunkedSerie)
   assert.ok(same.field.equals(trades()))
   const series = [...same]
   assert.equal(series.length, 1)
@@ -494,22 +493,22 @@ test('a SerieReader cast under its own root yields the same records', () => {
     ...narrow([1, 2], ['AAPL', 'MSFT']).batches,
     ...narrow([3], ['NVDA']).batches,
   ])
-  const stream = SerieReader.fromArrowReader(BatchReader.from(source), trades()).cast(trades())
+  const stream = StreamChunkedSerie.fromArrowReader(BatchReader.from(source), trades()).cast(trades())
   assert.deepEqual(
     [...stream].map((serie) => serie.child('id').asJs()),
     [[1, 2], [3]],
   )
 
   // An option the cast refuses leaves the reader as it was.
-  const kept = SerieReader.fromSerie(records)
+  const kept = StreamChunkedSerie.fromSerie(records)
   assert.throws(() => kept.cast(trades(), { bogus: true }), /got "bogus"/)
   assert.equal([...kept].length, 1)
 })
 
-test('a SerieReader cast into a wider root casts every record, held or streamed', () => {
+test('a StreamChunkedSerie cast into a wider root casts every record, held or streamed', () => {
   const wide = tradesWith('float64')
   const records = Serie.fromArrowBatch(narrow([1, 2], ['AAPL', 'MSFT']), trades())
-  const held = SerieReader.fromSerie(records).cast(wide)
+  const held = StreamChunkedSerie.fromSerie(records).cast(wide)
   assert.ok(held.field.equals(wide))
   const [cast, ...rest] = [...held]
   assert.deepEqual(rest, [])
@@ -526,8 +525,8 @@ test('a SerieReader cast into a wider root casts every record, held or streamed'
     ...narrow([3], ['NVDA']).batches,
   ])
   for (const reader of [
-    SerieReader.fromArrowReader(BatchReader.from(source)),
-    SerieReader.fromArrowReader(BatchReader.from(source), trades()),
+    StreamChunkedSerie.fromArrowReader(BatchReader.from(source)),
+    StreamChunkedSerie.fromArrowReader(BatchReader.from(source), trades()),
   ]) {
     const streamed = reader.cast(wide)
     assert.ok(streamed.field.equals(wide))
@@ -543,7 +542,7 @@ test('a SerieReader cast into a wider root casts every record, held or streamed'
   }
 
   // A DataType is the required `value` field, a record root of that name.
-  const typed = SerieReader.fromSerie(records).cast(
+  const typed = StreamChunkedSerie.fromSerie(records).cast(
     DataType.from('struct<id: float64, symbol: utf8>'),
   )
   assert.equal(typed.field.name, 'value')
@@ -553,36 +552,36 @@ test('a SerieReader cast into a wider root casts every record, held or streamed'
   )
 })
 
-test('a SerieReader cast into a narrower root refuses naming the column', () => {
+test('a StreamChunkedSerie cast into a narrower root refuses naming the column', () => {
   const tight = tradesWith('int8')
   const records = Serie.fromArrowBatch(narrow([1, 300], ['AAPL', 'MSFT']), trades())
   // The refusal names the column and the value it could not hold.
   const refusal = /\$\.id\b.*\b300\b/
   // Held records are cast where the cast is asked for.
-  assert.throws(() => SerieReader.fromSerie(records).cast(tight, { safe: false }), refusal)
+  assert.throws(() => StreamChunkedSerie.fromSerie(records).cast(tight, { safe: false }), refusal)
   // A stream's batches are cast as they are pulled, landed or handed on.
   const stream = () =>
-    SerieReader.fromArrowReader(BatchReader.from(narrow([1, 300], ['AAPL', 'MSFT'])), trades())
+    StreamChunkedSerie.fromArrowReader(BatchReader.from(narrow([1, 300], ['AAPL', 'MSFT'])), trades())
   const pulled = stream().cast(tight, { safe: false })
   assert.throws(() => [...pulled], refusal)
   const moved = stream().cast(tight, { safe: false }).intoArrowReader()
   assert.throws(() => moved.intoTable(), refusal)
   // Under the safe default the value that does not fit is null.
   assert.deepEqual(
-    [...SerieReader.fromSerie(records).cast(tight)].map((serie) => serie.child('id').asJs()),
+    [...StreamChunkedSerie.fromSerie(records).cast(tight)].map((serie) => serie.child('id').asJs()),
     [[1, null]],
   )
 })
 
-test('a cast SerieReader hands its stream back under the cast schema', () => {
+test('a cast StreamChunkedSerie hands its stream back under the cast schema', () => {
   const wide = tradesWith('float64')
   const source = new arrow.Table([
     ...narrow([1, 2], ['AAPL', 'MSFT']).batches,
     ...narrow([3], ['NVDA']).batches,
   ])
   for (const reader of [
-    SerieReader.fromArrowReader(BatchReader.from(source), trades()),
-    SerieReader.fromSerie(Serie.fromArrowBatch(source, trades())),
+    StreamChunkedSerie.fromArrowReader(BatchReader.from(source), trades()),
+    StreamChunkedSerie.fromSerie(Serie.fromArrowBatch(source, trades())),
   ]) {
     const batches = reader.cast(wide).intoArrowReader()
     assert.ok(batches instanceof BatchReader)
@@ -675,7 +674,7 @@ test('a serie compares against a chunked serie by the rows, on either side', () 
   assert.equal(serie.compare(held.window(0, 3)), 1)
   assert.deepEqual(held.intoTaken(held.window(0, 0)).asJs(), [])
   assert.deepEqual(
-    serie.partitionBy(Serie.fromScalars(price, [0n, 1n, 1n, 0n]).window(1, 3)).length,
+    serie.partitionBy(Serie.fromScalars(Field.from('key: int64 not null'), [0n, 1n, 1n, 0n]).window(1, 3)).length,
     2,
   )
   assert.throws(
@@ -690,7 +689,7 @@ test('a serie compares against a chunked serie by the rows, on either side', () 
   const records = Serie.fromScalars(trades, [[1n]])
   assert.equal(records.intoArrowReader().field.name, 'trades')
   assert.equal(ChunkedSerie.fromSerie(records).intoArrowReader().field.name, 'trades')
-  assert.equal(SerieReader.fromSerie(records).field.name, 'trades')
+  assert.equal(StreamChunkedSerie.fromSerie(records).field.name, 'trades')
   assert.equal(serie.intoArrowReader().field.name, 'row')
 })
 
@@ -829,75 +828,33 @@ test('intoFiltered keeps what the mask keeps and an absent mask row keeps nothin
   }
 })
 
-test('partitionBy groups in first-occurrence order, an absent key one value', () => {
-  const prices = int64Column([1, 2, 3, 4])
-  // Sorted keys cut every group as a slice of the column; the binding sees
-  // the same groups either way.
+test('partitionBy retains typed keys and first-occurrence payload order', () => {
+const prices = int64Column([1, 2, 3, 4])
   const groups = prices.partitionBy(utf8Column(['a', 'a', 'b', null]))
-  assert.deepEqual(
-    groups.map(([key, rows]) => [key.asJs(), rows.asJs()]),
-    [
-      ['a', [1, 2]],
-      ['b', [3]],
-      [null, [4]],
-    ],
-  )
-  for (const [, rows] of groups) assert.ok(rows.field.equals(prices.field))
-
+  assert.ok(groups instanceof binding.KeySeries)
+  assert.deepEqual([...groups].map(g => [g.key.asJs(), g.rows.asJs()]), [[['a'], [{price:1}, {price:2}]], [['b'], [{price:3}]], [[null], [{price:4}]]])
   const unsorted = prices.partitionBy(utf8Column(['b', 'a', 'b', 'a']))
-  assert.deepEqual(
-    unsorted.map(([key, rows]) => [key.asJs(), rows.asJs()]),
-    [
-      ['b', [1, 3]],
-      ['a', [2, 4]],
-    ],
-  )
-
-  // A run partitions the same way, by a run of keys - or any iterable.
-  const run = new Serie([1, 2, 3, 4])
-  for (const keys of [new Serie(['b', 'a', 'b', null]), ['b', 'a', 'b', null]]) {
-    const runGroups = run.partitionBy(keys)
-    assert.equal(runGroups.length, 3)
-    assert.equal(runGroups[2][0].asJs(), null)
-    assert.deepEqual(runGroups[2][1].asJs(), [4])
-  }
-
-  assert.throws(() => prices.partitionBy(new Serie([1])), /1 keys cannot partition the 4 rows/)
-  assert.deepEqual(new Serie([]).partitionBy(new Serie([])), [])
+  assert.deepEqual([...unsorted].map(g => [g.key.asJs(), g.rows.asJs()]), [[['b'], [{price:1}, {price:3}]], [['a'], [{price:2}, {price:4}]]])
+  assert.throws(() => prices.partitionBy(utf8Column(['a'])), /keys|length|rows/)
+  assert.equal(int64Column([]).partitionBy(utf8Column([])).length, 0)
 })
 
-test('partitionByPaths keys a record by the run of its cells', () => {
-  const { FieldPath } = binding
-  const records = quotes([
-    ['XNAS', 1],
-    ['XNYS', 2],
-    ['XNAS', 1],
-    ['XNAS', 3],
-  ])
-  const groups = records.partitionByPaths(['venue', new FieldPath('price')])
+test('partitionBy accepts selector paths and moves bare key children out', () => {
+const { FieldPath } = binding
+  const source = quotes([['XNAS', 1], ['XNYS', 2], ['XNAS', 1], ['XNAS', 3]])
+  const groups = source.partitionBy([new FieldPath('venue'), new FieldPath('price')])
   assert.equal(groups.length, 3)
-  assert.deepEqual(groups[0][0].asJs(), ['XNAS', 1])
-  assert.equal(groups[0][1].length, 2)
-  assert.ok(groups[0][1] instanceof StructSerie)
-  assert.ok(groups[0][1].field.equals(records.field))
-  assert.deepEqual(groups[1][0].asJs(), ['XNYS', 2])
-  // One path is one key, spelled alone or in a list.
-  const byVenue = records.partitionByPaths('venue')
-  assert.equal(byVenue.length, 2)
-  assert.deepEqual(byVenue[0][0].asJs(), ['XNAS'])
-  assert.equal(byVenue[0][1].length, 3)
-  assert.equal(records.partitionByPaths(['venue']).length, 2)
-  // One child is the same ask through `child`.
-  const byChild = records.partitionBy(records.child('venue'))
-  assert.equal(byChild[0][0].asJs(), 'XNAS')
-  assert.ok(byChild[0][1].equals(byVenue[0][1]))
-
-  assert.throws(() => records.partitionByPaths([]), /partitions by no path/)
-  assert.throws(() => records.partitionByPaths(['tier']), /tier reaches no column of quote/)
-  assert.throws(
-    () => new Serie([1]).partitionByPaths(['price']),
-    /a schema-free run partitions by no path/,
-  )
+  assert.deepEqual(groups.get(0).key.asJs(), ['XNAS', 1])
+  assert.equal(groups.get(0).rows.length, 2)
+  assert.equal(groups.get(0).serieField.fieldLen, 0)
+  assert.ok(groups.field.equals(source.field))
+  const venue = source.partitionBy('venue')
+  assert.equal(venue.length, 2)
+  assert.deepEqual(venue.get(0).rows.child('price').asJs(), [1, 1, 3])
+  const external = source.partitionBy(source.child('venue').cast(Field.from('desk: utf8')))
+  assert.deepEqual(external.get(0).rows.child('venue').asJs(), ['XNAS', 'XNAS', 'XNAS'])
+  assert.throws(() => source.partitionBy([]), /empty|key|column/)
+  assert.throws(() => source.partitionBy('tier'), /tier/)
 })
 
 test('memorySize counts a column as its slice and a run as its values', () => {
@@ -1022,9 +979,9 @@ test('every layout answers every verb through the ladder', () => {
     assert.equal(unique.isUnique(), true, what)
     assert.ok(unique.scalar(0).equals(column.scalar(0)), what)
     assert.ok(column.intoReversed().scalar(0).equals(column.scalar(3)), what)
-    const groups = column.partitionBy(column)
+    const groups = column.partitionBy(Serie.fromScalars(Field.from('key: int64 not null'), [0n, 1n, 2n, 0n]))
     assert.equal(groups.length, 3, what)
-    assert.equal(groups[0][1].length, 2, what)
+    assert.equal(groups.get(0).rows.length, 2, what)
     const written = column.clone()
     written.asSorted().asUnique().asReversed()
     assert.equal(written.length, 3, what)
@@ -1078,7 +1035,7 @@ test('the ordering natives stay outside the public surface', () => {
     assert.equal(name in Serie.prototype, false, name)
   }
   for (const name of ['_intoSortedNative', '_intoSortByNative', '_joinWithNative']) {
-    assert.equal(name in SerieReader.prototype, false, name)
+    assert.equal(name in StreamChunkedSerie.prototype, false, name)
   }
   // A nested answer is handed out as its leaf's class.
   const records = quotes([['XNAS', 1]])
@@ -1088,7 +1045,7 @@ test('the ordering natives stay outside the public surface', () => {
     records.intoReversed(),
     records.intoTaken([0]),
     records.intoFiltered([true]),
-    records.partitionBy(['a'])[0][1],
+    records.partitionBy(Serie.fromScalars(Field.from('key: utf8 not null'), ['a'])).get(0).rows,
   ]) {
     assert.ok(answer instanceof StructSerie)
   }
@@ -1136,299 +1093,126 @@ const childNames = (field) =>
 
 const readerRows = (window) => [...window].flatMap((piece) => piece.asJs())
 
-test('windowBy refuses a run, an empty key, an unnest and a term naming no column', () => {
-  for (const sorted of [false, true]) {
-    for (const serie of [venueRuns(), quoteColumn([])]) {
-      assert.throws(() => serie.windowBy('venue,', sorted), /expected a value or a name/)
-      for (const empty of ['*', []]) {
-        assert.throws(
-          () => serie.windowBy(empty, sorted),
-          /expected at least one column to window by, got an empty match key/,
-        )
-      }
-      assert.throws(() => serie.windowBy('unnest(items)', sorted), /in a key/)
-      assert.throws(() => serie.windowBy('tier', sorted), /tier/)
-      for (const text of ['minutes(ts, 0)', 'minutes(ts, count)']) {
-        assert.throws(() => serie.windowBy(text, sorted))
-      }
-      // A key cell named as a static value is refused before any row.
-      assert.throws(
-        () => serie.windowBy('count as ROWNUM', sorted),
-        /collides with the static value "rownum"/,
-      )
-      assert.throws(
-        () => serie.windowBy('count as windownum', sorted),
-        /collides with the static value "windownum"/,
-      )
+test('windowBy validates selectors and permits ordinary rownum aliases', () => {
+for (const sorted of [false, true]) {
+    for (const source of [venueRuns(), quoteColumn([])]) {
+      assert.throws(() => source.windowBy('venue,', sorted), /expected/)
+      assert.throws(() => source.windowBy([], sorted), /empty|column|key/)
+      assert.throws(() => source.windowBy('tier', sorted), /tier/)
+      assert.throws(() => source.windowBy('unnest(items)', sorted), /key/)
+      assert.ok(source.windowBy('count as rownum', sorted) instanceof binding.KeySeries)
+      assert.ok(source.windowBy('count as windownum', sorted) instanceof binding.KeySeries)
     }
-    assert.throws(
-      () => new Serie([1, 2]).windowBy('price', sorted),
-      /a schema-free run windows by no term/,
-    )
   }
-  // The key and `sorted` are typed at the boundary.
-  assert.throws(() => venueRuns().windowBy('venue', 1), {
-    name: 'TypeError',
-    message: /Serie\.windowBy sorted must be a boolean, got number/,
-  })
-  assert.throws(() => venueRuns().windowBy(3), {
-    name: 'TypeError',
-    message: /Serie\.windowBy by must be a Selector, a Term/,
-  })
+  assert.throws(() => venueRuns().windowBy('venue', 1), /boolean/)
+  assert.throws(() => venueRuns().windowBy(3), /selector|Selector|typed/)
 })
 
-test('windowBy cuts runs of equal adjacent keys in row order', () => {
-  const quotes = venueRuns()
-  const windows = quotes.windowBy('venue')
-  assert.deepEqual(windowCuts(windows), [
-    [['XNAS'], 0, 2],
-    [['XNYS'], 2, 1],
-    [['XNAS'], 3, 1],
-  ])
-  for (const [key, window] of windows) {
-    assert.ok(window instanceof WindowSerie)
-    // Every window is over the serie object itself.
-    assert.strictEqual(window.serie, quotes)
-    assert.deepEqual(key.asJs(), [quotes.asJs()[window.offset].venue])
+test('windowBy cuts adjacent keys and states their absolute rownum', () => {
+const source = venueRuns()
+  const expected = [[['XNAS'], 0, 2], [['XNYS'], 2, 1], [['XNAS'], 3, 1]]
+  for (const by of ['venue', ['venue'], new Selector('venue'), Term.column('venue'), 'VENUE']) {
+    for (const sorted of [false, undefined, null]) {
+      const groups = source.windowBy(by, sorted)
+      assert.deepEqual([...groups].map(g => [g.key.asJs(), g.rownum, g.rows.length]), expected)
+      for (const g of groups) {
+        assert.ok(g instanceof binding.KeySerie)
+        assert.equal(Boolean(g.serieField.getField('venue')), false)
+        assert.deepEqual(childNames(g.field).map(name => name.toLowerCase()), childNames(source.field))
+      }
+    }
   }
-  // `sorted` absent, `undefined` and `null` are its default, `false`.
-  for (const spelled of [
-    quotes.windowBy('venue', false),
-    quotes.windowBy('venue', undefined),
-    quotes.windowBy('venue', null),
-  ]) {
-    assert.deepEqual(windowCuts(spelled), windowCuts(windows))
-  }
-  // Two terms key a two-cell run in selector order; an array is projection
-  // texts and terms; a period keys its number since the epoch.
-  const expected = [
-    [['XNAS', 0], 0, 2],
-    [['XNYS', 1], 2, 1],
-    [['XNAS', 2], 3, 1],
-  ]
-  assert.deepEqual(windowCuts(quotes.windowBy('venue, minutes(ts, 15) as bucket')), expected)
-  assert.deepEqual(windowCuts(quotes.windowBy(['venue', 'minutes(ts, 15) as bucket'])), expected)
-  assert.deepEqual(
-    windowCuts(quotes.windowBy([Term.column('venue'), 'minutes(ts, 15) as bucket'])),
-    expected,
-  )
-  assert.deepEqual(windowCuts(quotes.windowBy(new Selector('venue'))), windowCuts(windows))
-  assert.deepEqual(windowCuts(quotes.windowBy(Term.column('venue'))), windowCuts(windows))
-  assert.deepEqual(windowCuts(quotes.windowBy('VENUE')), windowCuts(windows))
-  assert.equal(quotes.windowBy('count').length, 4)
-  assert.deepEqual(quoteColumn([]).windowBy('venue'), [])
+  assert.equal(quoteColumn([]).windowBy('venue').length, 0)
+  assert.deepEqual([...source.windowBy('venue, minutes(ts, 15) as bucket')].map(g => g.key.asJs()), [['XNAS', 0], ['XNYS', 1], ['XNAS', 2]])
 })
 
-test('windowBy keys consecutive absent rows as one null window', () => {
-  const quotes = quoteColumn([['XNAS', 1, 0], null, null, [null, 4, 0], [null, 5, 0]])
-  assert.deepEqual(windowCuts(quotes.windowBy('venue')), [
-    [['XNAS'], 0, 1],
-    [null, 1, 2],
-    [[null], 3, 2],
-  ])
+test('windowBy distinguishes absent parent rows and absent key cells', () => {
+const source = quoteColumn([['XNAS', 1, 0], null, null, [null, 4, 0], [null, 5, 0]])
+  assert.deepEqual([...source.windowBy('venue')].map(g => [g.key.asJs(), g.rownum, g.rows.length]), [[['XNAS'], 0, 1], [[null], 1, 2], [[null], 3, 2]])
 })
 
-test('windowBy sorted gathers the rows once in stable key order', () => {
-  const quotes = quoteColumn([['XNYS', 1, 0], ['XNAS', 2, 0], ['XNYS', 3, 0], null, ['XNAS', 5, 0]])
-  const windows = quotes.windowBy('venue', true)
-  assert.deepEqual(windowCuts(windows), [
-    [['XNAS'], 0, 2],
-    [['XNYS'], 2, 2],
-    [null, 4, 1],
-  ])
-  const gathered = windows[0][1].serie
-  assert.notStrictEqual(gathered, quotes)
-  assert.ok(gathered instanceof StructSerie)
-  assert.ok(windows.every(([, window]) => window.serie === gathered))
-  assert.ok(gathered.equals(quotes.intoTaken([1, 4, 0, 2, 3])))
-  // Over keys already in order, nothing is gathered.
-  const ordered = venueRuns()
-  const windowsInOrder = ordered.windowBy('minutes(ts, 15)', true)
-  assert.ok(windowsInOrder.every(([, window]) => window.serie === ordered))
-  assert.deepEqual(windowCuts(windowsInOrder), [
-    [[0], 0, 2],
-    [[1], 2, 1],
-    [[2], 3, 1],
-  ])
+test('sorted windows regroup keys and clear rownum after a gather', () => {
+const source = quoteColumn([['XNYS', 1, 0], ['XNAS', 2, 0], ['XNYS', 3, 0], null, ['XNAS', 5, 0]])
+  const groups = source.windowBy('venue', true)
+  assert.deepEqual([...groups].map(g => [g.key.asJs(), g.rownum, g.rows.length]), [[['XNAS'], null, 2], [['XNYS'], null, 2], [[null], null, 1]])
+  assert.deepEqual(groups.get(0).rows.child('count').asJs(), [2, 5])
+  const ordered = venueRuns().windowBy('minutes(ts, 15)', true)
+  assert.deepEqual([...ordered].map(g => g.rownum), [0, 2, 3])
 })
 
-test('a column that is no record windows by its own name', () => {
-  const venues = Serie.fromScalars(new Field('venue', 'utf8', false), ['XNAS', 'XNAS', 'XNYS'])
-  const windows = venues.windowBy('venue')
-  assert.deepEqual(windowCuts(windows), [
-    [['XNAS'], 0, 2],
-    [['XNYS'], 2, 1],
-  ])
-  assert.deepEqual(
-    staticRecords(windows.map(([, window]) => window)),
-    [
-      { venue: 'XNAS', windownum: 0, rownum: 0 },
-      { venue: 'XNYS', windownum: 1, rownum: 2 },
-    ],
-  )
+test('a primitive column keeps its typed key and empty payload rows', () => {
+const source = Serie.fromScalars(new Field('venue', 'utf8', false), ['XNAS', 'XNAS', 'XNYS'])
+  const groups = source.windowBy('venue')
+  assert.deepEqual([...groups].map(g => [g.key.asJs(), g.rownum, g.rows.length]), [[['XNAS'], 0, 2], [['XNYS'], 2, 1]])
+  assert.deepEqual([...groups.intoStream()].map(row => row.asJs()), [['XNAS'], ['XNAS'], ['XNYS']])
 })
 
-test('SerieReader.windowBy refuses before any pull', () => {
-  // A key that does not parse, or a `sorted` that is no boolean, leaves the
-  // reader usable.
-  const reader = SerieReader.fromSerie(venueRuns())
-  assert.throws(() => reader.windowBy('venue,'), /expected a value or a name/)
-  assert.throws(() => reader.windowBy('venue', 1), {
-    name: 'TypeError',
-    message: /SerieReader\.windowBy sorted must be a boolean/,
-  })
+test('stream window preflight validates before pulling rows', () => {
+const reader = StreamChunkedSerie.fromSerie(venueRuns())
+  assert.throws(() => reader.windowBy('venue,'), /expected/)
+  assert.throws(() => reader.windowBy('venue', 1), /boolean/)
   assert.equal([...reader].length, 1)
-  // A key the root refuses consumes it, as a refused cast does.
-  for (const [refused, reason] of [
-    ['*', /empty match key/],
-    ['tier', /tier/],
-    ['unnest(items)', /in a key/],
-    ['count as windownum', /collides with the static value "windownum"/],
-  ]) {
-    const spent = SerieReader.fromSerie(venueRuns())
-    assert.throws(() => spent.windowBy(refused), reason)
-    assert.throws(() => [...spent], /already been consumed/)
-    assert.throws(() => spent.windowBy('venue'), /already been consumed/)
+  for (const key of ['tier', 'unnest(items)', '*']) {
+    const source = StreamChunkedSerie.fromSerie(venueRuns())
+    assert.throws(() => source.windowBy(key), /tier|key|column/)
   }
 })
 
-test('SerieReader.windowBy yields one lazy reader per window', () => {
-  const quotes = venueRuns()
-  const stream = SerieReader.fromChunked(
-    ChunkedSerie.fromSeries([quotes.slice(0, 1), quotes.slice(1, 3)], quotes.field),
-  )
-  const walk = stream.windowBy('venue')
-  assert.ok(walk instanceof SerieReaderWindows)
+test('stream windows borrow native payload pieces across batch edges', () => {
+const source = venueRuns()
+  const walk = StreamChunkedSerie.fromChunked(ChunkedSerie.fromSeries([source.slice(0, 1), source.slice(1, 3)], source.field)).windowBy('venue')
+  assert.ok(walk instanceof StreamKeySerie)
   assert.strictEqual(walk[Symbol.iterator](), walk)
-  // Both records are known before a batch is pulled; the root a held column
-  // streams under is required.
-  assert.ok(walk.field.equals(SerieReader.fromSerie(quotes).field))
-  assert.equal(walk.field.nullable, false)
-  assert.deepEqual(childNames(walk.staticField), ['venue', 'windownum', 'rownum'])
-  assert.equal(walk.staticField.name, 'quote')
-  const xnas = walk.next().value
-  assert.ok(xnas instanceof SerieReader)
-  assert.ok(xnas.field.equals(walk.field))
-  assert.deepEqual(xnas.staticValues.asJs(), { venue: 'XNAS', windownum: 0, rownum: 0 })
-  // The run crossing the batch edge is one window, one piece per batch.
-  assert.deepEqual(
-    [...xnas].map((piece) => piece.length),
-    [1, 1],
-  )
-  const xnys = walk.next().value
-  assert.deepEqual(readerRows(xnys), quotes.slice(2, 1).asJs())
+  const first = walk.next().value
+  assert.ok(first instanceof binding.KeySerie)
+  assert.deepEqual(first.key.asJs(), ['XNAS'])
+  assert.equal(first.rownum, 0)
+  assert.deepEqual([...first.rows.intoChunkedStream(1, null)].map(piece => piece.length), [1, 1])
+  const second = walk.next().value
+  assert.deepEqual(second.rows.child('count').asJs(), [3])
   const tail = walk.next().value
-  assert.deepEqual(tail.staticValues.asJs(), { venue: 'XNAS', windownum: 2, rownum: 3 })
-  assert.deepEqual(walk.next(), { done: true, value: undefined })
-  // Walking without reading throws nothing.
-  for (const window of SerieReader.fromSerie(quotes).windowBy('venue', null)) {
-    assert.ok(window instanceof SerieReader)
-  }
-  // The walk has no public constructor.
-  assert.throws(() => new SerieReaderWindows(), /handed out by SerieReader/)
-  assert.equal('_nextNative' in SerieReaderWindows.prototype, false)
-  assert.equal('_windowByNative' in SerieReader.prototype, false)
+  assert.equal(tail.rownum, 3)
+  assert.equal([...tail.rows.intoStream()].length, 1)
+  assert.equal(walk.next().done, true)
 })
 
-test('SerieReader.windowBy refuses a window the walk passed', () => {
-  const windows = [...SerieReader.fromSerie(venueRuns()).windowBy('venue')]
-  assert.equal(windows.length, 3)
-  assert.throws(
-    () => [...windows[0]],
-    /window 0 was passed by its walk with rows unread; read each window before taking the next/,
-  )
-  // Done after the refusal.
-  assert.deepEqual([...windows[0]], [])
+test('stream windows refuse payloads after their cursor advances', () => {
+const walk = StreamChunkedSerie.fromSerie(venueRuns()).windowBy('venue')
+  const first = walk.next().value
+  walk.next()
+  assert.throws(() => [...first.rows.intoStream()], /window|passed|advance/)
 })
 
-test('SerieReader.windowBy sorted refuses a key going backwards naming batch and row', () => {
-  const quotes = quoteColumn([
-    ['XLON', 1, 0],
-    ['XNYS', 2, 0],
-    ['XNAS', 3, 0],
-  ])
-  const walk = SerieReader.fromSerie(quotes).windowBy('venue', true)
-  assert.equal(readerRows(walk.next().value).length, 1)
-  assert.equal(readerRows(walk.next().value).length, 1)
-  assert.throws(
-    () => walk.next(),
-    /window by expects keys in order, ascending with absent keys last: batch 0 row 2/,
-  )
-  // The walk ends after the refusal.
-  assert.deepEqual(walk.next(), { done: true, value: undefined })
-  assert.deepEqual([...walk], [])
-  // Unsorted, every key is windowed where it arrives.
-  const unsorted = SerieReader.fromSerie(quotes).windowBy('venue')
-  assert.deepEqual(
-    [...unsorted].map((window) => window.staticValues.asJs().venue),
-    ['XLON', 'XNYS', 'XNAS'],
-  )
+test('sorted stream windows report descending keys and fuse the failure', () => {
+const source = quoteColumn([['XLON', 1, 0], ['XNYS', 2, 0], ['XNAS', 3, 0]])
+  const walk = StreamChunkedSerie.fromSerie(source).windowBy('venue', true)
+  assert.equal([...walk.next().value.rows.intoStream()].length, 1)
+  assert.equal([...walk.next().value.rows.intoStream()].length, 1)
+  assert.throws(() => walk.next(), /order|batch.*row/)
+  assert.equal(walk.next().done, true)
+  assert.deepEqual([...StreamChunkedSerie.fromSerie(source).windowBy('venue')].map(g => g.key.asJs()), [['XLON'], ['XNYS'], ['XNAS']])
 })
 
-test('a reader window states the record a held window states', () => {
-  const quotes = venueRuns()
-  for (const by of ['venue', 'minutes(ts, 15) as bucket, venue']) {
-    for (const sorted of [false, true]) {
-      const held = staticRecords(quotes.windowBy(by, sorted).map(([, window]) => window))
-      const walk = SerieReader.fromSerie(quotes).windowBy(by, sorted)
-      assert.ok(
-        walk.staticField.equals(
-          SerieReader.fromSerie(quotes).windowBy(by, sorted).staticField,
-        ),
-      )
-      if (by === 'venue' && sorted) {
-        // Out of order, the held rows gather and state no rownum, where the
-        // stream refuses the key going back.
-        assert.deepEqual(
-          held.map((record) => record.rownum),
-          [null, null],
-        )
-        assert.throws(() => [...walk], /expects keys in order/)
-        continue
-      }
-      assert.deepEqual(
-        [...walk].map((window) => window.staticValues.asJs()),
-        held,
-      )
-    }
-  }
-  // A window of a stream window keeps the outer cells and an absolute rownum.
-  const outer = SerieReader.fromSerie(quotes).windowBy('minutes(ts, 30) as half').next().value
-  assert.deepEqual(
-    [...outer.windowBy('venue')].map((window) => window.staticValues.asJs()),
-    [
-      { half: 0, venue: 'XNAS', windownum: 0, rownum: 0 },
-      { half: 0, venue: 'XNYS', windownum: 1, rownum: 2 },
-    ],
-  )
+test('held and streamed windows share key fields and absolute rownums', () => {
+const source = venueRuns()
+  const held = [...source.windowBy('venue')].map(g => [g.key.asJs(), g.rownum])
+  const streamed = [...StreamChunkedSerie.fromSerie(source).windowBy('venue')].map(g => [g.key.asJs(), g.rownum])
+  assert.deepEqual(streamed, held)
+  const groups = source.windowBy('minutes(ts, 30) as half')
+  const inner = groups.get(0).windowBy('venue')
+  assert.deepEqual([...inner].map(g => [g.key.asJs(), g.rownum]), [[[0, 'XNAS'], 0], [[0, 'XNYS'], 2]])
 })
 
-test('reader static values survive cast and hand over and never reach a batch', () => {
-  const quotes = venueRuns()
-  assert.equal(SerieReader.fromSerie(quotes).staticValues, null)
-  assert.equal(SerieReader.fromChunked(ChunkedSerie.fromSerie(quotes)).staticValues, null)
-  const window = SerieReader.fromSerie(quotes).windowBy('venue').next().value
-  const record = window.staticValues
-  assert.notEqual(record, null)
-  // The record is read through Scalar's own accessors.
-  assert.equal(record.get('venue').asJs(), 'XNAS')
-  assert.equal(record.path('.windownum').asJs(), 0)
-  assert.equal(record.has('rownum'), true)
-  assert.equal(record.get('count'), null)
-  const wider = new Field(
-    'quote',
-    'struct<venue: utf8, count: float64 not null, ts: timestamp(ns, UTC)>',
-    true,
-  )
-  const cast = window.cast(wider)
-  assert.ok(cast.staticValues.equals(record))
-  const batches = cast.intoArrowReader()
-  assert.ok(cast.staticValues.equals(record))
-  const table = batches.intoTable()
-  assert.deepEqual(
-    table.schema.fields.map((field) => field.name),
-    ['venue', 'count', 'ts'],
-  )
+test('key context and payload fields compose without static metadata', () => {
+const source = venueRuns()
+  const group = StreamChunkedSerie.fromSerie(source).windowBy('venue').next().value
+  assert.equal(group.keyField.fieldLen, 1)
+  assert.deepEqual(group.key.asJs(), ['XNAS'])
+  assert.equal(Boolean(group.serieField.getField('venue')), false)
+  assert.equal(group.field.fieldLen, group.keyField.fieldLen + group.serieField.fieldLen)
+  assert.equal('staticValues' in group, false)
+  const table = group.intoChunkedStream().intoArrowReader().intoTable()
+  assert.deepEqual(table.schema.fields.map(f => f.name), ['venue', 'count', 'ts'])
   assert.equal(table.numRows, 2)
 })
 
@@ -1450,7 +1234,7 @@ const venueBatch = (rows, field = venueQtyField()) =>
 
 // One stream of `batches` under `field`, a chunk per batch.
 const venueStream = (batches, field = venueQtyField()) =>
-  SerieReader.fromChunked(
+  StreamChunkedSerie.fromChunked(
     ChunkedSerie.fromSeries(
       batches.map((rows) => venueBatch(rows, field)),
       field,
@@ -1460,24 +1244,24 @@ const venueStream = (batches, field = venueQtyField()) =>
 // Every partition in the order it closes: its key, and the quantities of
 // its rows in the order they are held.
 const closedPartitions = (partitions) =>
-  [...partitions].map(([key, rows]) => [key.asJs(), rows.asJs().map((row) => row.qty)])
+  Array.from(partitions, group => [group.key.asJs(), group.rows.asJs().map(row => row.qty)])
 
-test('SerieReader.partitionBy reads its key and options before the reader is taken', () => {
+test('StreamChunkedSerie.partitionBy reads its key and options before the reader is taken', () => {
   // A key that does not parse, and options no partitioning reads, leave the
   // reader usable.
   const reader = venueStream([[['XNAS', 1]]])
   assert.throws(() => reader.partitionBy('venue,'), /expected a value or a name/)
   assert.throws(() => reader.partitionBy(3), {
     name: 'TypeError',
-    message: /SerieReader\.partitionBy by must be a Selector, a Term/,
+    message: /selector text|Selector|typed external keys/,
   })
   assert.throws(() => reader.partitionBy('venue', 2), {
     name: 'TypeError',
-    message: /SerieReader\.partitionBy options must be an object of maxOpen, threads and clustered/,
+    message: /StreamChunkedSerie(?:\.prototype)?\.partitionBy options must be an object of maxOpen, threads and clustered/,
   })
   assert.throws(() => reader.partitionBy('venue', { maxopen: 2 }), {
     name: 'TypeError',
-    message: /SerieReader\.partitionBy options take maxOpen, threads and clustered, got "maxopen"/,
+    message: /StreamChunkedSerie(?:\.prototype)?\.partitionBy options take maxOpen, threads and clustered, got "maxopen"/,
   })
   for (const maxOpen of [-1, 1.5, Number.NaN]) {
     assert.throws(
@@ -1503,9 +1287,9 @@ test('SerieReader.partitionBy reads its key and options before the reader is tak
     assert.throws(() => spent.partitionBy('venue'), /already been consumed/)
   }
   // The walk has no public constructor, and its bridges are hidden.
-  assert.throws(() => new SerieReaderPartitions(), /handed out by SerieReader/)
-  assert.equal('_nextNative' in SerieReaderPartitions.prototype, false)
-  assert.equal('_partitionByNative' in SerieReader.prototype, false)
+  assert.throws(() => new StreamKeySerie(), /constructor|construct|handed|returned/)
+  assert.equal('_nextNative' in StreamKeySerie.prototype, false)
+  assert.equal('_partitionByNative' in StreamChunkedSerie.prototype, false)
 })
 
 test('an unbounded stream holds every partition and closes them in key order', () => {
@@ -1521,7 +1305,7 @@ test('an unbounded stream holds every partition and closes them in key order', (
   ])
   const root = stream.field
   const walk = stream.partitionBy('venue')
-  assert.ok(walk instanceof SerieReaderPartitions)
+  assert.ok(walk instanceof StreamKeySerie)
   assert.strictEqual(walk[Symbol.iterator](), walk)
   // The root every partition is held under is the reader's own, known
   // before a batch is pulled.
@@ -1529,19 +1313,19 @@ test('an unbounded stream holds every partition and closes them in key order', (
   assert.throws(() => [...stream], /already been consumed/)
   const first = walk.next()
   assert.equal(first.done, false)
-  const [key, rows] = first.value
+  const {key, rows} = first.value
   assert.deepEqual(key.asJs(), ['XLON'])
-  assert.ok(rows instanceof ChunkedSerie)
-  assert.ok(rows.field.equals(root))
-  assert.deepEqual(rows.asJs(), [{ venue: 'XLON', qty: 3 }])
+  assert.ok(rows instanceof Serie)
+  assert.equal(Boolean(rows.field.getField('venue')), false)
+  assert.deepEqual(rows.asJs(), [{ qty: 3 }])
   // A partition's rows are the chunks the batches gave it, in arrival order.
-  const [, xnas] = walk.next().value
-  assert.equal(xnas.numChunks, 2)
+  const xnas = walk.next().value.rows
+  assert.equal([...xnas.intoChunkedStream(1, null)].length, 2)
   assert.deepEqual(
     xnas.asJs().map((row) => row.qty),
     [2, 4],
   )
-  assert.deepEqual(walk.next().value[0].asJs(), ['XPAR'])
+  assert.deepEqual(walk.next().value.key.asJs(), ['XPAR'])
   assert.deepEqual(walk.next(), { done: true, value: undefined })
   assert.deepEqual([...walk], [])
   // Options absent, `undefined` or `null` are the default.
@@ -1621,7 +1405,7 @@ test('a clustered stream closes each partition once another key arrives', () => 
   // In arrival order, a run across a batch edge one partition, and a key the
   // stream returns to a second piece of it: pieces, never rows.
   const walk = venueStream(batches).partitionBy('venue', { clustered: true })
-  const pieces = [...walk].map(([key, rows]) => [key.asJs(), rows.numChunks, rows.length])
+  const pieces = Array.from(walk, group => [group.key.asJs(), [...group.rows.intoChunkedStream(1, null)].length, group.rows.length])
   assert.deepEqual(pieces, [
     [['XNAS'], 1, 2],
     [['XLON'], 2, 2],
@@ -1649,7 +1433,7 @@ test('a root declaring an order that leads with the key is clustered untold', ()
   ]).intoSortBy('venue desc, qty')
   const declaring = sorted.field
   assert.notEqual(sorted.declaredOrder(), null)
-  const stream = SerieReader.fromChunked(
+  const stream = StreamChunkedSerie.fromChunked(
     ChunkedSerie.fromSeries([sorted.slice(0, 2), sorted.slice(2, 2)], declaring),
   )
   assert.ok(stream.field.equals(declaring))
@@ -2006,7 +1790,7 @@ test('a reader spills the records it holds and a stream holds none', () => {
     new Field('price', 'int64', false),
     Array.from({ length: 256 }, (_, index) => index),
   )
-  const held = SerieReader.fromSerie(prices)
+  const held = StreamChunkedSerie.fromSerie(prices)
   assert.ok(held.residentSize() > 0)
   assert.equal(held.isSpilled(), false)
   held.spill(new SpillOptions({ byteSize: 0 }))
@@ -2015,12 +1799,12 @@ test('a reader spills the records it holds and a stream holds none', () => {
   const [record] = [...held]
   assert.deepEqual(record.child('price').asJs().slice(0, 3), [0, 1, 2])
   // A stream holds no landed batch between pulls.
-  const stream = SerieReader.fromArrowReader(BatchReader.from(narrow([1], ['AAPL'])), trades())
+  const stream = StreamChunkedSerie.fromArrowReader(BatchReader.from(narrow([1], ['AAPL'])), trades())
   assert.equal(stream.residentSize(), 0)
   assert.equal(stream.isSpilled(), false)
   stream.spill(new SpillOptions({ byteSize: 0 }))
   assert.equal([...stream].length, 1)
-  const taken = SerieReader.fromSerie(prices)
+  const taken = StreamChunkedSerie.fromSerie(prices)
   taken.intoArrowReader()
   assert.throws(() => taken.spill(), /already been consumed/)
 })
@@ -2033,14 +1817,14 @@ test('a reader spills in place, or hands its records over spilled and is consume
     new Field('price', 'int64', false),
     Array.from({ length: 256 }, (_, index) => index),
   )
-  const held = SerieReader.fromSerie(prices)
+  const held = StreamChunkedSerie.fromSerie(prices)
   assert.equal(held.asSpilled(zero), held)
   assert.equal(held.isSpilled(), true)
   assert.equal([...held][0].child('price').length, 256)
 
-  const source = SerieReader.fromSerie(prices)
+  const source = StreamChunkedSerie.fromSerie(prices)
   const moved = source.intoSpilled(zero)
-  assert.ok(moved instanceof SerieReader)
+  assert.ok(moved instanceof StreamChunkedSerie)
   assert.notEqual(moved, source)
   assert.equal(moved.isSpilled(), true)
   assert.ok(moved.field.equals(source.field))
@@ -2050,7 +1834,7 @@ test('a reader spills in place, or hands its records over spilled and is consume
   assert.equal([...moved][0].child('price').scalar(255).asJs(), 255)
 
   // A stream holds no landed batch: spilling it moves it untouched.
-  const stream = SerieReader.fromArrowReader(BatchReader.from(narrow([1], ['AAPL'])), trades())
+  const stream = StreamChunkedSerie.fromArrowReader(BatchReader.from(narrow([1], ['AAPL'])), trades())
   const streamed = stream.intoSpilled()
   assert.equal([...streamed].length, 1)
 })
@@ -2058,9 +1842,9 @@ test('a reader spills in place, or hands its records over spilled and is consume
 
 test('a reader sorts by draining and merging, its root kept and the reader consumed', () => {
   const held = () => quotes([['XNYS', 2], ['XNAS', 1], ['XNYS', 1]])
-  const reader = SerieReader.fromSerie(held())
+  const reader = StreamChunkedSerie.fromSerie(held())
   const sorted = reader.intoSorted({ descending: true })
-  assert.ok(sorted instanceof SerieReader)
+  assert.ok(sorted instanceof StreamChunkedSerie)
   assert.equal(sorted.field.name, 'quote')
   assert.deepEqual(readRows(sorted), [
     { venue: 'XNYS', price: 2 },
@@ -2068,17 +1852,17 @@ test('a reader sorts by draining and merging, its root kept and the reader consu
     { venue: 'XNAS', price: 1 },
   ])
   assert.throws(() => [...reader], /already been consumed/)
-  assert.deepEqual(readRows(SerieReader.fromSerie(held()).intoSortBy('venue, price desc')), [
+  assert.deepEqual(readRows(StreamChunkedSerie.fromSerie(held()).intoSortBy('venue, price desc')), [
     { venue: 'XNAS', price: 1 },
     { venue: 'XNYS', price: 2 },
     { venue: 'XNYS', price: 1 },
   ])
   // A key no column answers is refused with no batch pulled, the reader
   // consumed; options are refused before anything is.
-  const refused = SerieReader.fromSerie(held())
+  const refused = StreamChunkedSerie.fromSerie(held())
   assert.throws(() => refused.intoSortBy('tier'))
   assert.throws(() => refused.intoSortBy('venue'), /already been consumed/)
-  const untouched = SerieReader.fromSerie(held())
+  const untouched = StreamChunkedSerie.fromSerie(held())
   assert.throws(() => untouched.intoSorted({ order: 'desc' }), /descending and nullsFirst/)
   assert.equal(readRows(untouched).length, 3)
 })
@@ -2091,26 +1875,26 @@ test('a reader joins a held column, a chunked one or another stream, consuming b
   for (const other of [
     venueRows(),
     ChunkedSerie.fromSerie(venueRows()),
-    SerieReader.fromSerie(venueRows()),
+    StreamChunkedSerie.fromSerie(venueRows()),
   ]) {
-    const stream = SerieReader.fromSerie(tradeRows())
+    const stream = StreamChunkedSerie.fromSerie(tradeRows())
     const joined = stream.joinWith(other, 'venue', 'left')
-    assert.ok(joined instanceof SerieReader)
+    assert.ok(joined instanceof StreamChunkedSerie)
     assert.equal(joined.field.name, 'trade')
     assert.deepEqual(readRows(joined), expected)
     assert.throws(() => [...stream], /already been consumed/)
-    if (other instanceof SerieReader) {
+    if (other instanceof StreamChunkedSerie) {
       assert.throws(() => [...other], /already been consumed/)
     }
   }
   // The kind and the options are read before anything is consumed.
-  const kept = SerieReader.fromSerie(tradeRows())
+  const kept = StreamChunkedSerie.fromSerie(tradeRows())
   assert.throws(() => kept.joinWith(venueRows(), 'venue', 'cross'), /one of `inner`/)
   assert.throws(() => kept.joinWith(venueRows(), 'venue', 'left', { how: 'left' }), /got "how"/)
   assert.throws(() => kept.joinWith(kept, 'venue'), /cannot join a stream with itself/)
   assert.throws(
     () => kept.joinWith([{ venue: 'XNAS' }], 'venue'),
-    /takes a Serie, a ChunkedSerie or a SerieReader/,
+    /takes a Serie, a ChunkedSerie or a StreamChunkedSerie/,
   )
   assert.equal(readRows(kept).length, 2)
 })

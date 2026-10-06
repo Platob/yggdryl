@@ -2,7 +2,7 @@
 //! [`MarketData`] leaf is written in and read back from.
 //!
 //! A row is the six [`ElementColumn`]s and the nine [`EventColumn`]s, the
-//! thirty-four [`MarketColumn`]s - opening with `marketdatakind`, the
+//! thirty-five [`MarketColumn`]s - opening with `marketdatakind`, the
 //! [`MarketDataKind`] its leaf stands under - the five
 //! [`OperationColumn`]s, the book controls a market-data entry states -
 //! `bookscope`, `bookaction` and `bookposition`, which a book's deltas
@@ -73,7 +73,8 @@ use crate::serie::{
 };
 use crate::{
     ArrowCastOptions, Ccy, Cfi, CodeValue, DataType, Decimal, Error, Field, Limit, MarketDataKind,
-    Mic, Result, Serie, SerieReader, Side, State, StructType, TimeInForce, Unit, Uuid,
+    Mic, Representation, Result, Serie, Side, State, StreamChunkedSerie, StructType, TimeInForce,
+    Unit, Uuid,
 };
 use crate::{IdKey, IdType, Identifier, Identifiers};
 
@@ -122,7 +123,7 @@ impl MarketData {
     /// assert!(field.fields()[6].is_nullable());
     /// assert_eq!(field.fields()[15].name(), "marketdatakind");
     /// assert!(!field.fields()[15].is_nullable());
-    /// assert_eq!(field.field_len(), 6 + 9 + 34 + 5 + 3 + 5);
+    /// assert_eq!(field.field_len(), 6 + 9 + 35 + 5 + 3 + 5);
     /// # Ok(())
     /// # }
     /// ```
@@ -188,7 +189,7 @@ impl MarketData {
     ///
     /// # Errors
     ///
-    /// Returns [`SerieSource::into_reader`](crate::SerieSource::into_reader)'s
+    /// Returns [`StreamChunkedSerie::from_serie`](crate::StreamChunkedSerie::from_serie)'s
     /// refusal of a run or of a record column holding an absent row, and the
     /// row field's when it cannot be built; past it, every refusal is an item
     /// of the stream - [`Self::from_arrow_reader`]'s of a row, and a row that
@@ -229,6 +230,7 @@ impl MarketData {
     /// // Every delta of every book, in book order; the executions alone.
     /// let count = |kind: Option<MarketDataKind>| -> yggdryl::Result<usize> {
     ///     MarketData::deltas_serie(rows.clone(), kind)?
+    ///         .into_chunks()
     ///         .map(|serie| -> yggdryl::Result<usize> { Ok(serie?.len()) })
     ///         .sum()
     /// };
@@ -238,10 +240,12 @@ impl MarketData {
     /// # }
     /// ```
     pub fn deltas_serie(
-        source: impl Into<crate::SerieSource>,
+        source: impl Into<crate::Serie>,
         kind: Option<MarketDataKind>,
-    ) -> Result<SerieReader> {
-        let books = Self::from_arrow_reader(source.into().into_reader()?.into_arrow_reader())?;
+    ) -> Result<StreamChunkedSerie> {
+        let books = Self::from_arrow_reader(
+            crate::StreamChunkedSerie::from_serie(source.into())?.into_arrow_reader(),
+        )?;
         let deltas = books.flat_map(move |book| match book {
             Ok(MarketData::BookEvent(book)) => book
                 .deltas()
@@ -259,7 +263,7 @@ impl MarketData {
             Err(error) => vec![Err(error)],
         });
         let rows = Self::arrow_reader(deltas, None, None)?;
-        Ok(SerieReader::from_arrow_reader(
+        Ok(StreamChunkedSerie::from_arrow_reader(
             Some(&Self::field()?),
             rows,
             ArrowCastOptions::new(),
@@ -317,7 +321,7 @@ impl MarketData {
             .collect();
         let target = struct_field(ROOT, &columns, Role::Read, false)?;
         let batches =
-            SerieReader::from_arrow_reader(Some(&target), batches, ArrowCastOptions::new())?;
+            StreamChunkedSerie::from_arrow_reader(Some(&target), batches, ArrowCastOptions::new())?;
         Ok(Rows {
             batches,
             layouts: Layouts::new(columns),
@@ -360,6 +364,19 @@ enum Role {
     Read,
     /// A nested operation row.
     Operation,
+    /// A nested operation row of the read root: its facts' nullability,
+    /// its digests read as bits.
+    ReadOperation,
+}
+
+impl Role {
+    /// The role of the operation rows a serie column of this struct holds.
+    const fn item(self) -> Self {
+        match self {
+            Self::Read | Self::ReadOperation => Self::ReadOperation,
+            Self::Root | Self::Operation => Self::Operation,
+        }
+    }
 }
 
 impl Column {
@@ -434,7 +451,7 @@ impl Column {
                 field
             }
             Self::Alive | Self::Deltas | Self::Executions => {
-                DataType::serie(operation_row_field()?).nullable_field(self.name())
+                DataType::serie(operation_row_field(role.item())?).nullable_field(self.name())
             }
             Self::BidLimits | Self::AskLimits => {
                 DataType::serie(Limit::field()).nullable_field(self.name())
@@ -442,6 +459,20 @@ impl Column {
         };
         if let Some(description) = self.description() {
             field.set_description(description)?;
+        }
+        // A digest reads back from whatever layout a table stored it in -
+        // its bits where that was the `long` of its width - so the read
+        // root states them at every depth and the one cast shares the
+        // buffer.
+        if matches!(role, Role::Read | Role::ReadOperation)
+            && matches!(
+                self,
+                Self::Element(ElementColumn::CurrHashCode | ElementColumn::CrossHashCode)
+            )
+        {
+            field
+                .as_field_properties_mut()
+                .set_representation(Representation::Bits)?;
         }
         // A root states only what its leaf does, so every identity, clock
         // and nested column may be null there; a nested row's own columns
@@ -479,6 +510,7 @@ impl Column {
                 MarketColumn::MarketDataType => Storage::MarketDataType,
                 MarketColumn::Price
                 | MarketColumn::StopPx
+                | MarketColumn::StrikePx
                 | MarketColumn::Quantity
                 | MarketColumn::DisplayQty
                 | MarketColumn::HiddenQty
@@ -563,9 +595,11 @@ fn struct_field(name: &str, columns: &[Column], role: Role, nullable: bool) -> R
     ))
 }
 
-/// The item of `alive`, `deltas` and `executions`: one dated operation.
-fn operation_row_field() -> Result<Field> {
-    struct_field(OPERATION_ROW, &operation_columns(), Role::Operation, false)
+/// The item of `alive`, `deltas` and `executions`: one dated operation,
+/// built for `role` - [`Role::Operation`], or [`Role::ReadOperation`] under
+/// the read root.
+fn operation_row_field(role: Role) -> Result<Field> {
+    struct_field(OPERATION_ROW, &operation_columns(), role, false)
 }
 
 /// Whether a market column holds a decimal: every price and quantity.
@@ -574,6 +608,7 @@ const fn is_decimal(column: MarketColumn) -> bool {
         column,
         MarketColumn::Price
             | MarketColumn::StopPx
+            | MarketColumn::StrikePx
             | MarketColumn::Quantity
             | MarketColumn::DisplayQty
             | MarketColumn::HiddenQty
@@ -599,6 +634,7 @@ fn market_decimal<E: Market + ?Sized>(column: MarketColumn, market: &E) -> Optio
     match column {
         MarketColumn::Price => market.get_price(),
         MarketColumn::StopPx => market.get_stoppx(),
+        MarketColumn::StrikePx => market.get_strikepx(),
         MarketColumn::Quantity => market.get_quantity(),
         MarketColumn::DisplayQty => market.get_displayqty(),
         MarketColumn::HiddenQty => market.get_hiddenqty(),
@@ -629,6 +665,7 @@ fn set_market_decimal<E: Market + ?Sized>(
     match column {
         MarketColumn::Price => market.set_price(value, true),
         MarketColumn::StopPx => market.set_stoppx(value, true),
+        MarketColumn::StrikePx => market.set_strikepx(value, true),
         MarketColumn::Quantity => market.set_quantity(value, true),
         MarketColumn::DisplayQty => market.set_displayqty(value, true),
         MarketColumn::HiddenQty => market.set_hiddenqty(value, true),
@@ -695,7 +732,7 @@ impl<'a> Row<'a> {
             // A message is written as the leaves it splits into, at the
             // writer's intake; held whole, it states its own category.
             MarketData::Fix(message) => Self {
-                marketdatakind: message.msgcat(),
+                marketdatakind: message.marketdatakind(),
                 ..Self::operation(kind, message.as_ref(), None)
             },
         }
@@ -2638,8 +2675,9 @@ impl Landed {
         self.read_event(row, &mut event, &mut claims);
         self.read_market(row, &mut event, path, Lift::Security)?;
         self.read_crosscode(row, &mut event);
-        // A book holds no execution: a row stating one is not a book this
-        // crate wrote, and an empty or null cell states none.
+        // A book's row states no `executions` - a trade's column, its own
+        // executions being among its deltas: a row stating one is not a book
+        // this crate wrote, and an empty or null cell states none.
         if let Some(held) = self
             .executions
             .as_ref()
@@ -3760,7 +3798,7 @@ impl Limits {
 
 /// The lazy, fused read of every row of every batch.
 struct Rows {
-    batches: SerieReader,
+    batches: StreamChunkedSerie,
     layouts: Layouts,
     landed: Option<(Landed, usize)>,
     row: usize,
@@ -3798,7 +3836,7 @@ impl Iterator for Rows {
                 .take()
                 .map(|(landed, _)| landed.keys.into_inner());
             self.row = 0;
-            let batch = match self.batches.next() {
+            let batch = match self.batches.next_chunk() {
                 Some(Ok(batch)) => batch,
                 Some(Err(error)) => {
                     self.done = true;

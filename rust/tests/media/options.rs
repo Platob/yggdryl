@@ -436,6 +436,64 @@ fn an_unnest_is_refused_as_a_match_key_at_every_door_that_takes_one() {
 }
 
 #[test]
+fn a_false_merge_key_is_refused_and_leaves_the_key_it_held() {
+    let mut options = IpcOptions::new().with_merge_by("id").unwrap();
+    let message = options
+        .set_merge_by_scalar(&yggdryl::Scalar::from(false))
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("$.merge_by"), "{message}");
+    assert!(
+        message.contains(
+            "expected a column list, a selector text, null, or true (the destination's own key), got false"
+        ),
+        "{message}"
+    );
+    assert_eq!(options.merge_by().to_string(), "id");
+    // An integer is no boolean: it stays the selector reader's refusal.
+    let message = IpcOptions::new()
+        .with_merge_by_scalar(&yggdryl::Scalar::from(1_i64))
+        .unwrap_err()
+        .to_string();
+    assert!(!message.contains("got false"), "{message}");
+}
+
+#[test]
+fn a_true_merge_key_is_the_destinations_own_and_clears_a_stated_one() {
+    let mut options = IpcOptions::new().with_merge_by("id").unwrap();
+    options
+        .set_merge_by_scalar(&yggdryl::Scalar::from(true))
+        .unwrap();
+    assert!(options.merge_by().is_empty());
+    // It is the state null spells, and the default: no flag is kept.
+    assert_eq!(options, IpcOptions::new());
+    assert_eq!(
+        IpcOptions::new()
+            .with_merge_by_scalar(&yggdryl::Scalar::Null)
+            .unwrap(),
+        options
+    );
+    let options = RecordOptions::Ipc(IpcOptions::new())
+        .with_merge_by("id")
+        .unwrap()
+        .with_merge_by_scalar(&yggdryl::Scalar::from(true))
+        .unwrap();
+    assert_eq!(options, RecordOptions::Ipc(IpcOptions::new()));
+    // A merge under it is keyed by the destination, and a bare options
+    // value states none.
+    let message = options
+        .require_write_mode(yggdryl::IOMode::Merge)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.contains("requires at least one merge_by column"),
+        "{message}"
+    );
+    // Nothing is stated, so an append under it is not refused.
+    options.require_write_mode(yggdryl::IOMode::Append).unwrap();
+}
+
+#[test]
 fn a_plan_that_joins_rows_is_refused_and_leaves_the_options_unchanged() {
     let mut options = IpcOptions::new().with_filter("id > 1").unwrap();
     let before = options.clone();
@@ -1262,4 +1320,35 @@ fn a_write_onto_a_stored_not_null_column_refuses_and_leaves_the_resource() {
         })
         .collect();
     assert_eq!(kept, [7]);
+}
+
+#[test]
+fn a_batch_and_a_stream_split_source_predicates_from_selected_aliases() {
+    let source = RecordBatch::try_from_iter([
+        (
+            "id",
+            std::sync::Arc::new(arrow_array::Int64Array::from(vec![1, 2, 3]))
+                as arrow_array::ArrayRef,
+        ),
+        (
+            "value",
+            std::sync::Arc::new(arrow_array::Int64Array::from(vec![2, 4, 6]))
+                as arrow_array::ArrayRef,
+        ),
+    ])
+    .unwrap();
+    let options = RecordOptions::Ipc(IpcOptions::new())
+        .with_select("id as key, value")
+        .unwrap()
+        .with_filter("key > 1 and id = 2")
+        .unwrap();
+    let shaped = options.apply_arrow_batch(source.clone(), None).unwrap();
+    assert_eq!(shaped.num_rows(), 1);
+    let stream = options
+        .apply_arrow_reader(
+            yggdryl::arrow::batch_reader(source.schema(), [source]),
+            None,
+        )
+        .unwrap();
+    assert_eq!(stream.map(Result::unwrap).collect::<Vec<_>>(), [shaped]);
 }

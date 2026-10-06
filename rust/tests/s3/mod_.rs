@@ -202,11 +202,13 @@ mod accounting {
         let logs = path(&store, "logs/*.log");
         let options = RecordOptions::from(TextOptions::new());
         store.clear_requests();
-        let rows: usize = logs
-            .read_serie(Some(&options))
-            .expect("the lines")
-            .map(|record| record.expect("a record").len())
-            .sum();
+        let rows: usize = yggdryl::StreamChunkedSerie::from_serie(
+            logs.read_serie(Some(&options)).expect("the lines"),
+        )
+        .expect("native record stream")
+        .into_chunks()
+        .map(|record| record.expect("a record").len())
+        .sum();
         assert_eq!(rows, 3);
         let shapes: Vec<String> = store
             .requests()

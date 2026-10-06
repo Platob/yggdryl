@@ -13,11 +13,21 @@
 //!
 //! # Internal widening
 //!
-//! [`batch_reader_from_any`] remains an internal conversion funnel for
-//! non-media utilities that intentionally accept several Python shapes. The
-//! media API does not call it: broad inference belongs to the generic mode
-//! dispatcher, while the intent-specific entry points stay statically and
-//! dynamically honest about their input shape.
+//! [`batch_reader_from_any`] is the wide intake of the table-level writes -
+//! `IcebergTable`'s commits and `Tables.write` - and, through `stream_of`,
+//! of `Serie`, `ChunkedSerie` and `StreamChunkedSerie.from_arrow_reader`: each
+//! passes the options it reads rows under. `IOBase`'s per-shape writes
+//! never call it: each takes the shape its name says through its own strict
+//! intake, so the intent-specific entry points stay statically and
+//! dynamically honest about their input shape, and `*_serie` is the door
+//! that takes any of them.
+//!
+//! `RecordOptions.apply_arrow_*` and `TextOptions.apply_arrow_*` are the
+//! `RecordBatch`/`BatchReader` face of the one cast `Serie` runs - the
+//! declared and the stored field each an `ArrowCastPlan`, the `where`,
+//! `select` and bound sections applied between them - shared by both
+//! options kinds through `shaped_arrow_batch`, `shaped_arrow_reader` and
+//! `limited_arrow_reader`.
 //!
 //! Nothing that could stream is collected: a generator is pulled one item at a
 //! time and each item is drained before the next is asked for, so a sequence of
@@ -52,7 +62,7 @@ use pyo3::types::{
 use yggdryl::arrow::BatchReader;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::{LeadingFragment, TextOptions as CoreTextOptions};
-use yggdryl::{Field as CoreField, Level, SerieReader};
+use yggdryl::{Field as CoreField, Level, StreamChunkedSerie};
 
 use crate::chunked_serie::PyChunkedSerie;
 use crate::datatype::{
@@ -63,7 +73,7 @@ use crate::enums::{PyMimeType, core_media_type_from_value};
 use crate::expression::{PyFilter, PyPlan, PySelector, plan_from_value};
 use crate::field::{PyField, core_field_from_value, core_schema_to_pyarrow};
 use crate::scalar::RowPlan;
-use crate::serie::{PySerie, PySerieReader};
+use crate::serie::PySerie;
 use crate::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
 use yggdryl::ArrowCastOptions;
@@ -137,29 +147,12 @@ pub(crate) fn batch_reader_from_value(value: &Bound<'_, PyAny>) -> PyResult<Batc
     ))
 }
 
-/// A native value's own record batches, or `None` for any other value.
-///
-/// A `Serie`, a `ChunkedSerie` and a `SerieReader` export the Arrow
-/// `PyCapsule` Interface for foreign consumers; inside the binding they never
-/// cross it, so nothing they state is re-read through a C schema: a held
-/// column is the one batch of its stream, held chunks one batch each, and a
-/// reader is taken as the stream it is.
-///
-/// # Errors
-///
-/// Returns the core's refusal of a run or of a record holding an absent row,
-/// and a `ValueError` for a `SerieReader` already handed over.
 pub(crate) fn native_reader(value: &Bound<'_, PyAny>) -> PyResult<Option<BatchReader>> {
-    let reader = if let Ok(serie) = value.extract::<PyRef<'_, PySerie>>() {
-        SerieReader::from_serie(serie.inner.clone())
-    } else if let Ok(chunked) = value.extract::<PyRef<'_, PyChunkedSerie>>() {
-        SerieReader::from_chunked(chunked.inner.clone())
-    } else if let Ok(mut reader) = value.extract::<PyRefMut<'_, PySerieReader>>() {
-        Ok(reader.take()?)
-    } else {
+    if !crate::serie::is_native_columnar(value) {
         return Ok(None);
-    };
-    reader
+    }
+    let source = crate::serie::serie_source_of(value)?;
+    StreamChunkedSerie::from_serie(source)
         .map(|reader| Some(reader.into_arrow_reader()))
         .map_err(value_error)
 }
@@ -427,7 +420,7 @@ pub(crate) fn frame_to_arrow<'py>(frame: &Bound<'py, PyAny>) -> PyResult<Bound<'
 ///
 /// The newest level keeps polars' view arrays as Arrow view types instead of
 /// downgrading them to the offset layouts, so the crossing moves no bytes.
-pub(crate) fn polars_to_arrow<'py>(frame: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+fn polars_to_arrow<'py>(frame: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     let py = frame.py();
     let level = py
         .import("polars")
@@ -623,7 +616,7 @@ fn chain_with_reader(
 /// # Errors
 ///
 /// Returns a `TypeError` naming the library and what arrived instead.
-fn frame_reader(value: &Bound<'_, PyAny>, library: Frames) -> PyResult<BatchReader> {
+pub(crate) fn frame_reader(value: &Bound<'_, PyAny>, library: Frames) -> PyResult<BatchReader> {
     if !library.holds(value) {
         return Err(PyTypeError::new_err(format!(
             "expected one {} frame, got {}",
@@ -692,8 +685,8 @@ impl Chained {
         if Arc::ptr_eq(&schema, &self.schema) || schema == self.schema {
             return Ok(item);
         }
-        SerieReader::from_arrow_reader(Some(&self.root), item, self.options)
-            .map(SerieReader::into_arrow_reader)
+        StreamChunkedSerie::from_arrow_reader(Some(&self.root), item, self.options)
+            .map(StreamChunkedSerie::into_arrow_reader)
             .map_err(value_error)
     }
 }
@@ -1117,18 +1110,6 @@ pub(crate) fn frames_batch_reader(
         ))
     })?;
     chained_reader(&items, options, Some(library))
-}
-
-/// Read a core batch reader out of exactly one of a library's frames.
-///
-/// # Errors
-///
-/// Returns a `TypeError` naming the library when the value is not one frame.
-pub(crate) fn frame_batch_reader(
-    value: &Bound<'_, PyAny>,
-    library: Frames,
-) -> PyResult<BatchReader> {
-    frame_reader(value, library)
 }
 
 /// Hand a core reader to Python as a lazy iterator of one library's frames.
@@ -1676,6 +1657,51 @@ impl PyRecordOptions {
     }
 }
 
+/// What `apply_arrow_batch` is on either options kind: one `PyArrow` batch
+/// shaped through `options` - the declared field, the `where` and `select`
+/// sections, then `existing` - and handed back.
+fn shaped_arrow_batch<'py>(
+    py: Python<'py>,
+    options: &impl IORecordOptions,
+    batch: &Bound<'py, PyAny>,
+    existing: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let existing = existing.map(core_field_from_value).transpose()?;
+    let batch = record_batch_from_pyarrow(batch)?;
+    let cast = options
+        .apply_arrow_batch(batch, existing.as_ref())
+        .map_err(value_error)?;
+    batch_to_pyarrow(py, cast)
+}
+
+/// What `apply_arrow_reader` is on either options kind: an Arrow C stream
+/// reader shaped batch by batch as `shaped_arrow_batch` shapes one.
+fn shaped_arrow_reader<'py>(
+    py: Python<'py>,
+    options: &impl IORecordOptions,
+    reader: &Bound<'py, PyAny>,
+    existing: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let existing = existing.map(core_field_from_value).transpose()?;
+    let reader = batch_reader_from_arrow_reader(reader)?;
+    let cast = options
+        .apply_arrow_reader(reader, existing.as_ref())
+        .map_err(value_error)?;
+    batch_reader_to_pyarrow(py, cast)
+}
+
+/// What `limit_arrow_reader` is on either options kind: an Arrow C stream
+/// reader bounded by the options' row offset and limits.
+fn limited_arrow_reader<'py>(
+    py: Python<'py>,
+    options: &impl IORecordOptions,
+    reader: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let reader = batch_reader_from_arrow_reader(reader)?;
+    let limited = options.limit_arrow_reader(reader).map_err(value_error)?;
+    batch_reader_to_pyarrow(py, limited)
+}
+
 /// Read core record options out of a value, or derive them from a media type.
 ///
 /// A caller who only wants to name the encoding passes the media type itself,
@@ -2094,10 +2120,15 @@ impl PyRecordOptions {
     }
 
     /// The keys a write matches stored rows on - the plan's `upsert by`;
-    /// `select *` (empty) means overwrite or append.
+    /// `select *` (empty) is what overwrite and append require, and on a
+    /// merge means the destination's own key (an Iceberg table's identity
+    /// partition columns, then its identifier columns).
     ///
     /// The setter takes a `Selector`, the text of one, or the key column
-    /// names.
+    /// names; `None` and `True` both set the empty key - the destination's
+    /// own - and keep no flag, so the getter answers the empty selector and
+    /// a later overwrite or append is not refused for it. `False` is refused
+    /// naming `$.merge_by`, leaving the key the options held.
     #[getter]
     fn merge_by(&self) -> PySelector {
         PySelector::from_core(self.inner.merge_by().clone())
@@ -2458,13 +2489,7 @@ impl PyRecordOptions {
         batch: &Bound<'py, PyAny>,
         existing: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let existing = existing.map(core_field_from_value).transpose()?;
-        let batch = record_batch_from_pyarrow(batch)?;
-        let cast = self
-            .inner
-            .apply_arrow_batch(batch, existing.as_ref())
-            .map_err(value_error)?;
-        batch_to_pyarrow(py, cast)
+        shaped_arrow_batch(py, &self.inner, batch, existing)
     }
 
     /// Shape a whole reader the way `apply_arrow_batch` shapes one batch.
@@ -2477,13 +2502,7 @@ impl PyRecordOptions {
         reader: &Bound<'py, PyAny>,
         existing: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let existing = existing.map(core_field_from_value).transpose()?;
-        let reader = batch_reader_from_arrow_reader(reader)?;
-        let cast = self
-            .inner
-            .apply_arrow_reader(reader, existing.as_ref())
-            .map_err(value_error)?;
-        batch_reader_to_pyarrow(py, cast)
+        shaped_arrow_reader(py, &self.inner, reader, existing)
     }
 
     /// Bound a reader by `max_row_size` and `max_byte_size`.
@@ -2497,9 +2516,7 @@ impl PyRecordOptions {
         py: Python<'py>,
         reader: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let reader = batch_reader_from_arrow_reader(reader)?;
-        let limited = self.inner.limit_arrow_reader(reader).map_err(value_error)?;
-        batch_reader_to_pyarrow(py, limited)
+        limited_arrow_reader(py, &self.inner, reader)
     }
 
     /// The declared field, or a `ValueError` naming the builders that set one.
@@ -2811,10 +2828,15 @@ impl PyTextOptions {
     }
 
     /// The keys a write matches stored rows on - the plan's `upsert by`;
-    /// `select *` (empty) means overwrite or append.
+    /// `select *` (empty) is what overwrite and append require, and on a
+    /// merge means the destination's own key (an Iceberg table's identity
+    /// partition columns, then its identifier columns).
     ///
     /// The setter takes a `Selector`, the text of one, or the key column
-    /// names.
+    /// names; `None` and `True` both set the empty key - the destination's
+    /// own - and keep no flag, so the getter answers the empty selector and
+    /// a later overwrite or append is not refused for it. `False` is refused
+    /// naming `$.merge_by`, leaving the key the options held.
     #[getter]
     fn merge_by(&self) -> PySelector {
         PySelector::from_core(self.inner.merge_by().clone())
@@ -3057,13 +3079,7 @@ impl PyTextOptions {
         batch: &Bound<'py, PyAny>,
         existing: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let existing = existing.map(core_field_from_value).transpose()?;
-        let batch = record_batch_from_pyarrow(batch)?;
-        let cast = self
-            .inner
-            .apply_arrow_batch(batch, existing.as_ref())
-            .map_err(value_error)?;
-        batch_to_pyarrow(py, cast)
+        shaped_arrow_batch(py, &self.inner, batch, existing)
     }
 
     /// Shape a whole reader the way `apply_arrow_batch` shapes one batch.
@@ -3076,13 +3092,7 @@ impl PyTextOptions {
         reader: &Bound<'py, PyAny>,
         existing: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let existing = existing.map(core_field_from_value).transpose()?;
-        let reader = batch_reader_from_arrow_reader(reader)?;
-        let cast = self
-            .inner
-            .apply_arrow_reader(reader, existing.as_ref())
-            .map_err(value_error)?;
-        batch_reader_to_pyarrow(py, cast)
+        shaped_arrow_reader(py, &self.inner, reader, existing)
     }
 
     /// Bound a reader by `max_row_size` and `max_byte_size`.
@@ -3096,9 +3106,7 @@ impl PyTextOptions {
         py: Python<'py>,
         reader: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let reader = batch_reader_from_arrow_reader(reader)?;
-        let limited = self.inner.limit_arrow_reader(reader).map_err(value_error)?;
-        batch_reader_to_pyarrow(py, limited)
+        limited_arrow_reader(py, &self.inner, reader)
     }
 
     /// The declared field, or a `ValueError` naming the builders that set one.

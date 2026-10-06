@@ -3,7 +3,7 @@ stored as a ``uint8``.
 
 ``TimeInForce`` is the core's enum member for member - its stored name,
 ``DAY``, ``GTC``, ``IOC``, and the code a ``timeinforce`` column stores - built
-once at import from the native table, so nothing here lists a member. ``UNKN``
+once at import from the native table, so nothing here lists a member. ``UKNW``
 is ``0``, the thirteen values FIX names follow in wire order from ``DAY``
 (``1``) to ``GFM`` (``13``), and ``OTHER`` (``99``) is a venue's own value no
 member names. :meth:`TimeInForce.from_fix` reads a wire value and
@@ -41,7 +41,7 @@ class _Standing(enum.IntEnum):
     @property
     def fix_code(self) -> str | None:
         """The ``TimeInForce(59)`` wire value this member stands for - ``"1"``
-        for ``GTC`` - or ``None`` for ``UNKN`` and ``OTHER``."""
+        for ``GTC`` - or ``None`` for ``UKNW`` and ``OTHER``."""
 
         return _FACTS[self.value][1]
 

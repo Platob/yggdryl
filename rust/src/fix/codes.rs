@@ -20,7 +20,7 @@
 //! for every field that reads it, and two fields cannot drift apart while
 //! claiming one set.
 //!
-//! `msgcatcodeset` is the deliberate exception: it renders the crate-owned
+//! `marketdatakindcodeset` is the deliberate exception: it renders the crate-owned
 //! integer identifiers that cross into generic graph operations. A registry
 //! may assign one of its symbolic categories to a custom message type, but it
 //! may not replace, widen or remove that intrinsic category-to-ID mapping.
@@ -84,32 +84,40 @@ use crate::{Error, Field, Result, Scalar};
 /// What the document is called for every refusal it raises.
 const TARGET: &str = "fix codes";
 
-/// Leaves ordinary dictionary vocabularies mutable while pinning the three
-/// code sets the crate fixes: MsgCat's generic graph identifiers, the state
+/// Leaves ordinary dictionary vocabularies mutable while pinning the four
+/// code sets the crate fixes: `marketdatakind`'s generic graph identifiers, the state
 /// codes a `state` column stores and the market data type codes a
-/// `marketdatatype` column stores.
+/// `marketdatatype` column stores and the plugin side codes a
+/// `msgpluginside` column stores.
 fn validate_intrinsic_codeset(key: &str, document: Option<&str>) -> Result<()> {
-    let (canonical, expected, changed) = if folds_equal(key, super::crated::MSGCAT_CODESET_NAME) {
-        (
-            super::crated::msgcat_codeset(),
-            "the fixed MsgCat operation identifiers",
-            "a changed or removed MsgCat code set",
-        )
-    } else if folds_equal(key, super::crated::STATE_CODESET_NAME) {
-        (
-            super::crated::state_codeset(),
-            "the fixed state codes",
-            "a changed or removed state code set",
-        )
-    } else if folds_equal(key, super::crated::MARKETDATATYPE_CODESET_NAME) {
-        (
-            super::crated::marketdatatype_codeset(),
-            "the fixed market data type codes",
-            "a changed or removed market data type code set",
-        )
-    } else {
-        return Ok(());
-    };
+    let (canonical, expected, changed) =
+        if folds_equal(key, super::crated::MARKETDATAKIND_CODESET_NAME) {
+            (
+                super::crated::marketdatakind_codeset(),
+                "the fixed marketdatakind operation identifiers",
+                "a changed or removed marketdatakind code set",
+            )
+        } else if folds_equal(key, super::crated::STATE_CODESET_NAME) {
+            (
+                super::crated::state_codeset(),
+                "the fixed state codes",
+                "a changed or removed state code set",
+            )
+        } else if folds_equal(key, super::crated::MARKETDATATYPE_CODESET_NAME) {
+            (
+                super::crated::marketdatatype_codeset(),
+                "the fixed market data type codes",
+                "a changed or removed market data type code set",
+            )
+        } else if folds_equal(key, super::crated::MSGPLUGINSIDE_CODESET_NAME) {
+            (
+                super::crated::msgpluginside_codeset(),
+                "the fixed plugin side codes",
+                "a changed or removed plugin side code set",
+            )
+        } else {
+            return Ok(());
+        };
     let canonical = canonical.ok_or_else(|| Error::absent("an intrinsic code set", key))?;
     if document == Some(canonical.as_ref()) {
         return Ok(());
@@ -121,6 +129,25 @@ fn validate_intrinsic_codeset(key: &str, document: Option<&str>) -> Result<()> {
 /// category even when the ordinary vocabulary merge would discard that
 /// conflicting spelling and leave the stored document unchanged.
 fn validate_intrinsic_merge(key: &str, codes: &[FixCode]) -> Result<()> {
+    if folds_equal(key, super::crated::MSGPLUGINSIDE_CODESET_NAME) {
+        let canonical = codes.iter().all(|code| {
+            crate::PluginSide::from_name(code.name()).is_some_and(|side| {
+                code.value() == side.code().to_string()
+                    && code.aliases().is_empty()
+                    && code.description() == Some(side.description())
+                    && code.group().is_none()
+            })
+        });
+        return if canonical {
+            Ok(())
+        } else {
+            Err(Error::conflict(
+                "the fixed plugin side codes",
+                "a changed or removed plugin side code set",
+                key,
+            ))
+        };
+    }
     if folds_equal(key, super::crated::MARKETDATATYPE_CODESET_NAME) {
         let canonical = codes.iter().all(|code| {
             crate::MarketDataType::from_name(code.name()).is_some_and(|mdtype| {
@@ -159,7 +186,7 @@ fn validate_intrinsic_merge(key: &str, codes: &[FixCode]) -> Result<()> {
             ))
         };
     }
-    if !folds_equal(key, super::crated::MSGCAT_CODESET_NAME)
+    if !folds_equal(key, super::crated::MARKETDATAKIND_CODESET_NAME)
         || codes.iter().all(|code| {
             crate::MarketDataKind::from_name(code.name()).is_some_and(|kind| {
                 code.value() == kind.code().to_string()
@@ -172,8 +199,8 @@ fn validate_intrinsic_merge(key: &str, codes: &[FixCode]) -> Result<()> {
         return Ok(());
     }
     Err(Error::conflict(
-        "the fixed MsgCat operation identifiers",
-        "a changed or removed MsgCat code set",
+        "the fixed marketdatakind operation identifiers",
+        "a changed or removed marketdatakind code set",
         key,
     ))
 }
@@ -1257,7 +1284,7 @@ impl FixRegistry {
     /// file, when two codes share a name - naming both - or when one states an
     /// empty value or name, and [`Error::Conflict`] when an empty slice would
     /// take away a set a held field names or any value would change the
-    /// intrinsic MsgCat operation identifiers. Any of them leaves this
+    /// intrinsic `marketdatakind` operation identifiers. Any of them leaves this
     /// dictionary exactly as it was.
     pub fn set_codeset(&mut self, name: &str, codes: &[FixCode]) -> Result<()> {
         let key = self.codeset_key(name)?;
@@ -1320,7 +1347,7 @@ impl FixRegistry {
     /// # Errors
     ///
     /// Returns what [`Self::set_codeset`] returns for the name and the
-    /// render, including refusal to widen the intrinsic MsgCat operation
+    /// render, including refusal to widen the intrinsic `marketdatakind` operation
     /// identifiers, leaving this dictionary exactly as it was.
     pub fn merge_codeset(&mut self, name: &str, codes: &[FixCode]) -> Result<()> {
         let key = self.codeset_key(name)?;

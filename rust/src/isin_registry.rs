@@ -3,8 +3,9 @@
 //!
 //! The ISIN is the one key: an [`IsinRegistry`] holds one [`IsinEntry`] per
 //! canonical ISIN - its detailed CFI code, its country of issue, the pair an
-//! FX or referential number names, the market its listing facts were stated
-//! on, its ticker and trading currency, and one code per FIX
+//! FX or referential number names, the instrument it is written on - its
+//! underlying - its EUSIPA product category, the market its listing facts
+//! were stated on, its ticker and trading currency, and one code per FIX
 //! `SecurityIDSource(22)` type - and a ticker leads back to its ISIN through
 //! an exact inverse index, gated by the market. A RIC, a Bloomberg symbol, a
 //! FIGI, a CUSIP are equivalents the ISIN fills, never keys a lookup reads.
@@ -36,11 +37,11 @@ use crate::graph::{Element, Event, Market};
 use crate::identifier::{IDENTIFIER_VALUE_WIDTH, IDENTIFIER_WORD_WIDTH, fold_into};
 use crate::idtype::FIX_SECURITY_SOURCES;
 use crate::logging::warning::warned;
-use crate::serie::{DateTimeNanosecondSerie, Utf8StringSerie};
+use crate::serie::{DateTimeNanosecondSerie, Int32Serie, Utf8StringSerie};
 use crate::{
-    ArrowCastOptions, Ccy, Cfi, CodeValue, Country, DataType, Error, Field, Forex, IOBase, IdKey,
-    IdType, Identifier, Isin, Mic, Result, Scalar, Serie, SerieReader, StructType, TimeUnit,
-    Timezone,
+    ArrowCastOptions, Ccy, Cfi, CodeValue, Country, DataType, Error, Eusipa, Field, Forex, IOBase,
+    IdKey, IdType, Identifier, Isin, Mic, Result, Scalar, Serie, StreamChunkedSerie, StructType,
+    TimeUnit, Timezone,
 };
 
 pub(crate) use store::Store;
@@ -49,12 +50,14 @@ pub(crate) use store::Store;
 const ROOT: &str = "isinregistry";
 
 /// The columns a row opens with, before one per equivalent type.
-const NAMES: [&str; 8] = [
+const NAMES: [&str; 10] = [
     "isin",
     "updunix",
     "cficode",
     "countrycode",
     "forexcode",
+    "underlyingisin",
+    "eusipacode",
     "miccode",
     "ticker",
     "currency",
@@ -70,7 +73,9 @@ const MAX_VALUE_HEAP_ALLOWANCE: usize =
 
 /// What one instrument's row may take at most: its key and entry twice over
 /// for the B-tree's slack - the entry holding its codes inline, a country,
-/// a pair and a currency among them - its codes spilled to the heap with
+/// a pair, an underlying, a product category and a currency among them -
+/// its codes spilled to
+/// the heap with
 /// every value at the widest heap a value takes, its ticker's heap, and its
 /// one ticker slot in the ticker index with that ticker's heap.
 const ENTRY_CHARGE: usize = 3 * 1024;
@@ -117,8 +122,11 @@ fn later(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 /// The row of an [`IsinRegistry`]: `isin`, `updunix` - when the statement
 /// that last moved it happened, nanoseconds since the epoch, UTC - the
 /// detailed `cficode`, the `countrycode` of issue where one was stated, the
-/// `forexcode` an FX or referential number names, the `miccode` its listing
-/// facts belong to, the `ticker` and the trading `currency` of that listing,
+/// `forexcode` an FX or referential number names, the `underlyingisin` it is
+/// written on - FIX's underlying, a real ISIN other than its own - its
+/// `eusipacode`, the EUSIPA product category of a structured product
+/// ([`Eusipa`]), the `miccode` its listing facts belong to, the `ticker`
+/// and the trading `currency` of that listing,
 /// and one code per `SecurityIDSource(22)` type but the ISIN, at most
 /// [`IsinRegistry::MAX_EQUIVALENTS`] of them, each held as its type stores
 /// it.
@@ -134,6 +142,12 @@ fn later(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 /// assert_eq!(entry.country(), Some(Country::new("CH")?), "the prefix, stated nowhere");
 /// assert_eq!(IsinEntry::from_scalar(&entry.into_scalar())?, entry);
 /// assert!(entry.clone().try_with_code(IdType::Isin, "US0378331005").is_err());
+/// let own = IsinEntry::new(Isin::new("CH0012214059")?)
+///     .with_underlyingisin(Some(Isin::new("CH0012214059")?));
+/// assert_eq!(own.underlyingisin(), None, "an instrument is not written on itself");
+/// let warrant = IsinEntry::new(Isin::new("CH0012214059")?)
+///     .with_underlyingisin(Some(Isin::new("US0378331005")?));
+/// assert_eq!(warrant.underlyingisin().map(Isin::as_str), Some("US0378331005"));
 /// # Ok(())
 /// # }
 /// ```
@@ -144,6 +158,8 @@ pub struct IsinEntry {
     cficode: Option<Cfi>,
     countrycode: Option<Country>,
     forexcode: Option<Forex>,
+    underlyingisin: Option<Isin>,
+    eusipacode: Option<Eusipa>,
     miccode: Option<Mic>,
     ticker: Option<SmolStr>,
     currency: Option<Ccy>,
@@ -164,9 +180,13 @@ static FIELD: LazyLock<Field> = LazyLock::new(|| {
         Field::new(NAMES[2], DataType::cfi(), true),
         Field::new(NAMES[3], DataType::country(), true),
         Field::new(NAMES[4], DataType::forex(), true),
-        Field::new(NAMES[5], DataType::Mic, true),
-        Field::new(NAMES[6], DataType::utf8(), true),
-        Field::new(NAMES[7], DataType::ccy(), true),
+        Field::new(NAMES[5], DataType::isin(), true),
+        // A category is four digits; `int32` is the narrowest integer every
+        // store the registry binds to - an Iceberg table among them - holds.
+        Field::new(NAMES[6], DataType::Int32, true),
+        Field::new(NAMES[7], DataType::Mic, true),
+        Field::new(NAMES[8], DataType::utf8(), true),
+        Field::new(NAMES[9], DataType::ccy(), true),
     ];
     fields.extend(equivalents().map(|kind| Field::new(kind.as_str(), kind.value_dtype(), true)));
     Field::new(
@@ -186,6 +206,8 @@ impl IsinEntry {
             cficode: None,
             countrycode: None,
             forexcode: None,
+            underlyingisin: None,
+            eusipacode: None,
             miccode: None,
             ticker: None,
             currency: None,
@@ -200,10 +222,10 @@ impl IsinEntry {
     }
 
     /// The required struct `isinregistry` a row is: `isin`, `updunix`,
-    /// `cficode`, `countrycode`, `forexcode`, `miccode`, `ticker`,
-    /// `currency`, then one column per `SecurityIDSource(22)` type but the
-    /// ISIN, in the code set's order, each of its type's
-    /// [`IdType::value_dtype`]: forty columns.
+    /// `cficode`, `countrycode`, `forexcode`, `underlyingisin`, `eusipacode`
+    /// (`int32`), `miccode`, `ticker`, `currency`, then one column per
+    /// `SecurityIDSource(22)` type but the ISIN, in the code set's order,
+    /// each of its type's [`IdType::value_dtype`]: forty-two columns.
     #[must_use]
     pub fn field() -> Field {
         FIELD.clone()
@@ -213,6 +235,26 @@ impl IsinEntry {
     #[must_use]
     pub fn isin(&self) -> &Isin {
         &self.isin
+    }
+
+    /// Whether the row states a value in the column at `at` of
+    /// [`Self::field`]: the ISIN always, any other where it is held.
+    pub(crate) fn states_column(&self, at: usize) -> bool {
+        match at {
+            0 => true,
+            1 => self.updunix.is_some(),
+            2 => self.cficode.is_some(),
+            3 => self.countrycode.is_some(),
+            4 => self.forexcode.is_some(),
+            5 => self.underlyingisin.is_some(),
+            6 => self.eusipacode.is_some(),
+            7 => self.miccode.is_some(),
+            8 => self.ticker.is_some(),
+            9 => self.currency.is_some(),
+            at => equivalents()
+                .nth(at - NAMES.len())
+                .is_some_and(|kind| self.codes.iter().any(|(held, _)| held == kind)),
+        }
     }
 
     /// When the statement that last moved the row happened, nanoseconds
@@ -260,6 +302,24 @@ impl IsinEntry {
     #[must_use]
     pub fn forexcode(&self) -> Option<&Forex> {
         self.forexcode.as_ref()
+    }
+
+    /// The ISIN of the instrument this one is written on - FIX's
+    /// underlying, `UnderlyingSecurityID(309)` under an ISIN source - held
+    /// only where it is real and not the row's own ISIN. An instrument
+    /// fact: it fills on any market and no listing switch clears it.
+    #[must_use]
+    pub fn underlyingisin(&self) -> Option<&Isin> {
+        self.underlyingisin.as_ref()
+    }
+
+    /// The EUSIPA product category of the structured product the ISIN
+    /// numbers - `2300` a Constant Leverage Certificate - held by its shape
+    /// ([`Eusipa`]). An instrument fact: it fills on any market and no
+    /// listing switch clears it.
+    #[must_use]
+    pub fn eusipacode(&self) -> Option<Eusipa> {
+        self.eusipacode
     }
 
     /// The market the listing facts - the ticker, the currency and every
@@ -324,6 +384,20 @@ impl IsinEntry {
     #[must_use]
     pub fn with_forexcode(mut self, code: Option<Forex>) -> Self {
         self.forexcode = code;
+        self
+    }
+
+    /// The row written on `isin`; the row's own ISIN is stored as none.
+    #[must_use]
+    pub fn with_underlyingisin(mut self, isin: Option<Isin>) -> Self {
+        self.underlyingisin = isin.filter(|underlying| *underlying != self.isin);
+        self
+    }
+
+    /// The row's EUSIPA product category.
+    #[must_use]
+    pub fn with_eusipacode(mut self, code: Option<Eusipa>) -> Self {
+        self.eusipacode = code;
         self
     }
 
@@ -446,12 +520,27 @@ impl IsinEntry {
                 real
             })
             .collect();
+        let underlyingisin = self.underlyingisin.as_ref().filter(|underlying| {
+            let real = underlying.is_real();
+            if !real {
+                warned!(
+                    "instrument registry value dropped: it is no real code of its type",
+                    NAMES[5],
+                    "{:?} under {}",
+                    underlying.as_str(),
+                    self.isin.as_str()
+                );
+            }
+            real
+        });
         Statement {
             isin: self.isin.clone(),
             updunix: self.updunix,
             cficode: self.cficode.as_ref(),
             countrycode: self.countrycode.as_ref(),
             forexcode: self.forexcode.as_ref(),
+            underlyingisin,
+            eusipacode: self.eusipacode,
             miccode: self.miccode.as_ref(),
             ticker: self.ticker.as_deref(),
             currency: self.currency.as_ref(),
@@ -469,6 +558,8 @@ impl IsinEntry {
             .with_cficode(statement.cficode.cloned())
             .with_countrycode(countrycode)
             .with_forexcode(statement.forexcode.cloned())
+            .with_underlyingisin(statement.underlyingisin.cloned())
+            .with_eusipacode(statement.eusipacode)
             .with_miccode(statement.miccode.cloned())
             .with_ticker(statement.ticker.map(SmolStr::new))
             .with_currency(statement.currency.cloned());
@@ -507,11 +598,22 @@ impl IsinEntry {
             ),
             (
                 NAMES[5],
-                self.miccode.clone().map_or(Scalar::Null, Scalar::from),
+                self.underlyingisin
+                    .clone()
+                    .map_or(Scalar::Null, Scalar::from),
             ),
-            (NAMES[6], text(self.ticker())),
+            (
+                NAMES[6],
+                self.eusipacode
+                    .map_or(Scalar::Null, |code| Scalar::from(i32::from(code.code()))),
+            ),
             (
                 NAMES[7],
+                self.miccode.clone().map_or(Scalar::Null, Scalar::from),
+            ),
+            (NAMES[8], text(self.ticker())),
+            (
+                NAMES[9],
                 self.currency.clone().map_or(Scalar::Null, Scalar::from),
             ),
         ];
@@ -567,6 +669,8 @@ impl IsinEntry {
             cficode,
             countrycode,
             forexcode,
+            underlyingisin,
+            eusipacode,
             miccode,
             ticker,
             currency,
@@ -590,6 +694,14 @@ impl IsinEntry {
             })
             .with_forexcode(match forexcode {
                 Scalar::Forex(pair) => Some(pair.clone()),
+                _ => None,
+            })
+            .with_underlyingisin(match underlyingisin {
+                Scalar::Isin(code) => Some(code.clone()),
+                _ => None,
+            })
+            .with_eusipacode(match eusipacode {
+                Scalar::Int32(code) => product_category(code.get(), isin.as_str()),
                 _ => None,
             })
             .with_miccode(match miccode {
@@ -624,6 +736,8 @@ struct Statement<'s> {
     cficode: Option<&'s Cfi>,
     countrycode: Option<&'s Country>,
     forexcode: Option<&'s Forex>,
+    underlyingisin: Option<&'s Isin>,
+    eusipacode: Option<Eusipa>,
     miccode: Option<&'s Mic>,
     ticker: Option<&'s str>,
     currency: Option<&'s Ccy>,
@@ -642,6 +756,8 @@ impl Statement<'_> {
         self.cficode.is_some()
             || self.countrycode.is_some()
             || self.forexcode.is_some()
+            || self.underlyingisin.is_some()
+            || self.eusipacode.is_some()
             || self.miccode.is_some()
             || self.ticker.is_some()
             || self.currency.is_some()
@@ -698,6 +814,17 @@ fn folded(row: &IsinEntry, statement: &Statement<'_>) -> Option<IsinEntry> {
         && row.forexcode.as_ref() != Some(stated)
     {
         next.to_mut().forexcode = Some(stated.clone());
+    }
+    // Instrument facts: the listing switch below leaves them.
+    if let Some(stated) = statement.underlyingisin
+        && row.underlyingisin.as_ref() != Some(stated)
+    {
+        next.to_mut().underlyingisin = Some(stated.clone());
+    }
+    if let Some(stated) = statement.eusipacode
+        && row.eusipacode != Some(stated)
+    {
+        next.to_mut().eusipacode = Some(stated);
     }
     match (statement.miccode, &row.miccode) {
         (Some(stated), Some(held)) if stated != held => {
@@ -1216,17 +1343,23 @@ impl IsinRegistry {
     /// and each equivalent type its map answers with a real value
     /// ([`IdType::is_real`]), never one it only derived, a masked number or
     /// a typo. A new ISIN past [`Self::max_instruments`] is not learned,
-    /// with one warning. Whether anything moved.
+    /// with one warning. Whether anything moved. What a FIX message names
+    /// as its underlying and its EUSIPA product category is learned only by
+    /// the lifecycle, beside the message
+    /// ([`FixCodec::lifecycle`](crate::FixCodec::lifecycle)).
     pub fn learn<E: Market + Event + ?Sized>(&mut self, event: &E) -> bool {
-        let learned = self.learn_stating(event, None);
+        let learned = self.learn_stating(event, None, None, None);
         if let Some(max) = learned.full {
             warn_full(max);
         }
         learned.moved
     }
 
-    /// [`Self::learn`] beside the country of issue `event` stated, and
-    /// what it answers in full: whether the row moved, and the bound a new
+    /// [`Self::learn`] beside the country of issue, the underlying and the
+    /// EUSIPA product category `event` stated - an underlying that is no
+    /// real ISIN or is the event's own ISIN states nothing - and what it
+    /// answers in full:
+    /// whether the row moved, and the bound a new
     /// ISIN was passed over at the first time one is, which the caller
     /// warns of itself ([`warn_full`]) - after it has let go of any lock it
     /// holds the registry under, since a warning reaches a host that may
@@ -1235,6 +1368,8 @@ impl IsinRegistry {
         &mut self,
         event: &E,
         country: Option<&Country>,
+        underlying: Option<&Isin>,
+        product: Option<Eusipa>,
     ) -> Learned {
         let ids = event.get_securityids();
         let stated = |kind: &IdType| ids.get(kind).filter(|_| !ids.is_derived(kind));
@@ -1251,6 +1386,9 @@ impl IsinRegistry {
                 .filter(|code| Cfi::is_detailed(code.as_str())),
             countrycode: country.filter(|code| code.is_listed()),
             forexcode: forexcode.as_ref(),
+            underlyingisin: underlying
+                .filter(|underlying| underlying.as_str() != isin && underlying.is_real()),
+            eusipacode: product,
             miccode: event.get_miccode().filter(|code| !code.is_none()),
             ticker: event
                 .get_ticker()
@@ -1333,8 +1471,13 @@ impl IsinRegistry {
     /// [`IdType`] - `RIC`, `riccode`, `BloombergSymbol`, `ISINCode`,
     /// `ccypair` - a field name a security type is read from (`#ISINCODE`,
     /// `cusip_code`), or `cfi`, `country`, `mic`, `symbol`, `ccy` for the
-    /// CFI code, the country, the market, the ticker and the currency; any
-    /// other column is passed over. The stream is cast once, into
+    /// CFI code, the country, the market, the ticker and the currency, or
+    /// `underlyingisin` and any key naming an underlying's ISIN - the
+    /// identifier name past `underlying`, as `UnderlyingISIN` is - or
+    /// `eusipa`, `eusipacode`, `eusipacategory`, `sspa`, `sspacode` or
+    /// `sspacategory` for the product category, Euronext's `EUSIPA_Code`
+    /// among them, its cells numbers or text of the number; any other
+    /// column is passed over. The stream is cast once, into
     /// [`IsinEntry::field`], a column it lacks null and a value a column
     /// cannot hold null.
     ///
@@ -1412,13 +1555,13 @@ impl IsinRegistry {
                     .collect(),
             )
         });
-        let records = SerieReader::from_arrow_reader(
+        let records = StreamChunkedSerie::from_arrow_reader(
             Some(&*FIELD),
             Box::new(RecordBatchIterator::new(batches, renamed)),
             ArrowCastOptions::default(),
         )?;
         let mut read = 0;
-        for record in records {
+        for record in records.into_chunks() {
             let record = record?;
             let columns = Columns::of(&record)?;
             for row in 0..record.len() {
@@ -1528,7 +1671,7 @@ fn column_name(at: usize) -> &'static str {
 /// the market spellings; `None` for any other.
 fn registry_column(name: &str) -> Option<usize> {
     /// The spellings of the columns no identifier type names.
-    const MARKET: [(&str, usize); 15] = [
+    const MARKET: [(&str, usize); 21] = [
         ("isin", 0),
         ("updunix", 1),
         ("cfi", 2),
@@ -1536,19 +1679,28 @@ fn registry_column(name: &str) -> Option<usize> {
         ("country", 3),
         ("countrycode", 3),
         ("countryofissue", 3),
-        ("mic", 5),
-        ("miccode", 5),
-        ("ticker", 6),
-        ("symbol", 6),
-        ("tickersymbol", 6),
-        ("ccy", 7),
-        ("currency", 7),
-        ("currencycode", 7),
+        ("eusipa", 6),
+        ("eusipacode", 6),
+        ("eusipacategory", 6),
+        ("sspa", 6),
+        ("sspacode", 6),
+        ("sspacategory", 6),
+        ("mic", 7),
+        ("miccode", 7),
+        ("ticker", 8),
+        ("symbol", 8),
+        ("tickersymbol", 8),
+        ("ccy", 9),
+        ("currency", 9),
+        ("currencycode", 9),
     ];
     let mut buffer = [0_u8; IDENTIFIER_WORD_WIDTH];
     let folded = fold_into(name, &mut buffer).ok()?;
     if let Some((_, at)) = MARKET.iter().find(|(spelled, _)| *spelled == folded) {
         return Some(*at);
+    }
+    if IdType::underlying_security(folded) == Some(IdType::Isin) {
+        return Some(5);
     }
     let kind = folded
         .parse::<IdType>()
@@ -1572,6 +1724,8 @@ struct Columns {
     cficode: Arc<Utf8StringSerie>,
     countrycode: Arc<Utf8StringSerie>,
     forexcode: Arc<Utf8StringSerie>,
+    underlyingisin: Arc<Utf8StringSerie>,
+    eusipacode: Arc<Int32Serie>,
     miccode: Arc<Utf8StringSerie>,
     ticker: Arc<Utf8StringSerie>,
     currency: Arc<Utf8StringSerie>,
@@ -1602,7 +1756,9 @@ impl Columns {
                 | Serie::Bbg(held)
                 | Serie::Ccy(held)
                 | Serie::Country(held)
-                | Serie::Forex(held),
+                | Serie::Forex(held)
+                | Serie::Lei(held)
+                | Serie::Dti(held),
             ) => Ok((Arc::clone(held), true)),
             _ => Err(unlanded(at)),
         };
@@ -1619,12 +1775,17 @@ impl Columns {
             cficode: code(2)?,
             countrycode: code(3)?,
             forexcode: code(4)?,
-            miccode: code(5)?,
-            ticker: match text(6)? {
-                (held, false) => held,
-                (_, true) => return Err(unlanded(6)),
+            underlyingisin: code(5)?,
+            eusipacode: match children.get(6) {
+                Some(Serie::Int32(held)) => Arc::clone(held),
+                _ => return Err(unlanded(6)),
             },
-            currency: code(7)?,
+            miccode: code(7)?,
+            ticker: match text(8)? {
+                (held, false) => held,
+                (_, true) => return Err(unlanded(8)),
+            },
+            currency: code(9)?,
             codes: equivalents()
                 .enumerate()
                 .map(|(at, kind)| {
@@ -1655,6 +1816,12 @@ impl Columns {
                     .value(row)
                     .and_then(|pair| Forex::new(pair).ok()),
             )
+            .with_underlyingisin(self.underlyingisin.value(row).map(Isin::from_proven))
+            .with_eusipacode(
+                self.eusipacode
+                    .value(row)
+                    .and_then(|code| product_category(code, isin)),
+            )
             .with_miccode(self.miccode.value(row).map(Mic::from_proven))
             .with_ticker(self.ticker.value(row).map(SmolStr::new))
             .with_currency(
@@ -1674,6 +1841,22 @@ impl Columns {
         }
         Ok(entry)
     }
+}
+
+/// The product category a row of `isin` states as `code`, a number of no
+/// category's shape dropped with one warning for the column.
+fn product_category(code: i32, isin: &str) -> Option<Eusipa> {
+    let category = u16::try_from(code)
+        .ok()
+        .and_then(|code| Eusipa::new(code).ok());
+    if category.is_none() {
+        warned!(
+            "instrument registry value dropped: it is no real code of its type",
+            NAMES[6],
+            "{code} under {isin}"
+        );
+    }
+    category
 }
 
 /// `error` located on the column `name`.

@@ -78,7 +78,8 @@ def test_the_enum_listings_name_the_column_vocabulary() -> None:
         *enums.OPERATION_COLUMNS,
     ):
         assert hasattr(event, column), column
-    assert len(enums.MARKET_COLUMNS) == 34 and len(enums.OPERATION_COLUMNS) == 5
+    assert len(enums.MARKET_COLUMNS) == 35 and len(enums.OPERATION_COLUMNS) == 5
+    assert enums.MARKET_COLUMNS.index("strikepx") == enums.MARKET_COLUMNS.index("ticker") + 1
     # When an element last executed is a market fact, never an event's.
     assert "execunix" in enums.MARKET_COLUMNS and "execunix" not in enums.EVENT_COLUMNS
     assert enums.MARKET_KINDS == graph.MarketData.kinds

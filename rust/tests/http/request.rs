@@ -898,11 +898,12 @@ fn a_paginated_document_reads_one_batch_per_page_after_one_look() {
     let request =
         leaf(&server, &session, "/orders").with_media_type(MediaType::from(MimeType::JSON));
 
-    let columns: Vec<Serie> = request
-        .read_serie(None)
-        .unwrap()
-        .collect::<Result<_, _>>()
-        .unwrap();
+    let columns: Vec<Serie> =
+        yggdryl::StreamChunkedSerie::from_serie(request.read_serie(None).unwrap())
+            .expect("native record stream")
+            .into_chunks()
+            .collect::<Result<_, _>>()
+            .unwrap();
 
     assert_eq!(columns.len(), 3);
     assert_eq!(columns.iter().map(Serie::len).sum::<usize>(), 5);
@@ -939,31 +940,33 @@ fn a_document_of_one_page_reads_through_its_bytes_with_one_get() {
     let session = Session::new();
     let request = leaf(&server, &session, "/rows.json");
 
-    let columns: Vec<Serie> = request
-        .read_serie(None)
-        .unwrap()
-        .collect::<Result<_, _>>()
-        .unwrap();
+    let columns: Vec<Serie> =
+        yggdryl::StreamChunkedSerie::from_serie(request.read_serie(None).unwrap())
+            .expect("native record stream")
+            .into_chunks()
+            .collect::<Result<_, _>>()
+            .unwrap();
     assert_eq!(columns.iter().map(Serie::len).sum::<usize>(), 2);
     assert_eq!(methods(&server), ["GET"]);
 
     // Pagination off, the leaf reads as every other does: through its bytes.
     server.clear_requests();
     let plain = request.clone().with_pagination(Pagination::None);
-    let columns: Vec<Serie> = plain
-        .read_serie(None)
-        .unwrap()
-        .collect::<Result<_, _>>()
-        .unwrap();
+    let columns: Vec<Serie> =
+        yggdryl::StreamChunkedSerie::from_serie(plain.read_serie(None).unwrap())
+            .expect("native record stream")
+            .into_chunks()
+            .collect::<Result<_, _>>()
+            .unwrap();
     assert_eq!(columns.iter().map(Serie::len).sum::<usize>(), 2);
     assert_eq!(methods(&server), ["GET"]);
 
     // Held, the request answers the same through the holder.
     server.clear_requests();
     let held = Holder::HttpRequest(request.clone());
-    let rows: usize = held
-        .read_serie(None)
-        .unwrap()
+    let rows: usize = yggdryl::StreamChunkedSerie::from_serie(held.read_serie(None).unwrap())
+        .expect("native record stream")
+        .into_chunks()
         .map(|column| column.unwrap().len())
         .sum();
     assert_eq!(rows, 2);

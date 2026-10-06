@@ -31,6 +31,7 @@ pub mod avro;
 #[cfg(feature = "aws")]
 pub mod aws;
 pub mod bbg;
+pub mod bic;
 pub mod boolean;
 pub(crate) mod budget;
 pub mod bytes;
@@ -50,13 +51,17 @@ pub mod datetime;
 pub mod decimal;
 mod default;
 mod diff;
+pub mod dti;
 pub mod duration;
+pub mod elf;
 mod enumeration;
 pub mod enums;
+mod eusipa;
 pub mod excel;
 pub mod expression;
 mod field;
 pub mod figi;
+pub mod fisn;
 pub mod fix;
 pub mod floating;
 pub mod forex;
@@ -95,6 +100,8 @@ pub mod isin;
 mod isin_registry;
 mod join;
 pub mod json;
+mod key_serie;
+pub mod lei;
 pub mod limit;
 mod listing;
 pub mod local;
@@ -103,6 +110,7 @@ pub mod mapping;
 pub mod marketdatakind;
 pub mod marketdatatype;
 pub mod media;
+mod media_serie;
 mod media_type;
 mod merge;
 mod metadata;
@@ -113,6 +121,7 @@ mod parallel;
 pub mod parquet;
 mod parser;
 mod path;
+pub mod pluginside;
 mod pretty;
 pub mod protocol;
 mod regex;
@@ -128,12 +137,13 @@ pub mod securityid;
 pub mod sedol;
 pub(crate) mod serde;
 pub mod serie;
-mod serie_source;
+mod shared_stream;
 pub mod side;
 pub mod soap;
 mod sort_options;
 mod spill;
 pub mod state;
+mod stream_serie;
 pub mod string;
 pub mod structure;
 pub mod temporal;
@@ -194,21 +204,22 @@ pub use fix::{
     FXRATES_TAG_NAME, FixAnomaly, FixCapture, FixCode, FixCodeSet, FixCodeValue, FixCodec,
     FixCodes, FixCommit, FixDedup, FixDirection, FixDirectionEntry, FixDirections, FixDrop,
     FixEntry, FixFailure, FixFieldIter, FixHeader, FixId, FixIdMapKind, FixIdSource, FixIdSources,
-    FixKey, FixLifted, FixMerge, FixMessages, FixMsg, FixPatterns, FixRegistry, FixSpellings,
-    HIDDENQTY_TAG_NAME, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, MARKETDATAKIND_TAG_NAME,
-    MARKETDATATYPE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCTXID_TAG_NAME,
-    MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME,
-    MSGSESSIONID_TAG_NAME, ORDQTY_TAG_NAME, PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME,
-    PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME,
-    SNAPUNIX_TAG_NAME, SOH, SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME,
-    STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG_NAME, TICKER_TAG_NAME,
-    TRADABLE_TAG_NAME, ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, Words, fix_column_of, fix_column_tags,
-    fix_crate_fields, fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document,
-    into_fix_document, is_crate_tag, is_derived_tag,
+    FixKey, FixLifted, FixMerge, FixMessages, FixMsg, FixPatterns, FixRegistry, FixSource,
+    FixSpellings, HIDDENQTY_TAG_NAME, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME,
+    MARKETDATAKIND_TAG_NAME, MARKETDATATYPE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME,
+    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME,
+    MSGPLUGINSIDE_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, ORDQTY_TAG_NAME,
+    PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
+    RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH,
+    SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS,
+    STANDARD_TRAILER_TAGS, STATE_TAG_NAME, STRIKEPX_TAG_NAME, TICKER_TAG_NAME, TRADABLE_TAG_NAME,
+    ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, Words, fix_column_of, fix_column_tags, fix_crate_fields,
+    fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document,
+    is_crate_tag, is_derived_tag,
 };
 pub use hostname::HOSTNAME;
 pub use int256::{i256, u256};
-pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
+pub use iobase::{ArrowWriteSession, overwrite_serie_default};
 pub use iobase::{
     DEFAULT_FETCH_BYTE_SIZE, DEFAULT_STREAM_BATCH_SIZE, IOBase, Reader, Writer, not_empty,
     skip_absent,
@@ -222,7 +233,9 @@ pub use iomode::IOMode;
 pub use iopath::IOPath;
 pub use ioresult::IOResult;
 pub use join::{DEFAULT_JOIN_SUFFIX, DEFAULT_PUSHDOWN_KEYS, JoinKind, JoinOptions, JoinSide};
+pub use key_serie::{IntoKeyBy, KeyBy, KeySerie, KeySeries, StreamKeySerie};
 pub use listing::Listing;
+pub use media_serie::{MediaSerieState, MediaSerieValue};
 pub use media_type::MediaType;
 pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata};
 pub use mime_type::MimeType;
@@ -238,9 +251,10 @@ pub use protocol::{
     TransformFieldMut, UrnField, UrnFieldMut,
 };
 pub use scheme::Scheme;
-pub use serie_source::SerieSource;
+pub use shared_stream::SharedStream;
 pub use sort_options::SortOptions;
 pub use spill::{DEFAULT_SPILL_BYTE_SIZE, SpillOptions};
+pub use stream_serie::StreamSerie;
 pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
 pub use union_mode::UnionMode;
@@ -255,14 +269,13 @@ pub use warehouse::{
     Object, ObjectValue, Objects, Properties, SystemWarehouse, Table, TableValue, Tables,
     Warehouse,
 };
-pub use window_serie::{
-    SerieWindows, SerieWindowsIter, WindowSerie, WindowSerieMut, WindowSerieRows,
-};
+pub use window_serie::{WindowSerie, WindowSerieMut, WindowSerieRows};
 pub use xxhash::{DigestFieldNames, DigestFields};
 
 pub(crate) use arithmetic::Arithmetic;
 pub(crate) use ascii::{ascii_bytes, ascii_text, ascii_text_sized};
 pub use bbg::*;
+pub use bic::*;
 pub use boolean::*;
 pub use bytes::*;
 pub use ccy::*;
@@ -282,11 +295,15 @@ pub(crate) use default::{
 };
 pub(crate) use diff::push_field_name_path;
 pub use diff::{Differences, OwnedDifferences};
+pub use dti::*;
 pub use duration::*;
+pub use elf::*;
 pub use enumeration::Vocabulary;
 pub use enums::*;
+pub use eusipa::Eusipa;
 pub use field::*;
 pub use figi::*;
+pub use fisn::*;
 pub use floating::*;
 pub use forex::*;
 #[cfg(feature = "parquet")]
@@ -301,6 +318,7 @@ pub use integer::*;
 pub use interval::*;
 pub use isin::*;
 pub use isin_registry::{IsinEntry, IsinRegistry};
+pub use lei::*;
 pub use limit::Limit;
 pub use mapping::*;
 pub use marketdatakind::*;
@@ -313,6 +331,7 @@ pub use mic::*;
 pub(crate) use mime_type::MIMETYPE_EXTENSION_NAME;
 pub use mime_type::MimeTypeType;
 pub(crate) use parser::{fold_digest, folds_equal, normalized};
+pub use pluginside::*;
 pub use pretty::Pretty;
 pub use ric::*;
 pub use runend::*;

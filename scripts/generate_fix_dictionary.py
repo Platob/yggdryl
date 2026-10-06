@@ -108,7 +108,7 @@ MSGCAT_BY_TYPE = {
 
 # The category set itself - every name, its code and its description - is
 # `MarketDataKind`'s in `rust/src/marketdatakind.rs`, which renders the
-# `msgcatcodeset` document: this table only files each type under a name,
+# `marketdatakindcodeset` document: this table only files each type under a name,
 # and a name that enum does not know refuses when the dictionary loads.
 
 # Pinned commits. A branch would make the output unreproducible.
@@ -1589,13 +1589,15 @@ def summary(
 CRATE_TAG_MIN = 65_000
 
 # The named documents the crate defines and a store dump writes: the fixed
-# row, its message-category vocabulary, and the two Map groups whose keys are
-# the crate's own vocabulary.
+# row, its message-category and plugin-side vocabularies, and the one Map
+# group whose keys are the crate's own vocabulary - the list
+# `CRATE_DOCUMENTS` in `rust/tests/fix/store.rs` names, beside the field
+# shard `crate_owned` reads by its tag range.
 CRATE_DOCUMENTS = frozenset(
     {
-        "codesets/msgcatcodeset.json",
+        "codesets/marketdatakindcodeset.json",
+        "codesets/msgpluginsidecodeset.json",
         "components/fixmsg.json",
-        "groups/identifiers.json",
         "groups/metadata.json",
     }
 )
@@ -1604,8 +1606,8 @@ CRATE_DOCUMENTS = frozenset(
 def crate_owned(name: str) -> bool:
     """Whether a document under the output root is the crate's own dump.
 
-    The crate's own documents - its field shard, code set, two Map groups,
-    and fixed row ``components/fixmsg.json`` - are written by
+    The crate's own documents - its field shard, two code sets, one Map
+    group, and fixed row ``components/fixmsg.json`` - are written by
     ``FixRegistry::write_into`` and pinned by the Rust store tests; this
     generator neither writes nor checks them, and never removes them.
     """

@@ -11,13 +11,15 @@ const { DataType, Field, Side, fields } = require('yggdryl')
 test('Side is the core enum, member for member, in code order', () => {
   assert.ok(Object.isFrozen(Side))
   const codes = Object.values(Side)
-  assert.deepEqual(codes, Array.from({ length: 18 }, (_, index) => index))
-  assert.equal(Side.UNKN, 0)
+  assert.deepEqual(codes, [...Array(18).keys(), 99])
+  assert.equal(Side.UKNW, 0)
   assert.equal(Side.BUYS, 1)
   assert.equal(Side.SELL, 2)
   assert.equal(Side.SSHT, 5)
   assert.equal(Side.SELU, 17)
-  assert.deepEqual(Object.keys(Side).slice(0, 3), ['UNKN', 'BUYS', 'SELL'])
+  // Both sides at once - a book's, a two-sided quote's - stands last.
+  assert.equal(Side.BOTH, 99)
+  assert.deepEqual(Object.keys(Side).slice(0, 3), ['UKNW', 'BUYS', 'SELL'])
   assert.equal('_sideMembersNative' in require('yggdryl'), false)
 })
 
@@ -36,6 +38,9 @@ test("a side column stores the code and reads back the member's four-letter code
   }
   for (const given of ['SSHT', '5', 'SellShort', 'SSHORT']) {
     assert.equal(new DataType('side').scalar(given).asJs(), 'SSHT', given)
+  }
+  for (const given of ['BOTH', 'both', 'two-sided']) {
+    assert.equal(new DataType('side').scalar(given).asJs(), 'BOTH', given)
   }
   assert.throws(() => new DataType('side').scalar('not a side'))
   assert.equal(Field.from('side: side').dtype.id, 'side')

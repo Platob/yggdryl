@@ -25,7 +25,8 @@ use crate::expression::PyPlan;
 use crate::field::PyField;
 use crate::fix::PyFixMsg;
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
-use crate::serie::{PySerieReader, serie_source_of};
+use crate::serie::serie_source_of;
+use crate::stream_chunked_serie::PyStreamChunkedSerie;
 use crate::text::line::core_path_from_value;
 use crate::{Failed, Pulled, python_failure, value_error};
 
@@ -293,8 +294,8 @@ graph_methods!(PyMarketData, "MarketData"; [
     }
 
     /// The deltas of the books `source` holds - any source `read_serie`
-    /// answers or `SerieReader.from_` reads - laid out as `marketdata` rows
-    /// in book order, as a native `SerieReader`: every event each book
+    /// answers or `StreamChunkedSerie.from_` reads - laid out as `marketdata` rows
+    /// in book order, as a native `StreamChunkedSerie`: every event each book
     /// states among its deltas, of `kind` where one is named (`"ORDR"`,
     /// `"QUOT"`, `"EXEC"`, any spelling `enums.MarketDataKind` reads), every
     /// kind otherwise; a row that is no book is refused by its kind where
@@ -305,14 +306,14 @@ graph_methods!(PyMarketData, "MarketData"; [
         py: Python<'_>,
         source: &Bound<'_, PyAny>,
         kind: Option<&str>,
-    ) -> PyResult<PySerieReader> {
+    ) -> PyResult<PyStreamChunkedSerie> {
         let kind = kind
             .map(yggdryl::MarketDataKind::read)
             .transpose()
             .map_err(value_error)?;
         let source = serie_source_of(source)?;
         py.detach(move || CoreMarketData::deltas_serie(source, kind))
-            .map(PySerieReader::from)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 

@@ -26,7 +26,7 @@ expression  := plan (";" plan)*
 plan        := [create] [write] ["select" selector] ["from" source] ["where" expr]
                ["order" "by" orders] ["limit" n] ["offset" n]      -- limit and offset in either order
 create      := "create" ["table" | "view"] [target] "(" selector ")" ["with" properties]
-write       := verb [target] ["by" | "on" "(" selector ")"]        -- keys only after upsert
+write       := verb [target] ["by" | "on" "(" selector ")"]        -- keys only after upsert; none, the target's own
 verb        := "insert" ["into"] | "insert" "overwrite" ["into"] | "append" ["into" | "to"]
              | "overwrite" ["into"] | "replace" ["into"] | "upsert" ["into"] | "merge" ["into"]
              | "delete" ["from"]
@@ -82,7 +82,7 @@ Inside `[...]` a whole number is a position, a text constant a key, a `:` form a
 | projection | `price`, `price as amount`, `price as amount decimal(9,2) not null`, `id int64 with (comment = 'key')` |
 | exclusion | `* exclude (secret)`, `* except (secret)`, and a star appending: `*, upper(name) as name`, `* exclude (secret), upper(name) as name` |
 | row-multiplying projection | `unnest(legs) as leg`, `explode(legs)`, `unnest([bid, ask]) as side` |
-| write verb | `insert into`, `insert overwrite`, `upsert into ... by (...)`, `delete from`; aliases `append to`, `overwrite`, `replace into`, `merge into ... on (...)` |
+| write verb | `insert into`, `insert overwrite`, `upsert into ... by (...)`, `delete from`; aliases `append to`, `overwrite`, `replace into`, `merge into ... on (...)`; an `upsert` stating no keys matches on the target's own ([an Iceberg table's](../media/iceberg.md#the-merge-key)), and is refused naming `$.merge_by` where the target states none |
 | location | `'file:///lake/trades.parquet'`, `catalog.schema.table`, `catalog."odd schema".[odd.table]`; unquoted after a word that takes a target - `from /lake/trades.csv`, `into s3://bucket/trades`, `join ./venues.csv` - read to the first whitespace, `,`, `;` or `)` and printed back quoted |
 | target properties | `t with (media_type = 'text/csv', batch_row_size = '1024')` |
 | comment | `-- to end of line` |

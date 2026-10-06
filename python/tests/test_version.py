@@ -305,24 +305,35 @@ def test_arrow_keeps_string_storage_and_declared_field_restores_version():
 
 
 def test_the_datatype_identifiers_are_laid_out_by_family():
-    # Ninety-one, laid out by family: every identifier sits in its
+    # Ninety-seven, laid out by family: every identifier sits in its
     # family's range and the list states them in that order, so `url` and
     # `urn` follow `version` in the text family, `sized_utf8` follows
     # `fixed_utf8`, and the geospatial pair closes the list. An identifier is
     # a wire contract laid out by family, so a leaf added later lands beside
     # its family and nothing ever moves.
-    assert len(enums.DATA_TYPE_IDS) == 91
+    assert len(enums.DATA_TYPE_IDS) == 97
     assert "figi" in enums.DATA_TYPE_IDS
     ids = list(enums.DATA_TYPE_IDS)
     # The code family's newest identifiers follow the last one before them.
     assert ids.index("ric") == ids.index("unit") + 1
     assert ids.index("forex") == ids.index("ric") + 1
+    # The five reference-data codes took the text family's unused tail, so
+    # they open the code family's range, after `mediatype` and before
+    # `country`.
+    assert ids[ids.index("mediatype") + 1 : ids.index("country")] == [
+        "lei",
+        "bic",
+        "elf",
+        "dti",
+        "fisn",
+    ]
     assert ids.index("url") == ids.index("version") + 1
     assert ids.index("urn") == ids.index("url") + 1
     assert ids.index("sized_utf8") == ids.index("fixed_utf8") + 1
-    # The enum family closes the list after the geospatial pair, and
-    # `timeinforce`, an enum since it left the code family, lands last in it.
-    assert ids[-7:] == [
+    # The enum family closes the list after the geospatial pair: `timeinforce`,
+    # an enum since it left the code family, and `pluginside`, the newest
+    # member, land last in it.
+    assert ids[-8:] == [
         "geometry",
         "geography",
         "state",
@@ -330,6 +341,7 @@ def test_the_datatype_identifiers_are_laid_out_by_family():
         "side",
         "marketdatatype",
         "timeinforce",
+        "pluginside",
     ]
     assert ids[:2] == ["null", "boolean"]
 

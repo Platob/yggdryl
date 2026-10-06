@@ -37,6 +37,19 @@ impl Serie {
     /// assert!(!prices.is_spilled());
     /// ```
     pub fn resident_size(&self) -> usize {
+        if let Some(media) = self.media_state() {
+            return media.held_resident_size();
+        }
+        match self {
+            // Chunks count their own; a stream what it holds so far.
+            Self::Chunked(chunked) => return chunked.resident_size(),
+            Self::Stream(stream) => return stream.resident_size(),
+            Self::StreamChunked(stream) => return stream.resident_size(),
+            Self::Key(key) => return key.rows().resident_size(),
+            Self::Keys(keys) => return keys.iter().map(|key| key.rows().resident_size()).sum(),
+            Self::StreamKey(stream) => return stream.resident_size(),
+            _ => {}
+        }
         column!(
             self,
             run => Self::Run(run.clone()).memory_size(),
@@ -47,6 +60,20 @@ impl Serie {
     /// Whether the rows lie in a spill file: some bytes, none of them
     /// resident. A run and an empty column are never spilled.
     pub fn is_spilled(&self) -> bool {
+        if let Some(media) = self.media_state() {
+            return media.held_resident_size() == 0 && media.held_memory_size() > 0;
+        }
+        match self {
+            Self::Chunked(chunked) => return chunked.is_spilled(),
+            Self::Stream(stream) => return stream.is_spilled(),
+            Self::StreamChunked(stream) => return stream.is_spilled(),
+            Self::Key(key) => return key.rows().is_spilled(),
+            Self::Keys(keys) => {
+                return !keys.is_empty() && keys.iter().all(|key| key.rows().is_spilled());
+            }
+            Self::StreamKey(stream) => return stream.is_spilled(),
+            _ => {}
+        }
         column!(
             self,
             _run => false,
@@ -93,6 +120,15 @@ impl Serie {
     /// created, written or mapped, leaving the serie as it was.
     pub fn spill(&mut self, options: &SpillOptions) -> Result<()> {
         if options.is_never() {
+            return Ok(());
+        }
+        // Chunks spill heaviest first, never joined; a stream is held first,
+        // as the chunks it pulled.
+        if let Some(chunks) = self.held_chunks() {
+            self.raise_held()?;
+            let mut chunked = chunks.clone();
+            chunked.spill(options)?;
+            *self = Self::from(chunked);
             return Ok(());
         }
         self.spill_under(options.byte_size(), options)
@@ -151,7 +187,7 @@ impl Serie {
     /// What every door the crate lays a column out at answers through, so
     /// a column the crate built is never held resident past the bound. A
     /// door that lands a caller's array or batch sharing its buffers never
-    /// settles, and neither does a [`SerieReader`](crate::SerieReader)
+    /// settles, and neither does a [`StreamChunkedSerie`](crate::StreamChunkedSerie)
     /// batch in flight, cast or not: a stream's bound is its batch size,
     /// and the batch is the caller's to hold or drop. A door that drains a
     /// stream into held chunks settles each chunk it keeps.

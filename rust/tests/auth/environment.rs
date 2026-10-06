@@ -32,11 +32,7 @@ fn a_raw_variable_set_empty_or_blank_is_set_and_one_never_set_is_not() {
     let environment = given(&[
         ("AWS_CONFIG_FILE", ""),
         ("AWS_SHARED_CREDENTIALS_FILE", " 	 "),
-        (
-            "SPACED",
-            "  /tmp/aws/config 
-",
-        ),
+        ("SPACED", "  /tmp/aws/config \n"),
     ]);
     assert_eq!(environment.raw("AWS_CONFIG_FILE").as_deref(), Some(""));
     assert_eq!(

@@ -42,6 +42,8 @@ mod iomedia;
 mod ioresult;
 mod isin_registry;
 mod join;
+mod key_serie;
+pub use key_serie::{JsKeySerie, JsKeySeries, JsStreamKeySerie};
 mod logging;
 mod media;
 mod text;
@@ -56,6 +58,8 @@ mod window_serie;
 mod marketdatakind;
 #[allow(dead_code)]
 mod marketdatatype;
+#[allow(dead_code)]
+mod pluginside;
 #[allow(dead_code)]
 mod side;
 #[allow(dead_code)]
@@ -85,8 +89,8 @@ pub use chunked_serie::JsChunkedSerie;
 pub use datatype::JsDataType;
 pub use enums::{JsMediaType, JsMimeType};
 pub use expression::{
-    ExpressionVocabularies, JsBound, JsBoundSelector, JsExpression, JsFilter, JsPlan, JsRecords,
-    JsSelector, JsTerm, PartitionSplit, PlanOrder, expression_needs_quoting,
+    ExpressionVocabularies, JsBound, JsBoundSelector, JsExpression, JsFilter, JsPlan, JsSelector,
+    JsStreamSerie, JsTerm, PartitionSplit, PlanOrder, expression_needs_quoting,
     expression_vocabularies,
 };
 pub use field::{JsField, JsProtocolField, MetadataEntry};
@@ -117,9 +121,7 @@ pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBas
 pub use iomedia::JsBatchReader;
 pub use ioresult::JsIOResult;
 pub use media::options::JsRecordOptions;
-pub use serie::{
-    JsSerie, JsSerieIterator, JsSerieReader, JsSerieReaderPartitions, JsSerieReaderWindows,
-};
+pub use serie::{JsSerie, JsSerieIterator, JsStreamChunkedSerie};
 pub use spill::JsSpillOptions;
 pub use text::codec::{
     CodecLimitsInput, JsScalar, JsScalarIterator, codec_infer_format, codec_loads_inferred_native,

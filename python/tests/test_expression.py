@@ -421,7 +421,7 @@ def test_a_filter_is_a_where_clause() -> None:
     assert isinstance(filter.apply_arrow(table), pa.Table)
     kept = filter.apply_records([{"ccy": "EUR", "size": 5}, {"ccy": "USD", "size": 5}])
     assert kept.field.name == "row"
-    assert list(kept) == [{"ccy": "EUR", "size": 5}]
+    assert Serie.from_(kept).as_py() == [{"ccy": "EUR", "size": 5}]
 
 
 def test_a_selector_is_a_select_clause() -> None:
@@ -480,7 +480,7 @@ def test_a_selector_is_a_select_clause() -> None:
     assert selector.apply_arrow_array(array).field("doubled").to_pylist() == [2, 4]
     rows = selector.apply_records([{"ccy": "A", "size": 1}, {"ccy": "B", "size": 2}])
     assert rows.field.dtype["doubled"].dtype == DataType("int64")
-    assert rows.collect() == [
+    assert Serie.from_(rows).as_py() == [
         {"ccy": "A", "quantity": 1, "doubled": 2},
         {"ccy": "B", "quantity": 2, "doubled": 4},
     ]
@@ -624,7 +624,7 @@ def test_a_selector_declares_columns_like_a_create_table() -> None:
 
 
 def test_records_stream_both_ways() -> None:
-    from yggdryl import Records
+    from yggdryl import StreamSerie
 
     rows = Selector("size * 10 as size").apply_records(
         [{"size": 1}, {"size": 2}], schema=Field("rows", "struct<size:int64>", nullable=False)
@@ -635,9 +635,9 @@ def test_records_stream_both_ways() -> None:
     with pytest.raises(ValueError, match="consumed"):
         rows.into_arrow_reader()
     batch = pa.record_batch({"size": pa.array([3, 4], pa.int64())})
-    back = Records.from_arrow_reader(pa.RecordBatchReader.from_batches(batch.schema, [batch]))
+    back = StreamSerie.from_arrow_reader(pa.RecordBatchReader.from_batches(batch.schema, [batch]))
     assert back.field.name == "row"
-    assert list(back) == [{"size": 3}, {"size": 4}]
+    assert [row.as_py() for row in back] == [[3], [4]]
     with pytest.raises(ValueError, match="schema"):
         Selector("size").apply_records([])
 
@@ -826,7 +826,7 @@ def test_a_plan_shapes_a_stream_in_section_order() -> None:
     rows = Plan("select upper(ccy) as ccy order by size desc limit 1").apply_records(
         [{"ccy": "a", "size": 1}, {"ccy": "b", "size": 2}]
     )
-    assert rows.collect() == [{"ccy": "B"}]
+    assert Serie.from_(rows).as_py() == [{"ccy": "B"}]
 
     with pytest.raises(TypeError, match="Table"):
         plan.apply_arrow_table(first)
@@ -1023,7 +1023,7 @@ def test_a_decorated_function_is_registered_with_the_signature_its_hints_spell()
     projected = selector.apply_arrow_batch(batch())
     assert projected.column("doubled").to_pylist() == [2, None, 6]
     rows = selector.apply_records([{"size": 2, "ccy": "EUR"}], ROWS)
-    assert rows.collect() == [{"ccy": "EUR", "doubled": 4}]
+    assert Serie.from_(rows).as_py() == [{"ccy": "EUR", "doubled": 4}]
     assert double.unregister()
     assert "py.double" not in user_functions()
 
@@ -1069,7 +1069,7 @@ def test_a_filter_function_keeps_the_rows_it_answers_true_for() -> None:
     kept = big.where("size").apply_arrow_batch(batch())
     assert kept.column("ccy").to_pylist() == ["c"]
     assert Filter("py.big(size)").apply_arrow_batch(batch()).num_rows == 1
-    assert Filter("py.big(size)").apply_records([{"size": 5, "ccy": "x"}], ROWS).collect() == [
+    assert Serie.from_(Filter("py.big(size)").apply_records([{"size": 5, "ccy": "x"}], ROWS)).as_py() == [
         {"size": 5, "ccy": "x"}
     ]
     big.unregister()
@@ -1115,7 +1115,7 @@ taken = []
 
 def pull(into):
     for row in records:
-        into.append(row["doubled"])
+        into.append(row[0].as_py())
 
 
 def take():
@@ -1136,7 +1136,7 @@ print("ok")
 
 
 def test_records_pulled_from_two_threads_never_hold_the_gil_waiting() -> None:
-    """``Records`` advance their stream under one lock, and a row may call a
+    """``StreamSerie`` advance their stream under one lock, and a row may call a
     registered user function, which takes the GIL and may release it: a
     ``next()`` or an ``into_arrow_reader`` waiting on that lock attached would
     keep the advancing thread from taking the GIL back, and the process would

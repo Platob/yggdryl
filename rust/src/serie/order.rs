@@ -48,11 +48,8 @@ use arrow_schema::DataType as ArrowDataType;
 
 use super::{Proof, Rows as _, Serie, land, proven_row};
 use crate::arrow::{array_memory_size, scalar_memory_size};
-use crate::expression::{self, BoundSelector, IntoOrderings, IntoSelector, Projection};
-use crate::{
-    DataType, Error, Field, FieldPath, Result, Scalar, Selector, SerieReader, SerieWindows,
-    SortOptions,
-};
+use crate::expression::{self, IntoOrderings, Projection};
+use crate::{DataType, Error, Field, Result, Scalar, Selector, SortOptions, StreamChunkedSerie};
 
 /// The name an index column answers: the positions a sort chose.
 const INDEX_NAME: &str = "index";
@@ -146,6 +143,7 @@ pub(crate) fn stored_order_is_value_order(dtype: &DataType) -> bool {
         | DataType::Side
         | DataType::State
         | DataType::TimeInForce
+        | DataType::PluginSide
         | DataType::MarketDataKind
         | DataType::MarketDataType
         | DataType::Uuid
@@ -351,45 +349,6 @@ impl<'a> Compare<'a> {
     fn opens(&self, index: usize) -> bool {
         self.step(index) != Ordering::Equal
     }
-
-    /// The runs `starts` opens regrouped stably by key: the runs sorted by
-    /// the key at their first row, runs of one key kept in arrival order and
-    /// merged into one window, every row named once. `starts` has a set
-    /// first bit when it has any row, and its rows fit a `uint32`.
-    fn regroup(&self, starts: &BooleanBuffer) -> Regrouped {
-        let len = starts.len();
-        // Each run as the row it opens at and the row it ends before.
-        let mut runs: Vec<(u32, u32)> = Vec::with_capacity(starts.count_set_bits());
-        let mut opened = starts.set_indices();
-        if let Some(mut start) = opened.next() {
-            for next in opened {
-                runs.push((start as u32, next as u32));
-                start = next;
-            }
-            runs.push((start as u32, len as u32));
-        }
-        // Stable, so the runs of one key keep their arrival order.
-        runs.sort_by(|left, right| self.cmp(left.0 as usize, right.0 as usize));
-        let mut order: Vec<u32> = Vec::with_capacity(len);
-        // The windows are written over the runs already read, each as the
-        // row its key is read at and where it ends in `order`.
-        let mut kept = 0;
-        for index in 0..runs.len() {
-            let (start, end) = runs[index];
-            order.extend(start..end);
-            let ends = order.len() as u32;
-            if kept > 0 && self.cmp(runs[kept - 1].0 as usize, start as usize) == Ordering::Equal {
-                runs[kept - 1].1 = ends;
-            } else {
-                runs[kept] = (start, ends);
-                kept += 1;
-            }
-        }
-        Regrouped {
-            order,
-            windows: Box::from(&runs[..kept]),
-        }
-    }
 }
 
 /// Every key cell's rows in Arrow's row format, one converter over all of
@@ -490,16 +449,6 @@ pub(crate) struct WindowCut {
     /// The first row whose key orders before its predecessor's under
     /// `SortOptions::default()`: ascending, absent keys last.
     pub(crate) descent: Option<usize>,
-    /// Asked for and needed: the windows in key order.
-    pub(crate) regrouped: Option<Regrouped>,
-}
-
-/// The windows of a serie whose keys hold a descent, in key order.
-pub(crate) struct Regrouped {
-    /// Every row, in key order, rows of one key in arrival order.
-    pub(crate) order: Vec<u32>,
-    /// Per window: the row its key is read at, and where it ends in `order`.
-    pub(crate) windows: Box<[(u32, u32)]>,
 }
 
 /// Where an absent value goes against a present one under `options`.
@@ -584,7 +533,8 @@ macro_rules! primitive {
             Serie::UInt8($column)
             | Serie::Side($column)
             | Serie::MarketDataKind($column)
-            | Serie::TimeInForce($column) => Some($answer),
+            | Serie::TimeInForce($column)
+            | Serie::PluginSide($column) => Some($answer),
             Serie::UInt16($column) | Serie::State($column) | Serie::MarketDataType($column) => {
                 Some($answer)
             }
@@ -642,7 +592,8 @@ macro_rules! primitive_mut {
             Serie::UInt8(held)
             | Serie::Side(held)
             | Serie::MarketDataKind(held)
-            | Serie::TimeInForce(held) => {
+            | Serie::TimeInForce(held)
+            | Serie::PluginSide(held) => {
                 let $column = Arc::make_mut(held);
                 Some($answer)
             }
@@ -851,7 +802,7 @@ impl Serie {
     /// [`Selector`] (every projection ascending) or a [`Scalar`] - each a
     /// term with its direction and its nulls placement
     /// ([`IntoOrderings`]). The terms are bound once against
-    /// [`SerieReader::root_of`]: a record column against its own field, any
+    /// [`StreamChunkedSerie::root_of`]: a record column against its own field, any
     /// other column as the one child of its record under its own name, so
     /// a column named `price` sorts by `"price desc"`. A key that is a
     /// column is the landed column, zero copy; a computed one - `price *
@@ -932,7 +883,7 @@ impl Serie {
             return Ok((0..len as u32).collect());
         }
         let key = Selector::new(by.iter().map(|key| Projection::new(key.term().clone())))
-            .bind_key(&SerieReader::root_of(field)?, self.name(), "sort by")?;
+            .bind_key(&StreamChunkedSerie::root_of(field)?, self.name(), "sort by")?;
         let keys = key.apply_serie(self)?;
         let record = keys.as_struct().expect("a key is a record column");
         let absent = record.nulls().filter(|nulls| nulls.null_count() > 0);
@@ -1287,7 +1238,8 @@ impl Serie {
 
     /// The rows at `order`, every position already checked.
     pub(crate) fn taken(&self, order: &[u32]) -> Result<Self> {
-        match self {
+        self.raise_held()?;
+        match self.held_leaf() {
             // Every row is the one value: the pick is the count.
             Self::Lit(lit) => Ok(Self::lit(
                 Arc::clone(crate::value::SerieValue::field_ref(lit.as_ref())),
@@ -1377,7 +1329,8 @@ impl Serie {
 
     /// The rows `keep` marks, which is as long as this serie.
     pub(crate) fn filtered(&self, keep: &[bool]) -> Result<Self> {
-        match self {
+        self.raise_held()?;
+        match self.held_leaf() {
             // Every row is the one value: the kept rows are a count.
             Self::Lit(lit) => Ok(Self::lit(
                 Arc::clone(crate::value::SerieValue::field_ref(lit.as_ref())),
@@ -1405,32 +1358,7 @@ impl Serie {
         }
     }
 
-    /// The rows grouped by `keys`, a serie of the same length: one `(key,
-    /// rows)` per distinct key value, in order of first occurrence, an
-    /// absent key one value. Sorted keys cut every group as a zero-copy
-    /// slice; any other keys take each group's rows once. A record column
-    /// partitions by one of its children through `child("venue")`, by
-    /// several through [`Self::partition_by_paths`].
-    ///
-    /// ```
-    /// use yggdryl::{Scalar, Serie};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let prices = Serie::new(vec![Scalar::from(1_i64), Scalar::from(2_i64), Scalar::from(3_i64)]);
-    /// let venues = Serie::new(vec![Scalar::from("XNAS"), Scalar::from("XNYS"), Scalar::from("XNAS")]);
-    /// let groups = prices.partition_by(&venues)?;
-    /// assert_eq!(groups.len(), 2);
-    /// assert_eq!(groups[0].0, Scalar::from("XNAS"));
-    /// assert_eq!(groups[0].1.rows().to_vec(), vec![Scalar::from(1_i64), Scalar::from(3_i64)]);
-    /// assert_eq!(groups[1].0, Scalar::from("XNYS"));
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the serie when `keys` is another length.
-    pub fn partition_by(&self, keys: &Self) -> Result<Vec<(Scalar, Self)>> {
+    pub(crate) fn cut_partitions(&self, keys: &Self) -> Result<Vec<(Scalar, Self)>> {
         if keys.len() != self.len() {
             return Err(refuse(
                 self,
@@ -1446,7 +1374,15 @@ impl Serie {
         // One comparator says whether the keys are sorted and, when they
         // are, where each group ends.
         let compare = Compare::new(keys, SortOptions::default());
-        if (1..len).all(|index| compare.cmp(index - 1, index) != Ordering::Greater) {
+        let mut direction = None;
+        let clustered = (1..len).all(|index| {
+            let step = compare.cmp(index - 1, index);
+            if step == Ordering::Equal {
+                return true;
+            }
+            *direction.get_or_insert(step) == step
+        });
+        if clustered {
             let mut groups = Vec::new();
             let mut start = 0;
             for index in 1..=len {
@@ -1510,219 +1446,8 @@ impl Serie {
         Ok(positions)
     }
 
-    /// The rows of a record column grouped by the cells `paths` reach: one
-    /// group per distinct combination, keyed by the run of those cells in
-    /// `paths` order, exactly as [`Self::partition_by`] groups by one key.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, Field, FieldPath, Scalar, Serie, StructType};
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let root = Field::new(
-    ///     "quote",
-    ///     DataType::from(StructType::from_fields([
-    ///         Field::new("venue", DataType::utf8(), false),
-    ///         Field::new("side", DataType::utf8(), false),
-    ///         Field::new("price", DataType::Int64, false),
-    ///     ])?),
-    ///     false,
-    /// );
-    /// let quotes = Serie::from_scalars(root, [
-    ///     Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from("B"), Scalar::from(1_i64)]),
-    ///     Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from("S"), Scalar::from(2_i64)]),
-    ///     Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from("B"), Scalar::from(3_i64)]),
-    /// ])?;
-    /// let groups = quotes.partition_by_paths(&["venue".parse::<FieldPath>()?, "side".parse()?])?;
-    /// assert_eq!(groups.len(), 2);
-    /// assert_eq!(groups[0].0, Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from("B")]));
-    /// assert_eq!(groups[0].1.len(), 2);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the serie when it is a run or not a record
-    /// column, when `paths` is empty, or when a path reaches no column.
-    pub fn partition_by_paths(&self, paths: &[FieldPath]) -> Result<Vec<(Scalar, Self)>> {
-        let Self::Struct(_) = self else {
-            return Err(self.not_a_record("partitions by no path"));
-        };
-        if paths.is_empty() {
-            return Err(refuse(
-                self,
-                smol_str::format_smolstr!(
-                    "{} partitions by no path: pass at least one",
-                    self.name()
-                ),
-            ));
-        }
-        let mut children = Vec::with_capacity(paths.len());
-        for path in paths {
-            let child = self.get_child_by_path(path).ok_or_else(|| {
-                refuse(
-                    self,
-                    smol_str::format_smolstr!("{path} reaches no column of {}", self.name()),
-                )
-            })?;
-            children.push(child.clone());
-        }
-        let keys = Self::record_of(children)?;
-        self.partition_by(&keys)
-    }
-
-    /// The rows cut into windows of equal keys, the keys `by` computes from
-    /// each row: one `(key, window)` per window, every window a view. The
-    /// windows are never empty, never overlap, and cover every row.
-    ///
-    /// With `sorted` false, a window is a maximal run of adjacent rows whose
-    /// keys are equal, in row order, over this serie at its offset; a key
-    /// that comes back after another opens a window of its own, where
-    /// [`Self::partition_by`] gathers every row of a key into one group -
-    /// over keys already in order the two agree. With `sorted` true, each
-    /// distinct key is answered exactly once, in key order: ascending, an
-    /// absent key last, as [`SortOptions::ascending`] - the default, the
-    /// plan's `order by` default and DuckDB's - orders them. Here `sorted`
-    /// asks for each key once in key order, where
-    /// [`crate::graph::EventIterator::new`]'s says its input arrives sorted.
-    /// The windows are cut where `sorted` false cuts them, the order read in
-    /// the same pass: keys already in order answer exactly the `sorted`
-    /// false windows over this serie, at the same cost, and any others have
-    /// their runs - never their rows - sorted stably by key, the runs of one
-    /// key merged, and the rows gathered once into key order, rows of one
-    /// key in arrival order, into a serie the answer owns
-    /// ([`SerieWindows::serie`]). Only ascending is offered: keys grouped in
-    /// any other order already answer each key once with `sorted` false.
-    ///
-    /// Every window lent states a record
-    /// ([`WindowSerie::static_values`](crate::WindowSerie::static_values),
-    /// typed by [`SerieWindows::static_field`]): its key cells, `windownum` -
-    /// its place among the windows - and `rownum` - the number its first row
-    /// has in this serie, null where `sorted` gathered the rows - the record
-    /// a stream window of the same rows states
-    /// ([`SerieReader::window_by`]). It is built only when read.
-    ///
-    /// `by` is a selector - a clause text such as `"venue, minutes(ts, 15)
-    /// as bucket"`, or a [`Selector`], a projection, a term or a path -
-    /// parsed once and bound once against
-    /// [`SerieReader::root_of`]: a record column binds against its own
-    /// field, any other column as the one child of its record, under its own
-    /// name. Names fold ASCII case, as every expression's do. A `*` beside
-    /// projections keys by every column it keeps, then the projections.
-    ///
-    /// A key is the run of its projected cells at a window's first row, in
-    /// selector order - one term keys a one-cell run. An absent record row
-    /// keys [`Scalar::Null`], and an absent cell is a null cell. Keys are
-    /// equal as the ordering verbs equate them: an absent key equals an
-    /// absent key, every NaN is one value, and a nested key - a record, a
-    /// list or a map cell - compares item by item. A period term such as
-    /// `minutes(ts, 15)` keys the number of its period since the epoch, in
-    /// UTC whatever zone the column states.
-    ///
-    /// The cost is one plan per call and one key per window: the key column
-    /// computed once, one comparator over it and one bitmap of where the
-    /// windows open, then each window costs the run of its key and nothing
-    /// else. No key row is built where the keys order as their buffers -
-    /// text, integers, temporals and records of them; a key cell that does
-    /// not - a registered code, a windows-1252 text, a version, a URL -
-    /// builds its own rows once for the call, never a run per row, and a
-    /// list, map or union cell off the buffers builds each of its rows
-    /// once. A period term such as `minutes(ts, 15)` is evaluated row by
-    /// row through the expression's row tier, so it costs a constant count
-    /// of allocations but time and a transient value per row. With `sorted`
-    /// and keys out of order, the gather adds one stable sort of the runs,
-    /// the order the rows are taken in, and one take of every column - the
-    /// only rows this verb copies.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, Field, Scalar, Serie, StructType};
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let root = Field::new(
-    ///     "quote",
-    ///     DataType::from(StructType::from_fields([
-    ///         Field::new("venue", DataType::utf8(), false),
-    ///         Field::new("price", DataType::Int64, false),
-    ///     ])?),
-    ///     false,
-    /// );
-    /// let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
-    /// let quotes = Serie::from_scalars(root.clone(), [
-    ///     quote("XNAS", 1),
-    ///     quote("XNAS", 2),
-    ///     quote("XNYS", 3),
-    ///     quote("XNAS", 4),
-    /// ])?;
-    /// let windows = quotes.window_by("venue", false)?;
-    /// let windows: Vec<_> = windows.iter().collect();
-    /// assert_eq!(windows.len(), 3);
-    /// assert_eq!(windows[0].0, Scalar::from_sequence([Scalar::from("XNAS")]));
-    /// assert_eq!((windows[0].1.offset(), windows[0].1.len()), (0, 2));
-    /// // XNAS comes back after XNYS, so it opens a window of its own.
-    /// assert_eq!(windows[2].0, Scalar::from_sequence([Scalar::from("XNAS")]));
-    /// assert_eq!((windows[2].1.offset(), windows[2].1.len()), (3, 1));
-    /// assert!(std::ptr::eq(windows[2].1.serie(), &quotes));
-    ///
-    /// // Sorted, each key once and in key order: XNAS first, its rows in
-    /// // the order they arrived.
-    /// let mixed = Serie::from_scalars(root, [
-    ///     quote("XNYS", 1),
-    ///     quote("XNAS", 2),
-    ///     quote("XNYS", 3),
-    ///     quote("XNAS", 4),
-    /// ])?;
-    /// let sorted = mixed.window_by("venue", true)?;
-    /// assert_eq!(sorted.len(), 2);
-    /// let windows: Vec<_> = sorted.iter().collect();
-    /// assert_eq!(windows[0].0, Scalar::from_sequence([Scalar::from("XNAS")]));
-    /// assert_eq!(windows[0].1.rows().to_vec(), vec![quote("XNAS", 2), quote("XNAS", 4)]);
-    /// assert_eq!(windows[1].0, Scalar::from_sequence([Scalar::from("XNYS")]));
-    /// assert_eq!(windows[1].1.rows().to_vec(), vec![quote("XNYS", 1), quote("XNYS", 3)]);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error, before any row is read, for text that is not a
-    /// selector; naming the serie, for a run, which windows by no term, for
-    /// a key stating no projection - an empty list, or a `*` alone - and for
-    /// an `unnest`; the binder's own refusal for a column the key reaches
-    /// none of, or reaches two of, and for a period step that is not a
-    /// positive literal; and, naming the serie and both names, for a key
-    /// cell whose name folds onto `windownum` or `rownum` - alias it. With
-    /// `sorted` and keys out of order, it refuses a
-    /// serie past `u32::MAX` rows, which the gather cannot address, naming
-    /// it, once the keys are read.
-    pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> Result<SerieWindows<'_>> {
-        SerieWindows::new(self, 0, self.len(), &by.into_selector()?, None, sorted)
-    }
-
-    /// `by` bound as the key this serie's rows are windowed by: refused
-    /// for a run, which no term reads, and under the key rule every keyed
-    /// verb shares, naming this serie.
-    pub(crate) fn window_key(&self, by: &Selector) -> Result<BoundSelector> {
-        let Some(field) = self.field() else {
-            return Err(self.not_a_record("windows by no term"));
-        };
-        by.bind_key(&SerieReader::root_of(field)?, self.name(), "window by")
-    }
-
-    /// Where the windows of equal adjacent rows open, the first row that
-    /// orders before the row it follows under [`SortOptions::ascending`],
-    /// and, when `regroup` asks and such a descent exists, the windows in
-    /// key order ([`Regrouped`]).
-    ///
-    /// One comparator over the rows and one bitmap, the descent read in the
-    /// same pass, whatever the run count; the regrouping reuses that
-    /// comparator over one entry per run - a stable sort of the runs, never
-    /// of the rows - and lays out one position per row.
-    ///
-    /// # Errors
-    ///
-    /// Only a regrouping refuses: rows past what one `uint32` position
-    /// addresses, naming this serie.
-    pub(crate) fn window_starts(&self, regroup: bool) -> Result<WindowCut> {
+    /// Equal-key run starts and the first descent, using one comparator.
+    pub(crate) fn window_starts(&self) -> WindowCut {
         let compare = Compare::new(self, SortOptions::default());
         let mut descent = None;
         let starts = BooleanBuffer::collect_bool(self.len(), |index| {
@@ -1732,18 +1457,7 @@ impl Serie {
             }
             step != Ordering::Equal
         });
-        let regrouped = match descent {
-            Some(_) if regroup => {
-                require_indexable(self)?;
-                Some(compare.regroup(&starts))
-            }
-            _ => None,
-        };
-        Ok(WindowCut {
-            starts,
-            descent,
-            regrouped,
-        })
+        WindowCut { starts, descent }
     }
 
     /// `value`, a key already built, against row `row` of this key column
@@ -1781,46 +1495,6 @@ impl Serie {
         directed(cells.len().cmp(&children.len()), options)
     }
 
-    /// The record column whose children are `children`, which the caller
-    /// took from one column so their rows align; the record is never
-    /// absent.
-    fn record_of(children: Vec<Self>) -> Result<Self> {
-        let fields = children
-            .iter()
-            .map(|child| child.require_field().cloned())
-            .collect::<Result<Vec<Field>>>()?;
-        let arrays: Vec<ArrayRef> = children
-            .iter()
-            .map(|child| child.require_arrow_array())
-            .collect::<Result<Vec<_>>>()?;
-        // Each child keeps its field's metadata - an extension name, a code's
-        // identity - so the record lays out as the key root it lands under.
-        let arrow_fields: arrow_schema::Fields = arrays
-            .iter()
-            .zip(&fields)
-            .map(|(array, field)| {
-                let projected = field.as_arrow_field_ref()?;
-                Ok(Arc::new(
-                    arrow_schema::Field::new(
-                        field.name(),
-                        array.data_type().clone(),
-                        field.is_nullable(),
-                    )
-                    .with_metadata(projected.metadata().clone()),
-                ))
-            })
-            .collect::<Result<Vec<_>>>()?
-            .into();
-        let record =
-            arrow_array::StructArray::try_new(arrow_fields, arrays, None).map_err(Error::Arrow)?;
-        let root = Field::new(
-            "key",
-            DataType::from(crate::StructType::from_fields(fields)?),
-            false,
-        );
-        Ok(land(Arc::new(root), Arc::new(record), &Proof::Proven)?)
-    }
-
     /// The bytes this serie's rows occupy: a column's buffers as its own
     /// slice counts them, a run's values as the row estimator charges them.
     ///
@@ -1831,7 +1505,17 @@ impl Serie {
     /// assert!(prices.memory_size() > 0);
     /// ```
     pub fn memory_size(&self) -> usize {
+        if let Some(media) = self.media_state() {
+            return media.held_memory_size();
+        }
         match self {
+            // Chunks count their own; a stream what it holds so far.
+            Self::Chunked(chunked) => chunked.memory_size(),
+            Self::Stream(stream) => stream.memory_size(),
+            Self::StreamChunked(stream) => stream.memory_size(),
+            Self::Key(key) => key.memory_size(),
+            Self::Keys(keys) => keys.memory_size(),
+            Self::StreamKey(stream) => stream.memory_size(),
             Self::Run(run) => run.as_slice().iter().map(scalar_memory_size).sum(),
             // A constant states its estimate from the one row it holds and
             // builds nothing, so sizing a column never lays it out.
@@ -1919,7 +1603,7 @@ impl Serie {
         range: Range<usize>,
         options: SortOptions,
     ) -> bool {
-        match self {
+        match self.held_leaf_mut() {
             Self::Run(run) => {
                 run.make_mut()[range].sort_by(|left, right| compare_values(left, right, options));
                 true
@@ -1935,7 +1619,7 @@ impl Serie {
     /// Reverse rows `range` where they stand, answering whether the leaf
     /// could, exactly as [`Self::sort_range_in_place`] does.
     pub(crate) fn reverse_range_in_place(&mut self, range: Range<usize>) -> bool {
-        match self {
+        match self.held_leaf_mut() {
             Self::Run(run) => {
                 run.make_mut()[range].reverse();
                 true
@@ -2264,7 +1948,7 @@ impl Serie {
             return Ok(None);
         }
         let key = Selector::new(by.iter().map(|key| Projection::new(key.term().clone())))
-            .bind_key(&SerieReader::root_of(field)?, self.name(), "sort by")?;
+            .bind_key(&StreamChunkedSerie::root_of(field)?, self.name(), "sort by")?;
         let keys = key.apply_serie(self)?;
         let record = keys.as_struct().expect("a key is a record column");
         let absent = record.nulls().filter(|nulls| nulls.null_count() > 0);
@@ -2323,7 +2007,7 @@ impl Serie {
             return Ok(answer);
         }
         let key = Selector::new(by.iter().map(|key| Projection::new(key.term().clone())))
-            .bind_key(&SerieReader::root_of(field)?, self.name(), "sort by")?;
+            .bind_key(&StreamChunkedSerie::root_of(field)?, self.name(), "sort by")?;
         let mut pair = key.apply_serie(&self.slice(self.len() - 1, 1)?)?;
         pair.extend_from_serie(&key.apply_serie(&next.slice(0, 1)?)?)?;
         let record = pair.as_struct().expect("a key is a record column");

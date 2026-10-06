@@ -280,9 +280,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // other names - then the message's own: the session event a bridge
     // delivered it as, where a bridge says it came from, three normalized
     // identifiers - forex, Bloomberg, FIGI - and the capture's source. A
-    // market column FIX already names alike - price, side, CFICode, the
-    // strike - has no crate definition, and a bridge's own identifiers are
-    // read off its keys, so they have none either.
+    // market column FIX already names alike - price, side, CFICode - has no
+    // crate definition, and a bridge's own identifiers are read off its
+    // keys, so they have none either.
     assert_eq!(
         names,
         [
@@ -320,12 +320,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "askccy",
             "fxrates",
             "ticker",
+            "strikepx",
             "metadata",
             "ordqty",
             "tradable",
             "identifiers",
             "partyids",
             "msgpluginid",
+            "msgpluginside",
             "msgoriginator",
             "msgctxid",
             "msgsessionid",
@@ -375,12 +377,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("Ask Currency"),
             Some("FX Rates"),
             Some("Ticker"),
+            Some("Strike Price"),
             Some("Metadata"),
             Some("Order Quantity"),
             Some("Tradable"),
             Some("Identifiers"),
             Some("Party IDs"),
             Some("Message Plugin ID"),
+            Some("Message Plugin Side"),
             Some("Message Originator"),
             Some("Message Context ID"),
             Some("Message Session ID"),
@@ -499,7 +503,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(id, FixId::of(tag, field.name()).unwrap(), "tag and name");
         assert!(yggdryl::is_crate_tag(tag));
         assert_eq!(
-            view.branches().count(),
+            view.sources().count(),
             0,
             "{} is no dictionary's",
             field.name()
@@ -507,7 +511,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
     assert_eq!(yggdryl::CROSSCODE_TAG_NAME.0, 65_003);
-    assert_eq!(yggdryl::MSGSESSEVENTID_TAG_NAME, (65_044, "msgsesseventid"));
+    assert_eq!(yggdryl::MSGSESSEVENTID_TAG_NAME, (65_046, "msgsesseventid"));
     assert_eq!(
         [
             yggdryl::FIGICODE_TAG_NAME,
@@ -515,9 +519,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::FOREXCODE_TAG_NAME
         ],
         [
-            (65_048, "figicode"),
-            (65_049, "sourceurl"),
-            (65_046, "forexcode")
+            (65_050, "figicode"),
+            (65_051, "sourceurl"),
+            (65_048, "forexcode")
         ]
     );
     assert_eq!(
@@ -525,7 +529,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::MSGORIGINATOR_TAG_NAME,
             yggdryl::CONVERSATIONID_TAG_NAME,
         ],
-        [(65_041, "msgoriginator"), (65_045, "conversationid")]
+        [(65_043, "msgoriginator"), (65_047, "conversationid")]
     );
     assert_eq!(
         [
@@ -549,8 +553,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         ],
         [
             (65_003, "crosscode"),
-            (65_035, "metadata"),
-            (65_050, "fixmsg"),
+            (65_036, "metadata"),
+            (65_052, "fixmsg"),
             (65_006, "srcuuids"),
             (65_015, "state"),
             (65_010, "exprunix")
@@ -586,9 +590,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         "bridgesessionid",
         "sendersessionid",
         "refrecdunix",
-        // The strike is the dictionary's own `StrikePrice(202)`, and a
-        // bridge's own keys are read off their names, so no registry holds
-        // a field for any of them.
+        // The strike is a column the fixed row derives from the dictionary's
+        // own `StrikePrice(202)`, and a bridge's own keys are read off their
+        // names, so no registry holds a field for any of them.
         "strikepx",
         "omsdealeraccount",
         "omsuserid",

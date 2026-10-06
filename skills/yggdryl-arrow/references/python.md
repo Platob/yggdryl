@@ -1,6 +1,6 @@
 # yggdryl-arrow in Python
 
-`from yggdryl import Serie, ChunkedSerie, SerieReader, ArrowCastPlan, Field`.
+`from yggdryl import Serie, ChunkedSerie, StreamChunkedSerie, ArrowCastPlan, Field`.
 Every door crosses the Arrow C Data Interface and shares buffers with
 pyarrow; cast options are the keywords `safe=True` and
 `representation="value"`.
@@ -97,7 +97,7 @@ assert len(Serie.from_arrow_reader(table, root)) == 2
 ## Take pandas, polars, NumPy or any Arrow exporter in
 
 `Serie.from_(value, field=None)` is the one ladder over every columnar
-runtime; `ChunkedSerie.from_` and `SerieReader.from_` read the same ladder
+runtime; `ChunkedSerie.from_` and `StreamChunkedSerie.from_` read the same ladder
 as chunks and as a stream. A declared field is applied by the core's cast.
 
 ```python
@@ -105,7 +105,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import pyarrow as pa
-from yggdryl import ChunkedSerie, Serie, SerieReader
+from yggdryl import ChunkedSerie, Serie, StreamChunkedSerie
 
 frame = pd.DataFrame({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
 assert Serie.from_(frame).as_py() == [
@@ -126,7 +126,7 @@ assert len(Serie.from_(chunked)) == 3
 assert ChunkedSerie.from_(chunked).num_chunks == 2
 
 # A frame as a stream, not drained until pulled.
-assert [len(s) for s in SerieReader.from_(frame)] == [2]
+assert [len(s) for s in StreamChunkedSerie.from_(frame)] == [2]
 
 # Out: the PyCapsule interface and the runtime converters, buffers shared.
 record = Serie.from_(pa.table({"size": [100, 250]}))
@@ -137,19 +137,19 @@ assert record.into_polars()["size"].to_list() == [100, 250]
 
 ## Stream a large reader under one plan
 
-`SerieReader.from_arrow_reader(reader, root)` compiles one plan from the
+`StreamChunkedSerie.from_arrow_reader(reader, root)` compiles one plan from the
 stream's schema before a batch is pulled and holds at most one source batch.
 `into_arrow_reader()` is the transport face: batches cast as they are read,
 never landed.
 
 ```python
 import pyarrow as pa
-from yggdryl import Field, SerieReader
+from yggdryl import Field, StreamChunkedSerie
 
 root = Field("row", "struct<id: int64, symbol: utf8 not null>", nullable=False)
 table = pa.table({"id": pa.array([1, 2, 3], pa.int32()), "symbol": ["A", "B", None]})
 
-series = SerieReader.from_arrow_reader(table.to_reader(max_chunksize=1), root)
+series = StreamChunkedSerie.from_arrow_reader(table.to_reader(max_chunksize=1), root)
 assert series.field == root
 assert next(series).as_py() == [{"id": 1, "symbol": "A"}]
 assert next(series).child("id").as_py() == [2]
@@ -164,7 +164,7 @@ else:
 
 # Transport: a pyarrow reader that casts as it is read, handed over once.
 good = pa.table({"id": pa.array([1, 2], pa.int32()), "symbol": ["A", "B"]})
-reader = SerieReader.from_arrow_reader(good, root).into_arrow_reader()
+reader = StreamChunkedSerie.from_arrow_reader(good, root).into_arrow_reader()
 assert isinstance(reader, pa.RecordBatchReader)
 assert reader.read_all().schema.field("id").type == pa.int64()
 ```
@@ -408,10 +408,10 @@ held = copy.copy(prices)
 assert held.as_sorted().as_unique().as_reversed() is held
 assert held.as_py() == [None, 3, 1]
 
-# One (key, rows) per distinct key, in first-occurrence order.
-groups = prices.partition_by(["XNAS", "XNYS", "XNAS", "XNYS"])
-assert (len(groups), groups[0][0].as_py()) == (2, "XNAS")
-assert groups[0][1].as_py() == [3, 1]
+# One KeySerie per distinct typed key, in first-occurrence order.
+groups = prices.partition_by(Serie.from_scalars(Field("venue", "utf8", nullable=False), ["XNAS", "XNYS", "XNAS", "XNYS"]))
+assert (len(groups), groups[0].key.as_py()) == (2, ["XNAS"])
+assert groups[0].rows.child("price").as_py() == [3, 1]
 
 # A window reads and writes a stretch where it stands, window-relative.
 column = Serie.from_scalars(Field("price", "int64", nullable=False), [9, 3, 1, 2, 0])
@@ -471,7 +471,7 @@ assert spilled.as_spilled(byte_size=0) is spilled and spilled.is_spilled()
 ## Join two record columns
 
 ```python
-from yggdryl import Field, Serie, SerieReader
+from yggdryl import Field, Serie, StreamChunkedSerie
 
 trades = Serie.from_scalars(
     Field("trade", "struct<id: int64 not null, size: int64 not null>", nullable=False),
@@ -487,68 +487,58 @@ left = trades.join_with(venues, "id", "left", build="right")
 assert left.child("venue").as_py() == ["XNAS", "XNYS", None]
 assert len(trades.join_with(venues, "id", "anti", build="right")) == 1
 # A stream probes lazily against the held side.
-streamed = SerieReader.from_serie(trades).join_with(venues, "id", "inner", build="right")
+streamed = StreamChunkedSerie.from_serie(trades).join_with(venues, "id", "inner", build="right")
 assert sum(len(batch) for batch in streamed) == 2
 ```
 
 ## Cut rows into windows by key
 
-`window_by(by, sorted=False)` computes the key once and answers
-`(key, WindowSerie)` pairs, each window a view stating the record of its key
-cells, `windownum` and `rownum` as `static_values`. `sorted=True` asks for
-each key once in key order: keys already in order copy nothing, and only a
-descent gathers the rows once. A `ChunkedSerie` regroups its runs as
-zero-copy pieces and states no record; a `SerieReader` yields one lazy reader
-per window, read in order. Contract and costs:
-[windows by key](https://platob.github.io/yggdryl/types/serie/#windows-by-key).
+`window_by` and `windowBy` compute the key once and return `KeySeries`.
+Each `KeySerie` exposes `key`, `rows`, and an optional absolute `rownum`.
+Sorted windows regroup equal keys while retaining native payload pieces.
+A stream returns `StreamKeySerie`; read each borrowed payload before advancing.
 
 ```python
-from yggdryl import ChunkedSerie, Field, Serie, SerieReader
+from yggdryl import ChunkedSerie, Field, Serie, StreamChunkedSerie
 
 root = Field("fill", "struct<venue: utf8 not null, qty: int64 not null>", nullable=False)
 fills = Serie.from_scalars(root, [["XNAS", 5], ["XNYS", 2], ["XNAS", 3]])
 
 # Each key once, in key order; the record names the window's key.
 totals = {}
-for _, window in fills.window_by("venue", sorted=True):
-    record = window.static_values
-    assert record is not None
-    totals[record["venue"].as_py()] = sum(row["qty"] for row in window.as_py())
+for group in fills.window_by("venue", sorted=True):
+    totals[group.key[0].as_py()] = sum(row["qty"] for row in group.rows.as_py())
 assert totals == {"XNAS": 8, "XNYS": 2}
 
 # Across chunks: zero-copy pieces, no join, no record.
 chunked = ChunkedSerie.from_series([fills.slice(0, 2), fills.slice(2, 1)], root)
-(_, xnas), _ = chunked.window_by("venue", sorted=True)
-assert (len(xnas), xnas.num_chunks) == (2, 2)
+xnas = chunked.window_by("venue", sorted=True)[0].rows
+assert (len(xnas), len(list(xnas.into_chunked_stream(row_size=1)))) == (2, 2)
 
 # A stream: one lazy reader per window - read each before taking the next.
 places = []
-for window in SerieReader.from_serie(fills).window_by("venue"):
-    record = window.static_values
-    assert record is not None
-    places.append((record["rownum"].as_py(), sum(len(piece) for piece in window)))
+for group in StreamChunkedSerie.from_serie(fills).window_by("venue"):
+    places.append((group.rownum, sum(len(piece) for piece in group.rows.into_chunked_stream())))
 assert places == [(0, 1), (1, 1), (2, 1)]
 ```
 
 ## Cut a stream into partitions
 
-`reader.partition_by(by, max_open=None, threads=None, clustered=False)`
-yields `(key, rows)` as each partition closes: past `max_open` the lowest
-keys, `clustered` once another key arrives, the rest in key order when the
-stream ends; `rows` is a `ChunkedSerie`. Contract:
-[partitions of a stream](https://platob.github.io/yggdryl/arrow/readers/#partitions-of-a-stream).
+Stream partitioning yields `KeySerie` values as partitions close.
+The key stays explicit and the payload remains native; `clustered` closes a
+partition when the next key arrives. `max_open` bounds active partitions.
 
 ```python
-from yggdryl import ChunkedSerie, Field, Serie, SerieReader
+from yggdryl import ChunkedSerie, Field, Serie, StreamChunkedSerie
 
 root = Field("fill", "struct<venue: utf8 not null, qty: int64 not null>", nullable=False)
 batches = [[["XLON", 1], ["XNAS", 2]], [["XNAS", 3], ["XNYS", 4]]]
-stream = SerieReader.from_chunked(
+stream = StreamChunkedSerie.from_chunked(
     ChunkedSerie.from_series([Serie.from_scalars(root, rows) for rows in batches], root)
 )
 
 # Sorted on the venue: each partition is handed over as soon as the next one opens.
-sizes = [(key.as_py(), len(rows)) for key, rows in stream.partition_by("venue", clustered=True)]
+sizes = [(group.key.as_py(), len(group.rows)) for group in stream.partition_by("venue", clustered=True)]
 assert sizes == [(["XLON"], 1), (["XNAS"], 2), (["XNYS"], 1)]
 ```
 
@@ -587,25 +577,25 @@ assert isinstance(joined, Serie) and joined == quotes
 
 ## Hand a held column on as a stream
 
-`SerieReader.from_serie` and `from_chunked` read held data as a stream with
+`StreamChunkedSerie.from_serie` and `from_chunked` read held data as a stream with
 no plan and no copy - what a record write takes. `reader.cast(root)` re-roots
 the stream under one plan and consumes the reader.
 
 ```python
 import pyarrow as pa
-from yggdryl import ChunkedSerie, Field, Serie, SerieReader
+from yggdryl import ChunkedSerie, Field, Serie, StreamChunkedSerie
 
 rows = Serie.from_scalars(Field("row", "struct<id: int64 not null>", nullable=False), [[1], [2]])
-assert list(SerieReader.from_serie(rows)) == [rows]
+assert list(StreamChunkedSerie.from_serie(rows)) == [rows]
 
 # A leaf column is the one child of a `row` record.
 price = Serie.from_scalars(Field("price", "int64"), [1, 2])
-assert next(SerieReader.from_serie(price)).child("price").as_py() == [1, 2]
+assert next(StreamChunkedSerie.from_serie(price)).child("price").as_py() == [1, 2]
 
 chunks = ChunkedSerie.from_(pa.chunked_array([[1, 2], [3]]))
-assert [len(chunk) for chunk in SerieReader.from_chunked(chunks)] == [2, 1]
+assert [len(chunk) for chunk in StreamChunkedSerie.from_chunked(chunks)] == [2, 1]
 
-wide = SerieReader.from_serie(rows).cast(Field("row", "struct<id: float64 not null>", nullable=False))
+wide = StreamChunkedSerie.from_serie(rows).cast(Field("row", "struct<id: float64 not null>", nullable=False))
 assert [record.as_py() for record in wide] == [[{"id": 1.0}, {"id": 2.0}]]
 ```
 
@@ -671,12 +661,12 @@ assert joined.column("venue").to_pylist() == [None, "XPAR"]
 
 ## Gotchas in Python
 
-- `Serie`, `ChunkedSerie` and `SerieReader` are mutable or one-shot, so they
+- `Serie`, `ChunkedSerie` and `StreamChunkedSerie` are mutable or one-shot, so they
   are unhashable; compare by rows with `==`.
-- `SerieReader` crosses once: after `into_arrow_reader()`, `cast`, or being
-  taken by `Serie.from_` / `SerieReader.from_`, it raises `ValueError`.
+- `StreamChunkedSerie` crosses once: after `into_arrow_reader()`, `cast`, or being
+  taken by `Serie.from_` / `StreamChunkedSerie.from_`, it raises `ValueError`.
 - `Serie.from_` of a stream (a `Table`, a reader, a frame) drains it; use
-  `SerieReader.from_` to keep it lazy.
+  `StreamChunkedSerie.from_` to keep it lazy.
 - A bare `str` passed as `field` is a field expression (`"price: int64 not
   null"`); a `Field` built with no `nullable` argument is nullable.
 - `into_pandas()` / `into_polars()` of a leaf column answer a one-column frame

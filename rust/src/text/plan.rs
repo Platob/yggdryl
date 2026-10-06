@@ -70,6 +70,19 @@ pub(crate) struct TextPlan {
 }
 
 impl TextPlan {
+    /// Resolve the columns the scan clauses actually read, before any line.
+    pub(crate) fn projected(mut self, options: &TextOptions) -> Self {
+        use crate::media::IORecordOptions;
+        if let Some(names) = options.apply_columns() {
+            self.columns.retain(|column| {
+                names
+                    .iter()
+                    .any(|name| name.eq_ignore_ascii_case(&column.name))
+            });
+        }
+        self
+    }
+
     /// Compile the plan one configuration answers with.
     ///
     /// # Errors

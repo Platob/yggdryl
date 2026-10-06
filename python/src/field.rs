@@ -417,6 +417,10 @@ impl PyField {
     }
 
     /// Returns a recursively normalized field for a named compatibility target.
+    ///
+    /// An unsigned integer column stating `FIELD:representation=bits` is
+    /// exchanged as the signed integer of its width where the target names
+    /// one, and keeps the declaration.
     #[allow(clippy::wrong_self_convention)]
     fn into_scheme_compat(&self, target: &str) -> PyResult<Self> {
         let target = CoreScheme::from_str(target).map_err(value_error)?;
@@ -2127,6 +2131,17 @@ impl PyProtocolField {
         )))
     }
 
+    /// The same rule for the `FIELD:` vocabulary.
+    fn require_field_properties(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::FIELD {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "{property} is a field property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
+
     /// A transform's `by` is the argument list of its function, written
     /// beside it by the `term` setter, so it is read here and never written
     /// alone.
@@ -2298,55 +2313,57 @@ impl PyProtocolField {
             .map(str::to_owned))
     }
 
-    /// The dictionaries that contributed this field, on the `fix` view.
+    /// The sources that contributed this field, on the `fix` view.
     ///
-    /// `FIX:branches` read as a list: folded to ASCII lowercase, sorted, and
-    /// empty when the specification alone defines the field. Membership is
-    /// provenance a caller filters on; no lookup consults it. Assigning a
-    /// sequence of names stores them deduplicated under the fold, and an
-    /// empty one removes the property; a name that is empty or carries a
-    /// comma is a `ValueError` that leaves the field unchanged.
+    /// `FIX:sources` read as a list: each id folded to ASCII lowercase,
+    /// sorted, and empty when the specification alone defines the field.
+    /// Membership is provenance a caller filters on; no lookup consults it,
+    /// and each id names an entry of the registry's catalog
+    /// (`FixRegistry.sources`). Assigning a sequence of ids stores them
+    /// deduplicated under the fold, and an empty one removes the property;
+    /// an id that is empty or holds a quote, a backslash or a control
+    /// character is a `ValueError` that leaves the field unchanged.
     #[getter]
-    fn branches(&self, py: Python<'_>) -> PyResult<Vec<String>> {
-        self.require_fix("branches")?;
+    fn sources(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        self.require_fix("sources")?;
         let field = self.borrow_field(py)?;
-        Ok(field.inner.as_fix().branches().map(str::to_owned).collect())
+        Ok(field.inner.as_fix().sources().map(str::to_owned).collect())
     }
 
     #[setter]
-    fn set_branches(&self, dialects: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_fix("branches")?;
+    fn set_sources(&self, sources: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("sources")?;
         let mut parsed = Vec::new();
-        for value in dialects.try_iter()? {
+        for value in sources.try_iter()? {
             parsed.push(value?.extract::<String>()?);
         }
-        let mut field = self.borrow_field_mut(dialects.py())?;
+        let mut field = self.borrow_field_mut(sources.py())?;
         field
             .inner
             .as_fix_mut()
-            .set_branches(parsed)
+            .set_sources(parsed)
             .map_err(value_error)
     }
 
-    /// Add one dictionary to those that contributed this field.
+    /// Add one source to those that contributed this field.
     ///
-    /// Idempotent under the fold: a name already listed is listed once.
-    fn add_branch(&self, py: Python<'_>, dialect: &str) -> PyResult<()> {
-        self.require_fix("branches")?;
+    /// Idempotent under the fold: an id already listed is listed once.
+    fn add_source(&self, py: Python<'_>, source: &str) -> PyResult<()> {
+        self.require_fix("sources")?;
         let mut field = self.borrow_field_mut(py)?;
         field
             .inner
             .as_fix_mut()
-            .add_branch(dialect)
+            .add_source(source)
             .map_err(value_error)
     }
 
-    /// Whether `dialect` is one of the dictionaries that contributed this
-    /// field, ASCII case folded.
-    fn has_branch(&self, py: Python<'_>, dialect: &str) -> PyResult<bool> {
-        self.require_fix("branches")?;
+    /// Whether `source` is one of the sources that contributed this field,
+    /// under the crate's fold.
+    fn has_source(&self, py: Python<'_>, source: &str) -> PyResult<bool> {
+        self.require_fix("sources")?;
         let field = self.borrow_field(py)?;
-        Ok(field.inner.as_fix().has_branch(dialect))
+        Ok(field.inner.as_fix().has_source(source))
     }
 
     /// This field's identity, on the `fix` view.
@@ -3084,6 +3101,38 @@ impl PyProtocolField {
             .inner
             .as_digest_mut()
             .remove_role()
+            .map_err(value_error)
+    }
+
+    /// What crosses when a same-width integer of the other signedness meets
+    /// this integer column, on the `field_properties` view: ``"bits"`` where
+    /// it states them, ``"value"`` - the default - otherwise. Assigning
+    /// ``"value"`` or ``None`` removes the declaration; ``"bits"`` on a
+    /// column that is no integer raises ``ValueError`` and changes nothing.
+    #[getter]
+    fn representation(&self, py: Python<'_>) -> PyResult<&'static str> {
+        self.require_field_properties("representation")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_field_properties()
+            .representation()
+            .as_str())
+    }
+
+    #[setter]
+    fn set_representation(&self, py: Python<'_>, representation: Option<&str>) -> PyResult<()> {
+        self.require_field_properties("representation")?;
+        let representation = representation
+            .map(yggdryl::Representation::from_str)
+            .transpose()
+            .map_err(value_error)?
+            .unwrap_or_default();
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_field_properties_mut()
+            .set_representation(representation)
             .map_err(value_error)
     }
 

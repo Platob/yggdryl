@@ -167,45 +167,53 @@ impl<H: IOBase> IOMedia for Text<H> {
         text.source_field()
     }
 
-    fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
         self.require_text_options(options)?;
-        IOMedia::read_arrow_reader(&self.handle, options)
+        IOMedia::read_serie(&self.handle, Some(options))
     }
 
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
         self.require_text_options(options)?;
-        IOMedia::overwrite_arrow_reader(&mut self.handle, batches, options)
+        IOMedia::overwrite_serie(&mut self.handle, value, Some(options))
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
+        value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> Result<()> {
         self.require_text_options(options)?;
-        IOMedia::overwrite_prepared_arrow_reader(&mut self.handle, batches, options)
+        IOMedia::overwrite_prepared_serie(&mut self.handle, value, options)
     }
 
-    fn append_arrow_reader(
+    fn append_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
         self.require_text_options(options)?;
-        IOMedia::append_arrow_reader(&mut self.handle, batches, options)
+        IOMedia::append_serie(&mut self.handle, value, Some(options))
     }
 
-    fn merge_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
         self.require_text_options(options)?;
-        IOMedia::merge_arrow_reader(&mut self.handle, batches, options)
+        IOMedia::merge_serie(&mut self.handle, value, Some(options))
     }
 }
 
@@ -220,3 +228,5 @@ impl<H: IOBase> IOBase for Text<H> {
         true
     }
 }
+
+crate::media_serie::media_serie!(TextSerie, Text, as_text, get_text_mut);

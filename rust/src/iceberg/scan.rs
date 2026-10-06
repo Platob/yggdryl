@@ -1779,7 +1779,7 @@ pub(super) struct GroupScan {
 /// Every record is relabelled under `root`, which declares what the read
 /// proves.
 ///
-/// Two faces: [`Self::into_serie_reader`], the records, and
+/// Two faces: [`Self::chunked_stream`], the records, and
 /// [`Self::into_arrow_reader`], the transport - which, where no group needs
 /// a sort, is the scan itself and lands nothing.
 pub(super) struct Partitions {
@@ -1798,7 +1798,7 @@ pub(super) struct Partitions {
 /// One opened partition group.
 enum Group {
     /// A group needing no sort: its scan's batches as they land.
-    Streamed(crate::SerieReader),
+    Streamed(crate::StreamChunkedSerie),
     /// A sorted group's chunks.
     Held(std::vec::IntoIter<crate::Serie>),
 }
@@ -1842,7 +1842,7 @@ impl Partitions {
             &scan.parallel,
             scan.renamed,
         )?;
-        let landed = crate::SerieReader::from_arrow_reader(
+        let landed = crate::StreamChunkedSerie::from_arrow_reader(
             Some(&scan.root),
             batches,
             ArrowCastOptions::new(),
@@ -1854,7 +1854,7 @@ impl Partitions {
         // chunks as they landed where they already keep the order, read
         // once chunk by chunk and edge by edge, else each sorted on its
         // own and merged, the output settled.
-        let hold = crate::ChunkedSerie::from_serie_reader(landed)?;
+        let hold = crate::ChunkedSerie::from_chunked_stream(landed)?;
         let hold = if hold.keeps_order(&self.sorting)? {
             hold
         } else {
@@ -1880,8 +1880,16 @@ impl Partitions {
     /// # Errors
     ///
     /// Returns an error when the root does not project into Arrow.
-    pub(super) fn into_serie_reader(self) -> crate::arrow::Result<crate::SerieReader> {
-        crate::SerieReader::from_landed_iter(Arc::clone(&self.root), self)
+    pub(super) fn chunked_stream(self) -> crate::arrow::Result<crate::StreamChunkedSerie> {
+        if self.sorting.is_empty() {
+            let root = Arc::clone(&self.root);
+            return crate::StreamChunkedSerie::from_arrow_reader(
+                Some(&root),
+                self.into_arrow_reader()?,
+                crate::ArrowCastOptions::new(),
+            );
+        }
+        crate::StreamChunkedSerie::from_landed_iter(Arc::clone(&self.root), self)
     }
 
     /// The read as transport, under `root`'s schema.
@@ -1896,7 +1904,7 @@ impl Partitions {
     /// Returns an error when the root does not project into Arrow.
     pub(super) fn into_arrow_reader(self) -> crate::arrow::Result<BatchReader> {
         if !self.sorting.is_empty() {
-            return Ok(self.into_serie_reader()?.into_arrow_reader());
+            return Ok(self.chunked_stream()?.into_arrow_reader());
         }
         let Self {
             groups, scan, root, ..
@@ -1919,7 +1927,7 @@ impl Iterator for Partitions {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let pulled = match self.open.as_mut() {
-                Some(Group::Streamed(records)) => records.next(),
+                Some(Group::Streamed(records)) => records.next_chunk(),
                 // A sorted group's empty chunk - a file the residual
                 // emptied - has nothing to yield.
                 Some(Group::Held(chunks)) => chunks.find(|chunk| !chunk.is_empty()).map(Ok),

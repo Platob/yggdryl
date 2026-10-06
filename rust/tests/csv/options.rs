@@ -124,8 +124,8 @@ fn the_defaults_and_the_builders() {
     assert_eq!(options.infer_row_size(), 1024);
     assert_eq!(options.linesep(), &LineSep::LF);
     assert!(options.safe());
-    assert_eq!(options.batch_row_size(), Some(65_536));
-    assert_eq!(options.batch_byte_size(), Some(64 * 1024 * 1024));
+    assert_eq!(options.batch_row_size(), None);
+    assert_eq!(options.batch_byte_size(), None);
     assert_eq!(options.name(), "row");
     assert_eq!(options.field(), None);
 

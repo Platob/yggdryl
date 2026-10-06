@@ -16,8 +16,8 @@ use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, S
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::expression::IntoOrderings;
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, FieldPath, Scalar, Serie, SerieReader,
-    SortOptions, StructType, UnionFields, UnionMode,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, FieldPath, KeySerie, KeySeries, Scalar, Serie,
+    SortOptions, StreamChunkedSerie, StructType, UnionFields, UnionMode,
 };
 
 fn price() -> Field {
@@ -308,11 +308,11 @@ fn a_table_crosses_as_its_batches_and_back() {
     assert_eq!(back, table);
 
     // A held chunked column is the stream of its chunks.
-    let series = SerieReader::from_chunked(table.clone()).unwrap();
+    let series = StreamChunkedSerie::from_chunked(table.clone()).unwrap();
     assert_eq!(series.field(), &root);
-    let chunks = series.collect::<Result<Vec<_>, _>>().unwrap();
+    let chunks = series.into_chunks().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(chunks, table.chunks().to_vec());
-    let handed = SerieReader::from_chunked(table.clone())
+    let handed = StreamChunkedSerie::from_chunked(table.clone())
         .unwrap()
         .into_arrow_reader();
     assert_eq!(handed.count(), 2);
@@ -389,7 +389,13 @@ fn an_empty_chunked_serie_names_its_field_and_its_children() {
         empty.into_arrow_reader().unwrap().schema().fields().len(),
         1
     );
-    assert_eq!(SerieReader::from_chunked(empty).unwrap().count(), 0);
+    assert_eq!(
+        StreamChunkedSerie::from_chunked(empty)
+            .unwrap()
+            .into_chunks()
+            .count(),
+        0
+    );
 }
 
 #[test]
@@ -800,13 +806,13 @@ fn a_stream_is_one_chunk_per_batch_and_none_is_joined() {
     );
 
     // The reader door is the same chunks.
-    let series = SerieReader::from_arrow_reader(
+    let series = StreamChunkedSerie::from_arrow_reader(
         None,
         batch_reader(batch.schema(), vec![batch.clone(); 3]),
         ArrowCastOptions::new(),
     )
     .expect("the reader names its root");
-    let drained = ChunkedSerie::from_serie_reader(series).expect("three batches");
+    let drained = ChunkedSerie::from_chunked_stream(series).expect("three batches");
     assert_eq!(drained.num_chunks(), 3);
     assert_eq!(drained.chunks(), table.chunks());
 
@@ -1679,29 +1685,29 @@ fn reversing_and_filtering_keep_the_chunks_apart() {
 #[test]
 fn partition_by_merges_each_chunk_s_groups_in_first_occurrence_order() {
     let prices = chunked(&[Some(1), Some(2), Some(3), Some(4), Some(5)], 2);
-    let keys = Serie::new(vec![
-        Scalar::from("a"),
-        Scalar::from("b"),
-        Scalar::from("b"),
-        Scalar::from("a"),
-        Scalar::from("c"),
-    ]);
+    let keys = Serie::from_scalars(
+        DataType::utf8().required_field("venue"),
+        ["a", "b", "b", "a", "c"].map(Scalar::from),
+    )
+    .unwrap();
     let groups = prices.partition_by(&keys).expect("groups");
     assert_eq!(groups.len(), 3);
-    assert_eq!(groups[0].0, Scalar::from("a"));
-    assert_eq!(groups[0].1.rows(), price_rows(&[1, 4]));
-    assert_eq!(groups[0].1.num_chunks(), 2);
-    assert_eq!(groups[1].0, Scalar::from("b"));
-    assert_eq!(groups[1].1.rows(), price_rows(&[2, 3]));
-    assert_eq!(groups[2].0, Scalar::from("c"));
-    assert_eq!(groups[2].1.field(), prices.field());
-    let refused = prices
-        .partition_by(&Serie::new(vec![Scalar::from("a")]))
-        .unwrap_err()
-        .to_string();
+    assert_eq!(groups[0].key(), &Scalar::from_sequence([Scalar::from("a")]));
+    assert_eq!(payload_column(&groups[0]).rows(), price_rows(&[1, 4]));
+    assert_eq!(pieces(&groups[0]).len(), 2);
+    assert_eq!(payload_column(&groups[1]).rows(), price_rows(&[2, 3]));
+    assert_eq!(groups[2].key(), &Scalar::from_sequence([Scalar::from("c")]));
+    let short = keys.slice(0, 1).unwrap();
+    let refused = prices.partition_by(&short).unwrap_err().to_string();
     assert!(
-        refused.contains("1 keys cannot partition the 5 rows price holds"),
+        refused.contains("1 keys cannot partition by the 5 rows"),
         "{refused}"
+    );
+    assert!(
+        prices
+            .partition_by(&Serie::new([Scalar::from("a")]))
+            .is_err(),
+        "external keys declare their field before any cut"
     );
 }
 
@@ -1849,9 +1855,9 @@ fn is_sorted_judges_a_chunk_edge_exactly_as_the_joined_column_judges_it() {
 }
 
 #[test]
-fn partition_by_chunked_pairs_chunks_cut_alike_and_joins_keys_cut_otherwise() {
+fn partition_by_accepts_typed_keys_with_the_same_or_other_chunk_cuts() {
     let prices = chunked(&[Some(1), Some(2), Some(3), Some(4), Some(5)], 2);
-    let venue = Field::new("venue", DataType::utf8(), false);
+    let venue = DataType::utf8().required_field("venue");
     let venues = |cuts: &[&[&str]]| {
         ChunkedSerie::from_arrow_arrays(
             Some(&venue),
@@ -1859,38 +1865,32 @@ fn partition_by_chunked_pairs_chunks_cut_alike_and_joins_keys_cut_otherwise() {
                 .map(|cut| Arc::new(StringArray::from(cut.to_vec())) as ArrayRef),
             ArrowCastOptions::new(),
         )
-        .expect("venue chunks")
+        .unwrap()
     };
-    let expected = prices
-        .partition_by(
-            &venues(&[&["a", "b", "b", "a", "c"]])
-                .into_serie()
-                .expect("one key column"),
-        )
-        .expect("groups");
-    // Cut where the rows are cut: chunk beside chunk, no join.
+    let whole = venues(&[&["a", "b", "b", "a", "c"]]);
+    let expected = prices.partition_by(&whole).unwrap();
     let alike = venues(&[&["a", "b"], &["b", "a"], &["c"]]);
-    // Cut elsewhere: the keys joined once and cut to each chunk of rows.
     let otherwise = venues(&[&["a"], &["b", "b", "a"], &["c"]]);
     for keys in [&alike, &otherwise] {
-        let groups = prices.partition_by_chunked(keys).expect("groups");
-        assert_eq!(groups.len(), 3);
-        for ((key, rows), (expected_key, expected_rows)) in groups.iter().zip(&expected) {
-            assert_eq!(key, expected_key);
-            assert_eq!(rows.rows(), expected_rows.rows());
-            assert_eq!(rows.num_chunks(), expected_rows.num_chunks());
+        let groups = prices.partition_by(keys).unwrap();
+        assert_eq!(groups, expected);
+        assert_eq!(pieces(&groups[0]).len(), 2);
+        assert_eq!(payload_column(&groups[0]).rows(), price_rows(&[1, 4]));
+        for piece in pieces(&groups[0]) {
+            let price = &piece.as_struct().unwrap().children()[0];
+            let held = values_of(price);
+            assert!(
+                prices.chunks().iter().any(|source| {
+                    let backing = values_of(source);
+                    let start = backing.as_ptr() as usize;
+                    let at = held.as_ptr() as usize;
+                    at >= start && at + held.len() <= start + backing.len()
+                }),
+                "numeric slices keep their source allocation, with an advanced values pointer"
+            );
         }
-        assert_eq!(groups[0].1.rows(), price_rows(&[1, 4]));
-        assert_eq!(groups[0].1.num_chunks(), 2);
     }
-    let refused = prices
-        .partition_by_chunked(&venues(&[&["a"]]))
-        .unwrap_err()
-        .to_string();
-    assert!(
-        refused.contains("1 keys cannot partition the 5 rows price holds"),
-        "{refused}"
-    );
+    assert!(prices.partition_by(&venues(&[&["a"]])).is_err());
 }
 
 /// The venue column cut `[XNAS, XNAS] [XNAS, XNYS] [] [XNYS]`.
@@ -1916,29 +1916,53 @@ fn text_of(serie: &Serie) -> Buffer {
         .clone()
 }
 
-/// Each window as its key and its rows, joined or chunked alike.
-fn keyed_rows(windows: Vec<(Scalar, ChunkedSerie)>) -> Vec<(Scalar, Vec<Scalar>)> {
+fn pieces(item: &KeySerie) -> Vec<&Serie> {
+    item.rows().as_chunked().map_or_else(
+        || vec![item.rows()],
+        |chunks| chunks.chunks().iter().collect(),
+    )
+}
+fn payload_column(item: &KeySerie) -> ChunkedSerie {
+    let field = item.serie_field().fields()[0].clone();
+    ChunkedSerie::from_series(
+        Some(&field),
+        pieces(item)
+            .iter()
+            .map(|piece| piece.as_struct().unwrap().children()[0].clone()),
+        ArrowCastOptions::new(),
+    )
+    .unwrap()
+}
+fn item_rows(item: &KeySerie) -> Vec<Scalar> {
+    let singleton = item.field().field_len() == 1;
+    Serie::from(item.clone())
+        .rows()
+        .iter()
+        .map(|row| {
+            if singleton && !row.is_null() {
+                row.sequence_rows().unwrap()[0].clone()
+            } else {
+                row.clone()
+            }
+        })
+        .collect()
+}
+fn keyed_rows(windows: KeySeries) -> Vec<(Scalar, Vec<Scalar>)> {
     windows
-        .into_iter()
-        .map(|(key, rows)| (key, rows.rows()))
+        .iter()
+        .map(|item| (item.key().clone(), item_rows(item)))
         .collect()
 }
 
-/// What the joined column's windows answer, as keys and rows.
 fn joined_windows(chunked: &ChunkedSerie, by: &str, sorted: bool) -> Vec<(Scalar, Vec<Scalar>)> {
-    let joined = chunked.into_serie().expect("one join");
-    let windows = joined.window_by(by, sorted).expect("windows");
-    windows
-        .iter()
-        .map(|(key, window)| (key, window.rows().into_owned()))
-        .collect()
+    let joined = chunked.into_serie().unwrap();
+    keyed_rows(joined.window_by(by, sorted).unwrap())
 }
 
-/// Each window as its length and the pieces it keeps.
-fn shapes(windows: &[(Scalar, ChunkedSerie)]) -> Vec<(usize, usize)> {
+fn shapes(windows: &KeySeries) -> Vec<(usize, usize)> {
     windows
         .iter()
-        .map(|(_, rows)| (rows.len(), rows.num_chunks()))
+        .map(|item| (item.rows().len(), pieces(item).len()))
         .collect()
 }
 
@@ -1985,36 +2009,31 @@ fn absent_quote_chunks() -> ChunkedSerie {
 #[test]
 fn window_by_merges_a_run_across_a_chunk_edge() {
     let venues = venue_chunks();
-    assert_eq!(venues.num_chunks(), 4);
-    let windows = venues.window_by("venue", false).expect("windows");
+    let windows = venues.window_by("venue", false).unwrap();
     assert_eq!(windows.len(), 2);
-    let (xnas, xnys) = (&windows[0], &windows[1]);
-    // The XNAS run crosses the first edge: one window over both chunks.
-    assert_eq!(xnas.0, Scalar::from_sequence([Scalar::from("XNAS")]));
-    assert_eq!((xnas.1.len(), xnas.1.num_chunks()), (3, 2));
-    assert_eq!(xnas.1.rows(), vec![Scalar::from("XNAS"); 3]);
-    // The XNYS run crosses the empty chunk, which the slice keeps.
-    assert_eq!(xnys.0, Scalar::from_sequence([Scalar::from("XNYS")]));
-    assert_eq!((xnys.1.len(), xnys.1.num_chunks()), (2, 3));
-    assert_eq!(xnys.1.rows(), vec![Scalar::from("XNYS"); 2]);
-    // Every window is a slice of the chunks: their bytes, shared.
-    assert!(text_of(&xnas.1.chunks()[0]).ptr_eq(&text_of(&venues.chunks()[0])));
-    assert!(text_of(&xnas.1.chunks()[1]).ptr_eq(&text_of(&venues.chunks()[1])));
-    assert!(text_of(&xnys.1.chunks()[2]).ptr_eq(&text_of(&venues.chunks()[3])));
+    assert_eq!(
+        windows[0].key(),
+        &Scalar::from_sequence([Scalar::from("XNAS")])
+    );
+    assert_eq!(
+        windows[1].key(),
+        &Scalar::from_sequence([Scalar::from("XNYS")])
+    );
+    // Bare source keys move out; payloads retain only row counts, across
+    // nonempty source pieces. An empty source chunk contributes no row.
+    assert_eq!(windows.serie_field().field_len(), 0);
+    assert_eq!(shapes(&windows), [(3, 2), (2, 2)]);
+    assert_eq!(item_rows(&windows[0]), vec![Scalar::from("XNAS"); 3]);
+    assert_eq!(item_rows(&windows[1]), vec![Scalar::from("XNYS"); 2]);
     assert_eq!(keyed_rows(windows), joined_windows(&venues, "venue", false));
-
-    // Keys already in order answer the same windows sorted, the empty chunk
-    // the slice crosses kept.
-    let sorted = venues.window_by("venue", true).expect("windows");
-    assert_eq!(shapes(&sorted), vec![(3, 2), (2, 3)]);
-    assert_eq!(keyed_rows(sorted), joined_windows(&venues, "venue", true));
-
-    // One key over every chunk is one window keeping them all.
+    assert_eq!(
+        shapes(&venues.window_by("venue", true).unwrap()),
+        [(3, 2), (2, 2)]
+    );
     let every = cut(&[&[1, 1], &[1], &[1, 1]]);
-    let windows = every.window_by("price", false).expect("windows");
+    let windows = every.window_by("price", false).unwrap();
     assert_eq!(windows.len(), 1);
-    assert_eq!((windows[0].1.len(), windows[0].1.num_chunks()), (5, 3));
-    assert!(shares(&windows[0].1.chunks()[1], &every.chunks()[1]));
+    assert_eq!(shapes(&windows), [(5, 3)]);
 }
 
 #[test]
@@ -2028,9 +2047,8 @@ fn window_by_refuses_before_any_chunk_is_read() {
         ] {
             let refused = venues.window_by("*", sorted).unwrap_err().to_string();
             assert!(
-                refused.contains(
-                    "venue: expected at least one column to window by, got an empty match key"
-                ),
+                refused
+                    .contains("expected at least one column to window by, got an empty match key"),
                 "{refused}"
             );
             let refused = venues.window_by("tier", sorted).unwrap_err().to_string();
@@ -2053,25 +2071,17 @@ fn window_by_refuses_before_any_chunk_is_read() {
 }
 
 #[test]
-fn window_by_states_no_record_so_a_key_cell_named_as_one_is_taken() {
-    // A window is its key and its rows, its place its place in the `Vec`:
-    // no record names `windownum` or `rownum`, so a key cell may - where the
-    // joined column's held windows, which state one, refuse it.
+fn key_aliases_are_not_reserved_position_columns() {
     let venues = venue_chunks();
     for sorted in [false, true] {
         for key in ["venue as rownum", "venue as WindowNum"] {
-            let windows = venues.window_by(key, sorted).expect("windows");
-            assert_eq!(windows.len(), 2, "{key}");
-            let joined = venues.into_serie().expect("joined");
-            let refused = joined
-                .window_by(key, sorted)
-                .err()
-                .map(|error| error.to_string());
-            assert!(
-                refused
-                    .as_deref()
-                    .is_some_and(|refused| refused.contains("alias")),
-                "{key}: {refused:?}"
+            let windows = venues.window_by(key, sorted).unwrap();
+            let held = venues.into_serie().unwrap().window_by(key, sorted).unwrap();
+            assert_eq!(windows, held);
+            assert_eq!(windows.len(), 2);
+            assert_eq!(
+                windows.key_paths()[0].as_ref().unwrap().to_string(),
+                "venue"
             );
         }
     }
@@ -2092,18 +2102,13 @@ fn window_by_sorted_regroups_runs_across_chunks_with_no_row_copied() {
     assert_eq!(
         windows
             .iter()
-            .map(|(key, _)| key.clone())
+            .map(|item| item.key().clone())
             .collect::<Vec<_>>(),
         vec![xnas, xnys]
     );
     assert_eq!(shapes(&windows), vec![(2, 2), (2, 2)]);
-    // No row copied: every piece lends the bytes of the chunk it came from.
-    let (xnas_rows, xnys_rows) = (&windows[0].1, &windows[1].1);
-    assert!(text_of(&xnas_rows.chunks()[0]).ptr_eq(&text_of(&venues.chunks()[0])));
-    assert!(text_of(&xnas_rows.chunks()[1]).ptr_eq(&text_of(&venues.chunks()[1])));
-    assert!(text_of(&xnys_rows.chunks()[0]).ptr_eq(&text_of(&venues.chunks()[0])));
-    assert!(text_of(&xnys_rows.chunks()[1]).ptr_eq(&text_of(&venues.chunks()[1])));
-    assert_eq!(xnys_rows.field(), venues.field());
+    assert_eq!(windows.serie_field().field_len(), 0);
+    assert!(windows.iter().all(|item| item.rownum().is_none()));
     assert_eq!(keyed_rows(windows), joined_windows(&venues, "venue", true));
 
     // A descent at an edge alone regroups as well.
@@ -2123,8 +2128,7 @@ fn window_by_sorted_regroups_runs_across_chunks_with_no_row_copied() {
         ]
     );
     assert_eq!(shapes(&windows), vec![(1, 1), (3, 2)]);
-    assert!(shares(&windows[1].1.chunks()[0], &edge.chunks()[0]));
-    assert!(shares(&windows[1].1.chunks()[1], &edge.chunks()[2]));
+    assert_eq!(windows.serie_field().field_len(), 0);
     assert_eq!(keyed_rows(windows), joined_windows(&edge, "price", true));
 
     // Absent keys go last, the absent run across the edge one piece set.
@@ -2139,9 +2143,12 @@ fn window_by_sorted_regroups_runs_across_chunks_with_no_row_copied() {
     assert_eq!(
         windows
             .iter()
-            .map(|(key, _)| key.clone())
+            .map(|item| item.key().clone())
             .collect::<Vec<_>>(),
-        vec![Scalar::from_sequence([Scalar::from("AAPL")]), Scalar::Null]
+        vec![
+            Scalar::from_sequence([Scalar::from("AAPL")]),
+            Scalar::from_sequence([Scalar::Null])
+        ]
     );
     assert_eq!(shapes(&windows), vec![(2, 2), (2, 2)]);
 }
@@ -2168,7 +2175,7 @@ fn window_by_compares_chunk_edges_in_place() {
     let windows = prices.window_by("px", true).expect("windows");
     assert_eq!(shapes(&windows), vec![(1, 1), (1, 1), (1, 1), (2, 2)]);
     let nan = windows[3]
-        .0
+        .key()
         .as_serie()
         .and_then(|key| key.get(0))
         .expect("a one-cell key");
@@ -3094,4 +3101,58 @@ fn as_spilled_and_into_spilled_move_the_chunks_as_spill_does() {
     assert!(copy.is_spilled() && !original.is_spilled());
     assert_eq!(copy.rows(), original.rows());
     assert_eq!(copy.num_chunks(), 2, "the chunks stay apart");
+}
+
+#[test]
+fn keyed_chunks_move_keys_and_keep_payload_buffers_when_gathered() {
+    let root = DataType::from_str("struct<venue: string not null, payload: string not null>")
+        .unwrap()
+        .required_field("quote");
+    let chunk = |venues: Vec<&str>, payloads: Vec<&str>| {
+        Serie::from_arrow_array(
+            Some(&root),
+            Arc::new(StructArray::new(
+                vec![
+                    ArrowField::new("venue", ArrowDataType::Utf8, false),
+                    ArrowField::new("payload", ArrowDataType::Utf8, false),
+                ]
+                .into(),
+                vec![
+                    Arc::new(StringArray::from(venues)),
+                    Arc::new(StringArray::from(payloads)),
+                ],
+                None,
+            )),
+            ArrowCastOptions::new(),
+        )
+        .unwrap()
+    };
+    let source = ChunkedSerie::from_series(
+        Some(&root),
+        [
+            chunk(vec!["XNYS", "XNAS"], vec!["one", "two"]),
+            chunk(vec!["XNAS", "XNYS"], vec!["three", "four"]),
+        ],
+        ArrowCastOptions::new(),
+    )
+    .unwrap();
+    let groups = source.window_by("venue", true).unwrap();
+    assert_eq!(groups.serie_field().fields()[0].name(), "payload");
+    assert_eq!(
+        groups[0].key(),
+        &Scalar::from_sequence([Scalar::from("XNAS")])
+    );
+    assert_eq!(
+        payload_column(&groups[0]).rows(),
+        [Scalar::from("two"), Scalar::from("three")]
+    );
+    for item in groups.iter() {
+        assert!(item.rownum().is_none());
+        for piece in pieces(item) {
+            let payload = &piece.as_struct().unwrap().children()[0];
+            assert!(source.chunks().iter().any(|source| {
+                text_of(payload).ptr_eq(&text_of(&source.as_struct().unwrap().children()[1]))
+            }));
+        }
+    }
 }

@@ -36,7 +36,7 @@ pub(crate) mod wire;
 
 pub use crate::floating::{Float16, Float32, Float64};
 pub use crate::{Children, Scalar};
-pub use arrow::{TextLines, read_text_lines};
+pub use arrow::{TextLines, read_stream, read_text_lines};
 pub use batch::{from_arrow_batch, from_arrow_reader, into_arrow_batch, into_arrow_reader};
 pub use bytes::TextBytes;
 pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Xml, Yaml};
@@ -55,7 +55,7 @@ pub use leading::LeadingFragment;
 pub use limits::Limits;
 pub use line::TextLine;
 pub use loading::Loading;
-pub use options::{DEFAULT_TEXT_BATCH_BYTE_SIZE, DEFAULT_TEXT_BATCH_ROW_SIZE, TextOptions};
+pub use options::TextOptions;
 pub use placeholder::Placeholders;
 pub use sep::LineSep;
 
@@ -868,6 +868,7 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::MarketDataKind(_)
             | Scalar::MarketDataType(_)
             | Scalar::TimeInForce(_)
+            | Scalar::PluginSide(_)
             | Scalar::Isin(_)
             | Scalar::Cusip(_)
             | Scalar::Sedol(_)
@@ -876,6 +877,11 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::Figi(_)
             | Scalar::Unit(_)
             | Scalar::Forex(_)
+            | Scalar::Lei(_)
+            | Scalar::Bic(_)
+            | Scalar::Elf(_)
+            | Scalar::Dti(_)
+            | Scalar::Fisn(_)
             | Scalar::Uuid(_)
             | Scalar::Version(_)
             | Scalar::Url(_)
@@ -892,3 +898,5 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
 
     visit(value, 0, Limits::default().max_depth(), format)
 }
+
+pub use handle::TextSerie;

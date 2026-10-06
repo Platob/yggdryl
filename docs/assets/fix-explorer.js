@@ -96,10 +96,10 @@
     return wrapper
   }
   const metadata = (field) => field.metadata ?? {}
-  // `FIX:branches` is membership: the dictionaries that contributed a field,
-  // comma-separated, lowercase and sorted. Empty for every field the
-  // specification alone defines; no lookup consults it.
-  const memberships = (field) => (metadata(field)['FIX:branches'] ?? '').split(',').filter(Boolean)
+  // `FIX:sources` is membership: the ids of the sources that contributed a
+  // definition, the JSON array the store holds, lowercase and sorted. Absent
+  // on every definition the specification alone defines; no lookup consults it.
+  const memberships = (field) => metadata(field)['FIX:sources'] ?? []
   const title = (field) => metadata(field).display ?? field.name
   const searchText = (text) => String(text).toLowerCase()
   // A list property is the JSON array the store holds; it reads as its elements, comma-joined.
@@ -122,7 +122,7 @@
         definitions: CATEGORIES.flatMap((category) => data.catalog[category].map((field) => ({
           category,
           field,
-          text: searchText([category, field.name, ...['display', 'description', 'FIX:tag', 'FIX:names', 'FIX:tags', 'FIX:counter', 'FIX:component', 'FIX:msgtype', 'FIX:identifiers', 'FIX:branches', 'FIX:codeset'].map((key) => listed(metadata(field)[key] ?? ''))].join(' ')),
+          text: searchText([category, field.name, ...['display', 'description', 'FIX:tag', 'FIX:names', 'FIX:tags', 'FIX:counter', 'FIX:component', 'FIX:msgtype', 'FIX:identifiers', 'FIX:sources', 'FIX:codeset'].map((key) => listed(metadata(field)[key] ?? ''))].join(' ')),
         }))),
       }))
     }
@@ -372,8 +372,8 @@
     root.append(grid(['Source', 'Format', 'Version', 'SHA-256', 'License'], data.spec.sources.map((source) => [
       link(source.id, source.url), source.format, source.version, source.sha256, link('License', source.license),
     ])))
-    // Membership travels on each field's `FIX:branches`; a registry lists the
-    // distinct names through `dialects()`. The shipped dictionary names none.
+    // Membership travels on each definition's `FIX:sources`; a registry lists
+    // the distinct ids through `dialects()`. The shipped dictionary names none.
     const dialects = data.kpi.dialectSizes ?? []
     if (dialects.length) {
       const held = panel('Dialects', `${dialects.length}`)

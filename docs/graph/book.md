@@ -1,6 +1,6 @@
 # Book
 
-A book is live depth over time: `BookEvent` one book at an instant - complete, holding the entries alive on both sides and each side read as its price levels, or a delta book stating only the orders and quotes it applied since the book before and the top of book they settled on - `SnapshotEvent` the scope-replacing control, and `BookIterator` the fold of a sorted stream into books. Sorted books fold on into [candles](candle.md), and the [book display](serve.md) serves a table of them as candles, books and audits.
+A book is live depth over time: `BookEvent` one book at an instant - complete, holding the entries alive on both sides and each side read as its price levels, or a delta book stating only the orders and quotes it applied and the executions it recorded since the book before, and the top of book they settled on - `SnapshotEvent` the scope-replacing control, and `BookIterator` the fold of a sorted stream into books. Sorted books fold on into [candles](candle.md), and the [book display](serve.md) serves a table of them as candles, books and audits.
 
 ## Contract
 
@@ -11,7 +11,7 @@ A book is live depth over time: `BookEvent` one book at an instant - complete, h
 | `BookIterator` | the [fold](#book-fold) from a sorted stream to books | `Iterator<Item = Result<BookEvent>>` |
 | `yggdryl::Limit` | one [price level](#limits) of a side, a root value type | - |
 
-All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY_REF_ID` (`mdentryrefid`); `Limit` in the root `limit.rs`. A book is keyed by its [book key](market.md#the-book-key) - the instrument's ISIN, else the ticker, else `XX0000000000` - and stores it as its cross code `3:0:{key}`. A book states no side of its own - `Side::Unknown` - and neither a book nor a snapshot control is [sided](market.md#sides-and-cross-codes): its stored cross code states side `0` whatever side it is set to, and a snapshot control over an order takes the order's base code under its own kind. A book holds no execution: a fill moves it through its order's or quote's own report, and every input [`MarketDataKind::is_booked`](../types/enum/marketdatakind.md) does not admit - an execution, a trade - is pruned before it folds. Its row nests `alive`, `deltas`, `bidlimits` and `asklimits`, and its `executions` cell is null ([Market data](market-data.md#arrow)).
+All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY_REF_ID` (`mdentryrefid`); `Limit` in the root `limit.rs`. A book is keyed by its [book key](market.md#the-book-key) - the instrument's ISIN, else the ticker, else `XX0000000000` - and stores it as its cross code `3:0:{key}`. A book holds both sides - its side is `Side::Both` (`BOTH`), whatever it is set to, a side set on it moving no price or level - and neither a book nor a snapshot control is [sided](market.md#sides-and-cross-codes): its stored cross code states side `0`, and a snapshot control over an order takes the order's base code under its own kind. A book places no execution: a fill moves it through its order's or quote's own report, and an execution of its instant is recorded among its deltas, resting on no side; every input [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) does not admit - a trade, a batch - is pruned before it folds. Its row nests `alive`, `deltas`, `bidlimits` and `asklimits`, and its `executions` cell is null ([Market data](market-data.md#arrow)).
 
 ## Complete books and delta books
 
@@ -31,12 +31,18 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 | Key | Rule |
 | --- | --- |
 | `alive()` | every live order and quote once, as `&MarketData`: the bid side's, best price first, ties by `BookRef::position` then arrival, entries stating no price (market orders) last; then the ask side's the same way but those resting on the bid too - a two-sided quote is one entry, listed with the bids. Nothing on a delta book |
-| `alive_on(side)` | the entries alive on the side `side` takes, borrowed from that side's store, an `ExactSizeIterator`: best price first and the unpriced last, a two-sided quote on both sides at its leg's price on each; nothing for a side that is neither a bid nor an ask, or on a delta book. Python `book.alive_on(side)`, JavaScript `book.aliveOn(side)` - a `Side` member, its code or any spelling it reads |
-| `deltas()` | the orders and quotes applied since the book before, in the order applied across both sides, an `ExactSizeIterator`: what a delta book states and what `with_previous` replays |
+| `alive_on(side)` | the entries alive on the side `side` takes, borrowed from that side's store, an `ExactSizeIterator`: best price first and the unpriced last, a two-sided quote on both sides at its leg's price on each; nothing for a side that is neither a bid nor an ask - `UKNW`, `BOTH` - or on a delta book. Python `book.alive_on(side)`, JavaScript `book.aliveOn(side)` - a `Side` member, its code or any spelling it reads |
+| `deltas()` | the orders and quotes applied and the executions recorded since the book before, in the order applied across both sides, an `ExactSizeIterator`: what a delta book states and what `with_previous` replays, an execution placing nothing |
+| `ordlive()` | the orders resting on the book: every `alive()` entry that is an order, in its order, as `&OrderEvent`; nothing on a delta book - rebuild it with `with_previous` first. Python `book.ordlive` (`list[OrderEvent]`), JavaScript `book.ordlive()` |
+| `orddelta()` | the orders among `deltas()`, in the order applied, as `&OrderEvent`: placed, changed, ended, expired or withdrawn at the book's instant - an order placed then is also in `ordlive()`, the one entry both borrow, an order ended then in `orddelta()` alone. Python `book.orddelta`, JavaScript `book.orddelta()` |
+| `quotes()` | the quotes among `deltas()`, in the order applied, as `&QuoteEvent`; a quote resting since an earlier instant is `alive()`'s and not here. Python `book.quotes`, JavaScript `book.quotes()` |
+| `executions()` | the executions among `deltas()`, in the order applied, as `&ExecutionEvent`: recorded at the book's instant, resting on no side. Python `book.executions`, JavaScript `book.executions()` |
+| `events()` | every delta that is no order, quote or execution, in the order applied, as `&MarketData`: the typed home of whatever else a book comes to record. Empty today, by construction: the fold [prunes](#book-fold) a trade, a batch and a session message before it reads one, refuses an undated order, quote or execution and a nested book by kind, and folds a snapshot control into the sides' membership, never among the deltas; a row stating another kind among the deltas is refused at `$.deltas[i]`. Python `book.events` (`list[MarketData]`); JavaScript binds no `events` |
+| By kind | `orddelta()`, `quotes()`, `executions()` and `events()` partition `deltas()` - `ordlive()` reads `alive()` and is outside the partition - and `alive()` holds orders and quotes alone; each reading borrows and allocates nothing, and is no storage of its own: the row keeps one `deltas` list in the order applied, and [`MarketData::deltas_serie`](market-data.md#arrow) is the same split over a table of books |
 | Legs | an entry rests on every side it states a leg for, as one entry: an order - [sided](market.md#sides-and-cross-codes) - its price, quantity and currency on the side its [`Side`](../types/enum/side.md) takes, the bid for `Side::is_bid` (`BUYS`, `BUYM`), the ask for `Side::is_ask` (`SELL`, `SELP`, `SSHT`, `SSEX`, `SELU`); a quote - which holds a bid and an ask and tags a side - each leg it states a price or a quantity of, in that leg's currency, else its own. A leg sized zero rests nowhere: a feed withdraws a level by sizing it zero |
-| Every input a delta | every order and quote but a repeat is a delta of its book, whether or not it rests anywhere: one resting on no side and continuing no live entry - an order of side `UNKN`, a quote stating no leg - warned of where it is live, one first seen ended, and one ending an entry the book no longer holds place nothing, are never refused, and still advance the book as its deltas |
+| Every input a delta | every order and quote but a repeat is a delta of its book, whether or not it rests anywhere: one resting on no side and continuing no live entry - an order of side `UKNW`, a quote stating no leg - warned of where it is live, one first seen ended, and one ending an entry the book no longer holds place nothing, are never refused, and still advance the book as its deltas |
 | Repeats | a statement repeating the live entry it continues - every fact the same but its identity, its digests and its place in its chain, under the same book control - records no delta and leaves the entry as it stood; a group of repeats changes nothing. A full snapshot restating an entry its scope held keeps that entry, identity and all |
-| Live key | `(symbol, scope, cross identity)`, looked up on both sides: a same-symbol, same-scope `mdentryrefid` resolves first, else the input's own identity where it is live, else its `mdentryid`; a second, distinct destination is ambiguous and refused. An id names an entry of the input's entry type - the side an order takes or a quote tags, `UNKN` for a quote tagging none - so a new offer never continues a bid going by its id: only a change, an overlay or a delete finding none of its type continues the entry of the other type, which it moves; an input stating no side names the one entry going by the id where just one does. The reference names one step, so a following entry never [takes the one its predecessor states](operation.md#following-and-merging) |
+| Live key | `(symbol, scope, cross identity)`, looked up on both sides: a same-symbol, same-scope `mdentryrefid` resolves first, else the input's own identity where it is live, else its `mdentryid`; a second, distinct destination is ambiguous and refused. An id names an entry of the input's entry type - the side an order takes or a quote tags, `UKNW` for a quote tagging none or `BOTH` - so a new offer never continues a bid going by its id: only a change, an overlay or a delete finding none of its type continues the entry of the other type, which it moves; an input stating no side names the one entry going by the id where just one does. The reference names one step, so a following entry never [takes the one its predecessor states](operation.md#following-and-merging) |
 | New, change, overlay, delete | a new generation replaces and chains the live entry; a change or overlay (`is_partial`) - and a delete - inherits price and size only where it states none (zero stays zero); a change or overlay with no predecessor must state both, never fabricated |
 | Orders among quotes | a change or overlay (`1`, `5`) keeps a matched `OrderEvent` when `orderid` is omitted and promotes an unidentified `QuoteEvent` when it is stated; a contradiction is a located `InvalidRecord`; a delete (`2`) keeps the matched kind and predecessor link |
 | Anonymous new | a new (`0`) without `mdentryid` never inserts into an occupied position: it states `mdentryid` or arrives in a snapshot |
@@ -65,14 +71,14 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 | `BookEvent::new(unix, symbol)` | an empty, complete book at that nanosecond, state `NEW`, keyed by the ticker `symbol`, which it states - stored `3:0:{symbol}` - taking the inputs stating that ticker and no ISIN, and those stating neither; an empty `symbol` keys it `XX0000000000` ([`Isin::NONE`](../types/codes/isin.md#the-check-digit-and-the-rank)) and states no ticker |
 | `BookEvent::keyed(unix, key)` | an empty, complete book keyed `key` ([above](#complete-books-and-delta-books)) |
 | Its instrument | a book takes its ticker and its ISIN - as its `isin` security identifier - from the first input stating each; no input moves them after |
-| `add_operations` | any `IntoIterator` of `MarketData`/`Result<MarketData>`, no-op if empty; every input `MarketDataKind::is_booked` does not admit - an `ExecutionEvent`, a `TradeEvent` - is pruned first, so a group of nothing else changes nothing: the instant does not advance and the deltas stand. `OrderEvent`/`QuoteEvent`/`SnapshotEvent` fold, any other variant - an undated leaf, a `BookEvent` - is refused at `$.operations[index].kind`; every `currunix` must agree, regression refused, applied in source order; atomic - the book is unchanged on every error; the refusals on this page are this explicit call's, which [the fold](#book-fold) answers by leaving what a book refuses out, with a warning |
+| `add_operations` | any `IntoIterator` of `MarketData`/`Result<MarketData>`, no-op if empty; every input `MarketDataKind::is_recorded` does not admit - a `TradeEvent` - is pruned first, so a group of nothing else changes nothing: the instant does not advance and the deltas stand. `OrderEvent`/`QuoteEvent`/`SnapshotEvent` fold and an `ExecutionEvent` is recorded among the deltas, resting on no side; any other variant - an undated leaf, a `BookEvent` - is refused at `$.operations[index].kind`; every `currunix` must agree, regression refused, applied in source order; atomic - the book is unchanged on every error; the refusals on this page are this explicit call's, which [the fold](#book-fold) answers by leaving what a book refuses out, with a warning |
 | A new instant | the book follows the book it was - its identity and instant as `prevuuid` and `prevunix`, its price and quantity as `prevpx` and `prevqty` - and its deltas, place and snapshot stamp start again; live depth stays |
 | Snapshots | a full-snapshot order/quote/`SnapshotEvent` clears only its `(symbol, scope)` partition on both sides (an empty FIX `W` is one) before its group applies, and the book states the group's instant as its `snapunix`; which partitions the last snapshot replaced is walk state - no row states it, and neither the digest nor equality reads it |
 | Bounds | the highest place of its members at the book's own instant (reset when the instant advances), earliest creation/recording instants, latest execution instant (the book's [`execunix`](market.md#contract)) of the finalized generation, after any predecessor advanced it; a rehydrated book checks all four against every nested operation, the place only against those at its instant |
 | As a market | `price`: `bbo_midpoint()` - the overflow-safe `(bid + offer) / 2` of a two-sided BBO, per [SEC](https://www.sec.gov/files/rules/sro/btnl/2026/34-106421-ex4.pdf) - else the one best price, `None` if crossed; `quantity`: `median_quantity()` - [NIST](https://www.itl.nist.gov/div898/handbook/eda/section3/eda351.htm) mean of the two best quantities, one-sided its own; currency the best legs agree on and unit the best entries agree on (one-sided: its own; else none); `bidpx`/`bidqty` and `askpx`/`askqty` the best tradable levels, `bidccy`/`askccy` the book's currency beside a best - nothing where no level of a side can trade |
 | Following | `with_previous`, [above](#complete-books-and-delta-books): a delta book rebuilt over the book it follows, a complete one linked to it |
 | Merging | only one book code at one instant, the reference chosen by its recording clock - the later `recdunix`, then `currunix`: two complete books join their sides - the reference's entries, then each of the other's identities it holds on neither side, unless the reference states a `snapunix`, which is authoritative - and union their deltas; a complete book is authoritative over a delta book whichever records later; two delta books keep the reference's facts over the deltas of both, the reference's first; self-merge changes nothing |
-| Bindings | Python `graph.BookEvent(currunix, symbol)`, `graph.BookEvent.keyed(currunix, key)`, `with_operations(items)` (a new book), `with_previous(previous)`, the properties `alive`, `deltas` and `is_complete`, the method `alive_on(side)`; JavaScript `new graph.BookEvent(currunix, symbol)`, `graph.BookEvent.keyed(currunix, key)`, `withOperations(items)`, `withPrevious(previous)`, the methods `alive()`, `deltas()`, `aliveOn(side)` and the property `isComplete` |
+| Bindings | Python `graph.BookEvent(currunix, symbol)`, `graph.BookEvent.keyed(currunix, key)`, `with_operations(items)` (a new book), `with_previous(previous)`, the properties `alive`, `deltas`, `ordlive`, `orddelta`, `quotes`, `executions`, `events` and `is_complete`, the method `alive_on(side)`; JavaScript `new graph.BookEvent(currunix, symbol)`, `graph.BookEvent.keyed(currunix, key)`, `withOperations(items)`, `withPrevious(previous)`, the methods `alive()`, `deltas()`, `ordlive()`, `orddelta()`, `quotes()`, `executions()`, `aliveOn(side)` and the property `isComplete` |
 
 ## Snapshot controls
 
@@ -84,10 +90,10 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 
 | Key | Rule |
 | --- | --- |
-| Pruned | every input [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) does not admit - a trade, a batch, a session message, `UNKN` - is dropped where it is pulled, a FIX message's leaves once it is split: a pruned input touches no book, no instant and no grid, so an instant only a trade reached emits no book |
+| Pruned | every input [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) does not admit - a trade, a batch, a session message, `UKNW` - is dropped where it is pulled, a FIX message's leaves once it is split: a pruned input touches no book, no instant and no grid, so an instant only a trade reached emits no book |
 | Recorded | an execution reaches the book its instrument keys and stands among the deltas of its instant, resting on no side and moving none - its fill moved the book through its order's or quote's own report - and dates the book's `execunix`; a book of its instant alone states it as its one delta, and `with_previous` replays it as nothing |
-| Input | what is kept and is no order, quote or snapshot control - an undated leaf, a `BookEvent` - is refused by kind at `$.operation.kind`: a value that is no operation of a book is the caller's mistake, not data; that refusal and a source failure each follow the completed prefix once and fuse the iterator |
-| `with_filter(filter)` | an expression [`Filter`](../expression/filters.md) - a filter, a term or its text - over the [`marketdata` row](market-data.md#arrow), bound once, answered by the expression engine over one batch per 1,024 booked inputs the walk pulls ahead; the kind rule prunes first, so a filter narrows what a book folds and never admits an execution or a trade. A filter that keeps every row installs nothing. Refused where it is bound: its own parse error, a column the row does not carry, an answer that is no boolean; a filter that cannot answer a batch ends the walk as a source failure does |
+| Input | what is kept and is no order, quote, execution or snapshot control - an undated leaf, a `BookEvent` - is refused by kind at `$.operation.kind`: a value that is no operation of a book is the caller's mistake, not data; that refusal and a source failure each follow the completed prefix once and fuse the iterator |
+| `with_filter(filter)` | an expression [`Filter`](../expression/filters.md) - a filter, a term or its text - over the [`marketdata` row](market-data.md#arrow), bound once, answered by the expression engine over one batch per 1,024 recorded inputs the walk pulls ahead; the kind rule prunes first, so a filter narrows what a book folds and never admits a trade. A filter that keeps every row installs nothing. Refused where it is bound: its own parse error, a column the row does not carry, an answer that is no boolean; a filter that cannot answer a batch ends the walk as a source failure does |
 | Books | one per [book key](market.md#the-book-key): the input's ISIN where it holds one, else its ticker, else `XX0000000000`; each book opens keyed - `BookEvent::keyed` - stores its key as `3:0:{key}`, and takes its ticker and ISIN from the first input stating each |
 | Moving between books | an order or quote identity restated under another key - a chain stated by its ticker alone and then, its instrument learned, under its ISIN - is withdrawn from the book it stood in by a delta there: the entry as it stood, deleted in state `REMOVED`, reporting no fill, no execution, no recording and no snapshot instant - a snapshot's member as any other statement - and opens in its own book at the same instant, so an entry rests in one book at a time |
 | Groups | by effective instant (`snapunix`, else `currunix`) - one book per touched key, key order, atomic per instant and key; ordinary groups apply via `add_operations`, each chain where its first step arrived, its steps by place only where a step follows one of its chain at that instant, else in arrival order; supplied-membership stages replacement with deltas and expirations; a group the book refuses is left out whole, with a warning: none of its updates lands, the book and its pending expirations stand as they were, and the walk goes on |
@@ -99,13 +105,15 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 | Supplied membership | a stream stating `snapunix` is a membership view: orders and quotes replace only the `(symbol, scope)` partitions represented (create/update, purge omitted); `SnapshotEvent` is an empty one; later-than-snapshot components are left out with a warning, `add_operations` refusing them; distinct from a FIX `W` |
 | Left out | each with a deduplicated [warning](../fix/capture.md#warnings) and never an `Err` item: operations dated before the book they would fold into, and a group the book refuses. A live order or quote resting on no side is warned of and still a delta |
 | After each book | the walk hands its deltas to the book it yields, so the next carries only its instant's changes; resting depth persists |
-| FIX | [`FixCodec::market_data`](../fix/arrow.md#fix-market-books) sorts a capture's market data by the effective instant this fold checks; `FixCodec::book_arrow_reader(messages, snapshot_millis, filter)` - Python `codec.book_arrow_reader(messages, snapshot_millis=0, filter=None)`, JavaScript `codec.bookArrowReader(messages, snapshotMillis, filter)` - runs the fold to Arrow: it folds orders, quotes and `W`/`X` book messages, a quote one entry resting on each leg it states, and prunes the rest before it is expanded, an entry reporting a trade (`269=2`) included |
+| FIX | [`FixCodec::market_data`](../fix/arrow.md#fix-market-books) sorts a capture's market data by the effective instant this fold checks; `FixCodec::book_arrow_reader(messages, snapshot_millis, filter)` - Python `codec.book_arrow_reader(messages, snapshot_millis=0, filter=None)`, JavaScript `codec.bookArrowReader(messages, snapshotMillis, filter)` - runs the fold to Arrow: it folds orders, quotes and `W`/`X` book messages, a quote one entry resting on each leg it states, records every execution among the deltas - an entry reporting a trade (`269=2`) as the execution it is, placing nothing - and prunes the rest before it is expanded |
 
 ## Cost
 
 Each side of a complete book is one contiguous store of its live entries in book order, a level a run of equal prices, a two-sided quote sharing its one entry with the other side. A change costs a binary search over the side's levels, one scan of the level it touches - where the entry an identity goes by is found - and a move of the entry pointers behind the one that joins or leaves. Each level keeps its quantity and how many of its entries cannot trade as entries join, restate and leave, so checking a level against `decimal`, settling the top of book and every reading of a level read no entry. A delete by position range, an anonymous entry stating a position and an `MDEntryID` more than one live entry goes by scan the side.
 
 The store is shared: a book a walk yields complete holds the store the walk keeps, so yielding a deep book costs a reference count, and the walk copies a side once at its next change - only while a consumer still holds that book. Between snapshot ticks the walk yields deltas alone and changes the store it alone holds in place. `with_previous` takes the sides of the book it rebuilds over, copying them once where the first delta changes them and only while another holder shares them.
+
+Laid out as rows, a complete book repeats every alive entry it holds, so a fine grid over deep books multiplies: `alive entries x ticks` nested rows across the stream, whatever the input's own size. What bounds one batch is the writer's row and byte bounds alone - `FixCodec::with_batch_row_size` and `with_batch_byte_size`, each nested row charged - and a batch casts to a table's stored layout whole however many nested rows it holds: the [materialization budget](../types/serie.md#materialization-budgets) charges a kernel's output nothing. To hold fewer rows, coarsen `snapshot_millis` or narrow the fold with `with_filter`; to hold a batch in less memory, lower the byte bound.
 
 ## Examples
 
@@ -391,6 +399,143 @@ The best bid is the best level that can trade: a halted top level is skipped, ne
     const halted = new graph.BookEvent(T, 'AAPL').withOperations([bid('B-1', '189.48', 300, false)])
     assert.equal(halted.bestPrice('BUYS'), null)
     assert.equal(halted.bidpx, null)
+    ```
+
+### Entries by kind
+
+Two bids and an offer on Apple; a second later the first bid is cancelled, a fill is recorded and a better offer quoted.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::graph::{BookEvent, Element, Event, ExecutionEvent, Market, MarketData, OrderEvent, QuoteEvent};
+    use yggdryl::{Decimal, Side, State};
+
+    const T: i64 = 1_700_000_000_000_000_000;
+    let order = |unix: i64, code: &str, price: &str, state: State| -> yggdryl::Result<MarketData> {
+        let mut order = OrderEvent::at(unix);
+        order.set_crosscode(code.to_owned());
+        order.set_ticker(Some("AAPL".into()), true);
+        order.set_side(Side::Buy, true);
+        order.set_price(Some(price.parse()?), true);
+        order.set_quantity(Some(Decimal::from_int(100)), true);
+        order.set_state(state);
+        order.finalize();
+        Ok(MarketData::from(order))
+    };
+    let offer = |unix: i64, code: &str, price: &str| -> yggdryl::Result<MarketData> {
+        let mut quote = QuoteEvent::at(unix);
+        quote.set_crosscode(code.to_owned());
+        quote.set_ticker(Some("AAPL".into()), true);
+        quote.set_side(Side::Sell, true);
+        quote.set_price(Some(price.parse()?), true);
+        quote.set_quantity(Some(Decimal::from_int(200)), true);
+        quote.finalize();
+        Ok(MarketData::from(quote))
+    };
+    let mut fill = ExecutionEvent::at(T + 1);
+    fill.set_crosscode("E-1".to_owned());
+    fill.set_ticker(Some("AAPL".into()), true);
+    fill.set_side(Side::Buy, true);
+    fill.set_lastpx(Some("189.47".parse()?), true);
+    fill.set_lastqty(Some(Decimal::from_int(100)), true);
+    fill.finalize();
+
+    let mut book = BookEvent::new(T, "AAPL");
+    book.add_operations([
+        order(T, "B-1", "189.48", State::New),
+        order(T, "B-2", "189.47", State::New),
+        offer(T, "Q-1", "189.53"),
+    ])?;
+    book.add_operations([
+        order(T + 1, "B-1", "189.48", State::Canceled),
+        Ok(MarketData::from(fill)),
+        offer(T + 1, "Q-2", "189.52"),
+    ])?;
+
+    // Resting: the orders alive now. Changed: the orders this second applied.
+    let resting: Vec<&str> = book.ordlive().map(Element::get_crosscode).collect();
+    assert_eq!(resting, ["10:1:B-2"]);
+    let changed: Vec<(&str, State)> = book.orddelta().map(|order| (order.get_crosscode(), *order.get_state())).collect();
+    assert_eq!(changed, [("10:1:B-1", State::Canceled)]);
+    // The quotes and the executions this second applied; Q-1 still rests.
+    assert_eq!(book.quotes().map(Element::get_crosscode).collect::<Vec<_>>(), ["14:0:Q-2"]);
+    assert_eq!(book.executions().map(Element::get_crosscode).collect::<Vec<_>>(), ["8:1:E-1"]);
+    assert_eq!(book.alive().count(), 3);
+    // The four partition the deltas; nothing else is recorded, so `events` is empty.
+    assert_eq!(book.events().count(), 0);
+    assert_eq!(
+        book.orddelta().count() + book.quotes().count() + book.executions().count() + book.events().count(),
+        book.deltas().len()
+    );
+    ```
+
+=== "Python"
+
+    ```python
+    from decimal import Decimal
+
+    from yggdryl import State, graph
+
+    T = 1_700_000_000_000_000_000
+
+    def order(unix: int, code: str, price: str, state: str = "NEW") -> graph.OrderEvent:
+        return graph.OrderEvent(
+            unix, crosscode=code, ticker="AAPL", side="BUYS", price=Decimal(price), quantity=100, state=state
+        )
+
+    def offer(unix: int, code: str, price: str) -> graph.QuoteEvent:
+        return graph.QuoteEvent(unix, crosscode=code, ticker="AAPL", side="SELL", price=Decimal(price), quantity=200)
+
+    fill = graph.ExecutionEvent(T + 1, crosscode="E-1", ticker="AAPL", side="BUYS", lastpx=Decimal("189.47"), lastqty=100)
+    book = (
+        graph.BookEvent(T, "AAPL")
+        .with_operations([order(T, "B-1", "189.48"), order(T, "B-2", "189.47"), offer(T, "Q-1", "189.53")])
+        .with_operations([order(T + 1, "B-1", "189.48", "CANCELED"), fill, offer(T + 1, "Q-2", "189.52")])
+    )
+
+    # Resting: the orders alive now. Changed: the orders this second applied.
+    assert [entry.crosscode for entry in book.ordlive] == ["10:1:B-2"]
+    assert [(entry.crosscode, entry.state) for entry in book.orddelta] == [("10:1:B-1", State.CANCELED)]
+    # The quotes and the executions this second applied; Q-1 still rests.
+    assert [entry.crosscode for entry in book.quotes] == ["14:0:Q-2"]
+    assert [entry.crosscode for entry in book.executions] == ["8:1:E-1"]
+    assert len(book.alive) == 3
+    # The four partition the deltas; nothing else is recorded, so `events` is empty.
+    assert book.events == []
+    assert len(book.orddelta) + len(book.quotes) + len(book.executions) + len(book.events) == len(book.deltas)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { graph } = require('yggdryl')
+
+    const T = 1_700_000_000_000_000_000n
+    const order = (unix, code, price, state = 'NEW') => new graph.OrderEvent(unix, {
+      crosscode: code, ticker: 'AAPL', side: 'BUYS', price, quantity: 100, state,
+    })
+    const offer = (unix, code, price) => new graph.QuoteEvent(unix, {
+      crosscode: code, ticker: 'AAPL', side: 'SELL', price, quantity: 200,
+    })
+    const fill = new graph.ExecutionEvent(T + 1n, {
+      crosscode: 'E-1', ticker: 'AAPL', side: 'BUYS', lastpx: '189.47', lastqty: 100,
+    })
+    const book = new graph.BookEvent(T, 'AAPL')
+      .withOperations([order(T, 'B-1', '189.48'), order(T, 'B-2', '189.47'), offer(T, 'Q-1', '189.53')])
+      .withOperations([order(T + 1n, 'B-1', '189.48', 'CANCELED'), fill, offer(T + 1n, 'Q-2', '189.52')])
+    const codes = (entries) => entries.map((entry) => entry.crosscode)
+
+    // Resting: the orders alive now. Changed: the orders this second applied.
+    assert.deepEqual(codes(book.ordlive()), ['10:1:B-2'])
+    assert.deepEqual(book.orddelta().map((entry) => [entry.crosscode, entry.state]), [['10:1:B-1', 'CANCELED']])
+    // The quotes and the executions this second applied; Q-1 still rests.
+    assert.deepEqual(codes(book.quotes()), ['14:0:Q-2'])
+    assert.deepEqual(codes(book.executions()), ['8:1:E-1'])
+    assert.equal(book.alive().length, 3)
+    // The three partition the deltas, which hold nothing else today; JavaScript binds no `events`.
+    assert.equal(book.orddelta().length + book.quotes().length + book.executions().length, book.deltas().length)
     ```
 
 ### A snapshot
@@ -974,6 +1119,6 @@ An order stated by its ticker alone, then restated a millisecond later once its 
 - A level whose aggregate quantity would pass `decimal` is refused atomically at `$.quantity`, naming the price (or unpriced level), the book unchanged; `imbalance`/`spread` answer `None` rather than overflow.
 - A leg stating a negative quantity is refused at `$.quantity` (`expected a quantity no less than zero, got -5`), and in a book's row at `$.alive[i].quantity`: a level adds only what rests at it, so taking an entry off can only shrink it.
 - A book folds a dated order or quote and a snapshot control alone: `add_operations` prunes an execution or a trade and refuses an undated leaf or a `BookEvent` at `$.operations[index].kind`, `BookIterator` at `$.operation.kind`, naming the kind it got (`expected order_event, quote_event or snapshot_event, got order`).
-- An order of side `UNKN`, or a quote stating no leg, rests on neither side: it is a delta of its book that places nothing, warned of where it is live, never refused; the book it folded into stands with what else its instant stated.
+- An order of side `UKNW`, or a quote stating no leg, rests on neither side: it is a delta of its book that places nothing, warned of where it is live, never refused; the book it folded into stands with what else its instant stated.
 - An execution and a trade never reach a book: a fill moves its book through its order's or quote's own report, which a FIX parse splits off the execution.
 - A delta book takes no operations - `add_operations` refuses it at `$.alive` - and answers no side: rebuild it with `with_previous` first. A row cannot carry the completeness of a complete book holding no entry that states deltas and no `snapunix`: it reads back as a delta book.

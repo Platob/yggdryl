@@ -12,11 +12,11 @@ use std::io::Read;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::media::IORecordOptions as _;
 use crate::text::expected_got;
 use crate::{Charset, DataType, Error, Field, Result, Scalar, StructType, TimeUnit, Timezone, Url};
 
 use super::options::CsvOptions;
+use crate::media::IORecordOptions;
 
 /// The window the tokenizer reads the transport through: the fetch layer
 /// beneath already holds a whole fetch, so this is a bound on what one
@@ -818,28 +818,32 @@ pub(crate) struct Opened<R> {
     pub(crate) rows: Rows<R>,
 }
 
-/// Open the stream `bytes` as the document it holds.
-///
-/// The first record names the columns when the options say so; a declared
-/// field reads its columns by name from that header - positionally where
-/// there is no header - and a column the header does not state is absent,
-/// null where nullable and refused by name otherwise. With no declared
-/// field, up to `infer_row_size` records are sampled and each column's
-/// datatype inferred over their non-null cells; the sampled records are the
-/// first rows out.
-///
-/// `None` is a document holding no record at all.
-///
-/// # Errors
-///
-/// Returns the transport's read failure, a stream ending inside a quoted
-/// cell, a header naming a column twice, and a required declared column the
-/// header does not state.
 pub(crate) fn open<R: Read>(
     bytes: R,
     options: &CsvOptions,
     declared: Option<&Field>,
     url: Option<Url>,
+) -> Result<Option<Opened<R>>> {
+    open_columns(bytes, options, declared, url, None)
+}
+
+/// Bind only the columns a native row scan must decode.
+pub(crate) fn open_projected<R: Read>(
+    bytes: R,
+    options: &CsvOptions,
+    declared: Option<&Field>,
+    url: Option<Url>,
+) -> Result<Option<Opened<R>>> {
+    let columns = options.apply_columns();
+    open_columns(bytes, options, declared, url, columns.as_deref())
+}
+
+fn open_columns<R: Read>(
+    bytes: R,
+    options: &CsvOptions,
+    declared: Option<&Field>,
+    url: Option<Url>,
+    keep: Option<&[String]>,
 ) -> Result<Option<Opened<R>>> {
     let location = location_of(url.as_ref());
     let mut tokenizer = Tokenizer::new(bytes, options);
@@ -862,6 +866,13 @@ pub(crate) fn open<R: Read>(
         Some(declared) => {
             let mut columns = Vec::with_capacity(declared.field_len());
             for (position, child) in declared.fields().iter().enumerate() {
+                if keep.is_some_and(|names| {
+                    !names
+                        .iter()
+                        .any(|name| name.eq_ignore_ascii_case(child.name()))
+                }) {
+                    continue;
+                }
                 let at = if options.header() {
                     names.iter().position(|name| name == child.name())
                 } else {
@@ -917,6 +928,11 @@ pub(crate) fn open<R: Read>(
                 .iter()
                 .zip(&candidates)
                 .enumerate()
+                .filter(|(_, (name, _))| {
+                    keep.is_none_or(|names| {
+                        names.iter().any(|wanted| wanted.eq_ignore_ascii_case(name))
+                    })
+                })
                 .map(|(at, (name, candidate))| {
                     let dtype = candidate.datatype(&zoned).unwrap_or(DataType::utf8());
                     let field = dtype.nullable_field(name.clone());
@@ -930,7 +946,16 @@ pub(crate) fn open<R: Read>(
         }
     };
     let field = match declared {
-        Some(declared) => declared.clone(),
+        Some(declared) if keep.is_none() => declared.clone(),
+        Some(declared) => {
+            if columns.is_empty() {
+                crate::Selector::all_except(declared.fields().iter().map(|child| child.name()))
+                    .apply_field(declared)?
+            } else {
+                crate::Selector::from_columns(columns.iter().map(|column| column.field.name()))
+                    .apply_field(declared)?
+            }
+        }
         None => DataType::from(StructType::from_fields(
             columns.iter().map(|column| column.field.clone()),
         )?)

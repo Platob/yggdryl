@@ -6,7 +6,7 @@ import {
   Field,
   Filter,
   Plan,
-  Records,
+  StreamSerie,
   Selector,
   Scalar,
   Term,
@@ -207,11 +207,11 @@ const filteredBatch: ArrowRecordBatch = filter.applyArrowBatch(arrowBatch)
 const selectedTable: ArrowTable = selector.applyArrowTable(arrowTable)
 const boundSelected: BatchReader = boundSelector.applyArrowReader(BatchReader.from(arrowTable))
 const boundFiltered: ArrowRecordBatch = filterBound.filterArrowBatch(arrowBatch)
-const planRecords: Records = planRead.applyRecords([{ ccy: 'EUR' }])
+const planRecords: StreamSerie = planRead.applyRecords([{ ccy: 'EUR' }])
 const planRows: Scalar[] = planRecords.collect()
 const recordsField: Field = planRecords.field
 const recordsReader: BatchReader = filter.applyRecords([{ ccy: 'EUR' }], schema).intoArrowReader()
-const recordsBack: Records = Records.fromArrowReader(BatchReader.from(arrowTable))
+const recordsBack: StreamSerie = StreamSerie.fromArrowReader(BatchReader.from(arrowTable))
 const executed: BatchReader = new Plan("select * from 'file:///lake/trades.arrow'").execute()
 
 const expression: Expression = new Expression("select ccy where ccy = 'EUR'")
@@ -230,7 +230,7 @@ const expressionColumns: Array<string> = expression.columns
 const expressionField: Field = expressionSelect.applyField(schema)
 const expressionBatch: ArrowRecordBatch = expression.applyArrowBatch(arrowBatch)
 const expressionReader: BatchReader = expression.applyArrowReader(BatchReader.from(arrowTable))
-const expressionRecords: Records = expression.applyRecords([{ ccy: 'EUR' }])
+const expressionRecords: StreamSerie = expression.applyRecords([{ ccy: 'EUR' }])
 const expressionExplained: string = expression.explain()
 const expressionJson: unknown = expression.toJSON()
 const expressionOrder: number = expression.compare(expression.clone())

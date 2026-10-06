@@ -13,8 +13,10 @@
 //! scalar fields, the [code sets](super::codes) its maps decode, its
 //! components, groups and message definitions, plus the message roots. It
 //! takes the dialect name from the file's own stem when the caller supplies
-//! none, and stamps every field it produces as a member of the dialect in its
-//! `FIX:branches`.
+//! none, stamps every field it produces as a member of the dialect in its
+//! `FIX:sources`, and holds the dialect's entry - its id, the file's name
+//! and the role of the plugin the root's `type` names - in the dictionary's
+//! sources catalog.
 //!
 //! A vocabulary is a dictionary rather than a list of fields, because a code
 //! set is named and owned by the dictionary: a field carries the *name* of
@@ -38,12 +40,33 @@
 //! There is no component element and no reference mechanism. FIX component
 //! blocks - `Instrument`, `UnderlyingInstrument`, `LegInstrument` - are
 //! flattened into plain sibling constraints at the point of use and repeated
-//! in full wherever they are needed. Nothing here recovers them, factors
-//! repeated runs into shared sub-structs, or dedupes two grammars carrying
-//! the same tag sequence. Every repeating group is a nested `grammar`, and
-//! one recursive function reads all of them - nested grammars are siblings as
-//! often as children. Its entries become named component definitions and its
-//! collection becomes a group definition; both carry no synthetic FIX tag.
+//! in full wherever they are needed. Nothing here recovers them or factors
+//! repeated runs into shared sub-structs. Every repeating group is a nested
+//! `grammar`, and one recursive function reads all of them - nested grammars
+//! are siblings as often as children. Its entries become named component
+//! definitions and its collection becomes a group definition; both carry no
+//! synthetic FIX tag.
+//!
+//! Two grammars declaring one component or one group structurally alike
+//! declare one definition, whatever they name it. The structure is the
+//! identity - the members in order, each its tag and the field it reads, a
+//! nested group its counter and the structure it repeats - and nothing else
+//! is: not how strictly a member was stated, not the `rg-name` the grammar
+//! spelled, not a description, and not which dialect declared it. So the
+//! first declaration's name and spelling hold, a member one grammar states
+//! as `required` and another does not is nullable - whichever of the two a
+//! message states first, every member of it reading the definition as it
+//! is once the message is read - the definition's `FIX:sources` lists every
+//! dialect that declared it, and a later grammar's member reads the held
+//! definition under the member name its own grammar gave it.
+//! [`FixRegistry::merge_with`] folds two dictionaries' definitions by name
+//! first and then the same way: each pair of one structure the fold made -
+//! an arrival stating a held definition's structure, or a held definition
+//! the fold widened into another's - folds into the held one, so a split
+//! one dialect took for one message is the group it was split from as soon
+//! as the fold makes the two alike, while two definitions one dictionary
+//! itself states as two stay two. A record stating no member states no
+//! structure, here and there alike.
 //!
 //! # What is lost, by name
 //!
@@ -95,17 +118,17 @@
 //! would become inconsistent; an unreferenced identity may be replaced
 //! directly.
 //!
-//! A group or component one message declares with members another message
-//! already declared under that name is split under the name the message is
-//! catalogued by - `underlying_newordersingle`, or `underlying_message414e`
-//! where tag 35 names the type nothing a store can file - while the member
-//! the message holds keeps the grammar's name; two messages declaring one
-//! group alike share one definition. A message declaring one name in
-//! several shapes - its parties at the root and again inside its legs -
-//! takes a split per shape in the order it declares them,
-//! `party_message5a`, `party_message5a_2`: a shape is one definition, and
-//! nothing a member has already read is rewritten under it. A message the
-//! catalog will not hold takes back every definition its walk wrote.
+//! A group or component one message declares with other members than another
+//! message already declared under that name, and alike to no definition held
+//! under any other, is split under the name the message is catalogued by -
+//! `underlying_newordersingle`, or `underlying_message414e` where tag 35
+//! names the type nothing a store can file - while the member the message
+//! holds keeps the grammar's name. A message declaring one name in several
+//! shapes - its parties at the root and again inside its legs - takes a
+//! split per shape in the order it declares them, `party_message5a`,
+//! `party_message5a_2`: a shape is one definition, and nothing a member has
+//! already read is rewritten under it. A message the catalog will not hold
+//! takes back every definition its walk wrote.
 //!
 //! # Names a catalog can file
 //!
@@ -341,7 +364,7 @@ use quick_xml::events::{BytesStart, Event};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
-use crate::{Charset, DataType, Error, Field, IOBase, Result, StructType, Url};
+use crate::{Charset, DataType, Error, Field, IOBase, PluginSide, Result, StructType, Url};
 
 use super::catalog::{catalog_name, push_member};
 use super::codes::{FixCodes, claims, is_sentinel, names_collide};
@@ -396,9 +419,12 @@ impl FixRegistry {
     ///
     /// `dialect` names the dictionary, because a `.cfb` never names itself:
     /// the file states a version and a session but no name for the pair, so
-    /// the caller supplies one, and every field the file produces is stamped
-    /// as a member of it in its `FIX:branches`. `None` stamps nothing, which
-    /// is right for a file read only for its vocabulary. The root element's
+    /// the caller supplies one, every field the file produces is stamped as
+    /// a member of it in its `FIX:sources`, and the dictionary holds the
+    /// dialect's entry in its sources catalog, naming the file where the
+    /// handle names one and the role of the plugin the root's `type` names.
+    /// `None` stamps nothing and holds no entry, which is
+    /// right for a file read only for its vocabulary. The root element's
     /// `fix-version`, `sendercompid` and `targetcompid` are read past: which
     /// version a run reads at is the codec's pin.
     ///
@@ -457,7 +483,17 @@ pub(super) fn parse(
 ) -> Result<(FixRegistry, Vec<Field>)> {
     let prefix = warning_prefix(source, dialect);
     let text = decoded(bytes, &prefix);
-    Parse::new(text.as_bytes(), dialect, prefix)?.run()
+    Parse::new(text.as_bytes(), dialect, source_file_name(source), prefix)?.run()
+}
+
+/// The name of the file a parse reads, as the file is named: the last
+/// segment of its URL, percent escapes decoded, and nothing for a buffer,
+/// whose identity is an address rather than a location.
+fn source_file_name(source: Option<&Url>) -> Option<Cow<'_, str>> {
+    let name = source
+        .filter(|url| !url.to_string().starts_with("mem:"))
+        .and_then(Url::file_name)?;
+    Some(crate::uri::percent_decode(name, "url path").unwrap_or(Cow::Borrowed(name)))
 }
 
 /// What every warning this parse logs opens with: the file's name and the
@@ -467,11 +503,8 @@ pub(super) fn parse(
 /// names nothing.
 fn warning_prefix(source: Option<&Url>, dialect: Option<&str>) -> String {
     let mut prefix = String::new();
-    if let Some(name) = source
-        .filter(|url| !url.to_string().starts_with("mem:"))
-        .and_then(Url::file_name)
-    {
-        prefix.push_str(name);
+    if let Some(name) = source_file_name(source) {
+        prefix.push_str(&name);
         prefix.push(' ');
     }
     if let Some(dialect) = dialect {
@@ -562,12 +595,14 @@ fn decoded<'bytes>(bytes: &'bytes [u8], prefix: &str) -> Cow<'bytes, str> {
 /// The dialect a handle's own stem names, where it names one.
 ///
 /// A stem stands in for a name the caller did not supply, so it is taken
-/// only where it reads as one: non-empty, opening with an ASCII letter, and
-/// free of the comma the stored membership list is rendered with. The
-/// address a buffer is identified by and a bare number are stems and not
-/// names, and stand in for nothing. A stem is read as the file is named
-/// rather than as its URL spells it, so `Morgan Stanley.cfb` names
-/// `morgan stanley` and not the percent escape in between.
+/// only where it reads as a source id: opening with an ASCII letter and
+/// holding no quote, backslash or control character. The address a buffer
+/// is identified by, a bare number and a stem the id grammar refuses are
+/// stems and not names, and stand in for nothing - the file reads as a bare
+/// vocabulary rather than being refused for a name nobody supplied. A stem
+/// is read as the file is named rather than as its URL spells it, so
+/// `Morgan Stanley.cfb` names `morgan stanley` and not the percent escape
+/// in between.
 pub(super) fn stem_dialect(handle: &dyn IOBase) -> Option<Cow<'_, str>> {
     let stem = handle.url().and_then(Url::stem)?;
     let stem = crate::uri::percent_decode(stem, "url path").unwrap_or(Cow::Borrowed(stem));
@@ -575,7 +610,7 @@ pub(super) fn stem_dialect(handle: &dyn IOBase) -> Option<Cow<'_, str>> {
         .bytes()
         .next()
         .is_some_and(|byte| byte.is_ascii_alphabetic())
-        && !stem.contains(super::field::SEPARATOR);
+        && super::document::is_word(&stem);
     named.then_some(stem)
 }
 
@@ -588,9 +623,15 @@ struct Parse<'doc> {
     /// malformed document has no element to name, so the bytes are kept to
     /// quote the span just before that position.
     bytes: &'doc [u8],
-    /// The dialect every produced field is a member of, as the caller named
-    /// it; nothing, for a file read as a bare vocabulary.
-    dialect: Option<String>,
+    /// The dialect every produced field is a member of - its catalog entry,
+    /// the id as the caller named it folded, and the file's name where the
+    /// handle names one - and nothing, for a file read as a bare vocabulary.
+    source: Option<super::source::FixSource>,
+    /// The role of the plugin the root element's `type` names - its class,
+    /// `BuySideFIXCPluginCBlock` or `SellSideFIXCPluginCBlock` - which the
+    /// dialect's catalog entry states; `UKNW` until the root is read, and
+    /// where it names neither.
+    pluginside: PluginSide,
     /// The vocabulary in declaration order, and where each tag sits in it.
     ///
     /// Indexed rather than scanned: a binding resolves every constraint it
@@ -613,7 +654,9 @@ struct Parse<'doc> {
     /// scan per declaration is the parse squared.
     values: std::collections::HashMap<SmolStr, usize>,
     spellings: std::collections::HashMap<String, usize>,
-    roots: Vec<Field>,
+    /// Each message root, beside the position of the `grammar-binding` that
+    /// declared it, which names the binding where the catalog drops it.
+    roots: Vec<(Field, usize)>,
     /// The names the normalization bindings spell for a tag, in declaration
     /// order.
     ///
@@ -678,14 +721,21 @@ struct Skipped {
 }
 
 impl<'doc> Parse<'doc> {
-    /// Opens a read, proving the dialect name a membership before a byte is
+    /// Opens a read, proving the dialect name a source id before a byte is
     /// read: a name no field could carry refuses the file, not each field.
-    fn new(bytes: &'doc [u8], dialect: Option<&str>, prefix: String) -> Result<Self> {
-        let dialect = match dialect {
+    fn new(
+        bytes: &'doc [u8],
+        dialect: Option<&str>,
+        file: Option<Cow<'_, str>>,
+        prefix: String,
+    ) -> Result<Self> {
+        let source = match dialect {
             Some(name) => {
-                let mut probe = DataType::utf8().nullable_field("dialect");
-                probe.as_fix_mut().set_branches([name])?;
-                probe.as_fix().branches().next().map(str::to_owned)
+                let source = super::source::FixSource::new(name)?;
+                Some(match file {
+                    Some(file) => source.with_file(file.as_ref()),
+                    None => source,
+                })
             }
             None => None,
         };
@@ -701,7 +751,8 @@ impl<'doc> Parse<'doc> {
         Ok(Self {
             reader,
             bytes,
-            dialect,
+            source,
+            pluginside: PluginSide::Unknown,
             vocabulary: Vec::new(),
             positions: std::collections::HashMap::new(),
             msgtypes: Vec::new(),
@@ -716,8 +767,8 @@ impl<'doc> Parse<'doc> {
 
     /// Stamps one produced field as a member of this file's dialect.
     fn stamp(&self, field: &mut Field) -> Result<()> {
-        match &self.dialect {
-            Some(dialect) => field.as_fix_mut().set_branches([dialect.as_str()]),
+        match &self.source {
+            Some(source) => field.as_fix_mut().set_sources([source.id()]),
             None => Ok(()),
         }
     }
@@ -735,6 +786,13 @@ impl<'doc> Parse<'doc> {
     /// under the name the field that decodes by it supplies.
     fn dictionary(mut self) -> Result<(FixRegistry, Vec<Field>)> {
         let mut registry = FixRegistry::new();
+        // The dialect's entry, so no field the file produces names an id
+        // the dictionary holds no entry for, stating the role the root
+        // named. Cloned, not taken: the roots catalogued below are stamped
+        // from the same entry.
+        if let Some(source) = &self.source {
+            registry.add_source(source.clone().with_pluginside(self.pluginside));
+        }
         for held in std::mem::take(&mut self.vocabulary) {
             let Declared {
                 tag,
@@ -796,17 +854,18 @@ impl<'doc> Parse<'doc> {
         }
         let mut roots = Vec::with_capacity(self.roots.len());
         let held = std::mem::take(&mut self.roots);
-        for root in held {
+        let mut structures = Structures::default();
+        for (root, at) in held {
             let wire = super::msgtype::wire_value(root.name()).to_owned();
             let named = SmolStr::new(root.name());
-            match self.catalogued(&mut registry, root, &wire) {
+            match self.catalogued(&mut registry, root, &wire, &mut structures) {
                 Ok(root) => roots.push(root),
                 // One message the catalog will not hold is one message: the
                 // dictionary keeps every field it read and every other root
                 // the file bound.
                 Err(error) => self.dropped(
                     &self.refusal_at(
-                        0,
+                        at,
                         format_smolstr!(
                             "message {:?}: {error}",
                             elide_to(&named, ERROR_TEXT_LIMIT)
@@ -874,20 +933,29 @@ impl<'doc> Parse<'doc> {
     /// message the dialect actually speaks.
     ///
     /// **The name is settled before a member is.** A group or component
-    /// whose name another context already holds with other members is split
-    /// under this message's name - `underlying_newordersingle`, or
-    /// `underlying_message414e` where tag 35 names the type nothing
+    /// another context already declared alike, under its name or any other,
+    /// is that definition, and the member reads it by the held name. One
+    /// whose name another context holds with other members, alike to nothing
+    /// held, is split under this message's name - `underlying_newordersingle`,
+    /// or `underlying_message414e` where tag 35 names the type nothing
     /// readable - so a split definition says which message it came from; a
     /// third shape in one message takes `_2`, a fourth `_3`.
-    fn catalogued(&self, registry: &mut FixRegistry, root: Field, wire: &str) -> Result<Field> {
+    fn catalogued(
+        &self,
+        registry: &mut FixRegistry,
+        root: Field,
+        wire: &str,
+        structures: &mut Structures,
+    ) -> Result<Field> {
         // One message is one mutation of the file's dictionary: the groups
         // and components its walk wrote go with it where it is dropped, so a
         // message the catalog will not hold leaves no definition nothing
         // reads.
         let mut written = Vec::new();
-        let catalogued = self.catalogue(registry, root, wire, &mut written);
+        let catalogued = self.catalogue(registry, root, wire, &mut written, structures);
         if catalogued.is_err() {
             registry.forget_definitions(&written);
+            structures.forgotten(&written);
         }
         catalogued
     }
@@ -899,9 +967,10 @@ impl<'doc> Parse<'doc> {
         root: Field,
         wire: &str,
         written: &mut Vec<(crate::FixCategory, String)>,
+        structures: &mut Structures,
     ) -> Result<Field> {
         let qualifier = message_name(registry, wire);
-        let mut root = catalog_members(registry, root, &qualifier, written)?;
+        let mut root = catalog_members(registry, root, &qualifier, written, structures)?;
         // The root a caller is handed is the file's too, so it carries the
         // membership the catalogued message carries; only its name differs,
         // the caller's keeping the wire's spelling.
@@ -936,6 +1005,9 @@ impl<'doc> Parse<'doc> {
             // the message reads, so a split nothing reads is no definition.
             staged.forget_unread(written);
             *registry = staged;
+            // The fold moved members into definitions the catalog holds, so
+            // what structure each states is read again when next asked.
+            structures.moved();
             for drop in drops {
                 self.dropped(
                     &self.refusal_at(
@@ -956,6 +1028,7 @@ impl<'doc> Parse<'doc> {
                 root,
                 &qualifier,
                 written,
+                structures,
             )?;
         }
         Ok(held)
@@ -970,10 +1043,15 @@ impl<'doc> Parse<'doc> {
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(element)) => {
                     // The root element opens the document and states its
-                    // version and session, none of which is a vocabulary's:
-                    // it is read past, and its children are what is read.
+                    // version and session, neither of which is a vocabulary's:
+                    // only the plugin's class is read off it - its role is the
+                    // dialect's - and its children are what is read.
                     if is_named(&element, b"cplugin-configuration") {
-                        // Nothing to read on the root itself.
+                        self.pluginside = self
+                            .attribute(&element, "type")
+                            .map_or(PluginSide::Unknown, |class| {
+                                PluginSide::from_plugin_type(&class)
+                            });
                     } else if is_named(&element, b"vocabulary") {
                         self.read_vocabulary()?;
                     } else if is_named(&element, b"grammar-binding") {
@@ -1100,7 +1178,7 @@ impl<'doc> Parse<'doc> {
         for at in 0..self.vocabulary.len() {
             let tag = self.vocabulary[at].tag;
             let key = super::registry::name_key(self.vocabulary[at].field.name());
-            let unnamed = self.vocabulary[at].field.name().parse::<i32>() == Ok(tag);
+            let unnamed = super::registry::is_unnamed(&self.vocabulary[at].field);
             let contended = claimed.get(&key).is_some_and(|tags| tags.len() > 1)
                 || decimals.get(&key).is_some_and(|held| *held != tag);
             if !unnamed && !contended {
@@ -1306,7 +1384,7 @@ impl<'doc> Parse<'doc> {
             );
             return Ok(());
         };
-        let Ok(tag) = name.parse::<i32>() else {
+        let Some(tag) = super::field::parse_tag(&name) else {
             self.dropped(
                 &self.refused_in(
                     element,
@@ -2143,6 +2221,7 @@ impl<'doc> Parse<'doc> {
             self.push_msgtype(declared, None);
         }
         let msgtype = declared.unwrap_or_else(|| super::build::UNKNOWN_MSGTYPE.to_owned());
+        let at = self.position();
         let mut buffer = Vec::new();
         loop {
             let event = self
@@ -2154,7 +2233,7 @@ impl<'doc> Parse<'doc> {
                 Event::Start(element) if is_named(&element, b"grammar") => {
                     let children = self.read_grammar(1, &msgtype)?;
                     match StructType::from_fields(children).map(DataType::from) {
-                        Ok(dtype) => self.roots.push(dtype.required_field(msgtype.clone())),
+                        Ok(dtype) => self.roots.push((dtype.required_field(msgtype.clone()), at)),
                         // A root its own children will not make a struct of
                         // is one message dropped, not one file: the binding
                         // still declared the type, and every other message
@@ -2174,7 +2253,7 @@ impl<'doc> Parse<'doc> {
                 Event::Empty(element) if is_named(&element, b"grammar") => {
                     let root = DataType::from(StructType::from_fields([])?)
                         .required_field(msgtype.clone());
-                    self.roots.push(root);
+                    self.roots.push((root, at));
                 }
                 Event::End(element) if is_named(&element, b"grammar-binding") => break,
                 _ => {}
@@ -2398,7 +2477,7 @@ impl<'doc> Parse<'doc> {
             self.check_validity(closed)?;
             return Ok(None);
         };
-        let Ok(tag) = name.parse::<i32>() else {
+        let Some(tag) = super::field::parse_tag(&name) else {
             self.dropped(
                 &self.refused_in(
                     element,
@@ -2825,11 +2904,7 @@ fn spelling(element: &BytesStart<'_>) -> String {
 /// Trimmed, because a CBlock leaves the space it wrapped an attribute with -
 /// `value="$609 "` is tag 609 written by an editor.
 fn referenced(value: &str) -> Option<i32> {
-    let held = value.trim().strip_prefix('$')?;
-    if held.is_empty() || !held.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    held.parse().ok()
+    super::field::parse_tag(value.trim().strip_prefix('$')?)
 }
 
 /// One description as a single line of prose.
@@ -2893,25 +2968,42 @@ fn message_name(registry: &FixRegistry, wire: &str) -> String {
     }
 }
 
-/// Stores a named definition, qualifying distinct message contexts.
+/// Stores a named definition, or answers the one the catalog holds of its
+/// structure.
 ///
-/// A name the catalog already holds with other members is split under the
-/// message it was read in, `{name}_{message}`: the split says where it came
-/// from, and a message is one wire type, so two bindings of one type that
-/// declare it alike reach one split rather than two. A message declaring
-/// one name in several shapes - its parties at the root and again inside
-/// its legs, or two bindings of the type stating it two ways - takes a split
-/// per shape in the order it declares them, `{name}_{message}_2`, `_3`: a
-/// shape is one definition and two shapes are two, and nothing already
-/// written is rewritten under a member that has read it. Every definition
-/// written is recorded in `written`, so a message that fails to catalogue
-/// takes them back with it.
+/// A definition is its [structure](super::catalog::structural_key): the
+/// members a grammar states in order, each its tag or the field it reads, a
+/// nested group its counter and the structure it repeats. A definition the
+/// catalog holds with that structure is this one, under this name or any
+/// other and however the grammar spelled it or how strictly it stated a
+/// member: two grammars declaring one structure declare one definition, the
+/// first declaration's name and spelling hold, a member one of them states
+/// as required and the other does not is nullable, and the member reads the
+/// held name. What is answered is the held definition as the occurrence the
+/// member holds, so the member restates exactly what the catalog holds.
+///
+/// A name the catalog holds with another structure, where no definition of
+/// this structure is held, is split under the message it was read in,
+/// `{name}_{message}`: the split says where it came from, and a message is
+/// one wire type, so two bindings of one type that declare it alike reach
+/// one split rather than two. A message declaring one name in several
+/// shapes - its parties at the root and again inside its legs, or two
+/// bindings of the type stating it two ways - takes a split per shape in the
+/// order it declares them, `{name}_{message}_2`, `_3`: a shape is one
+/// definition and two shapes are two, and nothing already written is
+/// rewritten under a member that has read it. Every definition written is
+/// recorded in `written`, so a message that fails to catalogue takes them
+/// back with it; a held definition relaxed for one stays relaxed, which
+/// widens what it admits and contradicts nothing, and every member the
+/// message built before the relaxation reads it again
+/// ([`catalog_members`]).
 fn catalog_entry(
     registry: &mut FixRegistry,
     category: crate::FixCategory,
     mut field: Field,
     message: &str,
     written: &mut Vec<(crate::FixCategory, String)>,
+    structures: &mut Structures,
 ) -> Result<Field> {
     let base = field.name().to_owned();
     for ordinal in 0_usize.. {
@@ -2920,27 +3012,219 @@ fn catalog_entry(
             1 => field.set_name(format!("{base}_{message}")),
             ordinal => field.set_name(format!("{base}_{message}_{ordinal}")),
         }
-        match registry.get_definition(category, field.name()) {
-            Some(held) if restated(held, &field) => return Ok(field),
-            Some(_) => {}
-            None => break,
+        let held = registry.get_definition(category, field.name());
+        if let Some(held) = held
+            && restated(held, &field)
+        {
+            return Ok(occurrence(held, &field));
+        }
+        let taken = held.is_some();
+        // Before a name of its own and before a split: a held definition of
+        // this structure, under any name, is this one.
+        if ordinal == 0
+            && let Some(name) = structures.find(registry, category, &field)?
+        {
+            return reuse(registry, category, &name, &field, structures);
+        }
+        if !taken {
+            break;
         }
     }
     registry.insert_definition(category, field.clone())?;
     written.push((category, field.name().to_owned()));
+    structures.written(registry, category, &field)?;
     Ok(field)
+}
+
+/// The held definition as the occurrence a member of it holds: without the
+/// derived tag only the definition carries, under the member's own
+/// nullability. A reference is proven against exactly what the catalog
+/// holds, so this is what a member reading a held definition restates.
+fn occurrence(held: &Field, member: &Field) -> Field {
+    let mut occurrence = held.clone();
+    occurrence.remove_metadata(super::field::TAG_KEY);
+    occurrence.set_nullable(member.is_nullable());
+    occurrence
+}
+
+/// The structures the catalog holds, by [structure](super::catalog::structural_key), each the
+/// name of the first definition stating it: what one parse asks, once per
+/// group or component a grammar declares, which definition it declared.
+///
+/// Built from the catalog the first time it is asked and kept by the three
+/// events that move it: a definition written is indexed under its structure,
+/// a walk taken back takes its definitions out, and a second binding of a
+/// wire type - which folds members into definitions it holds, so their
+/// structures move - empties it, to be built again when next asked. A
+/// message is its wire type's and never another's, so none is indexed.
+/// Beside the index it counts the definitions a reuse relaxed, which is what
+/// tells a walk that a record it built holds a copy the catalog no longer
+/// does.
+#[derive(Default)]
+struct Structures {
+    held: Option<std::collections::HashMap<(crate::FixCategory, SmolStr), String>>,
+    /// How many held definitions [`reuse`] relaxed so far: a record built
+    /// before a later member relaxed a definition it reads holds the copy
+    /// the catalog held then, so a walk reads its members again where the
+    /// count moved under it.
+    relaxed: usize,
+}
+
+impl Structures {
+    /// The name of a held definition of `field`'s structure, where the
+    /// catalog holds one.
+    fn find(
+        &mut self,
+        registry: &FixRegistry,
+        category: crate::FixCategory,
+        field: &Field,
+    ) -> Result<Option<String>> {
+        if field.as_fix().msgtype().is_some() {
+            return Ok(None);
+        }
+        let lookup =
+            |category: crate::FixCategory, name: &str| registry.get_definition(category, name);
+        let mut memo = super::catalog::StructureMemo::new();
+        let key = super::catalog::structural_key(field, &lookup, &mut memo)?;
+        // A record stating no member says nothing two declarations share.
+        if key == super::catalog::EMPTY_STRUCTURE {
+            return Ok(None);
+        }
+        let held = match &mut self.held {
+            Some(held) => held,
+            None => {
+                let mut built = std::collections::HashMap::new();
+                for category in [crate::FixCategory::Components, crate::FixCategory::Groups] {
+                    for definition in registry.definitions(category) {
+                        if definition.as_fix().msgtype().is_some() {
+                            continue;
+                        }
+                        let key = super::catalog::structural_key(definition, &lookup, &mut memo)?;
+                        if key != super::catalog::EMPTY_STRUCTURE {
+                            built
+                                .entry((category, key))
+                                .or_insert_with(|| definition.name().to_owned());
+                        }
+                    }
+                }
+                self.held.insert(built)
+            }
+        };
+        Ok(held.get(&(category, key)).cloned())
+    }
+
+    /// Indexes the definition `name` just written, stating `field`'s
+    /// structure.
+    fn written(
+        &mut self,
+        registry: &FixRegistry,
+        category: crate::FixCategory,
+        field: &Field,
+    ) -> Result<()> {
+        let Some(held) = &mut self.held else {
+            return Ok(());
+        };
+        if field.as_fix().msgtype().is_some() {
+            return Ok(());
+        }
+        let lookup =
+            |category: crate::FixCategory, name: &str| registry.get_definition(category, name);
+        let key = super::catalog::structural_key(
+            field,
+            &lookup,
+            &mut super::catalog::StructureMemo::new(),
+        )?;
+        if key != super::catalog::EMPTY_STRUCTURE {
+            held.entry((category, key))
+                .or_insert_with(|| field.name().to_owned());
+        }
+        Ok(())
+    }
+
+    /// Takes out the definitions a walk wrote and the catalog took back.
+    fn forgotten(&mut self, written: &[(crate::FixCategory, String)]) {
+        if let Some(held) = &mut self.held {
+            held.retain(|(category, _), name| {
+                !written
+                    .iter()
+                    .any(|(taken, forgotten)| taken == category && forgotten == name)
+            });
+        }
+    }
+
+    /// Empties the index, for a fold that moved what the catalog holds.
+    fn moved(&mut self) {
+        self.held = None;
+    }
+}
+
+/// Reads `field` as the held definition `name`: the held definition relaxed
+/// to what both declarations state, restated in the catalog where that
+/// changed it - counted on `structures`, so the records built before it
+/// read the definition again - and answered as the occurrence the member
+/// holds.
+fn reuse(
+    registry: &mut FixRegistry,
+    category: crate::FixCategory,
+    name: &str,
+    field: &Field,
+    structures: &mut Structures,
+) -> Result<Field> {
+    let held = registry.definition(category, name)?.clone();
+    let merged = super::catalog::fold_alike(&held, field)?;
+    if merged != held {
+        log::debug!(
+            "{:?} relaxes the {} {name:?} it declares alike",
+            field.name(),
+            category.as_str()
+        );
+        registry.restate_definition(category, merged)?;
+        structures.relaxed += 1;
+    } else if field.name() != name {
+        log::debug!(
+            "{:?} reads the {} {name:?} it declares alike",
+            field.name(),
+            category.as_str()
+        );
+    }
+    Ok(occurrence(registry.definition(category, name)?, field))
+}
+
+/// A member reading a group or a component, as the occurrence of the
+/// definition the catalog holds now - what [`catalog_entry`] answers for a
+/// held definition - read again where a later member relaxed it; a member
+/// reading no definition as it is.
+fn reread(registry: &FixRegistry, member: &Field) -> Result<Field> {
+    let view = member.as_fix();
+    let (category, name) = if let Some(name) = view.group() {
+        (crate::FixCategory::Groups, name.to_owned())
+    } else if let Some(name) = view.component() {
+        (crate::FixCategory::Components, name.to_owned())
+    } else {
+        return Ok(member.clone());
+    };
+    let mut reread = occurrence(registry.definition(category, &name)?, member);
+    match category {
+        crate::FixCategory::Groups => reread.as_fix_mut().set_group(&name)?,
+        _ => reread.as_fix_mut().set_component(&name)?,
+    }
+    reread.set_name(member.name());
+    Ok(reread)
 }
 
 /// Whether the held definition is `field` as the catalog stored it.
 ///
-/// The catalog stamps a definition with the tag it derives from the name, and
-/// the field a grammar produced has not been given one, so the two compare on
-/// everything but that tag: a group two messages declare alike is one group,
-/// never a split of itself.
+/// The catalog lays a definition out before it stores it - a reference
+/// occurrence loses the derived tag only its target carries and every level
+/// normalizes its identifiers - and then stamps the root with the tag it
+/// derives from the name, which the field a grammar produced has not been
+/// given. So the incoming field is laid out the same way and the two compare
+/// on everything but that tag: a group two messages declare alike is one
+/// group, never a split of itself.
 fn restated(held: &Field, field: &Field) -> bool {
     let mut held = held.clone();
     held.remove_metadata(super::field::TAG_KEY);
-    &held == field
+    super::catalog::canonical_occurrences(field.clone(), true).is_ok_and(|field| held == field)
 }
 
 fn catalog_members(
@@ -2948,14 +3232,27 @@ fn catalog_members(
     mut field: Field,
     message: &str,
     written: &mut Vec<(crate::FixCategory, String)>,
+    structures: &mut Structures,
 ) -> Result<Field> {
     match field.dtype() {
         DataType::Struct(children) => {
-            let children = children
+            let relaxed = structures.relaxed;
+            let mut children = children
                 .iter()
                 .cloned()
-                .map(|child| catalog_members(registry, child, message, written))
+                .map(|child| catalog_members(registry, child, message, written, structures))
                 .collect::<Result<Vec<_>>>()?;
+            // A member built before a later one relaxed a definition it
+            // reads - the parties at the root, stated strictly, before the
+            // lax statement inside the legs - holds the copy the catalog
+            // held then, and a reference restates exactly what the catalog
+            // holds: so where a relaxation landed under this record, every
+            // member reading a definition reads it again as it is now.
+            if structures.relaxed != relaxed {
+                for child in &mut children {
+                    *child = reread(registry, child)?;
+                }
+            }
             field.set_dtype(DataType::from(StructType::from_fields(children)?))?;
         }
         DataType::Serie(item) => {
@@ -2964,13 +3261,20 @@ fn catalog_members(
             // for it, so every dialect's message names one group one way and
             // a fold meets the two readings as one member.
             let (member, occurrence) = (field.name().to_owned(), item.name().to_owned());
-            let item = catalog_members(registry, item.as_ref().clone(), message, written)?;
+            let item = catalog_members(
+                registry,
+                item.as_ref().clone(),
+                message,
+                written,
+                structures,
+            )?;
             let mut item = catalog_entry(
                 registry,
                 crate::FixCategory::Components,
                 item,
                 message,
                 written,
+                structures,
             )?;
             let component = item.name().to_owned();
             item.as_fix_mut().set_component(&component)?;
@@ -2983,6 +3287,7 @@ fn catalog_members(
                 field,
                 message,
                 written,
+                structures,
             )?;
             let name = field.name().to_owned();
             field.as_fix_mut().set_group(&name)?;

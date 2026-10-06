@@ -74,7 +74,7 @@ const INGEST_PARTITIONS: usize = 64;
 const PRUNED_FILTER: (&str, &str) = ("venue", "venue-2");
 
 /// The scratch labels the benchmark tables live under, cleaned at exit.
-const SCRATCH_LABELS: [&str; 12] = [
+const SCRATCH_LABELS: [&str; 13] = [
     "files-10",
     "files-200",
     "compact-200",
@@ -87,6 +87,7 @@ const SCRATCH_LABELS: [&str; 12] = [
     "commit-uniform",
     "commit-skewed",
     "commit-ingest",
+    "append-keyed-50",
 ];
 
 /// Spell one of the [`VENUES`] partition values.
@@ -685,15 +686,23 @@ fn compact_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
-/// Build an unpartitioned table of `files` single-row data files.
+/// Build an unpartitioned table of `files` single-row data files, keyed by
+/// `id` - its schema's `identifier-field-ids` - where `keyed` says so.
 ///
 /// One append is one commit is one file, so the merge benchmark gets a table
 /// whose per-file id bounds are as tight as bounds can be - which is exactly
-/// what lets the measured upsert carry most files unread.
-fn merge_table(label: &str, files: usize) -> IcebergTable<LocalFolder> {
+/// what lets the measured upsert carry most files unread, and a keyed append
+/// read the key column of few of them.
+fn merge_table(label: &str, files: usize, keyed: bool) -> IcebergTable<LocalFolder> {
     let path = scratch(label);
     let _ = std::fs::remove_dir_all(&path);
-    let schema = plan_schema();
+    let mut schema = plan_schema();
+    if keyed {
+        schema
+            .as_iceberg_mut()
+            .set_identifier_field_ids(&[1])
+            .expect("id is a required column");
+    }
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
@@ -721,27 +730,33 @@ fn merge_table(label: &str, files: usize) -> IcebergTable<LocalFolder> {
     table
 }
 
-/// Upserting ten keyed rows into a table of fifty single-row files.
+/// Upserting ten keyed rows into a table of fifty single-row files: rows
+/// that change what is stored, and the same rows again, which change
+/// nothing; and appending ten rows whose keys a keyed table holds.
 fn merge_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("merge");
-    let mut table = merge_table(SCRATCH_LABELS[3], MERGE_FILES);
+    let mut table = merge_table(SCRATCH_LABELS[3], MERGE_FILES, false);
     let arrow = plan_schema()
         .into_arrow_schema()
         .expect("the schema projects to Arrow");
-    let upsert = RecordBatch::try_new(
-        arrow,
-        vec![
-            Arc::new(Int64Array::from_iter_values(0..10)),
-            Arc::new(StringArray::from(vec![Some(venue(0)); 10])),
-        ],
-    )
-    .expect("the upsert batch matches the schema");
+    let rows = |at: usize| {
+        RecordBatch::try_new(
+            arrow.clone(),
+            vec![
+                Arc::new(Int64Array::from_iter_values(0..10)),
+                Arc::new(StringArray::from(vec![Some(venue(at)); 10])),
+            ],
+        )
+        .expect("the upsert batch matches the schema")
+    };
+    let (upsert, changed) = (rows(0), rows(1));
     let merge_by = yggdryl::Selector::from_columns(["id"]);
 
     // Proven once outside the timer, which also settles the table into the
     // steady state every measured merge sees: the ten matched single-row files
     // fold into one and the other forty are carried untouched, so an upsert of
-    // stored keys adds no row and every later merge rewrites that one file.
+    // stored keys adds no row and every later merge that changes a row
+    // rewrites that one file.
     table
         .commit_merge(
             yggdryl::arrow::batch_reader(upsert.schema(), [upsert.clone()]),
@@ -761,7 +776,46 @@ fn merge_benchmarks(criterion: &mut Criterion) {
         "ten matched files fold into one"
     );
 
+    // Each measured upsert changes every row it matches - the venue flips
+    // between two values - so each rewrites the one file.
+    let mut flip = false;
     group.bench_function(format!("upsert_into_{MERGE_FILES}_files"), |bencher| {
+        bencher.iter(|| {
+            flip = !flip;
+            let rows = if flip { &changed } else { &upsert };
+            table
+                .commit_merge(
+                    yggdryl::arrow::batch_reader(rows.schema(), [rows.clone()]),
+                    black_box(&merge_by),
+                    true,
+                )
+                .expect("the merge commits");
+        });
+    });
+
+    // The rows the table holds, merged again: the one file is read and
+    // compared, nothing is written and no snapshot committed.
+    table
+        .commit_merge(
+            yggdryl::arrow::batch_reader(upsert.schema(), [upsert.clone()]),
+            &merge_by,
+            true,
+        )
+        .expect("the settling merge commits");
+    let snapshots = table.metadata().expect("the metadata").snapshots().len();
+    table
+        .commit_merge(
+            yggdryl::arrow::batch_reader(upsert.schema(), [upsert.clone()]),
+            &merge_by,
+            true,
+        )
+        .expect("the replay merges");
+    assert_eq!(
+        table.metadata().expect("the metadata").snapshots().len(),
+        snapshots,
+        "a merge changing no row commits nothing"
+    );
+    group.bench_function(format!("replay_into_{MERGE_FILES}_files"), |bencher| {
         bencher.iter(|| {
             table
                 .commit_merge(
@@ -769,9 +823,38 @@ fn merge_benchmarks(criterion: &mut Criterion) {
                     black_box(&merge_by),
                     true,
                 )
-                .expect("the merge commits");
+                .expect("the replay merges");
         });
     });
+
+    // A keyed table appended the ten keys it holds: the key column of the
+    // ten files their bounds keep is read, and nothing is committed.
+    let mut keyed = merge_table(SCRATCH_LABELS[8], MERGE_FILES, true);
+    let snapshots = keyed.metadata().expect("the metadata").snapshots().len();
+    keyed
+        .commit_append(yggdryl::arrow::batch_reader(
+            upsert.schema(),
+            [upsert.clone()],
+        ))
+        .expect("the held keys append");
+    assert_eq!(
+        keyed.metadata().expect("the metadata").snapshots().len(),
+        snapshots,
+        "an append whose every key is held commits nothing"
+    );
+    group.bench_function(
+        format!("append_held_keys_into_{MERGE_FILES}_files"),
+        |bencher| {
+            bencher.iter(|| {
+                keyed
+                    .commit_append(yggdryl::arrow::batch_reader(
+                        upsert.schema(),
+                        [black_box(&upsert).clone()],
+                    ))
+                    .expect("the held keys append");
+            });
+        },
+    );
     group.finish();
 }
 
@@ -812,7 +895,10 @@ fn partitioned_merge_table(label: &str, partitions: usize) -> IcebergTable<Local
 }
 
 /// Upserting into one partition of many: the merge reads that partition's
-/// file and carries every other one under its own path.
+/// file and carries every other one under its own path. Every column of this
+/// table is its key - the venue partition and the id - so after the priming
+/// merge every measured one meets the rows it brings already held: it reads
+/// that one file, writes nothing and commits nothing.
 fn isolated_merge_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("merge");
     let mut table = partitioned_merge_table(SCRATCH_LABELS[6], MERGE_PARTITIONS);

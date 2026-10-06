@@ -95,7 +95,7 @@ test('the enum listings name the column vocabulary and the market kinds', () => 
   assert.ok(enums.mdUpdateActions.includes('snapshot'))
   assert.equal(enums.elementColumns.length, 6)
   assert.equal(enums.eventColumns.length, 9)
-  assert.equal(enums.marketColumns.length, 34)
+  assert.equal(enums.marketColumns.length, 35)
   assert.equal(enums.operationColumns.length, 5)
   assert.deepEqual(enums.operationColumns, ['ordqty', 'timeinforce', 'tradable', 'identifiers', 'partyids'])
   // When an element last executed is a market fact, never an event's.
@@ -162,7 +162,7 @@ test('the market facts cross as plain values', () => {
   // The stored cross code is the kind, the side, then the base.
   assert.equal(event.crosscode, '10:1:O-1')
   assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1', side: 'SELL' }).crosscode, '10:2:O-1')
-  assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).side, 'UNKN')
+  assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).side, 'UKNW')
   assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).crosscode, '10:0:O-1', 'a side nobody stated is 0')
   assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).isincode, null)
 })

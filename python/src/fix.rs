@@ -10,8 +10,9 @@
 //! An identifier crosses as the `int` the core derives from a tag and a name,
 //! read once here through [`id_from_py`]; a bare `int` anywhere else is a
 //! tag, and a `str` is a name or a path, so one integer never has two
-//! readings. A dictionary's contribution is membership on the field -
-//! `field.fix.branches` - and never a key a lookup takes.
+//! readings. A source's contribution is membership on the field -
+//! `field.fix.sources` - and never a key a lookup takes; what is known of a
+//! source, once, is the registry's catalog (`FixRegistry.sources`).
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -27,8 +28,9 @@ use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
     FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
     FixEntry as CoreFixEntry, FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMerge,
-    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, IdType,
-    MsgType as CoreMsgType, Scalar, StructType, TimeUnit, Timezone,
+    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, FixSource as CoreFixSource,
+    IOBase as CoreIOBase, IdType, MsgType as CoreMsgType, PluginSide, Scalar, StructType, TimeUnit,
+    Timezone,
 };
 
 use crate::field::{PyField, core_field_from_value};
@@ -39,7 +41,8 @@ use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
 use crate::isin_registry::PyIsinRegistry;
 use crate::scalar::{PyScalar, from_py};
-use crate::serie::{PySerieReader, serie_source_of};
+use crate::serie::serie_source_of;
+use crate::stream_chunked_serie::PyStreamChunkedSerie;
 use crate::text::codec::{PythonWriter, with_python_bytes};
 use crate::text::line::{PyTextLine, core_path_from_value};
 use crate::uri::core_url_from_value;
@@ -109,6 +112,33 @@ fn entry_tuple<'py>(py: Python<'py>, entry: &CoreFixEntry) -> PyResult<Bound<'py
     Ok((entry.tag(), entry.name(), entry.value(), nested)
         .into_pyobject(py)?
         .into_any())
+}
+
+/// One sources catalog entry as the record Python reads: `{"id", "file",
+/// "pluginside"}`, every key stated - `file` `None` where none is known, the
+/// role the `PluginSide` member - so one record reads like the next.
+fn source_record<'py>(py: Python<'py>, source: &CoreFixSource) -> PyResult<Bound<'py, PyDict>> {
+    let record = PyDict::new(py);
+    record.set_item("id", source.id())?;
+    record.set_item("file", source.file())?;
+    record.set_item("pluginside", member(py, source.pluginside())?)?;
+    Ok(record)
+}
+
+/// The plugin role one Python value names: a `PluginSide` member, its code
+/// or a spelling, read through the datatype's own value door so a spelling
+/// the column refuses is refused here too.
+pub(crate) fn pluginside_from_py(given: &Bound<'_, PyAny>) -> PyResult<PluginSide> {
+    match CoreDataType::PluginSide
+        .scalar(from_py(given)?)
+        .map_err(value_error)?
+    {
+        Scalar::PluginSide(side) => Ok(side),
+        other => Err(value_error(format!(
+            "expected a PluginSide, got {}",
+            other.kind()
+        ))),
+    }
 }
 
 /// An optional text as a `repr` spells it: `None`, or the quoted text.
@@ -410,9 +440,11 @@ impl PyFixRegistry {
     /// Answers the dictionary its `vocabulary` states and the message roots
     /// its `grammar-binding`s describe. `dialect` names the dictionary, and
     /// every field, group, component and message root the file produces is
-    /// stamped with it in `FIX:branches` - standard tags included, because
-    /// membership means the dictionary speaks the field; with none supplied
-    /// nothing is stamped.
+    /// stamped with it in `FIX:sources` - standard tags included, because
+    /// membership means the dictionary speaks the field - and the dictionary
+    /// holds its entry in `sources()`: the id, the file's name and the role
+    /// of the plugin the root's `type` names. With none supplied nothing is
+    /// stamped and no entry is held.
     ///
     /// A file this cannot be read from is a `ValueError` carrying the native
     /// sentence whole: the byte the reader stopped at, what was expected, what
@@ -443,7 +475,9 @@ impl PyFixRegistry {
     /// tags and membership become the union, and the incoming tag joins the
     /// alternates unless another field answers it - the same tag under
     /// another name is added beside the holder, neither learning the other's
-    /// name, a field named by nothing but its own decimal tag merges into the
+    /// name, unless that name is a third field's canonical name, which the
+    /// field then merges into with the tag staying with its holder (a name
+    /// another field holds only as an alias stands beside the holder), a field named by nothing but its own decimal tag merges into the
     /// holder of that tag, and a holder so named takes the name of a field
     /// arriving on its tag, a nested field is redirected to `add_definition`
     /// under the category its shape names, and one of this crate's own tags
@@ -513,13 +547,16 @@ impl PyFixRegistry {
     ///
     /// The one call an ingest takes: the file's vocabulary folds in the way
     /// `merge_with` folds any dictionary, every field it produces stamped
-    /// with the dialect in `FIX:branches` and that membership unioned onto
-    /// whatever it merges into.
+    /// with the dialect in `FIX:sources` and that membership unioned onto
+    /// whatever it merges into, and the dialect's entry - its id, the file's
+    /// name and its plugin's role - joining `sources()`.
     ///
     /// `dialect` names the dictionary, and the location's own stem stands in
-    /// when the caller does not, where it reads as a name - opening with a
-    /// letter, carrying no comma, percent escapes decoded; a supplied name
-    /// that is empty or carries a comma is a `ValueError`.
+    /// when the caller does not, where it reads as a source id - opening
+    /// with an ASCII letter and holding no quote, backslash or control
+    /// character, percent escapes decoded - and nothing where it does not; a
+    /// supplied name that is empty or holds a quote, a backslash or a control
+    /// character is a `ValueError`.
     ///
     /// Answers `merge_with`'s mapping, each drop naming the file: a datatype
     /// declared at another precision of the stored one - a `CBlock`'s `float`
@@ -594,8 +631,8 @@ impl PyFixRegistry {
     /// No dialect is taken, and that is the point of the pair: a `CBlock`
     /// states no membership, so `add_cfb_file` has to be told one or guess it
     /// from the stem, while a snapshot is this package's own format and every
-    /// field and definition in it already carries the `FIX:branches` its
-    /// writer meant.
+    /// field and definition in it already carries the `FIX:sources` its
+    /// writer meant, beside the sources catalog it folds in.
     ///
     /// Answers `merge_with`'s mapping, each drop naming the file. One
     /// mutation: a document that does not parse, or a reference naming a
@@ -830,8 +867,8 @@ impl PyFixRegistry {
     /// An empty list removes the set, exactly as an empty tag or alias list
     /// removes its own property; removing one a held field still reads by is
     /// a `ValueError`, because a field may not be left naming a vocabulary
-    /// nothing states. `msgcatcodeset` is intrinsic: its stable integer market
-    /// operation IDs cannot be replaced or removed. One mutation: a refusal
+    /// nothing states. The `marketdatakindcodeset` and `msgpluginsidecodeset` are
+    /// intrinsic: their stable integer codes cannot be replaced or removed. One mutation: a refusal
     /// leaves the dictionary exactly as it was.
     fn set_codeset(&mut self, name: &str, codes: &Bound<'_, PyAny>) -> PyResult<()> {
         let codes = codes_from_py(codes)?;
@@ -846,8 +883,9 @@ impl PyFixRegistry {
     /// every surviving spelling is kept as an alias, and a description or a
     /// group either side stated stays. So a venue's statement of a set
     /// enriches the one the dictionary holds rather than replacing it, and a
-    /// set no dictionary held yet arrives whole. `msgcatcodeset` is intrinsic
-    /// and refuses any merge that would change its stable integer IDs.
+    /// set no dictionary held yet arrives whole. The intrinsic
+    /// `marketdatakindcodeset` and `msgpluginsidecodeset` refuse a merge
+    /// that would change their stable integer codes.
     fn merge_codeset(&mut self, name: &str, codes: &Bound<'_, PyAny>) -> PyResult<()> {
         let codes = codes_from_py(codes)?;
         self.inner_mut()?
@@ -859,8 +897,8 @@ impl PyFixRegistry {
     ///
     /// A set nothing holds answers `None`. A set a held field still reads by
     /// is a `ValueError` naming that field: the field is moved to another set
-    /// first, or removed with it. `msgcatcodeset` is intrinsic and cannot be
-    /// removed.
+    /// first, or removed with it. The intrinsic `marketdatakindcodeset`
+    /// and `msgpluginsidecodeset` cannot be removed.
     fn remove_codeset<'py>(
         &mut self,
         py: Python<'py>,
@@ -1125,12 +1163,77 @@ impl PyFixRegistry {
             .map(PyField::from_inner))
     }
 
-    /// Every dictionary name any field or definition carries in
-    /// `FIX:branches`, distinct and sorted.
+    /// Every source id any field or definition carries in `FIX:sources`,
+    /// distinct and sorted.
     ///
     /// Membership is provenance a caller filters on; no lookup consults it.
+    /// The ids the fields state, not the catalog `sources` holds: an entry
+    /// no field names is not listed here, and an id no entry holds is.
     fn dialects(&self) -> Vec<String> {
         self.inner.dialects()
+    }
+
+    /// The sources catalog, in id order: one record per source this
+    /// dictionary was built from - `{"id": "venue", "file": "venue.cfb",
+    /// "pluginside": PluginSide.SELL}` - `file` `None` where none is known
+    /// and `pluginside` always a `PluginSide` member, `UKNW` where the
+    /// source states no role. A store writes it as `sources.json`.
+    fn sources<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
+        self.inner
+            .sources()
+            .map(|source| source_record(py, source))
+            .collect()
+    }
+
+    /// The catalog's record for `id`, under the crate's fold - `VENUE` and
+    /// `ve_nue` both reach `venue` - or `None`.
+    fn get_source<'py>(&self, py: Python<'py>, id: &str) -> PyResult<Option<Bound<'py, PyDict>>> {
+        self.inner
+            .get_source(id)
+            .map(|source| source_record(py, source))
+            .transpose()
+    }
+
+    /// Record one source in the catalog, answering whether it arrived.
+    ///
+    /// `id` is held to the id grammar - non-empty, no quote, backslash or
+    /// control character - and folded to ASCII lowercase; `file` is the file
+    /// the source was read from, and `pluginside` its plugin's role, a
+    /// `PluginSide` member, its code or a spelling. An id already held keeps
+    /// its entry and takes only what it lacked - a file where it stated
+    /// none, a role where it stated `UKNW` - and a role disagreeing with a
+    /// stated one keeps the held one, logged at warn. A field names its
+    /// sources itself, so nothing here touches a field.
+    #[pyo3(signature = (id, *, file=None, pluginside=None))]
+    fn add_source(
+        &mut self,
+        id: &str,
+        file: Option<&str>,
+        pluginside: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<bool> {
+        let mut source = CoreFixSource::new(id).map_err(value_error)?;
+        if let Some(file) = file {
+            source = source.with_file(file);
+        }
+        if let Some(given) = pluginside {
+            source = source.with_pluginside(pluginside_from_py(given)?);
+        }
+        Ok(self.inner_mut()?.add_source(source))
+    }
+
+    /// Remove the catalog's record for `id`, under the fold, answering it,
+    /// or `None` where none is held. A `ValueError` names the first field or
+    /// definition still naming the id, leaving the catalog as it was.
+    fn remove_source<'py>(
+        &mut self,
+        py: Python<'py>,
+        id: &str,
+    ) -> PyResult<Option<Bound<'py, PyDict>>> {
+        self.inner_mut()?
+            .remove_source(id)
+            .map_err(value_error)?
+            .map(|source| source_record(py, &source))
+            .transpose()
     }
 
     /// Remove the field one identifier names exactly, answering it.
@@ -1270,9 +1373,9 @@ impl PyMsgType {
     /// The definition's business category, as the `MarketDataKind` member
     /// the dictionary files the type under, or `None`.
     #[getter]
-    fn msgcat(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+    fn marketdatakind(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.inner()
-            .msgcat()
+            .marketdatakind()
             .map(|kind| member(py, kind))
             .transpose()
     }
@@ -1876,7 +1979,7 @@ impl PyFixMsg {
     /// the dictionary. A key reaching a typed fact - a header or trailer
     /// tag, a crate column, one of the FIX fields a message lifts - records
     /// it on the holder that owns it, and `None` clears it. A key reaching the capture's
-    /// own column - `sourceurl` (65050), by tag or by name - is a located
+    /// own column - `sourceurl` (65051), by tag or by name - is a located
     /// `ValueError`: a message holds no fact for it, and a row child would
     /// put it on the wire. Any other key lands in the row: a
     /// known field types the value through the core's value contract, `None`
@@ -2032,18 +2135,28 @@ impl PyFixMsg {
     }
 
     /// The message's business category, as the `MarketDataKind` member its
-    /// type is filed under - `UNKN` for a type filed under none.
+    /// type is filed under - `UKNW` for a type filed under none.
     #[getter]
-    fn msgcat(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        member(py, self.inner.msgcat())
+    fn marketdatakind(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        member(py, self.inner.marketdatakind())
     }
 
-    /// The option strike price the message identifies - `StrikePrice(202)`
-    /// read off the dictionary field - as a decimal; `None` where it states
-    /// none.
+    /// The role of the FIX plugin whose session produced the message, as
+    /// the `PluginSide` member - `BUYS`, `SELL`, or `UKNW` where none is
+    /// stated: the codec's source entry, a row-header capture or a row cell
+    /// named `msgpluginside` being the row's word over it. Never a FIX
+    /// tag's, and independent of `Side(54)`.
     #[getter]
-    fn strikeprice(&self) -> Option<PyScalar> {
-        self.inner.strikeprice().map(decimal_scalar)
+    fn msgpluginside(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        member(py, self.inner.msgpluginside())
+    }
+
+    /// The strike price of the option the message identifies - its market
+    /// fact `strikepx`, derived from `StrikePrice(202)` - as a decimal;
+    /// `None` where it states none.
+    #[getter]
+    fn strikepx(&self) -> Option<PyScalar> {
+        self.inner.get_strikepx().map(decimal_scalar)
     }
 
     /// What the line said about the capture it was written for, typed and
@@ -2268,14 +2381,14 @@ impl PyFixMsg {
     }
 
     /// The side, as the `Side` member it is: the one stated, else
-    /// `Side.UNKN` - never `None`.
+    /// `Side.UKNW` - never `None`.
     #[getter]
     fn side(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         member(py, self.inner.get_side())
     }
 
     /// The type of its kind the message is, as the `MarketDataType` member:
-    /// the one stated, else `MarketDataType.UNKN` - never `None`.
+    /// the one stated, else `MarketDataType.UKNW` - never `None`.
     #[getter]
     fn marketdatatype(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         member(py, self.inner.get_marketdatatype())
@@ -2630,7 +2743,7 @@ impl PyFixMsg {
 /// the C stream interface, one batch at a time. Each Arrow method has a serie
 /// face - `parse_text_serie`, `lifecycle_serie`, `market_data_serie`,
 /// `messages_serie`, `serie_reader`, `book_serie`, `market_serie` - answering
-/// a native `SerieReader` that a write takes off the GIL.
+/// a native `StreamChunkedSerie` that a write takes off the GIL.
 #[pyclass(
     name = "FixCodec",
     module = "yggdryl._native",
@@ -2746,7 +2859,13 @@ impl PyFixCodec {
     /// sent; `direction` is the code of tag 385's set an unmarked line
     /// takes on the batch door, any spelling of one - `"S"`, `"Send"`,
     /// `"R"` - the core's `Send` code when unstated and no pin at all when
-    /// empty; `batch_byte_size` and `batch_row_size` are the raw bytes and
+    /// empty; `source` names the entry of the dictionary's sources catalog
+    /// the run reads under, folded, resolved once here - an id the catalog
+    /// does not hold is a `ValueError` - whose plugin role every message
+    /// built is stamped with as `msgpluginside`, a row-header capture or a
+    /// row cell named `msgpluginside` being the row's word over it, and
+    /// `UKNW` where no source is named; `batch_byte_size` and
+    /// `batch_row_size` are the raw bytes and
     /// the row count one Arrow batch targets, the core's 128 MiB and 32,768
     /// rows when unstated, whichever the batch reaches first;
     /// `threads` is how many threads the line and row doors read on, the
@@ -2795,6 +2914,7 @@ impl PyFixCodec {
         capture_names=None,
         null_values=None,
         direction=None,
+        source=None,
         batch_byte_size=None,
         batch_row_size=None,
         include_msgtypes=None,
@@ -2818,6 +2938,7 @@ impl PyFixCodec {
         capture_names: Option<Vec<String>>,
         null_values: Option<Vec<String>>,
         direction: Option<&str>,
+        source: Option<&str>,
         batch_byte_size: Option<u64>,
         batch_row_size: Option<usize>,
         include_msgtypes: Option<Vec<String>>,
@@ -2835,6 +2956,9 @@ impl PyFixCodec {
             CoreFixCodec::new(Arc::clone(&registry)).with_payload_column(payload_column);
         if let Some(held) = direction {
             inner = inner.try_with_direction(Some(held)).map_err(value_error)?;
+        }
+        if let Some(held) = source {
+            inner = inner.with_source(held).map_err(value_error)?;
         }
         if let Some(held) = default_sending_time {
             inner = inner
@@ -2932,6 +3056,13 @@ impl PyFixCodec {
     #[getter]
     fn direction(&self) -> Option<&str> {
         self.inner.direction()
+    }
+
+    /// The sources catalog entry this codec reads under, folded, or `None`
+    /// where none was named and every message is stamped `UKNW`.
+    #[getter]
+    fn source(&self) -> Option<&str> {
+        self.inner.source()
     }
 
     /// The raw bytes one Arrow batch targets.
@@ -3139,7 +3270,8 @@ impl PyFixCodec {
     /// row's `sendingtime` column states it.
     ///
     /// A `msgpluginid` capture fills the crate's `msgpluginid` field and selects
-    /// nothing: the dictionary is one namespace.
+    /// nothing: the dictionary is one namespace. A `msgpluginside` capture is
+    /// the line's word over the role the codec's `source` stamps.
     ///
     /// Nothing else the line holds is communicated: not the object it names,
     /// not its media type, not its place in that object, not the body as a
@@ -3392,10 +3524,10 @@ impl PyFixCodec {
         Self::reader_to_pyarrow(py, lifted)
     }
 
-    /// `parse_text_arrow_reader` answered as a native `SerieReader`.
+    /// `parse_text_arrow_reader` answered as a native `StreamChunkedSerie`.
     ///
-    /// `source` is a `Serie`, a `ChunkedSerie`, a `SerieReader` - such as
-    /// `IOBase.read_serie` answers - or anything `SerieReader.from_` reads.
+    /// `source` is a `Serie`, a `ChunkedSerie`, a `StreamChunkedSerie` - such as
+    /// `IOBase.read_serie` answers - or anything `StreamChunkedSerie.from_` reads.
     /// A native source crosses as the batches it already is, and the answer
     /// stays native: handed to `append_serie` or `overwrite_serie`, or to
     /// another serie face, it is written or read off the GIL with no
@@ -3404,40 +3536,40 @@ impl PyFixCodec {
         &self,
         py: Python<'_>,
         source: &Bound<'_, PyAny>,
-    ) -> PyResult<PySerieReader> {
+    ) -> PyResult<PyStreamChunkedSerie> {
         let source = serie_source_of(source)?;
         let inner = &self.inner;
         Self::released(py, || inner.parse_text_serie(source))
-            .map(PySerieReader::from)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 
-    /// `lifecycle_arrow_reader` answered as a native `SerieReader`, over the
+    /// `lifecycle_arrow_reader` answered as a native `StreamChunkedSerie`, over the
     /// sources `parse_text_serie` takes; the root is the source's, without
     /// the `SORT:by` the walk no longer keeps.
     fn lifecycle_serie(
         &self,
         py: Python<'_>,
         source: &Bound<'_, PyAny>,
-    ) -> PyResult<PySerieReader> {
+    ) -> PyResult<PyStreamChunkedSerie> {
         let source = serie_source_of(source)?;
         let inner = &self.inner;
         Self::released(py, || inner.lifecycle_serie(source))
-            .map(PySerieReader::from)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 
-    /// `market_data_arrow_reader` answered as a native `SerieReader` of
+    /// `market_data_arrow_reader` answered as a native `StreamChunkedSerie` of
     /// lifted `marketdata` rows, over the sources `parse_text_serie` takes.
     fn market_data_serie(
         &self,
         py: Python<'_>,
         source: &Bound<'_, PyAny>,
-    ) -> PyResult<PySerieReader> {
+    ) -> PyResult<PyStreamChunkedSerie> {
         let source = serie_source_of(source)?;
         let inner = &self.inner;
         Self::released(py, || inner.market_data_serie(source))
-            .map(PySerieReader::from)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 
@@ -3452,13 +3584,13 @@ impl PyFixCodec {
             .map_err(value_error)
     }
 
-    /// `arrow_reader` answered as a native `SerieReader` under `schema` as a
+    /// `arrow_reader` answered as a native `StreamChunkedSerie` under `schema` as a
     /// record root; a `SORT:by` it declares is verified as records land.
-    fn serie_reader(
+    fn chunked_stream(
         &self,
         schema: &Bound<'_, PyAny>,
         messages: &Bound<'_, PyAny>,
-    ) -> PyResult<PySerieReader> {
+    ) -> PyResult<PyStreamChunkedSerie> {
         let schema = core_field_from_value(schema)?;
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
@@ -3466,12 +3598,12 @@ impl PyFixCodec {
             failed.take().map(|error| Err(python_failure(error)))
         }));
         self.inner
-            .serie_reader(schema, messages)
-            .map(PySerieReader::from)
+            .chunked_stream(schema, messages)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 
-    /// `book_arrow_reader` answered as a native `SerieReader` of lifted
+    /// `book_arrow_reader` answered as a native `StreamChunkedSerie` of lifted
     /// `marketdata` rows.
     #[pyo3(signature = (messages, snapshot_millis=0, filter=None))]
     fn book_serie(
@@ -3479,7 +3611,7 @@ impl PyFixCodec {
         messages: &Bound<'_, PyAny>,
         snapshot_millis: u64,
         filter: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<PySerieReader> {
+    ) -> PyResult<PyStreamChunkedSerie> {
         let filter = filter
             .map(crate::expression::filter_from_value)
             .transpose()?;
@@ -3490,13 +3622,13 @@ impl PyFixCodec {
         }));
         self.inner
             .book_serie(messages, snapshot_millis, filter.as_ref())
-            .map(PySerieReader::from)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 
-    /// `market_arrow_reader` answered as a native `SerieReader` of lifted
+    /// `market_arrow_reader` answered as a native `StreamChunkedSerie` of lifted
     /// `marketdata` rows.
-    fn market_serie(&self, messages: &Bound<'_, PyAny>) -> PyResult<PySerieReader> {
+    fn market_serie(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyStreamChunkedSerie> {
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
         let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
@@ -3504,7 +3636,7 @@ impl PyFixCodec {
         }));
         self.inner
             .market_serie(messages)
-            .map(PySerieReader::from)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 
@@ -3730,16 +3862,17 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// The event's clocks - `currunix`, `creaunix`, `recdunix`,
 /// `prevunix`, `snapunix`, `exprunix` - its identities - `currhashcode`,
 /// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`, the `crosscode` they
-/// derive from, its `seqnum` - the `state` it reached and the `msgcat` it is
+/// derive from, its `seqnum` - the `state` it reached and the `marketdatakind` it is
 /// filed under - the `srcuuids` of the lines it was read from - what a
 /// bridge's own log states about a line - the `msgpluginid`, the `msgctxid`,
 /// the `msgsessionid` and the `msgsesseventid` they join to with the message
-/// type and sequence - the normalized instrument codes (`isincode`,
+/// type and sequence - the `msgpluginside` its source's plugin plays - the
+/// normalized instrument codes (`isincode`,
 /// `bloombergcode`, `figicode`, `forexcode`, `miccode`), the `sourceurl` a
 /// line was read from, the Map group `metadata` and the `fixmsg` row's own
 /// definition. Each a fact no FIX dictionary publishes, at the datatype its
-/// graph column names; the strike price is the dictionary's `StrikePrice(202)`,
-/// no crate field.
+/// graph column names; `strikepx` is the strike price derived from the
+/// dictionary's `StrikePrice(202)`, a column no registry holds.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
@@ -3963,6 +4096,14 @@ impl PyFixCapture {
         self.inner.msgpluginid()
     }
 
+    /// The role of that plugin, as the `PluginSide` member: the codec's
+    /// source entry's, a capture or a row cell named `msgpluginside` being
+    /// the line's word over it, and `UKNW` where neither states one.
+    #[getter]
+    fn msgpluginside(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        member(py, self.inner.msgpluginside())
+    }
+
     /// The message context a bridge handled the line in, or `None`.
     #[getter]
     fn msgctxid(&self) -> Option<&str> {
@@ -4013,6 +4154,7 @@ impl PyFixCapture {
         let mut state = std::hash::DefaultHasher::new();
         (
             self.inner.msgpluginid(),
+            self.inner.msgpluginside(),
             self.inner.msgctxid(),
             self.inner.msgsessionid(),
             self.inner.msgsesseventid(),

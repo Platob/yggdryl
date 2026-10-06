@@ -18,6 +18,8 @@ use pyo3::types::{PyAny, PyDict};
 use yggdryl::holder::Holder;
 use yggdryl::{DataType, IsinEntry, IsinRegistry, Mic, Scalar};
 
+use crate::field::PyField;
+
 use crate::fix::PyFixMsg;
 use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
@@ -27,7 +29,8 @@ use crate::uri::core_url_from_value;
 use crate::value_error;
 
 /// A table of instruments keyed by ISIN - each row the instrument's CFI
-/// code, its country of issue, its currency pair, its market, its ticker
+/// code, its country of issue, its currency pair, the instrument it is
+/// written on, its EUSIPA product category, its market, its ticker
 /// and trading currency and one code per `SecurityIDSource(22)` type - that
 /// a lifecycle learns into and fills from, and a parse fills from. Bound to
 /// the store it was loaded from, committed back only where it moved.
@@ -137,6 +140,17 @@ impl PyIsinRegistry {
         Self::from_core(IsinRegistry::new().with_max_instruments(max_instruments))
     }
 
+    /// The registry's row: the required struct `isinregistry` every row is
+    /// laid out as - `isin`, `updunix`, `cficode`, `countrycode`,
+    /// `forexcode`, `underlyingisin`, `eusipacode` (`int32`, the four-digit
+    /// code `Eusipa` reads), `miccode`, `ticker`, `currency`, then one column
+    /// per `SecurityIDSource(22)` type but the ISIN: forty-two columns - what
+    /// a table holding the registry is created from.
+    #[staticmethod]
+    fn field() -> PyField {
+        PyField::from_inner(IsinEntry::field())
+    }
+
     /// A registry bound to the store `location` names and loaded from it:
     /// a URL of any scheme this build holds, or a path - an Arrow IPC leaf,
     /// Parquet, a folder of parts, an Iceberg table, an object store - under
@@ -152,8 +166,25 @@ impl PyIsinRegistry {
         max_instruments: usize,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Self> {
-        let url = core_url_from_value(location)?;
         let properties = properties_of(properties)?;
+        if let Ok(handle) = location.extract::<PyRef<'_, PyIOBase>>() {
+            if !properties.is_empty() {
+                return Err(PyTypeError::new_err(
+                    "properties apply to a location, not to a handle already built",
+                ));
+            }
+            let holder = handle.rebuilt()?;
+            drop(handle);
+            return py
+                .detach(move || {
+                    IsinRegistry::new()
+                        .with_max_instruments(max_instruments)
+                        .try_with_holder(holder)
+                })
+                .map(Self::from_core)
+                .map_err(value_error);
+        }
+        let url = core_url_from_value(location)?;
         let registry = py
             .detach(|| {
                 let holder = Holder::from_url(&url, properties)?;

@@ -11,7 +11,7 @@ Application over every target: the streamed Arrow tier, native records, the boun
 | Arrow tier | An optimization of the row tier, never a second definition; a property test asserts equality on every operator, nulls and `nan` included |
 | Kernels | Comparisons run `arrow-ord`, null tests read the validity buffer, `and` / `or` / `not` are three-valued buffer arithmetic; all else lands each column the node reads once as a [`Serie`](../types/serie.md), runs the row evaluator over its rows and lays the answers out as one column, which is slower |
 | Zero-copy | A mask keeping every row hands back the input batch; a projection of bare columns reorders `ArrayRef`s and touches no buffer; `select *` and a same-type cast are skipped at bind |
-| Records | `apply_records(schema, rows)` binds once against `schema`, or the first record's own datatype, and streams canonical rows; `Records::into_arrow_reader` batches them, `from_arrow_reader` reads them back one landed batch at a time, through a `SerieReader` |
+| StreamSerie | `apply_records(schema, rows)` binds once against `schema`, or the first record's own datatype, and streams canonical rows; `StreamSerie::into_arrow_reader` batches them, `from_arrow_reader` reads them back one landed batch at a time, through a `StreamChunkedSerie` |
 | Parameters | Rust `bind_with(&field, &[(name, Scalar)])`; Python `bind(field, parameters=None)`; JavaScript `bind(fieldLike, parameters?)` takes a `Scalar` record or a plain object; one core binder |
 | Order | `order by` is the one section that collects; `offset` and `limit` slice views without copying |
 | Bindings | every application in all three; `Bounds` statistics in Rust and Python |
@@ -76,7 +76,7 @@ One bind per stream, and the stream stays a stream.
     ```python
     import pyarrow as pa
 
-    from yggdryl import Expression, Field, Plan
+    from yggdryl import Expression, Field, Plan, Serie
 
     root = Field("rows", "struct<ccy:utf8,size:int64>", False)
     batch = pa.record_batch(
@@ -98,7 +98,7 @@ One bind per stream, and the stream stays a stream.
     # Native records go through the same bound plan, one bind for all of them.
     records = steps.apply_records([{"ccy": "a", "size": 1}, {"ccy": "b", "size": 2}], root)
     assert records.field.dtype["ccy"].dtype == root.dtype["ccy"].dtype
-    assert records.collect() == [{"ccy": "A"}, {"ccy": "B"}]
+    assert Serie.from_(records).as_py() == [{"ccy": "A"}, {"ccy": "B"}]
     ```
 
 === "JavaScript"
@@ -230,7 +230,7 @@ Rust and Python; JavaScript has no `Bounds`.
 === "Python"
 
     ```python
-    from yggdryl import Bounds, Field, Term
+    from yggdryl import Bounds, Field, Term, Serie
 
     schema = Field("trades", "struct<ccy:utf8,size:bigint>", False)
     bounds = Bounds(rows=1_000).with_column("ccy", "EUR", "USD", 0).with_column("size", 1, 99, 4)
@@ -264,7 +264,7 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 === "Python"
 
     ```{ .python .ignore }
-    from yggdryl import IOBase
+    from yggdryl import IOBase, Serie
     from yggdryl.iceberg import IcebergTable
 
     table = IcebergTable(IOBase("/lake/trades"))
@@ -300,7 +300,7 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 - Text to temporal cast on a column -> the row reader spells first; the kernel sees only spellings a row refuses.
 - `apply_arrow` / `applyArrow` -> the input kind is preserved: record batch, table, or reader.
 - `apply_records` with a schema -> every row is canonicalized under it first; without one, the first record's own datatype is the schema and a stream with no record is refused.
-- `Records::into_arrow_reader` -> the rows batched lazily under `field()`; consumed once.
+- `StreamSerie::into_arrow_reader` -> the rows batched lazily under `field()`; consumed once.
 
 ## Commands
 

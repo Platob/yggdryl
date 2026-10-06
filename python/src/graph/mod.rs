@@ -231,7 +231,7 @@ macro_rules! market_getters {
                 ::yggdryl::graph::Market::get_unit(&self.inner).as_str()
             }
 
-            /// The side, as the `Side` member it is; `Side.UNKN` where
+            /// The side, as the `Side` member it is; `Side.UKNW` where
             /// none is stated, never `None`.
             #[getter]
             fn side(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::pyo3::Py<::pyo3::PyAny>> {
@@ -239,7 +239,7 @@ macro_rules! market_getters {
             }
 
             /// The type of its kind this is, as the `MarketDataType` member;
-            /// `MarketDataType.UNKN` where none is stated, never `None`.
+            /// `MarketDataType.UKNW` where none is stated, never `None`.
             #[getter]
             fn marketdatatype(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::pyo3::Py<::pyo3::PyAny>> {
                 $crate::graph::member(py, ::yggdryl::graph::Market::get_marketdatatype(&self.inner))
@@ -386,6 +386,13 @@ macro_rules! market_getters {
             #[getter]
             fn ticker(&self) -> Option<&str> {
                 ::yggdryl::graph::Market::get_ticker(&self.inner)
+            }
+
+            /// The strike price of the option the element is about, as a
+            /// decimal; `None` where none.
+            #[getter]
+            fn strikepx(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Market::get_strikepx(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// Free-form facts beside the typed ones, in key order; empty

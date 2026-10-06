@@ -61,7 +61,8 @@ use crate::media::{IORecordOptions, RecordOptions};
 use crate::text::expected_got;
 use crate::{
     ArrowCastOptions, DataType, Decimal, Error, Field, IOBase, IOMedia, MarketDataKind, MimeType,
-    Parameters, Result, Scalar, Serie, SerieReader, Side, StructType, TimeUnit, Timezone, Url,
+    Parameters, Result, Scalar, Serie, Side, StreamChunkedSerie, StructType, TimeUnit, Timezone,
+    Url,
 };
 
 /// The segment every route stands under: `{prefix}/api/<leaf>`.
@@ -841,7 +842,11 @@ impl BookService {
     /// `marketdata` row - one projected read, which a store keeping its
     /// columns apart answers without reading the rest - as record columns
     /// of the struct `book` of them; none where the table holds no leaf.
-    fn projected(table: &BookTable, filter: &Filter, columns: Vec<Field>) -> Result<SerieReader> {
+    fn projected(
+        table: &BookTable,
+        filter: &Filter,
+        columns: Vec<Field>,
+    ) -> Result<StreamChunkedSerie> {
         let select = Selector::new(
             columns
                 .iter()
@@ -854,7 +859,7 @@ impl BookService {
                 .read_arrow_reader(&options.with_filter(filter)?.with_select(select)?)?,
             None => nothing(root.clone())?,
         };
-        Ok(SerieReader::from_arrow_reader(
+        Ok(StreamChunkedSerie::from_arrow_reader(
             Some(&root),
             reader,
             ArrowCastOptions::new(),
@@ -879,7 +884,7 @@ impl BookService {
         )?;
         let shape = || unshaped("the ticker, crosscode and currunix columns of a marketdata row");
         let mut spans = BTreeMap::new();
-        for rows in reader {
+        for rows in reader.into_chunks() {
             let rows = rows?;
             let tickers = rows
                 .child(ticker)
@@ -980,7 +985,7 @@ impl BookService {
             vec![DataType::utf8().nullable_field(crosscode)],
         )?;
         let mut keys: BTreeSet<SmolStr> = BTreeSet::new();
-        for rows in reader {
+        for rows in reader.into_chunks() {
             let rows = rows?;
             let codes = rows
                 .child(crosscode)
@@ -1027,7 +1032,7 @@ impl BookService {
         )?;
         let mut earliest = BinaryHeap::new();
         let mut total = 0_usize;
-        for rows in reader {
+        for rows in reader.into_chunks() {
             let rows = rows?;
             let instants = rows
                 .child(currunix)
@@ -1269,7 +1274,9 @@ impl BookService {
             .map(|field| SmolStr::new(field.name()))
             .collect();
         let mut rows = Vec::new();
-        for batch in SerieReader::from_arrow_reader(None, reader, ArrowCastOptions::new())? {
+        for batch in StreamChunkedSerie::from_arrow_reader(None, reader, ArrowCastOptions::new())?
+            .into_chunks()
+        {
             let batch = batch?;
             for index in 0..batch.len() {
                 let row = batch.scalar(index)?;

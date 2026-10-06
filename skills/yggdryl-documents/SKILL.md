@@ -75,7 +75,7 @@ field's columns, and refuses what does not fit with a located error.
    only with `environment=True` / `with_environment(true)`. YAML, TOML and XML
    only - JSON refuses them. Substitution walks the parsed value, so byte
    positions in errors stay exact; quote a placeholder in YAML.
-6. **Output is deterministic.** Records are written with sorted keys, one
+6. **Output is deterministic.** StreamSerie are written with sorted keys, one
    natural shape per value; the encoder never closes a caller's stream.
 7. **XML is text until typed.** Every leaf decodes as text; a repeated element
    is a sequence; one occurrence is a single value unless a field (or a

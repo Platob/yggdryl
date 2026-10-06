@@ -1,5 +1,5 @@
 //! The join verbs: [`Serie::join_with`], [`ChunkedSerie::join_with`] and
-//! [`SerieReader::join_with`], each one door onto the engine in
+//! [`StreamChunkedSerie::join_with`], each one door onto the engine in
 //! `crate::join`, which states the semantics.
 //!
 //! A held serie answers a held serie - its output batches joined once; a
@@ -8,10 +8,9 @@
 
 use std::sync::Arc;
 
-use crate::SerieSource;
 use crate::expression::IntoJoinKeys;
 use crate::join::{JoinKind, JoinOptions, join};
-use crate::{ChunkedSerie, Result, Serie, SerieReader};
+use crate::{ChunkedSerie, Result, Serie, StreamChunkedSerie};
 
 impl Serie {
     /// This serie joined with `other` on `by`, under `how`: one record
@@ -73,13 +72,7 @@ impl Serie {
         how: JoinKind,
         options: &JoinOptions,
     ) -> Result<Self> {
-        let output = join(
-            SerieSource::Serie(self.clone()),
-            SerieSource::Serie(other.clone()),
-            by,
-            how,
-            options,
-        )?;
+        let output = join(self.clone(), other.clone(), by, how, options)?;
         let root = Arc::clone(output.root());
         let chunks = output.collect::<Result<Vec<Self>>>()?;
         // The one join is settled under the join's own bound, never the
@@ -106,8 +99,8 @@ impl ChunkedSerie {
         options: &JoinOptions,
     ) -> Result<Self> {
         let output = join(
-            SerieSource::Chunked(self.clone()),
-            SerieSource::Chunked(other.clone()),
+            Serie::from(self.clone()),
+            Serie::from(other.clone()),
             by,
             how,
             options,
@@ -118,7 +111,7 @@ impl ChunkedSerie {
     }
 }
 
-impl SerieReader {
+impl StreamChunkedSerie {
     /// This stream joined with `other` - a held serie, a chunked one or a
     /// stream - on `by`, under `how`: a stream of the output, one probe
     /// batch joined at a time, the held side built and hashed first.
@@ -132,12 +125,12 @@ impl SerieReader {
     /// [`Serie::join_with`]'s, raised before the first batch is pulled.
     pub fn join_with(
         self,
-        other: impl Into<SerieSource>,
+        other: impl Into<Serie>,
         by: impl IntoJoinKeys,
         how: JoinKind,
         options: &JoinOptions,
     ) -> Result<Self> {
-        let output = join(SerieSource::Reader(self), other.into(), by, how, options)?;
+        let output = join(Serie::from(self), other.into(), by, how, options)?;
         let root = Arc::clone(output.root());
         Ok(Self::from_landed_iter(
             root,

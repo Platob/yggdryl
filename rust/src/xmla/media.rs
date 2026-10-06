@@ -17,7 +17,7 @@ use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::soap::ENVELOPE_NAMESPACE;
 use crate::xml::Element;
-use crate::{ArrowCastOptions, Charset, Field, IOBase, IOMedia, Result, Serie, SerieReader};
+use crate::{ArrowCastOptions, Charset, Field, IOBase, IOMedia, Result, Serie, StreamChunkedSerie};
 
 use super::options::XmlaOptions;
 use super::response::Response;
@@ -196,7 +196,8 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
     }
     let root = field_from_arrow_schema(options.name(), batches.schema().as_ref())?;
     let rowset = Rowset::new(root.clone())?;
-    let rows = SerieReader::from_arrow_reader(Some(&root), batches, ArrowCastOptions::default())?;
+    let rows =
+        StreamChunkedSerie::from_arrow_reader(Some(&root), batches, ArrowCastOptions::default())?;
     let mut document = Vec::new();
     if options.envelope {
         super::response::write_rowset(
@@ -204,13 +205,13 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
             &[],
             options.method,
             &rowset,
-            rows,
+            rows.into_chunks(),
             options.content,
         )?;
     } else {
         rowset.write_root(
             &mut document,
-            rows,
+            rows.into_chunks(),
             options.content.has_schema(),
             options.content.has_data(),
         )?;
@@ -375,41 +376,58 @@ impl<H: IOBase> IOMedia for Xmla<H> {
         Ok(field)
     }
 
-    fn overwrite_arrow_reader(
-        &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        self.require_options(options)?;
-        self.invalidate();
-        crate::iobase::overwrite_arrow_reader_default(self, batches, options)
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
+        let options = crate::iomedia::own_options(self, options)?;
+        self.require_options(&options)?;
+        crate::iomedia::read_record_serie(self, Some(&options))
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: BatchReader,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
+    ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
+        self.require_options(options)?;
+        self.invalidate();
+        crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
+            .map(|(_, result)| result)
+    }
+
+    fn overwrite_prepared_serie(
+        &mut self,
+        value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> Result<()> {
+        let batches = value.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::leaf_writer(self, batches, options)
     }
 
-    fn append_arrow_reader(
+    fn append_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
 
-    fn merge_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::merge_arrow_reader_default(self, batches, options)
@@ -483,3 +501,5 @@ impl<H: IOBase> IOBase for Xmla<H> {
         self.handle.remove(recursive)
     }
 }
+
+crate::media_serie::media_serie!(XmlaSerie, Xmla, as_xmla, get_xmla_mut);

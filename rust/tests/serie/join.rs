@@ -9,7 +9,7 @@ use arrow_array::{Int64Array, RecordBatch, RecordBatchIterator};
 use yggdryl::arrow::BatchReader;
 use yggdryl::{
     ArrowCastOptions, ChunkedSerie, DataType, Field, JoinKind, JoinOptions, Scalar, Serie,
-    SerieReader, SerieSource, SpillOptions, StructType,
+    SpillOptions, StreamChunkedSerie, StructType,
 };
 
 fn record(name: &str, fields: Vec<Field>) -> Field {
@@ -139,7 +139,7 @@ fn a_stream_probes_one_batch_at_a_time_and_collects_nothing() {
         ],
     );
     let pulls = Arc::new(AtomicUsize::new(0));
-    let stream = SerieReader::from_arrow_reader(
+    let stream = StreamChunkedSerie::from_arrow_reader(
         Some(&root),
         counted_stream(&root, 4, 3, Arc::clone(&pulls)),
         ArrowCastOptions::new(),
@@ -153,14 +153,17 @@ fn a_stream_probes_one_batch_at_a_time_and_collects_nothing() {
     assert_eq!(pulls.load(Ordering::SeqCst), 0);
     assert_eq!(joined.field().name(), "l");
     let first = joined
-        .next()
+        .next_chunk()
         .expect("a first output batch")
         .expect("joined rows");
     // One probe batch pulled, its output answered, the rest of the stream untouched.
     assert_eq!(pulls.load(Ordering::SeqCst), 1);
     // ids 0, 1, 2 in a batch of three: id 0 and 1 each match two right rows.
     assert_eq!(first.len(), 4);
-    let rest: Vec<Serie> = joined.map(|batch| batch.expect("joined rows")).collect();
+    let rest: Vec<Serie> = joined
+        .into_chunks()
+        .map(|batch| batch.expect("joined rows"))
+        .collect();
     assert_eq!(pulls.load(Ordering::SeqCst), 4);
     assert_eq!(rest.len(), 3);
     assert_eq!(rest.iter().map(Serie::len).sum::<usize>(), 12);
@@ -176,7 +179,7 @@ fn a_stream_probing_a_build_side_past_the_spill_bound_is_read_whole_before_the_f
         ],
     );
     let stream = |pulls: &Arc<AtomicUsize>| {
-        SerieReader::from_arrow_reader(
+        StreamChunkedSerie::from_arrow_reader(
             Some(&root),
             counted_stream(&root, 4, 3, Arc::clone(pulls)),
             ArrowCastOptions::new(),
@@ -193,7 +196,7 @@ fn a_stream_probing_a_build_side_past_the_spill_bound_is_read_whole_before_the_f
     // the stream waits.
     assert_eq!(pulls.load(Ordering::SeqCst), 0);
     let first = joined
-        .next()
+        .next_chunk()
         .expect("a first output batch")
         .expect("joined rows");
     // The build side does not fit, so the probe is read whole and
@@ -201,10 +204,15 @@ fn a_stream_probing_a_build_side_past_the_spill_bound_is_read_whole_before_the_f
     assert_eq!(pulls.load(Ordering::SeqCst), 4);
     assert!(first.is_spilled());
     let mut rows: Vec<Scalar> = first.rows().to_vec();
-    rows.extend(joined.flat_map(|batch| batch.expect("joined rows").rows().to_vec()));
+    rows.extend(
+        joined
+            .into_chunks()
+            .flat_map(|batch| batch.expect("joined rows").rows().to_vec()),
+    );
     let mut streamed: Vec<Scalar> = stream(&Arc::new(AtomicUsize::new(0)))
         .join_with(right, "id", JoinKind::Inner, &JoinOptions::new())
         .expect("a streamed join")
+        .into_chunks()
         .flat_map(|batch| batch.expect("joined rows").rows().to_vec())
         .collect();
     rows.sort();
@@ -230,13 +238,13 @@ fn a_stream_against_a_stream_holds_the_right_one() {
         ],
     );
     let (left_pulls, right_pulls) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
-    let left = SerieReader::from_arrow_reader(
+    let left = StreamChunkedSerie::from_arrow_reader(
         Some(&root),
         counted_stream(&root, 2, 3, Arc::clone(&left_pulls)),
         ArrowCastOptions::new(),
     )
     .expect("a stream");
-    let right = SerieReader::from_arrow_reader(
+    let right = StreamChunkedSerie::from_arrow_reader(
         Some(&right_root),
         counted_stream(&right_root, 2, 3, Arc::clone(&right_pulls)),
         ArrowCastOptions::new(),
@@ -244,7 +252,7 @@ fn a_stream_against_a_stream_holds_the_right_one() {
     .expect("a stream");
     let joined = left
         .join_with(
-            SerieSource::Reader(right),
+            Serie::from(right),
             "id",
             JoinKind::Left,
             &JoinOptions::new(),
@@ -253,7 +261,10 @@ fn a_stream_against_a_stream_holds_the_right_one() {
     // The right stream is the build side: drained before the first pull of the left.
     assert_eq!(right_pulls.load(Ordering::SeqCst), 2);
     assert_eq!(left_pulls.load(Ordering::SeqCst), 0);
-    let rows: usize = joined.map(|batch| batch.expect("rows").len()).sum();
+    let rows: usize = joined
+        .into_chunks()
+        .map(|batch| batch.expect("rows").len())
+        .sum();
     // Every left id 0, 1, 2 matches two right rows per id: 6 left rows * 2.
     assert_eq!(rows, 12);
     assert_eq!(left_pulls.load(Ordering::SeqCst), 2);
@@ -275,10 +286,11 @@ fn the_three_verbs_agree_on_the_rows() {
             &JoinOptions::new(),
         )
         .expect("chunked");
-    let streamed: Vec<Scalar> = SerieReader::from_serie(left)
+    let streamed: Vec<Scalar> = StreamChunkedSerie::from_serie(left)
         .expect("a stream")
         .join_with(right, "id", JoinKind::Full, &JoinOptions::new())
         .expect("streamed")
+        .into_chunks()
         .flat_map(|batch| batch.expect("rows").rows().to_vec())
         .collect();
     assert_eq!(held.rows().to_vec(), chunked.rows());

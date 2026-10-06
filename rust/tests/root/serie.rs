@@ -1049,3 +1049,19 @@ fn the_root_is_a_value_and_converts_from_and_into_its_neighbours() {
     assert!(serie.as_struct().is_none());
     assert!(run().as_int64().is_none());
 }
+
+#[test]
+fn a_generic_serie_names_its_field_and_whether_it_is_held() {
+    use yggdryl::{ChunkedSerie, StreamChunkedSerie};
+    let held = column();
+    assert!(held.is_held());
+    let bytes = held.memory_size();
+    let chunked = Serie::from(ChunkedSerie::from_serie(held.clone()).unwrap());
+    assert!(chunked.is_held());
+    assert_eq!(chunked.memory_size(), bytes);
+    let stream = Serie::from(StreamChunkedSerie::from_serie(held).unwrap());
+    assert!(!stream.is_held());
+    assert_eq!(stream.memory_size(), 0);
+    assert_eq!(stream.field().unwrap().name(), "row");
+    assert!(StreamChunkedSerie::from_serie(run()).is_err());
+}

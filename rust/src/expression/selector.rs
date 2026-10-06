@@ -472,7 +472,7 @@ impl Selector {
     /// The explicit projections this selector amounts to over `schema`: a
     /// `*` becomes every column, minus what it excludes, and the appended
     /// projections follow.
-    fn expanded(&self, schema: &Field) -> Vec<Projection> {
+    pub(crate) fn expanded(&self, schema: &Field) -> Vec<Projection> {
         if !self.star {
             return self.projections.to_vec();
         }
@@ -1519,7 +1519,7 @@ mod arrow {
             );
             // The output's schema proves it bounded, which resolving the
             // root it is the nullable twin of relies on.
-            let schema = arrow_schema_from_field(&bound.output)?;
+            let schema = arrow_schema_from_field(&bound.output.clone().with_nullable(false))?;
             Ok(Self {
                 schema,
                 resolved: Resolved::of(Arc::clone(root)),
@@ -1698,7 +1698,7 @@ mod arrow {
 
         /// The record column this selector computes from one column, bound
         /// by [`Selector::bind_key`] against
-        /// [`SerieReader::root_of`](crate::SerieReader::root_of) its field: a
+        /// [`StreamChunkedSerie::root_of`](crate::StreamChunkedSerie::root_of) its field: a
         /// record column is its own rows, any other column the one child of
         /// its record.
         ///

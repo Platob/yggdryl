@@ -458,21 +458,41 @@ impl yggdryl::fs::FileSystem for RefusedHintWrite {
 /// 2 in the instant between a writer's look at the hint and its exclusive
 /// create of that version.
 ///
-/// The injected document is the attempted document with the loser's property
-/// replaced by the winner's, created under the very name the writer is about
-/// to create, with the hint naming it. This isolates the race inside
-/// `commit_metadata`: the writer already passed `find_metadata`, yet its
-/// create finds the version taken and must return through the retry gate.
+/// The injected document is either the attempted snapshot itself, or the
+/// attempted metadata change with the loser's property replaced by the
+/// winner's. It takes the versioned name just before the writer's create,
+/// after the writer passed `find_metadata`, forcing the refused-create path.
 #[derive(Debug, Default)]
 struct SameVersionWinner {
     inner: yggdryl::fs::MemoryFileSystem,
     armed: Arc<AtomicBool>,
+    own_snapshot: Arc<AtomicBool>,
+    delay_own_snapshot: Arc<AtomicBool>,
+    retry_creates: Arc<AtomicUsize>,
     injections: Arc<AtomicUsize>,
 }
 
 impl SameVersionWinner {
     fn arm(&self) {
         self.armed.store(true, Ordering::Relaxed);
+    }
+
+    fn arm_own_snapshot(&self) {
+        self.own_snapshot.store(true, Ordering::Relaxed);
+        self.arm();
+    }
+
+    fn arm_delayed_own_snapshot(&self) {
+        self.delay_own_snapshot.store(true, Ordering::Relaxed);
+        self.arm_own_snapshot();
+    }
+
+    fn reveal_own_snapshot(&self) {
+        self.delay_own_snapshot.store(false, Ordering::Relaxed);
+    }
+
+    fn retry_creates(&self) -> usize {
+        self.retry_creates.load(Ordering::Relaxed)
     }
 
     fn injections(&self) -> usize {
@@ -490,6 +510,15 @@ impl SameVersionWinner {
     /// Create the winner of `path` from the loser's attempted `bytes`, and
     /// the hint naming it.
     fn inject_winner(&self, path: &str, bytes: &[u8]) -> yggdryl::Result<()> {
+        if self.own_snapshot.swap(false, Ordering::Relaxed) {
+            self.inner.create_file(path, bytes)?;
+            let (directory, _) = path
+                .rsplit_once('/')
+                .ok_or_else(|| Self::invalid("expected a metadata directory"))?;
+            write_filesystem_bytes(&self.inner, &format!("{directory}/version-hint.text"), b"2")?;
+            self.injections.fetch_add(1, Ordering::Relaxed);
+            return Ok(());
+        }
         let mut document: serde_json::Value = serde_json::from_slice(bytes)?;
         let properties = document
             .as_object_mut()
@@ -573,6 +602,14 @@ impl yggdryl::fs::FileSystem for SameVersionWinner {
     }
 
     fn open_input_stream(&self, path: &str) -> yggdryl::Result<Box<dyn ByteReader>> {
+        if path.ends_with("/metadata/v2.metadata.json")
+            && self.delay_own_snapshot.load(Ordering::Relaxed)
+        {
+            return Err(yggdryl::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "the newly published metadata is not visible yet",
+            )));
+        }
         self.inner.open_input_stream(path)
     }
 
@@ -593,9 +630,12 @@ impl yggdryl::fs::FileSystem for SameVersionWinner {
     }
 
     fn create_file(&self, path: &str, bytes: &[u8]) -> yggdryl::Result<()> {
-        if path.ends_with("/metadata/v2.metadata.json") && self.armed.swap(false, Ordering::Relaxed)
-        {
-            self.inject_winner(path, bytes)?;
+        if path.ends_with("/metadata/v2.metadata.json") {
+            if self.armed.swap(false, Ordering::Relaxed) {
+                self.inject_winner(path, bytes)?;
+            } else if self.delay_own_snapshot.swap(false, Ordering::Relaxed) {
+                self.retry_creates.fetch_add(1, Ordering::Relaxed);
+            }
         }
         self.inner.create_file(path, bytes)
     }
@@ -951,10 +991,19 @@ impl ReplacedHint {
     // its rename `try_update` came later.
     #[allow(deprecated)]
     fn spend(left: &AtomicUsize) -> bool {
-        left.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |left| {
-            left.checked_sub(1)
-        })
-        .is_ok()
+        let mut current = left.load(Ordering::Relaxed);
+        while current > 0 {
+            match left.compare_exchange_weak(
+                current,
+                current - 1,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return true,
+                Err(actual) => current = actual,
+            }
+        }
+        false
     }
 
     /// Fail a read of `path` where it is the hint and a failure is armed.
@@ -5460,6 +5509,57 @@ mod handles {
         }
     }
 
+    /// A session commits through the table it locates off the handle, so
+    /// the handle's own table is closed after each cadence and reads the
+    /// commits on its next verb, and a commit through it after the session
+    /// is no conflict.
+    #[test]
+    fn a_write_session_leaves_the_handle_it_was_given_current() {
+        let seed = trades(
+            &[1, 2],
+            &[Some("A"), Some("B")],
+            &[Some("XNAS"), Some("XLON")],
+        );
+        let (path, folder) = table("session-current");
+        let mut held = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let options = options(&folder);
+        held.append_arrow_reader(
+            yggdryl::arrow::batch_reader(seed.schema(), [seed.clone()]),
+            &options,
+        )
+        .unwrap();
+        let cadence = options
+            .clone()
+            .with_merge_by(["venue"])
+            .unwrap()
+            .with_commit_batch_num(1);
+        let mut session = yggdryl::ArrowWriteSession::merge(&cadence).unwrap();
+        let incoming = trades(&[3], &[Some("C")], &[Some("XNAS")]);
+        assert!(session.push(&mut held, one_row_batches(&incoming)).unwrap());
+        session.finish(&mut held).unwrap();
+        assert_eq!(snapshots(&path), 2);
+        assert_eq!(
+            collect(held.read_arrow_reader(&options).unwrap()),
+            triples(&[(2, "B", "XLON"), (3, "C", "XNAS")]),
+            "the handle reads what the session committed"
+        );
+        let later = trades(&[4], &[Some("D")], &[Some("XLON")]);
+        held.merge_arrow_reader(one_row_batches(&later), &cadence)
+            .unwrap();
+        assert_eq!(
+            snapshots(&path),
+            3,
+            "a merge after the session rebases on it"
+        );
+        let mut rows = collect(held.read_arrow_reader(&options).unwrap());
+        rows.sort();
+        assert_eq!(
+            rows,
+            triples(&[(3, "C", "XNAS"), (4, "D", "XLON")]),
+            "the merge replaced the XLON row through the handle"
+        );
+    }
+
     #[test]
     fn an_overwrite_replaces_the_partitions_its_rows_fall_in_through_every_door() {
         // `XNAS` and `XLON` are reached and replaced, `XNYS` is not and
@@ -6565,6 +6665,215 @@ fn a_commit_beaten_on_write_withdraws_the_list_of_the_attempt_it_replaces() {
             .collect::<Vec<_>>(),
         [1]
     );
+}
+
+/// A store can durably create our metadata document, then lose the create
+/// answer. The retry sees our exact snapshot already in the winning document;
+/// publishing it again would duplicate its id, and rolling back its staging
+/// would delete files the winner names.
+#[test]
+fn a_refused_create_of_our_own_snapshot_finishes_one_append() {
+    let filesystem = Arc::new(SameVersionWinner::default());
+    let folder =
+        yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/own-snapshot", None).unwrap();
+    let mut table = IcebergTable::create(
+        folder.clone(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    table.set_options(
+        IcebergOptions::new()
+            .with_commit_retries(0)
+            .with_commit_min_backoff_ms(0)
+            .with_commit_max_backoff_ms(0),
+    );
+
+    filesystem.arm_own_snapshot();
+    let rows = trades(&[70, 71], &[Some("A"), Some("B")], &[Some("X"), Some("Y")]);
+    table
+        .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+        .unwrap();
+
+    assert_eq!(filesystem.injections(), 1);
+    assert_eq!(table.metadata_version().unwrap(), 2);
+    assert_eq!(table.metadata().unwrap().snapshots().len(), 1);
+    let reopened = IcebergTable::open(folder.clone()).unwrap();
+    assert_eq!(reopened.metadata_version().unwrap(), 2);
+    assert_eq!(reopened.metadata().unwrap().snapshots().len(), 1);
+    let mut ids: Vec<i64> = collect(reopened.scan(None).unwrap())
+        .into_iter()
+        .map(|(id, _, _)| id)
+        .collect();
+    ids.sort_unstable();
+    assert_eq!(ids, [70, 71]);
+    let paths = listed_paths(&folder);
+    assert_eq!(
+        paths
+            .iter()
+            .filter(|path| path.ends_with(".parquet"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        paths.iter().filter(|path| path.ends_with(".avro")).count(),
+        2
+    );
+    assert_eq!(
+        paths
+            .iter()
+            .filter(|path| path.ends_with(".metadata.json"))
+            .count(),
+        2
+    );
+}
+
+/// A claim can be durable while its document is temporarily unreadable. The
+/// retry of that same version must keep the attempt's snapshot and manifest
+/// list until it can recognize the published document.
+#[test]
+fn a_delayed_own_snapshot_reuses_the_same_append_attempt() {
+    let filesystem = Arc::new(SameVersionWinner::default());
+    let folder =
+        yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/delayed-snapshot", None)
+            .unwrap();
+    let mut table = IcebergTable::create(
+        folder.clone(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    table.set_options(
+        IcebergOptions::new()
+            .with_commit_retries(2)
+            .with_commit_min_backoff_ms(0)
+            .with_commit_max_backoff_ms(0),
+    );
+
+    filesystem.arm_delayed_own_snapshot();
+    let rows = trades(&[70, 71], &[Some("A"), Some("B")], &[Some("X"), Some("Y")]);
+    table
+        .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+        .unwrap();
+
+    assert_eq!(filesystem.injections(), 1);
+    assert_eq!(filesystem.retry_creates(), 1);
+    assert_eq!(table.metadata_version().unwrap(), 2);
+    assert_eq!(table.metadata().unwrap().snapshots().len(), 1);
+    let reopened = IcebergTable::open(folder.clone()).unwrap();
+    let mut ids: Vec<i64> = collect(reopened.scan(None).unwrap())
+        .into_iter()
+        .map(|(id, _, _)| id)
+        .collect();
+    ids.sort_unstable();
+    assert_eq!(ids, [70, 71]);
+    let paths = listed_paths(&folder);
+    assert_eq!(
+        paths
+            .iter()
+            .filter(|path| path.ends_with(".parquet"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        paths.iter().filter(|path| path.ends_with(".avro")).count(),
+        2
+    );
+    assert_eq!(
+        paths
+            .iter()
+            .filter(|path| path.ends_with(".metadata.json"))
+            .count(),
+        2
+    );
+}
+
+/// A durable document may stay unreadable for the entire retry budget. Both
+/// blind and keyed appends report the bounded conflict, but neither may roll
+/// back files that document already names.
+#[test]
+fn an_unreadable_own_snapshot_keeps_its_files_after_retry_exhaustion() {
+    for keyed in [false, true] {
+        let filesystem = Arc::new(SameVersionWinner::default());
+        let name = if keyed {
+            "bucket/unreadable-keyed-snapshot"
+        } else {
+            "bucket/unreadable-snapshot"
+        };
+        let folder = yggdryl::fs::FsFolder::from_path(filesystem.clone(), name, None).unwrap();
+        let mut schema = trade_schema();
+        if keyed {
+            schema
+                .as_iceberg_mut()
+                .set_identifier_field_ids(&[1])
+                .unwrap();
+        }
+        let mut table = IcebergTable::create(
+            folder.clone(),
+            FormatVersion::V2,
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table.set_options(
+            IcebergOptions::new()
+                .with_commit_retries(0)
+                .with_commit_min_backoff_ms(0)
+                .with_commit_max_backoff_ms(0),
+        );
+
+        filesystem.arm_delayed_own_snapshot();
+        let rows = trades(&[70, 71], &[Some("A"), Some("B")], &[Some("X"), Some("Y")]);
+        let error = table
+            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+            .unwrap_err();
+        assert!(error.is_conflict(), "{keyed}: {error}");
+        assert!(
+            error
+                .to_string()
+                .contains("concurrent Iceberg metadata commit"),
+            "{keyed}: {error}"
+        );
+        assert_eq!(table.metadata_version().unwrap(), 1, "{keyed}");
+        assert!(table.current_snapshot().unwrap().is_none(), "{keyed}");
+        assert_eq!(filesystem.injections(), 1, "{keyed}");
+        assert_eq!(filesystem.retry_creates(), 0, "{keyed}");
+
+        filesystem.reveal_own_snapshot();
+        let reopened = IcebergTable::open(folder.clone()).unwrap();
+        assert_eq!(reopened.metadata_version().unwrap(), 2, "{keyed}");
+        assert_eq!(reopened.metadata().unwrap().snapshots().len(), 1, "{keyed}");
+        let mut ids: Vec<i64> = collect(reopened.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        ids.sort_unstable();
+        assert_eq!(ids, [70, 71], "{keyed}");
+        let paths = listed_paths(&folder);
+        assert_eq!(
+            paths
+                .iter()
+                .filter(|path| path.ends_with(".parquet"))
+                .count(),
+            1,
+            "{keyed}"
+        );
+        assert_eq!(
+            paths.iter().filter(|path| path.ends_with(".avro")).count(),
+            2,
+            "{keyed}"
+        );
+        assert_eq!(
+            paths
+                .iter()
+                .filter(|path| path.ends_with(".metadata.json"))
+                .count(),
+            2,
+            "{keyed}"
+        );
+    }
 }
 
 #[test]

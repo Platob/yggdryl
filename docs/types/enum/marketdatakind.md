@@ -1,6 +1,6 @@
 # MarketDataKind
 
-What kind of market data an element is: FIX's MsgCat code set as an enum of twenty-six members, stored as the `uint8` code of its member - the code set's own value, `UNKN` at `0` to `TRAD` at `21`, then the four batch categories the crate files after them, `ORDB` `22` to `TRDB` `25` - and the first column of every [market data row](../../graph/market-data.md).
+What kind of market data an element is: FIX's MsgCat code set as an enum of twenty-six members, stored as the `uint8` code of its member - the code set's own value, `UKNW` at `0` to `TRAD` at `21`, then the four batch categories the crate files after them, `ORDB` `22` to `TRDB` `25` - and the first column of every [market data row](../../graph/market-data.md).
 
 ## Contract
 
@@ -12,7 +12,7 @@ What kind of market data an element is: FIX's MsgCat code set as an enum of twen
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | An integer that is the code of no member, naming the code; a spelling that names no kind, naming the spelling |
 | Stores | `uint8` under `yggdryl.marketdatakind`: the MsgCat value itself |
-| Owner | The one owner of the MsgCat set: a FIX dictionary's `FIX:msgcat` resolves to a member by its four-letter code, the crate's `msgcatcodeset` renders from `MarketDataKind::ALL`, and a [FIX message](../../fix/message.md)'s `msgcat` and a market data row's `marketdatakind` both state a member; and of the [sided rule](#sided-kinds-and-batches) - which kinds state their side in their stored cross code, `{kind}:{side}:{base}`, whose first number is the kind's `code` |
+| Owner | The one owner of the MsgCat set: a FIX dictionary's `FIX:msgcat` resolves to a member by its four-letter code, the crate's `marketdatakindcodeset` renders from `MarketDataKind::ALL`, and a [FIX message](../../fix/message.md)'s `marketdatakind` and a market data row's `marketdatakind` both state a member; and of the [sided rule](#sided-kinds-and-batches) - which kinds state their side in their stored cross code, `{kind}:{side}:{base}`, whose first number is the kind's `code` |
 
 A reader tells the leaves of market data apart by one column every FIX engine already speaks: an order is `ORDR`, a quote `QUOT`, an execution `EXEC`, a trade `TRAD` and a book `BOOK`.
 
@@ -221,7 +221,7 @@ The code is the MsgCat value, the stored name its four-letter code, and the word
 
 | Code | Stored name | Word | Category |
 | ---: | --- | --- | --- |
-| `0` | `UNKN` | `unknown` | No published category: a message type the dictionary does not file |
+| `0` | `UKNW` | `unknown` | No published category: a message type the dictionary does not file |
 | `1` | `ACCT` | `account` | Account reporting |
 | `2` | `ALLO` | `allocation` | Allocation instructions, reports and acknowledgements |
 | `3` | `BOOK` | `book` | Market data: books, their snapshots, increments and requests |
@@ -327,7 +327,7 @@ The code is the MsgCat value, the stored name its four-letter code, and the word
 
 ## The category of a market data leaf
 
-Every [market data](../../graph/market-data.md) leaf is filed under one member, which its `marketdatakind` column states and a leaf answers without a lookup: `MarketKind::marketdatakind` in Rust, the `marketdatakind` getter on every leaf in Python and JavaScript. A FIX message states the member its dictionary [files its message type under](../../fix/index.md#a-message-type-is-filed-under-one-category), `FixMsg::msgcat`, `UNKN` where it files none ([FIX message](../../fix/message.md)).
+Every [market data](../../graph/market-data.md) leaf is filed under one member, which its `marketdatakind` column states and a leaf answers without a lookup: `MarketKind::marketdatakind` in Rust, the `marketdatakind` getter on every leaf in Python and JavaScript. A FIX message states the member its dictionary [files its message type under](../../fix/index.md#a-message-type-is-filed-under-one-category), `Market::marketdatakind`, `UKNW` where it files none ([FIX message](../../fix/message.md)).
 
 | Leaf | Member |
 | --- | --- |
@@ -378,10 +378,11 @@ No leaf is filed under a batch member: what a FIX message filed under one states
 - A spelling that names no kind, or an integer that is the code of none -> refused naming `marketdatakind`, never stored; a value that names none leaves a nullable column null under `safe`.
 - A stored code is an integer, never text: `"10"` is no spelling, `10` is `ORDR`.
 - The four-letter code folds case only - `ORDR`, `ordr`, `Ordr`; the word folds the way every name in this crate folds, ASCII case insensitive with `_`, `-` and spaces ignored.
-- The default value is `UNKN`, code `0`: a stated value, not an absence. An empty text cell entering the column is null ([Cast](../cast.md#empty-text)), and a required column refuses it.
+- The default value is `UKNW`, code `0`: a stated value, not an absence. An empty text cell entering the column is null ([Cast](../cast.md#empty-text)), and a required column refuses it.
+- `UKNW` is the zero member's spelling as of this release, in the intrinsic `marketdatakindcodeset` the FIX dictionary renders from this enum too; `UNKN`, the retired spelling, names no kind. A `marketdatakind` column stores the code, so a stored `0` reads as `UKNW` unchanged; a text column or a document that spells `UNKN` is rebuilt by its writer, never reinterpreted, and a dictionary whose `codesets/marketdatakindcodeset.json` still names it is refused at load until that document is removed and written again ([Store](../../fix/store.md#edges)). The zero spelling alone does not enter a digest. Separately, replacing the FIX digest label `msgcat` with `marketdatakind` moves each FIX message's `currhashcode` and `curruuid`, and an anonymous split execution's `crosshashcode`, once, and an element's stored cross code carries its code, never its name (`{kind}:{side}:{base}`, `3:0:TW0002454006` for a book).
 - In an expression a text constant meets a `marketdatakind` column as the member it spells and an integer as the code it stores: `kind = 'ORDR'`, `kind in ('ORDR', 'quotation')`, `cast('exec' as marketdatakind) = kind` and `kind >= 14` all compare members.
 - JSON, TOML, YAML and XML write a kind as its four-letter name, a Hive partition is named by it, and the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under the kind's own identifier, so a kind, a [state](state.md) and an integer of one code are three values.
-- `utf8` under `yggdryl.marketdatakind` is a foreign field wearing the name and imports as the text it is; a [state](state.md) column cast into a kind is read again member by member, and a state's code names no kind.
+- `utf8` under `yggdryl.marketdatakind` is a foreign field wearing the name and imports as the text it is; a [state](state.md) column is never cast into a kind: a cast between two enum leaves is refused by name, whatever `safe` says, and an integer column of codes or a text column of spellings is the way into a `marketdatakind` column.
 - The member is not the leaf: `ORDR` files an order and its dated event alike, and `BOOK` a book and a snapshot control, so `MarketKind` is what names the leaf.
 - The batch members follow `TRAD` rather than sitting beside their items, because a code is a wire value: `ORDR` stays `10` and `ORDB` is `22`.
 

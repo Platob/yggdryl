@@ -163,7 +163,7 @@ Each lookup exists by position, by path, or either:
 
 ## As a struct
 
-`into_struct_field` is the field's side of [`DataType::into_struct_type`](datatype.md#as-a-struct); the root a column crosses into a table under is `SerieReader::root_of`'s, which forces a struct root required. A struct field is answered as it is, name, nullability and metadata kept - so a nullable struct stays nullable and `validate_struct_root` still refuses it. Any other field becomes the one child, unchanged, of a required struct named `media::DEFAULT_ROOT_NAME` (`row`) that carries no metadata. The wrap's refusals are the datatype's, naming this field where the datatype names `$`. `Field::is_struct` is `dtype().is_struct()`.
+`into_struct_field` is the field's side of [`DataType::into_struct_type`](datatype.md#as-a-struct); the root a column crosses into a table under is `StreamChunkedSerie::root_of`'s, which forces a struct root required. A struct field is answered as it is, name, nullability and metadata kept - so a nullable struct stays nullable and `validate_struct_root` still refuses it. Any other field becomes the one child, unchanged, of a required struct named `media::DEFAULT_ROOT_NAME` (`row`) that carries no metadata. The wrap's refusals are the datatype's, naming this field where the datatype names `$`. `Field::is_struct` is `dtype().is_struct()`.
 
 === "Rust"
 
@@ -668,7 +668,7 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 
 | alias | constructors |
 | --- | --- |
-| a datatype that carries no parameters (`Int64Field`, `VariantField`, `VersionField`, `CountryField`, `CcyField`, `MicField`, `CfiField`, `IsinField`, `CusipField`, `SedolField`, `BbgField`, `FigiField`, `RicField`, `SideField`, `StateField`, `TimeInForceField`, `UnitField`) | `unit(name, nullable)`: there is nothing to pass, so naming the datatype again would say it twice |
+| a datatype that carries no parameters (`Int64Field`, `VariantField`, `VersionField`, `CountryField`, `CcyField`, `MicField`, `CfiField`, `IsinField`, `CusipField`, `SedolField`, `BbgField`, `FigiField`, `RicField`, `SideField`, `StateField`, `TimeInForceField`, `PluginSideField`, `UnitField`) | `unit(name, nullable)`: there is nothing to pass, so naming the datatype again would say it twice |
 | a family with leaves or parameters (`StringField`, `BytesField`, `UuidField`, `DecimalField`, `UriField`, `DateField`, `TimeField`, `DateTimeField`, `DurationField`, `IntervalField`, `SerieField`, `GeometryField`, `GeographyField`) | `new(name, dtype, nullable)`, taking that family's own payload |
 | from a `Field` | `FieldValue::from_field` borrows the leaf, `None` for another variant; `into_field` widens back to the root |
 | bindings | `yggdryl.int64` / `fields.int64` return the native `Field`, typed for a checker only; `yggdryl.string(name, layout=, charset=, fixed=, max=)` / `fields.string(name, { layout, charset, fixed, max })`, `yggdryl.bytes` / `fields.bytes`, `yggdryl.fixed_ascii(name, width)` / `fields.fixedAscii(name, width)`, `yggdryl.version` / `fields.version`, `yggdryl.figi` / `fields.figi` |
@@ -693,7 +693,7 @@ An instance of such a class - or of any dataclass or named tuple - crosses as th
 
 `apply_arrow_batch` is the [cast](cast.md) onto this root and nothing else: a column the rows do not carry is all-null where nullable and refused by path where required ([Required columns](cast.md#required-columns)). A [`PARTITION:`](../holder/index.md#derived-partition-columns) or `TRANSFORM:` declaration says a column is *derived* from another and a [`DIGEST:`](../hashing.md) role says a column *holds* the row's hash, but both are metadata the cast carries, never columns it fills. The root's `transform` and `digest` views fill them - `as_transform().apply_arrow_batch`, then `as_digest().apply_arrow_batch`, so the digest reads the derived column - each walking the Structs it declares and leaving a column holding anything but its canonical default alone, so applying twice writes nothing the first pass already did.
 
-The cast is a property of two schemas and never of the data: `apply_arrow_schema` answers the target schema without reading a row, and `apply_arrow_reader` uses that to report the shape a stream will have before its first batch is pulled - a reader already of this root's schema comes back untouched. The plan is compiled from those two schemas once, so a stream pays for it once.
+The cast is a property of two schemas and never of the data: `apply_arrow_schema` answers the target schema without reading a row, and `apply_arrow_reader` uses that to report the shape a stream will have before its first batch is pulled - a reader already of this root's schema comes back untouched. The plan is compiled from those two schemas once, so a stream pays for it once. The three are the `RecordBatch` and `BatchReader` face of the one [`ArrowCastPlan`](cast.md#eager-and-lazy) `Serie::cast` and `StreamChunkedSerie` run, never a second cast: `apply_arrow_reader` is a `StreamChunkedSerie` over the stream, so a loop holds it rather than calling `apply_arrow_batch`, which compiles per call.
 
 `options` (`safe` and `representation` in Python) carries the [conversion](cast.md) the cast runs under.
 
@@ -1025,7 +1025,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - a derived or holder column the rows do not carry -> `apply_arrow_batch` lands it null where nullable and refuses it by path where required; nothing repairs it.
 - `apply_arrow_schema` -> the cast's target schema, no row read; a required column the source does not carry fails here, not on the first batch.
 - `apply_arrow_reader` on a reader already of this root's schema -> the reader itself, unwrapped; otherwise the target schema is derived once and reported before the first pull.
-- a batch that fails inside `apply_arrow_reader` -> that batch's `Err`, and the reader is fused after it (a `SerieReader`'s rule).
+- a batch that fails inside `apply_arrow_reader` -> that batch's `Err`, and the reader is fused after it (a `StreamChunkedSerie`'s rule).
 
 ## Commands
 

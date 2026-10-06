@@ -17,6 +17,8 @@ mod arithmetic;
 mod ascii;
 #[path = "root/bbg.rs"]
 mod bbg;
+#[path = "root/bic.rs"]
+mod bic;
 #[path = "root/boolean.rs"]
 mod boolean;
 #[path = "root/budget.rs"]
@@ -63,20 +65,28 @@ mod default;
 mod diff;
 #[path = "root/digest.rs"]
 mod digest;
+#[path = "root/dti.rs"]
+mod dti;
 #[path = "root/duration.rs"]
 mod duration;
 #[path = "root/edge_algorithm.rs"]
 mod edge_algorithm;
+#[path = "root/elf.rs"]
+mod elf;
 #[path = "root/enumeration.rs"]
 mod enumeration;
 #[path = "root/enums.rs"]
 mod enums;
 #[path = "root/error.rs"]
 mod error;
+#[path = "root/eusipa.rs"]
+mod eusipa;
 #[path = "root/field.rs"]
 mod field;
 #[path = "root/figi.rs"]
 mod figi;
+#[path = "root/fisn.rs"]
+mod fisn;
 #[path = "root/floating.rs"]
 mod floating;
 #[path = "root/forex.rs"]
@@ -105,12 +115,16 @@ mod interval;
 mod iobase;
 #[path = "root/iocursor.rs"]
 mod iocursor;
+#[path = "root/iofolder.rs"]
+mod iofolder;
 #[path = "root/iokind.rs"]
 mod iokind;
 #[path = "root/iomedia.rs"]
 mod iomedia;
 #[path = "root/iomode.rs"]
 mod iomode;
+#[path = "root/iopath.rs"]
+mod iopath;
 #[path = "root/ioresult.rs"]
 mod ioresult;
 #[path = "root/isin.rs"]
@@ -119,6 +133,10 @@ mod isin;
 mod isin_registry;
 #[path = "root/join.rs"]
 mod join;
+#[path = "root/key_serie.rs"]
+mod key_serie;
+#[path = "root/lei.rs"]
+mod lei;
 #[path = "root/lib.rs"]
 mod lib;
 #[path = "root/limit.rs"]
@@ -131,6 +149,8 @@ mod mapping;
 mod marketdatakind;
 #[path = "root/marketdatatype.rs"]
 mod marketdatatype;
+#[path = "root/media_serie.rs"]
+mod media_serie;
 #[path = "root/media_type.rs"]
 mod media_type;
 #[path = "root/merge.rs"]
@@ -147,6 +167,8 @@ mod parser;
 #[cfg(feature = "internals")]
 #[path = "root/path.rs"]
 mod path;
+#[path = "root/pluginside.rs"]
+mod pluginside;
 #[path = "root/protocol.rs"]
 mod protocol;
 #[path = "root/regex.rs"]
@@ -165,8 +187,8 @@ mod sedol;
 mod serde;
 #[path = "root/serie.rs"]
 mod serie;
-#[path = "root/serie_source.rs"]
-mod serie_source;
+#[path = "root/shared_stream.rs"]
+mod shared_stream;
 #[path = "root/side.rs"]
 mod side;
 #[path = "root/sort_options.rs"]
@@ -175,6 +197,8 @@ mod sort_options;
 mod spill;
 #[path = "root/state.rs"]
 mod state;
+#[path = "root/stream_serie.rs"]
+mod stream_serie;
 #[path = "root/string.rs"]
 mod string;
 #[path = "root/structure.rs"]

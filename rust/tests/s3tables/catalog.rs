@@ -117,7 +117,10 @@ fn rows(rows: &[(i64, u8)]) -> Serie {
 /// order it yields them.
 fn read(table: &Table) -> Vec<(i64, i64, u8)> {
     let mut read = Vec::new();
-    for record in table.read_serie(None).expect("a read") {
+    for record in yggdryl::StreamChunkedSerie::from_serie(table.read_serie(None).expect("a read"))
+        .expect("native record stream")
+        .into_chunks()
+    {
         let batch = record
             .expect("a record")
             .into_arrow_batch()
@@ -229,13 +232,13 @@ fn a_table_bucket_is_a_catalog_whose_tables_commit_through_the_control_plane() {
     // files it writes and one publication, and the overwrite replaces the
     // quarter its rows fall in and no other.
     table
-        .append_serie(rows(&[(QUARTER + 7, 3), (2, 1)]).into(), None)
+        .append_serie(rows(&[(QUARTER + 7, 3), (2, 1)]), None)
         .expect("an append");
     table
-        .append_serie(rows(&[(QUARTER + 1, 4), (5, 2)]).into(), None)
+        .append_serie(rows(&[(QUARTER + 1, 4), (5, 2)]), None)
         .expect("an append");
     table
-        .overwrite_serie(rows(&[(QUARTER + 9, 9)]).into(), None)
+        .overwrite_serie(rows(&[(QUARTER + 9, 9)]), None)
         .expect("an overwrite");
     let committed = fake.table("lake", "desk", "quotes").expect("the table");
     assert!(
@@ -321,20 +324,20 @@ fn a_commit_under_a_token_the_table_moved_past_is_a_conflict_or_a_rebase() {
 
     // The first commits; the second still holds version 0 and its token.
     first
-        .append_serie(rows(&[(1, 1)]).into(), None)
+        .append_serie(rows(&[(1, 1)]), None)
         .expect("an append");
 
     // An overwrite planned against version 0 is refused rather than
     // replacing what the first wrote...
     let error = second
-        .overwrite_serie(rows(&[(2, 2)]).into(), None)
+        .overwrite_serie(rows(&[(2, 2)]), None)
         .expect_err("a stale token");
     assert!(error.is_conflict(), "{error}");
     assert!(error.to_string().contains("last saw version 1"), "{error}");
 
     // ...while an append reads where the table stands and applies again.
     second
-        .append_serie(rows(&[(3, 3)]).into(), None)
+        .append_serie(rows(&[(3, 3)]), None)
         .expect("a rebased append");
     assert_eq!(read(&second), [(0, 1, 1), (0, 3, 3)]);
     let state = fake.table("lake", "desk", "quotes").expect("the table");
@@ -403,7 +406,7 @@ fn racing_handles_publish_every_append_once_through_the_control_plane() {
                 for append in 0..APPENDS {
                     let id = u8::try_from(handle).expect("eight handles") * APPENDS + append + 1;
                     table
-                        .append_serie(rows(&[(i64::from(id), id)]).into(), None)
+                        .append_serie(rows(&[(i64::from(id), id)]), None)
                         .unwrap_or_else(|error| {
                             panic!("handle {handle}, append {append}: {error}")
                         });
@@ -732,7 +735,7 @@ fn a_location_names_the_catalog_the_namespace_or_the_table() {
         .expect("a namespace");
     desk.create_table("quotes", &declared(), &Properties::new())
         .expect("a table")
-        .append_serie(rows(&[(2, 1)]).into(), None)
+        .append_serie(rows(&[(2, 1)]), None)
         .expect("an append");
 
     // The bucket is its catalog and a segment below it a namespace: a
@@ -1016,7 +1019,7 @@ fn a_stores_own_credential_opens_the_storage_and_is_listed_and_printed_by_nothin
     )
     .expect("a table");
     table
-        .append_serie(rows(&[(2, 1)]).into(), None)
+        .append_serie(rows(&[(2, 1)]), None)
         .expect("an append signed as the store's pair");
 
     let catalog = Catalog::from_url(url("s3tables://lake"), &properties).expect("the catalog");
@@ -1104,7 +1107,7 @@ fn a_table_drops_itself_through_its_catalog() {
         .create_table("quotes", &declared(), &Properties::new())
         .expect("a table");
     table
-        .append_serie(rows(&[(2, 1)]).into(), None)
+        .append_serie(rows(&[(2, 1)]), None)
         .expect("an append");
 
     // One `DeleteTable`, under no version token: the catalog that keeps the
@@ -1132,7 +1135,7 @@ fn a_table_drops_itself_through_its_catalog() {
     fake.clear_requests();
     store.clear_requests();
     let error = table
-        .append_serie(rows(&[(2, 1)]).into(), None)
+        .append_serie(rows(&[(2, 1)]), None)
         .expect_err("dropped");
     assert!(error.is_absent(), "{error}");
     assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
@@ -1176,7 +1179,7 @@ fn a_table_opens_by_its_location_or_by_its_arn() {
         .expect("a namespace");
     desk.create_table("quotes", &declared(), &Properties::new())
         .expect("a table")
-        .append_serie(rows(&[(2, 1)]).into(), None)
+        .append_serie(rows(&[(2, 1)]), None)
         .expect("an append");
     let arn = identified(&fake, "quotes");
 
@@ -1421,7 +1424,7 @@ fn a_table_is_created_at_its_location_under_a_namespace_made_on_the_way() {
     // The table is written, reopened by its location and dropped as any
     // other the bucket keeps is.
     table
-        .append_serie(rows(&[(QUARTER + 7, 3), (2, 1)]).into(), None)
+        .append_serie(rows(&[(QUARTER + 7, 3), (2, 1)]), None)
         .expect("an append");
     let mut reopened =
         IcebergTable::from_url(url("s3tables://lake/desk/quotes"), &properties).expect("the table");
@@ -1586,10 +1589,10 @@ fn live_a_table_bucket_commits_through_the_control_plane() {
             .create_table("quotes", &declared(), &Properties::new())
             .expect("a table");
         table
-            .append_serie(rows(&[(QUARTER + 7, 3), (2, 1)]).into(), None)
+            .append_serie(rows(&[(QUARTER + 7, 3), (2, 1)]), None)
             .expect("an append");
         table
-            .overwrite_serie(rows(&[(QUARTER + 9, 9)]).into(), None)
+            .overwrite_serie(rows(&[(QUARTER + 9, 9)]), None)
             .expect("an overwrite");
         let reopened = catalog
             .table(format!("{namespace}.quotes").as_str())
@@ -1610,7 +1613,7 @@ fn live_a_table_bucket_commits_through_the_control_plane() {
         )
         .expect("a table under a namespace made on the way");
         located
-            .append_serie(rows(&[(2, 1)]).into(), None)
+            .append_serie(rows(&[(2, 1)]), None)
             .expect("an append");
         let table_arn = client
             .get_table(&arn, &by_location, "quotes")
@@ -1753,7 +1756,7 @@ fn every_store_of_a_bucket_signs_under_the_one_session_the_catalog_walked() {
             .create_table(name, &declared(), &Properties::new())
             .expect("a table");
         table
-            .append_serie(rows(&[(2, 1)]).into(), None)
+            .append_serie(rows(&[(2, 1)]), None)
             .expect("an append");
         assert_eq!(read(&table), [(0, 2, 1)]);
         let reopened = catalog

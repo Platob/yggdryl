@@ -8,14 +8,14 @@
 | --- | --- |
 | Owner | `yggdryl::graph::TradeEvent` in `graph::trade`: `Element`, `Event`, `Market` and `Operation` over its root, filed under `TRAD` |
 | Construction | `TradeEvent::from_parts(&root, executions)`, the one door, from any `Event + Operation` root and a `Vec<ExecutionEvent>`; a `TRAD` row decodes only through it. A trade is not [sided](market.md#sides-and-cross-codes): it takes the root's base code under its own kind and side `0` (`21:0:T-1`), whatever side it states |
-| Refusals | `InvalidRecord` at `$.executions` when there is none, and at `$.executions[i]` for a child at another instant (`.currunix`), naming another ticker (`.ticker`) or repeating a cross code (`.crosscode`); a child may state any side, `UNKN` included, because a fill nobody sided is still a fill |
+| Refusals | `InvalidRecord` at `$.executions` when there is none, and at `$.executions[i]` for a child at another instant (`.currunix`), naming another ticker (`.ticker`) or repeating a cross code (`.crosscode`); a child may state any side, `UKNW` included, because a fill nobody sided is still a fill |
 | Canonical | children are finalized and sorted by side, cross code and identity, so input order never changes the trade; `executions()` answers that order, each child's stored cross code stating its [side](market.md#sides-and-cross-codes) |
 | Root | the highest child place, the earliest creation and recording instants, the latest execution instant; its digest feeds the execution count and each child's `curruuid` - never a child's `currhashcode` or content |
 | `is_execution` | always true |
 | `set_currunix` | rebases the root and every child atomically and re-finalizes them; each child keeps its `execunix` |
 | Following, merging | only under the same root cross code: children combine by execution cross code, then rebase to the resulting instant |
 | In a book | never as a trade: [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) prunes `TRAD` before a book walk routes it, and `add_operations` drops it; the executions the parse split off a trade are recorded among the deltas of their instrument's book, moving no side. A book's row's `executions` cell is null; `executions` is a trade's column of the [`marketdata` row](market-data.md#arrow) |
-| From FIX | a trade capture report (`AE`) is no leaf: [`FixMsg::market_data`](../fix/message.md#market-data) answers none for it, and a capture's market data and books skip it; what it reports are the executions its parse splits off - one execution message per `NoSides(552)` occurrence, `EXEC` and `FILLED`, of side `UNKN` beside a [warning](../fix/capture.md#warnings) where the occurrence states no side or one no side reads - so each fill is stated once, and a fill's [accounts](../fix/message.md#parties-and-regulatory-trade-identifiers) lead with its side's own parties and `Account(1)` |
+| From FIX | a trade capture report (`AE`) is no leaf: [`FixMsg::market_data`](../fix/message.md#market-data) answers none for it, and a capture's market data and books skip it; what it reports are the executions its parse splits off - one execution message per `NoSides(552)` occurrence, `EXEC` and `FILLED`, of side `UKNW` beside a [warning](../fix/capture.md#warnings) where the occurrence states no side or one no side reads - so each fill is stated once, and a fill's [accounts](../fix/message.md#parties-and-regulatory-trade-identifiers) lead with its side's own parties and `Account(1)` |
 | Bindings | Python `graph.TradeEvent.from_parts(root, executions)`, JavaScript `graph.TradeEvent.fromParts(root, executions)`; the built trade's `executions` is a property in both, a list (Python) or an array (JavaScript) of `ExecutionEvent` in the canonical order |
 
 ## Example
@@ -94,8 +94,8 @@ Apple shares crossed between a buyer and a seller at 189.50.
             raise AssertionError("an invalid trade was built")
 
     # Any side stands: a fill nobody sided is still a fill.
-    unsided = graph.TradeEvent.from_parts(root, [fill("E-NONE", "UNKN")])
-    assert unsided.executions[0].side is Side.UNKN
+    unsided = graph.TradeEvent.from_parts(root, [fill("E-NONE", "UKNW")])
+    assert unsided.executions[0].side is Side.UKNW
     ```
 
 === "JavaScript"
@@ -122,6 +122,6 @@ Apple shares crossed between a buyer and a seller at 189.50.
     assert.throws(() => graph.TradeEvent.fromParts(root, [fill('E-LATE', 'BUYS', T + 1n)]), /\$\.executions\[0\]\.currunix/)
 
     // Any side stands: a fill nobody sided is still a fill.
-    const unsided = graph.TradeEvent.fromParts(root, [fill('E-NONE', 'UNKN')])
-    assert.equal(unsided.executions[0].side, 'UNKN')
+    const unsided = graph.TradeEvent.fromParts(root, [fill('E-NONE', 'UKNW')])
+    assert.equal(unsided.executions[0].side, 'UKNW')
     ```

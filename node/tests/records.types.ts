@@ -8,7 +8,7 @@ import {
   Plan,
   Selector,
   Serie,
-  SerieReader,
+  StreamChunkedSerie,
   Field,
   IOBase,
   IOResult,
@@ -17,7 +17,7 @@ import {
   type BatchSource,
   type RecordOptionsInput,
   type SchemaInput,
-  type SerieSource,
+  type SerieInput,
 } from '..'
 
 const schema: SchemaInput = Field.from('row: struct<id: int64> not null')
@@ -140,15 +140,15 @@ handle.overwriteArrowBatch(arrowBatch, options)
 handle.appendArrowBatch(arrowBatch, named)
 handle.mergeArrowBatch(arrowBatch, merging)
 
-// The Serie record doors: a SerieReader out, any shape the rows are held in.
+// The Serie record doors: a generic Serie out, any shape the rows are held in.
 declare const heldSerie: Serie
 declare const heldChunks: ChunkedSerie
-declare const heldStream: SerieReader
-const serieRead: SerieReader = handle.readSerie()
-const serieReadUnder: SerieReader = handle.readSerie(options, { maxRowSize: 1 })
-const serieReadBag: SerieReader = handle.readSerie({ numThreads: 2 })
-const serieReadNamed: SerieReader = handle.readSerie(named)
-const serieShapes: SerieSource[] = [heldSerie, heldChunks, heldStream, source, arrowTable, arrowBatch, [arrowBatch], new Uint8Array()]
+declare const heldStream: StreamChunkedSerie
+const serieRead: Serie = handle.readSerie()
+const serieReadUnder: Serie = handle.readSerie(options, { maxRowSize: 1 })
+const serieReadBag: Serie = handle.readSerie({ numThreads: 2 })
+const serieReadNamed: Serie = handle.readSerie(named)
+const serieShapes: SerieInput[] = [heldSerie, heldChunks, heldStream, source, arrowTable, arrowBatch, [arrowBatch], new Uint8Array()]
 // Every Serie write answers the rows it read, wrote and skipped.
 const serieWritten: IOResult = handle.writeSerie(heldSerie)
 const serieAppended: IOResult = handle.writeSerie(heldChunks, 'append', options)

@@ -18,9 +18,17 @@ use super::idmap::{FixIdSource, FixIdSources};
 use crate::folds_equal;
 use crate::{DataType, Error, FixField, FixFieldMut, Result};
 
-/// The dictionaries that contributed this field, folded and sorted; absent
+/// The sources that contributed this field, a JSON array of ids folded and
+/// sorted, each the id of an entry of the registry's sources catalog; absent
 /// for a field the specification alone defines.
+const SOURCES: &str = "sources";
+/// The membership key this release retired: a dictionary written under it
+/// is refused by name where a definition enters a registry, never loaded
+/// with its membership silently gone.
 const BRANCHES: &str = "branches";
+/// The full key the sources are stored under, which the id grammar in
+/// [`super::source`] names in its refusal.
+pub(super) const SOURCES_KEY: &str = "FIX:sources";
 /// The canonical tag.
 const TAG: &str = "tag";
 /// The key on a message child that is an alias spelling which did not fill
@@ -75,8 +83,8 @@ pub(super) fn is_msgcat(value: &str) -> bool {
     crate::MarketDataKind::from_name(value).is_some()
 }
 /// What separates the elements of a comma-separated property: the
-/// memberships, the identifiers and the null spellings, whose elements can
-/// hold no comma. The names and the tags are JSON arrays instead.
+/// identifiers and the null spellings, whose elements can hold no comma. The
+/// names, the sources and the tags are JSON arrays instead.
 pub(super) const SEPARATOR: char = ',';
 
 /// What a tag is, spelled once for every refusal.
@@ -164,24 +172,77 @@ impl<'field> FixField<'field> {
         }
     }
 
-    /// Iterates the dictionaries that contributed this field, folded and
-    /// sorted.
+    /// Iterates the sources that contributed this field, folded and sorted.
     ///
-    /// Membership is provenance: a dialect merged into a registry names
+    /// Membership is provenance: a source folded into a registry names
     /// itself on every field it touched, and a caller filters on it. It is
-    /// never consulted to resolve a tag or a name. The iterator is lazy and
-    /// allocates nothing, and an absent property - every field the
-    /// specification alone defines - yields nothing.
-    pub fn branches(&self) -> FixSpellings<'field> {
-        FixSpellings::over(self.get(BRANCHES))
+    /// never consulted to resolve a tag or a name. Each id names an entry of
+    /// the registry's [sources catalog](crate::FixRegistry::sources), which
+    /// is where the file behind it is recorded once rather than on every
+    /// field. The iterator is lazy and allocates nothing: every id is a
+    /// slice of the stored array, which the field already owns. An absent
+    /// property - every field the specification alone defines - yields
+    /// nothing, and so does a stored text that is not the JSON array of ids
+    /// [`FixFieldMut::set_sources`] writes: the typed refusal belongs to the
+    /// write, and a read stays cheap.
+    pub fn sources(&self) -> Words<'field> {
+        Words::over(self.get(SOURCES).and_then(word_list).unwrap_or_default())
     }
 
-    /// Whether `dialect` is one of the dictionaries that contributed this
-    /// field, under the crate's one fold - the fold the list is deduplicated
-    /// by, so a spelling that would have folded into a listed name is a
-    /// member.
-    pub fn has_branch(&self, dialect: &str) -> bool {
-        self.branches().any(|held| folds_equal(held, dialect))
+    /// Whether `source` is one of the sources that contributed this field,
+    /// under the crate's one fold - the fold the list is deduplicated by, so
+    /// a spelling that would have folded into a listed id is a member.
+    pub fn has_source(&self, source: &str) -> bool {
+        self.sources().any(|held| folds_equal(held, source))
+    }
+
+    /// Holds the stored sources to what [`FixFieldMut::set_sources`] writes,
+    /// as [`Self::validate_names`] holds the names: the infallible read
+    /// above answers nothing for a text it cannot walk, and a dictionary
+    /// must not hold one. The setter writes the ids folded to ASCII
+    /// lowercase, each once under the crate's fold, sorted; a text that
+    /// states them otherwise (a hand edit, a document another writer wrote)
+    /// would list one id twice in [`FixRegistry::dialects`](crate::FixRegistry::dialects)
+    /// and hash apart from the registry the setter builds, so every door a
+    /// definition enters a registry through refuses it here. The retired
+    /// `FIX:branches` key is refused by name for the same reason: a
+    /// dictionary built under it is rebuilt from its sources, never loaded
+    /// with its membership silently gone.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the full `FIX:sources` key when the stored
+    /// text is not the compact JSON array of ids the setter writes, holds an
+    /// id that is not ASCII lowercase, names one twice under the fold or
+    /// lists them out of order, and one naming `FIX:branches` when the
+    /// field states that key.
+    pub(super) fn validate_sources(&self) -> Result<()> {
+        if let Some(stored) = self.get(BRANCHES) {
+            return Err(self.invalid(
+                BRANCHES,
+                "no `FIX:branches`, the retired membership key - membership is `FIX:sources` backed by `sources.json`, so rebuild the dictionary from its sources",
+                stored,
+            ));
+        }
+        let Some(stored) = self.get(SOURCES) else {
+            return Ok(());
+        };
+        let body = word_list(stored)
+            .ok_or_else(|| self.invalid(SOURCES, "a JSON array of source ids", stored))?;
+        let mut seen: Vec<&str> = Vec::new();
+        for id in Words::over(body) {
+            if id.bytes().any(|byte| byte.is_ascii_uppercase()) {
+                return Err(self.invalid(SOURCES, "each source id ASCII lowercase", stored));
+            }
+            if seen.iter().any(|held| folds_equal(held, id)) {
+                return Err(self.invalid(SOURCES, "each source once", stored));
+            }
+            if seen.last().is_some_and(|held| *held > id) {
+                return Err(self.invalid(SOURCES, "the source ids sorted", stored));
+            }
+            seen.push(id);
+        }
+        Ok(())
     }
 
     /// Builds this field's identity, absent exactly when `FIX:tag` is.
@@ -716,64 +777,59 @@ impl FixFieldMut<'_> {
         self.store(key, name.to_ascii_lowercase())
     }
 
-    /// Records the dictionaries that contributed this field.
+    /// Records the sources that contributed this field.
     ///
-    /// Each name is held to the membership grammar - non-empty, no separator -
-    /// folded by ASCII case once, deduplicated under the crate fold, and the
-    /// list is stored sorted, so two registries built from the same
-    /// dictionaries in any order hash alike. Empty input removes the
-    /// property, so a field the specification alone defines states nothing.
+    /// Each id is held to the id grammar - a non-empty word holding no
+    /// quote, backslash or control character - folded to ASCII lowercase
+    /// once, deduplicated under the crate fold, and the list is stored
+    /// sorted, so two registries built from the same sources in any order
+    /// hash alike. Empty input removes the property, so a field the
+    /// specification alone defines states nothing. The ids are the field's
+    /// statement alone: the catalog entry each one names is the registry's
+    /// to hold ([`FixRegistry::add_source`](crate::FixRegistry::add_source)).
     ///
     /// # Errors
     ///
-    /// Returns an error when a name is empty or contains the separator,
-    /// leaving the field unchanged.
-    pub fn set_branches<I, S>(&mut self, dialects: I) -> Result<()>
+    /// Returns an error naming the full `FIX:sources` key when an id is
+    /// empty or holds a quote, a backslash or a control character, leaving
+    /// the field unchanged.
+    pub fn set_sources<I, S>(&mut self, sources: I) -> Result<()>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let mut held: Vec<String> = Vec::new();
-        for dialect in dialects {
-            let dialect = dialect.as_ref();
-            if dialect.is_empty() {
-                return Err(
-                    self.rejected(BRANCHES, "expected a non-empty dialect, got \"\"".into())
-                );
-            }
-            if dialect.contains(SEPARATOR) {
-                return Err(self.rejected(
-                    BRANCHES,
-                    format_smolstr!("expected a dialect without {SEPARATOR:?}, got {dialect:?}"),
-                ));
-            }
-            let folded = dialect.to_ascii_lowercase();
+        let mut held: Vec<SmolStr> = Vec::new();
+        for source in sources {
+            let folded = super::source::source_id(source.as_ref())?;
             if !held.iter().any(|known| folds_equal(known, &folded)) {
                 held.push(folded);
             }
         }
         if held.is_empty() {
-            self.remove(BRANCHES);
+            self.remove(SOURCES);
             return Ok(());
         }
-        held.sort();
-        self.store(BRANCHES, held.join(","))
+        held.sort_unstable();
+        self.store(
+            SOURCES,
+            Writer::list_of_words(held.iter().map(SmolStr::as_str))?,
+        )
     }
 
-    /// Adds one dictionary to those that contributed this field.
+    /// Adds one source to those that contributed this field.
     ///
-    /// Idempotent under the fold: a dialect already listed is listed once.
+    /// Idempotent under the fold: a source already listed is listed once.
     ///
     /// # Errors
     ///
-    /// Returns [`set_branches`](Self::set_branches)'s refusal.
-    pub fn add_branch(&mut self, dialect: &str) -> Result<()> {
-        if self.as_protocol().has_branch(dialect) {
+    /// Returns [`set_sources`](Self::set_sources)'s refusal.
+    pub fn add_source(&mut self, source: &str) -> Result<()> {
+        if self.as_protocol().has_source(source) {
             return Ok(());
         }
-        let mut held: Vec<String> = self.as_protocol().branches().map(str::to_owned).collect();
-        held.push(dialect.to_owned());
-        self.set_branches(held)
+        let mut held: Vec<String> = self.as_protocol().sources().map(str::to_owned).collect();
+        held.push(source.to_owned());
+        self.set_sources(held)
     }
 
     /// Records the canonical FIX tag.
@@ -1232,7 +1288,7 @@ impl FixFieldMut<'_> {
     /// | key | rule |
     /// | --- | --- |
     /// | `FIX:tag` | MUST agree; a disagreement is a typed refusal naming both. Identity is not merged. |
-    /// | `FIX:branches` | union, folded, sorted: every dictionary that contributed either side |
+    /// | `FIX:sources` | union, folded, sorted: every source that contributed either side |
     /// | `FIX:tags` | union, incoming first, order kept, deduplicated |
     /// | `FIX:names` | union, folded, incoming first |
     /// | `description` | not folded here at all: it is a generic key, so the metadata merge every protocol shares carries it |
@@ -1304,14 +1360,16 @@ impl FixFieldMut<'_> {
                 names.push(name);
             }
         }
-        let branches = render_branches(held.branches().chain(other.branches()));
+        held.validate_sources()?;
+        other.validate_sources()?;
+        let sources = render_sources(held.sources().chain(other.sources()))?;
 
         let mut merged: Vec<(&'static str, String)> = Vec::with_capacity(MERGED_KEYS.len());
         for key in MERGED_KEYS {
             let value = match key {
                 TAGS => render_tags(&tags),
                 NAMES => render_names(&names)?,
-                BRANCHES => branches.clone(),
+                SOURCES => sources.clone(),
                 // The one key where the *stored* side wins, and `other` is
                 // the stored one: a registry fold hands the incoming field in
                 // as `self`. A field keeps the vocabulary it already reads by
@@ -1390,8 +1448,7 @@ pub(super) fn spells_absence<'a>(nulls: impl IntoIterator<Item = &'a str>, text:
 
 /// The spellings one comma-separated `FIX:` property holds, in stored order.
 ///
-/// Answered by [`FixField::branches`], [`FixField::identifiers`] and
-/// [`FixField::nulls`]. It walks the stored text as it goes and hands back
+/// Answered by [`FixField::identifiers`] and [`FixField::nulls`]. It walks the stored text as it goes and hands back
 /// slices of it, so nothing is parsed ahead of the spelling being asked for
 /// and nothing is allocated. An empty element, which the writer never
 /// produces, is skipped rather than reported: the typed rejection belongs to
@@ -1440,7 +1497,7 @@ impl FusedIterator for FixSpellings<'_> {}
 /// a vector of them to scan `O(n*m)` is what this replaced.
 const MERGED_KEYS: [&str; 10] = [
     TAG,
-    BRANCHES,
+    SOURCES,
     TAGS,
     NAMES,
     NULLS,
@@ -1468,21 +1525,21 @@ fn render_names(names: &[&str]) -> Result<Option<String>> {
     Writer::list_of_words(names.iter().copied()).map(Some)
 }
 
-/// Render the dictionaries that contributed a field the way the setter
-/// renders them: folded, deduplicated under the crate fold, sorted.
-fn render_branches<'a>(dialects: impl IntoIterator<Item = &'a str>) -> Option<String> {
+/// Render the sources that contributed a field the way the setter renders
+/// them: folded, deduplicated under the crate fold, sorted.
+fn render_sources<'a>(sources: impl IntoIterator<Item = &'a str>) -> Result<Option<String>> {
     let mut held: Vec<String> = Vec::new();
-    for dialect in dialects {
-        let folded = dialect.to_ascii_lowercase();
+    for source in sources {
+        let folded = source.to_ascii_lowercase();
         if !held.iter().any(|known| folds_equal(known, &folded)) {
             held.push(folded);
         }
     }
     if held.is_empty() {
-        return None;
+        return Ok(None);
     }
-    held.sort();
-    Some(held.join(","))
+    held.sort_unstable();
+    Writer::list_of_words(held.iter().map(String::as_str)).map(Some)
 }
 
 /// Render alternate tags the way the setter renders them.

@@ -156,6 +156,9 @@ impl Holder {
     /// there, a file whether its leaf is, a path whether either is - so a
     /// handle `mkdir` made a folder and `remove` then deleted answers `false`,
     /// while its [`kind`](IOBase::kind) still names the role it was built as.
+    /// A glob location - `logs/*.log` - is there while its pattern selects an
+    /// entry, which its listing answers up to the first match; its kind names
+    /// a container whatever it selects.
     /// A buffer always holds its bytes, as an HTTP session, response or stream
     /// holds what it answers; an HTTP request asks its resource with one
     /// `HEAD`, and a wrapper answers for the handle it wraps.
@@ -961,6 +964,10 @@ impl crate::IOMedia for Holder {
         crate::IOMedia::record_options(self.as_media())
     }
 
+    fn merge_by(&self) -> Result<crate::Selector> {
+        crate::IOMedia::merge_by(self.as_media())
+    }
+
     #[cfg(feature = "parquet")]
     fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
         crate::IOMedia::read_parquet_statistics(self.as_media())
@@ -978,76 +985,42 @@ impl crate::IOMedia for Holder {
         crate::IOMedia::read_arrow_field(self.as_media(), options)
     }
 
-    fn read_arrow_reader(
-        &self,
-        options: &crate::media::RecordOptions,
-    ) -> Result<crate::arrow::BatchReader> {
-        crate::IOMedia::read_arrow_reader(self.as_media(), options)
-    }
-
     /// Forwarded, because a handle can answer its rows other than through
     /// its bytes - an HTTP request walks the pages of a paginated document.
-    fn read_serie(
-        &self,
-        options: Option<&crate::media::RecordOptions>,
-    ) -> Result<crate::SerieReader> {
+    fn read_serie(&self, options: Option<&crate::media::RecordOptions>) -> Result<crate::Serie> {
         crate::IOMedia::read_serie(self.as_media(), options)
     }
 
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &crate::media::RecordOptions,
+        value: crate::Serie,
+        options: Option<&crate::media::RecordOptions>,
     ) -> Result<crate::IOResult> {
-        crate::IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
+        crate::IOMedia::overwrite_serie(self.as_media_mut(), value, options)
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
+        value: crate::StreamChunkedSerie,
         options: &crate::media::RecordOptions,
     ) -> Result<()> {
-        crate::IOMedia::overwrite_prepared_arrow_reader(self.as_media_mut(), batches, options)
+        crate::IOMedia::overwrite_prepared_serie(self.as_media_mut(), value, options)
     }
 
-    fn overwrite_arrow_batch(
+    fn append_serie(
         &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &crate::media::RecordOptions,
+        value: crate::Serie,
+        options: Option<&crate::media::RecordOptions>,
     ) -> Result<crate::IOResult> {
-        crate::IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
+        crate::IOMedia::append_serie(self.as_media_mut(), value, options)
     }
 
-    fn append_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &crate::media::RecordOptions,
+        value: crate::Serie,
+        options: Option<&crate::media::RecordOptions>,
     ) -> Result<crate::IOResult> {
-        crate::IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
-    }
-
-    fn append_arrow_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &crate::media::RecordOptions,
-    ) -> Result<crate::IOResult> {
-        crate::IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
-    }
-
-    fn merge_arrow_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &crate::media::RecordOptions,
-    ) -> Result<crate::IOResult> {
-        crate::IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
-    }
-
-    fn merge_arrow_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &crate::media::RecordOptions,
-    ) -> Result<crate::IOResult> {
-        crate::IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
+        crate::IOMedia::merge_serie(self.as_media_mut(), value, options)
     }
 }
 

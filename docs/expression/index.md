@@ -19,7 +19,7 @@
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `Term`, `Bound`, `Filter`, `Selector`, `BoundSelector`, `Plan`, `Expression`, `Records`; `(column, value)` pairs are sugar, not a second implementation |
+| Owns | `Term`, `Bound`, `Filter`, `Selector`, `BoundSelector`, `Plan`, `Expression`, `StreamSerie`; `(column, value)` pairs are sugar, not a second implementation |
 | Layers | a `Term` is a tree, a `Filter` is one predicate, a `Selector` is a projection list, a `Plan` is the sections of one read or write, an `Expression` is whichever of those the text is |
 | Not a value | [`Scalar`](../types/scalar.md) is plain data; a term needs a schema to mean anything |
 | Pipeline | parse -> type -> simplify -> bind(schema) -> apply; bind runs once per stream, never per batch or row |
@@ -138,8 +138,8 @@ Parse, bind once, ask a row.
 ## The layers
 
 ```text
-text ──parse──▶ Expression ─┬─ Selector ──bind──▶ BoundSelector ──▶ batch | row | Records
-                            ├─ Filter   ──bind──▶ Bound         ──▶ mask  | bool | Records
+text ──parse──▶ Expression ─┬─ Selector ──bind──▶ BoundSelector ──▶ batch | row | StreamSerie
+                            ├─ Filter   ──bind──▶ Bound         ──▶ mask  | bool | StreamSerie
                             ├─ Plan     ──execute / apply──▶ BatchReader
                             └─ Sequence ──apply, step by step──▶ BatchReader
 Term ──bind(schema)──▶ Bound ──▶ Scalar | ArrayRef | certainty
@@ -152,7 +152,7 @@ Term ──bind(schema)──▶ Bound ──▶ Scalar | ArrayRef | certainty
 | `Selector` | the columns published, computed, declared, excluded or [unnested](grammar.md#unnest) | `select id, price * 2 as doubled int64`, `select * exclude (secret), unnest(legs) as leg` |
 | `Plan` | the sections of one read or write | `upsert into t by (id) select id from s where price > 0 limit 10` |
 | `Expression` | whichever of those the text is, or a `;`-separated sequence | `where id > 1; select name` |
-| `Records` | native rows streaming out of any of them | `selector.apply_records(schema, rows)` |
+| `StreamSerie` | native rows streaming out of any of them | `selector.apply_records(schema, rows)` |
 
 A lone `select` or `where` parses as its clause, not as a one-section plan, so the same text means the same thing whichever type it is read into; `Plan::into_expression` collapses the other way.
 

@@ -20,7 +20,7 @@ from yggdryl import (
     IOResult,
     RecordOptions,
     Serie,
-    SerieReader,
+    StreamChunkedSerie,
     Url,
 )
 from yggdryl.holder import Buffer, Buffered
@@ -165,6 +165,30 @@ class TestPathlibParity:
         assert handle.is_dir()
         assert not handle.is_file()
         assert handle.name == "lake"
+
+    def test_a_pattern_exists_while_it_selects_an_entry(self, lake: pathlib.Path) -> None:
+        # A glob is a container by its spelling, and there while its listing
+        # yields an entry - what `iterdir` answers and a read walks.
+        years = IOBase(lake) / "year=*"
+        assert years.is_dir()
+        assert years.exists()
+        none = IOBase(lake) / "*.csv"
+        assert none.is_dir()
+        assert not none.exists()
+        assert list(none.iterdir()) == []
+        assert (IOBase(lake) / "**" / "*.parquet").exists()
+        # A `Url` keeps pathlib's literal answer: no directory is named so.
+        assert not years.url.exists()
+
+    def test_a_spelled_container_is_a_container_before_it_is_there(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        spelled = IOBase(tmp_path) / "lake/"
+        assert spelled.is_dir()
+        assert not spelled.exists()
+
+        (tmp_path / "lake").mkdir()
+        assert spelled.exists()
 
     def test_a_missing_location_is_empty_rather_than_an_error(
         self, tmp_path: pathlib.Path
@@ -1028,7 +1052,7 @@ def test_a_handle_is_addressed_by_an_identifier_and_a_location_is_one(
 # ---------------------------------------------------------------------------
 # `read_serie` and the `*_serie` writes - mirrors the serie cases of
 # rust/tests/root/iomedia.rs through the binding's intake: one read answering
-# a `SerieReader` whatever the resource is, one write taking rows in any
+# a `StreamChunkedSerie` whatever the resource is, one write taking rows in any
 # shape the crate or a columnar library holds them.
 # ---------------------------------------------------------------------------
 
@@ -1046,14 +1070,14 @@ def quote_rows() -> list[dict[str, Any]]:
 
 
 def rows_of(handle: IOBase, **properties: Any) -> list[dict[str, Any]]:
-    return [row for serie in handle.read_serie(**properties) for row in serie.as_py()]
+    return [row for serie in StreamChunkedSerie.from_serie(handle.read_serie(**properties)) for row in serie.as_py()]
 
 
 # Every shape a written value takes, each built fresh: a stream is pulled once.
 SOURCES: dict[str, Callable[[], object]] = {
     "serie": lambda: Serie.from_(quote_table()),
     "chunked_serie": lambda: ChunkedSerie.from_(quote_table()),
-    "serie_reader": lambda: SerieReader.from_(quote_table()),
+    "serie_reader": lambda: StreamChunkedSerie.from_(quote_table()),
     "table": quote_table,
     "record_batch_reader": lambda: quote_table().to_reader(),
     "pandas": lambda: quote_table().to_pandas(),
@@ -1103,7 +1127,7 @@ class TestSerieVerbs:
         # over one is written with it released and takes it back per pull.
         handle.overwrite_serie(batches())
         assert rows_of(handle) == quote_rows()
-        handle.append_serie(SerieReader.from_(batches()))
+        handle.append_serie(StreamChunkedSerie.from_(batches()))
         assert rows_of(handle) == quote_rows() * 2
         # Rows as mappings are a record stream too.
         handle.overwrite_serie(quote_rows())
@@ -1113,7 +1137,7 @@ class TestSerieVerbs:
         self, tmp_path: pathlib.Path
     ) -> None:
         handle = IOBase(tmp_path / "quotes.arrows")
-        reader = SerieReader.from_(quote_table())
+        reader = StreamChunkedSerie.from_(quote_table())
         handle.overwrite_serie(reader)
         with pytest.raises(ValueError, match="handed over"):
             handle.append_serie(reader)
@@ -1131,8 +1155,8 @@ class TestSerieVerbs:
         assert rows_of(handle, options=RecordOptions("quotes.arrows", filter="size > 100")) == (
             quote_rows()[1:]
         )
-        read = handle.read_serie(field=quote_root())
-        assert isinstance(read, SerieReader)
+        read = StreamChunkedSerie.from_serie(handle.read_serie(field=quote_root()))
+        assert isinstance(read, StreamChunkedSerie)
         assert read.field == quote_root()
         assert Serie.from_(read).as_py() == quote_rows()
 
@@ -1159,8 +1183,8 @@ class TestSerieVerbs:
     ) -> None:
         handle = IOBase(tmp_path / name)
         handle.write_serie(quote_table())
-        read = handle.read_serie(field=quote_root())
-        assert isinstance(read, SerieReader)
+        read = StreamChunkedSerie.from_serie(handle.read_serie(field=quote_root()))
+        assert isinstance(read, StreamChunkedSerie)
         assert Serie.from_(read).as_py() == quote_rows()
 
     def test_a_structured_document_takes_an_overwrite_only_and_names_the_mode(
@@ -1202,14 +1226,14 @@ class TestSerieVerbs:
     ) -> None:
         column = IOBase(tmp_path / "column.arrows")
         column.write_serie(Serie.from_(quote_table()))
-        read = column.read_serie()
-        assert isinstance(read, SerieReader)
+        read = StreamChunkedSerie.from_serie(column.read_serie())
+        assert isinstance(read, StreamChunkedSerie)
         copied = IOBase(tmp_path / "copied.arrows")
         copied.write_serie(read)
-        assert copied.read_serie().into_arrow_reader().read_all().equals(quote_table())
+        assert StreamChunkedSerie.from_serie(copied.read_serie()).into_arrow_reader().read_all().equals(quote_table())
         frames = IOBase(tmp_path / "quotes.jsonl")
         frames.write_serie(quote_table().to_pandas())
-        assert len(Serie.from_(frames.read_serie(field=quote_root()))) == 2
+        assert len(Serie.from_(StreamChunkedSerie.from_serie(frames.read_serie(field=quote_root())))) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -1342,6 +1366,69 @@ class TestWriteResults:
         folder = IOBase(lake)
         assert folder.append_serie(quote_table()) == IOResult(2, 2)
         assert len(rows_of(folder)) == 4
+
+    def test_a_merge_that_changes_no_row_leaves_the_leaf_unwritten(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        path = tmp_path / "quotes.parquet"
+        handle = IOBase(path)
+        handle.overwrite_serie(quote_table())
+        before = (path.read_bytes(), path.stat().st_mtime_ns)
+
+        # Every key's last incoming row equals the row it holds - the first
+        # AAPL differs, the last one is the stored row - so the merge answers
+        # the rows it pulled and leaves the leaf's bytes and time alone.
+        replay = pa.table({"symbol": ["AAPL", "AAPL", "MSFT"], "size": [1, 100, 250]})
+        assert handle.merge_arrow_table(replay, merge_by="symbol") == IOResult(3, 3)
+        assert (path.read_bytes(), path.stat().st_mtime_ns) == before
+
+        # One row that differs is a rewrite.
+        changed = pa.table({"symbol": ["AAPL"], "size": [101]})
+        assert handle.merge_arrow_table(changed, merge_by="symbol") == IOResult(1, 1)
+        assert path.read_bytes() != before[0]
+        assert rows_of(handle) == [
+            {"symbol": "AAPL", "size": 101},
+            {"symbol": "MSFT", "size": 250},
+        ]
+
+    def test_true_is_the_destination_key_and_false_is_refused(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "quotes.arrows")
+        handle.overwrite_serie(quote_table())
+
+        # A leaf states no key of its own, so `True` is refused as naming
+        # none is - before the source is read.
+        with pytest.raises(ValueError, match="requires at least one merge_by"):
+            handle.merge_serie(quote_table(), merge_by=True)
+        with pytest.raises(ValueError, match="requires at least one merge_by"):
+            handle.merge_arrow_table(quote_table(), merge_by=True)
+        with pytest.raises(ValueError, match=r"\$\.merge_by: .* or true .*got false"):
+            handle.merge_arrow_table(quote_table(), merge_by=False)
+        with pytest.raises(ValueError, match=r"\$\.merge_by: .* or true .*got false"):
+            handle.merge_serie(quote_table(), merge_by=False)
+        # `True` keeps no flag, so a write that takes no key is not refused
+        # for it.
+        assert handle.append_arrow_table(quote_table(), merge_by=True) == IOResult(2, 2)
+        assert len(rows_of(handle)) == 4
+
+    def test_a_keyless_merge_on_a_leaf_is_refused_before_the_rows_are_read(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # A leaf states no key of its own, so a merge naming none is refused
+        # by the preflight, before the one-shot source is pulled.
+        pulled: list[int] = []
+
+        def records() -> Iterator[dict[str, object]]:
+            pulled.append(1)
+            yield {"symbol": "AAPL", "size": 1}
+
+        handle = IOBase(tmp_path / "quotes.arrows")
+        with pytest.raises(ValueError, match="merge_by"):
+            handle.merge_records(records())
+        with pytest.raises(ValueError, match="merge_by"):
+            handle.merge_serie(records())
+        assert pulled == []
 
 
 CURSOR_READS_SCRIPT = r"""

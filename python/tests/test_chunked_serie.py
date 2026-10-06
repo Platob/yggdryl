@@ -24,7 +24,7 @@ from yggdryl import (
     IOBase,
     Scalar,
     Serie,
-    SerieReader,
+    StreamChunkedSerie,
     SerieSerie,
     StructSerie,
 )
@@ -532,19 +532,19 @@ class TestFrom:
         assert wide.field == Field("price", "float64") and wide.num_chunks == 2
 
     def test_a_serie_reader_is_taken_and_drained_one_chunk_per_batch(self) -> None:
-        reader = SerieReader.from_(table())
+        reader = StreamChunkedSerie.from_(table())
         chunked = ChunkedSerie.from_(reader)
         assert chunked.num_chunks == 2 and len(chunked) == 3
         # Drained, it yields nothing, and handing it over again is refused.
         assert list(reader) == []
-        with pytest.raises(ValueError, match="already handed over"):
+        with pytest.raises(ValueError, match="already consumed"):
             ChunkedSerie.from_(reader)
 
     def test_a_serie_reader_keeps_its_own_root(self) -> None:
         root = Field("trades", "struct<id: int64>", nullable=False)
-        chunked = ChunkedSerie.from_(SerieReader.from_(pa.table({"id": [1, 2]}), root))
+        chunked = ChunkedSerie.from_(StreamChunkedSerie.from_(pa.table({"id": [1, 2]}), root))
         assert chunked.field == root
-        assert Serie.from_(SerieReader.from_(pa.table({"id": [1, 2]}), root)).field == root
+        assert Serie.from_(StreamChunkedSerie.from_(pa.table({"id": [1, 2]}), root)).field == root
 
     def test_any_other_value_is_read_as_serie_from_reads_it(self) -> None:
         rows = ChunkedSerie.from_([1, None, 3])
@@ -674,37 +674,25 @@ class TestOrder:
         ):
             prices.into_filtered([True])
 
-    def test_partition_by_merges_each_chunk_s_groups_in_first_occurrence_order(
-        self,
-    ) -> None:
+    def test_partition_by_merges_each_chunk_s_groups_in_first_occurrence_order(self) -> None:
         prices = chunked([1, 2, 3, 4, 5], 2)
-        groups = prices.partition_by(["a", "b", "b", "a", "c"])
-        assert len(groups) == 3
-        assert groups[0][0].as_py() == "a"
-        assert [row.as_py() for row in groups[0][1].rows()] == [1, 4]
-        assert groups[0][1].num_chunks == 2
-        assert groups[1][0].as_py() == "b"
-        assert [row.as_py() for row in groups[1][1].rows()] == [2, 3]
-        assert groups[2][0].as_py() == "c"
-        assert groups[2][1].field == prices.field
-        # Keys held in chunks group the same way, chunk beside chunk where
-        # both are cut at the same rows, the keys joined once where not.
+        keys = pa.array(["a", "b", "b", "a", "c"])
+        groups = prices.partition_by(keys)
+        assert [(item.key.as_py(), item.rows.child("price").as_py()) for item in groups] == [
+            (["a"], [1, 4]), (["b"], [2, 3]), (["c"], [5]),
+        ]
+        assert len(list(groups[0].rows.into_arrow_reader())) == 2
         for cut in ([["a", "b"], ["b", "a"], ["c"]], [["a", "b", "b"], ["a", "c"]]):
             keys = pa.chunked_array(cut)
             for held in (keys, ChunkedSerie.from_(keys)):
-                assert [
-                    (key.as_py(), [row.as_py() for row in rows.rows()])
-                    for key, rows in prices.partition_by(held)
-                ] == [("a", [1, 4]), ("b", [2, 3]), ("c", [5])]
-        assert len(prices.partition_by(["a", "b", "b", "a", "c"])) == 3
-        with pytest.raises(
-            ValueError, match="1 keys cannot partition the 5 rows price holds"
-        ):
+                assert [(item.key.as_py(), item.rows.child("price").as_py()) for item in prices.partition_by(held)] == [
+                    (["a"], [1, 4]), (["b"], [2, 3]), (["c"], [5]),
+                ]
+        with pytest.raises(ValueError, match="1 keys cannot partition by the 5 rows"):
             prices.partition_by(pa.chunked_array([["a"]]))
-        with pytest.raises(
-            ValueError, match="1 keys cannot partition the 5 rows price holds"
-        ):
+        with pytest.raises(TypeError, match="Serie.from_"):
             prices.partition_by(["a"])
+
 
     def test_memory_size_sums_the_chunks_and_the_as_writes_replace_them_in_place(
         self,
@@ -731,68 +719,44 @@ class TestOrder:
 
     def test_window_by_merges_a_run_across_a_chunk_edge(self) -> None:
         field = Field("venue", "utf8", nullable=False)
-        venues = ChunkedSerie.from_arrow_chunked_array(
-            pa.chunked_array([["XNAS", "XNAS"], ["XNAS", "XNYS"], [], ["XNYS"]]), field
-        )
+        venues = ChunkedSerie.from_arrow_chunked_array(pa.chunked_array([["XNAS", "XNAS"], ["XNAS", "XNYS"], [], ["XNYS"]]), field)
         windows = venues.window_by("venue")
-        assert [
-            (key.as_py(), [row.as_py() for row in rows.rows()], rows.num_chunks)
-            for key, rows in windows
-        ] == [(["XNAS"], ["XNAS"] * 3, 2), (["XNYS"], ["XNYS"] * 2, 3)]
-        # XNYS crosses the empty chunk, which the slice keeps.
-        for _, rows in windows:
-            assert isinstance(rows, ChunkedSerie)
-            assert rows.field == field
-        # `sorted` is positional or keyword, and `None` is its default.
-        expected = [(key.as_py(), len(rows)) for key, rows in windows]
-        for spelled in (
-            venues.window_by("venue", False),
-            venues.window_by("venue", None),
-            venues.window_by(by="venue", sorted=None),
-        ):
-            assert [(key.as_py(), len(rows)) for key, rows in spelled] == expected
-        # The keys and rows of the joined column, held apart.
+        expected = [(["XNAS"], 3), (["XNYS"], 2)]
+        assert [(item.key.as_py(), len(item.rows)) for item in windows] == expected
+        assert [child.name for child in windows.serie_field] == []
+        assert [item.rownum for item in windows] == [0, 3]
+        for spelled in (venues.window_by("venue", False), venues.window_by("venue", None), venues.window_by(by="venue", sorted=None)):
+            assert [(item.key.as_py(), len(item.rows)) for item in spelled] == expected
         joined = venues.into_serie().window_by("venue")
-        assert [(key.as_py(), len(window)) for key, window in joined] == expected
-        # No row, no window; an empty key is refused even with no chunk.
-        assert ChunkedSerie.empty(field).window_by("venue") == []
+        assert [(item.key.as_py(), len(item.rows)) for item in joined] == expected
+        assert len(ChunkedSerie.empty(field).window_by("venue")) == 0
         with pytest.raises(ValueError, match="empty match key"):
             ChunkedSerie.empty(field).window_by("*")
         with pytest.raises(TypeError):
-            venues.window_by("venue", 1)  # type: ignore[arg-type]
+            venues.window_by("venue", 1)
+
 
     def test_window_by_sorted_regroups_runs_across_chunks_with_no_row_copied(self) -> None:
-        field = Field("venue", "utf8", nullable=False)
-        venues = ChunkedSerie.from_arrow_chunked_array(
-            pa.chunked_array([["XNYS", "XNAS"], ["XNAS", "XNYS"]]), field
-        )
-        windows = venues.window_by("venue", True)
-        assert [
-            (key.as_py(), [row.as_py() for row in rows.rows()], rows.num_chunks)
-            for key, rows in windows
-        ] == [(["XNAS"], ["XNAS"] * 2, 2), (["XNYS"], ["XNYS"] * 2, 2)]
-        # Every piece is a slice of a chunk it came from.
-        held = [chunk.into_arrow_array() for chunk in venues.chunks]
-        for _, rows in windows:
-            for piece in rows.chunks:
-                data = piece.into_arrow_array().buffers()[2]
-                assert any(
-                    chunk.buffers()[2].address <= data.address < chunk.buffers()[2].address
-                    + chunk.buffers()[2].size
-                    for chunk in held
-                )
-        assert [(key.as_py(), len(rows)) for key, rows in windows] == [
-            (key.as_py(), len(window)) for key, window in venues.into_serie().window_by("venue", True)
-        ]
+        field = Field("rows", "struct<venue: utf8 not null, qty: int64 not null>", nullable=False)
+        pieces = [Serie.from_scalars(field, [["XNYS", 1], ["XNAS", 2]]), Serie.from_scalars(field, [["XNAS", 3], ["XNYS", 4]])]
+        rows = ChunkedSerie.from_series(pieces, field)
+        windows = rows.window_by("venue", True)
+        assert [(item.key.as_py(), item.rows.child("qty").as_py()) for item in windows] == [(["XNAS"], [2, 3]), (["XNYS"], [1, 4])]
+        assert all(item.rownum is None for item in windows)
+        originals = [piece.child("qty").into_arrow_array().buffers()[1] for piece in pieces]
+        for item in windows:
+            for batch in item.rows.into_arrow_reader():
+                buffer = batch.column("qty").buffers()[1]
+                assert any(source.address <= buffer.address < source.address + source.size for source in originals)
 
-    def test_window_by_states_no_record_so_a_key_named_windownum_is_taken(self) -> None:
-        # The key is the first half of each pair and the place its place in
-        # the list: no record names `windownum`, so nothing collides with it.
+
+    def test_key_names_do_not_have_synthetic_reserved_cells(self) -> None:
         prices = chunked([1, 1, 2], 2)
         windows = prices.window_by("price as windownum")
-        assert [(key.as_py(), len(rows)) for key, rows in windows] == [([1], 2), ([2], 1)]
-        with pytest.raises(ValueError, match="collides with the static value"):
-            prices.into_serie().window_by("price as windownum")
+        expected = [([1], 2), ([2], 1)]
+        assert [(item.key.as_py(), len(item.rows)) for item in windows] == expected
+        assert [(item.key.as_py(), len(item.rows)) for item in prices.into_serie().window_by("price as windownum")] == expected
+
 
 
 class TestSortByUniqueSpillAndJoin:

@@ -6,7 +6,7 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
 use yggdryl::{
     ArrowCastOptions, Charset, DataType, Error, Field, IOBase, IOMedia, MediaType, Scalar,
-    SerieReader, StructType, TimeUnit, Timezone,
+    StreamChunkedSerie, StructType, TimeUnit, Timezone,
 };
 
 /// A `.csv` buffer holding `bytes`.
@@ -27,10 +27,10 @@ fn rows(handle: &Buffer, options: &CsvOptions) -> Vec<Vec<Scalar>> {
 /// The rows, or the first failure a batch raised.
 fn try_rows(handle: &Buffer, options: &CsvOptions) -> Result<Vec<Vec<Scalar>>, String> {
     let reader = read_batch_reader(handle, None, options).map_err(|error| error.to_string())?;
-    let records = SerieReader::from_arrow_reader(None, reader, ArrowCastOptions::default())
+    let records = StreamChunkedSerie::from_arrow_reader(None, reader, ArrowCastOptions::default())
         .map_err(|error| error.to_string())?;
     let mut out = Vec::new();
-    for record in records {
+    for record in records.into_chunks() {
         let record = record.map_err(|error| error.to_string())?;
         for index in 0..record.len() {
             let row = record.scalar(index).expect("a row");

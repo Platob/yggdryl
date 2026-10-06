@@ -12,7 +12,7 @@ a row is a sequence in schema order or a mapping of column to value.
 ```python
 from decimal import Decimal
 
-from yggdryl import Field, Filter
+from yggdryl import Field, Filter, Serie
 
 schema = Field("trades", "struct<ccy:utf8,price:decimal(9,2),size:bigint>", False)
 filter = Filter("ccy = 'EUR' and price > 100")
@@ -35,7 +35,7 @@ Method builders (`gt`, `eq`, `is_in`, `between`, `is_null`, ...) and the
 `:name` parameter is supplied once at `bind`.
 
 ```python
-from yggdryl import Field, Term
+from yggdryl import Field, Term, Serie
 
 schema = Field("trades", "struct<ccy:utf8,price:decimal(9,2),size:bigint>", False)
 
@@ -69,7 +69,7 @@ every row is kept. `Selector` computes, renames, casts and excludes.
 ```python
 import pyarrow as pa
 
-from yggdryl import DataType, Field, Filter, Selector
+from yggdryl import DataType, Field, Filter, Selector, Serie
 
 root = Field("rows", "struct<ccy:utf8,size:int64,secret:utf8>", False)
 batch = pa.record_batch(
@@ -97,7 +97,7 @@ lazily; `apply_arrow` keeps the input kind (batch, table or reader).
 ```python
 import pyarrow as pa
 
-from yggdryl import Expression, Plan
+from yggdryl import Expression, Plan, Serie
 
 batch = pa.record_batch({"ccy": ["A", "B", "C", "D"], "size": pa.array([1, 4, 3, None], pa.int64())})
 
@@ -118,14 +118,14 @@ assert steps.apply_arrow_batch(batch).column("ccy").to_pylist() == ["A", "B", "C
 dictionaries; without a schema the first record's own datatype is the schema.
 
 ```python
-from yggdryl import Expression, Field
+from yggdryl import Expression, Field, Serie
 
 root = Field("rows", "struct<ccy:utf8,size:int64>", False)
 steps = Expression("where size > 1; select upper(ccy) as ccy")
 
 records = steps.apply_records([{"ccy": "a", "size": 1}, {"ccy": "b", "size": 2}], root)
 assert records.field.dtype["ccy"].dtype == root.dtype["ccy"].dtype
-assert records.collect() == [{"ccy": "B"}]
+assert Serie.from_(records).as_py() == [{"ccy": "B"}]
 ```
 
 ## Use the bound tiers directly: mask, filter, reader
@@ -136,7 +136,7 @@ tree - the shape for a hand-written batch loop.
 ```python
 import pyarrow as pa
 
-from yggdryl import Field, Term
+from yggdryl import Field, Term, Serie
 
 schema = Field("trades", "struct<ccy:utf8,size:bigint>", False)
 bound = Term("ccy = 'EUR' and size > 10").bind(schema)
@@ -157,7 +157,7 @@ assert bound.filter_arrow_reader(reader).read_all().num_rows == 2
 unprovable answers `True` and the file is read.
 
 ```python
-from yggdryl import Bounds, Field, Term
+from yggdryl import Bounds, Field, Term, Serie
 
 schema = Field("trades", "struct<ccy:utf8,size:bigint>", False)
 bounds = Bounds(rows=1_000).with_column("ccy", "EUR", "USD", 0).with_column("size", 1, 99, 4)
@@ -174,7 +174,7 @@ assert Term("size is null").bind(schema).statistics_prune(bounds)
 partition layout settles, and the residual over rows.
 
 ```python
-from yggdryl import DataType, Field, Term
+from yggdryl import DataType, Field, Term, Serie
 
 year = Field("year", "int32", False)
 year.set_partition(True)
@@ -197,7 +197,7 @@ import tempfile
 
 import pyarrow as pa
 
-from yggdryl import Filter, IOBase
+from yggdryl import Filter, IOBase, Serie
 
 with tempfile.TemporaryDirectory() as root:
     handle = IOBase(pathlib.Path(root) / "trades.parquet")
@@ -227,7 +227,7 @@ import tempfile
 
 import pyarrow as pa
 
-from yggdryl import Plan
+from yggdryl import Plan, Serie
 
 with tempfile.TemporaryDirectory() as root:
     url = (pathlib.Path(root) / "trades.arrow").as_uri()
@@ -251,7 +251,7 @@ slice `[1:3]` and predicate segment `[ccy = 'EUR']` - and inside a term the
 same steps are accessors.
 
 ```python
-from yggdryl import Field, FieldPath, Term
+from yggdryl import Field, FieldPath, Term, Serie
 
 path = FieldPath("line[-1].price as last_price")
 assert len(path) == 3 and path.column_name == "last_price"
@@ -277,7 +277,7 @@ takes and answers `pyarrow` arrays, one call per batch.
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from yggdryl import Field, Selector, Term
+from yggdryl import Field, Selector, Term, Serie
 from yggdryl.expression import user_defined_filter, user_defined_function
 
 
@@ -330,7 +330,7 @@ selector: the stored field is what the recompute reads.
 ```python
 import pyarrow as pa
 
-from yggdryl import Field, Selector
+from yggdryl import Field, Selector, Serie
 
 root = Field("rows", "struct<ccy:utf8,size:int64>", False)
 stored = Selector("ccy, size * 2 as doubled int32").into_field(root)
@@ -351,7 +351,7 @@ document, pickles, and draws its bound plan with `explain`.
 ```python
 import pickle
 
-from yggdryl import Expression, Field, Plan, Selector, Term
+from yggdryl import Expression, Field, Plan, Selector, Term, Serie
 from yggdryl.expression import FUNCTIONS, VERBS
 
 schema = Field("trades", "struct<ccy:utf8,price:decimal(9,2)>", False)

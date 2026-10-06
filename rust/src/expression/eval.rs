@@ -439,6 +439,17 @@ pub(crate) fn order(dtype: &DataType, left: &Scalar, right: &Scalar) -> Option<O
             (Scalar::Version(left), Scalar::Version(right)) => Some(left.cmp(right)),
             _ => None,
         },
+        other if other.is_enum() => {
+            // Native rows carry members; file statistics can carry their
+            // physical codes. Both compare in the enum's stored order.
+            let code = |value: &Scalar| {
+                value
+                    .enum_code()
+                    .map(u128::from)
+                    .or_else(|| value.as_u128())
+            };
+            Some(code(left)?.cmp(&code(right)?))
+        }
         other if is_text(other) => Some(left.as_str()?.cmp(right.as_str()?)),
         other if is_binary(other) => Some(left.as_bytes()?.cmp(right.as_bytes()?)),
         _ => Some(left.as_i128()?.cmp(&right.as_i128()?)),
@@ -1532,6 +1543,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             let held = unscaled_at(value, 0)
                 .and_then(i256::as_i128)
                 .or_else(|| value.enum_code().map(i128::from))
+                .or_else(|| value.temporal_count().map(i128::from))
                 .or_else(|| {
                     value
                         .as_f64()

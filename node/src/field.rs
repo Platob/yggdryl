@@ -1660,7 +1660,10 @@ impl JsField {
     }
 
     /// Recursively normalize this exact Field for one closed compatibility
-    /// target without changing the current wrapper.
+    /// target without changing the current wrapper. An unsigned integer
+    /// column stating `FIELD:representation=bits` is exchanged as the signed
+    /// integer of its width where the target names one, and keeps the
+    /// declaration.
     #[napi(js_name = "intoSchemeCompat", skip_typescript)]
     pub fn into_scheme_compat(&self, target: String) -> Result<Self> {
         let target = CoreScheme::from_str(&target).map_err(napi_error)?;
@@ -1783,6 +1786,21 @@ impl JsProtocolField {
             env,
             format!(
                 "{property} is a fix property, and this is a {} view",
+                self.scheme.as_str()
+            ),
+        ))
+    }
+
+    /// The same rule for the `FIELD:` vocabulary, answered by the view
+    /// `field.fieldProperties` returns.
+    fn require_field_properties(&self, env: Env, property: &str) -> Result<()> {
+        if self.scheme == CoreScheme::FIELD {
+            return Ok(());
+        }
+        Err(napi_type_error(
+            env,
+            format!(
+                "{property} is a field property, and this is a {} view",
                 self.scheme.as_str()
             ),
         ))
@@ -2008,57 +2026,95 @@ impl JsProtocolField {
         Ok(self.field.inner.as_transform_mut().remove_term())
     }
 
-    /// The dictionaries that contributed this field, on the `fix` view.
+    /// What crosses when a same-width integer of the other signedness meets
+    /// this integer column, on the `fieldProperties` view: `'bits'` where it
+    /// states them, `'value'` - the default - otherwise. Every other view
+    /// refuses the property.
+    #[napi(getter, ts_return_type = "'value' | 'bits'")]
+    pub fn representation(&self, env: Env) -> Result<String> {
+        self.require_field_properties(env, "representation")?;
+        Ok(self
+            .field
+            .inner
+            .as_field_properties()
+            .representation()
+            .as_str()
+            .to_owned())
+    }
+
+    /// State what crosses when a same-width integer of the other signedness
+    /// meets this integer column; `'value'` or `null` removes the
+    /// declaration, and `'bits'` on a column that is no integer is refused,
+    /// leaving the field unchanged.
+    #[napi(setter, ts_args_type = "representation: 'value' | 'bits' | null")]
+    pub fn set_representation(&mut self, env: Env, representation: Option<String>) -> Result<()> {
+        self.require_field_properties(env, "representation")?;
+        let representation = representation
+            .as_deref()
+            .map(yggdryl::Representation::from_str)
+            .transpose()
+            .map_err(napi_error)?
+            .unwrap_or_default();
+        self.field
+            .inner
+            .as_field_properties_mut()
+            .set_representation(representation)
+            .map_err(napi_error)
+    }
+
+    /// The sources that contributed this field, on the `fix` view.
     ///
-    /// `FIX:branches` read as an array: sorted, ASCII lowercase, and empty
+    /// `FIX:sources` read as an array: sorted, ASCII lowercase, and empty
     /// where the field states none - every field the specification alone
-    /// defines. Membership is provenance a caller filters on; no lookup
-    /// consults it. Assigning an array replaces the list - folded once,
-    /// deduplicated, sorted - and an empty array removes the property; a
-    /// name that is empty or carries a comma is refused and the field is
-    /// left unchanged.
+    /// defines. Each id names an entry of the registry's sources catalog
+    /// (`FixRegistry.sources()`), where the file behind it is recorded once.
+    /// Membership is provenance a caller filters on; no lookup consults it.
+    /// Assigning an array replaces the list - folded once, deduplicated,
+    /// sorted - and an empty array removes the property; an id that is
+    /// empty or holds a quote, a backslash or a control character is
+    /// refused and the field is left unchanged.
     #[napi(getter)]
-    pub fn branches(&self, env: Env) -> Result<Vec<String>> {
-        self.require_fix(env, "branches")?;
+    pub fn sources(&self, env: Env) -> Result<Vec<String>> {
+        self.require_fix(env, "sources")?;
         Ok(self
             .field
             .inner
             .as_fix()
-            .branches()
+            .sources()
             .map(ToOwned::to_owned)
             .collect())
     }
 
-    /// Record the dictionaries that contributed this field.
+    /// Record the sources that contributed this field.
     #[napi(setter)]
-    pub fn set_branches(&mut self, env: Env, values: Vec<String>) -> Result<()> {
-        self.require_fix(env, "branches")?;
+    pub fn set_sources(&mut self, env: Env, values: Vec<String>) -> Result<()> {
+        self.require_fix(env, "sources")?;
         self.field
             .inner
             .as_fix_mut()
-            .set_branches(values)
+            .set_sources(values)
             .map_err(napi_error)
     }
 
-    /// Add one dictionary to those that contributed this field.
+    /// Add one source to those that contributed this field.
     ///
-    /// Idempotent under the fold: a name already listed is listed once.
+    /// Idempotent under the fold: an id already listed is listed once.
     #[napi]
-    pub fn add_branch(&mut self, env: Env, name: String) -> Result<()> {
-        self.require_fix(env, "branches")?;
+    pub fn add_source(&mut self, env: Env, id: String) -> Result<()> {
+        self.require_fix(env, "sources")?;
         self.field
             .inner
             .as_fix_mut()
-            .add_branch(&name)
+            .add_source(&id)
             .map_err(napi_error)
     }
 
-    /// Whether `name` is one of the dictionaries that contributed this
-    /// field, ASCII case folded.
+    /// Whether `id` is one of the sources that contributed this field,
+    /// under the crate's one fold.
     #[napi]
-    pub fn has_branch(&self, env: Env, name: String) -> Result<bool> {
-        self.require_fix(env, "branches")?;
-        Ok(self.field.inner.as_fix().has_branch(&name))
+    pub fn has_source(&self, env: Env, id: String) -> Result<bool> {
+        self.require_fix(env, "sources")?;
+        Ok(self.field.inner.as_fix().has_source(&id))
     }
 
     /// This field's identity, on the `fix` view.

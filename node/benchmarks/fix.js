@@ -85,10 +85,11 @@ const twoDialects = (() => {
   for (let offset = 0; offset < VENDOR_FIELDS; offset += 1) {
     const field = Field.from(`Venue${offset}: utf8`)
     field.fix.tag = 5000 + offset
-    field.fix.branches = [VENDOR_DIALECT]
+    field.fix.sources = [VENDOR_DIALECT]
     field.fix.names = [`VenueAlias${offset}`]
     held.insert(field)
   }
+  held.addSource(VENDOR_DIALECT, { file: `${VENDOR_DIALECT}.cfb`, pluginside: 'SELL' })
   return held
 })()
 const VENUE_ID = twoDialects.fieldByTag(5001).fix.id
@@ -103,7 +104,7 @@ const MISSING_ID = (() => {
 // A field carrying a vendor membership, for the identity-property rows.
 const tagged = Field.from('TradeID: utf8')
 tagged.fix.tag = 5001
-tagged.fix.branches = [VENDOR_DIALECT]
+tagged.fix.sources = [VENDOR_DIALECT]
 
 const order = fields.struct(
   'NewOrderSingle',
@@ -182,7 +183,7 @@ if (parsed.identifiers.get('clordid') !== 'ORDER-000000') {
 if (orderType.identifierValues(parsed)[0][0].name !== 'clordid') {
   throw new Error('the compiled selector must reach the stated order identifier')
 }
-if (orderType.msgcat !== 'ORDR' || parsed.msgcat !== 'ORDR' || snapshotCodec.snapshotNs !== 1_000_000_000n) {
+if (orderType.marketdatakind !== 'ORDR' || parsed.marketdatakind !== 'ORDR' || snapshotCodec.snapshotNs !== 1_000_000_000n) {
   throw new Error('FIX category and exact snapshot boundary mismatch')
 }
 const parsedRow = parsed.intoRow(fixedSchema)
@@ -197,7 +198,7 @@ const msgpluginidRegistry = (() => {
   const held = registry.clone()
   const venue = Field.from('VenueTag: utf8')
   venue.fix.tag = 5001
-  venue.fix.branches = [VENDOR_DIALECT]
+  venue.fix.sources = [VENDOR_DIALECT]
   held.insert(venue)
   return held
 })()
@@ -231,16 +232,17 @@ try {
   benchmark('fix/vendor_tag_hit_two_dialects', () => twoDialects.getFieldByTag(5001))
   benchmark('fix/standard_tag_hit_two_dialects', () => twoDialects.getFieldByTag(55))
   benchmark('fix/dialects_two_dialects', () => twoDialects.dialects())
+  benchmark('fix/sources_two_dialects', () => twoDialects.sources())
   // A removal that finds nothing: the coercion and the probe, with no field
   // wrapped and no dictionary changed, so the loop stays repeatable.
   benchmark('fix/remove_by_id_miss', () => twoDialects.removeById(MISSING_ID))
-  benchmark('fix/field_branches', () => tagged.fix.branches)
-  benchmark('fix/field_has_branch', () => tagged.fix.hasBranch(VENDOR_DIALECT))
+  benchmark('fix/field_sources', () => tagged.fix.sources)
+  benchmark('fix/field_has_source', () => tagged.fix.hasSource(VENDOR_DIALECT))
   benchmark('fix/field_id', () => tagged.fix.id)
   benchmark('fix/declared_identifiers', () => orderDeclaration.fix.identifiers)
   benchmark('fix/field_msgcat', () => orderDeclaration.fix.msgcat)
-  benchmark('fix/msgtype_msgcat', () => orderType.msgcat)
-  benchmark('fix/message_msgcat', () => parsed.msgcat)
+  benchmark('fix/msgtype_marketdatakind', () => orderType.marketdatakind)
+  benchmark('fix/message_marketdatakind', () => parsed.marketdatakind)
   benchmark('fix/codec_snapshot_ns', () => snapshotCodec.snapshotNs)
   benchmark('fix/identifier_values', () => orderType.identifierValues(parsed))
   // The typed holders, each read once into the plain object it crosses as.

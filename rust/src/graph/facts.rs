@@ -12,12 +12,12 @@
 //! slim holder and convert to its view by a move, never a copy.
 //!
 //! `Default` states nothing: a price and a quantity of nothing in no currency
-//! (`XXX`), no unit, a side of `UNKN`, no identifiers, a `UNKNOWN`
+//! (`XXX`), no unit, a side of `UKNW`, no identifiers, a `UNKNOWN`
 //! state at the epoch, and the nil identity until [`Element::finalize`]
 //! derives one from the facts.
 //!
 //! Each holder also carries the [`MarketDataKind`] of the leaf that holds
-//! it, stamped by that leaf - `UNKN` until one does. The kind is what
+//! it, stamped by that leaf - `UKNW` until one does. The kind is what
 //! decides whether the cross code carries the side ([`MarketDataKind::is_sided`]):
 //! only an order's and an execution's does - a quote holds both its legs
 //! and states its side as a tag - and so whether a side moved withdraws the
@@ -69,9 +69,9 @@ pub(crate) struct MarketFacts {
     avgpx: Option<Decimal>,
     cumqty: Option<Decimal>,
     leavesqty: Option<Decimal>,
-    /// The stop price, the shown and hidden parts of the quantity and what
-    /// was canceled, boxed: most elements state none of them and pay one
-    /// pointer.
+    /// The stop price, the shown and hidden parts of the quantity, what was
+    /// canceled and an option's strike, boxed: most elements state none of
+    /// them and pay one pointer.
     terms: Option<Box<Terms>>,
     prevpx: Option<Decimal>,
     prevqty: Option<Decimal>,
@@ -147,10 +147,12 @@ impl BidAsk {
 }
 
 /// The order terms a market element may state beside its price and
-/// quantity, held together because most elements state none of them.
+/// quantity, and the strike of the option it is about, held together
+/// because most elements state none of them.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Terms {
     stoppx: Option<Decimal>,
+    strikepx: Option<Decimal>,
     displayqty: Option<Decimal>,
     hiddenqty: Option<Decimal>,
     cxlqty: Option<Decimal>,
@@ -163,6 +165,7 @@ impl Terms {
     /// Whether every term is unstated, which is when the holder drops it.
     fn is_empty(&self) -> bool {
         self.stoppx.is_none()
+            && self.strikepx.is_none()
             && self.displayqty.is_none()
             && self.hiddenqty.is_none()
             && self.cxlqty.is_none()
@@ -613,8 +616,19 @@ impl MarketFacts {
     /// element states its side as a tag over the legs it holds, so moving
     /// the tag withdraws no leg ([`Self::tag_moved`]). Then the side it
     /// takes quotes the price and quantity where it states none, and they
-    /// fill from what that side quotes.
+    /// fill from what that side quotes. A book's side moves nothing but its
+    /// cross code's prefix: its legs are its sides' best levels, which the
+    /// book settles.
     fn side_moved(&mut self, before: Side) {
+        // A book's legs are its sides' best levels, which the book settles:
+        // its side, `BOTH`, quotes and moves nothing. A book message's entry
+        // passes through this kind before it is refiled as the quote it is,
+        // and the side it tags quotes its price onto that leg as any tag
+        // does.
+        if self.kind == MarketDataKind::Book && self.side == Side::Both {
+            self.reprefix();
+            return;
+        }
         if self.kind.is_sided() {
             self.side_left(before);
         } else {
@@ -946,6 +960,17 @@ impl Market for MarketFacts {
         let held = self.get_stoppx();
         if lands(&held, &value, held.is_none(), overwrite) {
             self.set_terms(|held| held.stoppx = value);
+        }
+    }
+
+    fn get_strikepx(&self) -> Option<Decimal> {
+        self.terms().and_then(|held| held.strikepx)
+    }
+
+    fn set_strikepx(&mut self, value: Option<Decimal>, overwrite: bool) {
+        let held = self.get_strikepx();
+        if lands(&held, &value, held.is_none(), overwrite) {
+            self.set_terms(|held| held.strikepx = value);
         }
     }
 
@@ -2150,6 +2175,7 @@ fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
 fn copy_market<T: Market + ?Sized, E: Market + ?Sized>(this: &mut T, other: &E) {
     this.set_price(other.get_price(), true);
     this.set_stoppx(other.get_stoppx(), true);
+    this.set_strikepx(other.get_strikepx(), true);
     this.set_currency(other.get_currency().clone(), true);
     this.set_quantity(other.get_quantity(), true);
     this.set_displayqty(other.get_displayqty(), true);

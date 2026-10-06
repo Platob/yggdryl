@@ -1162,8 +1162,11 @@ test('every write that takes a per-call data MIME type actually writes it', (t) 
 
   const mergedWhere = iceberg.IcebergTable.create(path.join(root, 'mw'), schema(), ['venue'])
   mergedWhere.append(rows([1n, 2n], ['XNAS', 'XNYS']))
-  mergedWhere.mergeWhere({ venue: 'XNAS' }, rows([1n], ['XNAS']), ['id'], true, avro())
-  assert.deepEqual(dataMimeTypes(mergedWhere), [MimeType.AVRO.toString(), MimeType.PARQUET.toString()])
+  // A merge replaces only the rows that differ, so the stored XNAS row keeps
+  // its PARQUET file and the key the merge adds is the one AVRO file written.
+  mergedWhere.mergeWhere({ venue: 'XNAS' }, rows([3n], ['XNAS']), ['id'], true, avro())
+  assert.deepEqual(dataMimeTypes(mergedWhere), [MimeType.AVRO.toString(), MimeType.PARQUET.toString(), MimeType.PARQUET.toString()])
+  assert.equal(mergedWhere.scan().intoTable().numRows, 3)
 
   const replaced = iceberg.IcebergTable.create(path.join(root, 'ov'), schema())
   replaced.append(rows([1n], ['XNAS']))
@@ -1442,11 +1445,52 @@ test('merge updates the rows whose key is stored and appends the rest', (t) => {
   assert.equal(venues.get(2n), 'XASE')
   assert.equal(venues.get(3n), 'XLON')
 
-  // Nothing identifies a row when no column is named and no partition stands
-  // in for one, so an empty match key on an unpartitioned table is refused
-  // rather than silently replacing everything stored.
+  // Nothing identifies a row when no column is named and neither a partition
+  // nor an identifier column stands in for one, so an empty match key on an
+  // unpartitioned table stating none is refused rather than silently
+  // replacing everything stored - and so is a key left out.
   assert.throws(() => table.merge(rows([7n], ['XPAR']), []), /empty match key/)
+  assert.throws(() => table.merge(rows([7n], ['XPAR'])), /\$\.merge_by/)
   assert.equal(table.scan().intoTable().numRows, 3)
+})
+
+// `schema()` keyed by `id`: an identifier column is required, and the root
+// names it by the field id the numbering gave it.
+function keyedSchema() {
+  const keyed = iceberg.assignFieldIds(
+    fields.struct('row', [Field.from('id: int64 not null'), Field.from('venue: utf8')], {
+      nullable: false,
+    }),
+  )
+  keyed.set('ICEBERG:identifier-field-ids', '1')
+  return keyed
+}
+
+test('merge with no key matches on the identifier columns the schema states', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.IcebergTable.create(path.join(root, 'keyed'), keyedSchema())
+  table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  // Left out and `null` alike are the table's own key: the `id` it states.
+  table.merge(rows([2n, 3n], ['XASE', 'XLON']))
+  table.merge(rows([3n], ['XPAR']), null)
+  // The record doors take the same key: the preflight asks the table.
+  const handle = IOBase.from(table.intoTable())
+  handle.mergeArrowTable(rows([1n], ['XAMS']))
+
+  const scanned = handle.readArrowReader().intoTable()
+  const venues = new Map(
+    [...scanned.getChild('id')].map((id, index) => [id, scanned.getChild('venue').get(index)]),
+  )
+  assert.deepEqual(
+    venues,
+    new Map([
+      [1n, 'XAMS'],
+      [2n, 'XASE'],
+      [3n, 'XPAR'],
+    ]),
+  )
 })
 
 test('mergeWhere narrows a merge to the files its filters admit', (t) => {
@@ -1850,4 +1894,41 @@ test('an entry no spec can hold is refused, naming it', (t) => {
   )
   // Nothing was created.
   assert.equal(fs.existsSync(path.join(location, 'metadata')), false)
+})
+
+// Mirrors rust/tests/iceberg/table.rs
+// `a_digest_stating_bits_is_stored_as_a_long_and_read_back_as_the_digest`.
+test('a digest stating bits is stored as a long and read back as the digest', (t) => {
+  const { Serie } = require('yggdryl')
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const location = path.join(root, 'digests')
+
+  const digest = fields.uint64('digest', { nullable: false })
+  digest.fieldProperties.representation = 'bits'
+  const logical = fields.struct('row', [digest], { nullable: false })
+  const stored = iceberg.assignFieldIds(logical.intoSchemeCompat('iceberg'))
+  assert.equal(String(stored.dtype.getFieldAt(0).dtype), 'int64')
+
+  const digests = [0n, 2n ** 63n, 2n ** 64n - 1n]
+  const table = iceberg.IcebergTable.create(location, stored, iceberg.PartitionSpec.unpartitioned())
+  table.append(new arrow.Table({ digest: arrow.vectorFromArray(digests, new arrow.Uint64()) }))
+
+  // Stored as the longs of their bits, and declared so again on reopening.
+  const reopened = iceberg.IcebergTable.open(location)
+  assert.equal(reopened.schema.dtype.getFieldAt(0).fieldProperties.representation, 'bits')
+  const longs = [...reopened.scan().intoTable().getChild('digest')].sort((a, b) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  )
+  assert.deepEqual(longs, [-(2n ** 63n), -1n, 0n])
+
+  // Landed under a root stating nothing, the stored column's own
+  // declaration carries the bits back.
+  const plain = fields.struct('row', [fields.uint64('digest', { nullable: false })], {
+    nullable: false,
+  })
+  const landed = [
+    ...Serie.fromArrowReader(reopened.scan(), plain).intoArrowBatch().getChild('digest'),
+  ].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  assert.deepEqual(landed, digests)
 })

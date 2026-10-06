@@ -21,12 +21,12 @@ Many values: a schema-free run, or the Arrow buffers of one [`Field`](field.md).
 | Where the buffers lie | On the heap, or in a private file [spilled](#spilling-to-disk) and mapped back: `memory_size` counts the bytes, `resident_size` those still on the heap, `is_spilled` says none of them is. Every door that lays a column out settles it under the process default bound; a mapped leaf reads as a heap one |
 | Constant | [`Serie::lit`](#constant-columns) holds one value under its field and a count, a `LitSerie`, laying the array out only when something exports it; `from_default` answers one |
 | Order | A record's root may [declare](#a-declared-order) the order its rows keep as `SORT:by`, and on a `Serie` that is a proven fact: written by the sorts, kept, flipped or cleared by the verbs, verified where foreign rows land |
-| Joins | [`join_with`](#joins) joins two record columns on keys - a bare shared column coalesced, or equalities - under a `JoinKind`; a `ChunkedSerie` keeps the output batches apart and a `SerieReader` probes a stream against a held side |
+| Joins | [`join_with`](#joins) joins two record columns on keys - a bare shared column coalesced, or equalities - under a `JoinKind`; a `ChunkedSerie` keeps the output batches apart and a `StreamChunkedSerie` probes a stream against a held side |
 | Registration | `Scalar::Serie(Serie)`, and its four sibling leaves `SerieView`, `LargeSerie`, `LargeSerieView`, `FixedSizeSerie` - the value of the five [serie layouts](nested/sequence.md), `DataTypeId` `0x91`-`0x95`. It adds no `DataTypeId`, no `DataType` variant and no `Field` variant beside theirs, and `kind()` answers that leaf's own name - `serie`, `serie_view`, `large_serie`, `large_serie_view`, `fixed_size_serie` - for either a run or a column |
 | Leaf contract | `SerieValue`, implemented by every column leaf: its field, and the `id` and `kind` that field's datatype answers - never the variant's, because one layout holds several datatypes. `Serie` itself does not implement it, because a run has no field to answer with; the root answers the same verbs inherently, with `field()` an `Option` |
 | Wire | A `Scalar` holding a serie writes one tag per layout, the layout's own name - `serie`, `serie_view`, `fixed_size_serie`, `large_serie`, `large_serie_view` - over a run's rows or a column's `{"field": .., "rows": [..]}`, the payload's shape saying which; the tags written before the rename (`list`, `list_view`, `fixed_size_list`, `large_list`, `large_list_view`, and the column tags `list_view_serie`, `fixed_size_list_serie`, `large_list_serie`, `large_list_view_serie`) are still read. `Serie`'s own serde reads back only the column wire; JSON, YAML and TOML write the rows alone, because a codec document carries no schema envelope |
-| Arrow value | A held column, table or one-row array is a `Serie`; a held chunked column or table, its arrays or batches kept apart, is a [`ChunkedSerie`](chunked-serie.md); a stream is a `SerieReader`. `Scalar::from(serie)` makes a column one value and `Scalar::as_serie` borrows it back, neither reading a row; a stream is never a `Scalar` |
-| Bindings | Rust, Python and JavaScript bind `Serie` and `SerieReader`: the constructors, the row verbs, the nested leaves (`StructSerie`, the serie leaves, `MapSerie`) and the [Arrow doors](#arrow-the-door-and-what-it-proves) - Python over the C Data Interface, sharing buffers, with `Serie.from_` and `SerieReader.from_` as the [one entry from every columnar runtime](#arrow-every-columnar-runtime-in), and `ChunkedSerie.from_` reading the same ladder as chunks; JavaScript as copied IPC. The [ordering, uniqueness and grouping verbs](#sorting-uniqueness-and-partitions), `window`, [`window_by`](#windows-by-key), [`lit`](#constant-columns) with `is_lit`/`isLit`, `as_spilled`/`into_spilled` and the [handle doors](#writing-a-serie-to-a-handle) are bound in both. The typed leaf accessors and writers (`as_<leaf>`, `get_<leaf>_mut`, `push_value`) are Rust only |
+| Arrow value | A held column, table or one-row array is a `Serie`; a held chunked column or table, its arrays or batches kept apart, is a [`ChunkedSerie`](chunked-serie.md); a stream is a `StreamChunkedSerie`. `Scalar::from(serie)` makes a column one value and `Scalar::as_serie` borrows it back, neither reading a row; a stream is never a `Scalar` |
+| Bindings | Rust, Python and JavaScript bind `Serie` and `StreamChunkedSerie`: the constructors, the row verbs, the nested leaves (`StructSerie`, the serie leaves, `MapSerie`) and the [Arrow doors](#arrow-the-door-and-what-it-proves) - Python over the C Data Interface, sharing buffers, with `Serie.from_` and `StreamChunkedSerie.from_` as the [one entry from every columnar runtime](#arrow-every-columnar-runtime-in), and `ChunkedSerie.from_` reading the same ladder as chunks; JavaScript as copied IPC. The [ordering, uniqueness and grouping verbs](#sorting-uniqueness-and-partitions), `window`, [`window_by`](#windows-by-key), [`lit`](#constant-columns) with `is_lit`/`isLit`, `as_spilled`/`into_spilled` and the [handle doors](#writing-a-serie-to-a-handle) are bound in both. The typed leaf accessors and writers (`as_<leaf>`, `get_<leaf>_mut`, `push_value`) are Rust only |
 
 ## The leaves
 
@@ -126,10 +126,10 @@ Every verb answers on both leaves; only its cost differs.
 | `is_sorted(options)`, `is_unique()`, `unique_count()` | one pass over adjacent rows; one hash set over the rows, an absent row one value |
 | `into_sorted(options)`, `into_unique()`, `into_reversed()`, `into_taken(indices)`, `into_filtered(mask)` | a new serie in that state under the same field, this one untouched: `indices` an integer column or run of any width, `mask` a boolean column or run of the same length, an absent mask row keeping nothing |
 | `as_sorted(options)`, `as_unique()`, `as_reversed()`, `as_taken(indices)`, `as_filtered(mask)` | the same, in place, answering `&mut Self` so calls chain; a refusal leaves the serie as it was |
-| `partition_by(keys)`, `partition_by_paths(paths)` | the rows grouped by a key serie of the same length, or a record column's rows by the cells `paths` reach: one `(key, rows)` per distinct key in first-occurrence order, an absent key one value |
+| `partition_by(by)` | `KeySeries` grouped by selectors, field paths, or typed external keys; each item carries explicit context and its native payload |
 | `memory_size()` | the bytes the rows occupy: a column's buffers as its own slice counts them, a run's values as the row estimator charges them, a constant column one row's bytes times its rows without building anything |
 | `window(offset, length)`, `window_mut(offset, length)` | a [`WindowSerie`](window-serie.md) / `WindowSerieMut` reading and writing through this serie, window-relative; refused past the end |
-| `window_by(by, sorted)` | the rows cut into [windows of equal keys](#windows-by-key) - one `(key, WindowSerie)` per window, lent by the `SerieWindows` it answers |
+| `window_by(by, sorted)` | the rows cut into [windows of equal keys](#windows-by-key) - one `(key, WindowSerie)` per window, lent by the `KeySeries` it answers |
 
 Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, rows)`, `from_scalars(field, rows)`, `lit(field, value, rows)` and `from_default(field, rows)` for a column; `from_arrow_array`, `from_arrow_batch` and `from_arrow_reader` for buffers already holding it, each taking the field or root to land under and the [cast options](cast.md). `cast(field, options)` is the same column under another field. `Serie` is `Default` (the empty run), `FromIterator<Scalar>` (a run in one allocation), `From<Run>`, and `From<Serie> for Scalar`.
 
@@ -162,9 +162,9 @@ Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, r
 | `into_arrow_batch`, `into_arrow_reader` | one batch of the children's own arrays, or of the one column a non-record column is, no row decoded |
 | `from_arrow_array`, `from_arrow_batch` | no field, or an exact layout: the projection compared, the validity words counted, and - only where the datatype is narrower than its layout - each row read once; any other layout: one [`ArrowCastPlan`](cast.md#compiled-plans) compiled and applied once |
 | `from_arrow_reader` | one plan for the stream, and the whole stream held: a column is one contiguous set of buffers, so the bound is the stream itself |
-| `SerieReader` | one plan for the stream, at most one source batch held; each batch lands under the tree the plan resolved once, so the projection is proven per plan and never per batch |
-| `SerieReader::from_serie`, `SerieReader::from_chunked` | no plan compiled: the held column's root is the stream's, its chunks the batches |
-| `SerieReader::cast` | one more plan over the stream, compiled at the call; the reader's own root hands the reader back |
+| `StreamChunkedSerie` | one plan for the stream, at most one source batch held; each batch lands under the tree the plan resolved once, so the projection is proven per plan and never per batch |
+| `StreamChunkedSerie::from_serie`, `StreamChunkedSerie::from_chunked` | no plan compiled: the held column's root is the stream's, its chunks the batches |
+| `StreamChunkedSerie::cast` | one more plan over the stream, compiled at the call; the reader's own root hands the reader back |
 | `cast` | one plan compiled per call; a column already under the target is a clone |
 | `lit`, `from_default` | the value proven by the field once and laid out as one row; nothing per row until the column is exported, which builds the array once - one take of the row - and shares it with every later export and every slice of it |
 | `sort_indices`, `into_sorted` | a primitive column sorts its native slice, every NaN one value (stable; the sort's scratch and the index column are the allocations); a column whose stored bytes order as its values goes through Arrow's row format, one buffer of the rows' bytes; a record column whose buffers do not compares child by child - its absent rows where the options put an absence, then each child on its own rung - so only a value-ordered child builds its rows, one leaf's values and never one run per row; a run and any other column - a version, windows-1252 text, a registered code, a URL, URN, zone, MIME or media type, a union, a variant, a geospatial value, or a float holding a NaN other than the positive quiet NaN - go through the values' own order, each row built once. `into_sorted` is the order and one take |
@@ -351,203 +351,17 @@ The typed accessors are the buffers themselves: reading row `i` off one is a bou
 
 ## Sorting, uniqueness and partitions
 
-Every leaf answers every verb in one order - `Scalar`'s total order, with every absent value (a row, or one nested in a serie, record or map) at the end the options name and every present value reversed when descending - so a column and the run of its rows sort, deduplicate and group alike. The rungs that answer it: a primitive column sorts its native slice, a column whose stored bytes order as its values goes through Arrow's row format, a record column whose buffers do not compares child by child - each child on its own rung, so only a child whose stored order is not its value order builds its rows - and a run and any other column go through the values' own order. A `SortOptions` carries the two facts an ordering states beside its key - the direction and where absent rows go - and defaults to ascending with nulls last, as the plan's `order by` key and DuckDB do - the opposite of Arrow's own default, which puts nulls first; it displays as the suffix the plan writes after a key (` desc nulls first`) and parses it back. The `into_*` reads answer a new serie under the same field and leave this one as it was; the `as_*` writes bring this serie into the state in place and answer it, so calls chain, and a refused write leaves the serie as it was.
+`sort_indices`, `is_sorted`, `is_unique`, `unique_count`, `into_sorted`,
+`into_unique`, `into_reversed`, `into_taken` and `into_filtered` use the native
+comparison and selection implementations. The corresponding `as_*` methods
+write the held snapshot. Equal rows keep their relative order in a sort; nulls
+follow the requested null placement. Refused writes leave the snapshot intact.
 
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use arrow_array::{ArrayRef, Int64Array, StringArray};
-    use yggdryl::{ArrowCastOptions, DataType, Field, FieldPath, Scalar, Serie, SortOptions, StructType};
-
-    let prices = Serie::from_arrow_array(
-        Some(&Field::new("price", DataType::Int64, true)),
-        Arc::new(Int64Array::from(vec![Some(3), None, Some(1), Some(3)])) as ArrayRef,
-        ArrowCastOptions::new(),
-    )?;
-
-    // The order as positions: stable, absences last unless told otherwise.
-    let order = prices.sort_indices(SortOptions::default())?;
-    assert_eq!(order.rows().to_vec(), [2_u32, 0, 3, 1].map(Scalar::from));
-    let first = SortOptions::descending().with_nulls_first(true);
-    assert_eq!(first.to_string(), " desc nulls first");
-    assert_eq!(prices.sort_indices(first)?.rows().to_vec(), [1_u32, 0, 3, 2].map(Scalar::from));
-
-    // The reads answer a new serie; the serie is as it was.
-    let sorted = prices.into_sorted(SortOptions::default())?;
-    assert!(sorted.is_sorted(SortOptions::default()));
-    assert_eq!(sorted.rows().to_vec(), vec![Scalar::from(1_i64), Scalar::from(3_i64), Scalar::from(3_i64), Scalar::Null]);
-    assert_eq!(prices.scalar(0)?, Scalar::from(3_i64));
-    assert!(!prices.is_unique());
-    assert_eq!(prices.unique_count(), 3);
-    assert_eq!(prices.into_unique()?.len(), 3);
-    assert_eq!(prices.into_reversed().scalar(0)?, Scalar::from(3_i64));
-    let picked = Serie::new(vec![Scalar::from(2_u32), Scalar::from(0_u32)]);
-    assert_eq!(prices.into_taken(&picked)?.rows().to_vec(), vec![Scalar::from(1_i64), Scalar::from(3_i64)]);
-    let mask = Serie::new(vec![Scalar::from(true), Scalar::Null, Scalar::from(false), Scalar::from(true)]);
-    assert_eq!(prices.into_filtered(&mask)?.len(), 2);
-
-    // The writes bring the serie into the state in place and chain: a
-    // primitive column holding its buffer alone sorts where it stands.
-    let mut held = prices.clone();
-    held.as_sorted(SortOptions::default())?.as_unique()?.as_reversed()?;
-    assert_eq!(held.rows().to_vec(), vec![Scalar::Null, Scalar::from(3_i64), Scalar::from(1_i64)]);
-    assert_eq!(held.field(), prices.field());
-
-    // Partitions: one group per distinct key, in first-occurrence order;
-    // sorted keys cut every group as a zero-copy slice.
-    let venues = Serie::from_arrow_array(
-        Some(&Field::new("venue", DataType::utf8(), false)),
-        Arc::new(StringArray::from(vec!["XNAS", "XNYS", "XNAS", "XNYS"])) as ArrayRef,
-        ArrowCastOptions::new(),
-    )?;
-    let groups = prices.partition_by(&venues)?;
-    assert_eq!(groups.len(), 2);
-    assert_eq!(groups[0].0, Scalar::from("XNAS"));
-    assert_eq!(groups[0].1.rows().to_vec(), vec![Scalar::from(3_i64), Scalar::from(1_i64)]);
-
-    // A record column partitions by the cells its paths reach, keyed by
-    // the run of those cells.
-    let root = Field::new(
-        "quote",
-        DataType::from(StructType::from_fields([
-            Field::new("venue", DataType::utf8(), false),
-            Field::new("side", DataType::utf8(), false),
-        ])?),
-        false,
-    );
-    let quotes = Serie::from_scalars(root, [
-        Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from("B")]),
-        Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from("S")]),
-        Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from("B")]),
-    ])?;
-    let paths = ["venue".parse::<FieldPath>()?, "side".parse()?];
-    let groups = quotes.partition_by_paths(&paths)?;
-    assert_eq!(groups.len(), 2);
-    assert_eq!(groups[0].0, Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from("B")]));
-    assert_eq!(groups[0].1.len(), 2);
-    assert!(quotes.memory_size() > 0);
-    ```
-
-=== "Python"
-
-    ```python
-    import copy
-
-    import pyarrow as pa
-
-    from yggdryl import Field, Serie
-
-    prices = Serie.from_arrow_array(
-        pa.array([3, None, 1, 3], pa.int64()), Field("price", "int64", nullable=True)
-    )
-
-    # The order as positions: stable, absences last unless told otherwise.
-    assert prices.sort_indices().as_py() == [2, 0, 3, 1]
-    assert prices.sort_indices(descending=True, nulls_first=True).as_py() == [1, 0, 3, 2]
-
-    # The reads answer a new serie; the serie is as it was.
-    sorted_prices = prices.into_sorted()
-    assert sorted_prices.is_sorted()
-    assert sorted_prices.as_py() == [1, 3, 3, None]
-    assert prices[0].as_py() == 3
-    assert not prices.is_unique()
-    assert prices.unique_count() == 3
-    assert len(prices.into_unique()) == 3
-    assert prices.into_reversed()[0].as_py() == 3
-    assert prices.into_taken([2, 0]).as_py() == [1, 3]
-    assert len(prices.into_filtered([True, None, False, True])) == 2
-
-    # The writes bring the serie into the state in place and chain: a
-    # primitive column holding its buffer alone sorts where it stands.
-    held = copy.copy(prices)
-    assert held.as_sorted().as_unique().as_reversed() is held
-    assert held.as_py() == [None, 3, 1]
-    assert held.field == prices.field
-
-    # Partitions: one group per distinct key, in first-occurrence order;
-    # sorted keys cut every group as a zero-copy slice.
-    venues = Serie.from_arrow_array(
-        pa.array(["XNAS", "XNYS", "XNAS", "XNYS"]), Field("venue", "utf8", nullable=False)
-    )
-    groups = prices.partition_by(venues)
-    assert len(groups) == 2
-    assert groups[0][0].as_py() == "XNAS"
-    assert groups[0][1].as_py() == [3, 1]
-
-    # A record column partitions by the cells its paths reach, keyed by
-    # the run of those cells.
-    quotes = Serie.from_scalars(
-        Field("quote", "struct<venue: utf8 not null, side: utf8 not null>", nullable=False),
-        [["XNAS", "B"], ["XNAS", "S"], ["XNAS", "B"]],
-    )
-    groups = quotes.partition_by_paths(["venue", "side"])
-    assert len(groups) == 2
-    assert groups[0][0].as_py() == ["XNAS", "B"]
-    assert len(groups[0][1]) == 2
-    assert quotes.memory_size() > 0
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const arrow = require('apache-arrow')
-    const { Field, Serie } = require('yggdryl')
-
-    const prices = Serie.fromArrowArray(
-      arrow.vectorFromArray([3n, null, 1n, 3n], new arrow.Int64()),
-      Field.from('price: int64'),
-    )
-
-    // The order as positions: stable, absences last unless told otherwise.
-    assert.deepEqual(prices.sortIndices().asJs(), [2, 0, 3, 1])
-    assert.deepEqual(prices.sortIndices({ descending: true, nullsFirst: true }).asJs(), [1, 0, 3, 2])
-
-    // The reads answer a new serie; the serie is as it was.
-    const sorted = prices.intoSorted()
-    assert.equal(sorted.isSorted(), true)
-    assert.deepEqual(sorted.asJs(), [1, 3, 3, null])
-    assert.equal(prices.scalar(0).asJs(), 3)
-    assert.equal(prices.isUnique(), false)
-    assert.equal(prices.uniqueCount(), 3)
-    assert.equal(prices.intoUnique().length, 3)
-    assert.equal(prices.intoReversed().scalar(0).asJs(), 3)
-    assert.deepEqual(prices.intoTaken([2, 0]).asJs(), [1, 3])
-    assert.equal(prices.intoFiltered([true, null, false, true]).length, 2)
-
-    // The writes bring the serie into the state in place and chain: a
-    // primitive column holding its buffer alone sorts where it stands.
-    const held = prices.clone()
-    assert.equal(held.asSorted().asUnique().asReversed(), held)
-    assert.deepEqual(held.asJs(), [null, 3, 1])
-
-    // Partitions: one group per distinct key, in first-occurrence order;
-    // sorted keys cut every group as a zero-copy slice.
-    const venues = Serie.fromArrowArray(
-      arrow.vectorFromArray(['XNAS', 'XNYS', 'XNAS', 'XNYS'], new arrow.Utf8()),
-      Field.from('venue: utf8 not null'),
-    )
-    let groups = prices.partitionBy(venues)
-    assert.equal(groups.length, 2)
-    assert.equal(groups[0][0].asJs(), 'XNAS')
-    assert.deepEqual(groups[0][1].asJs(), [3, 1])
-
-    // A record column partitions by the cells its paths reach, keyed by
-    // the run of those cells.
-    const quotes = Serie.fromScalars(
-      Field.from('quote: struct<venue: utf8 not null, side: utf8 not null> not null'),
-      [['XNAS', 'B'], ['XNAS', 'S'], ['XNAS', 'B']],
-    )
-    groups = quotes.partitionByPaths(['venue', 'side'])
-    assert.equal(groups.length, 2)
-    assert.deepEqual(groups[0][0].asJs(), ['XNAS', 'B'])
-    assert.equal(groups[0][1].length, 2)
-    assert.ok(quotes.memorySize() > 0)
-    ```
-
-A `SortOptions` crosses as keywords in Python - `descending` and `nulls_first`, on `sort_indices`, `is_sorted`, `into_sorted` and `as_sorted` - and as a plain `{ descending, nullsFirst }` object in JavaScript, omitted or `null` the default. `indices`, `mask` and `keys` are a `Serie` or an iterable of values read through `Scalar`, and in Python any columnar object too. `window(offset, length)` answers a [`WindowSerie`](window-serie.md) in all three.
+`partition_by` takes the [shared key intake](key-serie.md#windows-and-partitions)
+and returns `KeySeries`. Each key is a record run and each payload is a generic
+`Serie`; bare top-level keys move out of the payload. Typed external keys retain
+it. Access an item's rows through `item.rows`, then its children through the
+normal serie accessors.
 
 ### Sort by keys
 
@@ -650,8 +464,8 @@ A record column's root may declare the order its rows keep, as the [`SORT:by`](p
 | `remove`, `pop`, `truncate`, `clear` | kept |
 | `is_sorted(options)` on a record declaring at least every column under `options` | `true` with no pass |
 | `sort_indices`, `sort_indices_by`, `into_sorted`, `into_sort_by` asking what the declaration begins with (a prefix counts) | the identity positions, or a clone sharing the buffers |
-| `from_scalars`, `from_arrow_array`, `from_arrow_batch` under a declaring field, `cast` and `ArrowCastPlan::apply` onto a declaring target the source does not already declare, a `SerieReader` over a stream under a declaring root (each batch, and each batch's first row against the batch before), `ChunkedSerie::from_series`, `from_arrow_arrays`, `cast` and `push_chunk` (each chunk, and every chunk edge) | verified: the first row out of order is refused - `row 3 of quote is out of the order its root declares, \`venue, price desc\`` - a batch or chunk edge by its batch or chunk |
-| `from_default`, `empty`, `SerieReader::from_serie`, `from_chunked`, a `Serie` already held | not read: equal rows are in every order, and a `Serie` carrying a declaration already proved it |
+| `from_scalars`, `from_arrow_array`, `from_arrow_batch` under a declaring field, `cast` and `ArrowCastPlan::apply` onto a declaring target the source does not already declare, a `StreamChunkedSerie` over a stream under a declaring root (each batch, and each batch's first row against the batch before), `ChunkedSerie::from_series`, `from_arrow_arrays`, `cast` and `push_chunk` (each chunk, and every chunk edge) | verified: the first row out of order is refused - `row 3 of quote is out of the order its root declares, \`venue, price desc\`` - a batch or chunk edge by its batch or chunk |
+| `from_default`, `empty`, `StreamChunkedSerie::from_serie`, `from_chunked`, a `Serie` already held | not read: equal rows are in every order, and a `Serie` carrying a declaration already proved it |
 
 An Iceberg table's `SORT:by` is how its writers lay each data file out, so the root a [scan](../media/iceberg.md) lands under drops it; `IcebergTable::schema()` keeps reporting it. A `Plan` built from a declaring field moves the keys into its `order by`, as it always did.
 
@@ -764,9 +578,9 @@ An Iceberg table's `SORT:by` is how its writers lay each data file out, so the r
 
 A column's buffers can leave the heap: `spill(options)` writes every buffer of the leaves it chooses to one private file - 64-byte aligned, unlinked as soon as it is created, under the folder the options name or the platform temporary folder - and lands the same column over the mapping, in place; the mapping holds the pages and the file's descriptor closes as soon as it is mapped, so the live spilled columns of a process are bounded by disk and not by its descriptor limit. Nothing about reading changes: a mapped leaf reads a cell exactly as a heap one does, `memory_size` still counts the bytes, and `resident_size` counts the bytes still on the heap, so `is_spilled` is "some bytes, none of them resident". The bound is `SpillOptions::byte_size`: a column under it is untouched; a flat column over it, or a nested one whose own buffers alone pass it, spills whole; any other nested column spills child by child, heaviest first, each under what the bound leaves once everything else stays resident. `SpillOptions::NEVER` spills nothing.
 
-Every door at which the crate lays a column out itself - `from_scalars`, a `from_arrow_array` or `from_arrow_batch` that casts, `cast`, the sorts, `into_unique`, `into_taken`, `into_filtered`, `extend_from_serie`, `ChunkedSerie::into_serie` over several chunks, `push_chunk`, the chunked merge and a join - settles its result under the **process default**, `SpillOptions::from_env()`: `YGGDRYL_SPILL_BYTE_SIZE` (a whole number of bytes as the [integer grammar](numeric/integer.md) reads one, or `never` in any case to spill nothing; default 64 MiB) and `YGGDRYL_SPILL_FOLDER`, read once; `SpillOptions::install_env(options)` states the default before anything reads it, and is refused afterwards. A door that only shares a caller's buffers - an exact `from_arrow_array`, `slice`, `window`, a `SerieReader` batch in flight - never settles, and neither does a row write. A write through a mapped leaf brings that leaf back to the heap; a clone or a slice of a spilled column shares the mapping. A [`ChunkedSerie`](chunked-serie.md) spills its heaviest chunks whole first, a [`WindowSerie`](window-serie.md) reports through the serie it views, and a [`SerieReader`](#arrow-an-array-a-batch-a-reader) spills the records it holds and nothing of a stream. What a [write to a handle](#writing-a-serie-to-a-handle) holds between publications is held under the process default too, its heaviest batches spilled first.
+Every door at which the crate lays a column out itself - `from_scalars`, a `from_arrow_array` or `from_arrow_batch` that casts, `cast`, the sorts, `into_unique`, `into_taken`, `into_filtered`, `extend_from_serie`, `ChunkedSerie::into_serie` over several chunks, `push_chunk`, the chunked merge and a join - settles its result under the **process default**, `SpillOptions::from_env()`: `YGGDRYL_SPILL_BYTE_SIZE` (a whole number of bytes as the [integer grammar](numeric/integer.md) reads one, or `never` in any case to spill nothing; default 64 MiB) and `YGGDRYL_SPILL_FOLDER`, read once; `SpillOptions::install_env(options)` states the default before anything reads it, and is refused afterwards. A door that only shares a caller's buffers - an exact `from_arrow_array`, `slice`, `window`, a `StreamChunkedSerie` batch in flight - never settles, and neither does a row write. A write through a mapped leaf brings that leaf back to the heap; a clone or a slice of a spilled column shares the mapping. A [`ChunkedSerie`](chunked-serie.md) spills its heaviest chunks whole first, a [`WindowSerie`](window-serie.md) reports through the serie it views, and a [`StreamChunkedSerie`](#arrow-an-array-a-batch-a-reader) spills the records it holds and nothing of a stream. What a [write to a handle](#writing-a-serie-to-a-handle) holds between publications is held under the process default too, its heaviest batches spilled first.
 
-Two one-liners spell the spill as a value: `as_spilled(options)` is `spill` answering the serie so calls chain, and `into_spilled(options)` a spilled copy, this one untouched - the buffers the bound leaves resident shared, the rest written once and mapped. A `ChunkedSerie` answers both; a `SerieReader`'s `as_spilled` answers the reader and its `into_spilled` consumes it and hands it back spilled, since a stream owns one source. Python takes `options=None` - the process default - and the `byte_size` and `folder` keywords `spill` takes, and JavaScript an optional `SpillOptions`, absent or `null` the process default.
+Two one-liners spell the spill as a value: `as_spilled(options)` is `spill` answering the serie so calls chain, and `into_spilled(options)` a spilled copy, this one untouched - the buffers the bound leaves resident shared, the rest written once and mapped. A `ChunkedSerie` answers both; a `StreamChunkedSerie`'s `as_spilled` answers the reader and its `into_spilled` consumes it and hands it back spilled, since a stream owns one source. Python takes `options=None` - the process default - and the `byte_size` and `folder` keywords `spill` takes, and JavaScript an optional `SpillOptions`, absent or `null` the process default.
 
 === "Rust"
 
@@ -1004,178 +818,19 @@ A sliced list or map keeps its items mapped but rebuilds its offsets on the heap
 
 ## Windows by key
 
-`window_by(by, sorted)` cuts the rows into windows of equal keys, the key `by` computes from each row, and answers `SerieWindows`: the owner of the windows, which lends each one as a `(key, window)` pair, the window a [`WindowSerie`](window-serie.md) - a view, moving nothing. The windows are never empty, never overlap and cover every row. The same verb windows a [window's rows](window-serie.md#windows-by-key), a [chunked serie](chunked-serie.md#windows-by-key) and a [stream](../arrow/readers.md#windows-of-a-stream).
+`window_by(by, sorted)` returns [KeySeries](key-serie.md). Adjacent windows share
+payload buffers and retain absolute source starts; sorted gathers are stable and
+have no source start. The default is unsorted; `None` / `null` has the same
+meaning as omission in the bindings. A key colliding with a remaining payload
+child needs an alias. Counter-like names are ordinary user names.
 
-| Aspect | Rule |
-| --- | --- |
-| Key | `by` is a selector - clause text such as `"venue, minutes(ts, 15) as bucket"`, a `Selector`, a projection, a term or a path - parsed once and bound once against the record root [`SerieReader::root_of`](#arrow-an-array-a-batch-a-reader) names: a record column binds against its own field, any other column as the one child of a `row` record, under its own name. Names fold ASCII case. A `*` beside projections keys by every column it keeps, then the projections |
-| Key value | The run of the projected cells at a window's first row, in selector order, so one term keys a one-cell run. An absent record row keys `Scalar::Null`, and an absent cell is a null cell. Keys are equal as the [ordering verbs](#sorting-uniqueness-and-partitions) equate them: an absent key equals an absent key, every NaN is one value, a nested key compares item by item, and a period term such as `minutes(ts, 15)` keys the number of its period since the epoch, in UTC whatever zone the column states |
-| `sorted = false` | A window is a maximal run of adjacent rows whose keys are equal, in row order, over this serie at its offset in it: a key that comes back after another opens a window of its own, where `partition_by` gathers every row of a key into one group |
-| `sorted = true` | Each distinct key exactly once, in key order: ascending, an absent key last, as `SortOptions::default()` orders. Keys already in order answer exactly the `sorted = false` windows over this serie, at the same cost; any others have their runs - never their rows - sorted stably by key, the runs of one key merged, and the rows gathered once into key order, rows of one key in arrival order, into one serie the answer owns. Only ascending is offered: keys grouped in any other order already answer each key once with `sorted = false` |
-| The owner | `len()`, `is_empty()`, `serie()` - the serie every window views: this one, borrowed, or the gathered copy - and `iter()`, or `&windows` in a `for`, which lends the windows as often as asked. `SerieWindowsIter` is exact-size and fused, and its `nth` skips windows without building their keys. `get(index)` lends one window by its place in constant time - in row order the first call indexes where every window opens, once. `into_owned()` clones a borrowed serie - its buffers shared, no row copied - so the windows outlive the borrow |
-| The record | Every window lent states its [static values](window-serie.md#static-values): the key cells, `windownum: uint64` - its place among the windows - and `rownum: uint64` - the number its first row has in this serie, null where `sorted` gathered the rows. `static_field()` types that record before any window is walked. It is never the window's identity and never crosses into a serie or an Arrow array |
-| Identity | A window is its rows, as a serie is: the key and the record are beside it |
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{DataType, Field, Scalar, Serie, StructType};
-
-    let root = DataType::from(StructType::from_fields([
-        DataType::utf8().required_field("venue"),
-        DataType::Int64.required_field("price"),
-    ])?)
-    .required_field("quote");
-    let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
-    let quotes = Serie::from_scalars(root, [quote("XNYS", 1), quote("XNAS", 2), quote("XNAS", 3), quote("XNYS", 4)])?;
-    let key = |venue: &str| Scalar::from_sequence([Scalar::from(venue)]);
-
-    // Unsorted: each run of equal adjacent keys is one window, in row order,
-    // over this serie at its offset; XNYS comes back, so it opens a window again.
-    let windows = quotes.window_by("venue", false)?;
-    assert_eq!(windows.len(), 3);
-    assert!(std::ptr::eq(windows.serie(), &quotes));
-    let cuts: Vec<_> = windows
-        .iter()
-        .map(|(key, window)| (key, window.offset(), window.len()))
-        .collect();
-    assert_eq!(cuts, [(key("XNYS"), 0, 1), (key("XNAS"), 1, 2), (key("XNYS"), 3, 1)]);
-
-    // Every window lent states its record, read through FieldScalar's accessors.
-    let (_, xnas) = windows.get(1).expect("a second window");
-    let record = xnas.static_values().expect("a window window_by lent");
-    assert_eq!(record.name(), "quote");
-    assert_eq!(record.get_key_str("venue"), Some(&Scalar::from("XNAS")));
-    assert_eq!(record.get_key_str("windownum"), Some(&Scalar::from(1_u64)));
-    assert_eq!(record.get_key_str("rownum"), Some(&Scalar::from(1_u64)));
-
-    // Sorted: each key once, in key order - the rows gathered once into a
-    // serie the windows own, rows of one key in arrival order, rownum null.
-    let sorted = quotes.window_by("venue", true)?;
-    assert_eq!(sorted.len(), 2);
-    assert!(!std::ptr::eq(sorted.serie(), &quotes));
-    let (first, xnys) = sorted.iter().nth(1).expect("a second window");
-    assert_eq!(first, key("XNYS"));
-    assert_eq!(xnys.rows().to_vec(), vec![quote("XNYS", 1), quote("XNYS", 4)]);
-    let record = xnys.static_values().expect("its record");
-    assert_eq!(record.get_key_str("rownum"), Some(&Scalar::Null));
-
-    // Two terms key two cells, named as their projections are, typed before a window is walked.
-    let late = quotes.window_by("venue, price > 2 as late", false)?;
-    let names: Vec<&str> = late.static_field().fields().iter().map(Field::name).collect();
-    assert_eq!(names, ["venue", "late", "windownum", "rownum"]);
-    assert_eq!(late.len(), 4);
-
-    // A key cell named like a counter is refused before any row is read.
-    assert!(quotes.window_by("price as rownum", false).is_err());
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import Field, Serie
-
-    quotes = Serie.from_scalars(
-        Field("quote", "struct<venue: utf8 not null, price: int64 not null>", nullable=False),
-        [["XNYS", 1], ["XNAS", 2], ["XNAS", 3], ["XNYS", 4]],
-    )
-
-    # Unsorted: each run of equal adjacent keys is one window, in row order,
-    # over this serie at its offset; XNYS comes back, so it opens a window again.
-    windows = quotes.window_by("venue")
-    assert [(key.as_py(), window.offset, len(window)) for key, window in windows] == [
-        (["XNYS"], 0, 1),
-        (["XNAS"], 1, 2),
-        (["XNYS"], 3, 1),
-    ]
-    assert all(window.serie is quotes for _, window in windows)
-
-    # Every window lent states its record, a struct value read by name.
-    _, xnas = windows[1]
-    record = xnas.static_values
-    assert record is not None
-    assert record["venue"].as_py() == "XNAS"
-    assert record.as_py() == {"venue": "XNAS", "windownum": 1, "rownum": 1}
-
-    # Sorted: each key once, in key order - the rows gathered once into one
-    # new serie every window views, rows of one key in arrival order.
-    ordered = quotes.window_by("venue", sorted=True)
-    assert [key.as_py() for key, _ in ordered] == [["XNAS"], ["XNYS"]]
-    _, xnys = ordered[1]
-    assert xnys.serie is not quotes
-    assert xnys.as_py() == [{"venue": "XNYS", "price": 1}, {"venue": "XNYS", "price": 4}]
-    record = xnys.static_values
-    assert record is not None and record.as_py()["rownum"] is None
-
-    # A key cell named like a counter is refused before any row is read.
-    try:
-        quotes.window_by("price as rownum")
-    except ValueError as error:
-        assert "collides with the static value" in str(error)
-    else:
-        raise AssertionError("rownum is the record's own cell")
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { Field, Serie } = require('yggdryl')
-
-    const quotes = Serie.fromScalars(
-      Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null'),
-      [['XNYS', 1], ['XNAS', 2], ['XNAS', 3], ['XNYS', 4]],
-    )
-
-    // Unsorted: each run of equal adjacent keys is one window, in row order,
-    // over this serie at its offset; XNYS comes back, so it opens a window again.
-    const windows = quotes.windowBy('venue')
-    assert.deepEqual(
-      windows.map(([key, window]) => [key.asJs(), window.offset, window.length]),
-      [[['XNYS'], 0, 1], [['XNAS'], 1, 2], [['XNYS'], 3, 1]],
-    )
-    assert.ok(windows.every(([, window]) => window.serie === quotes))
-
-    // Every window lent states its record, a struct value read by name.
-    const [, xnas] = windows[1]
-    assert.equal(xnas.staticValues.get('venue').asJs(), 'XNAS')
-    assert.deepEqual(xnas.staticValues.asJs(), { venue: 'XNAS', windownum: 1, rownum: 1 })
-
-    // Sorted: each key once, in key order - the rows gathered once into one
-    // new serie every window views, rows of one key in arrival order.
-    const sorted = quotes.windowBy('venue', true)
-    assert.deepEqual(sorted.map(([key]) => key.asJs()), [['XNAS'], ['XNYS']])
-    const [, xnys] = sorted[1]
-    assert.notEqual(xnys.serie, quotes)
-    assert.deepEqual(xnys.intoSerie().child('price').asJs(), [1, 4])
-    assert.equal(xnys.staticValues.asJs().rownum, null)
-
-    // A key cell named like a counter is refused before any row is read.
-    assert.throws(() => quotes.windowBy('price as rownum'), /collides with the static value/)
-    ```
-
-`sorted` is `False` by default in Python, where `None` clears to it, and absent or `null` is `false` in JavaScript. Python answers a `list` of `(Scalar, WindowSerie)` pairs and JavaScript an `Array` of `[Scalar, WindowSerie]`, each window holding the serie object windowed - or, where `sorted` gathered, one new `Serie` every window shares - and each record a struct `Scalar` read by name. `SerieWindows`, its `iter`, `get`, `nth` and `into_owned` are Rust only; a binding's window holds the owned windows of its call and reaches its record through `get`.
-
-### Refusals
-
-Every refusal but the gather's comes before a row is read, naming the serie:
-
-- text that is not a selector, with the parser's position;
-- a run, which lays out no column for a term to read: `a schema-free run windows by no term`;
-- a key stating no projection - an empty list, or a `*` alone - and an `unnest`;
-- the binder's own: a term reaching no column or two of them, a period step that is not a positive literal;
-- a key cell whose name folds onto `windownum` or `rownum`, the record's own cells - `the key cell "rownum" collides with the static value "rownum"`, so alias it - and, windowing a window lent this way, onto a cell its record keeps;
-- with `sorted` and keys out of order, a serie past `u32::MAX` rows, which the gather cannot address, once the keys are read.
-
-### Cost
-
-One plan per call and one key per window: the key column computed once, one comparator over it and one bit per row marking where the windows open, read in one pass; then each window lent costs the run of its key and nothing else, and its record nothing until it is read. No key row is built where the keys order as their buffers - text, integers, temporals and records of them, a record key compared child by child on the [Record rung](#sorting-uniqueness-and-partitions); a key cell that does not - a registered code, windows-1252 text, a version, a URL - builds its own rows once for the call, never a run per row, and a list, map or union cell off the buffers builds each of its rows once. A period term is evaluated row by row through the expression's row tier: a constant count of allocations, but time and a transient value per row. A key costs the same whatever the record is wide: a key of the record's own columns takes them where they stand, never the record copied.
-
-With `sorted`, the descent is read in the same pass: keys already in order cost exactly what `sorted = false` costs and copy nothing. Only a descent gathers: one stable sort of the runs, the order the rows are taken in, and one take of every column - the only rows this verb copies.
+The key fields, paths, payload field and global field are available before a
+stream is pulled. Streamed windows return `StreamKeySerie` and lend one payload
+at a time. See [the examples and composition contract](key-serie.md).
 
 ## Joins
 
-`join_with(other, by, how, options)` joins a record column with another on one or more keys and answers one record column; a [`ChunkedSerie`](chunked-serie.md) answers its output batches kept apart, and a [`SerieReader`](#arrow-an-array-a-batch-a-reader) probes a stream one batch at a time against a held side, its other side any [`SerieSource`](#writing-a-serie-to-a-handle) - a held column, held chunks or a stream. `by` is a bare column shared by both sides (`"id"`, a `using` key: coalesced, once, under the left name, the left value else the right), an equality of two terms (`"trade.id = venue.id"`: each side's term bound against its own root - a path names a column and its children, never a table alias), several joined by `and`, a list of either, `(Term, Term)` pairs or a `JoinKeys`; in the bindings any of those shapes crosses as one `Scalar`. A key pair is cast to the datatype the two sides share, and a pair sharing none is refused naming both. `how` is `inner`, `left`, `right`, `full`, `semi` or `anti`; `semi` and `anti` answer the left columns alone. The output root is the left columns then the right ones, a right name colliding with a left one suffixed `_right` (`JoinOptions::with_suffix`), named after the left root, metadata cleared.
+`join_with(other, by, how, options)` joins a record column with another on one or more keys and answers one record column; a [`ChunkedSerie`](chunked-serie.md) answers its output batches kept apart, and a [`StreamChunkedSerie`](#arrow-an-array-a-batch-a-reader) probes a stream one batch at a time against a held side, its other side any [`Serie`](#writing-a-serie-to-a-handle) - a held column, held chunks or a stream. `by` is a bare column shared by both sides (`"id"`, a `using` key: coalesced, once, under the left name, the left value else the right), an equality of two terms (`"trade.id = venue.id"`: each side's term bound against its own root - a path names a column and its children, never a table alias), several joined by `and`, a list of either, `(Term, Term)` pairs or a `JoinKeys`; in the bindings any of those shapes crosses as one `Scalar`. A key pair is cast to the datatype the two sides share, and a pair sharing none is refused naming both. `how` is `inner`, `left`, `right`, `full`, `semi` or `anti`; `semi` and `anti` answer the left columns alone. The output root is the left columns then the right ones, a right name colliding with a left one suffixed `_right` (`JoinOptions::with_suffix`), named after the left root, metadata cleared.
 
 | Option | Default | Means |
 | --- | --- | --- |
@@ -1294,9 +949,8 @@ The build side is hashed on Arrow's row format where every key's buffers order a
     assert.deepEqual(names(both), ['id', 'size', 'id_right', 'venue'])
     ```
 
-A stream is joined without being collected: `SerieReader::join_with(other, by, how, options)` builds the held side - or, of two streams, drains the right one - before a batch is pulled, then each probe batch answers its own output batches as it is pulled. In Python `SerieReader.join_with` takes a `Serie`, a `ChunkedSerie`, another `SerieReader` or any columnar object `Serie.from_` reads; in JavaScript `reader.joinWith(other, by, how?, options?)` takes the three classes. The [plan's `join` clause](../expression/plans.md#joins) runs the same engine over two targets, pushing the build keys into the probe's read.
+A stream is joined without being collected: `StreamChunkedSerie::join_with(other, by, how, options)` builds the held side - or, of two streams, drains the right one - before a batch is pulled, then each probe batch answers its own output batches as it is pulled. In Python `StreamChunkedSerie.join_with` takes a `Serie`, a `ChunkedSerie`, another `StreamChunkedSerie` or any columnar object `Serie.from_` reads; in JavaScript `reader.joinWith(other, by, how?, options?)` takes the three classes. The [plan's `join` clause](../expression/plans.md#joins) runs the same engine over two targets, pushing the build keys into the probe's read.
 
-## Children
 ## Children
 
 A record column is made of child columns, and Arrow already holds each one separately. Reaching one is a borrow, replacing or dropping one moves pointers and never a row, and writing one cell descends the record levels by name to the leaf that proves the value. No child is handed out mutably: that is what keeps every child at exactly `len` rows, and what lets the Arrow array assemble without a refusal clause.
@@ -1904,15 +1558,15 @@ A sliced serie's offsets are rebased onto exactly the items they reach, so the c
 
 A column of a leaf field is an array; a column of a non-null Struct field is a table, and the stream of it is what a record write already speaks. A leaf column crosses into a table too, as the one column of a `row` root, named as it is. Coming the other way, the field decides which leaf the buffers land in, and `None` takes the input's own: an array's field named `item`, a batch's or a stream's schema as the record `row`, because Arrow names columns and never the record. A run names no Arrow layout, so it answers `None` for the array and is refused by name where one is required.
 
-`into_arrow_scalar` is one row as Arrow's scalar datum, sharing its buffers; any other length is refused naming it. `from_default(field, rows)` is `rows` copies of the field's canonical default - [`Field::default_value`](field.md) held once as a [constant column](#constant-columns), laid out only when exported - and a required `null` field, which has no default, is refused. `from_arrow_reader` drains a stream into one column; [`ChunkedSerie::from_arrow_reader`](chunked-serie.md#arrow-a-chunked-array-and-a-table) holds it as one chunk per batch; [`SerieReader`](cast.md#eager-and-lazy) keeps it a stream, one record `Serie` per batch under one plan, and `into_arrow_reader` hands the batches on without landing them.
+`into_arrow_scalar` is one row as Arrow's scalar datum, sharing its buffers; any other length is refused naming it. `from_default(field, rows)` is `rows` copies of the field's canonical default - [`Field::default_value`](field.md) held once as a [constant column](#constant-columns), laid out only when exported - and a required `null` field, which has no default, is refused. `from_arrow_reader` drains a stream into one column; [`ChunkedSerie::from_arrow_reader`](chunked-serie.md#arrow-a-chunked-array-and-a-table) holds it as one chunk per batch; [`StreamChunkedSerie`](cast.md#eager-and-lazy) keeps it a stream, one record `Serie` per batch under one plan, and `into_arrow_reader` hands the batches on without landing them.
 
-A held column - one row, a column, a table - is a `Serie`, a held chunked column or table is a [`ChunkedSerie`](chunked-serie.md), which keeps the arrays of a chunked array and the batches of a table apart, and a stream is a `SerieReader`. `Scalar::from(serie)` holds a column as one serie value that `Scalar::as_serie` borrows back, neither reading a row. A stream is never a `Scalar`: `SerieReader::from_serie` reads one held column as the stream of the one batch it is, and [`SerieReader::from_chunked`](chunked-serie.md#streams) a held chunked column as the stream of its chunks, which is what a write taking a stream is handed either as; neither compiles a plan. `SerieReader::cast` re-roots a stream under another field through one plan: a held reader casts its records at the call and refuses there, a stream casts each batch as it is pulled, and `into_arrow_reader` afterwards hands batches on under the cast schema. The reader's own root hands the reader back untouched.
+A held column - one row, a column, a table - is a `Serie`, a held chunked column or table is a [`ChunkedSerie`](chunked-serie.md), which keeps the arrays of a chunked array and the batches of a table apart, and a stream is a `StreamChunkedSerie`. `Scalar::from(serie)` holds a column as one serie value that `Scalar::as_serie` borrows back, neither reading a row. `Field::apply_arrow_*` and the record options' `apply_arrow_*` take and answer `RecordBatch` and `BatchReader` because those are what their callers exchange; the cast they run is the plan a `StreamChunkedSerie` runs, at its [transport face](cast.md#eager-and-lazy), not a second system. A stream is never a `Scalar`: `StreamChunkedSerie::from_serie` reads one held column as the stream of the one batch it is, and [`StreamChunkedSerie::from_chunked`](chunked-serie.md#streams) a held chunked column as the stream of its chunks, which is what a write taking a stream is handed either as; neither compiles a plan. `StreamChunkedSerie::cast` re-roots a stream under another field through one plan: a held reader casts its records at the call and refuses there, a stream casts each batch as it is pulled, and `into_arrow_reader` afterwards hands batches on under the cast schema. The reader's own root hands the reader back untouched.
 
 === "Rust"
 
     ```rust
     use arrow_array::{Array, Datum, RecordBatchReader};
-    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, SerieReader, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, StreamChunkedSerie, StructType};
 
     let options = ArrowCastOptions::new();
     let field = Field::new("price", DataType::Int64, false);
@@ -1964,13 +1618,13 @@ A held column - one row, a column, a table - is a `Serie`, a held chunked column
     let reader = rows.into_arrow_reader()?;
     assert_eq!(reader.schema().fields().len(), 2);
     assert_eq!(Serie::from_arrow_reader(Some(&root), rows.into_arrow_reader()?, options)?, rows);
-    let series = SerieReader::from_arrow_reader(None, rows.into_arrow_reader()?, options)?;
+    let series = StreamChunkedSerie::from_arrow_reader(None, rows.into_arrow_reader()?, options)?;
     assert_eq!(series.count(), 1);
 
     // One held column is the stream of the one batch it is.
-    let held = SerieReader::from_serie(rows.clone())?;
+    let held = StreamChunkedSerie::from_serie(rows.clone())?;
     assert_eq!(held.field(), &root);
-    assert_eq!(held.collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
+    assert_eq!(held.into_chunks().collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
 
     // A stream under a wider root: one plan, each batch cast as it is pulled.
     let wide = Field::new(
@@ -1981,9 +1635,9 @@ A held column - one row, a column, a table - is a `Serie`, a held chunked column
         ])?),
         false,
     );
-    let cast = SerieReader::from_serie(rows.clone())?.cast(&wide, options)?;
+    let cast = StreamChunkedSerie::from_serie(rows.clone())?.cast(&wide, options)?;
     assert_eq!(cast.field(), &wide);
-    let records = cast.collect::<Result<Vec<_>, _>>()?;
+    let records = cast.into_chunks().collect::<Result<Vec<_>, _>>()?;
     assert_eq!(records[0].scalar(0)?, Scalar::from_sequence([Scalar::from(1.0_f64), Scalar::from("AAPL")]));
     ```
 
@@ -1991,7 +1645,7 @@ A held column - one row, a column, a table - is a `Serie`, a held chunked column
 
     ```python
     import pyarrow as pa
-    from yggdryl import Field, Serie, SerieReader
+    from yggdryl import Field, Serie, StreamChunkedSerie
 
     field = Field("price", "int64", nullable=False)
     serie = Serie.from_scalars(field, [125, 126])
@@ -2023,15 +1677,15 @@ A held column - one row, a column, a table - is a `Serie`, a held chunked column
 
     assert isinstance(rows.into_arrow_reader(), pa.RecordBatchReader)
     assert Serie.from_arrow_reader(rows.into_arrow_reader(), root) == rows
-    assert [len(serie) for serie in SerieReader.from_arrow_reader(rows.into_arrow_reader())] == [1]
+    assert [len(serie) for serie in StreamChunkedSerie.from_arrow_reader(rows.into_arrow_reader())] == [1]
 
     # A held column is one value, and one held column is a stream of one batch.
     assert serie.into_scalar().as_serie() == serie
-    assert list(SerieReader.from_serie(rows)) == [rows]
+    assert list(StreamChunkedSerie.from_serie(rows)) == [rows]
 
     # A stream under a wider root: one plan, each batch cast as it is pulled.
     wide = Field("row", "struct<id: float64 not null, symbol: utf8 not null>", nullable=False)
-    cast = SerieReader.from_serie(rows).cast(wide)
+    cast = StreamChunkedSerie.from_serie(rows).cast(wide)
     assert cast.field == wide
     assert [record.as_py() for record in cast] == [[{"id": 1.0, "symbol": "AAPL"}]]
     ```
@@ -2040,7 +1694,7 @@ A held column - one row, a column, a table - is a `Serie`, a held chunked column
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { BatchReader, Field, Serie, SerieReader, fields } = require('yggdryl')
+    const { BatchReader, Field, Serie, StreamChunkedSerie, fields } = require('yggdryl')
 
     const field = fields.int64('price', { nullable: false })
     const serie = Serie.fromScalars(field, [125n, 126n])
@@ -2071,19 +1725,19 @@ A held column - one row, a column, a table - is a `Serie`, a held chunked column
     assert.ok(rows.intoArrowReader() instanceof BatchReader)
     assert.ok(Serie.fromArrowReader(rows.intoArrowReader(), root).equals(rows))
     assert.deepEqual(
-      [...SerieReader.fromArrowReader(rows.intoArrowReader())].map((serie) => serie.length),
+      [...StreamChunkedSerie.fromArrowReader(rows.intoArrowReader())].map((serie) => serie.length),
       [1],
     )
 
     // A held column is one value, and one held column is a stream of one batch.
     assert.ok(serie.intoScalar().asSerie().equals(serie))
-    const held = [...SerieReader.fromSerie(rows)]
+    const held = [...StreamChunkedSerie.fromSerie(rows)]
     assert.equal(held.length, 1)
     assert.ok(held[0].equals(rows))
 
     // A stream under a wider root: one plan, each batch cast as it is pulled.
     const wide = Field.from('row: struct<id: float64 not null, symbol: utf8 not null> not null')
-    const cast = SerieReader.fromSerie(rows).cast(wide)
+    const cast = StreamChunkedSerie.fromSerie(rows).cast(wide)
     assert.ok(cast.field.equals(wide))
     const records = [...cast]
     assert.ok(records[0].equals(rows.cast(wide)))
@@ -2161,7 +1815,7 @@ One value crosses the array boundary as a one-row column. `Serie::from_scalars(f
 
 ### Materialization budgets
 
-Laying rows out charges 1,000,000 expanded slots and 64 MiB of fixed bytes, summed across siblings and checked before anything is allocated. The totals cover validity bitmaps, offsets, union buffers, and the values behind dictionary or run-end keys, and only what is built is charged: a dense union allocates the selected member, a sparse union every child. Arrow landing uses the same budget for parent masks, hidden-span compaction and noncompact list-view gathers. A root run-end column gathers by binary-searching each selected span, and a nested run-end column uses Arrow's indexed take when its tree has no zero-width fixed-size serie. When both occur in one tree, the generic range builder preserves the zero-width rows that indexed take loses; memory remains bounded, but it may rescan the nested run ends once per selected span. Phase reservations end with the phase, and the same accounting runs behind every [`ArrowCastPlan`](cast.md).
+Laying rows out charges 1,000,000 expanded slots and 64 MiB of fixed bytes, summed across siblings and checked before anything is allocated. The totals cover validity bitmaps, offsets, union buffers, and the values behind dictionary or run-end keys, and only what is built is charged: a dense union allocates the selected member, a sparse union every child. Arrow landing uses the same budget for parent masks, hidden-span compaction and noncompact list-view gathers. A root run-end column gathers by binary-searching each selected span, and a nested run-end column uses Arrow's indexed take when its tree has no zero-width fixed-size serie. When both occur in one tree, the generic range builder preserves the zero-width rows that indexed take loses; memory remains bounded, but it may rescan the nested run ends once per selected span. Phase reservations end with the phase, and the same accounting runs behind every [`ArrowCastPlan`](cast.md): a kernel's output is one slot per row of the batch the caller sized and is never charged, so a batch casts whole however many rows and cast columns it has - a stream of books with a million alive entries in one batch included - and the budget bounds only what a cast builds beyond its input: the slots a null hides, the default rows of a column the source lacks, a vocabulary built fresh, and a masked kernel's scratch, each in its own phase.
 
 === "Rust"
 
@@ -2229,7 +1883,7 @@ Laying rows out charges 1,000,000 expanded slots and 64 MiB of fixed bytes, summ
 
 ## Arrow: every columnar runtime in
 
-Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exporter through one call per side, and the declared `Field` casts the result in Rust. `Serie.from_(value, field=None)` answers the column the value holds: a `pyarrow` scalar is a one-row column named `value`, an array or a series a column, a chunked array or a [`ChunkedSerie`](chunked-serie.md) the one column its chunks join into - `ChunkedSerie.from_` keeps them apart - a batch or a NumPy record array the record column of its rows, and a table, a reader, a frame, a dataset or a scanner a stream drained into one column. Any other value is read as a `Scalar`: a sequence is its rows, anything else one row. `SerieReader.from_(value, root=None)` shares that columnar recognition. A held column, scalar or concrete container read through the same scalar boundary as `Serie.from_` becomes the one item of its stream; a non-record column is wrapped as the one child of a record before `root` is applied. A Python sequence recognized as mapping records or columnar batches remains an incremental record stream, reusing the first batch import, and a Python iterator or generic reusable iterable remains an incremental record-row stream; resolving either stream's schema may pull its first item. `Scalar.from_` of a columnar value is the serie `Scalar` of the column it holds, its buffers shared - chunks joined into one new column first, as `into_serie` joins them: one `pyarrow` scalar is its row, and a stream is drained, because a stream is never a `Scalar`. Going out, a `Serie`, a [`ChunkedSerie`](chunked-serie.md) and a `SerieReader` answer the Arrow PyCapsule Interface - `__arrow_c_schema__` and `__arrow_c_array__` on every column, `__arrow_c_stream__` on a record column, on held chunks and on a reader - so `pa.array`, `pa.record_batch`, `pa.table`, `pa.RecordBatchReader.from_stream` and polars read them directly, buffers shared, and a `requested_schema` capsule is applied by the one cast. Nothing crosses as a raw address in either direction: every foreign array, batch or stream is validated before a row is read, so a malformed one is a `ValueError` rather than a fault, and a landing, a drain, a join or a cast runs off the GIL. JavaScript has no C Data consumer, so its doors are the Apache Arrow JS ones [above](#arrow-an-array-a-batch-a-reader).
+Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exporter through one call per side, and the declared `Field` casts the result in Rust. `Serie.from_(value, field=None)` answers the column the value holds: a `pyarrow` scalar is a one-row column named `value`, an array or a series a column, a chunked array or a [`ChunkedSerie`](chunked-serie.md) the one column its chunks join into - `ChunkedSerie.from_` keeps them apart - a batch or a NumPy record array the record column of its rows, and a table, a reader, a frame, a dataset or a scanner a stream drained into one column. Any other value is read as a `Scalar`: a sequence is its rows, anything else one row. `StreamChunkedSerie.from_(value, root=None)` shares that columnar recognition. A held column, scalar or concrete container read through the same scalar boundary as `Serie.from_` becomes the one item of its stream; a non-record column is wrapped as the one child of a record before `root` is applied. A Python sequence recognized as mapping records or columnar batches remains an incremental record stream, reusing the first batch import, and a Python iterator or generic reusable iterable remains an incremental record-row stream; resolving either stream's schema may pull its first item. `Scalar.from_` of a columnar value is the serie `Scalar` of the column it holds, its buffers shared - chunks joined into one new column first, as `into_serie` joins them: one `pyarrow` scalar is its row, and a stream is drained, because a stream is never a `Scalar`. Going out, a `Serie`, a [`ChunkedSerie`](chunked-serie.md) and a `StreamChunkedSerie` answer the Arrow PyCapsule Interface - `__arrow_c_schema__` and `__arrow_c_array__` on every column, `__arrow_c_stream__` on a record column, on held chunks and on a reader - so `pa.array`, `pa.record_batch`, `pa.table`, `pa.RecordBatchReader.from_stream` and polars read them directly, buffers shared, and a `requested_schema` capsule is applied by the one cast. Nothing crosses as a raw address in either direction: every foreign array, batch or stream is validated before a row is read, so a malformed one is a `ValueError` rather than a fault, and a landing, a drain, a join or a cast runs off the GIL. JavaScript has no C Data consumer, so its doors are the Apache Arrow JS ones [above](#arrow-an-array-a-batch-a-reader).
 
 === "Rust"
 
@@ -2244,7 +1898,7 @@ Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exp
     ```python
     import numpy as np
     import pyarrow as pa
-    from yggdryl import Field, Scalar, Serie, SerieReader
+    from yggdryl import Field, Scalar, Serie, StreamChunkedSerie
 
     table = pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
 
@@ -2259,15 +1913,15 @@ Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exp
     # Concrete native values use Serie.from_'s value reading, then become the
     # one held item of their reader.
     for value in (7, [1, 2], (1, 2)):
-        expected = SerieReader.from_serie(Serie.from_(value))
-        actual = SerieReader.from_(value)
+        expected = StreamChunkedSerie.from_serie(Serie.from_(value))
+        actual = StreamChunkedSerie.from_(value)
         assert actual.field == expected.field
         assert list(actual) == list(expected)
 
     # A held leaf is wrapped as a record before the declared root is applied.
     value = Serie.from_([1, 2], Field("value", "int64", nullable=False))
     root = Field("row", "struct<value: int64 not null>", nullable=False)
-    assert next(SerieReader.from_(value, root)).child("value").as_py() == [1, 2]
+    assert next(StreamChunkedSerie.from_(value, root)).child("value").as_py() == [1, 2]
 
     # A record dtype names its members, so it is rows.
     records = np.array([("AAPL", 100)], dtype=[("symbol", "U4"), ("size", "i8")])
@@ -2278,12 +1932,12 @@ Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exp
     assert prices.into_arrow_array().type == pa.float64()
 
     # A stream stays one, and crosses once.
-    streamed = SerieReader.from_(table)
+    streamed = StreamChunkedSerie.from_(table)
     assert streamed.into_arrow_reader().read_all().num_rows == 2
     try:
         streamed.into_arrow_reader()
     except ValueError as error:
-        assert "already handed over" in str(error)
+        assert "already consumed" in str(error)
     else:
         raise AssertionError("a stream is one-shot")
 
@@ -2299,7 +1953,7 @@ Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exp
     assert pa.table(record).equals(table)
     assert pa.record_batch(record).num_rows == 2
     assert pa.array(record.child("size")).equals(table.column("size").combine_chunks())
-    assert pa.RecordBatchReader.from_stream(SerieReader.from_serie(record)).read_all().equals(table)
+    assert pa.RecordBatchReader.from_stream(StreamChunkedSerie.from_serie(record)).read_all().equals(table)
     ```
 
 === "JavaScript"
@@ -2317,7 +1971,7 @@ A batch and its reader retain the declared Map sortedness, nested field metadata
 
     ```rust
     use arrow_array::RecordBatchReader;
-    use yggdryl::{ArrowCastOptions, DataType, Scalar, Serie, SerieReader, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, Scalar, Serie, StreamChunkedSerie, StructType};
 
     let entries = DataType::from(StructType::from_fields([
         DataType::utf8().required_field("key"),
@@ -2334,7 +1988,7 @@ A batch and its reader retain the declared Map sortedness, nested field metadata
     let source = Serie::from_scalars(root, rows.sequence_rows().expect("rows").into_owned())?
         .into_arrow_batch()?;
     let held = Serie::from_arrow_batch(None, &source, ArrowCastOptions::new())?;
-    let mut reader = SerieReader::from_serie(held)?.into_arrow_reader();
+    let mut reader = StreamChunkedSerie::from_serie(held)?.into_arrow_reader();
     assert_eq!(reader.schema(), source.schema());
     let result = reader.next().expect("one batch")?;
     assert_eq!(result, source);
@@ -2353,7 +2007,7 @@ A batch and its reader retain the declared Map sortedness, nested field metadata
 
     ```python
     import pyarrow as pa
-    from yggdryl import SerieReader
+    from yggdryl import StreamChunkedSerie
 
     mapping = pa.map_(pa.string(), pa.string(), keys_sorted=True)
     nested = pa.struct([pa.field("lookup", mapping)])
@@ -2370,7 +2024,7 @@ A batch and its reader retain the declared Map sortedness, nested field metadata
         yield source
 
     incoming = pa.RecordBatchReader.from_batches(schema, batches())
-    reader = SerieReader.from_(incoming).into_arrow_reader()
+    reader = StreamChunkedSerie.from_(incoming).into_arrow_reader()
     assert reader.schema.equals(schema, check_metadata=True)
     assert pulled == []
     result = reader.read_next_batch()
@@ -2391,18 +2045,18 @@ A batch and its reader retain the declared Map sortedness, nested field metadata
 
 ## Writing a serie to a handle
 
-A handle reads its rows as a `SerieReader` and writes rows in any of the three shapes the crate holds them - a held `Serie`, a [`ChunkedSerie`](chunked-serie.md), a `SerieReader` - through one intake, `SerieSource`: `From` each shape, so a caller writes `handle.append_serie(serie.into(), None)` and names no variant. A held shape is written as the batches it already is - a record column one batch, each chunk one batch, any other column the one child of a `row` record - and a stream as itself; nothing is copied or re-landed by the crossing (`SerieSource::into_reader`). The same intake is a [stream join](#joins)'s other side.
+A handle reads its rows as a `StreamChunkedSerie` and writes rows in any of the three shapes the crate holds them - a held `Serie`, a [`ChunkedSerie`](chunked-serie.md), a `StreamChunkedSerie` - through one intake, `Serie`: `From` each shape, so a caller writes `handle.append_serie(serie.into(), None)` and names no variant. A held shape is written as the batches it already is - a record column one batch, each chunk one batch, any other column the one child of a `row` record - and a stream as itself; nothing is copied or re-landed by the crossing (`Serie::into_reader`). The same intake is a [stream join](#joins)'s other side.
 
 | Verb | Contract |
 | --- | --- |
-| `read_serie(options)` | the rows as a `SerieReader`, one record `Serie` per batch: a record encoding its batch stream, a container - a folder, a path ending in `/`, a glob, a table - the table its leaves hold, a structured text document the one record column its rows parse into |
+| `read_serie(options)` | the rows as a generic `Serie`, retaining the specialized media implementation: a record encoding its batch stream, a container - a folder, a path ending in `/`, a glob, a table - the table its leaves hold, a structured text document the one record column its rows parse into |
 | `write_serie(source, mode, options)` | the generic write: the source becomes the stream of its batches and reaches `write_arrow_reader` as its transport face, so every [mode](../holder/index.md#records) and every record option applies |
-| `overwrite_serie(source, options)`, `append_serie(source, options)`, `merge_serie(source, options)` | `write_serie` under `IOMode::Overwrite`, `Append` and `Merge`; a merge keys by the options' `merge_by` |
-| `SerieSource::root`, `is_held`, `memory_size`, `into_reader` | the record root the rows are read under (a record column's own, any other column the one child of a `row` record, a stream's own), whether they are held, the bytes a held source occupies (`None` for a stream), and the stream of their batches |
+| `overwrite_serie(source, options)`, `append_serie(source, options)`, `merge_serie(source, options)` | `write_serie` under `IOMode::Overwrite`, `Append` and `Merge`; a merge keys by the options' `merge_by`, else the destination's own ([an Iceberg table's](../media/iceberg.md#the-merge-key)) |
+| `Serie::field`, `memory_size`, `into_stream`, `into_chunked_stream` | the record root the rows are read under (a record column's own, any other column the one child of a `row` record, a stream's own), whether they are held, the bytes a held source occupies (`None` for a stream), and the stream of their batches |
 
 Absent options are the handle's own, `record_options()`: the encoding its media type names, a container's the table beneath it - for a read and a write alike. A structured text document (JSON, JSON Lines, YAML, TOML, XML) is one frame around every row it holds, so it takes `overwrite` alone and, of the options, only the declared `field`, which the rows are cast onto. A run, which names no column, and a record column holding an absent row, which no table states, are refused before the destination is touched. What a write holds between publications is held under the process [spill bound](#spilling-to-disk), its heaviest batches spilled first, so a stream of any length is written under that bound plus one encoded file.
 
-Python spells them `read_serie(*, options=None, **properties)`, `write_serie(value, mode="overwrite", *, options=None, **properties)` and `overwrite_serie`, `append_serie`, `merge_serie(value, *, options=None, **properties)`: `value` is a `Serie`, a `ChunkedSerie`, a `SerieReader` or anything [`SerieReader.from_`](#arrow-every-columnar-runtime-in) reads, written with the GIL released where the rows are native or cross the Arrow C stream - a `pyarrow.RecordBatchReader`, whose producer takes the GIL for itself - and held where a Python iterator feeds them. JavaScript spells them `readSerie(options?, properties?)`, `writeSerie(value, mode?, options?, properties?)` and `overwriteSerie`, `appendSerie`, `mergeSerie(value, options?, properties?)`: `value` is a `Serie`, a `ChunkedSerie`, a `SerieReader` - consumed - or anything `BatchReader.from` accepts. An HTTP response's [pages](../holder/index.md#pages) read the same way, `pages.read_serie(field)` in Python.
+Python spells them `read_serie(*, options=None, **properties)`, `write_serie(value, mode="overwrite", *, options=None, **properties)` and `overwrite_serie`, `append_serie`, `merge_serie(value, *, options=None, **properties)`: `value` is a `Serie`, a `ChunkedSerie`, a `StreamChunkedSerie` or anything [`StreamChunkedSerie.from_`](#arrow-every-columnar-runtime-in) reads, written with the GIL released where the rows are native or cross the Arrow C stream - a `pyarrow.RecordBatchReader`, whose producer takes the GIL for itself - and held where a Python iterator feeds them. JavaScript spells them `readSerie(options?, properties?)`, `writeSerie(value, mode?, options?, properties?)` and `overwriteSerie`, `appendSerie`, `mergeSerie(value, options?, properties?)`: `value` is a `Serie`, a `ChunkedSerie`, a `StreamChunkedSerie` - consumed - or anything `BatchReader.from` accepts. An HTTP response's [pages](../holder/index.md#pages) read the same way, `pages.chunked_stream(field)` in Python.
 
 === "Rust"
 
@@ -2410,7 +2064,7 @@ Python spells them `read_serie(*, options=None, **properties)`, `write_serie(val
     use yggdryl::holder::Buffer;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{
-        ChunkedSerie, DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Serie, SerieReader,
+        ChunkedSerie, DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Serie, StreamChunkedSerie,
         StructType, Url,
     };
 
@@ -2422,7 +2076,7 @@ Python spells them `read_serie(*, options=None, **properties)`, `write_serie(val
     let quote = |symbol: &str, size: i64| Scalar::from_sequence([Scalar::from(symbol), Scalar::from(size)]);
     let rows = Serie::from_scalars(root.clone(), [quote("AAPL", 100), quote("MSFT", 250)])?;
     let count = |handle: &Buffer| -> Result<usize, Box<dyn std::error::Error>> {
-        let batches = handle.read_serie(None)?.collect::<Result<Vec<Serie>, _>>()?;
+        let batches = handle.read_serie(None)?.into_chunked_stream(None, None)?.into_chunks().collect::<Result<Vec<Serie>, _>>()?;
         Ok(batches.iter().map(Serie::len).sum())
     };
 
@@ -2433,7 +2087,7 @@ Python spells them `read_serie(*, options=None, **properties)`, `write_serie(val
     assert_eq!(count(&handle)?, 4);
 
     // The generic write names its mode; a merge keys by the options' merge_by.
-    handle.write_serie(SerieReader::from_serie(rows.clone())?.into(), IOMode::Overwrite, None)?;
+    handle.write_serie(StreamChunkedSerie::from_serie(rows.clone())?.into(), IOMode::Overwrite, None)?;
     let merging = handle.record_options()?.with_merge_by(["symbol"])?;
     let update = Serie::from_scalars(root.clone(), [quote("AAPL", 300), quote("NVDA", 50)])?;
     handle.merge_serie(update.into(), Some(&merging))?;
@@ -2449,7 +2103,7 @@ Python spells them `read_serie(*, options=None, **properties)`, `write_serie(val
     let text = String::from_utf8(lines.read_all_bytes()?)?;
     assert!(text.contains(r#""symbol":"AAPL""#), "{text}");
     let declared = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(root);
-    let read = lines.read_serie(Some(&declared))?.collect::<Result<Vec<_>, _>>()?;
+    let read = lines.read_serie(Some(&declared))?.into_chunked_stream(None, None)?.into_chunks().collect::<Result<Vec<_>, _>>()?;
     assert_eq!(read, vec![rows.clone()]);
     assert!(lines.write_serie(rows.into(), IOMode::Append, None).is_err());
     ```
@@ -2461,7 +2115,7 @@ Python spells them `read_serie(*, options=None, **properties)`, `write_serie(val
     import tempfile
 
     import pyarrow as pa
-    from yggdryl import ChunkedSerie, IOBase, Serie, SerieReader
+    from yggdryl import ChunkedSerie, IOBase, Serie, StreamChunkedSerie
 
     folder = pathlib.Path(tempfile.mkdtemp())
     quotes = pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
@@ -2470,12 +2124,12 @@ Python spells them `read_serie(*, options=None, **properties)`, `write_serie(val
     handle = IOBase(folder / "quotes.arrows")
     handle.overwrite_serie(Serie.from_(quotes))
     handle.append_serie(ChunkedSerie.from_(quotes))
-    assert sum(len(records) for records in handle.read_serie()) == 4
+    assert sum(len(records) for records in handle.read_serie().into_chunked_stream()) == 4
 
     # The generic write is `overwrite` unless a mode is named; any columnar value crosses.
-    handle.write_serie(SerieReader.from_(quotes))
+    handle.write_serie(StreamChunkedSerie.from_(quotes))
     handle.merge_serie(pa.table({"symbol": ["AAPL", "NVDA"], "size": [300, 50]}), merge_by="symbol")
-    rows = sorted((row["symbol"], row["size"]) for records in handle.read_serie() for row in records.as_py())
+    rows = sorted((row["symbol"], row["size"]) for records in handle.read_serie().into_chunked_stream() for row in records.as_py())
     assert rows == [("AAPL", 300), ("MSFT", 250), ("NVDA", 50)]
 
     # A document is one frame, overwritten whole.
@@ -2483,7 +2137,7 @@ Python spells them `read_serie(*, options=None, **properties)`, `write_serie(val
     lines.overwrite_serie(quotes)
     assert b'"symbol":"AAPL"' in lines.read_bytes()
     read = lines.read_serie()
-    assert isinstance(read, SerieReader)
+    assert isinstance(read, Serie)
     assert len(Serie.from_(read)) == 2
     ```
 
@@ -2491,7 +2145,7 @@ Python spells them `read_serie(*, options=None, **properties)`, `write_serie(val
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { ChunkedSerie, Field, IOBase, MimeType, Serie, SerieReader, fields } = require('yggdryl')
+    const { ChunkedSerie, Field, IOBase, MimeType, Serie, StreamChunkedSerie, fields } = require('yggdryl')
 
     const root = fields.struct('row', [Field.from('symbol: utf8 not null'), Field.from('size: int64 not null')], {
       nullable: false,
@@ -2500,7 +2154,7 @@ Python spells them `read_serie(*, options=None, **properties)`, `write_serie(val
       { symbol: 'AAPL', size: 100n },
       { symbol: 'MSFT', size: 250n },
     ])
-    const read = (handle) => [...handle.readSerie()].flatMap((records) => records.asJs())
+    const read = (handle) => [...handle.readSerie().intoChunkedStream()].flatMap((records) => records.asJs())
 
     // Absent options are the handle's own: the encoding its media type names.
     const handle = IOBase.fromBytes()
@@ -2510,7 +2164,7 @@ Python spells them `read_serie(*, options=None, **properties)`, `write_serie(val
     assert.equal(read(handle).length, 4)
 
     // The generic write is `overwrite` unless a mode is named; a reader is consumed.
-    handle.writeSerie(SerieReader.fromSerie(rows))
+    handle.writeSerie(StreamChunkedSerie.fromSerie(rows))
     const update = Serie.fromScalars(root, [
       { symbol: 'AAPL', size: 300n },
       { symbol: 'NVDA', size: 50n },
@@ -2611,23 +2265,23 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
 - `set_cell` on a row whose record is absent at any level is refused: set the whole row.
 - An Arrow array laid out as the field's projection shares its buffers; any other layout is [cast](cast.md) by one plan under the options. Absent rows under a required field are refused by path, never repaired to the field's default, at every level, a record's children judged only where the record itself is present.
 - The door reads a row only where the datatype is narrower than its layout and the plan did not already read it under the field's rule, and then reads each row of that leaf exactly once; a column crossing back is never read. An extension label on a foreign column is not a proof, so its rows are read.
-- `cast` compiles one plan per call: a loop holds an [`ArrowCastPlan`](cast.md#compiled-plans) or a `SerieReader` instead. A column already under the target is itself, and a run is refused, because it lays out no buffers for a plan to read.
+- `cast` compiles one plan per call: a loop holds an [`ArrowCastPlan`](cast.md#compiled-plans) or a `StreamChunkedSerie` instead. A column already under the target is itself, and a run is refused, because it lays out no buffers for a plan to read.
 - A list, list-view or map array that was sliced crosses with its offsets rebased onto the items it reaches; a `serie_view` column's write compacts, so the written column's offsets are contiguous.
 - A dictionary write interns into its vocabulary and moves keys in place, so a vocabulary that outgrows its key width is refused by name before anything moves; a run-end write folds equal neighbours into one run, so a column built by writes alone never holds two equal runs side by side, while an Arrow array that does crosses in as it is; a dense union write other than an append is a rebuild, so write such a column in bulk.
 - `sort_indices` sorts the storage, not the value's spelling: a code by its text, an enum by its code, a dictionary by its values, a float in IEEE total order. A run sorts by the values' own order. Both are stable, so equal rows keep their order; a serie of more rows than one `uint32` index column addresses is refused by name.
 - `into_taken` refuses an index that is absent, not an integer, negative or past the end, naming the serie and the index: `index 0 is Null, which names no row of the 3 price holds`; `into_filtered` and `partition_by` refuse a mask or key serie of another length by name, and a mask row that is neither a boolean nor absent.
 - `as_sorted` and `as_reversed` rewrite a primitive column's buffer where it stands only while the column holds it alone; a clone shares it, so the first write copies it once and the two go their own way. `as_unique`, `as_taken` and `as_filtered` always replace the buffers by the kernel's one copy. A run sorts its shared slice in place when it is the only holder.
-- `partition_by_paths` is a record column's verb: a run or any other column is refused by name, as is an empty path list or a path reaching no column. The key of a group is the run of the reached cells in path order, so one path keys by a one-cell run.
-- `from_arrow_reader` drains: a column is one contiguous set of buffers, so the bound is the stream itself. Keep rows a stream with `SerieReader`, or [`IOMedia::read_arrow_reader`](../holder/index.md), when they should stay one, and hold them as one chunk per batch with [`ChunkedSerie::from_arrow_reader`](chunked-serie.md), which keeps the batches rather than joining them.
-- `from_arrow_batch`, `from_arrow_reader` and `SerieReader` take a bounded non-null Struct root, and refuse any other by name; with no root they read the input's schema as the record `row`, because Arrow names columns and never the record. `into_arrow_batch` and `into_arrow_reader` answer a record column's children, refusing one holding an absent row because a batch states no row validity; any other column is the one column of a `row` root, named as it is.
-- In Python every array, batch or stream from outside is validated to its buffers' invariants off the GIL before a row is read, so invalid offsets are a `ValueError` naming the slot and never a fault; a stream whose schema is no record is refused by `Serie.from_` and `SerieReader.from_`, naming `ChunkedSerie.from_(pyarrow.chunked_array(obj))`, and a requested schema a capsule consumer asks for is applied by `Serie.cast`'s default safe cast, so a value a nullable target cannot hold is null and one a required target cannot hold is refused by name.
+- `partition_by` takes the same selector, field-path or typed external-key input as `window_by`; each key is a scalar record under its explicit key field.
+- `from_arrow_reader` drains: a column is one contiguous set of buffers, so the bound is the stream itself. Keep rows a stream with `StreamChunkedSerie`, or [`IOMedia::read_arrow_reader`](../holder/index.md), when they should stay one, and hold them as one chunk per batch with [`ChunkedSerie::from_arrow_reader`](chunked-serie.md), which keeps the batches rather than joining them.
+- `from_arrow_batch`, `from_arrow_reader` and `StreamChunkedSerie` take a bounded non-null Struct root, and refuse any other by name; with no root they read the input's schema as the record `row`, because Arrow names columns and never the record. `into_arrow_batch` and `into_arrow_reader` answer a record column's children, refusing one holding an absent row because a batch states no row validity; any other column is the one column of a `row` root, named as it is.
+- In Python every array, batch or stream from outside is validated to its buffers' invariants off the GIL before a row is read, so invalid offsets are a `ValueError` naming the slot and never a fault; a stream whose schema is no record is refused by `Serie.from_` and `StreamChunkedSerie.from_`, naming `ChunkedSerie.from_(pyarrow.chunked_array(obj))`, and a requested schema a capsule consumer asks for is applied by `Serie.cast`'s default safe cast, so a value a nullable target cannot hold is null and one a required target cannot hold is refused by name.
 - `into_arrow_scalar` takes exactly one row and refuses any other count by name. `from_default` refuses a field with no default: a required `null` field has none.
 - Laying rows out past 1,000,000 expanded slots or 64 MiB of fixed bytes, summed across siblings -> `Error::PhysicalLimit` before anything is allocated; an allocator refusal or an overflowing `rows * width` -> `Error::Allocation`; a dense union's inactive branch past the budget is never visited. A field datatype deeper than the bound is a schema error before Arrow's recursive projection, never a stack exhaustion.
-- `SerieReader::from_serie` refuses a run, which names no layout, and a record column holding an absent row, which a batch cannot state; any other column is the one child of a `row` root. It reads nothing, casts nothing and compiles no plan.
-- `SerieReader::cast` takes the reader: a refused option or target leaves it usable, a cast one is consumed, and the old reader is refused after. Under the default `safe`, a value a nullable column cannot hold is null; a required column, or `safe = false`, refuses it - a held reader at the call and a stream at the pull, each naming the column and the value.
+- `StreamChunkedSerie::from_serie` refuses a run, which names no layout, and a record column holding an absent row, which a batch cannot state; any other column is the one child of a `row` root. It reads nothing, casts nothing and compiles no plan.
+- `StreamChunkedSerie::cast` takes the reader: a refused option or target leaves it usable, a cast one is consumed, and the old reader is refused after. Under the default `safe`, a value a nullable column cannot hold is null; a required column, or `safe = false`, refuses it - a held reader at the call and a stream at the pull, each naming the column and the value.
 - A structured text document is one frame around its rows, so `IOMedia::write_serie` takes only `IOMode::Overwrite` for one, naming the mode it refused, and reads only the declared `field` off the options. A run, or a record column holding an absent row, is refused before the destination is touched. A media type that names neither a record encoding this build implements nor a structured text format -> `Error::InvalidRecord` naming it.
 - `Serie::lit` refuses what `Field::scalar` refuses - a null under a required field, a value no reading of the field accepts, a sequence - naming the field, and reads what it can: a text field takes an integer as its text, a wider integer field a narrower integer. A refused write leaves a constant a constant; a write of another value lays it out first, after which it is an ordinary column.
-- Python: a `SerieReader` crosses once - after `into_arrow_reader`, or after `Serie.from_` or `SerieReader.from_` took it, it is refused with `ValueError`. A NumPy array of more than one dimension -> `TypeError`. `into_numpy` copies, because NumPy has no null mask and no nested layout: a null becomes `nan`, and a record row a mapping in an object array.
+- Python: a `StreamChunkedSerie` crosses once - after `into_arrow_reader`, or after `Serie.from_` or `StreamChunkedSerie.from_` took it, it is refused with `ValueError`. A NumPy array of more than one dimension -> `TypeError`. `into_numpy` copies, because NumPy has no null mask and no nested layout: a null becomes `nan`, and a record row a mapping in an object array.
 - JavaScript has no C Data consumer, so there is no `from_` ladder there and nothing crosses zero copy: every door is copied IPC.
 - A run is one shared slice: every write copies it, so building one `push` at a time is quadratic. `Scalar::from_sequence` and `Serie::new` build one from values in hand, in one allocation.
 - A column and a run of equal rows are equal and hash alike, and so are two columns of equal rows under different fields or widths: identity is the rows and nothing else, exactly as a `Scalar`'s is.

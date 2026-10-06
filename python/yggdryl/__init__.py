@@ -77,6 +77,8 @@ from ._native import (
     __version__,
     combined,
 )
+from .stream_serie import StreamSerie
+from .key_serie import KeySerie, KeySeries, StreamKeySerie
 from .expression import (
     Bound,
     Bounds,
@@ -84,7 +86,6 @@ from .expression import (
     Expression,
     Filter,
     Plan,
-    Records,
     Selector,
     Term,
 )
@@ -134,6 +135,11 @@ from .codes import (
     SedolField,
     ForexField,
     UnitField,
+    LeiField,
+    BicField,
+    ElfField,
+    DtiField,
+    FisnField,
     bbg,
     cfi,
     country,
@@ -146,6 +152,11 @@ from .codes import (
     sedol,
     forex,
     unit,
+    lei,
+    bic,
+    elf,
+    dti,
+    fisn,
 )
 from .decimal import (
     BigDecimalField,
@@ -220,6 +231,7 @@ from .marketdatakind import MarketDataKind, MarketDataKindField, marketdatakind
 from .marketdatatype import MarketDataType, MarketDataTypeField, marketdatatype
 from .side import Side, SideField, side
 from .timeinforce import TimeInForce, TimeInForceField, timeinforce
+from .pluginside import PluginSide, PluginSideField, pluginside
 from .serie import (
     ChunkedSerie,
     FixedSizeSerieField,
@@ -231,9 +243,7 @@ from .serie import (
     MapSerie,
     Serie,
     SerieField,
-    SerieReader,
-    SerieReaderPartitions,
-    SerieReaderWindows,
+    StreamChunkedSerie,
     SerieSerie,
     WindowSerie,
     SerieViewField,
@@ -295,6 +305,7 @@ from .url import UrlField, url
 from .version import Version, VersionField, version
 from .identifier import Identifier, Identifiers
 from .isin_registry import IsinRegistry
+from .eusipa import Eusipa
 
 __all__ = [
     "AVRO_MAX_SCHEMA_DEPTH",
@@ -302,6 +313,7 @@ __all__ = [
     "ArrowCastPlan",
     "Avro",
     "BbgField",
+    "BicField",
     "BooleanField",
     "Bound",
     "BoundSelector",
@@ -335,8 +347,12 @@ __all__ = [
     "DictionaryField",
     "Duration32Field",
     "Duration64Field",
+    "DtiField",
+    "ElfField",
+    "Eusipa",
     "Expression",
     "FigiField",
+    "FisnField",
     "ForexField",
     "Field",
     "FieldPath",
@@ -366,6 +382,7 @@ __all__ = [
     "IsinField",
     "JoinOptions",
     "LargeSerieField",
+    "LeiField",
     "LargeSerieSerie",
     "LargeSerieViewField",
     "LargeSerieViewSerie",
@@ -387,10 +404,11 @@ __all__ = [
     "Parameters",
     "Parquet",
     "Plan",
+    "PluginSide",
+    "PluginSideField",
     "ProtocolField",
     "PythonMetadata",
     "RecordOptions",
-    "Records",
     "RicField",
     "RunEndEncodedField",
     "Scalar",
@@ -404,9 +422,11 @@ __all__ = [
     "Selector",
     "Serie",
     "SerieField",
-    "SerieReader",
-    "SerieReaderPartitions",
-    "SerieReaderWindows",
+    "StreamChunkedSerie",
+    "StreamSerie",
+    "KeySerie",
+    "KeySeries",
+    "StreamKeySerie",
     "SerieSerie",
     "WindowSerie",
     "SerieViewField",
@@ -464,6 +484,7 @@ __all__ = [
     "binary",
     "binary_view",
     "bbg",
+    "bic",
     "boolean",
     "bytes",
     "cfi",
@@ -489,12 +510,15 @@ __all__ = [
     "dictionary",
     "duration32",
     "duration64",
+    "dti",
+    "elf",
     "enums",
     "excel",
     "expression",
     "extension",
     "field",
     "figi",
+    "fisn",
     "forex",
     "fix",
     "fixed_ascii",
@@ -533,6 +557,7 @@ __all__ = [
     "large_serie_view",
     "large_utf8",
     "large_utf8_view",
+    "lei",
     "map",
     "map_of",
     "media",
@@ -541,6 +566,7 @@ __all__ = [
     "mimetype",
     "nested",
     "null",
+    "pluginside",
     "ric",
     "run_end_encoded",
     "scalar",

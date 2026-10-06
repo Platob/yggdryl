@@ -1035,3 +1035,57 @@ mod declared {
         assert!(error.contains("assign_field_ids"), "{error}");
     }
 }
+
+/// Every Iceberg primitive is the identity's own result type, through the
+/// one door from the crate's vocabulary to the official one, and what that
+/// door refuses - `unknown`, `variant`, a negative scale - is named.
+#[test]
+fn every_iceberg_primitive_is_an_identity_source_and_unknown_and_variant_are_none() {
+    use yggdryl::iceberg::Transform;
+    use yggdryl::{TimeUnit, Timezone};
+    let sources = [
+        DataType::Boolean,
+        DataType::Int32,
+        DataType::Int64,
+        DataType::Float32,
+        DataType::Float64,
+        DataType::decimal128(10, 2).unwrap(),
+        DataType::Decimal,
+        DataType::Date32,
+        DataType::time64(TimeUnit::Microsecond).unwrap(),
+        DataType::datetime64(TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
+        DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap(),
+        DataType::datetime64(TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
+        DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+        DataType::utf8(),
+        DataType::Ccy,
+        DataType::Side,
+        DataType::Uuid,
+        DataType::fixed_binary(16).unwrap(),
+        DataType::Binary,
+    ];
+    for source in sources {
+        assert_eq!(
+            Transform::Identity.result_type(&source).unwrap(),
+            source,
+            "{source}"
+        );
+    }
+    assert_eq!(
+        Transform::Bucket(16)
+            .result_type(&DataType::decimal128(10, 2).unwrap())
+            .unwrap(),
+        DataType::Int32
+    );
+    for (source, named) in [
+        (DataType::Null, "unknown"),
+        (DataType::Variant, "variant"),
+        (DataType::decimal64(10, -2).unwrap(), "-2"),
+    ] {
+        let refused = Transform::Identity
+            .result_type(&source)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains(named), "{source}: {refused}");
+    }
+}

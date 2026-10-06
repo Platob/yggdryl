@@ -1114,8 +1114,8 @@ mod internal {
         apply_serie, apply_serie_window, bind_key, lying_cells,
     };
     use yggdryl::{
-        ArrowCastOptions, DataType, Error, Field, Scalar, Serie, SerieReader, StructType, TimeUnit,
-        Timezone,
+        ArrowCastOptions, DataType, Error, Field, Scalar, Serie, StreamChunkedSerie, StructType,
+        TimeUnit, Timezone,
     };
 
     const MINUTE_NS: i64 = 60_000_000_000;
@@ -1162,7 +1162,7 @@ mod internal {
         let selector: Selector = text.parse()?;
         bind_key(
             &selector,
-            &SerieReader::root_of(serie.field().unwrap())?,
+            &StreamChunkedSerie::root_of(serie.field().unwrap())?,
             serie.field().unwrap().name(),
             "window by",
         )
@@ -1181,7 +1181,7 @@ mod internal {
 
     #[test]
     fn a_key_naming_no_column_is_refused_under_the_path_and_the_verb() {
-        let root = SerieReader::root_of(&quote()).unwrap();
+        let root = StreamChunkedSerie::root_of(&quote()).unwrap();
         for selector in [
             Selector::new(Vec::new()),
             "*".parse().unwrap(),
@@ -1214,7 +1214,7 @@ mod internal {
 
     #[test]
     fn an_unnest_in_a_key_is_refused_before_the_key_binds() {
-        let root = SerieReader::root_of(&quote()).unwrap();
+        let root = StreamChunkedSerie::root_of(&quote()).unwrap();
         // `nope` names no column: the unnest is what refuses, before the
         // binder would have.
         let selector: Selector = "venue, unnest(nope)".parse().unwrap();
@@ -1229,7 +1229,7 @@ mod internal {
 
     #[test]
     fn a_key_the_root_cannot_bind_is_the_binders_own_refusal() {
-        let root = SerieReader::root_of(&quote()).unwrap();
+        let root = StreamChunkedSerie::root_of(&quote()).unwrap();
         let selector: Selector = "tier".parse().unwrap();
         let refused = bind_key(&selector, &root, "quote", "window by").unwrap_err();
         assert_eq!(
@@ -1433,7 +1433,7 @@ mod internal {
         }
         // A selector bound as no key carries no key plan, and says so.
         let bound = Selector::from_columns(["venue"])
-            .bind(&SerieReader::root_of(&quote()).unwrap())
+            .bind(&StreamChunkedSerie::root_of(&quote()).unwrap())
             .unwrap();
         assert!(lying_cells(&bound).is_none());
         assert!(apply_serie(&bound, &quotes).is_err());
@@ -1483,7 +1483,7 @@ mod internal {
 
     #[test]
     fn a_key_plan_is_bound_once_and_names_its_lying_cells() {
-        let root = SerieReader::root_of(&trade()).unwrap();
+        let root = StreamChunkedSerie::root_of(&trade()).unwrap();
         let cells = |text: &str| -> Vec<Option<Vec<usize>>> {
             let selector: Selector = text.parse().unwrap();
             lying_cells(&bind_key(&selector, &root, "trade", "window by").unwrap()).unwrap()

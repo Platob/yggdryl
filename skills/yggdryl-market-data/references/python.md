@@ -56,6 +56,21 @@ assert order.bidpx == order.price, "a buy's price is its bid"
 assert order.fxrates == {}, "nothing fills the rates"
 assert order.side is Side.BUYS and order.state is State.UNKNOWN
 assert order.marketdatakind is MarketDataKind.ORDR
+
+# Under the `bic` source a value is a BIC whatever its type, and under
+# `legalentityidentifier` an LEI: upper-cased, or refused on its key.
+desk = Identifier("bic:executingfirm", "deutdeff")
+assert (str(desk), desk.value) == ("bic:executingfirm=DEUTDEFF", "DEUTDEFF")
+try:
+    Identifier("bic:executingfirm", "T-1")
+except ValueError as refusal:
+    assert "bic:executingfirm" in str(refusal) and "is a BIC" in str(refusal)
+else:
+    raise AssertionError("a value under bic that is no BIC")
+assert Identifier("proprietary:executingfirm", "T-1").value == "T-1"  # any other source: the type's rule
+# A short name (FISN) is a security identifier; a legal form (ELF) neither a security's nor a party's.
+assert str(Identifier("FinancialInstrumentShortName", "Apple Inc/Sh")) == "fisn=APPLE INC/SH"
+assert str(Identifier("entitylegalform", "2hbr")) == "elf=2HBR"
 ```
 
 ## Build undated leaves, quotes and book entries
@@ -77,7 +92,8 @@ event = order.at(T)
 assert isinstance(event, graph.OrderEvent) and event.currunix == T
 assert event.into_element() == order
 
-# A two-sided quote: its bid and ask are its two legs, and it tags no side.
+# A two-sided quote: its bid and ask are its two legs, and tagging neither it
+# holds both sides, BOTH.
 quote = graph.QuoteEvent(
     T,
     crosscode="Q-7",
@@ -89,7 +105,7 @@ quote = graph.QuoteEvent(
     askqty=100,
     askccy="USD",
 )
-assert (quote.side, quote.crosscode) == (Side.UNKN, "14:0:Q-7")
+assert (quote.side, quote.crosscode) == (Side.BOTH, "14:0:Q-7")
 assert quote.askpx is not None and quote.askpx.as_py() == Decimal("189.52")
 assert quote.marketdatakind is MarketDataKind.QUOT
 
@@ -129,6 +145,13 @@ assert filled.prevpx is not None and filled.prevpx.as_py() == Decimal("189.50")
 # Never itself, never one that happened after it.
 assert placed.with_previous(filled) is None
 
+# An instrument fact travels along the chain: a follower naming no other
+# ISIN takes the option's strike it does not state.
+option = graph.OrderEvent(T, crosscode="O-1001", side="BUYS", strikepx=Decimal("190"))
+follower = graph.OrderEvent(T + 1_000_000_000, crosscode="O-1001", side="BUYS").with_previous(option)
+assert follower is not None and follower.strikepx is not None
+assert follower.strikepx.as_py() == Decimal("190")
+
 # One report recorded by two hops: recording clocks and sources are not content.
 LINE_1 = "018bcfe5-6800-7000-8000-000000000001"
 LINE_2 = "018bcfe5-6800-7000-8000-000000000002"
@@ -156,7 +179,7 @@ from yggdryl import Side, State, graph
 T = 1_700_000_000_000_000_000
 SECOND = 1_000_000_000
 
-def event(second: int, order: str, state: str, side: str = "UNKN") -> graph.OrderEvent:
+def event(second: int, order: str, state: str, side: str = "UKNW") -> graph.OrderEvent:
     return graph.OrderEvent(T + second * SECOND, crosscode=order, state=state, side=side)
 
 def walk(items: list[graph.OrderEvent], sorted: bool = True) -> list[graph.OrderEvent]:
@@ -268,10 +291,10 @@ from yggdryl import MarketDataKind, graph
 order = graph.OrderEvent(1_700_000_000_000_000_000, crosscode="O-1001")
 values = [graph.Order(), order, graph.BookEvent(1_700_000_001_000_000_000, "AAPL")]
 
-# 62 columns: 6 element, 9 event, 34 market (marketdatakind first), 5 operation,
+# 63 columns: 6 element, 9 event, 35 market (marketdatakind first), 5 operation,
 # the book controls bookscope, bookaction and bookposition, 5 nested.
 field = graph.MarketData.field()
-assert len(list(field)) == 62
+assert len(list(field)) == 63
 assert [child.name for child in field][15] == "marketdatakind"
 reader = graph.MarketData.arrow_reader(values, batch_row_size=1_000)
 assert isinstance(reader, pa.RecordBatchReader)
@@ -378,11 +401,14 @@ assert len(list(graph.BookIterator(list(reversed(stream))))) == 1
 ## Read a book
 
 A complete book answers each side as its `limits` (one per price, best
-first, the unpriced market level last) and its entries as `alive_on(side)`;
-every book answers the readings of the first level that can trade:
-`best_price`, `best_quantity`, the `bidpx`/`askpx` it states, `spread`; a
-complete one `depth` and `imbalance` too. A book built by hand is complete. A
-side is a `Side` member, its code or any spelling `Side` reads.
+first, the unpriced market level last) and its entries as `alive_on(side)`,
+the orders resting as `ordlive`; every book answers the readings of the first
+level that can trade: `best_price`, `best_quantity`, the `bidpx`/`askpx` it
+states, `spread`; a complete one `depth` and `imbalance` too. Its deltas read
+by kind as `orddelta`, `quotes`, `executions` and `events` - every delta that
+is none of the three, empty because a book records nothing else - which
+partition them. A book built by hand is complete. A side is a `Side` member,
+its code or any spelling `Side` reads.
 
 ```python
 from decimal import Decimal
@@ -432,6 +458,12 @@ assert book.is_complete
 assert (len(book.alive), len(book.alive_on(Side.BUYS)), len(book.alive_on("SELL"))) == (5, 4, 1)
 # The deltas are the five orders, in the order applied.
 assert [delta.crosscode for delta in book.deltas] == ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:2:A-1", "10:1:MKT"]
+# By kind: the orders resting in book order - the bids best first and the
+# market order last, then the offer - and every delta an order.
+assert [order.crosscode for order in book.ordlive] == ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:1:MKT", "10:2:A-1"]
+assert (len(book.orddelta), len(book.quotes), len(book.executions)) == (len(book.deltas), 0, 0)
+# The four kinds partition the deltas; a book records no other kind.
+assert book.events == []
 ```
 
 ## Replace a scope with a snapshot
@@ -505,7 +537,8 @@ assert chain.column("crosscode").to_pylist() == ["10:1:O-1001"]
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `book_arrow_reader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries, a trade entry (`269=2`) recorded as the
+execution it is - and
 `MarketData.from_arrow_reader` reads the books back. A `W` full refresh is a
 snapshot input, so its book is complete; the `X` after it states its delta.
 
@@ -611,12 +644,12 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
   instants with integer arithmetic, never `datetime.timestamp() * 1e9` (a float
   loses the last digits).
 - `crosscode` answers the stored code `{kind}:{side}:{base}`: `"10:1:O-1001"`
-  for a buy order (kind 10, side 1), `"10:0:O-1001"` for `Side.UNKN`, and a
+  for a buy order (kind 10, side 1), `"10:0:O-1001"` for `Side.UKNW`, and a
   quote, a trade, a book or a snapshot control carries side `0` whatever side
   it states. The lifecycle view's `crosscode=` names the stored one.
 - `side`, `state` and `marketdatakind` are `IntEnum` members: compare with
   `is Side.BUYS`, never `== "BUYS"`; a column stores `int(member)`. A side is
-  never `None` - `Side.UNKN` is unstated.
+  never `None` - `Side.UKNW` is unstated.
 - `graph.BookIterator(items, snapshot_millis=0, filter=None)` - `filter` a
   `Filter`, a `Term`, an `Expression` or a predicate's text over the
   `marketdata` row, refused where it names a column the row does not carry;
@@ -635,8 +668,9 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
 - Every verb answers a new value: `book.with_operations([...])` does not change
   `book`; only `with_previous` / `merge_with` answer `None` when nothing moved.
 - A book refuses an undated `Order`: `BookIterator` at `$.operation.kind`,
-  `with_operations` at `$.operations[i].kind`; an execution or a trade is
-  pruned, no error and no book. What `BookIterator` finds wrong in the data -
+  `with_operations` at `$.operations[i].kind`; an execution is recorded among
+  the book's deltas, resting on no side, and a trade is pruned, no error and
+  no book. What `BookIterator` finds wrong in the data -
   an operation dated before its book - it leaves out, and an order or a quote
   stating neither side it places nowhere (still the book's delta), each with a
   `logging` warning under `yggdryl.graph.book`, and no error.

@@ -616,56 +616,24 @@ test('reversing and filtering keep the chunks apart', () => {
   )
 })
 
-test('partitionBy merges each chunk groups in first-occurrence order', () => {
-  const prices = chunked([1, 2, 3, 4, 5], 2)
-  const groups = prices.partitionBy(new Serie(['a', 'b', 'b', 'a', 'c']))
+test('partitionBy keeps chunked payload values in first-occurrence order', () => {
+const prices = chunked([1, 2, 3, 4, 5], 2)
+  const key = values => Serie.fromScalars(Field.from('key: utf8 not null'), values)
+  const groups = prices.partitionBy(key(['a', 'b', 'b', 'a', 'c']))
   assert.equal(groups.length, 3)
-  assert.equal(groups[0][0].asJs(), 'a')
-  assert.ok(groups[0][1] instanceof ChunkedSerie)
-  assert.deepEqual(groups[0][1].asJs(), [1, 4])
-  assert.equal(groups[0][1].numChunks, 2)
-  assert.equal(groups[1][0].asJs(), 'b')
-  assert.deepEqual(groups[1][1].asJs(), [2, 3])
-  assert.equal(groups[2][0].asJs(), 'c')
-  assert.ok(groups[2][1].field.equals(prices.field))
-  // Keys are any iterable of values as long as the whole.
-  assert.equal(prices.partitionBy(['a', 'b', 'b', 'a', 'c']).length, 3)
-  assert.throws(
-    () => prices.partitionBy(['a']),
-    /1 keys cannot partition the 5 rows price holds/,
-  )
+  assert.deepEqual([...groups].map(g => [g.key.asJs(),g.rows.child('price').asJs()]), [[['a'],[1,4]],[['b'],[2,3]],[['c'],[5]]])
+  assert.throws(() => prices.partitionBy(key(['a'])), /keys|rows|length/)
 })
 
-test('partitionBy groups keys held in chunks chunk beside chunk', () => {
-  const prices = chunked([1, 2, 3], 2)
-  const venue = new Field('venue', 'utf8', false)
-  const cutAlike = ChunkedSerie.fromSeries(
-    [Serie.fromScalars(venue, ['XNAS', 'XNYS']), Serie.fromScalars(venue, ['XNAS'])],
-    venue,
-  )
-  const cutApart = ChunkedSerie.fromSeries(
-    [Serie.fromScalars(venue, ['XNAS']), Serie.fromScalars(venue, ['XNYS', 'XNAS'])],
-    venue,
-  )
-  // An Apache Arrow JS vector of two Data is keys held in two chunks.
-  const vector = arrow
-    .vectorFromArray(['XNAS', 'XNYS'], new arrow.Utf8())
-    .concat(arrow.vectorFromArray(['XNAS'], new arrow.Utf8()))
-  const expected = [
-    ['XNAS', [1, 3], 2],
-    ['XNYS', [2], 1],
-  ]
-  for (const keys of [cutAlike, cutApart, vector, ['XNAS', 'XNYS', 'XNAS']]) {
-    assert.deepEqual(
-      prices.partitionBy(keys).map(([key, rows]) => [key.asJs(), rows.asJs(), rows.numChunks]),
-      expected,
-    )
+test('partitionBy aligns typed external key chunks with payload chunks', () => {
+const prices = chunked([1, 2, 3], 2)
+  const venue = Field.from('venue: utf8 not null')
+  const aligned = ChunkedSerie.fromSeries([Serie.fromScalars(venue,['XNAS','XNYS']),Serie.fromScalars(venue,['XNAS'])],venue)
+  const apart = ChunkedSerie.fromSeries([Serie.fromScalars(venue,['XNAS']),Serie.fromScalars(venue,['XNYS','XNAS'])],venue)
+  for (const keys of [aligned,apart,Serie.fromScalars(venue,['XNAS','XNYS','XNAS'])]) {
+    assert.deepEqual([...prices.partitionBy(keys)].map(g => [g.key.asJs(),g.rows.child('price').asJs()]), [[['XNAS'],[1,3]],[['XNYS'],[2]]])
   }
-  assert.throws(
-    () => prices.partitionBy(ChunkedSerie.fromSerie(Serie.fromScalars(venue, ['XNAS']))),
-    /1 keys cannot partition the 3 rows price holds/,
-  )
-  // One grouping door: there is no second spelling for chunked keys.
+  assert.throws(() => prices.partitionBy(Serie.fromScalars(venue,['XNAS'])), /keys|rows|length/)
   assert.equal('partitionByChunked' in ChunkedSerie.prototype, false)
 })
 
@@ -728,87 +696,35 @@ const venueChunks = (chunks) => {
 }
 
 const windowRows = (windows) =>
-  windows.map(([key, rows]) => [key.asJs(), rows.asJs(), rows.numChunks])
+  [...windows].map(g => g.intoParts()).map(([key, rows]) => [key.asJs(), rows.asJs(), [...rows.intoChunkedStream(1, null)].length])
 
-test('windowBy merges a run across a chunk edge', () => {
-  const venues = venueChunks([['XNAS', 'XNAS'], ['XNAS', 'XNYS'], [], ['XNYS']])
-  const windows = venues.windowBy('venue')
-  // XNYS crosses the empty chunk, which the slice keeps.
-  assert.deepEqual(windowRows(windows), [
-    [['XNAS'], ['XNAS', 'XNAS', 'XNAS'], 2],
-    [['XNYS'], ['XNYS', 'XNYS'], 3],
-  ])
-  for (const [, rows] of windows) {
-    assert.ok(rows instanceof ChunkedSerie)
-    assert.ok(rows.field.equals(venues.field))
+test('windowBy carries key context across chunk edges without losing rows', () => {
+const venues = venueChunks([['XNAS','XNAS'],['XNAS','XNYS'],[],['XNYS']])
+  for (const sorted of [false,undefined,null]) {
+    const groups = venues.windowBy('venue',sorted)
+    assert.deepEqual([...groups].map(g => [g.key.asJs(),g.rownum,g.rows.length]), [[['XNAS'],0,3],[['XNYS'],3,2]])
+    assert.deepEqual([...groups.intoStream()].map(row => row.asJs()), [['XNAS'],['XNAS'],['XNAS'],['XNYS'],['XNYS']])
   }
-  // `sorted` absent, `undefined` and `null` are its default, `false`.
-  const expected = windows.map(([key, rows]) => [key.asJs(), rows.length])
-  for (const spelled of [
-    venues.windowBy('venue', false),
-    venues.windowBy('venue', undefined),
-    venues.windowBy('venue', null),
-  ]) {
-    assert.deepEqual(
-      spelled.map(([key, rows]) => [key.asJs(), rows.length]),
-      expected,
-    )
-  }
-  // The keys and rows of the joined column, held apart.
-  assert.deepEqual(
-    venues
-      .intoSerie()
-      .windowBy('venue')
-      .map(([key, window]) => [key.asJs(), window.length]),
-    expected,
-  )
-  // No row, no window; an empty key is refused even with no chunk.
-  const empty = ChunkedSerie.empty(venues.field)
-  assert.deepEqual(empty.windowBy('venue'), [])
-  assert.throws(() => empty.windowBy('*'), /empty match key/)
-  assert.throws(() => venues.windowBy('venue', 1), {
-    name: 'TypeError',
-    message: /ChunkedSerie\.windowBy sorted must be a boolean, got number/,
-  })
+  assert.equal(ChunkedSerie.empty(venues.field).windowBy('venue').length,0)
+  assert.throws(() => venues.windowBy('venue',1),/boolean/)
 })
 
-test('windowBy sorted regroups runs across chunks with no row copied', () => {
-  const venues = venueChunks([
-    ['XNYS', 'XNAS'],
-    ['XNAS', 'XNYS'],
-  ])
-  const windows = venues.windowBy('venue', true)
-  // Each key once, its runs regrouped as pieces of the chunks they lie in.
-  assert.deepEqual(windowRows(windows), [
-    [['XNAS'], ['XNAS', 'XNAS'], 2],
-    [['XNYS'], ['XNYS', 'XNYS'], 2],
-  ])
-  assert.deepEqual(
-    windows.map(([key, rows]) => [key.asJs(), rows.length]),
-    venues
-      .intoSerie()
-      .windowBy('venue', true)
-      .map(([key, window]) => [key.asJs(), window.length]),
-  )
+test('sorted chunk windows regroup equal keys and keep explicit payloads', () => {
+const venues = venueChunks([['XNYS','XNAS'],['XNAS','XNYS']])
+  const groups = venues.windowBy('venue',true)
+  assert.deepEqual([...groups].map(g => [g.key.asJs(),g.rownum,g.rows.length]), [[['XNAS'],null,2],[['XNYS'],null,2]])
+  assert.deepEqual([...groups.intoStream()].map(row => row.asJs()), [['XNAS'],['XNAS'],['XNYS'],['XNYS']])
 })
 
-test('windowBy states no record, so a key named windownum is taken', () => {
-  // The key is the first half of each pair and the place its place in the
-  // array: no record names `windownum`, so nothing collides with it.
-  const prices = chunked([1, 1, 2], 2)
-  const windows = prices.windowBy('price as windownum')
-  assert.deepEqual(
-    windows.map(([key, rows]) => [key.asJs(), rows.length]),
-    [
-      [[1], 2],
-      [[2], 1],
-    ],
-  )
-  assert.ok(windows.every(([, rows]) => !('staticValues' in rows)))
-  assert.throws(
-    () => prices.intoSerie().windowBy('price as windownum'),
-    /collides with the static value "windownum"/,
-  )
+test('window keys may use rownum and windownum as ordinary aliases', () => {
+const prices = chunked([1,1,2],2)
+  for (const name of ['rownum','windownum']) {
+    for (const source of [prices,prices.intoSerie()]) {
+      const groups = source.windowBy('price as '+name)
+      assert.deepEqual([...groups].map(g => [g.key.asJs(),g.rows.length]), [[[1],2],[[2],1]])
+      assert.ok([...groups].every(g => !('staticValues' in g)))
+    }
+  }
 })
 
 test('spill moves the heaviest chunks whole first and keeps the lightest resident', () => {

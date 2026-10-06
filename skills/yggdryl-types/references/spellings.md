@@ -138,9 +138,9 @@ The same number rule holds: `large_binary(16)` is refused.
 
 | Canonical | Also parsed as | Note |
 | --- | --- | --- |
-| `ccy`, `country`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `figi`, `ric`, `forex`, `unit` | FIX `Ccy`, `Country`, `Exchange` (= `mic`) | twelve registered codes, kind `code`; widths 8, 2, 4, 6, 12, 9, 7, 32, 12, 32, 7, 32 - a `ccy` is ISO 4217's three letters or a digital-asset ticker |
+| `ccy`, `country`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `figi`, `ric`, `forex`, `unit`, `lei`, `bic`, `elf`, `dti`, `fisn` | FIX `Ccy`, `Country`, `Exchange` (= `mic`) | seventeen registered codes, kind `code`; widths 8, 2, 4, 6, 12, 9, 7, 32, 12, 32, 7, 32, 20, 11, 4, 9, 35 - a `ccy` is ISO 4217's three letters or a digital-asset ticker |
 | `forex` | - | the currency pair `CCY/CCY` under `yggdryl.forex`; a value reads `EURUSD`, `EUR-USD`, `EUR.USD`, `EUR_USD` in any case, never a pair of one currency, `XXX` or `XTS` |
-| `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` | - | kind `enum`: each stored as the code of its member - `uint8` for `side`, `marketdatakind`, `timeinforce`, `uint16` for `state`, `marketdatatype` - under `yggdryl.<name>`; a value reads the member's name, its integer code and the vocabulary's other spellings (`side`: FIX's wire code `1`; `marketdatakind`: the MsgCat word `order`) |
+| `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`, `pluginside` | - | kind `enum`: each stored as the code of its member - `uint8` for `side`, `marketdatakind`, `timeinforce`, `pluginside`, `uint16` for `state`, `marketdatatype` - under `yggdryl.<name>`; a value reads the member's name, its integer code and the vocabulary's other spellings (`side`: FIX's wire code `1`; `marketdatakind`: the MsgCat word `order`; `pluginside`: the role's own name, `SellSide`) |
 | `uuid` | - | 16 bytes under `arrow.uuid` |
 | `version` | - | a sixteen-bit `major` and `minor` then an optional text patch (`5.0SP2` is `5.0.2`, `1.0-rc1` keeps `-rc1`), naturally ordered |
 | `mimetype` | `mime` | one `type/subtype` |
@@ -176,7 +176,7 @@ serialized tag say `serie`. A serie item written without a field is named
 
 | Name | Resolves to |
 | --- | --- |
-| `Ccy`, `Country`, `Exchange`/`mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `ric`, `figi` | the code of that name |
+| `Ccy`, `Country`, `Exchange`/`mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `ric`, `figi`, `lei`, `bic`, `elf`, `dti`, `fisn` | the code of that name |
 | `Language` | `fixed_ascii(2)` |
 | `MonthYear`, `Tenor` | `fixed_ascii(8)` |
 | `Length`, `TagNum`, `NumInGroup`, `Reserved100Plus`, `Reserved1000Plus`, `Reserved4000Plus` | `int32` |
@@ -197,12 +197,19 @@ every keyword: `utc_date_only` is `UTCDateOnly`.
 
 `into_scheme_compat(target)` / `intoSchemeCompat(target)` applies only the
 layout rewrites a target needs, and refuses one that would reinterpret values.
+A field stating `FIELD:representation=bits` is exchanged as the signed integer of
+its width where the target names that width and no unsigned one - Spark every
+width, Iceberg `uint32` and `uint64` - and keeps the declaration, so the cast onto
+the rewritten field carries the bits; a bare datatype states nothing and widens.
 
 | Target | Rewrite |
 | --- | --- |
 | `arrow` | validated clone |
-| `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, `fixed_size_serie` -> `serie`; `datetime64(ns)` refused |
+| `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, `fixed_size_serie` -> `serie`; `datetime64(ns)` refused; a column stating `FIELD:representation=bits`: `uintN` -> `intN` |
 | `polars`, `pandas` | no map (refused naming the key/value struct); Polars keeps unsigned and `fixed_size_serie` |
-| `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; no duration or interval |
+| `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; no duration or interval; a column stating `FIELD:representation=bits`: `uint32` -> `int32`, `uint64` -> `int64` |
 
 Anything else (`duckdb`, ...) is refused, listing the accepted targets.
+A column stating `bits` keeps the declaration, so the cast onto it shares the
+buffer and a reader casting back to `uint64` takes the bits again; a bare
+`DataType` states nothing and always widens.

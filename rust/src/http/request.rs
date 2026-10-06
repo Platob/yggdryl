@@ -1751,10 +1751,7 @@ impl crate::IOMedia for Request {
     ///
     /// The first page is read once to decide and handed to the walk when it
     /// paginates, so a paginated read costs one `GET` per page and no more.
-    fn read_arrow_reader(
-        &self,
-        options: &crate::media::RecordOptions,
-    ) -> Result<crate::arrow::BatchReader> {
+    fn read_serie(&self, options: Option<&crate::media::RecordOptions>) -> Result<crate::Serie> {
         use crate::media::IORecordOptions;
 
         match self.first_page()? {
@@ -1762,59 +1759,33 @@ impl crate::IOMedia for Request {
                 paginates: true,
                 response,
             }) => {
+                // A paginated document supplies its own row encoding; absent
+                // options select the native page transport, not a JSON codec.
+                let options = options
+                    .cloned()
+                    .unwrap_or_else(|| crate::media::RecordOptions::Ipc(Default::default()));
                 let reader = self.pages_from(response)?.into_arrow_reader(
                     options.field().as_ref(),
                     options
                         .batch_row_size()
                         .unwrap_or(crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE),
                 )?;
-                options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)
+                crate::iomedia::landed(
+                    options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)?,
+                )
+                .map(crate::Serie::from)
             }
-            Some(first) => crate::IOMedia::read_arrow_reader(&first.held()?, options),
-            None => {
-                let reader = crate::iobase::leaf_reader(self, options)?;
-                options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)
-            }
-        }
-    }
-
-    /// The rows of the resource as a [`SerieReader`](crate::SerieReader): a
-    /// structured document whose first page paginates streams one record
-    /// column per page; one of a single page is the record column its rows
-    /// parse into, read off the page already fetched; every other resource
-    /// answers what [`crate::IOMedia::read_arrow_reader`] produces.
-    fn read_serie(
-        &self,
-        options: Option<&crate::media::RecordOptions>,
-    ) -> Result<crate::SerieReader> {
-        use crate::media::IORecordOptions;
-
-        let field = options.and_then(IORecordOptions::field);
-        match self.first_page()? {
-            Some(FirstPage {
-                paginates: true,
-                response,
-            }) => self.pages_from(response)?.into_serie_reader(field.as_ref()),
-            Some(first) => {
-                let records = crate::media::structured::read_arrow(&first.held()?, field.as_ref())?;
-                Ok(crate::SerieReader::from_serie(records)?)
-            }
+            Some(first) => crate::IOMedia::read_serie(&first.held()?, options),
             None if crate::text::Format::from_media_type(self.media_type()).is_ok() => {
-                let records = crate::media::structured::read_arrow(self, field.as_ref())?;
-                Ok(crate::SerieReader::from_serie(records)?)
+                crate::iomedia::read_document(self, options)
             }
             None => {
-                let reader = match options {
-                    Some(options) => self.read_arrow_reader(options)?,
-                    None => self.read_arrow_reader(
-                        &crate::media::RecordOptions::for_media_type(self.media_type())?,
-                    )?,
-                };
-                Ok(crate::SerieReader::from_arrow_reader(
-                    None,
-                    reader,
-                    crate::ArrowCastOptions::default(),
-                )?)
+                let options = crate::iomedia::own_options(self, options)?;
+                let reader = crate::iobase::leaf_reader(self, &options)?;
+                crate::iomedia::landed(
+                    options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)?,
+                )
+                .map(crate::Serie::from)
             }
         }
     }
@@ -2016,3 +1987,5 @@ fn poisoned() -> Error {
         "the HTTP request's state lock was poisoned by a panicking writer",
     ))
 }
+
+crate::media_serie::media_serie!(HttpSerie, Http, as_http, get_http_mut);

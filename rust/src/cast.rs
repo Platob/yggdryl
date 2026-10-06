@@ -4,7 +4,7 @@
 //! its nullability. [`ArrowCastPlan`] is the schema-dependent half, compiled
 //! once from a source field to a target field and applied to every column of
 //! that layout; [`Serie::cast`](crate::Serie::cast), the `Serie` Arrow doors
-//! and [`SerieReader`](crate::SerieReader) are the ways in. The field is
+//! and [`StreamChunkedSerie`](crate::StreamChunkedSerie) are the ways in. The field is
 //! always the *target*: an incoming layout is reconciled to it, never the
 //! other way around, and a typed read is a narrowing of the column that
 //! comes out.
@@ -62,9 +62,9 @@ use crate::temporal::casts::{
 use crate::uuid::casts::ingest_uuid_array;
 use crate::version::casts::{ingest_version_array, is_text_layout};
 use crate::{
-    BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, FOREX_WIDTH,
-    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, UNIT_WIDTH, code_refusal,
-    recognized_arrow_extension,
+    BBG_WIDTH, BIC_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, DTI_WIDTH, ELF_WIDTH,
+    FIGI_WIDTH, FISN_WIDTH, FOREX_WIDTH, ISIN_WIDTH, LEI_WIDTH, MIC_WIDTH, RIC_WIDTH,
+    RecognizedExtension, SEDOL_WIDTH, UNIT_WIDTH, code_refusal, recognized_arrow_extension,
 };
 use crate::{BytesType, DataType, Field, Scalar};
 
@@ -79,9 +79,8 @@ mod kernel {
 
     use crate::arrow::{Error, Result};
     use crate::budget::{
-        MaterializationBudget, SourceSelection, reserve_cast_output_payload,
-        reserve_new_dictionary_vocabularies, reserve_selected_source_take,
-        reserve_source_selection, reserve_vec_bytes,
+        MaterializationBudget, reserve_new_dictionary_vocabularies, reserve_selected_source_take,
+        reserve_vec_bytes,
     };
     use crate::cast::columns::{align_nested_dictionaries, contains_dictionary, default_array};
     use crate::{DataType, Field};
@@ -102,20 +101,17 @@ mod kernel {
         target: &Field,
         budget: &mut MaterializationBudget,
     ) -> Result<ArrayRef> {
+        // A kernel's output is one slot per row of the array it was given,
+        // which the caller already holds and sized: nothing the batch did
+        // not already bound, so nothing the budget charges - as the row
+        // landing charges no visible row. What the budget bounds is what a
+        // cast builds beyond its input: the slots a null hides, a column the
+        // source lacks, a vocabulary built fresh, and a masked kernel's
+        // scratch, each in its own phase.
         let Some(exposure) = exposure else {
             if array.data_type() == expected {
                 return Ok(Arc::clone(array));
             }
-            budget.add_array(target.dtype(), array.len())?;
-            let source_type = DataType::from_arrow_datatype(array.data_type())?;
-            let full = [(0, array.len())];
-            reserve_cast_output_payload(
-                array.as_ref(),
-                &source_type,
-                target.dtype(),
-                SourceSelection::Ranges(&full),
-                budget,
-            )?;
             return arrow_cast(array, expected, safe);
         };
         let selected_count = exposure.count_set_bits();
@@ -209,16 +205,11 @@ mod kernel {
         })()?;
 
         // Compact sources, index arrays, scatter output, and placeholders are
-        // phase-local. Retain only the returned target array before sibling
-        // columns continue against the shared operation budget.
+        // phase-local, and the returned target array is one slot per row of
+        // the input: the phase ends with all of it, and only a vocabulary
+        // built fresh stays charged before sibling columns continue against
+        // the shared operation budget.
         budget.restore(phase);
-        let full = [(0, output.len())];
-        reserve_source_selection(
-            output.as_ref(),
-            target.dtype(),
-            SourceSelection::Ranges(&full),
-            budget,
-        )?;
         if contains_dictionary(target.dtype()) {
             reserve_new_dictionary_vocabularies(&output, array, target.dtype(), budget)?;
         }
@@ -264,7 +255,11 @@ mod options {
         ///
         /// It is a preference, not a mode: a pair that is not laid out that way
         /// takes the ordinary conversion, so asking for bits never silently
-        /// reinterprets something that is not the same bytes.
+        /// reinterprets something that is not the same bytes. A column states
+        /// the same reading for itself with `FIELD:representation=bits`
+        /// ([`FieldPropertiesField::representation`](crate::protocol::FieldPropertiesField::representation)),
+        /// which one node joining two integers of a width takes whatever the
+        /// whole cast asks.
         Bits,
     }
 
@@ -1722,9 +1717,9 @@ impl ArrayCastPlan {
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Code(source)) if source == field.dtype()
             ),
-            // An enum column written as its own leaf holds member codes; bare
-            // integers, and another leaf's codes, are codes nothing has
-            // checked under this leaf yet.
+            // An enum column written as its own leaf holds member codes;
+            // bare integers are codes nothing has checked under this leaf
+            // yet, and another leaf's codes were refused above.
             held if held.is_enum() => !matches!(
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Enum(source)) if source == field.dtype()
@@ -1760,7 +1755,9 @@ impl ArrayCastPlan {
         // that forces a validating target onto its own path excludes it here
         // too - a bounded string or a code is a rule about values, and sharing
         // a buffer past it would store bytes the datatype promises are not there.
-        } else if options.representation().is_bits()
+        // A column asks for them itself where it states its integers are bits.
+        } else if (options.representation().is_bits()
+            || states_bits(field, source_type, source_metadata, &expected))
             && !ingest_validated
             && same_bit_layout(source_type, &expected)
         {
@@ -2652,6 +2649,13 @@ impl ArrayCastPlan {
                     exposure,
                     budget,
                 )?,
+                DataType::PluginSide => ingest_enum_array::<crate::PluginSide>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
                 other => return Err(enum_refusal(other.id()).into()),
             },
             ArrayCastKind::UuidIngest => ingest_uuid_array(
@@ -2770,6 +2774,41 @@ impl ArrayCastPlan {
                     budget,
                 )?,
                 DataType::Forex => ingest_code_array::<FOREX_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Lei => ingest_code_array::<LEI_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Bic => ingest_code_array::<BIC_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Elf => ingest_code_array::<ELF_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Dti => ingest_code_array::<DTI_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Fisn => ingest_code_array::<FISN_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
@@ -3056,7 +3095,12 @@ impl ArrayCastPlan {
 /// (bytes stay bytes, text renders as WKT), passes through to the planned
 /// arms. A string or code source is validated text and crosses to every
 /// target: another string re-reads it, text takes its characters, bytes
-/// keep what was stored. A bounded byte source crosses the same way.
+/// keep what was stored. A bounded byte source crosses the same way. An
+/// enum source is member codes of its own leaf: its own leaf, an integer
+/// and text take them, and another enum leaf refuses them by name, as the
+/// value door refuses a member of another leaf - `Side` and `PluginSide`
+/// both store `BUYS` as `1` and `SELL` as `2`, and a code that reads alike
+/// under two vocabularies is still a value of one of them.
 fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) -> Result<()> {
     let Some(source) = source else {
         return Ok(());
@@ -3073,8 +3117,19 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         // A UUID source is sixteen bytes: a UUID target re-validates them,
         // text renders them, and bytes keep them.
         (_, RecognizedExtension::Uuid) => Ok(()),
-        // An enum source is member codes: an enum target re-reads them, an
+        // An enum source is member codes: its own leaf re-reads them, an
         // integer reads the codes, and text spells each member's name.
+        // Another enum leaf is another vocabulary, which no code crosses.
+        (held, RecognizedExtension::Enum(source)) if held.is_enum() && source != held => {
+            Err(Error::Unsupported {
+                kind: held.name(),
+                reason: format!(
+                    "casting {source} to {held} is not supported: a member code of one enum \
+                     leaf is a value of another vocabulary, so a column of one enum is never \
+                     read as another"
+                ),
+            })
+        }
         (_, RecognizedExtension::Enum(_)) => Ok(()),
         // A fixed decimal source is its decimal storage with the scale
         // already fixed: every target reads it as it reads that storage,
@@ -3265,6 +3320,29 @@ fn same_bit_layout(source: &ArrowDataType, target: &ArrowDataType) -> bool {
         (Some(source), Some(target)) => source == target,
         _ => false,
     }
+}
+
+/// Whether one node joining two integer layouts carries their bits because
+/// a field on either side states `FIELD:representation=bits`: the target's
+/// own column, or the source's - the column a table stores an unsigned
+/// integer's bits in, which its reader casts back. Two integers only: the
+/// declaration is the column's, so a float or a temporal meeting it is
+/// converted by value, where [`Representation::Bits`] asked of a whole cast
+/// would share it. Decided once, where the node is planned.
+fn states_bits(
+    field: &Field,
+    source_type: &ArrowDataType,
+    source_metadata: Option<&HashMap<String, String>>,
+    expected: &ArrowDataType,
+) -> bool {
+    source_type.is_integer()
+        && expected.is_integer()
+        && (field.as_field_properties().representation().is_bits()
+            || source_metadata.is_some_and(|metadata| {
+                metadata
+                    .get(crate::metadata::FIELD_REPRESENTATION_KEY)
+                    .is_some_and(|stated| stated == Representation::Bits.as_str())
+            }))
 }
 
 /// Read one array's buffers as the target datatype, copying nothing.

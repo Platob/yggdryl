@@ -196,10 +196,10 @@ fn direct_market_categories_move_into_their_operation_kind_and_arrow_round_trip(
 
     for (line, operation_id, kind) in cases {
         let source = message(line);
-        assert_eq!(source.msgcat().code(), *operation_id);
+        assert_eq!(source.marketdatakind().code(), *operation_id);
         assert_eq!(
             source.get_by_tag(yggdryl::MARKETDATAKIND_TAG_NAME.0),
-            Some(Scalar::MarketDataKind(source.msgcat()))
+            Some(Scalar::MarketDataKind(source.marketdatakind()))
         );
         let operations = source.into_market_data().expect("a market category");
         assert_eq!(operations.len(), 1);
@@ -233,10 +233,10 @@ fn an_order_execution_splits_off_one_filled_execution_message() {
     let [report, execution] = messages.as_slice() else {
         panic!("the report and its execution, got {}", messages.len())
     };
-    assert_eq!(report.msgcat(), MarketDataKind::Order);
+    assert_eq!(report.marketdatakind(), MarketDataKind::Order);
     assert_eq!(*report.get_state(), State::PartiallyFilled);
     assert!(!report.is_execution());
-    assert_eq!(execution.msgcat(), MarketDataKind::Execution);
+    assert_eq!(execution.marketdatakind(), MarketDataKind::Execution);
     assert_eq!(*execution.get_state(), State::Filled);
     assert!(execution.is_execution());
     assert!(names_its_source(execution, report));
@@ -260,7 +260,7 @@ fn an_order_execution_splits_off_one_filled_execution_message() {
     for held in [report, execution] {
         let row = held.into_row(&schema).unwrap();
         let back = FixMsg::from_row(committed_registry(), &schema, &row).unwrap();
-        assert_eq!(back.msgcat(), held.msgcat());
+        assert_eq!(back.marketdatakind(), held.marketdatakind());
         assert_eq!(back.get_state(), held.get_state());
         assert_eq!(back.get_curruuid(), held.get_curruuid());
         assert_eq!(back.get_srcuuids(), held.get_srcuuids());
@@ -270,7 +270,7 @@ fn an_order_execution_splits_off_one_filled_execution_message() {
     // the same: a lifecycle chains within one category.
     let acknowledged = split(b"8=FIX.4.4|35=8|17=A-1|37=O-9|39=0|150=0|55=AAPL|54=1|10=0|");
     assert_eq!(acknowledged.len(), 1);
-    assert_eq!(acknowledged[0].msgcat(), MarketDataKind::Order);
+    assert_eq!(acknowledged[0].marketdatakind(), MarketDataKind::Order);
 }
 
 /// An execution report of no fill is its order's leaf - its quote's where
@@ -379,7 +379,11 @@ fn an_acknowledgement_of_an_execution_answers_no_leaf() {
         b"8=FIX.4.4|35=Q|17=E1|37=O1|127=A|55=AAPL|54=1|32=5|31=100|10=0|",
     ] {
         let acknowledgement = message(line);
-        assert_eq!(acknowledgement.msgcat(), MarketDataKind::Order, "{line:?}");
+        assert_eq!(
+            acknowledgement.marketdatakind(),
+            MarketDataKind::Order,
+            "{line:?}"
+        );
         assert!(
             acknowledgement.into_market_data().unwrap().is_empty(),
             "{line:?}"
@@ -415,19 +419,19 @@ fn a_fill_and_its_report_are_what_a_whole_settle_answers() {
         };
         if !split
             .iter()
-            .any(|held| held.msgcat() == MarketDataKind::Execution)
+            .any(|held| held.marketdatakind() == MarketDataKind::Execution)
         {
             continue;
         }
-        reports += usize::from(report.msgcat() != MarketDataKind::Trade);
+        reports += usize::from(report.marketdatakind() != MarketDataKind::Trade);
         for held in &messages {
-            fills += usize::from(held.msgcat() == MarketDataKind::Execution);
+            fills += usize::from(held.marketdatakind() == MarketDataKind::Execution);
             let mut settled = held.clone();
             settled.finalize();
             assert!(
                 settled == *held,
                 "a {} message split off {:?} is not what a settle answers",
-                held.msgcat().as_str(),
+                held.marketdatakind().as_str(),
                 String::from_utf8_lossy(line)
             );
             assert_eq!(settled.anomalies(), held.anomalies());
@@ -455,13 +459,13 @@ fn a_trade_splits_off_one_sided_execution_message_per_side() {
     let [trade, buy, sell] = messages.as_slice() else {
         panic!("the trade and its two sides, got {}", messages.len())
     };
-    assert_eq!(trade.msgcat(), MarketDataKind::Trade);
+    assert_eq!(trade.marketdatakind(), MarketDataKind::Trade);
     assert!(
         trade.market_data().unwrap().is_empty(),
         "a trade is no leaf: its fills are its sides' executions"
     );
     for side in [buy, sell] {
-        assert_eq!(side.msgcat(), MarketDataKind::Execution);
+        assert_eq!(side.marketdatakind(), MarketDataKind::Execution);
         assert_eq!(*side.get_state(), State::Filled);
         assert!(names_its_source(side, trade));
     }
@@ -525,10 +529,10 @@ fn an_order_list_splits_into_one_sided_order_per_entry() {
     let [list, buy, sell] = messages.as_slice() else {
         panic!("the list and its two orders, got {}", messages.len())
     };
-    assert_eq!(list.msgcat(), MarketDataKind::OrderBatch);
+    assert_eq!(list.marketdatakind(), MarketDataKind::OrderBatch);
     assert!(!list.is_sided());
     for order in [buy, sell] {
-        assert_eq!(order.msgcat(), MarketDataKind::Order);
+        assert_eq!(order.marketdatakind(), MarketDataKind::Order);
         assert!(order.is_sided());
         assert!(names_its_source(order, list));
     }
@@ -556,7 +560,7 @@ fn an_order_list_splits_into_one_sided_order_per_entry() {
 /// A mass quote is a quote batch (`QUOB`): each `NoQuoteEntries(295)` entry
 /// of each `NoQuoteSets(296)` set is a quote (`QUOT`) chained by its set
 /// and entry - one quote holding both its bid and its offer, which nothing
-/// splits again.
+/// splits again, and so both sides (`BOTH`).
 #[test]
 fn a_mass_quote_splits_into_one_two_sided_quote_per_entry() {
     let messages = split(
@@ -565,10 +569,10 @@ fn a_mass_quote_splits_into_one_two_sided_quote_per_entry() {
     let [batch, quote] = messages.as_slice() else {
         panic!("the batch and its one quote, got {}", messages.len())
     };
-    assert_eq!(batch.msgcat(), MarketDataKind::QuoteBatch);
-    assert_eq!(quote.msgcat(), MarketDataKind::Quotation);
+    assert_eq!(batch.marketdatakind(), MarketDataKind::QuoteBatch);
+    assert_eq!(quote.marketdatakind(), MarketDataKind::Quotation);
     assert_eq!(quote.get_crosscode(), "14:0:QuoteSetID=S1|QuoteEntryID=E1");
-    assert_eq!(quote.get_side(), Side::Unknown);
+    assert_eq!(quote.get_side(), Side::Both);
     assert_eq!((quote.get_price(), quote.get_quantity()), (None, None));
     assert_eq!(
         [
@@ -593,9 +597,9 @@ fn a_mass_cancel_report_splits_into_the_orders_it_names() {
     let [report, first, second] = messages.as_slice() else {
         panic!("the report and its two orders, got {}", messages.len())
     };
-    assert_eq!(report.msgcat(), MarketDataKind::OrderBatch);
+    assert_eq!(report.marketdatakind(), MarketDataKind::OrderBatch);
     assert_eq!(
-        (first.msgcat(), second.msgcat()),
+        (first.marketdatakind(), second.marketdatakind()),
         (MarketDataKind::Order, MarketDataKind::Order)
     );
     assert_eq!(
@@ -629,7 +633,9 @@ fn a_mass_cancel_report_entry_ends_the_order_it_names_in_the_lifecycle() {
         .expect("the acknowledgement");
     let entry = chained
         .iter()
-        .find(|held| held.header().msgtype() == "r" && held.msgcat() == MarketDataKind::Order)
+        .find(|held| {
+            held.header().msgtype() == "r" && held.marketdatakind() == MarketDataKind::Order
+        })
         .expect("the entry");
     assert_eq!(entry.get_prevuuid(), Some(ack.get_curruuid()));
     assert_eq!(entry.get_crosscode(), "10:1:C1");
@@ -646,7 +652,7 @@ const NO_SIDE: &[u8] = b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AA
 const UNREADABLE_SIDE: &[u8] = b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|32=4|31=101.25|60=20260921-10:00:00|552=1|54=QQ|1427=BAD-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|";
 
 /// A trade side stating no side, or one no side reads, is still a fill:
-/// it splits off an execution of side `UNKN`, chained by its own
+/// it splits off an execution of side `UKNW`, chained by its own
 /// identifiers; the unreadable side stays beside the trade as the anomaly
 /// the parse noted, and stating none is no anomaly.
 #[test]
@@ -656,7 +662,7 @@ fn a_trade_side_stating_no_side_splits_off_an_unknown_sided_execution() {
         let [trade, execution] = messages.as_slice() else {
             panic!("the trade and its one side, got {}", messages.len())
         };
-        assert_eq!(execution.msgcat(), MarketDataKind::Execution);
+        assert_eq!(execution.marketdatakind(), MarketDataKind::Execution);
         assert_eq!(execution.get_side(), Side::Unknown);
         assert_eq!(*execution.get_state(), State::Filled);
         assert!(names_its_source(execution, trade));
@@ -802,7 +808,7 @@ fn a_capture_records_each_execution_in_its_book_and_folds_none() {
         .unwrap();
     let execution_messages: Vec<String> = messages
         .iter()
-        .filter(|message| message.msgcat() == MarketDataKind::Execution)
+        .filter(|message| message.marketdatakind() == MarketDataKind::Execution)
         .map(|message| message.get_crosscode().to_owned())
         .collect();
     assert_eq!(execution_messages.len(), 3);
@@ -964,9 +970,10 @@ fn a_quote_status_report_stating_a_cancel_removes_the_quote_from_its_book() {
 }
 
 /// A13: a quote stating a bid and an offer and no side is one message - one
-/// quote holding both legs, its side a tag it does not state and its price
-/// and quantity none, since neither leg is the quote's own - and one book
-/// entry, alive on the bid and on the ask at once.
+/// quote holding both legs, so both sides (`BOTH`), which no `Side(54)`
+/// states, and its price and quantity none, since neither leg is the
+/// quote's own - and one book entry, alive on the bid and on the ask at
+/// once.
 #[test]
 fn a_two_sided_quote_is_one_message_holding_both_legs() {
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
@@ -978,9 +985,9 @@ fn a_two_sided_quote_is_one_message_holding_both_legs() {
     let [quote] = messages.as_slice() else {
         panic!("the quote alone, got {}", messages.len())
     };
-    assert_eq!(quote.msgcat(), MarketDataKind::Quotation);
+    assert_eq!(quote.marketdatakind(), MarketDataKind::Quotation);
     assert_eq!(quote.get_crosscode(), "14:0:Q1");
-    assert_eq!(quote.get_side(), Side::Unknown);
+    assert_eq!(quote.get_side(), Side::Both);
     assert_eq!((quote.get_price(), quote.get_quantity()), (None, None));
     assert_eq!(text(quote.get_bidpx()).as_deref(), Some("99"));
     assert_eq!(text(quote.get_bidqty()).as_deref(), Some("7"));
@@ -1004,6 +1011,8 @@ fn a_two_sided_quote_is_one_message_holding_both_legs() {
         panic!("the quote, once")
     };
     assert_eq!(entry.kind(), MarketKind::QuoteEvent);
+    assert_eq!(entry.get_side(), Side::Both);
+    assert_eq!(book.get_side(), Side::Both);
     assert_eq!(alive(book, true), [entry]);
     assert_eq!(alive(book, false), [entry]);
     assert_eq!(book.deltas().count(), 1, "one entry, one delta");
@@ -1125,26 +1134,26 @@ fn a_quote_states_its_bid_and_ask_in_their_currencies() {
 #[test]
 fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
     let mut derived = message(b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=5|10=0|");
-    assert_eq!(derived.msgcat(), MarketDataKind::Order);
+    assert_eq!(derived.marketdatakind(), MarketDataKind::Order);
 
     derived.set(35, Scalar::from("S")).unwrap();
-    assert_eq!(derived.msgcat(), MarketDataKind::Quotation);
+    assert_eq!(derived.marketdatakind(), MarketDataKind::Quotation);
     assert!(matches!(
         derived.market_data().unwrap().as_slice(),
         [MarketData::QuoteEvent(_)]
     ));
 
     assert_eq!(derived.remove(35).unwrap(), Some(Scalar::from("S")));
-    assert_eq!(derived.msgcat(), MarketDataKind::Unknown);
+    assert_eq!(derived.marketdatakind(), MarketDataKind::Unknown);
     assert!(derived.market_data().unwrap().is_empty());
 
     let mut stated = message(b"8=FIX.4.4|35=D|65016=8|11=C1|55=AAPL|54=1|44=100|38=5|10=0|");
-    assert_eq!(stated.msgcat(), MarketDataKind::Execution);
+    assert_eq!(stated.marketdatakind(), MarketDataKind::Execution);
     let execution_hash = stated.get_currhashcode();
     let execution_uuid = stated.get_curruuid();
     stated.set(35, Scalar::from("S")).unwrap();
     assert_eq!(
-        stated.msgcat(),
+        stated.marketdatakind(),
         MarketDataKind::Execution,
         "an explicit MsgCat row value owns the category"
     );
@@ -1154,23 +1163,25 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
     stated
         .set(yggdryl::MARKETDATAKIND_TAG_NAME.0, Scalar::from(14_i32))
         .unwrap();
-    assert_eq!(stated.msgcat(), MarketDataKind::Quotation);
+    assert_eq!(stated.marketdatakind(), MarketDataKind::Quotation);
     assert_ne!(stated.get_currhashcode(), explicit_hash);
     assert_eq!(
         stated.remove(yggdryl::MARKETDATAKIND_TAG_NAME.0).unwrap(),
         Some(Scalar::MarketDataKind(MarketDataKind::Quotation))
     );
-    assert_eq!(stated.msgcat(), MarketDataKind::Quotation);
+    assert_eq!(stated.marketdatakind(), MarketDataKind::Quotation);
 }
 
 #[test]
-fn msgcat_registry_values_are_stable_int32_operation_ids() {
+fn marketdatakind_registry_values_are_stable_int32_operation_ids() {
     let registry = committed_registry();
     let field = registry.field(yggdryl::MARKETDATAKIND_TAG_NAME.0).unwrap();
     assert_eq!(field.dtype(), &DataType::MarketDataKind);
-    let codes = registry.codeset_of(field).expect("the MsgCat vocabulary");
+    let codes = registry
+        .codeset_of(field)
+        .expect("the marketdatakind vocabulary");
     for (name, value) in [
-        ("UNKN", "0"),
+        ("UKNW", "0"),
         ("ACCT", "1"),
         ("ALLO", "2"),
         ("BOOK", "3"),
@@ -1201,27 +1212,42 @@ fn msgcat_registry_values_are_stable_int32_operation_ids() {
 }
 
 #[test]
-fn msgcat_operation_ids_are_intrinsic_while_custom_msgtypes_choose_a_category() {
+fn marketdatakind_operation_ids_are_intrinsic_while_custom_msgtypes_choose_a_category() {
     let mut registry = FixRegistry::new();
+    // Intrinsic sets go by their columns' own names; the retired category
+    // set is absent, and the plugin-side set joins them in name order.
+    assert!(registry.get_codeset("msgcatcodeset").is_none());
+    assert_eq!(
+        registry
+            .codesets()
+            .map(|set| set.name())
+            .collect::<Vec<_>>(),
+        [
+            "marketdatakindcodeset",
+            "marketdatatypecodeset",
+            "msgpluginsidecodeset",
+            "statecodeset"
+        ],
+    );
     let refused = registry
-        .set_codeset("msgcatcodeset", &[FixCode::new("ORDR", "99")])
+        .set_codeset("marketdatakindcodeset", &[FixCode::new("ORDR", "99")])
         .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
     let refused = registry
-        .merge_codeset("msgcatcodeset", &[FixCode::new("VENUE", "99")])
+        .merge_codeset("marketdatakindcodeset", &[FixCode::new("VENUE", "99")])
         .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
     let refused = registry
-        .merge_codeset("msgcatcodeset", &[FixCode::new("ORDR", "99")])
+        .merge_codeset("marketdatakindcodeset", &[FixCode::new("ORDR", "99")])
         .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
     let refused = registry
-        .merge_codeset("msgcatcodeset", &[FixCode::new("ORDR", "010")])
+        .merge_codeset("marketdatakindcodeset", &[FixCode::new("ORDR", "010")])
         .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
     let refused = registry
         .merge_codeset(
-            "msgcatcodeset",
+            "marketdatakindcodeset",
             &[FixCode::new("ORDR", "10").with_aliases(["QUOT"])],
         )
         .unwrap_err();
@@ -1231,22 +1257,24 @@ fn msgcat_operation_ids_are_intrinsic_while_custom_msgtypes_choose_a_category() 
     // of its own name, is a second spelling the enum does not own.
     let refused = registry
         .merge_codeset(
-            "msgcatcodeset",
+            "marketdatakindcodeset",
             &[FixCode::new("ORDR", "10").with_aliases(["ordr"])],
         )
         .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
     registry
         .merge_codeset(
-            "msgcatcodeset",
+            "marketdatakindcodeset",
             &[FixCode::new("ORDR", "10").with_description(MarketDataKind::Order.description())],
         )
         .expect("an exact named subset changes no intrinsic identifier");
-    let refused = registry.remove_codeset("msgcatcodeset").unwrap_err();
+    let refused = registry
+        .remove_codeset("marketdatakindcodeset")
+        .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
     assert_eq!(
         registry
-            .codeset("msgcatcodeset")
+            .codeset("marketdatakindcodeset")
             .unwrap()
             .code_by_name("ORDR")
             .map(|code| code.value()),
@@ -1261,7 +1289,7 @@ fn msgcat_operation_ids_are_intrinsic_while_custom_msgtypes_choose_a_category() 
     let custom = fixed_codec(Arc::new(registry))
         .sole_line(b"8=FIX.4.4|35=ZZ|52=20260921-10:00:00|10=0|")
         .unwrap();
-    assert_eq!(custom.msgcat(), MarketDataKind::Quotation);
+    assert_eq!(custom.marketdatakind(), MarketDataKind::Quotation);
 }
 
 #[test]
@@ -1275,8 +1303,8 @@ fn codec_streams_fix_messages_through_books_into_arrow_with_coherent_prices() {
         .unwrap();
     // The message is a book message; each leaf it expands into states its
     // own category below.
-    assert_eq!(snapshot.msgcat(), MarketDataKind::Book);
-    assert_eq!(update.msgcat(), MarketDataKind::Book);
+    assert_eq!(snapshot.marketdatakind(), MarketDataKind::Book);
+    assert_eq!(update.marketdatakind(), MarketDataKind::Book);
 
     let reader = codec
         .book_arrow_reader([snapshot, update], 0, None)
@@ -1498,7 +1526,7 @@ fn book_arrow_reader_narrows_its_books_to_what_its_filter_keeps() {
     assert!(
         capture
             .iter()
-            .any(|message| message.msgcat() == MarketDataKind::Execution)
+            .any(|message| message.marketdatakind() == MarketDataKind::Execution)
     );
     let books = |filter: Option<&str>| {
         let filter: Option<yggdryl::Filter> = filter.map(|text| text.parse().expect("a filter"));
@@ -3277,6 +3305,38 @@ fn a_book_entrys_parties_are_its_leafs_accounts_leading_the_messages() {
     );
 }
 
+/// An entry's party sourced `B` that is no BIC is no account of its leaf:
+/// the message's party answers in its place, and the entry's stays among
+/// the leaf's metadata, since no map holds it.
+#[test]
+fn a_book_entrys_party_its_bic_source_refuses_is_no_account_and_stays_in_its_metadata() {
+    let leaves = message(
+        b"8=FIX.4.4|35=X|52=20260921-10:00:00|55=AAPL|453=1|448=ROOT|452=1|268=2|\
+          279=0|269=0|278=B1|270=100|271=10|453=1|448=MM1|447=B|452=1|\
+          279=0|269=1|278=A1|270=101|271=11|453=1|448=deutdeff|447=B|452=1|10=0|",
+    )
+    .into_market_data()
+    .expect("a book");
+    let [bid, ask] = leaves.as_slice() else {
+        panic!("two entries")
+    };
+    assert_eq!(
+        operation_of(bid).get_partyids().get(&IdType::ExecutingFirm),
+        Some("ROOT")
+    );
+    assert!(keys(bid).contains(&"parties".to_owned()), "{:?}", keys(bid));
+    assert_eq!(
+        operation_of(ask).get_partyids().get(&IdType::ExecutingFirm),
+        Some("DEUTDEFF")
+    );
+    assert_eq!(
+        operation_of(ask)
+            .get_partyids()
+            .get_from(&IdKey::new(IdSource::Bic, IdType::ExecutingFirm)),
+        Some("DEUTDEFF")
+    );
+}
+
 #[test]
 fn an_empty_snapshot_holds_no_account_and_keeps_its_parties() {
     let leaves = message(
@@ -3533,8 +3593,8 @@ fn a_lifecycle_merge_keeps_the_union_with_the_reference_leading() {
     let capture = messages(
         &codec,
         &[
-            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:00|65043=SESSION|65042=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=1|18=G|10=0|",
-            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:01|65043=SESSION|65042=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=2|111=3|10=0|",
+            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:00|65045=SESSION|65044=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=1|18=G|10=0|",
+            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:01|65045=SESSION|65044=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=2|111=3|10=0|",
         ],
     );
     let walked = codec
@@ -3650,6 +3710,7 @@ fn a_book_folds_one_instants_steps_of_a_chain_in_the_chains_order() {
 #[cfg(feature = "internals")]
 mod internal {
     use yggdryl::fix::FixMarketIterator;
+    use yggdryl::graph::Market;
     use yggdryl::internals::logging_warning::count;
     use yggdryl::{FixMsg, MarketDataKind};
 
@@ -3720,7 +3781,7 @@ mod internal {
         }
         let acknowledged = message(b"8=FIX.4.4|35=8|17=E1|37=O1|150=0|10=0|");
         assert_eq!(
-            acknowledged.msgcat(),
+            acknowledged.marketdatakind(),
             MarketDataKind::Order,
             "its order's report"
         );
@@ -3790,14 +3851,14 @@ mod internal {
     #[test]
     fn a_trade_side_stating_no_side_is_warned_as_it_defaults_to_unknown() {
         warns(
-            "FIX trade side states no Side; its execution's side defaulted to UNKN",
+            "FIX trade side states no Side; its execution's side defaulted to UKNW",
             "Side",
             || split(NO_SIDE),
         );
         // The parse passed over the side no side reads, so the split meets
         // a side stating none.
         warns(
-            "FIX trade side states no Side; its execution's side defaulted to UNKN",
+            "FIX trade side states no Side; its execution's side defaulted to UKNW",
             "Side",
             || split(UNREADABLE_SIDE),
         );

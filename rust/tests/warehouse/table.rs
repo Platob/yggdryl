@@ -79,7 +79,13 @@ fn a_table_delegates_every_verb_to_its_implementation() {
     assert!(!IOBase::is_container(&table));
     assert_eq!(IOBase::ls(&table, false, false).count(), 0);
     assert!(IOBase::parent(&table).is_some());
-    assert_eq!(table.read_serie(None).expect("series").count(), 1);
+    assert_eq!(
+        yggdryl::StreamChunkedSerie::from_serie(table.read_serie(None).expect("series"))
+            .expect("native record stream")
+            .into_chunks()
+            .count(),
+        1
+    );
     let held = Holder::from(table.clone());
     assert!(matches!(held, Holder::Table(_)));
     assert_eq!(held.row_size().expect("rows"), 3);
@@ -125,4 +131,54 @@ fn the_enum_narrows_and_compares_as_its_description() {
             .to_string(),
         "filesystem \"MediaTable\" does not support updating the properties it keeps"
     );
+}
+
+#[test]
+fn a_table_forwards_its_implementations_merge_key() {
+    let url = Url::from_str("file:///lake/ticks.arrows").expect("a URL");
+    let media = Table::from(MediaTable::new("lake.ticks", url).expect("a table"));
+    assert!(
+        IOMedia::merge_by(&media).expect("no key").is_empty(),
+        "a media table states no key of its own"
+    );
+    #[cfg(feature = "iceberg")]
+    {
+        use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
+
+        let root = root("merge-key");
+        let mut schema = DataType::from(
+            StructType::from_fields([DataType::Int64.required_field("id")]).expect("a root"),
+        )
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).expect("numbered");
+        schema
+            .as_iceberg_mut()
+            .set_identifier_field_ids(&[1])
+            .expect("stated");
+        let table = Table::from(
+            IcebergTable::create_from_url(
+                Url::from_path(root.join("ticks")).expect("a URL"),
+                &Properties::new(),
+                Some(FormatVersion::V2),
+                schema,
+                Some(PartitionSpec::unpartitioned()),
+            )
+            .expect("created"),
+        );
+        let names = |media: &dyn IOMedia| -> Vec<String> {
+            media
+                .merge_by()
+                .expect("the stated key")
+                .names()
+                .iter()
+                .map(ToString::to_string)
+                .collect()
+        };
+        assert_eq!(names(&table), ["id"]);
+        assert_eq!(
+            names(&Holder::from(table)),
+            ["id"],
+            "a holder forwards it too"
+        );
+    }
 }

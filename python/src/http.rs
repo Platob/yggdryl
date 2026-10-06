@@ -1796,17 +1796,17 @@ impl PyPages {
     }
 
     /// Every page as one record column per page, under `field` or the root
-    /// the first page's rows infer, as a `SerieReader`.
+    /// the first page's rows infer, as a `StreamChunkedSerie`.
     #[pyo3(signature = (field = None))]
-    fn read_serie(
+    fn chunked_stream(
         &self,
         py: Python<'_>,
         field: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<crate::serie::PySerieReader> {
+    ) -> PyResult<crate::stream_chunked_serie::PyStreamChunkedSerie> {
         let field = field.map(crate::field::core_field_from_value).transpose()?;
         let pages = self.take(py)?;
-        py.detach(|| pages.into_serie_reader(field.as_ref()))
-            .map(crate::serie::PySerieReader::from)
+        py.detach(|| pages.chunked_stream(field.as_ref()))
+            .map(crate::stream_chunked_serie::PyStreamChunkedSerie::from)
             .map_err(storage_error)
     }
 

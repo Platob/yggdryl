@@ -62,9 +62,10 @@ pub enum Command {
         paths: Vec<PathBuf>,
         /// The dictionary name stamped on every definition the files produce.
         ///
-        /// Membership (`FIX:branches`) is provenance a listing filters on; it
-        /// never decides how a tag or a name resolves. With none given, each
-        /// file's own stem names its dialect.
+        /// Membership (`FIX:sources`) is provenance a listing filters on, and
+        /// the name is the id of the entry `sources.json` records for the
+        /// file; it never decides how a tag or a name resolves. With none
+        /// given, each file's own stem names its dialect.
         #[arg(long)]
         dialect: Option<String>,
     },
@@ -73,8 +74,8 @@ pub enum Command {
         /// A folder holding another dictionary.
         ///
         /// Its fields carry the membership they were written with, which the
-        /// fold unions onto what this dictionary holds. A `.cfb` is
-        /// `yggdryl fix ingest`'s.
+        /// fold unions onto what this dictionary holds, and its `sources.json`
+        /// folds into this one's. A `.cfb` is `yggdryl fix ingest`'s.
         source: PathBuf,
     },
     /// Print the one row shape a whole capture lands in.
@@ -153,14 +154,14 @@ pub enum CodesetCommand {
 /// Operations common to each explicitly selected category.
 #[derive(Subcommand)]
 #[command(
-    after_help = "Create refuses an existing definition; update replaces a definition and refuses absence.\nRead --json emits the native Field document accepted by create/update --input.\nDelete refuses definitions still referenced by other definitions.\nThe registry is one namespace: a key resolves the same way whatever dictionaries a definition belongs to. --dialect on create/update records membership (FIX:branches); on list it filters by it."
+    after_help = "Create refuses an existing definition; update replaces a definition and refuses absence.\nRead --json emits the native Field document accepted by create/update --input.\nDelete refuses definitions still referenced by other definitions.\nThe registry is one namespace: a key resolves the same way whatever dictionaries a definition belongs to. --dialect on create/update records membership (FIX:sources) and creates the sources.json entry the id names; on list it filters by it."
 )]
 pub enum CategoryCommand {
     /// List definitions, optionally filtered by name/tag and dictionary membership.
     List {
         /// Match part of a name or decimal tag, ignoring case.
         filter: Option<String>,
-        /// Only definitions whose FIX:branches membership names this dictionary.
+        /// Only definitions whose FIX:sources membership names this dictionary.
         #[arg(long)]
         dialect: Option<String>,
         /// Maximum number of rows printed.
@@ -208,7 +209,8 @@ pub struct DefinitionArgs {
     /// Numeric tag for a scalar field, including a group counter.
     #[arg(long)]
     tag: Option<i32>,
-    /// A dictionary this definition belongs to (FIX:branches); repeat for several.
+    /// A source this definition belongs to (FIX:sources), its sources.json
+    /// entry created where none is; repeat for several.
     #[arg(long)]
     dialect: Vec<String>,
     /// Definition's purpose.
@@ -268,7 +270,7 @@ impl DefinitionArgs {
             field.as_fix_mut().set_directions(&rules)?;
         }
         let mut view = field.as_fix_mut();
-        view.set_branches(&self.dialect)?;
+        view.set_sources(&self.dialect)?;
         if let Some(tag) = self.tag {
             view.set_tag(tag)?;
         }
@@ -398,8 +400,9 @@ fn codesets(store: &mut registry::Store, command: &CodesetCommand) -> Result<()>
 /// counterparty's vocabulary, which [`ingest`] reads, and anything else is
 /// refused rather than guessed at. The fold is the core's one: a tag this
 /// dictionary lacks is added, one it holds keeps every key only it declares,
-/// the membership the other stamps is unioned onto it, and what it declares
-/// otherwise than this dictionary does is passed over and named.
+/// the sources the other stamps, and its catalog of them, are unioned onto
+/// it, and what it declares otherwise than this dictionary does is passed
+/// over and named.
 fn sync(store: &mut registry::Store, source: &Path, annotate: bool) -> Result<()> {
     let mut progress = style::Progress::start(format!("reading {}", source.display()));
     progress.tick();
@@ -576,15 +579,15 @@ fn passed_over(merge: &FixMerge, annotate: bool) {
             .as_deref()
             .and_then(|source| Url::from_str(source).ok())
             .and_then(|url| url.file_name().map(str::to_owned));
-        let dialects = drop
+        let sources = drop
             .incoming
             .as_fix()
-            .branches()
+            .sources()
             .collect::<Vec<_>>()
             .join(", ");
         let mut line: Vec<String> = source.into_iter().collect();
-        if !dialects.is_empty() {
-            line.push(format!("[{dialects}]"));
+        if !sources.is_empty() {
+            line.push(format!("[{sources}]"));
         }
         line.push(drop.reason.to_string());
         style::note(&line.join(" "));

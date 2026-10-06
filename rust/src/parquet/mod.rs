@@ -1049,13 +1049,6 @@ impl ParquetSource {
             return;
         }
         let stored = Arc::clone(self.metadata.schema());
-        if crate::expression::filter_after_select(
-            filter,
-            options.select(),
-            stored.fields().iter().map(|field| field.name().as_str()),
-        ) {
-            return;
-        }
         let root = match options.field() {
             Some(field) => field,
             None => match field_from_arrow_schema(options.name(), stored.as_ref()) {
@@ -1063,7 +1056,12 @@ impl ParquetSource {
                 Err(_) => return,
             },
         };
-        self.prune(&filter.simplify().conjuncts(), &root, &stored);
+        let (early, _) = crate::expression::filter_phases(
+            filter,
+            options.select(),
+            root.fields().iter().map(Field::name),
+        );
+        self.prune(&early.simplify().conjuncts(), &root, &stored);
     }
 
     /// Keep only the row groups the bound conjuncts could find a row in.
@@ -2197,30 +2195,37 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         Ok(self.read_geospatial_statistics(column)?)
     }
 
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> crate::Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
         // Publication may have changed the visible file before a later source
         // or storage failure. Never retain a footer from before the attempt.
-        let result = match crate::iobase::overwrite_arrow_reader_default(self, batches, options) {
-            Ok(result) => result,
-            Err(error) => {
-                self.refresh_metadata_after_error();
-                return Err(error);
-            }
-        };
+        let result =
+            match crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
+                .map(|(_, result)| result)
+            {
+                Ok(result) => result,
+                Err(error) => {
+                    self.refresh_metadata_after_error();
+                    return Err(error);
+                }
+            };
         self.refresh_metadata()?;
         Ok(result)
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
         &mut self,
-        batches: BatchReader,
+        value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> crate::Result<()> {
+        let batches = value.into_arrow_reader();
         self.require_record_options(options)?;
         let result = crate::iobase::leaf_writer(self, batches, options);
         if let Err(error) = result {
@@ -2231,20 +2236,26 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         Ok(())
     }
 
-    fn append_arrow_reader(
+    fn append_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> crate::Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
 
-    fn merge_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> crate::Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
         crate::iobase::merge_arrow_reader_default(self, batches, options)
     }
@@ -2409,3 +2420,5 @@ pub mod internals {
         options
     }
 }
+
+crate::media_serie::media_serie!(ParquetSerie, Parquet, as_parquet, get_parquet_mut);

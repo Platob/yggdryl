@@ -18,24 +18,26 @@ use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBool, PyList, PySlice};
-use yggdryl::{ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, Scalar, SerieReader};
+use yggdryl::{ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, StreamChunkedSerie};
 
 use crate::datatype::{
     ArrayIntake, PyDataType, arrow_array_to_pyarrow, core_field_to_pyarrow, pyarrow,
 };
-use crate::expression::selector_from_value;
 use crate::field::{PyField, core_field_from_value};
 use crate::graph::ellipsis;
 use crate::iomedia::{
     Frames, core_root_field_from_value, frame_from_reader, rooted_reader_to_pyarrow, type_name,
 };
 use crate::join::{JoinKeywords, PyJoinOptions, join_keys_of, join_kind_of};
+use crate::key_serie::{PyKeySeries, key_by};
 use crate::scalar::{PyScalar, PyScalarIterator, as_py_with_field, from_py};
 use crate::serie::{
     PySerie, columnar, declared_texts, described, field_of, orderings_of, reader_capsule,
     requested_field, serie_argument, serie_from_value, sort_options, stream_of, target_of,
 };
 use crate::spill::{PySpillOptions, spill_options_of};
+use crate::stream_chunked_serie::PyStreamChunkedSerie;
+use crate::stream_serie::PyStreamSerie;
 use crate::{cast_options, compare, normalize_index, value_error};
 
 /// Many columns under one field, held apart: a chunked array, or a table.
@@ -53,14 +55,6 @@ impl PyChunkedSerie {
     /// Resolve a Python index against the rows, negative from the end.
     fn index(&self, index: isize) -> PyResult<usize> {
         normalize_index(index, self.inner.len()).ok_or_else(|| PyIndexError::new_err(index))
-    }
-
-    /// Hand groups to Python as `(key, rows)` pairs.
-    fn groups(groups: Vec<(Scalar, ChunkedSerie)>) -> Vec<(PyScalar, Self)> {
-        groups
-            .into_iter()
-            .map(|(key, rows)| (PyScalar::from_inner(key), Self::from_inner(rows)))
-            .collect()
     }
 
     /// Answer `read` over these chunks off the GIL, over a clone taken and
@@ -312,7 +306,7 @@ impl PyChunkedSerie {
     /// A `pyarrow.ChunkedArray` is its chunks; a table, a reader, a dataset,
     /// a scanner and a pandas or polars frame one chunk per batch; a batch,
     /// an array, an Arrow scalar, a pandas or polars series and a `NumPy`
-    /// array one chunk; a `Serie` its one chunk, shared; a `SerieReader` is
+    /// array one chunk; a `Serie` its one chunk, shared; a `StreamChunkedSerie` is
     /// taken and drained, one chunk per batch; a `ChunkedSerie` is shared.
     /// Any other value is read as `Serie.from_` reads it, and is one chunk.
     #[staticmethod]
@@ -581,23 +575,9 @@ impl PyChunkedSerie {
         Self::detached(slf, move |chunked| chunked.into_filtered(&mask)).map(Self::from_inner)
     }
 
-    /// The rows grouped by `keys`, as long as the whole: one `(key, rows)`
-    /// per distinct key in order of first occurrence, each group's rows
-    /// what each chunk contributed, kept apart. Keys held in chunks - a
-    /// `ChunkedSerie`, a `pyarrow.ChunkedArray` or a table - are grouped
-    /// chunk beside chunk where both are cut at the same rows, with no
-    /// join, and the keys joined once and cut to the rows' chunks otherwise.
-    fn partition_by(
-        slf: &Bound<'_, Self>,
-        keys: &Bound<'_, PyAny>,
-    ) -> PyResult<Vec<(PyScalar, Self)>> {
-        let groups = if let Some(keys) = chunked_of(keys)? {
-            Self::detached(slf, move |chunked| chunked.partition_by_chunked(&keys))?
-        } else {
-            let keys = serie_argument(keys, "keys")?;
-            Self::detached(slf, move |chunked| chunked.partition_by(&keys))?
-        };
-        Ok(Self::groups(groups))
+    fn partition_by(slf: &Bound<'_, Self>, by: &Bound<'_, PyAny>) -> PyResult<PyKeySeries> {
+        let by = key_by(by)?;
+        Self::detached(slf, move |chunked| chunked.partition_by(by)).map(PyKeySeries::from_inner)
     }
 
     /// The windows of equal adjacent keys across the chunks, each
@@ -606,18 +586,32 @@ impl PyChunkedSerie {
     /// copied. A window states no record: its key is the first half of the
     /// pair and its place among the windows its place in the list, so a key
     /// cell named `windownum` or `rownum` is taken. `sorted=None` is `False`.
-    #[pyo3(
-        signature = (by, sorted = Some(false)),
-        text_signature = "($self, by, sorted=False)"
-    )]
+    #[pyo3(signature = (by, sorted = Some(false)))]
     fn window_by(
         slf: &Bound<'_, Self>,
         by: &Bound<'_, PyAny>,
         sorted: Option<bool>,
-    ) -> PyResult<Vec<(PyScalar, Self)>> {
-        let selector = selector_from_value(by)?;
-        let sorted = sorted.unwrap_or(false);
-        Self::detached(slf, move |chunked| chunked.window_by(selector, sorted)).map(Self::groups)
+    ) -> PyResult<PyKeySeries> {
+        let by = key_by(by)?;
+        Self::detached(slf, move |chunked| {
+            chunked.window_by(by, sorted.unwrap_or(false))
+        })
+        .map(PyKeySeries::from_inner)
+    }
+    fn into_stream(slf: &Bound<'_, Self>) -> PyResult<PyStreamSerie> {
+        Self::detached(slf, yggdryl::ChunkedSerie::into_stream).map(PyStreamSerie::from_core)
+    }
+    #[pyo3(signature = (row_size = None, byte_size = None))]
+    fn into_chunked_stream(
+        slf: &Bound<'_, Self>,
+        row_size: Option<usize>,
+        byte_size: Option<u64>,
+    ) -> PyResult<PyStreamChunkedSerie> {
+        let inner = slf.try_borrow()?.inner.clone();
+        slf.py()
+            .detach(move || inner.into_chunked_stream(row_size, byte_size))
+            .map(PyStreamChunkedSerie::from)
+            .map_err(value_error)
     }
 
     /// The bytes the rows occupy: every chunk's.
@@ -845,7 +839,7 @@ impl PyChunkedSerie {
     /// Every chunk as one batch of a `pyarrow.RecordBatchReader`: a record's
     /// chunks as their children, any other's each the one column of a `row`.
     fn into_arrow_reader<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let root = SerieReader::root_of(self.inner.field()).map_err(value_error)?;
+        let root = StreamChunkedSerie::root_of(self.inner.field()).map_err(value_error)?;
         let reader = self.inner.into_arrow_reader().map_err(value_error)?;
         rooted_reader_to_pyarrow(py, &root, reader)
     }
@@ -854,7 +848,7 @@ impl PyChunkedSerie {
     /// array per chunk, cast into `requested_schema` by the one cast when a
     /// consumer asks.
     ///
-    /// A record's chunks stream as the batches `SerieReader.from_chunked`
+    /// A record's chunks stream as the batches `StreamChunkedSerie.from_chunked`
     /// reads; any other field's chunks as the column `pyarrow.ChunkedArray`
     /// streams, which is how a stream carries a column that is no record.
     #[pyo3(signature = (requested_schema = None))]
@@ -865,7 +859,7 @@ impl PyChunkedSerie {
         let py = slf.py();
         let chunked = slf.try_borrow()?.inner.clone();
         if chunked.field().dtype().as_fields().is_some() {
-            let reader = SerieReader::from_chunked(chunked).map_err(value_error)?;
+            let reader = StreamChunkedSerie::from_chunked(chunked).map_err(value_error)?;
             return reader_capsule(py, reader, requested_schema);
         }
         let chunked = match requested_schema {

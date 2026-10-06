@@ -20,7 +20,7 @@ use std::sync::LazyLock;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::identifier::{WORD_PAIR_WIDTH, fold_into};
+use crate::identifier::{IDENTIFIER_VALUE_WIDTH, WORD_PAIR_WIDTH, fold_into};
 use crate::{Error, IdSource, IdType, Result};
 
 /// The key of an identifier: its source and its type.
@@ -83,6 +83,31 @@ impl IdKey {
     #[must_use]
     pub fn with_kind(&self, kind: IdType) -> Self {
         Self::new(self.src.clone(), kind)
+    }
+
+    /// `value`, already trimmed and stating something, as this key holds it,
+    /// written into `buffer` where it moves: its type's rule first
+    /// ([`IdType::value_into`]), then its source's where the source's values
+    /// are a code ([`IdSource::code`]) - a BIC under `bic`, an LEI under
+    /// `legalentityidentifier`, upper-cased - so a value both rules hold
+    /// passes both. Nothing allocates where the value is held.
+    ///
+    /// # Errors
+    ///
+    /// A value the type refuses, and one the source refuses, located on the
+    /// key: `bic:executingtrader`.
+    pub(crate) fn value_into<'value>(
+        &self,
+        value: &'value str,
+        buffer: &'value mut [u8; IDENTIFIER_VALUE_WIDTH],
+    ) -> Result<&'value str> {
+        let Some(code) = self.src.code() else {
+            return self.kind.value_into(value, buffer);
+        };
+        let held = code.hold(self, self.kind.value_into(value, &mut *buffer)?)?;
+        let slot = &mut buffer[..held.len()];
+        slot.copy_from_slice(held.as_bytes());
+        Ok(std::str::from_utf8(slot).expect("a code is ASCII"))
     }
 
     /// The static spelling of a key both of whose words the crate names.
@@ -149,10 +174,13 @@ impl IdKey {
 
     /// The key a FIX entry's name or a bridge's field names, inferred: its
     /// explicit `src:type`, else a whole name a security type is spelled by
-    /// from the base source, else the type an identifier name at the end of
-    /// it spells - one of `names`, stepped back over a parentage word - under
-    /// the source the rest of it names, the base source where nothing is
-    /// left or where that rest folds to a source the crate reserves. What
+    /// from the base source - a field name FIX gives a source code
+    /// ([`IdType::from_field_name`]), or any spelling of a security type it
+    /// gives none, `FISN` and `CFI` as a bare `ISIN` is - else the type an
+    /// identifier name at the end of it spells - one of `names`, stepped
+    /// back over a parentage word - under the source the rest of it names,
+    /// the base source where nothing is left or where that rest folds to a
+    /// source the crate reserves. What
     /// [`Identifier::from_key`](crate::Identifier::from_key) reads a key by.
     pub(crate) fn infer<'name>(
         key: &str,
@@ -169,6 +197,9 @@ impl IdKey {
         // read, so the key folds as wide as the two together.
         let mut buffer = [0_u8; WORD_PAIR_WIDTH];
         let folded = fold_into(key, &mut buffer).ok()?;
+        if let Some(kind) = IdType::from_folded(folded).filter(IdType::is_security) {
+            return Some(Self::base(kind));
+        }
         let (at, kind) = IdType::from_key_end(folded, names)?;
         let src = IdSource::from_namespace(&folded[..at])
             .ok()?

@@ -1,7 +1,7 @@
 # yggdryl-arrow: the cast contract
 
 Every cast - `Serie.cast`, `ChunkedSerie.cast`, the `Serie` / `ChunkedSerie`
-Arrow doors, `SerieReader`, a held `ArrowCastPlan` - runs one engine and
+Arrow doors, `StreamChunkedSerie`, a held `ArrowCastPlan` - runs one engine and
 answers by these rules. Runnable examples are in the three language
 references; full detail at https://platob.github.io/yggdryl/types/cast/.
 
@@ -64,6 +64,7 @@ required column.
 | Different widths (`uint32` -> `int64`) | ordinary conversion, range-checked |
 | Rule-governed target (fixed string, code, UUID, version) | the target's rule still runs: bytes past `0x7F` are not a currency |
 | Required target over source nulls | refused by path, exactly as under `value` |
+| A column stating `FIELD:representation=bits` (`field.as_field_properties_mut().set_representation(Representation::Bits)`, `field.field_properties.representation = "bits"`, `field.fieldProperties.representation = 'bits'`) | the same-width integer of the other signedness crosses into or out of it as its bits whatever the plan's `representation`, the buffer shared - and at `Field::scalar`, and through `into_scheme_compat`, which exchanges it as the signed integer of its width and keeps the declaration; `DataType::scalar` and a column stating nothing never read bits |
 
 ## Conversions worth knowing
 
@@ -106,9 +107,9 @@ re-read.
 
 | Failure | Raised by |
 | --- | --- |
-| Impossible conversion, ambiguous name, missing required column | `ArrowCastPlan` compile / `preflight`, `SerieReader` construction - before any row |
+| Impossible conversion, ambiguous name, missing required column | `ArrowCastPlan` compile / `preflight`, `StreamChunkedSerie` construction - before any row |
 | A null or bad value in a batch | that batch: at the call for held data, at the **pull** for a stream |
-| After a stream failure | the `SerieReader` is fused (yields nothing more) and its source is released |
+| After a stream failure | the `StreamChunkedSerie` is fused (yields nothing more) and its source is released |
 | Held column / eager drain (`Serie.from_arrow_reader`) | the whole call fails on the first bad batch |
 
 ## Cost
@@ -118,7 +119,7 @@ re-read.
 | Identity plan (exact layout, nullability fits) | the same buffers handed back; `is_identity` is `true` |
 | Equal layout, nullable source under a required target | not the identity: read for nulls |
 | `Serie.cast`, a `Serie` Arrow door | one plan compiled per call |
-| `SerieReader`, a held `ArrowCastPlan` | one plan for the whole stream; per batch only masks, offsets and uncertified leaves vary |
+| `StreamChunkedSerie`, a held `ArrowCastPlan` | one plan for the whole stream; per batch only masks, offsets and uncertified leaves vary |
 | `ChunkedSerie.cast`, `plan.apply_chunked` / `apply(chunked)` | one plan over every chunk |
 | `ChunkedSerie.from_series` | one plan per run of chunks under one source field |
 | `ChunkedSerie.push_chunk` | one plan per call |

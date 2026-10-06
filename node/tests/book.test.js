@@ -816,7 +816,7 @@ test('the summary names a book by its ticker else its ISIN, and flags one the se
   const [name] = node.findAll((element) => element.className === 'summary-name')
   assert.equal(name.textContent, 'HOLN · 3:0:CH0012214059')
   const labels = () => node.findAll((element) => element.className === 'stat-label').map((element) => element.textContent)
-  // A book holds no execution, so none is counted.
+  // The summary counts the alive entries and the deltas, an execution among them.
   assert.deepEqual(labels(), ['Best bid', 'Best ask', 'Spread', 'Mid', 'Imbalance', 'Alive', 'Deltas'])
   assert.doesNotMatch(node.textContent, /Deltas only/)
   assert.match(node.textContent, /Alive2entries/)

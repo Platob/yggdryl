@@ -5,7 +5,7 @@ const { spawnSync } = require('node:child_process')
 const { join } = require('node:path')
 const test = require('node:test')
 
-const { DataType, Field, StringEnum, Version, enums } = require('yggdryl')
+const { DataType, Field, Scalar, StringEnum, Version, enums } = require('yggdryl')
 
 test('datatype values infer inputs and round-trip canonical strings', () => {
   const type = new DataType('varchar')
@@ -433,6 +433,11 @@ test('a registered code is its own datatype over its standard width', () => {
     ['figi', 12],
     // A currency pair, `CCY/CCY`.
     ['forex', 7],
+    // ISO 9362 at its eleven-character bound, ISO 20275's four characters
+    // and ISO 24165's nine.
+    ['bic', 11],
+    ['elf', 4],
+    ['dti', 9],
   ]) {
     const dtype = new DataType(name)
     assert.equal(dtype.id, name)
@@ -501,6 +506,55 @@ test('a registered code is its own datatype over its standard width', () => {
   // required column has no default to answer.
   assert.equal(ric.scalar('').asJs(), null)
   assert.throws(() => ric.defaultJSValue(), /Refinitiv Identification Code/)
+})
+
+test('the reference-data codes cross as a value, a field and value bytes', () => {
+  // Each code is its own datatype at its own width; a legal entity
+  // identifier and a short name are wider than any packed integer.
+  for (const [name, width] of [
+    ['lei', 20],
+    ['fisn', 35],
+  ]) {
+    const dtype = new DataType(name)
+    assert.equal(dtype.id, name)
+    assert.equal(dtype.toString(), name)
+    assert.equal(dtype.kind, 'code')
+    assert.equal(dtype.codeWidth, width)
+    assert.equal(dtype.fixedByteWidth, null)
+    assert.equal(dtype.stringParameters, null)
+    assert.throws(() => dtype.asciiPacked('A'), /at most 16 bytes/)
+  }
+  for (const [name, spelled, stored, typo, refused, reason] of [
+    // ISO 17442: upper-cased; MOD 97-10 check digits that do not close are
+    // a typo, ranked below, never refused.
+    ['lei', 'hwupkr0mpou8fgxbt394', 'HWUPKR0MPOU8FGXBT394', 'HWUPKR0MPOU8FGXBT395', 'HWUPKR0MPOU8FGXBT3', /expected twenty characters/],
+    // ISO 9362: eight or eleven characters, kept as stated.
+    ['bic', 'deutdeff500', 'DEUTDEFF500', 'DEUTDEFF', 'DEUT1EFF', /two-letter country code/],
+    ['elf', '2hbr', '2HBR', '8888', '2HB', /expected four characters/],
+    // ISO 24165: the ISO 7064 hybrid MOD 31,30 check character.
+    ['dti', 'x9j9k872s', 'X9J9K872S', 'X9J9K872T', 'A9J9K872S', /consonants other than Y/],
+    // ISO 18774: issuer and description split at the first '/'.
+    ['fisn', 'acme corp/amort pn w/p/c', 'ACME CORP/AMORT PN W/P/C', 'ACME CORP/SH', 'ACME CORP SH', /a '\/' between the issuer/],
+  ]) {
+    const dtype = DataType.from(name)
+    const value = dtype.scalar(spelled)
+    assert.equal(value.asJs(), stored, name)
+    assert.equal(value.kind, name, name)
+    assert.equal(value.id, name, name)
+    assert.ok(value.dtype.equals(dtype), name)
+    assert.equal(dtype.scalar(typo).asJs(), typo, name)
+    assert.throws(() => dtype.scalar(refused), reason, name)
+    // The value stream and a clone carry the code's own identity.
+    const restored = Scalar.fromValueBytes(value.intoValueBytes())
+    assert.equal(restored.kind, name, name)
+    assert.ok(restored.equals(value), name)
+    assert.ok(value.clone().equals(value), name)
+    // A field types the value through the same door.
+    const field = new Field(name, dtype, false)
+    assert.ok(field.scalar(spelled).equals(value), name)
+    assert.ok(new Field(name, DataType.fromString(name), true).dtype.equals(dtype), name)
+  }
+  assert.throws(() => new DataType('fisn').scalar(`${'X'.repeat(20)}/${'Y'.repeat(15)}`), /at most 35 bytes/)
 })
 
 test('the uuid is sixteen bytes spelled as one identifier', () => {

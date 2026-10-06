@@ -15,7 +15,7 @@ from yggdryl import (
     DataType,
     Field,
     Serie,
-    SerieReader,
+    StreamChunkedSerie,
     StructSerie,
 )
 from yggdryl.enums import REPRESENTATIONS
@@ -426,7 +426,7 @@ class TestRequiredFieldRefusals:
 
         # A null is a property of rows, so the reader is built and answers its
         # schema before anything refuses it.
-        reader = SerieReader.from_arrow_reader(
+        reader = StreamChunkedSerie.from_arrow_reader(
             pa.RecordBatchReader.from_batches(stored, [batch]), root
         ).into_arrow_reader()
         assert reader.schema.names == ["id", "symbol"]
@@ -443,7 +443,7 @@ class TestRequiredFieldRefusals:
             ValueError,
             match=r"required Arrow field \$\.symbol is missing from the source",
         ):
-            SerieReader.from_arrow_reader(
+            StreamChunkedSerie.from_arrow_reader(
                 pa.RecordBatchReader.from_batches(absent, []), root
             ).into_arrow_reader()
 
@@ -496,6 +496,28 @@ def test_the_bits_reading_crosses_every_same_width_pair() -> None:
             pa.array([None, 2**64 - 1], type=pa.uint64()),
             Field("digest", "int64", nullable=False),
             **bits,
+        ).into_arrow_array()
+
+
+def test_a_column_stating_bits_takes_them_without_being_asked() -> None:
+    # The column states that its integers are bits, so a cast asking for
+    # values carries them, sharing the buffer; a float meeting the column is
+    # still the number it is.
+    digest = Field("digest", "int64")
+    digest.field_properties.representation = "bits"
+    unsigned = pa.array([0, 2**63, 2**64 - 1], type=pa.uint64())
+    signed = Serie.from_arrow_array(unsigned, digest).into_arrow_array()
+    assert signed.type == pa.int64()
+    assert signed.to_pylist() == [0, -(2**63), -1]
+    assert signed.buffers()[1].address == unsigned.buffers()[1].address
+    assert Serie.from_arrow_array(
+        pa.array([1.0], type=pa.float64()), digest
+    ).into_arrow_array().to_pylist() == [1]
+    # A column stating nothing reads the value, and a required one refuses
+    # what no int64 holds.
+    with pytest.raises(ValueError, match=r"\$\.digest"):
+        Serie.from_arrow_array(
+            unsigned, Field("digest", "int64", nullable=False), safe=False
         ).into_arrow_array()
 
 

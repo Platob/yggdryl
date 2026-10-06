@@ -67,33 +67,49 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     // document reads and writes and are outside this tally. No manifest:
     // a dictionary is one namespace, and what each dialect contributed
     // travels on the field it contributed to.
-    // Seven documents and four roots: the store's own field shard, the
+    // Eight documents and four roots: the store's own field shard, the
     // crate's block on its own shard, its `metadata` group and its `fixmsg`
     // component - a store states the whole row, so the crate's three
     // documents are written beside the store's one - plus the built-in
-    // market data type, MsgCat and state vocabularies. The three category roots and `codesets/` are each reached
+    // market data kind, market data type, plugin side and state vocabularies. The three category roots and `codesets/` are each reached
     // once for pruning. Each intrinsic set adds one document lookup and no
-    // root lookup; reading still resolves exactly four roots.
+    // root lookup. The sources catalog, `sources.json` at the root, is
+    // one more resolution each way whatever the registry holds: a write
+    // publishes it where the registry holds an entry and otherwise reads
+    // its digest once to know whether a stale one is there to remove, and
+    // a read resolves it because an absent document is no source. So a
+    // write resolves thirteen and a read five.
     assert_eq!(
         registry
             .codesets()
             .map(|set| set.name())
             .collect::<Vec<_>>(),
-        ["marketdatatypecodeset", "msgcatcodeset", "statecodeset"],
+        [
+            "marketdatakindcodeset",
+            "marketdatatypecodeset",
+            "msgpluginsidecodeset",
+            "statecodeset"
+        ],
     );
     costs(
-        "seven documents, four roots",
+        "eight documents, four roots, the sources catalog",
         &calls,
-        "child_by_path=11",
+        "child_by_path=13",
         || {
             registry.commit(&mut folder).unwrap();
         },
     );
-    // And four on the way back: the code sets are read before the fields,
-    // because a field naming a set the dictionary does not hold is refused.
-    costs("four roots", &calls, "child_by_path=4", || {
-        assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
-    });
+    // And five on the way back: the code sets and the sources catalog are
+    // read before the fields, because a field naming a set the dictionary
+    // does not hold is refused.
+    costs(
+        "four roots, the sources catalog",
+        &calls,
+        "child_by_path=5",
+        || {
+            assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
+        },
+    );
     folder.remove(true).unwrap();
 }
 
@@ -157,6 +173,8 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     let options: RecordOptions = options.into();
     let codec = FixCodec::new(Arc::new(FixRegistry::new()));
 
+    // Explicit text options own the encoding, so the generic record read
+    // skips document inference and costs the direct FIX text intake.
     costs("the capture read as text alone", &calls, DECODE, || {
         let read: usize = handle
             .read_arrow_reader(&options)
@@ -851,6 +869,11 @@ mod records {
 
     /// The counts every record encoding shares, plus the ones that differ.
     ///
+    /// A read now enters the serie primitive, which asks the media type once
+    /// to distinguish a structured document before applying record options.
+    /// The Arrow adapter shares that dispatch; this adds one getter to its
+    /// full-read count and no byte read, reopening, or per-row call.
+    ///
     /// `is_container=2` is the shape of the two questions a dimension asks -
     /// the encoding, then the route - and it is two *calls* rather than two
     /// round trips: a leaf answers it from its own role and an unresolved
@@ -898,7 +921,7 @@ mod records {
             "ipc",
             "file:///lake/part.arrow",
             "pstream_bytes=1 url=1 media_type=1 is_container=1 parent=1",
-            "pstream_bytes=1 url=1 media_type=1 is_container=1 parent=1",
+            "pstream_bytes=1 url=1 media_type=2 is_container=1 parent=1",
             "pstream_bytes=1 size=1 media_type=2 is_container=2",
             // A row count walks the message headers and skips every body, so
             // it is one read per message rather than one transfer of the file.
@@ -916,24 +939,30 @@ mod records {
         let calls = Arc::clone(handle.calls());
         let read = "pstream_bytes=1 url=1 media_type=3 is_container=2 parent=1";
         costs("ipc: a read drained", &calls, read, || {
-            let rows: usize = handle
-                .read_serie(None)
-                .expect("a reader")
-                .map(|batch| batch.expect("a batch").len())
-                .sum();
+            let rows: usize =
+                yggdryl::StreamChunkedSerie::from_serie(handle.read_serie(None).expect("a reader"))
+                    .expect("native record stream")
+                    .into_chunks()
+                    .map(|batch| batch.expect("a batch").len())
+                    .sum();
             assert_eq!(rows, 64);
         });
         costs("ipc: a read windowed by venue", &calls, read, || {
             let mut windows = 0;
             let mut rows = 0;
-            for window in handle
-                .read_serie(None)
-                .expect("a reader")
-                .window_by("venue", true)
-                .expect("windows")
+            for window in
+                yggdryl::StreamChunkedSerie::from_serie(handle.read_serie(None).expect("a reader"))
+                    .expect("native record stream")
+                    .window_by("venue", true)
+                    .expect("windows")
             {
                 windows += 1;
-                for piece in window.expect("a window") {
+                for piece in yggdryl::StreamChunkedSerie::from_serie(
+                    window.expect("a window").into_parts().1,
+                )
+                .expect("the payload streams")
+                .into_chunks()
+                {
                     rows += piece.expect("a piece").len();
                 }
             }
@@ -969,7 +998,7 @@ mod records {
         costs(
             "parquet: a full read past a megabyte",
             &calls,
-            "read_range_bytes=2 size=1 media_type=1 is_container=1",
+            "read_range_bytes=2 size=1 media_type=2 is_container=1",
             || {
                 let read: usize = handle
                     .read_arrow_reader(&options)
@@ -988,7 +1017,7 @@ mod records {
             "parquet",
             "file:///lake/part.parquet",
             "read_all_bytes=1 size=1 media_type=1 is_container=1",
-            "read_all_bytes=1 size=1 media_type=1 is_container=1",
+            "read_all_bytes=1 size=1 media_type=2 is_container=1",
             // Both dimensions come out of the footer: the eight-byte tail and
             // the metadata it points at, and no row is decoded.
             "read_range_bytes=2 size=2 media_type=2 is_container=2",
@@ -1002,7 +1031,7 @@ mod records {
             "avro",
             "file:///lake/part.avro",
             "read_all_bytes=1 media_type=1 is_container=1",
-            "read_all_bytes=1 media_type=1 is_container=1",
+            "read_all_bytes=1 media_type=2 is_container=1",
             // One read for the header, whose fields used to be one read each.
             "pread=1 size=2 media_type=2 is_container=2",
             "pread=1 size=2 media_type=2 is_container=2",
@@ -1023,7 +1052,7 @@ mod records {
             "excel",
             "file:///lake/part.xlsx",
             "pstream_bytes=1 bound_location=3 media_type=1 is_container=1 parent=1",
-            "pstream_bytes=1 bound_location=3 media_type=1 is_container=1 parent=1",
+            "pstream_bytes=1 bound_location=3 media_type=2 is_container=1 parent=1",
             "pstream_bytes=1 size=1 bound_location=3 media_type=2 is_container=2 parent=1",
             "pstream_bytes=1 bound_location=3 media_type=2 is_container=2 parent=1",
         );
@@ -1040,7 +1069,7 @@ mod records {
             "xmla",
             "file:///lake/part.xmla",
             "read_all_bytes=1 media_type=2 is_container=1",
-            "read_all_bytes=1 media_type=2 is_container=1",
+            "read_all_bytes=1 media_type=3 is_container=1",
             "read_all_bytes=1 size=1 media_type=3 is_container=2",
             "read_all_bytes=1 media_type=3 is_container=2",
         );
@@ -1064,7 +1093,7 @@ mod records {
             "csv",
             "file:///lake/part.csv",
             "pstream_bytes=1 url=1 bound_location=3 media_type=1 is_container=1 parent=1",
-            "pstream_bytes=1 url=1 bound_location=3 media_type=1 is_container=1 parent=1",
+            "pstream_bytes=1 url=1 bound_location=3 media_type=2 is_container=1 parent=1",
             "pstream_bytes=1 size=1 url=1 media_type=2 is_container=2",
             "pstream_bytes=1 media_type=2 is_container=2",
         );

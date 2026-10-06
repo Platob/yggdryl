@@ -17,8 +17,10 @@
 //! Iceberg states it, partitioned by `partunix` - `currunix` floored to the
 //! quarter hour, a column the table computes for every row it is written -
 //! and sorted by `partunix, currunix, seqnum, currhashcode`, with
-//! `currunix, currhashcode` - the instant and the content hash - declared
-//! its primary key, Iceberg's identifier fields. A read yields
+//! `currunix, crosshashcode, seqnum, currhashcode` - when, which object,
+//! which line of it, what content - declared its primary key, Iceberg's
+//! identifier fields, so an append of a row the table holds leaves it out.
+//! A read yields
 //! partition after partition in that order, so the lifecycle and the books
 //! take rows in the order they happened whatever order they were written
 //! in, and an overwrite replaces the partitions its rows fall in and no
@@ -100,7 +102,7 @@ use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::{TextOptions, read_text_lines};
 use yggdryl::{
     ArrowCastOptions, DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, IOResult, Level,
-    Scheme, SerieReader, SerieSource, SpillOptions, Timezone,
+    Scheme, Serie, SpillOptions, StreamChunkedSerie, Timezone,
 };
 
 /// The capture every copy repeats, exactly as the bridge wrote it.
@@ -123,8 +125,11 @@ const DEFAULT_SCALE_BYTES: u64 = 20 << 30;
 const SMOKE_COPIES: u64 = 3;
 
 /// The primary key every table of the pipeline declares: when a row
-/// happened and the hash of what it states.
-const PRIMARY_KEY: [&str; 2] = ["currunix", "currhashcode"];
+/// happened, the object it was read from, its place among the rows of its
+/// instant and the hash of what it states. A capture repeats a line's bytes
+/// at one instant, so the instant and the content alone are no key, and an
+/// append to a keyed table leaves out a row whose key it holds.
+const PRIMARY_KEY: [&str; 4] = ["currunix", "crosshashcode", "seqnum", "currhashcode"];
 
 /// What the partition column every table of the pipeline computes holds,
 /// as the table states it: a derived column is described by whoever
@@ -823,17 +828,17 @@ impl RecordBatchReader for Counted {
 /// the batches it already is and comes back under its own root, so nothing
 /// is cast or landed for the count.
 fn counted(
-    reader: SerieReader,
+    reader: StreamChunkedSerie,
     probe: &Arc<Probe>,
     counter: fn(&Probe) -> &AtomicU64,
-) -> SerieReader {
+) -> StreamChunkedSerie {
     let root = reader.field().clone();
     let batches: BatchReader = Box::new(Counted {
         inner: reader.into_arrow_reader(),
         probe: Arc::clone(probe),
         counter,
     });
-    SerieReader::from_arrow_reader(Some(&root), batches, ArrowCastOptions::new())
+    StreamChunkedSerie::from_arrow_reader(Some(&root), batches, ArrowCastOptions::new())
         .expect("a counted stream under its own root")
 }
 
@@ -1104,14 +1109,21 @@ fn writing(table: &IcebergTable<LocalFolder>, shape: &Run) -> RecordOptions {
 /// The table's rows in the table's own order, as the rows `row` types -
 /// the crate's datatypes again, the partition column dropped - and, where
 /// `window` states one, only those it keeps.
-fn stored(table: &IcebergTable<LocalFolder>, row: &Field, window: Option<&str>) -> SerieReader {
+fn stored(
+    table: &IcebergTable<LocalFolder>,
+    row: &Field,
+    window: Option<&str>,
+) -> StreamChunkedSerie {
     let mut options = table.record_options().expect("the table's options");
     options.set_field(row.clone());
     let options = match window {
         Some(window) => options.with_filter(window).expect("the window"),
         None => options,
     };
-    table.read_serie(Some(&options)).expect("the table reads")
+    yggdryl::StreamChunkedSerie::from_serie(
+        table.read_serie(Some(&options)).expect("the table reads"),
+    )
+    .expect("native record stream")
 }
 
 /// The FIX table's rows as messages again, walked in the table's order.
@@ -1153,10 +1165,11 @@ fn keys(table: &IcebergTable<LocalFolder>, window: Option<&str>) -> Vec<(i64, i6
         None => options,
     };
     let mut keys = Vec::new();
-    for batch in table
-        .read_serie(Some(&options))
-        .expect("the table reads")
-        .into_arrow_reader()
+    for batch in yggdryl::StreamChunkedSerie::from_serie(
+        table.read_serie(Some(&options)).expect("the table reads"),
+    )
+    .expect("native record stream")
+    .into_arrow_reader()
     {
         let batch = batch.expect("a stored batch");
         let instants = |name: &str| {
@@ -1268,7 +1281,7 @@ fn verify(name: &str, table: &IcebergTable<LocalFolder>, expected: &Stored) {
             .identifier_field_ids()
             .expect("the identifier fields"),
         primary_key(stated),
-        "{name}: currunix and currhashcode are the table's primary key"
+        "{name}: currunix, crosshashcode, seqnum and currhashcode are the table's primary key"
     );
 }
 
@@ -1334,7 +1347,10 @@ fn run(shape: &Run) -> Outcome {
     // Every file the folder holds is one leaf of one table of text rows,
     // read through the native local backend, one leaf open at a time.
     let source = LocalFolder::new(&logs).expect("the input folder");
-    let lines = source.read_serie(Some(&options)).expect("the text rows");
+    let lines = yggdryl::StreamChunkedSerie::from_serie(
+        source.read_serie(Some(&options)).expect("the text rows"),
+    )
+    .expect("native record stream");
     let text_row = lines.field().clone();
     let lines = counted(lines, &probe, |probe| &probe.lines);
 
@@ -1363,14 +1379,14 @@ fn run(shape: &Run) -> Outcome {
     };
 
     if shape.stage == Stage::Lines {
-        for record in lines {
+        for record in lines.into_chunks() {
             record.expect("a batch of text rows");
         }
     } else {
         // The text table: `append_serie` is the whole call.
         let mut text = create(&scratch.0.join("text"), &text_row);
         let appended = text
-            .append_serie(SerieSource::from(lines), Some(&writing(&text, shape)))
+            .append_serie(Serie::from(lines), Some(&writing(&text, shape)))
             .expect("the text rows append");
         let text_held = held(&text);
         // The write says what it did: every line read is a row written.
@@ -1398,7 +1414,7 @@ fn run(shape: &Run) -> Outcome {
             let fix_row = parsed.field().clone();
             let parsed = counted(parsed, &probe, |probe| &probe.messages);
             if shape.stage == Stage::Parse {
-                for record in parsed {
+                for record in parsed.into_chunks() {
                     record.expect("a batch of FIX rows");
                 }
             } else {
@@ -1408,7 +1424,7 @@ fn run(shape: &Run) -> Outcome {
                     |probe| &probe.walked,
                 );
                 if shape.stage == Stage::Lifecycle {
-                    for record in walked {
+                    for record in walked.into_chunks() {
                         record.expect("a batch of walked rows");
                     }
                 } else {
@@ -1417,7 +1433,7 @@ fn run(shape: &Run) -> Outcome {
                     // any window of the text it was made from.
                     let mut fix = create(&scratch.0.join("fix"), &fix_row);
                     let written = fix
-                        .overwrite_serie(SerieSource::from(walked), Some(&writing(&fix, shape)))
+                        .overwrite_serie(Serie::from(walked), Some(&writing(&fix, shape)))
                         .expect("the walked rows write");
                     let fix_held = held(&fix);
                     assert_eq!(
@@ -1499,7 +1515,7 @@ fn reprocess(
             )
             .expect("the walked rows");
         let options = writing(fix, shape);
-        fix.overwrite_serie(SerieSource::from(walked), Some(&options))
+        fix.overwrite_serie(Serie::from(walked), Some(&options))
             .expect("the walked rows write again")
     };
     // The data files of every partition, by the quarter of an hour it holds.
@@ -1627,7 +1643,7 @@ fn books(
         .with_filter("snapunix is not null")
         .expect("the complete books");
     let kept = snapshots
-        .overwrite_serie(SerieSource::from(folded), Some(&complete))
+        .overwrite_serie(Serie::from(folded), Some(&complete))
         .expect("the snapshots write");
     let snapshots_held = held(&snapshots);
     // The `where` keeps the incomplete books out, and the result counts them.
@@ -1655,14 +1671,14 @@ fn books(
     let batches = MarketData::arrow_reader(deltas, Some(shape.batch_rows), Some(shape.batch_bytes))
         .expect("the delta rows");
     let flattened = counted(
-        SerieReader::from_arrow_reader(Some(&row), batches, ArrowCastOptions::new())
+        StreamChunkedSerie::from_arrow_reader(Some(&row), batches, ArrowCastOptions::new())
             .expect("the delta stream"),
         probe,
         |probe| &probe.deltas,
     );
     let mut deltas = create(&scratch.join("deltas"), &row);
     let flat = deltas
-        .overwrite_serie(SerieSource::from(flattened), Some(&writing(&deltas, shape)))
+        .overwrite_serie(Serie::from(flattened), Some(&writing(&deltas, shape)))
         .expect("the deltas write");
     let deltas_held = held(&deltas);
     assert_eq!(

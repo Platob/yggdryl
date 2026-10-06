@@ -27,9 +27,12 @@ export {
   Plan,
   ProtocolField,
   RecordOptions,
-  Records,
+  StreamSerie,
+  KeySerie,
+  KeySeries,
+  StreamKeySerie,
   Selector,
-  SerieReader,
+  StreamChunkedSerie,
   SpillOptions,
   ArrowCastPlan,
   StringEnum,
@@ -62,6 +65,8 @@ export {
   type FixDirection,
   type FixEntryView,
   type FixHeaderView,
+  type FixSourceOptions,
+  type FixSourceView,
   type HttpContentRange,
   type HttpCookie,
   type HttpETag,
@@ -112,12 +117,13 @@ import type {
   ProtocolField,
   Plan,
   RecordOptions,
-  Records,
+  StreamSerie,
+  KeySerie,
+  KeySeries,
+  StreamKeySerie,
   Selector,
   Serie as NativeSerie,
-  SerieReader,
-  SerieReaderPartitions as NativeSerieReaderPartitions,
-  SerieReaderWindows as NativeSerieReaderWindows,
+  StreamChunkedSerie,
   SpillOptions,
   WindowSerie as NativeWindowSerie,
   ArrowCastPlan,
@@ -236,25 +242,6 @@ export type WindowSerie = NativeWindowSerie
 export declare const WindowSerie: Omit<typeof NativeWindowSerie, 'prototype'> &
   (abstract new () => WindowSerie) & {
     readonly prototype: WindowSerie
-  }
-
-/** The windows of a stream: one lazy `SerieReader` per run of equal adjacent keys. */
-export type SerieReaderWindows = NativeSerieReaderWindows
-/** Handed out by `reader.windowBy(by, sorted)`: there is no public constructor. */
-export declare const SerieReaderWindows: Omit<typeof NativeSerieReaderWindows, 'prototype'> &
-  (abstract new () => SerieReaderWindows) & {
-    readonly prototype: SerieReaderWindows
-  }
-
-/** The partitions of a stream: one `[key, rows]` pair as each partition closes. */
-export type SerieReaderPartitions = NativeSerieReaderPartitions
-/** Handed out by `reader.partitionBy(by, options)`: there is no public constructor. */
-export declare const SerieReaderPartitions: Omit<
-  typeof NativeSerieReaderPartitions,
-  'prototype'
-> &
-  (abstract new () => SerieReaderPartitions) & {
-    readonly prototype: SerieReaderPartitions
   }
 
 /** Many columns under one field, held apart: a chunked array, or a table. */
@@ -512,9 +499,15 @@ export type DataTypeId =
   | 'marketdatakind'
   | 'marketdatatype'
   | 'timeinforce'
+  | 'pluginside'
   | 'unit'
   | 'ric'
   | 'forex'
+  | 'lei'
+  | 'bic'
+  | 'elf'
+  | 'dti'
+  | 'fisn'
   | 'uuid'
   | 'version'
   | 'url'
@@ -627,9 +620,15 @@ interface DataTypeKindById {
   marketdatakind: 'enum'
   marketdatatype: 'enum'
   timeinforce: 'enum'
+  pluginside: 'enum'
   unit: 'code'
   ric: 'code'
   forex: 'code'
+  lei: 'code'
+  bic: 'code'
+  elf: 'code'
+  dti: 'code'
+  fisn: 'code'
   uuid: 'uuid'
   version: 'text'
   url: 'text'
@@ -819,7 +818,7 @@ declare module './index' {
   /** Native rows in, native rows out: a `Scalar` sequence of records, or plain objects. */
   interface RecordAppliers {
     /** The native rows this publishes, bound once against `schema` or the first record. */
-    applyRecords(rows: Scalar | Iterable<unknown>, schema?: FieldLike | null): Records
+    applyRecords(rows: Scalar | Iterable<unknown>, schema?: FieldLike | null): StreamSerie
   }
 
   interface Term {
@@ -887,12 +886,12 @@ declare module './index' {
     toJSON(): unknown
   }
 
-  interface Records extends Iterator<Scalar>, Iterable<Scalar> {
+  interface StreamSerie extends Iterator<Scalar>, Iterable<Scalar> {
     /** The next row, or done once every row was yielded. */
     next(): IteratorResult<Scalar>
     /** Every remaining row, as an array. */
     collect(): Scalar[]
-    [Symbol.iterator](): Records
+    [Symbol.iterator](): StreamSerie
   }
 
   interface StringEnum {
@@ -959,9 +958,11 @@ declare module './index' {
      * Stream sorted messages through native market data and books into
      * nested Arrow batches, one book per book key and instant. A positive
      * snapshot width is epoch aligned. Orders, quotes and `W`/`X` book
-     * messages fold; an execution or a trade never reaches a book. `filter`,
-     * a predicate over the `marketdata` row, narrows what the books fold and
-     * never admits a pruned kind; not given, every booked leaf is kept.
+     * messages fold and an execution is recorded among its book's deltas -
+     * an entry reporting a trade (`269=2`) as the execution it is; a trade
+     * never reaches a book. `filter`, a predicate over the `marketdata` row,
+     * narrows what the books fold and never admits a pruned kind; not given,
+     * every recorded leaf is kept.
      */
     bookArrowReader(
       messages: Iterable<FixMsg>,
@@ -1009,6 +1010,7 @@ declare module './index' {
   }
 
   namespace Serie {
+    function from(value: unknown, field?: FieldLike | null, options?: ArrowCastOptions): Serie
     /** The column `field` types `rows` into, each through the field's own contract. */
     function fromScalars(field: Field | string, rows: Iterable<unknown>): Serie
     /** The empty column of `field`. */
@@ -1135,20 +1137,8 @@ declare module './index' {
      * long as this serie; an absent mask row keeps nothing.
      */
     intoFiltered(mask: SerieArgument): Serie
-    /**
-     * The rows grouped by `keys`, a serie - or an iterable of values - as
-     * long as this one: one `[key, rows]` pair per distinct key in order of
-     * first occurrence, an absent key one value. Sorted keys cut every group
-     * as a zero-copy slice. A record groups by one child through
-     * `partitionBy(serie.child('venue'))`.
-     */
-    partitionBy(keys: SerieArgument): Array<[Scalar, Serie]>
-    /**
-     * A record column's rows grouped by the cells `paths` reach - one field
-     * path, its text, or an iterable of them - keyed by the run of those
-     * cells in `paths` order.
-     */
-    partitionByPaths(paths: FieldPathsArgument): Array<[Scalar, Serie]>
+    /** Native key partitions; the payload retains its own layout. */
+    partitionBy(by: WindowKey): KeySeries
     /**
      * Sort the rows in place under `options` and answer this serie, so calls
      * chain: a primitive column holding its buffer alone sorts where it
@@ -1216,20 +1206,8 @@ declare module './index' {
      * Refused naming the serie and both counts when it reaches past the end.
      */
     window(offset: number, length: number): WindowSerie
-    /**
-     * The rows cut into windows by `by`, read as a projection list against
-     * the record root (a column that is no record is the one child of a
-     * `row` root): one `[key, window]` pair per run of equal adjacent keys,
-     * in row order, the key a run of the key's cells. Each window holds this
-     * serie, at its own offset. With `sorted`, each key once in key order -
-     * ascending, absent keys last: the windows of keys already in order are
-     * the same windows, and keys out of order gather the rows once into one
-     * new serie every window holds. Every window states its record as its
-     * `staticValues`. `sorted` absent or `null` is `false`. A run, an empty
-     * key, an `unnest` and a term naming no column are refused naming the
-     * serie, before any row is read.
-     */
-    windowBy(by: WindowKey, sorted?: boolean | null): Array<[Scalar, WindowSerie]>
+    /** Adjacent key contexts and native payloads. */
+    windowBy(by: WindowKey, sorted?: boolean | null): KeySeries
   }
 
   interface WindowSerie extends Iterable<Scalar> {
@@ -1245,16 +1223,8 @@ declare module './index' {
     sortIndices(options?: SortOptions | null): Serie
     /** A narrower window, window-relative, over the same serie. It states no record. */
     window(offset: number, length: number): WindowSerie
-    /**
-     * The window's rows cut into windows by `by`, as `Serie.windowBy` cuts
-     * them: each over the same serie at its own offset, or over one new
-     * serie of the rows `sorted` gathered, from offset 0. Each states its
-     * record as its `staticValues`; under a window `windowBy` lent, the
-     * rows are those it was cut over, its record's cells come first -
-     * `windownum` and `rownum` but - and `rownum` stays absolute, so a key
-     * cell named as a kept cell is refused naming both.
-     */
-    windowBy(by: WindowKey, sorted?: boolean | null): Array<[Scalar, WindowSerie]>
+    /** Adjacent key contexts and native payloads. */
+    windowBy(by: WindowKey, sorted?: boolean | null): KeySeries
     /** The window's rows as a serie: `slice`, sharing a column's buffers. It carries rows only. */
     intoSerie(): Serie
     /** The window's rows in sorted order, as a new serie. */
@@ -1267,8 +1237,8 @@ declare module './index' {
     intoTaken(indices: SerieArgument): Serie
     /** The window rows `mask`, as long as the window, keeps. */
     intoFiltered(mask: SerieArgument): Serie
-    /** The window's rows grouped by `keys`, as long as the window. */
-    partitionBy(keys: SerieArgument): Array<[Scalar, Serie]>
+    /** Native key partitions; the payload retains its own layout. */
+    partitionBy(by: WindowKey): KeySeries
     /** Whether the window's rows equal another window's, or a serie's. */
     equals(other: WindowSerie | Serie): boolean
     /** Overwrite window row `index` through the serie's field: one buffer write on a primitive leaf. */
@@ -1309,7 +1279,7 @@ declare module './index' {
     asSortBy(by: OrderingKeys): this
   }
 
-  namespace SerieReader {
+  namespace StreamChunkedSerie {
     /**
      * Read a native reader's batches as record series: of its own schema,
      * named `row`, or cast into `root` by one plan compiled here. The reader
@@ -1319,24 +1289,27 @@ declare module './index' {
       reader: BatchReader,
       root?: Field | string,
       options?: ArrowCastOptions,
-    ): SerieReader
+    ): StreamChunkedSerie
     /**
      * Read one held column as a stream of the one record serie it is: a
      * record column as it stands, any other column as the one child of a
      * record named `row`. A run, and a record column with an absent row,
      * are refused.
      */
-    function fromSerie(serie: Serie): SerieReader
+    function fromSerie(serie: Serie): StreamChunkedSerie
     /**
      * Read a held chunked column as the stream of its chunks, one record
      * serie per chunk: a record's chunks as they stand, any other field's
      * each the one child of a record named `row`. Nothing is cast or copied;
      * a record chunk with an absent row is refused.
      */
-    function fromChunked(chunked: ChunkedSerie): SerieReader
+    function fromChunked(chunked: ChunkedSerie): StreamChunkedSerie
   }
 
-  interface SerieReader extends Iterable<Serie> {
+  interface StreamChunkedSerie extends Iterable<Serie> {
+    readonly schema: import('apache-arrow').Schema
+    readNextBatch(): ArrowRecordBatch | null
+    readAll(): ArrowTable
     /** One record serie per batch, each cast as it is pulled. */
     [Symbol.iterator](): Generator<Serie, void, undefined>
     /**
@@ -1346,71 +1319,33 @@ declare module './index' {
      * answers it as it stands; held records are cast here, once each, and a
      * stream's batches as they are pulled. The reader is consumed.
      */
-    cast(field: Field | DataType | string, options?: ArrowCastOptions): SerieReader
-    /**
-     * The stream cut into one lazy reader per run of equal adjacent keys,
-     * in the order they arrive, `by` bound against the root before any batch
-     * is pulled. Windows are read in order: taking the next window drops
-     * the unread rows of the one before, and a window read after the walk
-     * passed rows of it refuses once, naming it. With `sorted`, the keys
-     * must arrive in key order - ascending, absent keys last - and the
-     * first that goes backwards is refused naming its batch and row; a
-     * stream is never reordered. Every window states its record as its
-     * `staticValues`. `sorted` absent or `null` is `false`. The reader is
-     * consumed, a refused key included.
-     */
-    windowBy(by: WindowKey, sorted?: boolean | null): SerieReaderWindows
-    /**
-     * The stream cut by `by` into partitions, each `[key, rows]` pair
-     * yielded as soon as its partition closes: `key` the record of the
-     * cells `by` computes, `rows` a ChunkedSerie under this reader's root,
-     * in the order the rows arrived. `by` is bound against the root before
-     * any batch is pulled, and the batches are cut on `threads` threads -
-     * every thread the host offers by default - and answered in order. The
-     * open partitions are held under the process spill bound. Past
-     * `maxOpen` open partitions - every partition open by default - the
-     * ones of the lowest keys close, so a stream arriving in key order
-     * closes each once it has been read whole; when the stream ends, every
-     * partition still open closes in ascending key order. `clustered: true`
-     * states that every row of a key arrives before any row of the next, so
-     * each partition closes as soon as another key arrives, in arrival
-     * order; a reader whose root declares an order leading with the key's
-     * terms is clustered untold. A key arriving again after its partition
-     * closed is yielded again, as a new piece under the same key. Each
-     * option `undefined` or `null` is its default, and an unknown one is
-     * refused. A key text that does not parse and a refused option leave
-     * the reader usable; otherwise the reader is consumed, a key the root
-     * refuses included.
-     */
-    partitionBy(by: WindowKey, options?: PartitionOptionsInput | null): SerieReaderPartitions
-    /**
-     * Every record this reader yields in sorted order under `options`: the
-     * stream drained into its chunks, each settled under the spill bound as
-     * it lands, merged, and read back as a held stream of the merged
-     * chunks. The root and `staticValues` are kept; the reader is consumed.
-     */
-    intoSorted(options?: SortOptions | null): SerieReader
+    cast(field: Field | DataType | string, options?: ArrowCastOptions): StreamChunkedSerie
+    /** Adjacent key contexts and native payloads. */
+    windowBy(by: WindowKey, sorted?: boolean | null): StreamKeySerie
+    /** Native key partitions; the payload retains its own layout. */
+    partitionBy(by: WindowKey, options?: PartitionOptionsInput | null): StreamKeySerie
+    intoSorted(options?: SortOptions | null): StreamChunkedSerie
     /**
      * Every record this reader yields in the order the `order by` keys of
      * `by` state, bound against the root before any batch is pulled, then
      * drained and merged as `intoSorted` is. The reader is consumed, a
      * refused key included.
      */
-    intoSortBy(by: OrderingKeys): SerieReader
+    intoSortBy(by: OrderingKeys): StreamChunkedSerie
     /**
      * This stream joined with `other` - a Serie, a ChunkedSerie, or another
-     * SerieReader, consumed too - on `by`, under `how` (`inner` when absent
+     * StreamChunkedSerie, consumed too - on `by`, under `how` (`inner` when absent
      * or null): a stream of the output, one probe batch joined at a time,
      * the held side built and hashed first, `Serie.joinWith`'s rules for the
      * columns. `how` and `options` are read before anything is consumed;
      * this reader is consumed, a refused key included.
      */
     joinWith(
-      other: Serie | ChunkedSerie | SerieReader,
+      other: Serie | ChunkedSerie | StreamChunkedSerie,
       by: JoinKeys,
       how?: JoinHow | null,
       options?: JoinOptionsInput | null,
-    ): SerieReader
+    ): StreamChunkedSerie
     /**
      * Spill the records this reader holds in place under the bound `options`
      * states, as `spill` does, and answer this reader; a stream holds none
@@ -1422,30 +1357,7 @@ declare module './index' {
      * `options` states, handed over as a new reader: a stream moves rather
      * than copies, so this reader is consumed.
      */
-    intoSpilled(options?: SpillOptions | null): SerieReader
-  }
-
-  interface SerieReaderWindows extends IterableIterator<SerieReader> {
-    /**
-     * Open the next window as its lazy reader, in the order they arrive, or
-     * done after the last: the unread rows of the window before are pulled
-     * and dropped. A key going backwards under `sorted` is thrown once,
-     * naming its batch and row, and the walk is done after it.
-     */
-    next(): IteratorResult<SerieReader>
-    /** The windows themselves: one walk, iterated once. */
-    [Symbol.iterator](): SerieReaderWindows
-  }
-
-  interface SerieReaderPartitions extends IterableIterator<[Scalar, ChunkedSerie]> {
-    /**
-     * Pull the stream until the next partition closes and answer its
-     * `[key, rows]` pair, or done after the last. A failure of the stream
-     * is thrown once, and the walk is done after it.
-     */
-    next(): IteratorResult<[Scalar, ChunkedSerie]>
-    /** The partitions themselves: one walk, iterated once. */
-    [Symbol.iterator](): SerieReaderPartitions
+    intoSpilled(options?: SpillOptions | null): StreamChunkedSerie
   }
 
   namespace ChunkedSerie {
@@ -1553,25 +1465,10 @@ declare module './index' {
     intoTaken(indices: SerieArgument): ChunkedSerie
     /** The rows `mask`, as long as the whole, keeps: chunk by chunk, kept apart. */
     intoFiltered(mask: SerieArgument): ChunkedSerie
-    /**
-     * The rows grouped by `keys`, as long as the whole: one `[key, rows]`
-     * pair per distinct key in order of first occurrence, each group's rows
-     * the chunks each chunk contributed, kept apart. Keys are a Serie or any
-     * iterable of values, or held in chunks - a ChunkedSerie, or an Apache
-     * Arrow JS vector of one chunk per `Data` - grouped chunk beside chunk
-     * with no join where both are cut at the same rows, and joined once and
-     * cut to the rows' chunks otherwise.
-     */
-    partitionBy(keys: SerieArgument | ChunkedSerie | ArrowVector): Array<[Scalar, ChunkedSerie]>
-    /**
-     * The rows cut into windows by `by` across the chunks, as
-     * `Serie.windowBy` cuts the joined rows: a run crossing a chunk edge is
-     * one window, and with `sorted` each key's runs are regrouped into one
-     * window, its rows the pieces of the chunks it spans - no row copied. A
-     * chunked window states no record: its key is the pair's first half and
-     * its place the pair's index.
-     */
-    windowBy(by: WindowKey, sorted?: boolean | null): Array<[Scalar, ChunkedSerie]>
+    /** Native key partitions; the payload retains its own layout. */
+    partitionBy(by: WindowKey): KeySeries
+    /** Adjacent key contexts and native payloads. */
+    windowBy(by: WindowKey, sorted?: boolean | null): KeySeries
     /** Sort the rows in place - the merged chunks replace the chunks - and answer this chunked serie. */
     asSorted(options?: SortOptions | null): this
     /** Keep the first occurrence of every value in place, each chunk its own, kept apart, and answer this chunked serie. */
@@ -1841,8 +1738,20 @@ export type MarketDataKindField = FieldOf<'marketdatakind', MarketDataKindName>
 export type MarketDataTypeField = FieldOf<'marketdatatype', MarketDataTypeName>
 /** A currency pair, `CCY/CCY`, stored as its text. */
 export type ForexField = FieldOf<'forex', string>
+/** ISO 17442, the twenty-character legal entity identifier closed by its MOD 97-10 check digits. */
+export type LeiField = FieldOf<'lei', string>
+/** ISO 9362, the business identifier code: eight characters, or eleven with a branch. */
+export type BicField = FieldOf<'bic', string>
+/** ISO 20275, the four-character entity legal form code. */
+export type ElfField = FieldOf<'elf', string>
+/** ISO 24165, the nine-character digital token identifier closed by its ISO 7064 MOD 31,30 check character. */
+export type DtiField = FieldOf<'dti', string>
+/** ISO 18774, the financial instrument short name - issuer and description split at the first `/` - upper case, at most thirty-five bytes. */
+export type FisnField = FieldOf<'fisn', string>
 /** FIX TimeInForce(59), how long an order stands, an enum stored as the `uint8` code of its member and crossing as the member's name. */
 export type TimeInForceField = FieldOf<'timeinforce', TimeInForceName>
+/** The role of a FIX plugin, an enum stored as the `uint8` code of its member and crossing as the member's name. */
+export type PluginSideField = FieldOf<'pluginside', PluginSideName>
 /** The unit a quantity is counted in, FIX UnitOfMeasure(996), ASCII held to thirty-two bytes. */
 export type UnitField = FieldOf<'unit', string>
 /** A Refinitiv Identification Code - a ticker and an exchange code - printable ASCII bounded at thirty-two bytes. */
@@ -2150,9 +2059,15 @@ export interface FieldsNamespace {
   marketdatakind(name: string, options?: FieldOptions): MarketDataKindField
   marketdatatype(name: string, options?: FieldOptions): MarketDataTypeField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
+  pluginside(name: string, options?: FieldOptions): PluginSideField
   unit(name: string, options?: FieldOptions): UnitField
   ric(name: string, options?: FieldOptions): RicField
   forex(name: string, options?: FieldOptions): ForexField
+  lei(name: string, options?: FieldOptions): LeiField
+  bic(name: string, options?: FieldOptions): BicField
+  elf(name: string, options?: FieldOptions): ElfField
+  dti(name: string, options?: FieldOptions): DtiField
+  fisn(name: string, options?: FieldOptions): FisnField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
   geometry(name: string, options: FieldOptions): GeometryField
   geography(
@@ -2801,6 +2716,13 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'timeinforce', TimeInForceName, N, O>
+  pluginside<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'pluginside', PluginSideName, N, O>
   unit<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -2816,6 +2738,26 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'forex', string, N, O>
+  lei<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'lei', string, N, O>
+  bic<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'bic', string, N, O>
+  elf<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'elf', string, N, O>
+  dti<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'dti', string, N, O>
+  fisn<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'fisn', string, N, O>
   geometry<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -3549,9 +3491,6 @@ export declare const State: Readonly<{
   PENDING_NEW: 1001
   QUEUED: 1002
   RECEIVED: 1003
-  PENDING_VERIFICATION: 1004
-  PENDING_ALLOCATION: 1005
-  PENDING_APPROVAL: 1006
   ACCEPTED: 2000
   NEW: 2001
   STARTING: 2002
@@ -3568,6 +3507,9 @@ export declare const State: Readonly<{
   TRADE_CORRECT: 4003
   TRADE_CANCEL: 4004
   TRADE_IN_CLEARING_HOLD: 4005
+  PENDING_VERIFICATION: 4006
+  PENDING_ALLOCATION: 4007
+  PENDING_APPROVAL: 4008
   PAUSED: 5000
   STOPPED: 5001
   SUSPENDED: 5002
@@ -3594,6 +3536,7 @@ export declare const State: Readonly<{
   CLEARED: 8010
   SETTLED: 8011
   CLAIMED: 8012
+  APPROVED: 8013
   CANCELED: 9000
   REVERSED: 9001
   REMOVED: 9002
@@ -3615,10 +3558,10 @@ export type StateName = keyof typeof State
  * member's four-letter name under the `uint8` code a `marketdatakind`
  * column stores - an order `ORDR`, a quote `QUOT`, an execution `EXEC`, a
  * trade `TRAD`, a book `BOOK`, the batches `ORDB`, `QUOB`, `EXEB` and
- * `TRDB`, and `UNKN` for a type the dictionary files under none.
+ * `TRDB`, and `UKNW` for a type the dictionary files under none.
  */
 export declare const MarketDataKind: Readonly<{
-  UNKN: 0
+  UKNW: 0
   ACCT: 1
   ALLO: 2
   BOOK: 3
@@ -3656,11 +3599,11 @@ export type MarketDataKindName = keyof typeof MarketDataKind
  * (300-399), the book entry types `BOOK*` (400-499), the trade report types
  * `TRPT*` (500-599), the quote request types `QRQ*` (600-699), the mass
  * cancel scopes `MCX*` (700-799) and the market data request types `MDR*`
- * (800-899), each set closed by its catch-all, and `UNKN` at zero for an
+ * (800-899), each set closed by its catch-all, and `UKNW` at zero for an
  * element that states none.
  */
 export declare const MarketDataType: Readonly<{
-  UNKN: 0
+  UKNW: 0
   ORDMKT: 101
   ORDLIMIT: 102
   ORDSTOP: 103
@@ -3794,7 +3737,7 @@ export type MarketDataTypeName = keyof typeof MarketDataType
 export declare function marketDataTypeFromFix(tag: number, wire: string): MarketDataTypeName | null
 
 /**
- * The FIX field and wire value the member stands for, or `null` for `UNKN`
+ * The FIX field and wire value the member stands for, or `null` for `UKNW`
  * and a catch-all; throws on a name that is no member.
  */
 export declare function marketDataTypeFixCode(
@@ -3803,12 +3746,12 @@ export declare function marketDataTypeFixCode(
 
 /**
  * FIX's `TimeInForce(59)`: how long an order stands, each member's stored
- * name under the `uint8` code a `timeinforce` column stores - `UNKN` at zero
+ * name under the `uint8` code a `timeinforce` column stores - `UKNW` at zero
  * for none stated, the FIX values in wire order, and `OTHER` for a venue's
  * own value no member names.
  */
 export declare const TimeInForce: Readonly<{
-  UNKN: 0
+  UKNW: 0
   DAY: 1
   GTC: 2
   OPG: 3
@@ -3836,18 +3779,43 @@ export declare function timeInForceFromFix(wire: string): TimeInForceName
 
 /**
  * The `TimeInForce(59)` wire value the member stands for, or `null` for
- * `UNKN` and `OTHER`; throws on a name that is no member.
+ * `UKNW` and `OTHER`; throws on a name that is no member.
  */
 export declare function timeInForceFixCode(name: TimeInForceName): string | null
 
 /**
+ * The role of a FIX plugin: the side of the session a dialect's plugin
+ * stands on, each member's stored name under the `uint8` code a
+ * `pluginside` column stores - `UKNW` at zero for a plugin stating no role,
+ * then `BUYS` and `SELL`. A session fact read off a dialect's source entry,
+ * never off a FIX tag, and a separate enum from `Side` though two names are
+ * spelled alike.
+ */
+export declare const PluginSide: Readonly<{
+  UKNW: 0
+  BUYS: 1
+  SELL: 2
+}>
+
+/** The stored name of one plugin side. */
+export type PluginSideName = keyof typeof PluginSide
+
+/**
+ * The role one plugin class names: a `CBlock` root's `type`, whose last
+ * `.`-separated segment, folded, holding `buyside` is `BUYS`, holding
+ * `sellside` is `SELL`, and anything else `UKNW`. Never throws.
+ */
+export declare function pluginSideFromPluginType(pluginType: string): PluginSideName
+
+/**
  * FIX's `Side(54)`: which side of the market a trade took, each member's
- * four-letter code under the `uint8` code a `side` column stores - `UNKN` at
+ * four-letter code under the `uint8` code a `side` column stores - `UKNW` at
  * zero, then the seventeen sides in FIX's own order, so a code is the
- * position of its one-character wire code.
+ * position of its one-character wire code, and `BOTH` at 99, both sides at
+ * once - a book's and a two-sided quote's - which has no wire code.
  */
 export declare const Side: Readonly<{
-  UNKN: 0
+  UKNW: 0
   BUYS: 1
   SELL: 2
   BUYM: 3
@@ -3865,6 +3833,7 @@ export declare const Side: Readonly<{
   LEND: 15
   BORR: 16
   SELU: 17
+  BOTH: 99
 }>
 
 /** The four-letter code of one side. */
@@ -3922,13 +3891,13 @@ export declare const enums: {
    */
   readonly eventColumns: readonly string[]
   /**
-   * The thirty-four market column names, in schema order:
+   * The thirty-five market column names, in schema order:
    * `marketdatakind`, `marketdatatype`, `price`, `stoppx`, `currency`, `quantity`,
    * `displayqty`, `hiddenqty`, `unit`, `side`, `securityids`, `isincode`,
    * `cficode`, `miccode`, `execunix`, `lastpx`, `lastqty`, `avgpx`,
    * `cumqty`, `leavesqty`, `cxlqty`, `prevpx`, `prevqty`, `spotrate`,
    * `forwardpoints`, `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`,
-   * `askccy`, `fxrates`, `ticker`, `metadata`.
+   * `askccy`, `fxrates`, `ticker`, `strikepx`, `metadata`.
    */
   readonly marketColumns: readonly string[]
   /**
@@ -4466,7 +4435,7 @@ declare module './index' {
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): IOResult
-    /** Merge one native reader by the non-empty `options.mergeBy` keys. */
+    /** Merge one native reader by `options.mergeBy`, else the destination's own key (an Iceberg table's identity partition columns, then its identifier columns). */
     mergeArrowReader(
       reader: BatchReader,
       options?: RecordOptionsInput | RecordProperties | null,
@@ -4492,7 +4461,7 @@ declare module './index' {
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): IOResult
-    /** Merge one Apache Arrow JS table by the non-empty `options.mergeBy` keys. */
+    /** Merge one Apache Arrow JS table by `options.mergeBy`, else the destination's own key. */
     mergeArrowTable(
       table: ArrowTable,
       options?: RecordOptionsInput | RecordProperties | null,
@@ -4518,7 +4487,7 @@ declare module './index' {
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): IOResult
-    /** Merge one Apache Arrow JS record batch by `options.mergeBy`. */
+    /** Merge one Apache Arrow JS record batch by `options.mergeBy`, else the destination's own key. */
     mergeArrowBatch(
       batch: ArrowRecordBatch,
       options?: RecordOptionsInput | RecordProperties | null,
@@ -4531,41 +4500,34 @@ declare module './index' {
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): IOResult
-
-    /**
-     * Read this resource's rows as a `SerieReader`, one record serie per
-     * batch. Absent options are the handle's own - a container's the table
-     * beneath it, a structured text document the record column its rows
-     * parse into, of which the declared field is the one option it reads.
-     */
-    readSerie(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): SerieReader
+    readSerie(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): Serie
     /**
      * Write rows in any shape they are held - a Serie, a ChunkedSerie, a
-     * SerieReader (consumed), or any value `BatchReader.from` accepts -
+     * StreamChunkedSerie (consumed), or any value `BatchReader.from` accepts -
      * under `mode`, `overwrite` when absent. A structured text document
      * takes `overwrite` alone, and of the options the declared field alone.
      */
     writeSerie(
-      value: SerieSource,
+      value: SerieInput,
       mode?: IOMode,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): IOResult
     /** Replace this resource's rows with `value`'s: `writeSerie` under `overwrite`. */
     overwriteSerie(
-      value: SerieSource,
+      value: SerieInput,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): IOResult
     /** Add `value`'s rows after this resource's: `writeSerie` under `append`. */
     appendSerie(
-      value: SerieSource,
+      value: SerieInput,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): IOResult
-    /** Merge `value`'s rows by the non-empty `options.mergeBy` keys: `writeSerie` under `merge`. */
+    /** Merge `value`'s rows by `options.mergeBy`, else the destination's own key: `writeSerie` under `merge`. */
     mergeSerie(
-      value: SerieSource,
+      value: SerieInput,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): IOResult
@@ -4601,7 +4563,7 @@ declare module './index' {
       properties?: RecordProperties | null,
     ): Promise<IOResult>
     appendRecords(rows: RecordSource, options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): IOResult
-    /** Merge records by the non-empty `options.mergeBy` keys. */
+    /** Merge records by `options.mergeBy`, else the destination's own key. */
     mergeRecords(
       rows: AsyncIterable<StructRecord>,
       options?: RecordOptionsInput | RecordProperties | null,
@@ -4690,19 +4652,19 @@ declare module './index' {
       options?: IcebergOptions | IcebergProperties | null,
       properties?: IcebergProperties | null,
     ): void
-    /** Merge `rows` into the stored rows, matching on the `mergeBy` selector. */
+    /** Merge `rows` into the stored rows, matching on the `mergeBy` selector, else - left out or `null` - on the table's own key: its identity partition columns, then the columns its schema's `identifier-field-ids` names. */
     merge(
       rows: IcebergSource,
-      mergeBy: Selector | Term | string | readonly string[],
+      mergeBy?: Selector | Term | string | readonly string[] | null,
       safe?: boolean | null,
       options?: IcebergOptions | IcebergProperties | null,
       properties?: IcebergProperties | null,
     ): void
-    /** Merge `rows` into the rows `filters` selects, on the `mergeBy` selector. */
+    /** Merge `rows` into the rows `filters` selects, on the `mergeBy` selector, else on the table's own key as `merge`. */
     mergeWhere(
       filters: PartitionFilters | null | undefined,
       rows: IcebergSource,
-      mergeBy: Selector | Term | string | readonly string[],
+      mergeBy?: Selector | Term | string | readonly string[] | null,
       safe?: boolean | null,
       options?: IcebergOptions | IcebergProperties | null,
       properties?: IcebergProperties | null,
@@ -4831,12 +4793,8 @@ export type JoinKeys =
  * `full`.
  */
 export type JoinHow = 'inner' | 'left' | 'right' | 'full' | 'outer' | 'semi' | 'anti' | (string & {})
-
-/**
- * The key a serie is windowed by: a `Selector`, a `Term`, the text of a
- * projection list, or an array of terms and projection texts.
- */
-export type WindowKey = Selector | Term | string | readonly (Term | string)[]
+export type NativeSerieInput = Serie | ChunkedSerie | WindowSerie | StreamSerie | StreamChunkedSerie | KeySerie | KeySeries | StreamKeySerie
+export type WindowKey = Selector | Term | string | readonly (Term | string)[] | FieldPath | readonly FieldPath[] | NativeSerieInput | ArrowVector | ArrowTable | ArrowRecordBatch
 
 /** The field paths a record partitions by: one path, its text, or an iterable of them. */
 export type FieldPathsArgument = FieldPath | string | Iterable<FieldPath | string>
@@ -4854,7 +4812,7 @@ export type BatchSource =
  * Rows the `Serie` record writes take: a held column, held chunks, a stream
  * (consumed), or any value `BatchReader.from` accepts.
  */
-export type SerieSource = Serie | ChunkedSerie | SerieReader | BatchSource
+export type SerieInput = NativeSerieInput | BatchSource
 /** One row accepted by the record-specific write entry points. */
 // `& object` is what keeps a primitive out: every JavaScript value carries a
 // `constructor`, so a bare number structurally satisfies StructFieldInstance.
@@ -5338,11 +5296,11 @@ export interface Fix {
    * each line it matches: the capture is consumed into the line's
    * `currunix` - the `recdunix` of its messages and the sending clock of one
    * stating no `SendingTime(52)` - read at nanoseconds UTC under the text
-   * options' `timezone`, never the file's modification time. The other
-   * four captures are named for the fields they fill - `msgsessionid`,
-   * `msgctxid`, `msgseqnum` and `msgpluginid` - so the header carries no
-   * column of its own; the thread that wrote a line and the level it was
-   * logged at are matched and lifted into no column. Its
+   * options' `timezone`, never the file's modification time. Four of the
+   * other six captures are named for the fields they fill - `msgsessionid`,
+   * `msgctxid`, `msgseqnum` and `msgpluginid` - and `msgthreadid` and
+   * `loglevel` name none: columns of the line's row, carried in front of a
+   * FIX row parsed from it, filling no field. Its
    * clock reads what bridges write, a point or a comma before three digits
    * or grouped microseconds, or no fraction at all, and a line a row header
    * does not match carries no capture context - which is what the lifecycle
@@ -5353,8 +5311,9 @@ export interface Fix {
    * FIX field definitions resolved by identifier, by tag, by name, or by
    * dotted path. One namespace: an identifier is the number `field.fix.id`
    * derives from a tag and a name, a bare number is a tag, and a
-   * dictionary's membership is `FIX:branches` on the field it contributed
-   * to - provenance a caller filters on, never a lookup tier.
+   * dictionary's membership is `FIX:sources` on the field it contributed
+   * to, each id an entry of the dictionary's sources catalog - provenance
+   * a caller filters on, never a lookup tier.
    */
   readonly FixRegistry: typeof FixRegistry
   /**
@@ -5484,9 +5443,10 @@ export interface OperationEventConstructor<T> {
  * The public `BookIterator` constructor: its items pulled lazily from the
  * caller's iterable through the loader's pull adapter, the way `FixCodec`'s
  * streams are; a failure behind the iterable is thrown as itself. Orders,
- * quotes and snapshot controls fold, and every other input is pruned;
- * `filter`, a predicate over the `marketdata` row bound once, narrows what
- * the books fold and never admits an execution or a trade.
+ * quotes and snapshot controls fold, an execution is recorded among its
+ * book's deltas, and every other input is pruned; `filter`, a predicate over
+ * the `marketdata` row bound once, narrows what the books fold and never
+ * admits a trade.
  */
 export interface BookIteratorConstructor {
   new (
@@ -5740,4 +5700,14 @@ export interface FileSystemHandler {
   openInputStream(path: string): ByteReader
   openOutputStream(path: string, metadata?: OutputMetadata): ByteWriter
   openAppendStream(path: string, metadata?: OutputMetadata): ByteWriter
+}
+
+// The key context and payload travel separately through native stream adapters.
+declare module './index' {
+  interface KeySerie { readonly rows: Serie }
+  interface KeySeries extends Iterable<KeySerie> { [Symbol.iterator](): IterableIterator<KeySerie> }
+  interface StreamKeySerie extends IterableIterator<KeySerie> {
+    next(): IteratorResult<KeySerie>
+    [Symbol.iterator](): StreamKeySerie
+  }
 }

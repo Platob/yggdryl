@@ -7,7 +7,7 @@
 | Key | Rule |
 | --- | --- |
 | Types | `Quote = OperationElement<QuoteKind>`, `QuoteEvent = OperationEvent<QuoteKind>`: the [operation leaf contract](order.md#contract), filed under `QUOT` |
-| Two legs | a quote holds its bid - `bidpx`, `bidqty`, `bidccy` - and its ask - `askpx`, `askqty`, `askccy` - as one element; its `side` is a tag, a one-sided quote tagging the leg it states and a two-sided one none. A price and a quantity stated under a tag quote that leg ([A quote's two legs](market.md#a-quotes-two-legs)) |
+| Two legs | a quote holds its bid - `bidpx`, `bidqty`, `bidccy` - and its ask - `askpx`, `askqty`, `askccy` - as one element; its `side` is a tag, a one-sided quote tagging the leg it states and a two-sided one tagging none `BOTH`, once finalized - a tag it states stands. A price and a quantity stated under a tag quote that leg ([A quote's two legs](market.md#a-quotes-two-legs)) |
 | Cross code | a quote is not [sided](market.md#sides-and-cross-codes): its cross code is stored under side `0` whatever leg it tags (`14:0:Q-7`), so one quote identifier is one chain, a statement updating either leg included |
 | Following | a follower tagging no side takes each leg it states nothing of from its chain, whole; a leg it states is its own, a zero quantity withdrawing it included ([Market](market.md#a-quotes-two-legs)) |
 | On a book | a dated quote rests on each leg it states a price or a quantity of - one entry, on both sides where it states both, listed once by `alive()` and on each side by `alive_on` - and a leg sized zero rests nowhere; a quote stating no leg rests on neither and is still a delta of its book ([Book](book.md#entries)); a change or overlay stating `orderid` promotes it to an order |
@@ -26,7 +26,8 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
 
     const T: i64 = 1_700_000_000_000_000_000;
 
-    // Two legs and no tag: the bid and the ask are the quote's own facts.
+    // Two legs and no tag: the bid and the ask are the quote's own facts,
+    // and it holds both sides.
     let mut quote = QuoteEvent::at(T);
     quote.set_crosscode("Q-7".to_owned());
     quote.set_ticker(Some("AAPL".into()), true);
@@ -35,7 +36,7 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
     quote.set_askpx(Some("189.52".parse()?), true);
     quote.set_askqty(Some(Decimal::from_int(100)), true);
     quote.finalize();
-    assert_eq!((quote.get_side(), quote.get_price()), (Side::Unknown, None));
+    assert_eq!((quote.get_side(), quote.get_price()), (Side::Both, None));
     assert_eq!(quote.get_crosscode(), "14:0:Q-7", "a quote, stored under side 0");
     assert!(!quote.is_execution());
 
@@ -76,7 +77,8 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
 
     T = 1_700_000_000_000_000_000
 
-    # Two legs and no tag: the bid and the ask are the quote's own facts.
+    # Two legs and no tag: the bid and the ask are the quote's own facts,
+    # and it holds both sides.
     quote = graph.QuoteEvent(
         T,
         crosscode="Q-7",
@@ -86,7 +88,7 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
         askpx=Decimal("189.52"),
         askqty=100,
     )
-    assert (quote.side, quote.price) == (Side.UNKN, None)
+    assert (quote.side, quote.price) == (Side.BOTH, None)
     assert quote.crosscode == "14:0:Q-7", "a quote, stored under side 0"
     assert not quote.is_execution
 
@@ -121,11 +123,12 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
 
     const T = 1_700_000_000_000_000_000n
 
-    // Two legs and no tag: the bid and the ask are the quote's own facts.
+    // Two legs and no tag: the bid and the ask are the quote's own facts,
+    // and it holds both sides.
     const quote = new graph.QuoteEvent(T, {
       crosscode: 'Q-7', ticker: 'AAPL', bidpx: '189.48', bidqty: 300, askpx: '189.52', askqty: 100,
     })
-    assert.equal(quote.side, 'UNKN')
+    assert.equal(quote.side, 'BOTH')
     assert.equal(quote.price, null)
     assert.equal(quote.crosscode, '14:0:Q-7', 'a quote, stored under side 0')
     assert.equal(quote.isExecution, false)

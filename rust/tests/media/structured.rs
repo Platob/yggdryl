@@ -1,10 +1,9 @@
 //! `rust/src/media/structured.rs`: what a structured text document carries
 //! into a record column, and back out.
 
-use yggdryl::SerieSource;
 use yggdryl::holder::Buffer;
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Serie, SerieReader,
+    ArrowCastOptions, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Serie, StreamChunkedSerie,
     StructType, Url,
 };
 
@@ -58,16 +57,18 @@ fn quote_column() -> Serie {
 }
 
 /// The quotes as the stream of one record column a write takes.
-fn quotes() -> SerieReader {
-    SerieReader::from_serie(quote_column()).expect("a record column is one stream")
+fn quotes() -> StreamChunkedSerie {
+    StreamChunkedSerie::from_serie(quote_column()).expect("a record column is one stream")
 }
 
 /// The one record column a document reads as.
 ///
 /// A document has no frame to read a prefix of, so whatever was written
 /// converges on the one column its rows parse into.
-fn the_one_column(reader: SerieReader, context: &str) -> Serie {
+fn the_one_column(reader: impl Into<Serie>, context: &str) -> Serie {
+    let reader = StreamChunkedSerie::from_serie(reader.into()).expect("native stream");
     let columns = reader
+        .into_chunks()
         .collect::<Result<Vec<Serie>, _>>()
         .unwrap_or_else(|error| panic!("{context} lands: {error}"));
     assert_eq!(columns.len(), 1, "{context} reads as one column");
@@ -85,7 +86,7 @@ fn every_structured_format_round_trips_arrow_rows() {
     ] {
         let mut target = handle(name);
         target
-            .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
+            .write_serie(Serie::from(quotes()), IOMode::Overwrite, None)
             .unwrap_or_else(|error| panic!("{name} writes: {error}"));
 
         let read = target
@@ -117,13 +118,14 @@ fn every_stream_lands_as_the_same_rows_in_every_structured_format() {
         vec![
             (
                 "one value",
-                SerieReader::from_serie(prices(&[125])).expect("a column is one stream"),
+                StreamChunkedSerie::from_serie(prices(&[125])).expect("a column is one stream"),
                 price_root.clone(),
                 Scalar::from_sequence([priced(125)]),
             ),
             (
                 "a column",
-                SerieReader::from_serie(prices(&[125, 126])).expect("a column is one stream"),
+                StreamChunkedSerie::from_serie(prices(&[125, 126]))
+                    .expect("a column is one stream"),
                 price_root.clone(),
                 Scalar::from_sequence([priced(125), priced(126)]),
             ),
@@ -135,7 +137,7 @@ fn every_stream_lands_as_the_same_rows_in_every_structured_format() {
             ),
             (
                 "a stream",
-                SerieReader::from_arrow_reader(
+                StreamChunkedSerie::from_arrow_reader(
                     None,
                     yggdryl::arrow::batch_reader(
                         quote_batch.schema(),
@@ -154,7 +156,7 @@ fn every_stream_lands_as_the_same_rows_in_every_structured_format() {
         for (source, value, root, rows) in sources() {
             let mut target = handle(&format!("sourced.{format}"));
             target
-                .write_serie(SerieSource::from(value), IOMode::Overwrite, None)
+                .write_serie(Serie::from(value), IOMode::Overwrite, None)
                 .unwrap_or_else(|error| panic!("{source} writes to {format}: {error}"));
 
             let read = target
@@ -176,7 +178,7 @@ fn every_stream_lands_as_the_same_rows_in_every_structured_format() {
 fn rows_are_written_with_the_names_their_field_declares() {
     let mut target = handle("quotes.jsonl");
     target
-        .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
+        .write_serie(Serie::from(quotes()), IOMode::Overwrite, None)
         .expect("the rows write");
 
     let text = String::from_utf8(target.read_all_bytes().expect("the bytes read"))
@@ -208,9 +210,12 @@ fn a_declared_root_types_the_documents_natural_strings() {
         .required_field("size"),
     ]);
 
-    let value = source
-        .read_serie(Some(&options_declaring(&widened)))
-        .expect("the declared root types the document");
+    let value = yggdryl::StreamChunkedSerie::from_serie(
+        source
+            .read_serie(Some(&options_declaring(&widened)))
+            .expect("the declared root types the document"),
+    )
+    .expect("native record stream");
     assert_eq!(value.field(), &widened);
     let column = the_one_column(value, "the document");
     assert_eq!(column.field(), Some(&widened));
@@ -230,7 +235,10 @@ fn an_undeclared_read_names_the_root_the_document_proves() {
         .write_all_bytes(br#"[{"symbol": "AAPL", "size": 100}]"#)
         .expect("the bytes write");
 
-    let value = source.read_serie(None).expect("the document proves a root");
+    let value = yggdryl::StreamChunkedSerie::from_serie(
+        source.read_serie(None).expect("the document proves a root"),
+    )
+    .expect("native record stream");
     let column = the_one_column(value, "the document");
     assert_eq!(column.children().len(), 2);
     assert_eq!(column.len(), 1);
@@ -240,13 +248,16 @@ fn an_undeclared_read_names_the_root_the_document_proves() {
 fn a_document_read_without_a_root_orders_the_columns_the_way_a_record_does() {
     let mut target = handle("quotes.jsonl");
     target
-        .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
+        .write_serie(Serie::from(quotes()), IOMode::Overwrite, None)
         .expect("the rows write");
 
     // Nothing is declared, so the root is what the document proves - and a
     // document names its values rather than ordering them, which is why the
     // inferred columns are sorted and not the declaration's order.
-    let read = target.read_serie(None).expect("the document proves a root");
+    let read = yggdryl::StreamChunkedSerie::from_serie(
+        target.read_serie(None).expect("the document proves a root"),
+    )
+    .expect("native record stream");
     let names: Vec<&str> = read
         .field()
         .dtype()
@@ -272,9 +283,12 @@ fn one_document_that_is_not_a_sequence_is_one_row() {
         .write_all_bytes(b"symbol: AAPL\nsize: 100\n")
         .expect("the bytes write");
 
-    let value = source
-        .read_serie(Some(&options_declaring(&quote_root())))
-        .expect("one document is one row");
+    let value = yggdryl::StreamChunkedSerie::from_serie(
+        source
+            .read_serie(Some(&options_declaring(&quote_root())))
+            .expect("one document is one row"),
+    )
+    .expect("native record stream");
     assert_eq!(the_one_column(value, "the document").len(), 1);
 }
 
@@ -282,7 +296,7 @@ fn one_document_that_is_not_a_sequence_is_one_row() {
 fn a_toml_table_travels_under_the_roots_own_name() {
     let mut target = handle("quotes.toml");
     target
-        .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
+        .write_serie(Serie::from(quotes()), IOMode::Overwrite, None)
         .expect("the rows write");
 
     let text =
@@ -297,7 +311,7 @@ fn a_toml_table_travels_under_the_roots_own_name() {
 fn an_xml_document_holds_one_row_element_per_row_under_the_data_element() {
     let mut target = handle("quotes.xml");
     target
-        .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
+        .write_serie(Serie::from(quotes()), IOMode::Overwrite, None)
         .expect("the rows write");
 
     let text =
@@ -319,8 +333,8 @@ fn an_xml_document_holds_one_row_element_per_row_under_the_data_element() {
     let none = Serie::from_scalars(quote_root(), Vec::<Scalar>::new()).expect("no rows");
     empty
         .write_serie(
-            SerieSource::from(
-                SerieReader::from_serie(none).expect("a record column is one stream"),
+            Serie::from(
+                StreamChunkedSerie::from_serie(none).expect("a record column is one stream"),
             ),
             IOMode::Overwrite,
             None,
@@ -330,9 +344,12 @@ fn an_xml_document_holds_one_row_element_per_row_under_the_data_element() {
         empty.read_all_bytes().expect("the bytes read"),
         b"<data></data>"
     );
-    let read = empty
-        .read_serie(Some(&options_declaring(&quote_root())))
-        .expect("no rows read");
+    let read = yggdryl::StreamChunkedSerie::from_serie(
+        empty
+            .read_serie(Some(&options_declaring(&quote_root())))
+            .expect("no rows read"),
+    )
+    .expect("native record stream");
     assert_eq!(the_one_column(read, "no rows").len(), 0);
 
     // A document whose root is the row itself is one row.
@@ -340,16 +357,22 @@ fn an_xml_document_holds_one_row_element_per_row_under_the_data_element() {
     single
         .write_all_bytes(b"<row><symbol>AAPL</symbol><size>100</size></row>")
         .expect("the bytes write");
-    let read = single
-        .read_serie(Some(&options_declaring(&quote_root())))
-        .expect("one row reads");
+    let read = yggdryl::StreamChunkedSerie::from_serie(
+        single
+            .read_serie(Some(&options_declaring(&quote_root())))
+            .expect("one row reads"),
+    )
+    .expect("native record stream");
     assert_eq!(
         Scalar::from(the_one_column(read, "one row")),
         Scalar::from_sequence([quote_rows()[0].clone()])
     );
 
     // Without a field the columns are the text the document proves.
-    let read = target.read_serie(None).expect("the document proves a root");
+    let read = yggdryl::StreamChunkedSerie::from_serie(
+        target.read_serie(None).expect("the document proves a root"),
+    )
+    .expect("native record stream");
     let column = the_one_column(read, "the document");
     assert_eq!(column.len(), 2);
     assert_eq!(
@@ -365,7 +388,7 @@ fn an_xml_document_holds_one_row_element_per_row_under_the_data_element() {
 fn a_document_is_written_whole_so_only_an_overwrite_applies() {
     let mut target = handle("quotes.json");
     let refused = target
-        .write_serie(SerieSource::from(quotes()), IOMode::Append, None)
+        .write_serie(Serie::from(quotes()), IOMode::Append, None)
         .expect_err("a document has no append");
     assert!(refused.to_string().contains("overwrite"), "{refused}");
 }
@@ -374,13 +397,13 @@ fn a_document_is_written_whole_so_only_an_overwrite_applies() {
 fn an_append_is_refused_naming_the_mode_a_document_cannot_take() {
     let mut target = handle("quotes.yaml");
     target
-        .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
+        .write_serie(Serie::from(quotes()), IOMode::Overwrite, None)
         .expect("the rows write");
     let published = target.read_all_bytes().expect("the bytes read");
     assert!(!published.is_empty());
 
     let refused = target
-        .write_serie(SerieSource::from(quotes()), IOMode::Append, None)
+        .write_serie(Serie::from(quotes()), IOMode::Append, None)
         .expect_err("a document has no append");
     assert!(refused.to_string().contains("append"), "{refused}");
 
@@ -393,15 +416,18 @@ fn an_append_is_refused_naming_the_mode_a_document_cannot_take() {
 fn a_compressed_document_reads_and_writes_through_its_coding() {
     let mut target = handle("quotes.jsonl.gz");
     target
-        .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
+        .write_serie(Serie::from(quotes()), IOMode::Overwrite, None)
         .expect("the rows write");
 
     // The bytes on the handle are gzip, not JSON Lines.
     let bytes = target.read_all_bytes().expect("the bytes read");
     assert_eq!(&bytes[..2], &[0x1F, 0x8B]);
-    let read = target
-        .read_serie(Some(&options_declaring(&quote_root())))
-        .expect("the coding is transparent");
+    let read = yggdryl::StreamChunkedSerie::from_serie(
+        target
+            .read_serie(Some(&options_declaring(&quote_root())))
+            .expect("the coding is transparent"),
+    )
+    .expect("native record stream");
     assert_eq!(the_one_column(read, "the document").len(), 2);
 }
 
@@ -450,8 +476,8 @@ fn nested_children_keep_their_values_in_every_document_that_carries_them() {
         let mut target = handle(name);
         target
             .write_serie(
-                SerieSource::from(
-                    SerieReader::from_serie(nested).expect("a record column is one stream"),
+                Serie::from(
+                    StreamChunkedSerie::from_serie(nested).expect("a record column is one stream"),
                 ),
                 IOMode::Overwrite,
                 None,
@@ -484,7 +510,10 @@ fn xml_rows_are_the_children_named_after_the_root_field_or_the_one_child_name_a_
     ]);
 
     // Without a field, the one child name the root repeats is the row.
-    let read = source.read_serie(None).expect("the document proves a root");
+    let read = yggdryl::StreamChunkedSerie::from_serie(
+        source.read_serie(None).expect("the document proves a root"),
+    )
+    .expect("native record stream");
     assert_eq!(
         Scalar::from(the_one_column(read, "the repeated child")),
         natural_rows
@@ -498,9 +527,12 @@ fn xml_rows_are_the_children_named_after_the_root_field_or_the_one_child_name_a_
     .map(DataType::from)
     .expect("the root datatype is valid")
     .required_field("quote");
-    let read = source
-        .read_serie(Some(&options_declaring(&quote)))
-        .expect("the rows read under their name");
+    let read = yggdryl::StreamChunkedSerie::from_serie(
+        source
+            .read_serie(Some(&options_declaring(&quote)))
+            .expect("the rows read under their name"),
+    )
+    .expect("native record stream");
     assert_eq!(
         Scalar::from(the_one_column(read, "typed rows")),
         Scalar::from_sequence(quote_rows())
@@ -509,7 +541,9 @@ fn xml_rows_are_the_children_named_after_the_root_field_or_the_one_child_name_a_
         .read_serie(Some(&options_declaring(&quote_root())))
         .map_err(|error| error.to_string())
         .and_then(|reader| {
-            reader
+            StreamChunkedSerie::from_serie(reader)
+                .map_err(|error| error.to_string())?
+                .into_chunks()
                 .collect::<Result<Vec<Serie>, _>>()
                 .map_err(|error| error.to_string())
         });
@@ -521,7 +555,9 @@ fn xml_rows_are_the_children_named_after_the_root_field_or_the_one_child_name_a_
     let mut one = handle("one.xml");
     one.write_all_bytes(b"<quotes><quote><symbol>AAPL</symbol><size>100</size></quote></quotes>")
         .expect("the bytes write");
-    let read = one.read_serie(None).expect("one row reads");
+    let read =
+        yggdryl::StreamChunkedSerie::from_serie(one.read_serie(None).expect("one row reads"))
+            .expect("native record stream");
     assert_eq!(
         Scalar::from(the_one_column(read, "one child")),
         Scalar::from_sequence([Scalar::from_sequence([
@@ -532,7 +568,9 @@ fn xml_rows_are_the_children_named_after_the_root_field_or_the_one_child_name_a_
     let mut leaf = handle("leaf.xml");
     leaf.write_all_bytes(b"<quotes><n>1</n></quotes>")
         .expect("the bytes write");
-    let read = leaf.read_serie(None).expect("the root reads");
+    let read =
+        yggdryl::StreamChunkedSerie::from_serie(leaf.read_serie(None).expect("the root reads"))
+            .expect("native record stream");
     assert_eq!(
         Scalar::from(the_one_column(read, "a leaf child")),
         Scalar::from_sequence([Scalar::from_sequence([Scalar::from("1")])])
@@ -566,8 +604,8 @@ fn a_nested_sequence_column_travels_under_its_items_name_in_xml() {
     let mut target = handle("matrix.xml");
     target
         .write_serie(
-            SerieSource::from(
-                SerieReader::from_serie(column).expect("a record column is one stream"),
+            Serie::from(
+                StreamChunkedSerie::from_serie(column).expect("a record column is one stream"),
             ),
             IOMode::Overwrite,
             None,
@@ -580,9 +618,12 @@ fn a_nested_sequence_column_travels_under_its_items_name_in_xml() {
         "an inner sequence is an element holding its items under the inner item's name, \
          an empty one an element with an empty body, an empty text item the same"
     );
-    let read = target
-        .read_serie(Some(&options_declaring(&root)))
-        .expect("the rows read");
+    let read = yggdryl::StreamChunkedSerie::from_serie(
+        target
+            .read_serie(Some(&options_declaring(&root)))
+            .expect("the rows read"),
+    )
+    .expect("native record stream");
     assert_eq!(
         Scalar::from(the_one_column(read, "the matrix")),
         Scalar::from_sequence(rows)

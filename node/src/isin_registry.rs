@@ -12,6 +12,8 @@ use napi_derive::napi;
 use yggdryl::holder::Holder;
 use yggdryl::{DataType, IsinEntry, IsinRegistry, Mic, Scalar};
 
+use crate::field::JsField;
+
 use crate::fix::JsFixMsg;
 use crate::iobase::{LocationInput, located_from_input, location_target};
 use crate::iomedia::JsBatchReader;
@@ -47,7 +49,8 @@ fn mic_of(text: &str) -> Result<Mic> {
 }
 
 /// A table of instruments keyed by ISIN - each row the instrument's CFI
-/// code, its country of issue, its currency pair, its market, its ticker
+/// code, its country of issue, its currency pair, the instrument it is
+/// written on, its market, its ticker
 /// and trading currency and one code per `SecurityIDSource(22)` type - that
 /// a lifecycle learns into and fills from, and a parse fills from. Bound to
 /// the store it was loaded from, committed back only where it moved.
@@ -95,6 +98,16 @@ impl JsIsinRegistry {
         Ok(Self::from_core(
             IsinRegistry::new().with_max_instruments(bound_of(max_instruments)?),
         ))
+    }
+
+    /// The registry's row: the required struct `isinregistry` every row is
+    /// laid out as - `isin`, `updunix`, `cficode`, `countrycode`,
+    /// `forexcode`, `underlyingisin`, `eusipacode`, `miccode`, `ticker`, `currency`, then
+    /// one column per `SecurityIDSource(22)` type but the ISIN: forty-two
+    /// columns - what a table holding the registry is created from.
+    #[napi]
+    pub fn field() -> JsField {
+        JsField::from_core(IsinEntry::field())
     }
 
     /// A registry bound to the store `location` names and loaded from it:

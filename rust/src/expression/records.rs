@@ -12,101 +12,11 @@
 //! names - so a stream of sequences needs the schema declared, the same way
 //! every record write in this crate does.
 
-use crate::{Error, Field, Result, Scalar};
+use crate::{Error, Field, Result, Scalar, StreamSerie};
 
 use super::filter::Filter;
 use super::selector::Selector;
 use super::{Expression, unwritable_rows};
-
-/// The rows one application yields, under the field it published them as.
-///
-/// Rows are ordered sequences of column values in the field's order, the
-/// one row shape this crate has; a caller wanting names reads them through
-/// [`FieldRecord`](crate::FieldRecord) over [`Self::field`]. Nothing is held
-/// beyond the row being produced.
-pub struct Records {
-    field: Field,
-    rows: Box<dyn Iterator<Item = Result<Scalar>> + Send>,
-}
-
-impl Records {
-    /// The struct root every row is an ordered sequence under.
-    #[must_use]
-    pub const fn field(&self) -> &Field {
-        &self.field
-    }
-
-    /// Everything left, collected.
-    ///
-    /// # Errors
-    ///
-    /// Returns the first error a row produced.
-    pub fn collect_rows(self) -> Result<Vec<Scalar>> {
-        self.rows.collect()
-    }
-
-    /// The rows as a stream of Arrow batches, widened lazily.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the field cannot be expressed as an Arrow schema.
-    pub fn into_arrow_reader(self) -> Result<crate::arrow::BatchReader> {
-        crate::arrow::rows::result_reader(&self.field, self.rows, None, None, None)
-            .map_err(Error::from)
-    }
-
-    /// Read a stream of Arrow batches back as rows, lazily.
-    ///
-    /// Each batch lands as one record column when it is pulled, and its rows
-    /// are read through the column's leaves one at a time; a batch the root
-    /// refuses, or the reader's own failure, is the item where it stands.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the reader's schema is not one this crate can
-    /// type.
-    pub fn from_arrow_reader(reader: crate::arrow::BatchReader) -> Result<Self> {
-        let batches = crate::SerieReader::from_arrow_reader(
-            None,
-            reader,
-            crate::ArrowCastOptions::default(),
-        )?;
-        let field = batches.field().clone();
-        let rows = batches.flat_map(|records| {
-            let (records, refused) = match records {
-                Ok(records) => (Some(records), None),
-                Err(error) => (None, Some(Err(Error::from(error)))),
-            };
-            let len = records.as_ref().map_or(0, crate::Serie::len);
-            refused.into_iter().chain((0..len).map(move |row| {
-                records
-                    .as_ref()
-                    .map_or(Ok(Scalar::Null), |held| held.scalar(row))
-            }))
-        });
-        Ok(Self {
-            field,
-            rows: Box::new(rows),
-        })
-    }
-}
-
-impl Iterator for Records {
-    type Item = Result<Scalar>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.rows.next()
-    }
-}
-
-impl std::fmt::Debug for Records {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Records")
-            .field("field", &self.field)
-            .finish_non_exhaustive()
-    }
-}
 
 /// The rows to run over, and the schema they run under.
 type Rows = Box<dyn Iterator<Item = Result<Scalar>> + Send>;
@@ -154,7 +64,7 @@ impl Selector {
     ///
     /// The plan is bound once - against `schema`, or against the schema the
     /// first record implies - and each row is canonicalized under it, run,
-    /// and answered as an ordered sequence under [`Records::field`].
+    /// and answered as an ordered sequence under [`StreamSerie::field`].
     ///
     /// ```
     /// use yggdryl::expression::Selector;
@@ -179,7 +89,7 @@ impl Selector {
     /// Returns an error when no schema is declared and none can be inferred,
     /// or the selector does not bind against it; a row that fails is the
     /// error item in its place.
-    pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<Records>
+    pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<StreamSerie>
     where
         I: IntoIterator<Item = R>,
         I::IntoIter: Send + 'static,
@@ -190,20 +100,13 @@ impl Selector {
         if self.unnests() {
             // An unnest publishes one row per element, which the streamed
             // path lays out; a row at a time answers one row.
-            let reader = Records {
-                field: schema,
-                rows,
-            }
-            .into_arrow_reader()?;
-            return Records::from_arrow_reader(self.apply_arrow_reader(reader)?);
+            let reader = StreamSerie::from_rows(schema, rows).into_arrow_reader()?;
+            return StreamSerie::from_arrow_reader(self.apply_arrow_reader(reader)?);
         }
         let bound = self.bind(&schema)?;
         let field = bound.output().clone();
         let rows = rows.map(move |row| bound.apply_scalar(&schema.canonicalize_row_value(row?)?));
-        Ok(Records {
-            field,
-            rows: Box::new(rows),
-        })
+        Ok(StreamSerie::from_rows(field, rows))
     }
 }
 
@@ -211,14 +114,14 @@ impl Filter {
     /// The native records this filter answers true for.
     ///
     /// Bound once, as [`Selector::apply_records`] is; a kept row comes back
-    /// canonical under [`Records::field`], which is the schema itself.
+    /// canonical under [`StreamSerie::field`], which is the schema itself.
     ///
     /// # Errors
     ///
     /// Returns an error when no schema is declared and none can be inferred,
     /// or the filter does not bind against it as a predicate; a row that
     /// fails is the error item in its place.
-    pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<Records>
+    pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<StreamSerie>
     where
         I: IntoIterator<Item = R>,
         I::IntoIter: Send + 'static,
@@ -239,10 +142,7 @@ impl Filter {
                 Err(error) => Some(Err(error)),
             }
         });
-        Ok(Records {
-            field,
-            rows: Box::new(rows),
-        })
+        Ok(StreamSerie::from_rows(field, rows))
     }
 }
 
@@ -259,7 +159,7 @@ impl Expression {
     /// Returns an error when no schema is declared and none can be inferred,
     /// when the expression does not bind against it, or when a statement's
     /// target cannot be written.
-    pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<Records>
+    pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<StreamSerie>
     where
         I: IntoIterator<Item = R>,
         I::IntoIter: Send + 'static,
@@ -271,12 +171,8 @@ impl Expression {
             Self::Filter(filter) => filter.apply_records(schema, records),
             Self::Plan(_) | Self::Sequence(_) => {
                 let (schema, rows) = schema_of(schema, records)?;
-                let reader = Records {
-                    field: schema,
-                    rows,
-                }
-                .into_arrow_reader()?;
-                Records::from_arrow_reader(self.apply_arrow_reader(reader)?)
+                let reader = StreamSerie::from_rows(schema, rows).into_arrow_reader()?;
+                StreamSerie::from_arrow_reader(self.apply_arrow_reader(reader)?)
             }
         }
     }

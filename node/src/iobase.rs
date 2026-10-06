@@ -8,8 +8,7 @@
 use std::time::Duration;
 
 use napi::bindgen_prelude::{
-    BigInt, Buffer, ClassInstance, Either, Either3, Either6, Env, Object, Reference, Result,
-    Uint8Array,
+    BigInt, Buffer, ClassInstance, Either, Either6, Env, Object, Reference, Result, Uint8Array,
 };
 use napi_derive::napi;
 
@@ -20,7 +19,6 @@ use yggdryl::http::HttpOptions;
 use yggdryl::media::IORecordOptions as _;
 use yggdryl::{IOBase as _, IOMedia as _};
 
-use crate::chunked_serie::JsChunkedSerie;
 use crate::field::JsField;
 use crate::holder::fs::{
     ArrowFileInfo, FileSystemInput, JsByteReader as HandlerByteReader,
@@ -30,7 +28,7 @@ use crate::holder::fs::{
 use crate::iomedia::JsBatchReader;
 use crate::ioresult::JsIOResult;
 use crate::media::options::JsRecordOptions;
-use crate::serie::{JsSerie, JsSerieReader, serie_source};
+use crate::serie::JsSerie;
 use crate::text::codec::{
     DEFAULT_JS_DEPTH, JsScalar, decoded_value_for_field, value_to_transport_for_field,
 };
@@ -942,14 +940,20 @@ impl JsIOBase {
     /// Return whether anything is here now, as `fs.existsSync`.
     ///
     /// Each role answers its own question - a folder whether its container
-    /// is there, a file whether its leaf is - so a folder `mkdir` made and
-    /// `remove` deleted answers `false`.
+    /// is there, a file whether its leaf is, a glob whether its pattern
+    /// selects an entry (its listing, up to the first match) - so a folder
+    /// `mkdir` made and `remove` deleted answers `false`.
     #[napi]
     pub fn exists(&self) -> bool {
         self.inner.exists()
     }
 
-    /// Return whether this resource contains others, as `Stats.isDirectory`.
+    /// Return whether this resource contains others - the role it has, not
+    /// whether it is there.
+    ///
+    /// A glob or a name ending in `/` is a container by its spelling and asks
+    /// nothing, and a removed folder's handle still answers `true`; `exists`
+    /// is the presence question.
     #[napi]
     pub fn is_dir(&self) -> bool {
         self.inner.is_container()
@@ -1783,9 +1787,13 @@ impl JsIOBase {
             && yggdryl::text::Format::from_media_type(self.inner.media_type()).is_ok()
         {
             let records = self.inner.read_serie(None).map_err(napi_error)?;
-            let root_name = records.field().name().to_owned();
+            let root_name = records
+                .require_field()
+                .map_err(napi_error)?
+                .name()
+                .to_owned();
             return Ok(JsBatchReader::from_core(
-                records.into_arrow_reader(),
+                records.into_arrow_reader().map_err(napi_error)?,
                 &root_name,
             ));
         }
@@ -1794,7 +1802,7 @@ impl JsIOBase {
         Ok(JsBatchReader::from_core(reader, options.name()))
     }
 
-    /// Read this resource's rows as a `SerieReader`, one record serie per
+    /// Read this resource's rows as a `StreamChunkedSerie`, one record serie per
     /// batch.
     ///
     /// Absent options are the handle's own: the encoding its media type
@@ -1803,18 +1811,18 @@ impl JsIOBase {
     /// its rows parse into, of which a declared field is the only option it
     /// reads.
     #[napi]
-    pub fn read_serie(&self, options: Option<&JsRecordOptions>) -> Result<JsSerieReader> {
+    pub fn read_serie(&self, options: Option<&JsRecordOptions>) -> Result<JsSerie> {
         let reader = self
             .inner
             .read_serie(options.map(|options| &options.inner))
             .map_err(napi_error)?;
-        JsSerieReader::from_core(reader)
+        Ok(JsSerie::from_core(reader))
     }
 
     /// Write rows in any shape the crate holds them - a `Serie`, a
-    /// `ChunkedSerie`, a `SerieReader`, which is consumed - under one mode.
+    /// `ChunkedSerie`, a `StreamChunkedSerie`, which is consumed - under one mode.
     ///
-    /// The loader widens every other columnar value into a `SerieReader`
+    /// The loader widens every other columnar value into a `StreamChunkedSerie`
     /// and names the intent; absent options are the handle's own, resolved
     /// by the core, and options declaring no field take the rows' own root,
     /// as every other record write does. A structured text document takes
@@ -1823,21 +1831,22 @@ impl JsIOBase {
     #[napi(js_name = "_writeSerieNative", skip_typescript)]
     pub fn write_serie_native(
         &mut self,
-        value: Either3<
-            ClassInstance<'_, JsSerie>,
-            ClassInstance<'_, JsChunkedSerie>,
-            ClassInstance<'_, JsSerieReader>,
-        >,
+        value: crate::key_serie::SerieInput<'_>,
         mode: String,
         options: Option<&JsRecordOptions>,
     ) -> Result<JsIOResult> {
         let mode = IOMode::from_str(&mode).map_err(napi_error)?;
-        let value = serie_source(value)?;
+        let value = crate::key_serie::serie_source(value)?;
         let options = match options {
             Some(options) => {
                 let mut options = options.inner.clone();
                 if options.field().is_none() {
-                    options.set_field(value.root().map_err(napi_error)?);
+                    options.set_field(
+                        yggdryl::StreamChunkedSerie::root_of(
+                            value.require_field().map_err(napi_error)?,
+                        )
+                        .map_err(napi_error)?,
+                    );
                 }
                 Some(options)
             }
@@ -1892,8 +1901,9 @@ impl JsIOBase {
         options: Option<&JsRecordOptions>,
     ) -> Result<JsIOResult> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
-        options
-            .require_write_mode(IOMode::Overwrite)
+        let options = self
+            .inner
+            .write_options(IOMode::Overwrite, &options)
             .map_err(napi_error)?;
         self.inner
             .overwrite_arrow_reader(batches.take()?, &options)
@@ -1913,8 +1923,9 @@ impl JsIOBase {
         options: Option<&JsRecordOptions>,
     ) -> Result<JsIOResult> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
-        options
-            .require_write_mode(IOMode::Append)
+        let options = self
+            .inner
+            .write_options(IOMode::Append, &options)
             .map_err(napi_error)?;
         self.inner
             .append_arrow_reader(batches.take()?, &options)
@@ -1922,12 +1933,15 @@ impl JsIOBase {
             .map_err(napi_error)
     }
 
-    /// Merge every incoming row by `options.mergeBy`.
+    /// Merge every incoming row by `options.mergeBy`, else by the
+    /// destination's own key.
     ///
-    /// A non-empty match key is required. The core keeps the incoming reader
-    /// streaming, applies `options.field` once, and publishes through the
-    /// implementor's overwrite hook without casting the shaped rows twice.
-    /// Answers the rows the write read, wrote and skipped.
+    /// A non-empty match key is required where the destination states none
+    /// of its own; an Iceberg table's is its identity partition columns, then
+    /// its identifier columns. The core keeps the incoming reader streaming,
+    /// applies `options.field` once, and publishes through the implementor's
+    /// overwrite hook without casting the shaped rows twice. Answers the rows
+    /// the write read, wrote and skipped.
     #[napi]
     pub fn merge_arrow_reader(
         &mut self,
@@ -1935,8 +1949,9 @@ impl JsIOBase {
         options: Option<&JsRecordOptions>,
     ) -> Result<JsIOResult> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
-        options
-            .require_write_mode(IOMode::Merge)
+        let options = self
+            .inner
+            .write_options(IOMode::Merge, &options)
             .map_err(napi_error)?;
         self.inner
             .merge_arrow_reader(batches.take()?, &options)
@@ -1958,14 +1973,18 @@ impl JsIOBase {
     ) -> Result<JsIOResult> {
         let mode = IOMode::from_str(&mode).map_err(napi_error)?;
         let options = JsRecordOptions::resolved(options, &self.inner)?;
-        options.require_write_mode(mode).map_err(napi_error)?;
+        let options = self
+            .inner
+            .write_options(mode, &options)
+            .map_err(napi_error)?;
         self.inner
             .write_arrow_reader(batches.take()?, mode, &options)
             .map(JsIOResult::from_core)
             .map_err(napi_error)
     }
 
-    /// Start the private mode-selected session used between async pulls.
+    /// Start the private mode-selected session used between async pulls,
+    /// a merge naming no key keyed by this destination's own.
     #[napi(js_name = "_beginArrowWriteSessionNative", skip_typescript)]
     pub fn begin_arrow_write_session(
         &self,
@@ -1973,7 +1992,11 @@ impl JsIOBase {
         options: &JsRecordOptions,
     ) -> Result<JsArrowWriteSession> {
         let mode = IOMode::from_str(&mode).map_err(napi_error)?;
-        yggdryl::ArrowWriteSession::new(mode, &options.inner)
+        let options = self
+            .inner
+            .write_options(mode, &options.inner)
+            .map_err(napi_error)?;
+        yggdryl::ArrowWriteSession::new(mode, &options)
             .map(|inner| JsArrowWriteSession { inner })
             .map_err(napi_error)
     }

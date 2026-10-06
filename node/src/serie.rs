@@ -10,13 +10,13 @@
 //! typed all the way down. Arrow crosses as copied IPC, as it does for every
 //! other value of this binding.
 //!
-//! [`JsSerieReader`] is the stream beside it: one record serie per batch of a
+//! [`JsStreamChunkedSerie`] is the stream beside it: one record serie per batch of a
 //! native `BatchReader`, every batch cast by the one plan the core compiled
 //! when the reader was built, the one record serie a held column is, or one
 //! per chunk of a held chunked column - and, cast into another root, the
 //! reader the core hands back with every record cast by one plan more.
-//! [`JsSerieReaderWindows`] is the core's walk over a stream's windows, one
-//! lazy `SerieReader` per window, and [`JsSerieReaderPartitions`] the core's
+//! [`JsRetiredWindows`] is the core's walk over a stream's windows, one
+//! lazy `StreamChunkedSerie` per window, and [`JsRetiredPartitions`] the core's
 //! walk over a stream's partitions, one `[key, rows]` pair as each closes.
 
 use std::borrow::Cow;
@@ -28,29 +28,30 @@ use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions};
 use arrow_ipc::reader::StreamReader;
 use arrow_schema::{Schema, SchemaRef};
 use napi::bindgen_prelude::{
-    Buffer, ClassInstance, Either, Either3, Env, Generator, Null, Reference, Result, Uint8Array,
+    Buffer, ClassInstance, Either, Either3, Generator, Null, Reference, Result, Uint8Array,
 };
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
 use yggdryl::expression::{IntoOrderings as _, Ordering};
 use yggdryl::{
-    ArrowCastOptions, Field as CoreField, FieldPath, FieldScalar, PartitionOptions, Scalar, Serie,
-    SerieReader, SerieReaderPartitions, SerieReaderWindows, SerieSource, SerieValue, SortOptions,
+    ArrowCastOptions, Field as CoreField, FieldPath, PartitionOptions, Scalar, Serie, SerieValue,
+    SortOptions, StreamChunkedSerie,
 };
 
 use crate::chunked_serie::JsChunkedSerie;
 use crate::datatype::JsDataType;
-use crate::expression::{JsSelector, SelectorInput, selector_from_input};
+use crate::expression::JsSelector;
+use crate::expression::JsStreamSerie;
 use crate::field::JsField;
 use crate::graph::optional;
 use crate::iomedia::{JsBatchReader, encoded};
 use crate::join::{JoinOptionsInput, join_kind, join_options};
+use crate::key_serie::{JsKeySeries, JsStreamKeySerie, KeyInput, key_by};
 use crate::napi_error;
 use crate::spill::{JsSpillOptions, spill_bound};
 use crate::text::codec::{
     JsScalar, checked_depth, value_to_transport, value_to_transport_with_field,
 };
-use crate::text::line::JsFieldPath;
 use crate::window_serie::JsWindowSerie;
 
 /// The invariant `binding.js` keeps: a leaf verb is published only on the
@@ -155,38 +156,6 @@ pub(crate) fn count(value: usize) -> f64 {
     #[allow(clippy::cast_precision_loss)]
     let value = value as f64;
     value
-}
-
-/// The groups a partition answers, each its key and its rows.
-pub(crate) fn groups(groups: Vec<(Scalar, Serie)>) -> Vec<(JsScalar, JsSerie)> {
-    groups
-        .into_iter()
-        .map(|(key, rows)| (JsScalar::from_core(key), JsSerie::from_core(rows)))
-        .collect()
-}
-
-/// The record a window states, as the struct value JavaScript reads with
-/// `Scalar`'s own accessors - `get('venue')`, `path('.rownum')`: each cell
-/// under the name the record's field gives it. `None` for a serie or reader
-/// that is no window.
-pub(crate) fn static_record(record: Option<FieldScalar<'_>>) -> Result<Option<Scalar>> {
-    let Some(record) = record else {
-        return Ok(None);
-    };
-    let cells = record
-        .value()
-        .sequence_rows()
-        .ok_or_else(|| napi_error("a window's static values are one record row"))?;
-    Scalar::from_struct(
-        record
-            .field()
-            .fields()
-            .iter()
-            .map(CoreField::name)
-            .zip(cells.iter().cloned()),
-    )
-    .map(Some)
-    .map_err(napi_error)
 }
 
 /// A range as the `[start, end]` pair JavaScript reads.
@@ -744,7 +713,7 @@ impl JsSerie {
     #[napi]
     pub fn into_arrow_reader(&self) -> Result<JsBatchReader> {
         let reader = self.inner.into_arrow_reader().map_err(napi_error)?;
-        let root = SerieReader::root_of(self.inner.require_field().map_err(napi_error)?)
+        let root = StreamChunkedSerie::root_of(self.inner.require_field().map_err(napi_error)?)
             .map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, root.name()))
     }
@@ -999,57 +968,21 @@ impl JsSerie {
             .map_err(napi_error)
     }
 
-    /// The rows grouped by a key serie of the same length, one `[key, rows]`
-    /// pair per distinct key in order of first occurrence.
+    /// Groups equal keys under the same key layout, retaining native payloads.
     #[napi(js_name = "_partitionByNative", skip_typescript)]
-    pub fn partition_by_native(&self, keys: &JsSerie) -> Result<Vec<(JsScalar, Self)>> {
+    pub fn partition_by_native(&self, by: KeyInput<'_>) -> Result<JsKeySeries> {
         self.inner
-            .partition_by(&keys.inner)
-            .map(groups)
+            .partition_by(key_by(by)?)
+            .map(JsKeySeries::from_core)
             .map_err(napi_error)
     }
 
-    /// The windows `by` cuts the rows into: one `[key, window]` pair per run
-    /// of equal adjacent keys, in row order - or, `sorted`, each key once in
-    /// key order - every window over this very serie object, or, where
-    /// `sorted` gathered the rows into key order, over one new serie of the
-    /// gathered copy they all share. Each window states its record as its
-    /// `staticValues`, read off the rows as they stood at this call: the
-    /// windows hold them - buffers shared, no row copied - so a write on this
-    /// serie while they are alive copies the written leaf away from them
-    /// once. `sorted` absent or `null` is `false`.
+    /// Cuts adjacent equal keys under one selector, path, or typed external-key layout.
     #[napi(js_name = "_windowByNative", skip_typescript)]
-    pub fn window_by_native(
-        &self,
-        env: Env,
-        reference: Reference<JsSerie>,
-        by: SelectorInput<'_>,
-        sorted: Option<bool>,
-    ) -> Result<Vec<(JsScalar, JsWindowSerie)>> {
-        let windows = self
-            .inner
-            .window_by(selector_from_input(by)?, sorted.unwrap_or(false))
-            .map_err(napi_error)?;
-        JsWindowSerie::lend(env, &reference, &self.inner, windows)
-    }
-
-    /// A record column's rows grouped by the cells the field paths reach,
-    /// keyed by the run of those cells; a path is a `FieldPath` or its text.
-    #[napi(js_name = "_partitionByPathsNative", skip_typescript)]
-    pub fn partition_by_paths_native(
-        &self,
-        paths: Vec<Either<String, ClassInstance<'_, JsFieldPath>>>,
-    ) -> Result<Vec<(JsScalar, Self)>> {
-        let paths = paths
-            .iter()
-            .map(|path| match path {
-                Either::A(text) => FieldPath::from_str(text).map_err(napi_error),
-                Either::B(path) => Ok(path.inner.clone()),
-            })
-            .collect::<Result<Vec<FieldPath>>>()?;
+    pub fn window_by_native(&self, by: KeyInput<'_>, sorted: Option<bool>) -> Result<JsKeySeries> {
         self.inner
-            .partition_by_paths(&paths)
-            .map(groups)
+            .window_by(key_by(by)?, sorted.unwrap_or(false))
+            .map(JsKeySeries::from_core)
             .map_err(napi_error)
     }
 
@@ -1314,23 +1247,21 @@ impl JsSerie {
 /// The reader is a stream, read once: iterating it, `cast` and
 /// `intoArrowReader` each consume it, and a batch's failure surfaces at the
 /// pull that read it.
-#[napi(js_name = "SerieReader")]
-pub struct JsSerieReader {
+#[napi(js_name = "StreamChunkedSerie")]
+pub struct JsStreamChunkedSerie {
     /// The undrained core reader, taken by whatever consumes it.
-    inner: Option<SerieReader>,
+    inner: Option<StreamChunkedSerie>,
     /// The record every yielded serie is typed by, kept after the reader
     /// is taken.
     root: CoreField,
-    /// The struct value of the record a window states, kept after the
-    /// reader is taken; `None` for a reader that is no window.
-    statics: Option<Scalar>,
-    /// Whether `intoArrowReader` took the reader rather than draining it here.
+    /// Whether ownership moved to another consumer. Natural EOF keeps this
+    /// false so repeated pulls remain fused.
     taken: bool,
 }
 
 /// The refusal a second consumer of one stream reads.
-fn serie_reader_consumed() -> napi::Error {
-    napi_error("this SerieReader has already been consumed; a stream is read once")
+fn chunked_stream_consumed() -> napi::Error {
+    napi_error("this StreamChunkedSerie has already been consumed; a stream is read once")
 }
 
 /// Rows in any shape the crate holds them, as the core's one intake: a held
@@ -1340,35 +1271,38 @@ pub(crate) fn serie_source(
     value: Either3<
         ClassInstance<'_, JsSerie>,
         ClassInstance<'_, JsChunkedSerie>,
-        ClassInstance<'_, JsSerieReader>,
+        ClassInstance<'_, JsStreamChunkedSerie>,
     >,
-) -> Result<SerieSource> {
+) -> Result<Serie> {
     Ok(match value {
-        Either3::A(serie) => SerieSource::from(serie.inner.clone()),
-        Either3::B(chunked) => SerieSource::from(chunked.inner.clone()),
+        Either3::A(serie) => serie.inner.clone(),
+        Either3::B(chunked) => Serie::from(chunked.inner.clone()),
         Either3::C(mut reader) => {
-            let taken = reader.inner.take().ok_or_else(serie_reader_consumed)?;
+            let taken = reader.inner.take().ok_or_else(chunked_stream_consumed)?;
             reader.taken = true;
-            SerieSource::from(taken)
+            Serie::from(taken)
         }
     })
 }
 
-impl JsSerieReader {
+impl JsStreamChunkedSerie {
+    pub(crate) fn take(&mut self) -> Result<StreamChunkedSerie> {
+        self.taken = true;
+        self.inner.take().ok_or_else(chunked_stream_consumed)
+    }
     /// Wrap one undrained core reader, keeping the root it names and the
     /// record it states.
-    pub(crate) fn from_core(inner: SerieReader) -> Result<Self> {
-        Ok(Self {
+    pub(crate) fn from_core(inner: StreamChunkedSerie) -> Self {
+        Self {
             root: inner.field().clone(),
-            statics: static_record(inner.static_values())?,
             inner: Some(inner),
             taken: false,
-        })
+        }
     }
 }
 
 #[napi]
-impl JsSerieReader {
+impl JsStreamChunkedSerie {
     /// Read `reader`'s batches as record series: of its own schema, named
     /// `row`, or cast into `root`. The reader is consumed.
     #[napi(factory, js_name = "_fromArrowReaderNative", skip_typescript)]
@@ -1379,13 +1313,13 @@ impl JsSerieReader {
         representation: Option<String>,
     ) -> Result<Self> {
         let options = crate::cast_options(safe, representation.as_deref())?;
-        let inner = SerieReader::from_arrow_reader(
+        let inner = StreamChunkedSerie::from_arrow_reader(
             root.as_ref().map(|root| &root.inner),
             reader.take()?,
             options,
         )
         .map_err(napi_error)?;
-        Self::from_core(inner)
+        Ok(Self::from_core(inner))
     }
 
     /// Read one held column as a stream of one record serie: a record column
@@ -1394,9 +1328,9 @@ impl JsSerieReader {
     /// an absent row, are refused.
     #[napi(factory, js_name = "_fromSerieNative", skip_typescript)]
     pub fn from_serie(serie: &JsSerie) -> Result<Self> {
-        SerieReader::from_serie(serie.inner.clone())
+        StreamChunkedSerie::from_serie(serie.inner.clone())
             .map_err(napi_error)
-            .and_then(Self::from_core)
+            .map(Self::from_core)
     }
 
     /// Read a held chunked column as the stream of its chunks, one record
@@ -1405,27 +1339,15 @@ impl JsSerieReader {
     /// copied; a record chunk holding an absent row is refused.
     #[napi(factory, js_name = "_fromChunkedNative", skip_typescript)]
     pub fn from_chunked(chunked: &JsChunkedSerie) -> Result<Self> {
-        SerieReader::from_chunked(chunked.inner.clone())
+        StreamChunkedSerie::from_chunked(chunked.inner.clone())
             .map_err(napi_error)
-            .and_then(Self::from_core)
+            .map(Self::from_core)
     }
 
     /// The record every yielded serie is typed by.
     #[napi(getter)]
     pub fn field(&self) -> JsField {
         JsField::from_core(self.root.clone())
-    }
-
-    /// The values constant over every row this reader yields, where it is a
-    /// window `windowBy` cut: one struct value, read with `Scalar`'s own
-    /// accessors - the cells of the record the windowed reader states but
-    /// `windownum` and `rownum`, the key cells, `windownum` (the window's
-    /// place, from 0) and `rownum` (the number its first row has in the
-    /// stream). `null` for every other reader. Kept once the reader is
-    /// consumed; never a column, and dropped at the Arrow face.
-    #[napi(getter)]
-    pub fn static_values(&self) -> Option<JsScalar> {
-        self.statics.clone().map(JsScalar::from_core)
     }
 
     /// Pull the next batch as its record serie, or `null` at the end.
@@ -1435,12 +1357,12 @@ impl JsSerieReader {
     #[napi(js_name = "_nextNative", skip_typescript)]
     pub fn next_native(&mut self) -> Result<Option<JsSerie>> {
         if self.taken {
-            return Err(serie_reader_consumed());
+            return Err(chunked_stream_consumed());
         }
         let Some(reader) = self.inner.as_mut() else {
             return Ok(None);
         };
-        if let Some(landed) = reader.next() {
+        if let Some(landed) = reader.next_chunk() {
             return landed
                 .map(|serie| Some(JsSerie::from_core(serie)))
                 .map_err(napi_error);
@@ -1467,12 +1389,12 @@ impl JsSerieReader {
             Either::A(field) => field.inner.clone(),
             Either::B(dtype) => dtype.inner.clone().required_field("value"),
         };
-        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        let reader = self.inner.take().ok_or_else(chunked_stream_consumed)?;
         self.taken = true;
         reader
             .cast(&target, options)
             .map_err(napi_error)
-            .and_then(Self::from_core)
+            .map(Self::from_core)
     }
 
     /// Cut the stream into windows of equal adjacent keys, one lazy reader
@@ -1482,15 +1404,15 @@ impl JsSerieReader {
     #[napi(js_name = "_windowByNative", skip_typescript)]
     pub fn window_by_native(
         &mut self,
-        by: SelectorInput<'_>,
+        by: KeyInput<'_>,
         sorted: Option<bool>,
-    ) -> Result<JsSerieReaderWindows> {
-        let by = selector_from_input(by)?;
-        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+    ) -> Result<JsStreamKeySerie> {
+        let by = key_by(by)?;
+        let reader = self.inner.take().ok_or_else(chunked_stream_consumed)?;
         self.taken = true;
         reader
             .window_by(by, sorted.unwrap_or(false))
-            .map(|inner| JsSerieReaderWindows { inner })
+            .map(JsStreamKeySerie::from_core)
             .map_err(napi_error)
     }
 
@@ -1502,16 +1424,16 @@ impl JsSerieReader {
     #[napi(js_name = "_partitionByNative", skip_typescript)]
     pub fn partition_by_native(
         &mut self,
-        by: SelectorInput<'_>,
+        by: KeyInput<'_>,
         options: Option<PartitionOptionsInput>,
-    ) -> Result<JsSerieReaderPartitions> {
-        let by = selector_from_input(by)?;
+    ) -> Result<JsStreamKeySerie> {
+        let by = key_by(by)?;
         let options = partition_options(options)?;
-        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        let reader = self.inner.take().ok_or_else(chunked_stream_consumed)?;
         self.taken = true;
         reader
             .partition_by(by, options)
-            .map(|inner| JsSerieReaderPartitions { inner })
+            .map(JsStreamKeySerie::from_core)
             .map_err(napi_error)
     }
 
@@ -1521,14 +1443,20 @@ impl JsSerieReader {
     /// nothing, and both answer zero.
     #[napi]
     pub fn resident_size(&self) -> f64 {
-        count(self.inner.as_ref().map_or(0, SerieReader::resident_size))
+        count(
+            self.inner
+                .as_ref()
+                .map_or(0, StreamChunkedSerie::resident_size),
+        )
     }
 
     /// Whether every record this reader holds lies in a spill file: held
     /// records only, never a stream, which holds none.
     #[napi]
     pub fn is_spilled(&self) -> bool {
-        self.inner.as_ref().is_some_and(SerieReader::is_spilled)
+        self.inner
+            .as_ref()
+            .is_some_and(StreamChunkedSerie::is_spilled)
     }
 
     /// Move the records this reader holds to disk under the bound `options`
@@ -1538,7 +1466,7 @@ impl JsSerieReader {
     #[napi]
     pub fn spill(&mut self, options: Option<ClassInstance<'_, JsSpillOptions>>) -> Result<()> {
         if self.taken {
-            return Err(serie_reader_consumed());
+            return Err(chunked_stream_consumed());
         }
         let bound = spill_bound(options.as_deref())?;
         match self.inner.as_mut() {
@@ -1555,7 +1483,7 @@ impl JsSerieReader {
         options: Option<ClassInstance<'_, JsSpillOptions>>,
     ) -> Result<()> {
         if self.taken {
-            return Err(serie_reader_consumed());
+            return Err(chunked_stream_consumed());
         }
         let bound = spill_bound(options.as_deref())?;
         match self.inner.as_mut() {
@@ -1573,12 +1501,12 @@ impl JsSerieReader {
         options: Option<ClassInstance<'_, JsSpillOptions>>,
     ) -> Result<Self> {
         let bound = spill_bound(options.as_deref())?;
-        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        let reader = self.inner.take().ok_or_else(chunked_stream_consumed)?;
         self.taken = true;
         reader
             .into_spilled(bound)
             .map_err(napi_error)
-            .and_then(Self::from_core)
+            .map(Self::from_core)
     }
 
     /// Every record this reader yields in sorted order under the options:
@@ -1591,12 +1519,12 @@ impl JsSerieReader {
         descending: Option<bool>,
         nulls_first: Option<bool>,
     ) -> Result<Self> {
-        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        let reader = self.inner.take().ok_or_else(chunked_stream_consumed)?;
         self.taken = true;
         reader
             .into_sorted(sort_options(descending, nulls_first))
             .map_err(napi_error)
-            .and_then(Self::from_core)
+            .map(Self::from_core)
     }
 
     /// Every record this reader yields in the order the `order by` keys of
@@ -1606,12 +1534,12 @@ impl JsSerieReader {
     #[napi(js_name = "_intoSortByNative", skip_typescript)]
     pub fn into_sort_by_native(&mut self, by: OrderingsInput<'_>) -> Result<Self> {
         let by = orderings_of(&by)?;
-        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        let reader = self.inner.take().ok_or_else(chunked_stream_consumed)?;
         self.taken = true;
         reader
             .into_sort_by(by)
             .map_err(napi_error)
-            .and_then(Self::from_core)
+            .map(Self::from_core)
     }
 
     /// This stream joined with `other` - a held serie, a chunked one, or
@@ -1626,7 +1554,7 @@ impl JsSerieReader {
         other: Either3<
             ClassInstance<'_, JsSerie>,
             ClassInstance<'_, JsChunkedSerie>,
-            ClassInstance<'_, JsSerieReader>,
+            ClassInstance<'_, JsStreamChunkedSerie>,
         >,
         by: &JsScalar,
         how: Option<String>,
@@ -1635,22 +1563,22 @@ impl JsSerieReader {
         let how = join_kind(how)?;
         let options = join_options(options)?;
         if self.taken || self.inner.is_none() {
-            return Err(serie_reader_consumed());
+            return Err(chunked_stream_consumed());
         }
         let other = serie_source(other)?;
-        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        let reader = self.inner.take().ok_or_else(chunked_stream_consumed)?;
         self.taken = true;
         reader
             .join_with(other, &by.inner, how, &options)
             .map_err(napi_error)
-            .and_then(Self::from_core)
+            .map(Self::from_core)
     }
 
     /// The stream's batches reconciled to the root as a native
     /// `BatchReader`, never landed; the reader is consumed.
     #[napi]
     pub fn into_arrow_reader(&mut self) -> Result<JsBatchReader> {
-        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        let reader = self.inner.take().ok_or_else(chunked_stream_consumed)?;
         self.taken = true;
         Ok(JsBatchReader::from_core(
             reader.into_arrow_reader(),
@@ -1659,52 +1587,7 @@ impl JsSerieReader {
     }
 }
 
-/// The windows of a stream, one lazy `SerieReader` per run of equal adjacent
-/// keys, in the order they arrive.
-///
-/// Every window is pulled through one walk holding at most one batch of the
-/// stream, so windows are read in order: taking the next window drops the
-/// unread rows of the one before, and a window read after the walk passed
-/// rows of it refuses once, naming it. Each window states its record as its
-/// `staticValues`.
-#[napi(js_name = "SerieReaderWindows")]
-pub struct JsSerieReaderWindows {
-    inner: SerieReaderWindows,
-}
-
-#[napi]
-impl JsSerieReaderWindows {
-    /// The record root every window yields: the windowed reader's own.
-    #[napi(getter)]
-    pub fn field(&self) -> JsField {
-        JsField::from_core(self.inner.field().clone())
-    }
-
-    /// The record every window's `staticValues` is typed by, known before
-    /// the first pull: the windowed reader's own but `windownum` and
-    /// `rownum`, the key cells, `windownum` and `rownum`.
-    #[napi(getter)]
-    pub fn static_field(&self) -> JsField {
-        JsField::from_core(self.inner.static_field().clone())
-    }
-
-    /// Open the next window as its lazy reader, or `null` after the last.
-    ///
-    /// The native half of the iteration protocol; the loader wraps it so
-    /// `for...of` yields each window's `SerieReader`.
-    #[napi(js_name = "_nextNative", skip_typescript)]
-    pub fn next_native(&mut self) -> Result<Option<JsSerieReader>> {
-        match self.inner.next() {
-            None => Ok(None),
-            Some(window) => window
-                .map_err(napi_error)
-                .and_then(JsSerieReader::from_core)
-                .map(Some),
-        }
-    }
-}
-
-/// How `SerieReader.partitionBy` cuts a stream, each slot `undefined` or
+/// How `StreamChunkedSerie.partitionBy` cuts a stream, each slot `undefined` or
 /// `null` where not given, which is its default.
 #[napi(object, object_to_js = false)]
 #[derive(Default)]
@@ -1729,7 +1612,9 @@ pub struct PartitionOptionsInput {
 
 /// The core options `options` states, read once: every slot not given
 /// keeps [`PartitionOptions::new`]'s answer.
-fn partition_options(options: Option<PartitionOptionsInput>) -> Result<PartitionOptions> {
+pub(crate) fn partition_options(
+    options: Option<PartitionOptionsInput>,
+) -> Result<PartitionOptions> {
     let options = options.unwrap_or_default();
     let mut partition = PartitionOptions::new();
     if let Some(max_open) = optional(options.max_open) {
@@ -1744,47 +1629,63 @@ fn partition_options(options: Option<PartitionOptionsInput>) -> Result<Partition
     Ok(partition)
 }
 
-/// The partitions of a stream, one `[key, rows]` pair as each closes: the
-/// key the record of the cells `by` computes, the rows a `ChunkedSerie`
-/// under the partitioned reader's root, in the order they arrived.
-///
-/// Each partition is yielded as soon as it closes. Past `maxOpen` open
-/// partitions, the ones of the lowest keys close, so a stream arriving in
-/// key order closes each once it has been read whole; when the stream ends,
-/// every partition still open closes in ascending key order. A clustered
-/// stream closes each partition as soon as another key arrives, in arrival
-/// order. A key arriving again after its partition closed is yielded again,
-/// as a new piece under the same key. The open partitions are held under the
-/// process spill bound; a yielded partition's rows are the caller's.
-#[napi(js_name = "SerieReaderPartitions")]
-pub struct JsSerieReaderPartitions {
-    inner: SerieReaderPartitions,
+#[napi]
+impl JsSerie {
+    /// Moves these values into a native scalar-row stream.
+    #[napi]
+    pub fn into_stream(&self) -> Result<crate::expression::JsStreamSerie> {
+        self.inner
+            .clone()
+            .into_stream()
+            .map(crate::expression::JsStreamSerie::from_core)
+            .map_err(napi_error)
+    }
+    /// Moves these values into native chunks under optional row and byte bounds.
+    #[napi]
+    pub fn into_chunked_stream(
+        &self,
+        row_size: Option<f64>,
+        byte_size: Option<f64>,
+    ) -> Result<crate::serie::JsStreamChunkedSerie> {
+        self.inner
+            .clone()
+            .into_chunked_stream(
+                crate::key_serie::row_bound(row_size)?,
+                crate::key_serie::byte_bound(byte_size)?,
+            )
+            .map_err(napi_error)
+            .map(crate::serie::JsStreamChunkedSerie::from_core)
+    }
+    /// Wraps any native serie kind without an Arrow conversion or eager pull.
+    #[napi(factory, js_name = "_fromSourceNative", skip_typescript)]
+    pub fn from_source(value: crate::key_serie::SerieInput<'_>) -> Result<Self> {
+        crate::key_serie::serie_source(value).map(Self::from_core)
+    }
 }
 
 #[napi]
-impl JsSerieReaderPartitions {
-    /// The record root every partition's rows are held under: the
-    /// partitioned reader's own.
-    #[napi(getter)]
-    pub fn field(&self) -> JsField {
-        JsField::from_core(self.inner.field().clone())
+impl JsStreamChunkedSerie {
+    /// Moves these values into a native scalar-row stream.
+    #[napi]
+    pub fn into_stream(&mut self) -> Result<JsStreamSerie> {
+        self.take()?
+            .into_stream()
+            .map(JsStreamSerie::from_core)
+            .map_err(napi_error)
     }
-
-    /// Pull the stream until the next partition closes and answer its
-    /// `[key, rows]` pair, or `null` after the last.
-    ///
-    /// The native half of the iteration protocol; the loader wraps it so
-    /// `for...of` yields each pair.
-    #[napi(js_name = "_nextNative", skip_typescript)]
-    pub fn next_native(&mut self) -> Result<Option<(JsScalar, JsChunkedSerie)>> {
-        match self.inner.next() {
-            None => Ok(None),
-            Some(partition) => partition
-                .map(|partition| {
-                    let (key, rows) = partition.into_parts();
-                    Some((JsScalar::from_core(key), JsChunkedSerie::from_core(rows)))
-                })
-                .map_err(napi_error),
-        }
+    /// Moves these values into native chunks under optional row and byte bounds.
+    #[napi]
+    pub fn into_chunked_stream(
+        &mut self,
+        row_size: Option<f64>,
+        byte_size: Option<f64>,
+    ) -> Result<Self> {
+        self.take()?
+            .into_chunked_stream(
+                crate::key_serie::row_bound(row_size)?,
+                crate::key_serie::byte_bound(byte_size)?,
+            )
+            .map_err(napi_error)
+            .map(Self::from_core)
     }
 }

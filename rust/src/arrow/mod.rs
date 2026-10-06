@@ -388,7 +388,7 @@ where
 /// This is what an append is, and what a combine is: two streams end to end,
 /// each batch encoded as it arrives so neither side is collected. Whether
 /// either side is cast is decided *before* it gets here, by wrapping it in
-/// [`SerieReader`](crate::SerieReader), so there is exactly one concatenation and one cast route.
+/// [`StreamChunkedSerie`](crate::StreamChunkedSerie), so there is exactly one concatenation and one cast route.
 struct Chained {
     first: BatchReader,
     second: BatchReader,
@@ -428,7 +428,7 @@ pub(crate) fn appended(
 ) -> Result<BatchReader> {
     Ok(Box::new(Chained {
         first: stored,
-        second: crate::SerieReader::from_arrow_reader(
+        second: crate::StreamChunkedSerie::from_arrow_reader(
             Some(field),
             incoming,
             crate::ArrowCastOptions::new().with_safe(safe),
@@ -447,7 +447,7 @@ pub(crate) fn appended(
 /// as null when `safe`, and a not-null column refuses that value, a null and
 /// a missing column by name.
 /// Neither side is drained to inspect it and nothing is collected - a batch is
-/// cast when it is pulled, and [`SerieReader`](crate::SerieReader) short-circuits a side that is
+/// cast when it is pulled, and [`StreamChunkedSerie`](crate::StreamChunkedSerie) short-circuits a side that is
 /// already the declared shape rather than rebuilding arrays it would hand back
 /// unchanged.
 ///
@@ -486,13 +486,13 @@ pub fn combined_as(
     safe: bool,
 ) -> Result<BatchReader> {
     Ok(Box::new(Chained {
-        first: crate::SerieReader::from_arrow_reader(
+        first: crate::StreamChunkedSerie::from_arrow_reader(
             Some(field),
             left,
             crate::ArrowCastOptions::new().with_safe(safe),
         )?
         .into_arrow_reader(),
-        second: crate::SerieReader::from_arrow_reader(
+        second: crate::StreamChunkedSerie::from_arrow_reader(
             Some(field),
             right,
             crate::ArrowCastOptions::new().with_safe(safe),
@@ -531,7 +531,7 @@ pub fn combined_as(
 ///   cares about field identity, and a reassigned id corrupts a table's schema
 ///   evolution.
 /// - **The root name is left's**, and the merged root is a bounded,
-///   non-nullable Struct, as [`SerieReader`](crate::SerieReader) requires. Because the merge never
+///   non-nullable Struct, as [`StreamChunkedSerie`](crate::StreamChunkedSerie) requires. Because the merge never
 ///   widens a datatype - it refuses instead - every column stays exactly what
 ///   one of the two sides declared, so a merged reader is appendable to an
 ///   Iceberg table wherever both inputs were.

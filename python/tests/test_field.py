@@ -791,6 +791,43 @@ def test_the_transform_view_declares_its_term_and_reads_the_terms_its_function_r
     assert Field("plain", "int64").transform.term is None
 
 
+def test_the_field_properties_view_states_bits_on_an_integer_column() -> None:
+    digest = Field("digest", "uint64", nullable=False)
+    assert digest.field_properties.representation == "value"
+    with pytest.raises(ValueError):
+        digest.scalar(-1)
+
+    digest.field_properties.representation = "bits"
+    assert digest.metadata["FIELD:representation"] == "bits"
+    assert digest.field_properties.representation == "bits"
+    # A same-width integer of the other sign is read as its bits; the
+    # datatype's own door reads none.
+    assert digest.scalar(-1).as_py() == 2**64 - 1
+    assert digest.scalar(5).as_py() == 5
+    with pytest.raises(ValueError):
+        DataType("uint64").scalar(-1)
+
+    # Stating the value removes the declaration, and so does `None`.
+    digest.field_properties.representation = "value"
+    assert "FIELD:representation" not in digest.metadata
+    digest.field_properties.representation = "bits"
+    digest.field_properties.representation = None
+    assert "FIELD:representation" not in digest.metadata
+    with pytest.raises(ValueError, match="representation"):
+        digest.field_properties.representation = "bytes"  # type: ignore[assignment]
+
+    # Bits on a column that is no integer are refused, the field unchanged.
+    text = Field("text", "utf8")
+    with pytest.raises(ValueError, match="utf8"):
+        text.field_properties.representation = "bits"
+    assert "FIELD:representation" not in text.metadata
+    # And the property is the `field_properties` view's alone.
+    with pytest.raises(TypeError, match="representation is a field property"):
+        digest.iceberg.representation
+    with pytest.raises(TypeError, match="representation is a field property"):
+        digest.iceberg.representation = "bits"
+
+
 def test_partition_vocabulary_is_refused_on_another_protocols_view() -> None:
     field = Field("year", "int32", nullable=True)
 
@@ -805,8 +842,10 @@ def test_partition_vocabulary_is_refused_on_another_protocols_view() -> None:
         field.partition.term
     with pytest.raises(AttributeError):
         field.partition.transform  # type: ignore[attr-defined]
-    with pytest.raises(AttributeError):
-        field.partition.sources  # type: ignore[attr-defined]
+    # Nor sources of its own: `sources` is the fix view's, which every other
+    # view refuses naming its own scheme.
+    with pytest.raises(TypeError, match="fix property, and this is a partition view"):
+        field.partition.sources
     # `apply_arrow_batch` is the one verb the declaring protocols answer, so
     # the digest view takes it while the transform vocabulary stays refused.
     with pytest.raises(TypeError):

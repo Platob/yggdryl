@@ -12,7 +12,7 @@ from ._typing import TypedField
 from .marketdatakind import MarketDataKind
 
 class MarketDataType(enum.IntEnum):
-    UNKN = 0
+    UKNW = 0
     ORDMKT = 101
     ORDLIMIT = 102
     ORDSTOP = 103

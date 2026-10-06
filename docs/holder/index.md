@@ -7,7 +7,7 @@ Every storage implementation is one positional `IOBase` handle: a caller writes 
 | [Handles](#handles) | the `Holder` enum, what a name composes to, roles, delegation | default |
 | [Bytes](#bytes) | `pread`/`pwrite`, addresses, laziness, kinds, streams, cursors, media type, codings, open/close, clear/remove | default |
 | [Values](#values) | whole bytes, digests, structured JSON/YAML/TOML/XML scalars, `std::io` adapters | default |
-| [Records](#records) | Arrow batch reads, the three write intents, pushdown, limits, native rows | default; `parquet` for Parquet |
+| [StreamSerie](#records) | Arrow batch reads, the three write intents, pushdown, limits, native rows | default; `parquet` for Parquet |
 | [Partitions](#partitions) | listings, globs, Hive pruning, partition columns, derived columns | default |
 | [Call counts](#call-counts) | `Counted`, the `IOBase` call budget every derived operation is held to | default |
 | [Buffer](#buffer) | in-memory bytes | default |
@@ -224,7 +224,7 @@ A role is what a location turns out to be. A backend implements one trait per ro
 
 ```text
 trait IOPath   { fn path_url(&self) -> &Url;   fn is_folder(&self) -> bool;   fn is_file(&self) -> bool; }
-trait IOFolder { fn folder_url(&self) -> &Url; fn folder_exists(&self) -> bool;
+trait IOFolder { fn folder_url(&self) -> &Url; fn has_folder(&self) -> bool;
                  fn create_folder(&self) -> Result<()>;
                  fn list_folder(&self, recursive: bool, include_private: bool) -> Listing;
                  fn delete_folder(&mut self) -> Result<()>; }
@@ -232,7 +232,7 @@ trait IOFile   { fn file_url(&self) -> &Url;   fn file_exists(&self) -> bool;
                  fn clear_file(&mut self) -> Result<()>;  fn delete_file(&mut self) -> Result<()>; }
 ```
 
-Everything else is pre-implemented: a folder holds no bytes of its own - `pread` reads nothing and `size` is zero - [streams its leaves](#streams-and-cursors), refuses byte writes, is created by `truncate(0)` and answers `inode/directory`; a file lists nothing and refuses a child; a path answers `Directory`, `File` or `Unknown` by looking.
+Everything else is pre-implemented: a folder holds no bytes of its own - `pread` reads nothing and `size` is zero - [streams its leaves](#streams-and-cursors), refuses byte writes, is created by `truncate(0)` and answers `inode/directory`; a file lists nothing and refuses a child; a path answers `Directory`, `File` or `Unknown` by looking; and a folder or a path over a glob exists while its pattern selects an entry (`folder_exists`, `path_exists`), its listing read up to the first match.
 
 === "Rust"
 
@@ -610,7 +610,7 @@ Constructing touches nothing, a read of something absent is empty, and a write c
 | `Unknown` | location that does not exist yet |
 | `Table`, `Namespace`, `Catalog` | containers a table format adds |
 
-Rust asks `is_container`, `is_leaf`, `is_known`; the bindings `exists`, `is_dir`, `is_file`.
+Rust asks `is_container`, `is_leaf`, `is_known`; the bindings `exists`, `is_dir`, `is_file`. `is_dir` is the role - a glob or `lake/` is a container by its spelling, asked of nothing, and a removed folder still answers it - and `exists` is presence: a glob is there while its pattern selects an entry, its listing read up to the first match. A `Url`'s `exists` is pathlib's literal answer.
 
 ### Bytes or rows
 
@@ -1692,10 +1692,11 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     read_arrow_field(&self, options: &RecordOptions) -> Result<Field>
     row_size(&self) -> Result<u64>          // whole media; projection and limits never change it
     column_size(&self) -> Result<usize>
+    merge_by(&self) -> Result<Selector>     // the key a merge naming none matches on; empty but on an Iceberg table
 
     overwrite_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>   // the one required hook
     append_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>
-    merge_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>       // needs merge_by
+    merge_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>       // needs merge_by, or the destination's own
 
     overwrite|append|merge_arrow_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<IOResult>
     overwrite|append|merge_records(&mut self, records, options: &RecordOptions) -> Result<IOResult>
@@ -1704,9 +1705,9 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     write_arrow_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
     write_records(&mut self, records, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
 
-    read_serie(&self, options: Option<&RecordOptions>) -> Result<SerieReader>   // None: the handle's own
-    write_serie(&mut self, value: SerieSource, mode: IOMode, options: Option<&RecordOptions>) -> Result<IOResult>
-    overwrite|append|merge_serie(&mut self, value: SerieSource, options: Option<&RecordOptions>) -> Result<IOResult>
+    read_serie(&self, options: Option<&RecordOptions>) -> Result<StreamChunkedSerie>   // None: the handle's own
+    write_serie(&mut self, value: Serie, mode: IOMode, options: Option<&RecordOptions>) -> Result<IOResult>
+    overwrite|append|merge_serie(&mut self, value: Serie, options: Option<&RecordOptions>) -> Result<IOResult>
 
     IOResult { read_rows, written_rows, skipped_rows }   // what the write did, in rows
     ```
@@ -1722,7 +1723,7 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     overwrite|append|merge_records(records, *, options=None) -> IOResult
     write_arrow_reader|table|batch(value, mode, *, options=None) -> IOResult
     write_records(records, mode, *, options=None) -> IOResult
-    read_serie(*, options=None) -> SerieReader
+    read_serie(*, options=None) -> StreamChunkedSerie
     write_serie(value, mode="overwrite", *, options=None) -> IOResult
     overwrite|append|merge_serie(value, *, options=None) -> IOResult
 
@@ -1740,14 +1741,14 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     overwrite|append|mergeRecords(records, options?) -> IOResult | Promise<IOResult>
     writeArrowReader|Table|Batch(value, mode, options?) -> IOResult
     writeRecords(records, mode, options?) -> IOResult | Promise<IOResult>
-    readSerie(options?) -> SerieReader
+    readSerie(options?) -> StreamChunkedSerie
     writeSerie(value, mode?, options?) -> IOResult
     overwrite|append|mergeSerie(value, options?) -> IOResult
 
     IOResult.readRows, .writtenRows, .skippedRows   // what the write did, in rows
     ```
 
-Default append and merge shape once and delegate to `overwrite_arrow_reader`, and every write answers what it did in rows ([Write results](#write-results)). `read_serie` answers a [`SerieReader`](../types/serie.md#writing-a-serie-to-a-handle) whatever the handle holds, and `write_serie` with its three intents takes a `Serie`, a `ChunkedSerie` or a `SerieReader` as one `SerieSource`, written as the batches it already is; absent options are the handle's own for both.
+Default append and merge shape once and delegate to `overwrite_arrow_reader` - a merge that changes no row and adds none delegating nothing ([Append and merge](#append-and-merge)) - and every write answers what it did in rows ([Write results](#write-results)). `read_serie` answers a [`StreamChunkedSerie`](../types/serie.md#writing-a-serie-to-a-handle) whatever the handle holds, and `write_serie` with its three intents takes a `Serie`, a `ChunkedSerie` or a `StreamChunkedSerie` as one `Serie`, written as the batches it already is; absent options are the handle's own for both.
 
 === "Rust"
 
@@ -2238,7 +2239,7 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
 
 ### Append and merge
 
-Overwrite replaces - a leaf whole, a partitioned folder or table only the partitions its rows reach and the ones its `where` pins, every other partition's leaves kept, so an overwrite with no row touches nothing outside that scope - append keeps the stored rows, merge updates matching `merge_by` keys and adds the rest. A folder holds each commit's rows split by partition under the process spill bound - through the one partitioner [`SerieReader::partition_by`](../arrow/readers.md#partitions-of-a-stream) cuts a stream with, each batch cut on the write's threads by the typed values of its partition columns and the directory text rendered once per piece - and writes every leaf it reaches once, in the order the directory texts sort in. Keys use Arrow's row format: null matches null and the last arrival wins. Merge holds only the stored side in memory.
+Overwrite replaces - a leaf whole, a partitioned folder or table only the partitions its rows reach and the ones its `where` pins, every other partition's leaves kept, so an overwrite with no row touches nothing outside that scope - append keeps the stored rows, merge updates matching `merge_by` keys - or, naming none, the destination's own (`merge_by()`: [an Iceberg table's](../media/iceberg.md#the-merge-key) identity partition columns then identifier columns), refused where it states none - and adds the rest. A folder holds each commit's rows split by partition under the process spill bound - through the one partitioner [`StreamChunkedSerie::partition_by`](../arrow/readers.md#partitions-of-a-stream) cuts a stream with, each batch cut on the write's threads by the typed values of its partition columns and the directory text rendered once per piece - and writes every leaf it reaches once, in the order the directory texts sort in. Keys use Arrow's row format: null matches null and the last arrival wins. A stored row is replaced only where the last arrival for its key differs from it, every column compared through the same row format - a layout the format does not encode, a float zero of the other sign or a NaN of other bits counting as changed - so a leaf, or a leaf of a partitioned folder, whose merge changes no row and adds no key is not written: its bytes and its modification time stay, and an [Iceberg table](../media/iceberg.md#a-merge-that-changes-nothing) commits no snapshot. Merge holds only the stored side in memory. An append into an Iceberg table stating its own key adds only the rows whose key it lacks ([Appending to a keyed table](../media/iceberg.md#appending-to-a-keyed-table)); every other append adds every row.
 
 === "Rust"
 
@@ -2379,9 +2380,9 @@ Overwrite replaces - a leaf whole, a partitioned folder or table only the partit
 | `N > 0` | every `N` batches, then the remainder |
 | `0` | rejected before any input is pulled |
 
-Whatever the cadence, an overwrite's first commit replaces and every later one appends - per partition where the destination is partitioned: the first commit reaching a partition replaces it, and a partition no row reaches is not touched, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a paced stream keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement. Whatever holds a cadence between publications - a leaf's, a write session's, an Iceberg table's partition holds - is held under the process [spill bound](../types/serie.md#spilling-to-disk), the heaviest batches spilled first, so a cadence of any size costs that bound in memory; `commit_batch_num` paces a stream whose rows would outgrow the spill folder.
+Whatever the cadence, an overwrite's first commit replaces and every later one appends every row it brings - per partition where the destination is partitioned: the first commit reaching a partition replaces it, and a partition no row reaches is not touched, an append appends on every commit - into an Iceberg table stating its own key, the rows whose key neither the table nor an earlier commit of the write holds - and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a paced stream keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement. Whatever holds a cadence between publications - a leaf's, a write session's, an Iceberg table's partition holds - is held under the process [spill bound](../types/serie.md#spilling-to-disk), the heaviest batches spilled first, so a cadence of any size costs that bound in memory; `commit_batch_num` paces a stream whose rows would outgrow the spill folder.
 
-A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/iceberg.md). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
+A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/iceberg.md). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set. Its commits into an Iceberg table go through the table it locates off the handle, so a closed table handle is closed again after each commit and reads them on its next verb, and a handle held open across the session keeps the view it opened with until it closes.
 
 ### Write results
 
@@ -2390,8 +2391,8 @@ Every write answers an `IOResult`: what it did, in rows, with no read of the des
 | Count | Is |
 | --- | --- |
 | `read_rows` | the rows the write pulled from its source |
-| `written_rows` | the rows the destination took - for a merge, every incoming row, whether it updated a stored row or added one |
-| `skipped_rows` | the rows read and not written: the ones the options' `filter` kept out, and the part of the batch a [limit](#limits) fell in |
+| `written_rows` | the rows the destination took - for a merge, every incoming row, whether it updated a stored row, added one or changed nothing |
+| `skipped_rows` | the rows read and not written: the ones the options' `filter` kept out, the part of the batch a [limit](#limits) fell in, and the rows an append to an Iceberg table stating its own key left out because the table held their key or an earlier row of the write brought it ([Appending to a keyed table](../media/iceberg.md#appending-to-a-keyed-table)) |
 
 A limit stops pulling, so the rows past it were never read and count nowhere. A write cut into several [commits](#commit-cadence) answers their sum, a source with no row answers the empty result, and the result says nothing of what an overwrite or a merge replaced - `row_size` answers what the destination holds. A resumable write session answers it from `finish`. Results add, compare, hash and print (`read 5 rows, wrote 4, skipped 1`).
 
@@ -2644,6 +2645,13 @@ Python listings are `pathlib`-style (`iterdir`, `glob`, `rglob`); JavaScript's a
     assert_eq!(lake.glob("year=2024/**/*.parquet", false)?.count(), 1);
     assert_eq!(lake.glob("**/*.parquet", false)?.count(), 2);
 
+    // A glob location is a container by its spelling, and there while it
+    // selects an entry.
+    let years = lake.child_by_path("year=*")?;
+    assert!(years.is_container() && years.exists());
+    let csv = lake.child_by_path("*.csv")?;
+    assert!(csv.is_container() && !csv.exists());
+
     // Partition filters select the leaves to overwrite or upsert.
     let selected: Vec<_> = lake
         .children_where(&[("year", "2024")], false)?
@@ -2676,6 +2684,11 @@ Python listings are `pathlib`-style (`iterdir`, `glob`, `rglob`); JavaScript's a
     assert len(list(lake.glob("year=2024/**/*.parquet"))) == 1
     assert len(list(lake.rglob("*.parquet"))) == 2
 
+    # A glob location is a container by its spelling, and there while it
+    # selects an entry.
+    assert (lake / "year=*").is_dir() and (lake / "year=*").exists()
+    assert (lake / "*.csv").is_dir() and not (lake / "*.csv").exists()
+
     selected = list(lake.children_where({"year": "2024"}))
     assert len(selected) == 1
     assert selected[0].partitions == (("year", "2024"), ("month", "01"))
@@ -2702,6 +2715,12 @@ Python listings are `pathlib`-style (`iterdir`, `glob`, `rglob`); JavaScript's a
     // A fixed prefix is descended, not listed and filtered.
     assert.equal([...lake.glob('year=2024/**/*.parquet')].length, 1)
     assert.equal([...lake.rglob('*.parquet')].length, 2)
+
+    // A glob location is a container by its spelling, and there while it
+    // selects an entry.
+    assert.ok(lake.joinpath(['year=*']).isDir() && lake.joinpath(['year=*']).exists())
+    assert.ok(lake.joinpath(['*.csv']).isDir())
+    assert.equal(lake.joinpath(['*.csv']).exists(), false)
 
     // Partition filters select the leaves to overwrite or upsert.
     const selected = [...lake.childrenWhere({ year: '2024' })]
@@ -4289,6 +4308,8 @@ The request count is the contract, asserted by tests.
 | building a handle, resolving a child, a media type or a partition | none | none | none |
 | resolving a `lake/` location | none | none | none |
 | resolving any other location | one single-key listing, or two | the same | the same |
+| `exists` on a `lake/` location | one single-key listing; a bucket root one `HEAD` | the same | the same |
+| `exists` on a glob | its listing up to the first match, one request per 1000 entries | the same | the same |
 | a ranged read | one ranged `GET` | one ranged `GET` with `alt=media` | one `GET` with `x-ms-range` |
 | a whole read, stream drain or digest | one `GET` | one `GET` | one `GET` |
 | a text or CSV read of a leaf, or of the objects under a glob | one `GET` per object - the listed leaf streamed through the resuming reader it owns (`IOBase::owned_stream_bytes`), no probe listing, no read past the end - and a glob's one listing of its prefix | the same | the same |
@@ -5197,7 +5218,7 @@ Server::bind("127.0.0.1:0")?.mount(prefix, holder)  // any handle, served with r
 | Role | `Holder` variant | Python | Is |
 | --- | --- | --- | --- |
 | `Session` | `HttpSession` | `http.Session` | a container over its base URL: `child_by_path(path)` is the `Request` for that resource, `ls` is empty because HTTP lists nothing, byte writes are refused as a directory's are |
-| `Request` | `HttpRequest` | `http.Request` | the leaf a URL names: every byte, record and value call of [Bytes](#bytes), [Values](#values) and [Records](#records) |
+| `Request` | `HttpRequest` | `http.Request` | the leaf a URL names: every byte, record and value call of [Bytes](#bytes), [Values](#values) and [StreamSerie](#records) |
 | `Response` | `HttpResponse` | `http.Response` | one answer's body as sent - coded, under a media type that keeps the coding, so `into_declared_media` composes the codec and the record encoding - read-only |
 | `Stream` | `HttpStream` | `http.Stream` | a body left on the wire, read forward and resumed when cut; read-only |
 
@@ -5419,7 +5440,7 @@ assert_eq!(requests[1].headers.get("if-range"), stream.headers().get("etag"));
 
 ### Pages
 
-`request.pages()` walks a paginated resource, one `GET` and one `Response` per page, and `Pages::into_arrow_reader(field, batch_row_size)` lays the rows out as one Arrow batch per page under one root - `field` when given, else the record the first page's rows infer. `read_arrow_reader` and `read_serie` on a structured resource whose first page paginates are that walk, reading the first page once; Python's `Pages.read_serie(field=None)` answers the walk as a `SerieReader`, one record column per page. The rows are at the declared `records` path, else a top-level sequence, else the first of `data`, `items`, `results`, `records`, `value`, `rows`, `entries`, `elements`, `content`, `hits.hits`, else the largest top-level sequence.
+`request.pages()` walks a paginated resource, one `GET` and one `Response` per page, and `Pages::into_arrow_reader(field, batch_row_size)` lays the rows out as one Arrow batch per page under one root - `field` when given, else the record the first page's rows infer. `read_arrow_reader` and `read_serie` on a structured resource whose first page paginates are that walk, reading the first page once; Python's `Pages.read_serie(field=None)` answers the walk as a `StreamChunkedSerie`, one record column per page. The rows are at the declared `records` path, else a top-level sequence, else the first of `data`, `items`, `results`, `records`, `value`, `rows`, `entries`, `elements`, `content`, `hits.hits`, else the largest top-level sequence.
 
 `Pagination` says how the next page is found; `Auto`, the default, tries in order:
 

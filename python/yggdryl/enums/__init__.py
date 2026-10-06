@@ -99,7 +99,7 @@ ELEMENT_COLUMNS: tuple[str, ...] = tuple(_LISTING["element_columns"])
 #: The nine columns an event adds after its element's, in schema order.
 EVENT_COLUMNS: tuple[str, ...] = tuple(_LISTING["event_columns"])
 
-#: The thirty-four columns a market element states after its event's, in
+#: The thirty-five columns a market element states after its event's, in
 #: schema order.
 MARKET_COLUMNS: tuple[str, ...] = tuple(_LISTING["market_columns"])
 

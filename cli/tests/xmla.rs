@@ -337,11 +337,17 @@ fn endpoint_and_note(mut command: Command) -> (Served, String, String) {
 #[test]
 fn serve_reads_a_location_as_python_and_node_read_one() {
     let root = catalog_root();
-    // `file:/path` is the URL Java's `File.toURI()` writes: one reading with
-    // `file:///path`, never a folder of that name under the working directory.
+    // The native `file:` spelling and Java's `file:/path` spelling read as
+    // the canonical `file:///path`, never a folder under the working directory.
+    let canonical = LocalFolder::new(&root)
+        .expect("the catalog is a local folder")
+        .url()
+        .to_string();
+    let java = canonical.replacen("file:///", "file:/", 1);
     for spelled in [
         format!("market=file:{}", root.display()),
-        format!("market=file://{}", root.display()),
+        format!("market={java}"),
+        format!("market={canonical}"),
     ] {
         let mut serve = command();
         serve
@@ -353,7 +359,7 @@ fn serve_reads_a_location_as_python_and_node_read_one() {
             "{spelled}: {endpoint}"
         );
         assert!(
-            note.contains(&format!("catalog market over file://{}", root.display())),
+            note.contains(&format!("catalog market over {canonical}")),
             "{spelled}: {note}"
         );
         drop(served);

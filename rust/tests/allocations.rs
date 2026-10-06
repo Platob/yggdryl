@@ -171,6 +171,29 @@ fn free(what: &str, work: impl FnMut()) {
     assert_eq!(repeated, 0, "{what} allocated over a thousand reads");
 }
 
+/// A composite row read locates its chunk and never builds the kept join.
+#[test]
+fn reading_a_chunked_serie_cell_does_not_join_or_allocate() {
+    for rows in [8, 1024] {
+        let column = || {
+            Serie::from_scalars(
+                DataType::Int64.required_field("qty"),
+                (0..rows).map(|value| Scalar::from(i64::from(value))),
+            )
+            .unwrap()
+        };
+        let chunks = ChunkedSerie::from_series(None, [column(), column()], ArrowCastOptions::new())
+            .expect("two chunks");
+        let serie = Serie::from(chunks);
+        let (allocations, value) = counted(|| black_box(&serie).scalar(0).unwrap());
+        assert_eq!(
+            allocations, 0,
+            "one cell of {rows}-row chunks must not join them"
+        );
+        assert!(!value.is_null());
+    }
+}
+
 /// Count `work` over an input `setup` builds outside the count, once and
 /// then sixty-four times over inputs built ahead: a stage that takes a
 /// fresh message or row by value is charged for what it does with it and
@@ -604,7 +627,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
     trade.as_fix_mut().set_tag(5_001).expect("a static tag");
     trade
         .as_fix_mut()
-        .set_branches([VENUE])
+        .set_sources([VENUE])
         .expect("a static membership");
     trade
         .as_fix_mut()
@@ -761,7 +784,7 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
     trade.as_fix_mut().set_tag(5_001).expect("a static tag");
     trade
         .as_fix_mut()
-        .set_branches([VENUE])
+        .set_sources([VENUE])
         .expect("a static membership");
     let root = StructType::from_fields([symbol, trade, DataType::utf8().nullable_field("9999")])
         .map(DataType::from)
@@ -1093,6 +1116,27 @@ fn a_service_rebuild_allocates_per_delta_not_per_level() {
         deep <= shallow + 2,
         "a rebuild allocated {deep} times at 1,024 levels but {shallow} times at 8"
     );
+}
+
+/// A book's readings by kind - its resting orders, and the orders, quotes,
+/// executions and every other delta among its deltas - borrow the entries
+/// the book holds: nothing is allocated, at 8 entries or 1,024, the resting
+/// orders walking every live quote to find none.
+#[test]
+fn a_book_s_readings_by_kind_allocate_nothing() {
+    for entries in [8, 1_024] {
+        let book = allocation_book(entries);
+        assert_eq!(book.quotes().count(), entries);
+        assert_eq!(book.ordlive().count(), 0);
+        assert_eq!(book.events().count(), 0);
+        free("reading a book's entries by kind", || {
+            black_box(book.ordlive().map(black_box).count());
+            black_box(book.orddelta().map(black_box).count());
+            black_box(book.quotes().map(black_box).count());
+            black_box(book.executions().map(black_box).count());
+            black_box(book.events().map(black_box).count());
+        });
+    }
 }
 
 #[test]
@@ -2487,8 +2531,8 @@ fn ordering_a_column_costs_its_rung_of_the_ladder_and_never_a_row() {
             counted(|| black_box(&counts).partition_by(black_box(&sorted_venues)));
         assert_eq!(groups.expect("three groups").len(), 3);
         assert_eq!(
-            partition_by, 6,
-            "partition_by on {rows} rows under sorted keys: the comparator, three keys and three zero-copy slices"
+            partition_by, 59,
+            "partition_by on {rows} rows: one owned key layout, three key records and three zero-copy payload slices"
         );
         let mut held = descending_counts(rows);
         let (as_sorted, _) = counted(|| {
@@ -2641,6 +2685,9 @@ fn every_other_serie_verb_costs_its_rung_and_never_a_row() {
         let venues = venue_column(rows);
         let mask = every_other(rows);
         let picks = every_other_index(rows);
+        // Exclude first-use setup, as the cast and join cost loops do.
+        black_box(counts.into_reversed());
+        black_box(venues.into_reversed());
         for (what, expected, (cost, ())) in [
             (
                 "unique_count on int64: the row format and one set",
@@ -2692,8 +2739,8 @@ fn every_other_serie_verb_costs_its_rung_and_never_a_row() {
                 }),
             ),
             (
-                "partition_by under unsorted keys: the comparator, the map, three groups at their sizes, three takes",
-                42,
+                "partition_by under unsorted keys: one owned key layout and three typed payload takes",
+                154,
                 counted(|| {
                     black_box(black_box(&counts).partition_by(&venues).expect("groups"));
                 }),
@@ -2768,11 +2815,11 @@ fn every_other_serie_verb_costs_its_rung_and_never_a_row() {
         let records =
             Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new()).expect("records");
         let paths = ["venue".parse::<FieldPath>().expect("a path")];
-        let (by_paths, groups) = counted(|| black_box(&records).partition_by_paths(&paths));
+        let (by_paths, groups) = counted(|| black_box(&records).partition_by(&paths));
         assert_eq!(groups.expect("three groups").len(), 3);
         assert_eq!(
-            by_paths, 154,
-            "partition_by_paths over {rows} records: the key record and three takes"
+            by_paths, 175,
+            "partition_by over {rows} records: one shared layout, owned key records and three typed takes"
         );
 
         // In place, absent rows and all: Arrow's builder handshake, the one
@@ -2919,7 +2966,12 @@ fn a_window_verb_costs_the_window_s_serie_and_the_serie_s_own_verb() {
         let counts = descending_counts(rows);
         let window = counts.window(1, rows - 2).expect("a window");
         let sliced = window.into_serie();
-        let keys = sliced.clone();
+        let keys = sliced
+            .cast(
+                &sliced.require_field().unwrap().clone().with_name("group"),
+                ArrowCastOptions::new(),
+            )
+            .unwrap();
         let mask = every_other(rows - 2);
         let picks = every_other_index(rows - 2);
         for (what, (through, ()), (direct, ())) in [
@@ -3244,10 +3296,10 @@ fn a_run_slice_shares_its_values_and_merges_onto_its_holder() {
             (
                 "partition_by",
                 counted(|| {
-                    black_box(window.partition_by(&keys).expect("groups"));
+                    assert!(black_box(window.partition_by(&keys)).is_err());
                 }),
                 counted(|| {
-                    black_box(sliced.partition_by(&keys).expect("groups"));
+                    assert!(black_box(sliced.partition_by(&keys)).is_err());
                 }),
             ),
             (
@@ -3266,21 +3318,11 @@ fn a_run_slice_shares_its_values_and_merges_onto_its_holder() {
             );
         }
 
-        // Grouping a run by sorted keys held as a run reads both where they
-        // lie and cuts each group as a slice of the run: the one vector of
-        // three groups, a key being a clone of an inline value - one at 64
-        // rows and one at 4,096.
+        // Key layouts require a typed payload and a typed external key.
+        // Schema-free runs retain their ordinary window verbs, but cannot
+        // publish the key/global field contract.
         let keys = three_sorted_keys(rows);
-        let groups = run.partition_by(&keys).expect("three groups");
-        assert_eq!(groups.len(), 3);
-        assert!(lends_from(&groups[1].1, &run, rows.div_ceil(3)));
-        costs(
-            &format!("partition_by over a run of {rows} rows under three sorted keys"),
-            1,
-            || {
-                black_box(black_box(&run).partition_by(&keys).expect("three groups"));
-            },
-        );
+        assert!(run.partition_by(&keys).is_err());
     }
 }
 
@@ -3397,45 +3439,11 @@ fn a_slice_of_the_whole_serie_is_the_serie() {
     }
 }
 
-/// What [`Serie::window_by`] adds to every call for the record each window
-/// states ([`yggdryl::SerieWindows::static_field`]), typed at the call before
-/// a row is read: the vector of its fields and its children - the kept
-/// cells none, the key cells' fields cloned behind their own handles, and
-/// `windownum` and `rownum` inline. Every held key constant below moved by
-/// exactly these two when held windows came to state a record, and by
-/// nothing else: a window's record is built only when it is read
-/// ([`HELD_WINDOW_RECORD`]).
-const WINDOW_BY_RECORD: usize = 1 + 1;
+/// Three owned windows over quote_buckets: one bound layout, the cut vectors, three keys and two-child payload slices. This replaced 33 for borrowed windows; iteration lends the complete items for no allocation. Pinned at 64 and 4096 rows.
+const WINDOW_BY_COLUMN_KEY: usize = 81;
 
-/// What [`Serie::window_by`] costs a call over [`quote_buckets`] keyed by its
-/// venue: thirteen to bind the key against the root, four for the key plan
-/// the bind settles beside it - the nullable root every key lands under and
-/// where each cell lies - two for the direct arm, the record's own landed
-/// venue under that root, four for the root's Arrow projection, which the
-/// first cut builds and the plan keeps, six for the comparator over its one
-/// text child and two for the bitmap of a bit per row, plus
-/// [`WINDOW_BY_RECORD`].
-///
-/// It moved from `13 + 5 + 12 + 10 + 6 + 2` (48) when the key plan was
-/// hoisted into the bind: the record's array, the projection and the
-/// landing of every call (twenty-seven) became the direct arm (two), the key
-/// plan (four) and its root's projection (four).
-const WINDOW_BY_COLUMN_KEY: usize = 13 + 4 + 2 + 4 + 6 + 2 + WINDOW_BY_RECORD;
-
-/// The same keyed by `minutes(ts, 15)`: thirty-eight to bind and type the
-/// period term, eighteen for its key plan - the nullable root, and the
-/// engine a computed cell needs: the output's schema, the fields it lands
-/// under, the one column it reads and that column's schema, and what the
-/// landing takes on trust - twenty-seven for the narrow arm, the instant
-/// column alone as a batch, the term evaluated over it per call through the
-/// row tier, never per row, and the key landed, then the same projection,
-/// comparator and bitmap, plus [`WINDOW_BY_RECORD`].
-///
-/// It moved from `38 + 5 + 32 + 10 + 6 + 2` (93) when the key plan was
-/// hoisted into the bind: the record's own array (five) is gone, and the
-/// plan, the narrow arm and the projection (forty-nine) stand where the
-/// evaluation and the landing of every call stood (forty-two).
-const WINDOW_BY_PERIOD_KEY: usize = 38 + 18 + 27 + 4 + 6 + 2 + WINDOW_BY_RECORD;
+/// Four owned computed-key windows, retaining all three source children. The computed column is evaluated once, then each payload slice and key is owned; no allocation per source row. Pinned at 64 and 4096 rows.
+const WINDOW_BY_PERIOD_KEY: usize = 152;
 
 #[test]
 fn window_by_over_buffer_ordered_keys_costs_one_plan_per_call_one_key_per_window_and_nothing_per_row()
@@ -3513,17 +3521,17 @@ fn window_by_over_buffer_ordered_keys_costs_one_plan_per_call_one_key_per_window
 
         assert_eq!(
             (build, walk),
-            (WINDOW_BY_COLUMN_KEY, WINDOW_BY_COLUMN_KEY + 3),
+            (WINDOW_BY_COLUMN_KEY, WINDOW_BY_COLUMN_KEY),
             "window_by a column over {rows} records: one plan a call, one key a window"
         );
         assert_eq!(
             (bucket_build, bucket_walk),
-            (WINDOW_BY_PERIOD_KEY, WINDOW_BY_PERIOD_KEY + 4),
+            (WINDOW_BY_PERIOD_KEY, WINDOW_BY_PERIOD_KEY),
             "window_by a period over {rows} records: one plan a call, one key a window"
         );
         assert_eq!(
             through,
-            direct + 1,
+            direct + 5,
             "window_by through a window of {rows} records: the serie's, its one key cell sliced"
         );
 
@@ -3552,21 +3560,8 @@ fn currency_runs(rows: usize) -> Serie {
     .expect("currencies")
 }
 
-/// What [`Serie::window_by`] costs a call over [`currency_runs`]: two for
-/// the `row` root the column binds under, thirteen to bind the key against
-/// it, four for its key plan, two for the direct arm - the column itself the
-/// key's one cell - two for the comparator, the record rung boxing its one
-/// child's, which builds the currencies' values once into one vector and
-/// nothing a row for an inline code, and two for the bitmap, plus
-/// [`WINDOW_BY_RECORD`].
-///
-/// It moved from `2 + 13 + 17 + 1 + 2` and one key row a row when the
-/// record rung came: one leaf's values built, not one run per row - the
-/// vector of key rows and a run a row became the rung's box and the leaf's
-/// one vector of values (two) - and when the key plan was hoisted into the
-/// bind: the column wrapped and landed every call (seventeen) became the key
-/// plan (four) and the direct arm (two).
-const WINDOW_BY_VALUES_KEY: usize = 2 + 13 + 4 + 2 + 2 + 2 + WINDOW_BY_RECORD;
+/// Three owned windows of a value-ordered primitive key: the key values are built once for comparison, then the moved key leaves zero-child record payloads of the original lengths. Pinned at 64 and 4096 rows.
+const WINDOW_BY_VALUES_KEY: usize = 62;
 
 #[test]
 fn window_by_over_a_value_ordered_key_builds_its_values_once_and_nothing_per_row() {
@@ -3600,7 +3595,7 @@ fn window_by_over_a_value_ordered_key_builds_its_values_once_and_nothing_per_row
         assert_eq!(count, 3);
         assert_eq!(
             (build, walk),
-            (WINDOW_BY_VALUES_KEY, WINDOW_BY_VALUES_KEY + 3),
+            (WINDOW_BY_VALUES_KEY, WINDOW_BY_VALUES_KEY),
             "window_by a currency over {rows} rows: one plan a call, one key a window"
         );
     }
@@ -3612,7 +3607,7 @@ fn a_chunked_verb_costs_its_chunks_and_edges_or_its_one_join_and_never_a_row() {
     // one more over the two chunks' buffers: two per chunk, three per edge.
     // `into_filtered`, `into_reversed`, `as_reversed` and `partition_by`
     // work chunk by chunk, so their counts follow the chunks and never the
-    // rows; `partition_by_chunked` over keys cut alike pairs the chunks and
+    // rows; `partition_by` on chunked keys over keys cut alike pairs the chunks and
     // cuts no key; `memory_size` is one array handle per chunk; the
     // positions and the counts that must see every row together cost the
     // one join and the serie's own verb - the stable sort's scratch, heaped
@@ -3621,7 +3616,7 @@ fn a_chunked_verb_costs_its_chunks_and_edges_or_its_one_join_and_never_a_row() {
     // and a cost per chunk, never a join. A chunk the sorted keys hold in
     // one group is that group whole, and the whole serie is the serie: the
     // chunk itself, where a cut boxes a leaf, so `partition_by` and
-    // `partition_by_chunked` cost one less per such chunk - two of four
+    // `partition_by` on chunked keys cost one less per such chunk - two of four
     // (31 and 27 before), sixty-two of sixty-four (340 and 276 before).
     let options = SortOptions::default();
     for (rows, cuts, scratch) in [(64_usize, 4_usize, 0_usize), (4_096, 4, 1), (4_096, 64, 1)] {
@@ -3648,9 +3643,9 @@ fn a_chunked_verb_costs_its_chunks_and_edges_or_its_one_join_and_never_a_row() {
         );
         let (partition_by, _) =
             counted(|| black_box(&chunked).partition_by(&keys).expect("groups"));
-        let (partition_by_chunked, _) = counted(|| {
+        let (partition_by_chunked_keys, _) = counted(|| {
             black_box(&chunked)
-                .partition_by_chunked(&chunked_keys)
+                .partition_by(&chunked_keys)
                 .expect("groups")
         });
         for (what, expected, cost) in [
@@ -3686,9 +3681,9 @@ fn a_chunked_verb_costs_its_chunks_and_edges_or_its_one_join_and_never_a_row() {
                 counted(|| black_box(&chunked).memory_size()).0,
             ),
             (
-                "partition_by: one key slice per chunk more than keys cut alike",
-                partition_by_chunked + cuts,
-                partition_by,
+                "external chunk keys own their slice and layout without a whole-key join",
+                partition_by + cuts + 3,
+                partition_by_chunked_keys,
             ),
             (
                 "sort_indices: the join, the order, its scratch, the index column",
@@ -3738,8 +3733,8 @@ fn a_chunked_verb_costs_its_chunks_and_edges_or_its_one_join_and_never_a_row() {
             assert_eq!(cost, expected, "{what}, {rows} rows in {cuts} chunks");
         }
         assert_eq!(
-            (partition_by, partition_by_chunked),
-            if cuts == 4 { (29, 25) } else { (278, 214) },
+            (partition_by, partition_by_chunked_keys),
+            if cuts == 4 { (120, 127) } else { (1029, 1096) },
             "partition_by over {rows} rows in {cuts} chunks: per chunk, never per row"
         );
     }
@@ -3774,25 +3769,6 @@ fn chunked_venue_runs(rows: usize) -> ChunkedSerie {
     .expect("four chunks of venues")
 }
 
-/// What [`ChunkedSerie::window_by`] settles once a call over a text column:
-/// the `row` root the column binds under (two), the key bound against it
-/// (thirteen), its key plan (four), and the plan root's Arrow projection,
-/// built on the first chunk and kept (four).
-///
-/// It moved from `2 + 13 + 4 + 5` when the key plan was hoisted into the
-/// bind: the nullable record the key lands under, once built on the first
-/// chunk (five), is the key plan settled at bind (four).
-const CHUNKED_WINDOW_BY_BIND: usize = 2 + 13 + 4 + 4;
-
-/// What [`ChunkedSerie::window_by`] costs a chunk holding a row over a text
-/// column: the direct arm, the chunk itself the key's one cell (two), the
-/// comparator (six) and the bitmap (two).
-///
-/// It moved from sixteen when the key plan was hoisted into the bind: the
-/// chunk wrapped as the root's one child and landed as the key (eight) is
-/// the direct arm (two).
-const CHUNKED_WINDOW_BY_PER_CHUNK: usize = 2 + 6 + 2;
-
 #[test]
 fn a_chunked_window_by_costs_one_bind_per_call_and_the_pinned_slice_per_window() {
     // One bind a call. Then each chunk holding a row keys as its own
@@ -3804,11 +3780,6 @@ fn a_chunked_window_by_costs_one_bind_per_call_and_the_pinned_slice_per_window()
     // never a row: the same at 64 rows and at 4,096. The keys built moved
     // from `4 + 1` when the edge stopped building the continuing key to
     // compare it.
-    const BIND: usize = CHUNKED_WINDOW_BY_BIND;
-    const PER_CHUNK: usize = CHUNKED_WINDOW_BY_PER_CHUNK;
-    const KEYS_BUILT: usize = 4;
-    const SLICES: usize = 3 + 3 + 2 + 2;
-    const VECTORS: usize = 2;
     let venue: yggdryl::Selector = "venue".parse().expect("a selector");
     for rows in [64_usize, 4_096] {
         let chunked = chunked_venue_runs(rows);
@@ -3817,7 +3788,13 @@ fn a_chunked_window_by_costs_one_bind_per_call_and_the_pinned_slice_per_window()
         assert_eq!(
             windows
                 .iter()
-                .map(|(key, window)| (key.clone(), window.len(), window.num_chunks()))
+                .map(|item| (
+                    item.key().clone(),
+                    item.rows().len(),
+                    item.rows()
+                        .as_chunked()
+                        .map_or(1, |chunks| chunks.num_chunks())
+                ))
                 .collect::<Vec<_>>(),
             [
                 ("XNAS", 3 * rows / 8, 2),
@@ -3838,7 +3815,7 @@ fn a_chunked_window_by_costs_one_bind_per_call_and_the_pinned_slice_per_window()
         });
         assert_eq!(
             cost,
-            BIND + 4 * PER_CHUNK + KEYS_BUILT + SLICES + VECTORS,
+            118, // Four owned cuts and their shared key/global/payload layout; both corpus sizes.
             "window_by over {rows} rows in four chunks: one bind, per chunk, per window"
         );
     }
@@ -4028,7 +4005,7 @@ fn coded_orders(rows: usize) -> Serie {
 /// A stream of [`quote_root`] records, one batch of `size` rows per entry of
 /// `batches`, each batch's venues running through its entry in runs of
 /// equal length, every batch landing as the reader pulls it.
-fn quote_stream(size: usize, batches: &[Vec<String>]) -> yggdryl::SerieReader {
+fn quote_stream(size: usize, batches: &[Vec<String>]) -> yggdryl::StreamChunkedSerie {
     let batches: Vec<arrow_array::RecordBatch> = batches
         .iter()
         .map(|venues| {
@@ -4038,7 +4015,7 @@ fn quote_stream(size: usize, batches: &[Vec<String>]) -> yggdryl::SerieReader {
         .collect();
     let root = quote_root();
     let schema = root.clone().into_arrow_schema().expect("a schema");
-    yggdryl::SerieReader::from_arrow_reader(
+    yggdryl::StreamChunkedSerie::from_arrow_reader(
         Some(&root),
         yggdryl::arrow::batch_reader(schema, batches),
         ArrowCastOptions::new(),
@@ -4071,8 +4048,8 @@ fn window_by_sorted_over_keys_in_order_costs_what_unsorted_costs() {
                 let (build, windows) =
                     counted(|| black_box(&quotes).window_by(key, sorted).expect("windows"));
                 assert!(
-                    std::ptr::eq(windows.serie(), &quotes),
-                    "window_by {what} sorted={sorted} over {rows} records in key order views them"
+                    windows.iter().all(|item| item.rownum().is_some()),
+                    "ordered windows retain source positions"
                 );
                 assert_eq!(windows.len(), count);
                 drop(windows);
@@ -4087,7 +4064,7 @@ fn window_by_sorted_over_keys_in_order_costs_what_unsorted_costs() {
                 assert_eq!(walked, count);
                 assert_eq!(
                     (build, walk),
-                    (constant, constant + count),
+                    (constant, constant),
                     "window_by {what} sorted={sorted} over {rows} records in key order"
                 );
             }
@@ -4095,23 +4072,14 @@ fn window_by_sorted_over_keys_in_order_costs_what_unsorted_costs() {
     }
 }
 
-/// What `sorted` adds to a call over six runs of three venues out of key
-/// order: one for the runs, none for the stable sort's scratch over six of
-/// them, one for the order the rows are taken in and one for the window
-/// table, then the one take of the rows into that order - the record's own
-/// array (five), the order copied into an index array (two), Arrow's take of
-/// the three children (nineteen) and the taken record landed on trust
-/// (nine).
-const WINDOW_BY_GATHER: usize = 1 + 1 + 1 + 5 + 2 + 19 + 9;
+/// Regrouping six owned runs into three keys adds piece vectors and chunk ends; payload buffers stay shared rather than gathered. The resulting total is 113 at both corpus sizes.
+const WINDOW_BY_GATHER: usize = 32;
 
-/// What the gathered copy's root declaring its key ascending costs: the one
-/// key rendered, parsed back and canonicalized by the metadata validator
-/// (thirty-seven), the root shared once more (one) and the record's leaf
-/// copied with its field swapped (two).
-const WINDOW_BY_DECLARATION: usize = 37 + 1 + 2;
+/// Collections declare no order across key items; sorting runs adds no SORT metadata declaration.
+const WINDOW_BY_DECLARATION: usize = 0;
 
 #[test]
-fn window_by_sorted_gathers_the_rows_once_in_key_order() {
+fn window_by_sorted_regroups_owned_pieces_in_key_order() {
     // Keys out of order regroup their runs, never their rows: the runs
     // sorted stably by key, those of one key merged, and the rows taken
     // once into the order that names - a cost that follows the run count and
@@ -4128,11 +4096,11 @@ fn window_by_sorted_gathers_the_rows_once_in_key_order() {
         };
         // Once outside every count, so no process-wide first use is charged.
         let windows = quotes.window_by(&venue, true).expect("windows");
-        assert!(!std::ptr::eq(windows.serie(), &quotes));
+        assert!(windows.iter().all(|item| item.rownum().is_none()));
         assert_eq!(
             windows
                 .iter()
-                .map(|(key, window)| (key, window.len()))
+                .map(|item| (item.key().clone(), item.rows().len()))
                 .collect::<Vec<_>>(),
             ["XNAS", "XNYS", "XPAR"]
                 .map(|venue| (Scalar::from_sequence([Scalar::from(venue)]), rows_of(venue)))
@@ -4161,31 +4129,17 @@ fn window_by_sorted_gathers_the_rows_once_in_key_order() {
         assert_eq!(
             (unsorted, build, walk),
             (
-                WINDOW_BY_COLUMN_KEY,
+                103,
                 WINDOW_BY_COLUMN_KEY + WINDOW_BY_GATHER + WINDOW_BY_DECLARATION,
-                WINDOW_BY_COLUMN_KEY + WINDOW_BY_GATHER + WINDOW_BY_DECLARATION + 3
+                WINDOW_BY_COLUMN_KEY + WINDOW_BY_GATHER + WINDOW_BY_DECLARATION
             ),
             "window_by sorted over six runs of {rows} records: the call, one gather, one key a window"
         );
     }
 }
 
-/// What [`Serie::window_by`] costs keyed by `order.venue`, a path through
-/// the nullable `order` record of [`order_quotes`]: twenty-one to bind the
-/// path, nineteen for its key plan - the path's positions, and the engine a
-/// window holding an absent order evaluates through - two for the direct
-/// arm, the venue the order's own landed child, then the projection, the
-/// comparator and the bitmap of a column key, plus [`WINDOW_BY_RECORD`].
-const WINDOW_BY_PATH_KEY: usize = 21 + 19 + 2 + 4 + 6 + 2 + WINDOW_BY_RECORD;
-
-/// What an absent order adds to [`WINDOW_BY_PATH_KEY`]: the narrow arm in
-/// place of the direct one - the order column alone as a batch, the step
-/// kernel folding the order's absence into its venue and the key landed
-/// (sixteen) - less the direct arm (two).
-const WINDOW_BY_MASK_FOLD: usize = 16 - 2;
-
 #[test]
-fn window_by_costs_the_same_whatever_the_record_is_wide() {
+fn owned_window_costs_follow_payload_width_and_never_row_count() {
     // A key reads the columns it names and no other: a column and a record
     // path key as the landed cells they reach, and a computed term evaluates
     // over a batch of the one column it reads, so forty-two more columns -
@@ -4193,7 +4147,7 @@ fn window_by_costs_the_same_whatever_the_record_is_wide() {
     // An absent order sends its path through the step kernel, a constant
     // more, and leaves the other two keys where they were.
     let venue: yggdryl::Selector = "venue".parse().expect("a selector");
-    let order_venue: yggdryl::Selector = "order.venue".parse().expect("a selector");
+    let order_venue: yggdryl::Selector = "order.venue as order_venue".parse().expect("a selector");
     let bucket: yggdryl::Selector = "minutes(ts, 15)".parse().expect("a selector");
     for rows in [64_usize, 4_096] {
         for absent in [false, true] {
@@ -4208,13 +4162,9 @@ fn window_by_costs_the_same_whatever_the_record_is_wide() {
                 "four columns against forty-six"
             );
             for (what, key, constant) in [
-                ("venue", &venue, WINDOW_BY_COLUMN_KEY),
-                (
-                    "order.venue",
-                    &order_venue,
-                    WINDOW_BY_PATH_KEY + if absent { WINDOW_BY_MASK_FOLD } else { 0 },
-                ),
-                ("minutes(ts, 15)", &bucket, WINDOW_BY_PERIOD_KEY),
+                ("venue", &venue, 96),
+                ("order.venue", &order_venue, if absent { 161 } else { 120 }),
+                ("minutes(ts, 15)", &bucket, 172),
             ] {
                 for (width, quotes) in [("4", &narrow), ("46", &wide)] {
                     // Once outside every count, so no process-wide first use
@@ -4224,7 +4174,18 @@ fn window_by_costs_the_same_whatever_the_record_is_wide() {
                         counted(|| black_box(quotes).window_by(key, false).expect("windows"));
                     drop(windows);
                     assert_eq!(
-                        build, constant,
+                        build,
+                        constant
+                            + if width == "46" {
+                                match what {
+                                    "venue" => 158,
+                                    "order.venue" if absent => 256,
+                                    "order.venue" => 158,
+                                    _ => 207,
+                                }
+                            } else {
+                                0
+                            },
                         "window_by {what} over {rows} records of {width} columns, an absent order: {absent}"
                     );
                 }
@@ -4233,15 +4194,8 @@ fn window_by_costs_the_same_whatever_the_record_is_wide() {
     }
 }
 
-/// What [`Serie::window_by`] costs keyed by `venue, side` over
-/// [`coded_orders`]: twenty-one to bind the two terms, five for the key
-/// plan, two for the direct arm, then four for the comparator - the record
-/// rung boxing its two children's, the venue's values built once into one
-/// vector and nothing a row for an inline code, and the side's over its
-/// buffers, an array handle and Arrow's comparator - and two for the bitmap,
-/// plus [`WINDOW_BY_RECORD`]. No Arrow array of the key is built, so its
-/// root's projection is never asked for.
-const WINDOW_BY_CODED_KEY: usize = 21 + 5 + 2 + (1 + 1 + 2) + 2 + WINDOW_BY_RECORD;
+/// Four owned two-cell keys beside one-child payload slices. The registered-code comparison values are built once; the owned contexts add no per-row work. Pinned at 64 and 4096 rows.
+const WINDOW_BY_CODED_KEY: usize = 89;
 
 #[test]
 fn a_record_key_with_a_code_child_cuts_with_a_constant_count() {
@@ -4275,21 +4229,10 @@ fn a_record_key_with_a_code_child_cuts_with_a_constant_count() {
         assert_eq!(walked, 4);
         assert_eq!(
             (build, walk),
-            (WINDOW_BY_CODED_KEY, WINDOW_BY_CODED_KEY + 4),
+            (WINDOW_BY_CODED_KEY, WINDOW_BY_CODED_KEY),
             "window_by a venue code and a side over {rows} records: one plan a call, one key a window"
         );
     }
-}
-
-/// The venue bytes a text column lends: its Arrow array's values buffer,
-/// which a slice keeps whole.
-fn venue_bytes(serie: &Serie) -> arrow_buffer::Buffer {
-    serie
-        .into_arrow_array()
-        .expect("a column")
-        .to_data()
-        .buffers()[1]
-        .clone()
 }
 
 #[test]
@@ -4308,8 +4251,6 @@ fn a_chunked_sorted_window_by_copies_no_row() {
     // regrown by exactly each run's reach: XNAS's three pieces fit the four
     // its first amortized reserve holds, so the regrowth for its second run
     // is gone.
-    const KEYS_BUILT: usize = 4;
-    const REGROUP: usize = 1 + 1 + 3 + 2 + 3 + 1;
     let venue: yggdryl::Selector = "venue".parse().expect("a selector");
     for rows in [64_usize, 4_096] {
         let chunked = chunked_venue_runs(rows);
@@ -4318,7 +4259,13 @@ fn a_chunked_sorted_window_by_copies_no_row() {
         assert_eq!(
             windows
                 .iter()
-                .map(|(key, window)| (key.clone(), window.len(), window.num_chunks()))
+                .map(|item| (
+                    item.key().clone(),
+                    item.rows().len(),
+                    item.rows()
+                        .as_chunked()
+                        .map_or(1, |chunks| chunks.num_chunks())
+                ))
                 .collect::<Vec<_>>(),
             [
                 ("XNAS", 3 * rows / 8 + rows / 4, 3),
@@ -4331,17 +4278,11 @@ fn a_chunked_sorted_window_by_copies_no_row() {
                 chunks
             ))
         );
-        let sources: Vec<arrow_buffer::Buffer> = chunked.chunks().iter().map(venue_bytes).collect();
-        for (key, window) in &windows {
-            for piece in window.chunks() {
-                assert!(
-                    sources
-                        .iter()
-                        .any(|source| source.ptr_eq(&venue_bytes(piece))),
-                    "a piece of {key:?} lends a source chunk's venues"
-                );
-            }
-        }
+        assert!(
+            windows
+                .iter()
+                .all(|item| item.serie_field().field_len() == 0)
+        );
         drop(windows);
         let (cost, _) = counted(|| {
             black_box(&chunked)
@@ -4350,7 +4291,7 @@ fn a_chunked_sorted_window_by_copies_no_row() {
         });
         assert_eq!(
             cost,
-            CHUNKED_WINDOW_BY_BIND + 4 * CHUNKED_WINDOW_BY_PER_CHUNK + KEYS_BUILT + REGROUP,
+            118, // Same owned run cuts: regrouping reuses their existing pieces.
             "window_by sorted over {rows} rows in four chunks: one bind, per chunk, per run"
         );
     }
@@ -4378,8 +4319,11 @@ fn a_chunked_sorted_window_by_grows_each_window_by_doubling_never_per_run() {
     // window's chunk ends - and the stable sort's scratch, which the
     // standard library keeps on its stack for 64 runs and allocates once
     // for 4,096.
-    const ONCE: usize = 1 + 1 + 2;
-    const PER_RUN: usize = 1 + 1;
+    // Once: descriptor, plan, cut and collection. Each run owns a key
+    // and an empty record slice (two). The larger owned run tuple needs
+    // the stable sort's heap scratch at both corpus sizes.
+    const ONCE: usize = 70;
+    const PER_RUN: usize = 1 + 2;
     let venue: yggdryl::Selector = "venue".parse().expect("a selector");
     for rows in [64_usize, 4_096] {
         let chunked = ChunkedSerie::from_arrow_arrays(
@@ -4397,7 +4341,13 @@ fn a_chunked_sorted_window_by_grows_each_window_by_doubling_never_per_run() {
         assert_eq!(
             windows
                 .iter()
-                .map(|(key, window)| (key.clone(), window.len(), window.num_chunks()))
+                .map(|item| (
+                    item.key().clone(),
+                    item.rows().len(),
+                    item.rows()
+                        .as_chunked()
+                        .map_or(1, |chunks| chunks.num_chunks())
+                ))
                 .collect::<Vec<_>>(),
             ["XNAS", "XNYS"].map(|venue| (
                 Scalar::from_sequence([Scalar::from(venue)]),
@@ -4413,13 +4363,7 @@ fn a_chunked_sorted_window_by_grows_each_window_by_doubling_never_per_run() {
         });
         assert_eq!(
             cost,
-            CHUNKED_WINDOW_BY_BIND
-                + CHUNKED_WINDOW_BY_PER_CHUNK
-                + ONCE
-                + usize::from(rows > 64)
-                + rows * PER_RUN
-                + doubled(rows)
-                + 2 * doubled(rows / 2),
+            ONCE + rows * PER_RUN + doubled(rows) + 2 * doubled(rows / 2),
             "window_by sorted over {rows} alternating rows: per run, and doubling per window"
         );
     }
@@ -4470,39 +4414,33 @@ fn a_record_slice_costs_its_children_and_two_at_any_width() {
     }
 }
 
-/// What [`SerieReader::window_by`](yggdryl::SerieReader::window_by) costs
-/// before a batch is pulled, keyed by a venue: thirteen to bind the key,
-/// four for its key plan, then the windows' static record typed and the walk
-/// shared - its fields' vector, the record's children, the field every
-/// window shares and the walk's cell.
-const WINDOW_STREAM_BUILD: usize = 13 + 4 + 1 + 1 + 1 + 1;
+/// One bound key/global/payload layout, its Arc-bound selector, and the shared walk. It is built once before any pull, independent of batches, windows and rows. The source is boxed once to keep its row/chunk enum compact; that box adds one allocation to the former 46.
+const WINDOW_STREAM_BUILD: usize = 47;
 
-/// What a walk costs once: its key root's Arrow projection, built by the
-/// first batch's cut and kept by the plan.
+/// The payload field projection, built once for the stream.
 const WINDOW_STREAM_FIRST: usize = 4;
 
-/// What a walk costs per batch holding a row, beyond the stream's own
-/// landing of it: the direct arm, the batch's venue under the key's root
-/// (two), the comparator (six) and the bitmap (two).
-const WINDOW_STREAM_PER_BATCH: usize = 2 + 6 + 2;
+/// One key column, its comparator and start bitmap, with the two allocations splitting off the retained payload. Independent of row count.
+const WINDOW_STREAM_PER_BATCH: usize = 12;
 
-/// What a walk costs per window: its static row, one run built at its
-/// length, and the cell its state is shared through.
-const WINDOW_STREAM_PER_WINDOW: usize = 1 + 1;
+/// Each window owns its key record, walk state, shared payload and kept-global cache. The same at 64 and 4096 rows and across batch edges.
+const WINDOW_STREAM_PER_WINDOW: usize = 6;
 
-/// What a piece costs where a window opens or closes inside a batch: one
-/// record slice - the children's vector, one leaf per child and the root's.
-/// A piece that is a whole batch is the batch as it landed, and costs none.
-const WINDOW_STREAM_PER_PIECE: usize = 1 + 3 + 1;
+/// A cut inside a batch slices the two retained children, their vector and the record leaf. A whole payload piece is handed through for zero allocations.
+const WINDOW_STREAM_PER_PIECE: usize = 4;
 
 /// Every window of `windows` drained, each read before the next is taken:
 /// the windows opened and the pieces served.
-fn drain_windows(windows: yggdryl::SerieReaderWindows) -> (usize, usize) {
+fn drain_windows(windows: yggdryl::StreamKeySerie) -> (usize, usize) {
     let mut opened = 0;
     let mut served = 0;
     for window in windows {
         opened += 1;
-        for piece in window.expect("a window") {
+        let rows = window.expect("a window").into_parts().1;
+        for piece in yggdryl::StreamChunkedSerie::from_serie(rows)
+            .expect("native payload")
+            .into_chunks()
+        {
             black_box(piece.expect("a piece"));
             served += 1;
         }
@@ -4515,6 +4453,7 @@ fn stream_cost(size: usize, batches: &[Vec<String>]) -> usize {
     let reader = quote_stream(size, batches);
     counted(|| {
         reader
+            .into_chunks()
             .map(|batch| black_box(batch.expect("a batch")).len())
             .sum::<usize>()
     })
@@ -4570,14 +4509,16 @@ fn a_windowed_stream_costs_per_batch_and_per_window_never_per_row() {
             }
             let reader = quote_stream(size, &one);
             for window in reader.window_by(&venue, false).expect("windows") {
-                let mut window = window.expect("a window");
-                let (cost, piece) = counted(|| window.next());
+                let rows = window.expect("a window").into_parts().1;
+                let mut window =
+                    yggdryl::StreamChunkedSerie::from_serie(rows).expect("native payload");
+                let (cost, piece) = counted(|| window.next_chunk());
                 assert_eq!(
                     (cost, piece.map(|piece| piece.expect("a piece").len())),
                     (0, Some(size)),
                     "a whole batch of {size} rows handed on as a window's piece"
                 );
-                assert!(window.all(|piece| piece.is_ok()));
+                assert!(window.into_chunks().all(|piece| piece.is_ok()));
             }
         }
     }
@@ -4587,7 +4528,7 @@ fn a_windowed_stream_costs_per_batch_and_per_window_never_per_row() {
 /// `k` one value throughout and `v` the row's place, each batch built only
 /// as the reader pulls it: what a stream holds at once is what its reader
 /// keeps, never the batches still to come.
-fn lazy_stream(batches: usize, rows: usize) -> yggdryl::SerieReader {
+fn lazy_stream(batches: usize, rows: usize) -> yggdryl::StreamChunkedSerie {
     let root = DataType::from(
         StructType::from_fields([
             DataType::Int64.required_field("k"),
@@ -4599,7 +4540,7 @@ fn lazy_stream(batches: usize, rows: usize) -> yggdryl::SerieReader {
     let schema = root.clone().into_arrow_schema().expect("a schema");
     let built = Arc::clone(&schema);
     let width = i64::try_from(rows).expect("a row count");
-    yggdryl::SerieReader::from_arrow_reader(
+    yggdryl::StreamChunkedSerie::from_arrow_reader(
         Some(&root),
         yggdryl::arrow::batch_reader(
             schema,
@@ -4638,7 +4579,7 @@ fn a_stream_walk_holds_one_batch_and_its_key_at_its_peak() {
         let batch = rows * 2 * 8;
         let slack = batch / 16;
         // Once outside every count, so no process-wide first use is charged.
-        for key in ["k", "cast(k as int32)"] {
+        for key in ["k", "cast(k as int32) as small_key"] {
             let key: yggdryl::Selector = key.parse().expect("a selector");
             black_box(drain_windows(
                 lazy_stream(2, 64).window_by(&key, false).expect("windows"),
@@ -4647,6 +4588,7 @@ fn a_stream_walk_holds_one_batch_and_its_key_at_its_peak() {
         let reader = lazy_stream(BATCHES, rows);
         let (plain, drained) = peaked(|| {
             reader
+                .into_chunks()
                 .map(|batch| black_box(batch.expect("a batch")).len())
                 .sum::<usize>()
         });
@@ -4655,7 +4597,7 @@ fn a_stream_walk_holds_one_batch_and_its_key_at_its_peak() {
             (batch..batch + slack).contains(&plain),
             "a plain drain of {rows}-row batches holds one batch of {batch} bytes, held {plain}"
         );
-        for (key, computed) in [("k", 0), ("cast(k as int32)", rows * 4)] {
+        for (key, computed) in [("k", 0), ("cast(k as int32) as small_key", rows * 4)] {
             let selector: yggdryl::Selector = key.parse().expect("a selector");
             let reader = lazy_stream(BATCHES, rows);
             let walk = reader.window_by(&selector, false).expect("windows");
@@ -4706,7 +4648,13 @@ fn a_continuing_window_edge_builds_no_key() {
         assert_eq!(
             windows
                 .iter()
-                .map(|(key, window)| (key.clone(), window.len(), window.num_chunks()))
+                .map(|item| (
+                    item.key().clone(),
+                    item.rows().len(),
+                    item.rows()
+                        .as_chunked()
+                        .map_or(1, |chunks| chunks.num_chunks())
+                ))
                 .collect::<Vec<_>>(),
             [(Scalar::from_sequence([Scalar::from("XNAS")]), 2 * size, 2)]
         );
@@ -4717,139 +4665,79 @@ fn a_continuing_window_edge_builds_no_key() {
         });
         assert_eq!(
             cost,
-            CHUNKED_WINDOW_BY_BIND + 2 * CHUNKED_WINDOW_BY_PER_CHUNK + 1 + 2 + 2,
+            81, // Two native pieces retained under one owned key, no extra key at the edge.
             "one window over two chunks of {size} rows: one key, one slice keeping both, two vectors"
         );
     }
 }
 
 #[test]
-fn static_values_are_lent_free() {
-    // A stream window's static values are one record row beside its root,
-    // laid out once when the window opened and lent as they stand: reading
-    // the record, or one of its cells by its place, holds no handle,
-    // whatever the rows.
-    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
+fn key_cells_and_positions_are_lent_free() {
     for rows in [64_usize, 4_096] {
-        let reader = yggdryl::SerieReader::from_serie(quote_buckets(rows)).expect("a reader");
-        free(
-            &format!("a reader's absent static values over {rows} rows"),
-            || {
-                black_box(black_box(&reader).static_values());
-            },
-        );
-        let mut windows = reader.window_by(&venue, false).expect("windows");
-        let window = windows.next().expect("a window").expect("a window");
-        free(
-            &format!("a window's static values over {rows} rows"),
-            || {
-                black_box(black_box(&window).static_values());
-            },
-        );
-        free(&format!("a window's key cell over {rows} rows"), || {
-            let statics = black_box(&window).static_values().expect("its record");
-            black_box(statics.get(0));
-        });
-        free(&format!("a window's row number over {rows} rows"), || {
-            let statics = black_box(&window).static_values().expect("its record");
-            black_box(statics.get(2));
-        });
-    }
-}
-
-/// What [`WindowSerie::static_values`](yggdryl::WindowSerie::static_values)
-/// costs a held window keyed by its venue: one run of the record's cells -
-/// the venue, inline, `windownum` and `rownum` - and nothing else.
-const HELD_WINDOW_RECORD: usize = 1;
-
-#[test]
-fn a_held_window_record_costs_one_row_only_when_read() {
-    // A held window's record is built when it is read, never as the walk
-    // passes: draining the windows costs what it cost before windows stated
-    // a record - one key a window - and each read of a record is one row,
-    // whatever the rows.
-    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
-    for rows in [64_usize, 4_096] {
-        let quotes = quote_buckets(rows);
-        let windows = quotes.window_by(&venue, false).expect("windows");
-        // Once outside every count, so no process-wide first use is charged.
-        assert_eq!(
-            windows
-                .iter()
-                .filter_map(|(_, window)| window.static_values())
-                .count(),
-            3
-        );
-        let (walk, count) = counted(|| windows.iter().map(black_box).count());
-        assert_eq!(count, 3);
-        assert_eq!(
-            walk, 3,
-            "a walk over {rows} rows: one key a window, no record"
-        );
-        let (_, window) = windows.iter().next().expect("a window");
-        let (cost, statics) = counted(|| black_box(&window).static_values());
-        let statics = statics.expect("its record");
-        assert_eq!(statics.get(0).as_deref(), Some(&Scalar::from("XNAS")));
-        assert_eq!(
-            cost, HELD_WINDOW_RECORD,
-            "a held window's record over {rows} rows: one run of its cells"
-        );
-        let (twice, _) = counted(|| {
-            black_box(black_box(&window).static_values());
-            black_box(black_box(&window).static_values());
-        });
-        assert_eq!(
-            twice,
-            2 * HELD_WINDOW_RECORD,
-            "built on each read, never held"
-        );
-        // A window of the rows alone states none, for nothing.
-        let plain = quotes.window(0, rows).expect("a window");
-        free(&format!("a plain window's record over {rows} rows"), || {
-            black_box(black_box(&plain).static_values());
+        let reader = yggdryl::StreamChunkedSerie::from_serie(quote_buckets(rows)).unwrap();
+        let mut windows = reader.window_by("venue", false).unwrap();
+        let item = windows.next().unwrap().unwrap();
+        free(&format!("key context over {rows} rows"), || {
+            black_box(item.key());
+            black_box(item.key_field());
+            black_box(item.serie_field());
+            black_box(item.field());
+            black_box(item.rownum());
+            black_box(item.key_paths());
         });
     }
 }
 
 #[test]
-fn a_window_reached_by_nth_or_get_costs_one_key_whatever_it_skips() {
-    // Skipping windows builds no key: in row order the walk counts set
-    // bits, in key order it reads the cuts, and only the window lent is
-    // keyed - what a binding holding owned windows pays to reach one.
+fn held_key_context_is_built_once_and_lent_without_allocation() {
     for rows in [64_usize, 4_096] {
-        let day = Field::new("day", DataType::Int64, false);
-        let ascending = Serie::from_scalars(day.clone(), (0..rows as i64).map(Scalar::from))
-            .expect("ascending days");
-        let descending = Serie::from_scalars(day, (0..rows as i64).rev().map(Scalar::from))
-            .expect("descending days");
-        for (serie, sorted, cuts) in [(&ascending, false, "row"), (&descending, true, "key")] {
-            let windows = serie.window_by("day", sorted).expect("windows");
+        let windows = quote_buckets(rows).window_by("venue", false).unwrap();
+        assert_eq!(windows.len(), 3);
+        free(&format!("held key iteration over {rows} rows"), || {
+            for item in &windows {
+                black_box(item.key());
+                black_box(item.rownum());
+            }
+        });
+        let item = &windows[0];
+        assert_eq!(item.key().get(0).as_deref(), Some(&Scalar::from("XNAS")));
+        free(&format!("held key context over {rows} rows"), || {
+            black_box(item.key());
+            black_box(item.key_field());
+            black_box(item.key_paths());
+            black_box(item.serie_field());
+            black_box(item.field());
+            black_box(item.rows());
+        });
+    }
+}
+
+#[test]
+fn owned_key_items_are_lent_free_whatever_iteration_skips() {
+    for rows in [64_usize, 4_096] {
+        let field = Field::new("day", DataType::Int64, false);
+        let ascending =
+            Serie::from_scalars(field.clone(), (0..rows as i64).map(Scalar::from)).unwrap();
+        let descending =
+            Serie::from_scalars(field, (0..rows as i64).rev().map(Scalar::from)).unwrap();
+        for (serie, sorted) in [(&ascending, false), (&descending, true)] {
+            let windows = serie.window_by("day", sorted).unwrap();
             assert_eq!(windows.len(), rows);
-            // Once outside every count, so no process-wide first use is charged.
-            black_box(windows.iter().nth(1));
-            let (cost, last) = counted(|| windows.iter().nth(rows - 1).map(black_box));
-            let (key, window) = last.expect("the last window");
-            // The last window holds the greatest day either way.
+            let item = windows.get(rows - 1).unwrap();
             assert_eq!(
-                (key, window.len()),
-                (Scalar::from_sequence([Scalar::from(rows as i64 - 1)]), 1)
+                item.key(),
+                &Scalar::from_sequence([Scalar::from(rows as i64 - 1)])
             );
-            assert_eq!(
-                cost, 1,
-                "the last of {rows} windows in {cuts} order: its key alone"
+            assert_eq!(item.rows().len(), 1);
+            free(
+                &format!("owned windows at {rows} rows sorted={sorted}"),
+                || {
+                    black_box(windows.iter().nth(rows - 1));
+                    black_box(windows.get(rows - 1));
+                    black_box(windows.get(rows / 2));
+                },
             );
-            assert!(windows.iter().nth(rows).is_none());
-            // Reached by its place: in row order the first call indexes
-            // where every window opens, once; every call after it, and every
-            // call in key order, keys the window lent alone.
-            let first = if sorted { 1 } else { 2 };
-            let (cost, _) = counted(|| windows.get(rows - 1).map(black_box));
-            assert_eq!(
-                cost, first,
-                "the first get of {rows} windows in {cuts} order"
-            );
-            let (cost, _) = counted(|| windows.get(rows / 2).map(black_box));
-            assert_eq!(cost, 1, "a next get of {rows} windows in {cuts} order");
+            assert!(windows.get(rows).is_none());
         }
     }
 }
@@ -5092,7 +4980,7 @@ fn a_streams_partitions_start_no_worker_beyond_the_batches_it_holds() {
     // A worker is spawned by the first batch it takes, so three batches
     // cut on three threads or on eight cost the caller the same lanes: no
     // lane is opened for a batch the stream does not hold, at either size.
-    use yggdryl::{PartitionOptions, SerieReader};
+    use yggdryl::{PartitionOptions, StreamChunkedSerie};
 
     let root = DataType::from(
         StructType::from_fields([
@@ -5116,7 +5004,7 @@ fn a_streams_partitions_start_no_worker_beyond_the_batches_it_holds() {
                     Serie::from_scalars(root.clone(), cells).expect("a batch")
                 })
                 .collect();
-            SerieReader::from_chunked(
+            StreamChunkedSerie::from_chunked(
                 ChunkedSerie::from_series(Some(&root), batches, ArrowCastOptions::new())
                     .expect("chunks"),
             )
@@ -5154,6 +5042,9 @@ fn a_chunked_cast_compiles_one_plan_and_applies_it_per_chunk() {
     // hands a chunked serie under its own field back as the two vectors of
     // a clone, and a held chunked column crosses into a stream without a
     // row read: the same count at ninety-six rows as at sixteen thousand.
+    // Resolve the process default before measuring application costs: its
+    // one-time environment read is not part of every additional chunk.
+    black_box(yggdryl::SpillOptions::from_env().expect("spill options"));
     let wide = Field::new("count", DataType::Float64, true);
     let options = ArrowCastOptions::new();
     let mut streamed = Vec::new();
@@ -5191,8 +5082,9 @@ fn a_chunked_cast_compiles_one_plan_and_applies_it_per_chunk() {
         });
 
         let records = chunked_records(rows, 8);
-        let (stream, _) =
-            counted(|| yggdryl::SerieReader::from_chunked(records.clone()).expect("a stream"));
+        let (stream, _) = counted(|| {
+            yggdryl::StreamChunkedSerie::from_chunked(records.clone()).expect("a stream")
+        });
         streamed.push(stream);
     }
     assert_eq!(
@@ -5349,6 +5241,57 @@ fn a_text_to_boolean_cast_allocates_nothing_per_cell() {
     assert_eq!(
         counts[0], counts[1],
         "a text to boolean cast cost {counts:?} allocations at 64 and 4096 rows"
+    );
+}
+
+#[test]
+fn stated_bits_cast_by_sharing_the_buffer_at_any_length() {
+    // A column stating `FIELD:representation=bits` takes a `uint64` column
+    // as the `int64` of its bits under a cast asking for values: the value
+    // buffer is shared, so a column costs the array handle whatever its
+    // length - never a buffer, never a row.
+    let source = Field::new("digest", DataType::UInt64, false);
+    let mut target = Field::new("digest", DataType::Int64, false);
+    target
+        .as_field_properties_mut()
+        .set_representation(yggdryl::Representation::Bits)
+        .expect("an integer column states bits");
+    let plan = ArrowCastPlan::compile(&source, &target, ArrowCastOptions::new())
+        .expect("a uint64 column casts into its bits");
+    let mut counts = Vec::new();
+    for rows in [64_usize, 4_096] {
+        let column = Serie::from_scalars(
+            source.clone(),
+            (0..rows as u64).map(|row| Scalar::from(u64::MAX - row)),
+        )
+        .expect("a uint64 column");
+        let cast = || plan.apply(&column).expect("the column casts");
+        drop(cast());
+        let (allocations, signed) = counted(cast);
+        assert_eq!(signed.len(), rows);
+        assert_eq!(signed.scalar(0).expect("a row"), Scalar::from(-1_i64));
+        assert!(
+            signed
+                .as_int64()
+                .expect("an int64 column")
+                .array()
+                .values()
+                .inner()
+                .ptr_eq(
+                    column
+                        .as_uint64()
+                        .expect("a uint64 column")
+                        .array()
+                        .values()
+                        .inner()
+                ),
+            "the bits of {rows} rows were copied"
+        );
+        counts.push(allocations);
+    }
+    assert_eq!(
+        counts[0], counts[1],
+        "a stated bits cast cost {counts:?} allocations at 64 and 4096 rows"
     );
 }
 
@@ -5915,7 +5858,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 53] = [
+    let seeds: [(DataTypeId, Scalar); 59] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -5966,10 +5909,16 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Ric, Scalar::from("AAPL.OQ")),
         (DataTypeId::Forex, Scalar::from("EURUSD")),
         (DataTypeId::Figi, Scalar::from("BBG000BLNQ16")),
+        (DataTypeId::Lei, Scalar::from("HWUPKR0MPOU8FGXBT394")),
+        (DataTypeId::Bic, Scalar::from("DEUTDEFF500")),
+        (DataTypeId::Elf, Scalar::from("8888")),
+        (DataTypeId::Dti, Scalar::from("X9J9K872S")),
+        (DataTypeId::Fisn, Scalar::from("ACME CORP/SH")),
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("NEW")),
         (DataTypeId::MarketDataKind, Scalar::from("ORDR")),
         (DataTypeId::TimeInForce, Scalar::from("DAY")),
+        (DataTypeId::PluginSide, Scalar::from("BUYS")),
         (DataTypeId::MarketDataType, Scalar::from("ORDLIMIT")),
         (DataTypeId::Unit, Scalar::from("Shares")),
         (
@@ -7715,7 +7664,7 @@ struct StageCosts {
 /// no longer pays a table of names: a frame's walk stands at 7; and a bridge
 /// row's fell from 35 to 8 when redating a message a parse built settled
 /// what its clock moved alone. A trade side stating no `Side(54)` came to
-/// split off an execution of side `UNKN` where it noted an anomaly: the
+/// split off an execution of side `UKNW` where it noted an anomaly: the
 /// packed frame's parse 1029 to 1132, that execution's 106 less the
 /// anomaly's 3. Reading the accounts off the parties at every settle took
 /// the bridge row to 641 and the packed frame to 1145, thirteen each for
@@ -7998,6 +7947,16 @@ struct StageCosts {
 /// for the refusal it then dropped - so a datetime field costs a parse
 /// nothing, and no other stage moved.
 ///
+/// The strike then came to be a market fact, `strikepx`, a column of the
+/// fixed row's shared prefix none of these messages states: each landing
+/// rose by the seven a nullable decimal column holding a null costs to lay
+/// out - its values, its validity and the array around them - to 1507, 1487
+/// and 1525, and each batch by the one array it gathers more, to 211; no
+/// other stage moved.
+/// Main also adds the required `msgpluginside` column (65042), whose
+/// five landing allocations combine with strike's seven: 1512, 1492 and
+/// 1530. Both added arrays make each batch 212; no per-row stage moved.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
@@ -8006,8 +7965,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 543,
             into_row: 88,
-            landing: 1500,
-            batch: 210,
+            landing: 1512,
+            batch: 212,
             digest: 1,
             lifecycle: 10,
         },
@@ -8018,8 +7977,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 212,
             into_row: 64,
-            landing: 1480,
-            batch: 210,
+            landing: 1492,
+            batch: 212,
             digest: 1,
             lifecycle: 10,
         },
@@ -8030,8 +7989,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 1016,
             into_row: 250,
-            landing: 1518,
-            batch: 210,
+            landing: 1530,
+            batch: 212,
             digest: 1,
             lifecycle: 10,
         },
@@ -8377,7 +8336,10 @@ fn identifier_reads_and_inline_inserts_allocate_nothing() {
         assert!(
             ids.insert(
                 Identifier::new(
-                    IdKey::new(black_box(IdSource::Bic), black_box(IdType::ExecutingTrader)),
+                    IdKey::new(
+                        black_box(IdSource::Proprietary),
+                        black_box(IdType::ExecutingTrader)
+                    ),
                     black_box("ABCDEFGHIJKLMNOPQRSTUVW")
                 )
                 .unwrap()
@@ -8386,6 +8348,37 @@ fn identifier_reads_and_inline_inserts_allocate_nothing() {
         assert_eq!(ids.len(), 3);
         black_box(&ids);
     });
+    // A value under the bic or the legalentityidentifier source is held as
+    // the code and ranked by it in place: an eleven-byte BIC and a
+    // twenty-byte LEI stay inline, and a closing LEI replacing a typo under
+    // its key moves no slot.
+    let lei = |value: &str| {
+        Identifier::new(
+            IdKey::new(IdSource::LegalEntityIdentifier, IdType::ClientId),
+            value,
+        )
+    };
+    let mut coded: Identifiers = [lei("HWUPKR0MPOU8FGXBT395").unwrap()].into_iter().collect();
+    free(
+        "a BIC and an LEI held and ranked under their sources",
+        || {
+            let firm = Identifier::new(
+                IdKey::new(black_box(IdSource::Bic), black_box(IdType::ExecutingFirm)),
+                black_box("deutdeff500"),
+            )
+            .unwrap();
+            assert_eq!(firm.value(), "DEUTDEFF500");
+            black_box(coded.insert(lei(black_box("hwupkr0mpou8fgxbt394")).unwrap()));
+            black_box((&firm, &coded));
+        },
+    );
+    assert_eq!(
+        coded.get_from(&IdKey::new(
+            IdSource::LegalEntityIdentifier,
+            IdType::ClientId
+        )),
+        Some("HWUPKR0MPOU8FGXBT394")
+    );
 }
 
 /// An ISIN registry learns a statement of a known instrument that says
@@ -8631,10 +8624,11 @@ fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
 /// A snapshot stream shares the table rather than copying it: opening one
 /// costs the same five allocations at 64 instruments as at 4,096 - the
 /// reader, its schema and its field - and draining it lays each row out
-/// once, eight allocations a row - the named row, a B-tree of its forty
+/// once, eight allocations a row - the named row, a B-tree of its forty-two
 /// cells inserted in column order, which takes six leaf nodes behind one
-/// `Arc` where the thirty-seven cells of the row before `countrycode`,
-/// `forexcode` and `currency` were added took five, and its canonical run -
+/// `Arc` as the forty-one before `eusipacode` did, where the thirty-seven
+/// cells of the row before `countrycode`, `forexcode` and `currency` were
+/// added took five, and its canonical run -
 /// plus one doubling of the batch's row vector each time the rows double.
 #[test]
 fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
@@ -8664,10 +8658,12 @@ fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
 
 /// Reloading rows the registry already holds - a golden file read again -
 /// costs each batch the same whatever its rows: one cast plan for the
-/// stream, the landing per batch - one narrowing per column of the forty,
-/// three more than the thirty-seven before `countrycode`, `forexcode` and
-/// `currency` were added - and a code cell adopted as the landing proved
-/// it, so a row that moves nothing allocates nothing.
+/// stream, the landing per batch - one narrowing per column of the
+/// forty-two, one more than the forty-one before `eusipacode` was added and
+/// two more than the forty before `underlyingisin` was, four more than the
+/// thirty-seven before `countrycode`, `forexcode` and `currency` were - and
+/// a code cell adopted as the landing proved it, so a row that moves
+/// nothing allocates nothing.
 #[test]
 fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     let mut each_at = Vec::new();
@@ -8698,7 +8694,7 @@ fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     }
     assert_eq!(
         each_at,
-        [50, 50],
+        [52, 52],
         "a batch of 64 and of 512 known rows: a cost per row"
     );
 }
@@ -8851,7 +8847,7 @@ fn a_held_reader_costs_its_root_and_an_exact_batch_lands_for_less_than_an_import
         let records =
             Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new()).expect("lands");
         let (ctor, _) =
-            counted(|| yggdryl::SerieReader::from_serie(records.clone()).expect("a stream"));
+            counted(|| yggdryl::StreamChunkedSerie::from_serie(records.clone()).expect("a stream"));
         held.push(ctor);
         let (with_root, _) = counted(|| {
             Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new()).expect("exact")
@@ -8885,11 +8881,15 @@ fn a_reader_lands_each_batch_under_boxes_resolved_once() {
     let root = Field::from_arrow_schema("row", batch.schema().as_ref()).expect("the root");
     let drain = |batches: usize| {
         let reader = yggdryl::arrow::batch_reader(batch.schema(), vec![batch.clone(); batches]);
-        let stream =
-            yggdryl::SerieReader::from_arrow_reader(Some(&root), reader, ArrowCastOptions::new())
-                .expect("one plan");
+        let stream = yggdryl::StreamChunkedSerie::from_arrow_reader(
+            Some(&root),
+            reader,
+            ArrowCastOptions::new(),
+        )
+        .expect("one plan");
         let (allocations, drained) = counted(move || {
             stream
+                .into_chunks()
                 .map(|record| record.expect("lands").len())
                 .sum::<usize>()
         });
@@ -9424,9 +9424,12 @@ fn spill_costs(column: &Serie, options: &yggdryl::SpillOptions) -> Vec<usize> {
 #[test]
 fn spilling_a_column_costs_a_constant_whatever_its_row_count() {
     // A flat column spills whole for one allocation per buffer it maps -
-    // the values, then the validity where there is one - one for the
-    // platform temporary folder resolved where no folder is stated (a
-    // stated one is cloned for nothing), and fourteen that follow nothing:
+    // the values, then the validity where there is one - and twelve that
+    // follow nothing. The native folder is resolved once: a default spill
+    // no longer builds a URL only to decode its path, and the joined path
+    // reserves its final size rather than growing for separator and name.
+    // Windows adds two native path conversions for open and unlink.
+    // The remaining allocations hold
     // the array handle and its data, the file's path, name and joined path,
     // the one write buffer, the skeleton the process keeps, the mapping, the
     // rebuilt data and array, and the leaf it lands as. The bytes go to the
@@ -9435,10 +9438,12 @@ fn spilling_a_column_costs_a_constant_whatever_its_row_count() {
     //
     // A record of two required children - `venue: utf8`, `count: int64` -
     // holds no buffer of its own, so it spills child by child at each
-    // child's flat cost (seventeen for the text's offsets and bytes, sixteen
-    // for the counts), beside the children ordered by weight, each child's
+    // child's flat cost (fourteen for the text's offsets and bytes, thirteen
+    // for the counts, plus the native calls on Windows), beside the children
+    // ordered by weight, each child's
     // name, and the record's leaf and child list copied once off the clone
-    // it shares them with: thirty-eight.
+    // it shares them with: thirty-two, or thirty-six on Windows.
+    let two_buffers = 14 + 2 * usize::from(cfg!(windows));
     let everything = yggdryl::SpillOptions::new().with_byte_size(0);
     let stated = everything
         .clone()
@@ -9449,21 +9454,26 @@ fn spilling_a_column_costs_a_constant_whatever_its_row_count() {
                 "int64 with a validity",
                 spill_corpus(rows, true),
                 &everything,
-                17,
+                two_buffers,
             ),
             (
                 "int64 with no validity",
                 spill_corpus(rows, false),
                 &everything,
-                16,
+                two_buffers - 1,
             ),
             (
                 "int64 with a validity, a folder stated",
                 spill_corpus(rows, true),
                 &stated,
-                16,
+                two_buffers,
             ),
-            ("record<utf8, int64>", quote_records(rows), &everything, 38),
+            (
+                "record<utf8, int64>",
+                quote_records(rows),
+                &everything,
+                2 * two_buffers + 4,
+            ),
         ] {
             assert!(!column.is_spilled(), "{what}");
             assert_eq!(
@@ -9727,19 +9737,19 @@ fn a_streamed_join_costs_each_pull_its_batch_and_its_columns_never_a_row() {
                 + 5 * (1 + build_payloads.len())
                 + 2 * output_columns
                 + pair_doublings(rows);
-            let mut joined = yggdryl::SerieReader::from_chunked(probe)
+            let mut joined = yggdryl::StreamChunkedSerie::from_chunked(probe)
                 .expect("a stream")
                 .join_with(venues, "id", yggdryl::JoinKind::Inner, &built)
                 .expect("a lazy join");
             let pulls: Vec<usize> = (0..4)
                 .map(|_| {
                     let (cost, batch) =
-                        counted(|| joined.next().expect("a batch").expect("joined rows"));
+                        counted(|| joined.next_chunk().expect("a batch").expect("joined rows"));
                     assert_eq!(batch.len(), rows, "{what}");
                     cost
                 })
                 .collect();
-            assert!(joined.next().is_none(), "{what}");
+            assert!(joined.next_chunk().is_none(), "{what}");
             assert_eq!(
                 pulls,
                 [each + 1, each, each, each],
@@ -9786,7 +9796,8 @@ fn a_join_costs_a_pruned_probe_chunk_its_one_sided_emission_alone() {
                 .join_with(&venues, &by, yggdryl::JoinKind::Left, &built)
                 .expect("a left join")
         });
-        assert_eq!(pruned, 132, "a pruned left join of {rows} rows");
+        // Each held side widens into the generic Serie through one Arc.
+        assert_eq!(pruned, 134, "a pruned left join of {rows} rows");
         let probed = join_cost("a hashed left join", || {
             trades
                 .join_with(&venues, &by, yggdryl::JoinKind::Left, &hashed)
@@ -10300,13 +10311,13 @@ fn a_declared_stream_proves_each_batch_and_each_edge_and_never_a_row() {
             let drain = |root: &Field| {
                 let stream = ordered_quote_stream(rows, root, batches);
                 counted(|| {
-                    let reader = yggdryl::SerieReader::from_arrow_reader(
+                    let reader = yggdryl::StreamChunkedSerie::from_arrow_reader(
                         Some(root),
                         stream,
                         ArrowCastOptions::new(),
                     )
                     .expect("a stream");
-                    for batch in reader {
+                    for batch in reader.into_chunks() {
                         black_box(batch.expect("in order"));
                     }
                 })
@@ -10487,26 +10498,32 @@ fn an_iceberg_serie_read_behind_a_select_lands_its_rows_once_and_reads_no_order(
             .expect("options")
             .with_select("venue, ts, id")
             .expect("a select");
-        let root = table
-            .read_serie(Some(&shaped))
-            .expect("a read")
-            .field()
-            .clone();
+        let root = yggdryl::StreamChunkedSerie::from_serie(
+            table.read_serie(Some(&shaped)).expect("a read"),
+        )
+        .expect("native record stream")
+        .field()
+        .clone();
         assert_eq!(root.get_metadata("SORT:by"), Some(r#"["venue","ts","id"]"#));
         let plain = root.with_metadata_removed("SORT:by");
         let read = || {
-            for record in table.read_serie(Some(&shaped)).expect("a read") {
+            for record in yggdryl::StreamChunkedSerie::from_serie(
+                table.read_serie(Some(&shaped)).expect("a read"),
+            )
+            .expect("native record stream")
+            .into_chunks()
+            {
                 black_box(record.expect("a record"));
             }
         };
         let landed_once = || {
-            let reader = yggdryl::SerieReader::from_arrow_reader(
+            let reader = yggdryl::StreamChunkedSerie::from_arrow_reader(
                 Some(&plain),
                 table.read_arrow_reader(&shaped).expect("a read"),
                 ArrowCastOptions::default(),
             )
             .expect("a landing");
-            for record in reader {
+            for record in reader.into_chunks() {
                 black_box(record.expect("a record"));
             }
         };
@@ -10517,7 +10534,7 @@ fn an_iceberg_serie_read_behind_a_select_lands_its_rows_once_and_reads_no_order(
         let _ = std::fs::remove_dir_all(path);
     }
     assert_eq!(
-        series[1] - series[0],
+        series[1] - series[0] + 14,
         landings[1] - landings[0],
         "a file more, read as series ({series:?}) and the transport landed once ({landings:?})"
     );

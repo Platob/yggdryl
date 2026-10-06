@@ -32,7 +32,7 @@ pub(crate) fn marketdatatype_from_fix(tag: i32, wire: &str) -> Option<u16> {
 }
 
 /// The FIX field and wire value the member with this code stands for, or
-/// `None` for `UNKN`, a catch-all or a code no member has.
+/// `None` for `UKNW`, a catch-all or a code no member has.
 #[pyfunction]
 pub(crate) fn marketdatatype_fix_code(code: u16) -> Option<(i32, &'static str)> {
     MarketDataType::from_code(code).and_then(MarketDataType::fix_code)

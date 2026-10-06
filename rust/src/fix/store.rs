@@ -11,12 +11,19 @@
 //! is not a [`FixCategory`] for that reason - a category holds `Field`
 //! documents and resolves references between them - so it is read first, and
 //! written and pruned beside them.
+//!
+//! `sources.json` at the root is the [sources catalog](super::source): one
+//! array of entries sorted by id, each the source a field's `FIX:sources`
+//! id names. Absent, the dictionary was built from no named source; written
+//! when the registry holds any entry and removed when it holds none.
 
 use std::collections::{BTreeMap, HashMap};
 
 use smol_str::{SmolStr, format_smolstr};
 
 use super::FixRegistry;
+use super::source::FixSource;
+use crate::folds_equal;
 use crate::holder::Holder;
 use crate::text::Formatting;
 use crate::{
@@ -26,6 +33,11 @@ use crate::{
 const SHARD_WIDTH: i32 = 100;
 /// The folder the code sets live in, beside the three category folders.
 pub(super) const CODESETS: &str = "codesets";
+/// The key a snapshot states the sources catalog under, and the stem of the
+/// document a store writes it as.
+pub(super) const SOURCES: &str = "sources";
+/// The document the sources catalog is written as, at the store's root.
+const SOURCES_FILE: &str = "sources.json";
 /// What one stored code set states: the name it is filed under, and its
 /// members in the set's own order.
 const CODESET_NAME: &str = "name";
@@ -138,6 +150,39 @@ fn codeset_document(document: &Scalar) -> Result<(String, String)> {
     // every entry's keys put back into the order the grammar declares.
     let document = super::codes::codes_text(codes)?;
     Ok((name, document))
+}
+
+/// The entries one stored sources catalog states, in the order the file
+/// gave them.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidRecord`] when the document is not an array of
+/// entries each [`FixSource::from_scalar`] reads, and [`Error::Conflict`]
+/// when two entries state one id under the crate's fold - the fold a
+/// field's own list is deduplicated under, so `venue` and `ve_nue` are one
+/// entry stated twice.
+fn sources_document(document: &Scalar) -> Result<Vec<FixSource>> {
+    let entries = document.as_sequence().ok_or_else(|| Error::InvalidRecord {
+        path: SOURCES.into(),
+        reason: crate::text::expected_got("a JSON array of source entries", document.kind()),
+    })?;
+    let mut sources: Vec<FixSource> = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let source = FixSource::from_scalar(entry)?;
+        if sources
+            .iter()
+            .any(|held| folds_equal(held.id(), source.id()))
+        {
+            return Err(Error::conflict(
+                "one FIX source",
+                "duplicate source",
+                format_smolstr!("{SOURCES}/{}", source.id()),
+            ));
+        }
+        sources.push(source);
+    }
+    Ok(sources)
 }
 
 /// What one named definition is keyed by: its category and its canonical
@@ -494,7 +539,8 @@ impl FixRegistry {
     /// states no membership, so [`Self::add_cfb_file`] has to be told one or
     /// guess it from the file's stem, while a snapshot is this crate's own
     /// format and every field and definition in it already carries the
-    /// `FIX:branches` its writer meant. Naming one here would overwrite that.
+    /// `FIX:sources` its writer meant, the catalog those ids name beside
+    /// them. Naming one here would overwrite that.
     ///
     /// A snapshot restating one of this crate's own fields is read past
     /// rather than refused: every registry holds those from construction, so
@@ -525,7 +571,7 @@ impl FixRegistry {
 
     fn snapshot(&self) -> Result<Scalar> {
         self.validate_catalog()?;
-        let mut document = Vec::with_capacity(FixCategory::ALL.len() + 1);
+        let mut document = Vec::with_capacity(FixCategory::ALL.len() + 2);
         // The vocabularies lead, as they do in a folder store and for the
         // same reason: a field names the set it reads by, so a reader has
         // the sets before it meets a field naming one.
@@ -542,6 +588,14 @@ impl FixRegistry {
                     .collect::<Result<Vec<_>>>()?,
             ),
         ));
+        // The sources catalog beside them, stated only where there is one:
+        // a dictionary built from no named source states no key.
+        if !self.sources.is_empty() {
+            document.push((
+                SOURCES,
+                Scalar::from_sequence(self.sources.values().map(FixSource::into_scalar)),
+            ));
+        }
         for category in FixCategory::ALL {
             // Every definition the dictionary holds, the crate's own among
             // them: a snapshot is the whole row as this registry types it,
@@ -575,13 +629,14 @@ impl FixRegistry {
         })?;
         for key in record.keys() {
             if key != CODESETS
+                && key != SOURCES
                 && !FixCategory::ALL
                     .iter()
                     .any(|category| category.as_str() == key)
             {
                 return Err(Error::InvalidRecord {
                     path: key.clone(),
-                    reason: "expected codesets, fields, components, or groups".into(),
+                    reason: "expected codesets, sources, fields, components, or groups".into(),
                 });
             }
         }
@@ -599,6 +654,11 @@ impl FixRegistry {
             for set in sets {
                 let (name, codes) = codeset_document(set)?;
                 registry.create_codeset(&name, codes)?;
+            }
+        }
+        if let Some(sources) = record.get(SOURCES) {
+            for source in sources_document(sources)? {
+                registry.add_source(source);
             }
         }
         for category in LOAD_ORDER {
@@ -715,6 +775,7 @@ impl FixRegistry {
         // The vocabularies first: a field names the set it reads by, and a
         // field naming one the dictionary does not hold is refused.
         registry.load_codesets(handle)?;
+        registry.load_sources(handle)?;
         for category in LOAD_ORDER {
             let root = handle.child_by_path(category.as_str())?;
             for entry in root.ls(false, false) {
@@ -762,6 +823,26 @@ impl FixRegistry {
                 .map_err(|error| located(error, entry.as_io()))?;
             self.create_codeset(&document.0, document.1)
                 .map_err(|error| located(error, entry.as_io()))?;
+        }
+        Ok(())
+    }
+
+    /// Reads the `sources.json` the store holds, where it holds one.
+    ///
+    /// An absent document is a dictionary built from no named source - the
+    /// tracked seed - and reads as no entry; a document that is there is
+    /// held to its shape, each refusal naming the file.
+    fn load_sources(&mut self, handle: &dyn IOBase) -> Result<()> {
+        let entry = handle.child_by_path(SOURCES_FILE)?;
+        let bytes = entry.read_all_bytes()?;
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        let sources = crate::from_json_scalar(bytes)
+            .and_then(|document| sources_document(&document))
+            .map_err(|error| located(error, entry.as_io()))?;
+        for source in sources {
+            self.add_source(source);
         }
         Ok(())
     }
@@ -968,6 +1049,15 @@ impl FixRegistry {
                 ])?,
             );
         }
+        // The sources catalog at the root, one document, where there is
+        // one; where there is none it is removed below with the stale
+        // documents, since an absent catalog is what no source reads as.
+        if !self.sources.is_empty() {
+            documents.insert(
+                SOURCES_FILE.to_owned(),
+                Scalar::from_sequence(self.sources.values().map(FixSource::into_scalar)),
+            );
+        }
         for (path, document) in &documents {
             // A text file ends with a newline, as the one a person's editor
             // and the generator write does, so a rewrite changes no line it
@@ -1015,6 +1105,18 @@ impl FixRegistry {
                     entry.remove(false)?;
                     report.removed.push(format_smolstr!("{folder}/{name}"));
                 }
+            }
+        }
+        if !documents.contains_key(SOURCES_FILE) {
+            // A catalog the store holds and the registry does not: the one
+            // read every document costs says whether there is one to remove,
+            // a missing document digesting as empty, as above.
+            let mut catalog = root.child_by_path(SOURCES_FILE)?;
+            if catalog.read_digest(DigestAlgorithm::default())?
+                != crate::xxhash::digest(&[], DigestAlgorithm::default())
+            {
+                catalog.remove(false)?;
+                report.removed.push(SmolStr::new_static(SOURCES_FILE));
             }
         }
         Ok(report)

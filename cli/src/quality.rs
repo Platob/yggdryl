@@ -59,6 +59,8 @@ pub struct Report {
     pub categories: Vec<(FixCategory, usize)>,
     /// How many code sets were walked.
     pub codesets: usize,
+    /// How many entries of the sources catalog were walked.
+    pub sources: usize,
     /// How many code records were walked, once per set rather than once per
     /// field reading by it.
     pub codes: usize,
@@ -88,9 +90,11 @@ pub fn check(registry: &FixRegistry) -> Report {
         findings: Vec::new(),
         categories: Vec::new(),
         codesets: 0,
+        sources: 0,
         codes: 0,
     };
     check_codesets(&mut report, registry);
+    check_sources(&mut report, registry);
     for category in FixCategory::ALL {
         let mut count = 0;
         for field in registry.definitions(category) {
@@ -209,6 +213,49 @@ fn check_codesets(report: &mut Report, registry: &FixRegistry) {
     }
 }
 
+/// The sources catalog against the ids every definition names, walked once.
+///
+/// An id a definition names that the catalog does not hold is a dangling
+/// reference: the file behind it is unknown, and `yggdryl fix read` prints
+/// an id nothing describes. An entry nothing names is one a store writes
+/// and no definition reaches, which is worth knowing and not wrong.
+fn check_sources(report: &mut Report, registry: &FixRegistry) {
+    let mut named: Vec<&str> = Vec::new();
+    for category in FixCategory::ALL {
+        for field in registry.definitions(category) {
+            for id in field.as_fix().sources() {
+                if registry.get_source(id).is_none() {
+                    report.findings.push(Finding {
+                        level: Level::Fail,
+                        check: "sources",
+                        subject: format!("{category}/{}", field.name()),
+                        detail: format!("names source {id:?}, which sources.json does not hold"),
+                    });
+                }
+                if !named.contains(&id) {
+                    named.push(id);
+                }
+            }
+        }
+    }
+    for source in registry.sources() {
+        report.sources += 1;
+        let referenced = named.iter().any(|id| {
+            registry
+                .get_source(id)
+                .is_some_and(|held| held.id() == source.id())
+        });
+        if !referenced {
+            report.findings.push(Finding {
+                level: Level::Note,
+                check: "sources",
+                subject: format!("sources/{}", source.id()),
+                detail: "no field or definition names it".to_owned(),
+            });
+        }
+    }
+}
+
 /// A group with no item struct is a group nothing can be read out of.
 fn shaped_group(report: &mut Report, field: &Field, named: &str) {
     let Some(item) = serie_item(field) else {
@@ -237,6 +284,7 @@ pub fn render(report: &Report) {
     }
     style::entry("codesets", &report.codesets.to_string());
     style::entry("codes", &report.codes.to_string());
+    style::entry("sources", &report.sources.to_string());
 
     if report.findings.is_empty() {
         style::good("nothing to report");

@@ -304,7 +304,7 @@ fn session_event_key(message: &FixMsg) -> Option<SmolStr> {
     } else {
         ""
     };
-    let kind = message.msgcat();
+    let kind = message.marketdatakind();
     Some(format_smolstr!(
         "{identifier}\u{1f}{}\u{1f}{}\u{1f}{chain}",
         kind.code(),
@@ -451,7 +451,7 @@ fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
 /// folding it, reads the side the walk gave it. A side the message states
 /// always stands, a chain stating none lends none, and an unsided chain - a
 /// quote's, whose side is each statement's own tag - lends none either. A
-/// write the rebuild refuses leaves the side the message stated, `UNKN`,
+/// write the rebuild refuses leaves the side the message stated, `UKNW`,
 /// beside a warning.
 fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> bool {
     let side = previous.get_side();
@@ -469,7 +469,7 @@ fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> bool {
         Ok(_) => true,
         Err(error) => {
             warned!(
-                "FIX side left UNKN: writing the side its chain states was refused",
+                "FIX side left UKNW: writing the side its chain states was refused",
                 current.header().msgtype(),
                 "{error}, inheriting {code} on {}",
                 current.get_crosscode()
@@ -708,7 +708,11 @@ enum Codes {
 impl Codes {
     /// Learns what `message` states about its instrument - its country of
     /// issue beside it, where it states one its ISIN does not already say
-    /// ([`FixMsg::stated_country`]) - then fills what it left unstated
+    /// ([`FixMsg::stated_country`]), the instrument it is written on
+    /// ([`FixMsg::stated_underlying_isin`]) and the EUSIPA product category
+    /// a bridge's key states ([`FixMsg::stated_eusipa`]), lifted nowhere -
+    /// then fills
+    /// what it left unstated
     /// ([`FixMsg::fill_instrument`]): the identifiers, the ticker, the CFI
     /// code and the currency, settled no further than the market facts
     /// they imply, since a parsed message is already clean and nothing a
@@ -718,15 +722,19 @@ impl Codes {
     /// that very lock.
     fn learn_and_fill(&mut self, message: &mut FixMsg) {
         let country = message.stated_country();
+        let underlying = message.stated_underlying_isin();
+        let product = message.stated_eusipa();
         let full = match self {
             Self::Walk(registry) => {
-                let learned = registry.learn_stating(message, country.as_ref());
+                let learned =
+                    registry.learn_stating(message, country.as_ref(), underlying.as_ref(), product);
                 message.fill_instrument(registry.as_table());
                 learned.full
             }
             Self::Shared(registry) => {
                 let mut registry = registry.lock().unwrap_or_else(PoisonError::into_inner);
-                let learned = registry.learn_stating(message, country.as_ref());
+                let learned =
+                    registry.learn_stating(message, country.as_ref(), underlying.as_ref(), product);
                 message.fill_instrument(registry.as_table());
                 learned.full
             }

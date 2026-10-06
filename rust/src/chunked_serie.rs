@@ -1,7 +1,7 @@
 //! ChunkedSerie: many columns under one field, held apart.
 //!
 //! A [`Serie`] column is one contiguous set of Arrow buffers, and a
-//! [`SerieReader`] is a stream of record columns read once. Between the two
+//! [`StreamChunkedSerie`] is a stream of record columns read once. Between the two
 //! sits what a runtime holds when it holds a table: several columns under
 //! one field, in order, each its own buffers - what `pyarrow` calls a
 //! `ChunkedArray`, and, when the field is a non-null record, a `Table` of
@@ -54,7 +54,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use arrow_array::{Array, ArrayRef};
 use arrow_data::ArrayData;
@@ -64,7 +64,7 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use crate::arrow::{BatchReader, batch_reader};
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
 use crate::diff::one_datatype;
-use crate::expression::{self, BoundSelector, IntoOrderings, IntoSelector, Projection, Selector};
+use crate::expression::{self, BoundSelector, IntoOrderings, Projection, Selector};
 use crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE;
 use crate::serie::arrow::{
     batch_schema, batch_under, item_field, land_planned, lands_exactly, storage_holds,
@@ -74,8 +74,9 @@ use crate::serie::{
     require_window, stored_order_is_value_order,
 };
 use crate::value::Children;
-use crate::window_serie::window_end;
-use crate::{DataType, Field, FieldPath, Scalar, Serie, SerieReader, SortOptions, SpillOptions};
+use crate::{
+    DataType, Field, FieldPath, Scalar, Serie, SortOptions, SpillOptions, StreamChunkedSerie,
+};
 
 /// The invariant every chunk carries: it is a column, and its field is the
 /// collection's, so its buffers and its field are always there to lend.
@@ -104,6 +105,11 @@ pub struct ChunkedSerie {
     /// after a spill. Every write replaces the chunks through
     /// [`Self::from_landed`], which is what keeps it exact.
     resident: usize,
+    /// The one join, kept once a [`Serie`] holding this chunked serie is
+    /// asked what only one column answers - a typed narrowing, a cast, a
+    /// sort - and the failure it met, where it met one. A push or a spill
+    /// lets it go; every other write is a new value.
+    held: OnceLock<(Serie, Option<smol_str::SmolStr>)>,
 }
 
 impl ChunkedSerie {
@@ -123,6 +129,7 @@ impl ChunkedSerie {
             chunks,
             ends,
             resident,
+            held: OnceLock::new(),
         }
     }
 
@@ -135,6 +142,7 @@ impl ChunkedSerie {
             chunks: Vec::with_capacity(capacity),
             ends: Vec::with_capacity(capacity),
             resident: 0,
+            held: OnceLock::new(),
         }
     }
 
@@ -328,17 +336,17 @@ impl ChunkedSerie {
         Ok(Self::from_landed(field, chunks).verified_edges()?)
     }
 
-    /// Drain a [`SerieReader`] into its chunks: one record column per batch,
+    /// Drain a [`StreamChunkedSerie`] into its chunks: one record column per batch,
     /// under the reader's root, none joined.
     ///
     /// # Errors
     ///
     /// Returns the first failure a batch raises, after which the reader is
     /// fused.
-    pub fn from_serie_reader(reader: SerieReader) -> crate::arrow::Result<Self> {
+    pub fn from_chunked_stream(reader: StreamChunkedSerie) -> crate::arrow::Result<Self> {
         let mut root = Some(reader.field().clone());
         let mut chunked = Self::with_chunk_capacity(Arc::new(reader.field().clone()), 0);
-        for chunk in reader {
+        for chunk in reader.into_chunks() {
             let chunk = chunk?;
             // The first chunk's field is the one every chunk shares.
             if let Some(root) = root.take() {
@@ -352,20 +360,22 @@ impl ChunkedSerie {
     /// Drain an Arrow batch stream into its chunks: of its own schema, or
     /// cast into `root` by one plan.
     ///
-    /// This is the door a `pyarrow.Table` takes: [`SerieReader::from_arrow_reader`]
+    /// This is the door a `pyarrow.Table` takes: [`StreamChunkedSerie::from_arrow_reader`]
     /// collected, one chunk per batch and none joined, where
     /// [`Serie::from_arrow_reader`] joins them into one column.
     ///
     /// # Errors
     ///
-    /// [`SerieReader::from_arrow_reader`] carries the rule, and the reader
+    /// [`StreamChunkedSerie::from_arrow_reader`] carries the rule, and the reader
     /// carries its own.
     pub fn from_arrow_reader(
         root: Option<&Field>,
         reader: BatchReader,
         options: ArrowCastOptions,
     ) -> crate::arrow::Result<Self> {
-        Self::from_serie_reader(SerieReader::from_arrow_reader(root, reader, options)?)
+        Self::from_chunked_stream(StreamChunkedSerie::from_arrow_reader(
+            root, reader, options,
+        )?)
     }
 
     /// The field every chunk is typed by.
@@ -744,6 +754,7 @@ impl ChunkedSerie {
     /// bound is read against the running resident total, so a push under it
     /// walks no chunk.
     pub(crate) fn push_landed(&mut self, landed: Serie) -> crate::Result<()> {
+        self.held = OnceLock::new();
         let end = self.len() + landed.len();
         self.resident += landed.resident_size();
         self.chunks.push(landed);
@@ -775,6 +786,26 @@ impl ChunkedSerie {
             [] | [_] => self.joined(),
             _ => Ok(self.joined()?.settled()?),
         }
+    }
+
+    /// The rows as one column, joined once and kept beside the chunks - what
+    /// a [`Serie`] holding this chunked serie reads where only one column
+    /// answers - and the failure the join met, where it met one, answered
+    /// beside the empty column of the field.
+    pub(crate) fn held(&self) -> &(Serie, Option<smol_str::SmolStr>) {
+        self.held
+            .get_or_init(|| crate::shared_stream::held_join(self, None))
+    }
+
+    /// A kept join's failure, without requesting that join.
+    pub(crate) fn held_failure(&self) -> Option<&smol_str::SmolStr> {
+        self.held.get().and_then(|(_, failure)| failure.as_ref())
+    }
+
+    /// The chunks, each a column of the field, in row order.
+    #[must_use]
+    pub fn into_chunks(self) -> Vec<Serie> {
+        self.chunks
     }
 
     /// [`Self::into_serie`] before it settles: the one join, resident
@@ -1290,7 +1321,7 @@ impl ChunkedSerie {
             Serie::empty(Arc::clone(&self.field))?.sorted_order_by(by)?;
         }
         Selector::new(by.iter().map(|key| Projection::new(key.term().clone()))).bind_key(
-            &SerieReader::root_of(&self.field)?,
+            &StreamChunkedSerie::root_of(&self.field)?,
             self.field.name(),
             "sort by",
         )
@@ -1488,290 +1519,6 @@ impl ChunkedSerie {
         Ok(Self::from_landed(Arc::clone(&self.field), chunks))
     }
 
-    /// The rows grouped by `keys`, a serie as long as the whole: one
-    /// `(key, rows)` per distinct key in order of first occurrence, each
-    /// group's rows a chunked serie whose chunks are what each chunk
-    /// contributed, kept apart - so sorted keys cut every group as zero-copy
-    /// slices of the chunks. Keys held as a chunked serie are
-    /// [`Self::partition_by_chunked`]'s.
-    ///
-    /// ```
-    /// use std::sync::Arc;
-    ///
-    /// use arrow_array::{ArrayRef, Int64Array};
-    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie};
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let field = Field::new("price", DataType::Int64, false);
-    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
-    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![3]));
-    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
-    /// let venues = Serie::new(vec![Scalar::from("XNAS"), Scalar::from("XNYS"), Scalar::from("XNAS")]);
-    /// let groups = prices.partition_by(&venues)?;
-    /// assert_eq!(groups.len(), 2);
-    /// assert_eq!(groups[0].0, Scalar::from("XNAS"));
-    /// assert_eq!(groups[0].1.num_chunks(), 2);
-    /// assert_eq!(groups[0].1.rows(), vec![Scalar::from(1_i64), Scalar::from(3_i64)]);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the field when `keys` is another length,
-    /// and [`Serie::partition_by`]'s refusal.
-    pub fn partition_by(&self, keys: &Serie) -> crate::Result<Vec<(Scalar, Self)>> {
-        self.require_keys(keys.len())?;
-        let mut start = 0;
-        self.partition_chunks(|chunk| {
-            let window = keys.slice(start, chunk.len())?;
-            start += chunk.len();
-            Ok(Cow::Owned(window))
-        })
-    }
-
-    /// The rows grouped by `keys`, a chunked serie as long as the whole,
-    /// exactly as [`Self::partition_by`] groups them: where the two are cut
-    /// at the same rows each chunk of rows is grouped by the chunk of keys
-    /// beside it, with no join; otherwise the keys are joined once and cut
-    /// to each chunk of rows.
-    ///
-    /// ```
-    /// use std::sync::Arc;
-    ///
-    /// use arrow_array::{ArrayRef, Int64Array, StringArray};
-    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar};
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let price = Field::new("price", DataType::Int64, false);
-    /// let venue = Field::new("venue", DataType::utf8(), false);
-    /// let prices: [ArrayRef; 2] = [Arc::new(Int64Array::from(vec![1, 2])), Arc::new(Int64Array::from(vec![3]))];
-    /// let venues: [ArrayRef; 2] = [
-    ///     Arc::new(StringArray::from(vec!["XNAS", "XNYS"])),
-    ///     Arc::new(StringArray::from(vec!["XNAS"])),
-    /// ];
-    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&price), prices, ArrowCastOptions::new())?;
-    /// let venues = ChunkedSerie::from_arrow_arrays(Some(&venue), venues, ArrowCastOptions::new())?;
-    /// let groups = prices.partition_by_chunked(&venues)?;
-    /// assert_eq!(groups.len(), 2);
-    /// assert_eq!(groups[0].0, Scalar::from("XNAS"));
-    /// assert_eq!(groups[0].1.rows(), vec![Scalar::from(1_i64), Scalar::from(3_i64)]);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the field when `keys` is another length,
-    /// [`Self::into_serie`]'s refusal where the keys are joined, and
-    /// [`Serie::partition_by`]'s refusal.
-    pub fn partition_by_chunked(&self, keys: &Self) -> crate::Result<Vec<(Scalar, Self)>> {
-        self.require_keys(keys.len())?;
-        if keys.ends == self.ends {
-            let mut chunks = keys.chunks.iter();
-            return self.partition_chunks(|_| {
-                Ok(Cow::Borrowed(
-                    chunks
-                        .next()
-                        .expect("keys cut at the same rows hold as many chunks"),
-                ))
-            });
-        }
-        self.partition_by(&keys.into_serie()?)
-    }
-
-    /// The rows cut into windows of equal adjacent keys across the chunks,
-    /// exactly as [`Serie::window_by`] cuts the joined column, `sorted`
-    /// meaning what it means there: one `(key, rows)` per maximal run of
-    /// adjacent rows whose keys are equal, in row order, every window a
-    /// zero-copy [`Self::slice`] keeping the chunks it reaches - so a run
-    /// that crosses a chunk edge is one window over both. With `sorted`,
-    /// each key once and in key order - ascending, absent keys last: keys
-    /// already in order answer the same windows, and keys out of order
-    /// regroup the runs stably by key, each window the zero-copy pieces of
-    /// its runs in the order they arrived. No row is copied and the chunks
-    /// are never joined, so a key that changes on every row answers a piece
-    /// per row: [`Self::into_serie`] first, then [`Serie::window_by`], is
-    /// the cheaper door there.
-    ///
-    /// No window states a record of static values, as a held window
-    /// [`Serie::window_by`] lends does
-    /// ([`WindowSerie::static_values`](crate::WindowSerie::static_values)):
-    /// a window's key is the first half of its item, and its place among
-    /// the windows - what a record calls `windownum` - is its place in the
-    /// `Vec`. So a key cell named `windownum` or `rownum`, which
-    /// [`Serie::window_by`] refuses because its record names both, is taken
-    /// here; alias it before joining the chunks to window the joined column.
-    ///
-    /// The key is bound once, against the field, and computed chunk by
-    /// chunk; at each chunk edge the pending window's key, already built, is
-    /// compared in place against the next chunk's first key row, as the
-    /// ordering verbs order them, so a run continuing across the edge builds
-    /// no key. An empty chunk adds no row and no edge. The cost is one bind,
-    /// one key column, comparator and bitmap per chunk holding a row - each
-    /// on the terms [`Serie::window_by`] states for its key - and per window
-    /// its key and its slice, with no join; a regrouping adds one stable
-    /// sort of the runs, never of the rows.
-    ///
-    /// ```
-    /// use std::sync::Arc;
-    ///
-    /// use arrow_array::{ArrayRef, StringArray};
-    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar};
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let field = Field::new("venue", DataType::utf8(), false);
-    /// let first: ArrayRef = Arc::new(StringArray::from(vec!["XNAS", "XNAS"]));
-    /// let second: ArrayRef = Arc::new(StringArray::from(vec!["XNAS", "XNYS"]));
-    /// let venues = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
-    /// let windows = venues.window_by("venue", false)?;
-    /// assert_eq!(windows.len(), 2);
-    /// // The XNAS run crosses the chunk edge, and stays one window over both.
-    /// assert_eq!(windows[0].0, Scalar::from_sequence([Scalar::from("XNAS")]));
-    /// assert_eq!((windows[0].1.len(), windows[0].1.num_chunks()), (3, 2));
-    /// assert_eq!(windows[1].1.rows(), vec![Scalar::from("XNYS")]);
-    ///
-    /// // Sorted over keys out of order: each key once, its runs kept apart.
-    /// let first: ArrayRef = Arc::new(StringArray::from(vec!["XNYS", "XNAS"]));
-    /// let second: ArrayRef = Arc::new(StringArray::from(vec!["XNAS", "XNYS"]));
-    /// let venues = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
-    /// let windows = venues.window_by("venue", true)?;
-    /// assert_eq!(windows.len(), 2);
-    /// assert_eq!(windows[0].0, Scalar::from_sequence([Scalar::from("XNAS")]));
-    /// assert_eq!((windows[0].1.len(), windows[0].1.num_chunks()), (2, 2));
-    /// assert_eq!(windows[1].1.rows(), vec![Scalar::from("XNYS"); 2]);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// [`Serie::window_by`]'s refusals but the one for a key cell named
-    /// `windownum` or `rownum`, naming the field, before any row is read -
-    /// with no chunk at all as with many.
-    pub fn window_by(
-        &self,
-        by: impl IntoSelector,
-        sorted: bool,
-    ) -> crate::Result<Vec<(Scalar, Self)>> {
-        let key = by.into_selector()?.bind_key(
-            &SerieReader::root_of(&self.field)?,
-            self.field.name(),
-            "window by",
-        )?;
-        // Each run as its key, the row it starts at and its length, in
-        // arrival order.
-        let mut runs: Vec<(Scalar, usize, usize)> = Vec::new();
-        let mut descent = false;
-        let mut base = 0;
-        for chunk in self.chunks.iter().filter(|chunk| !chunk.is_empty()) {
-            let keys = key.apply_serie(chunk)?;
-            let cut = keys.window_starts(false)?;
-            descent |= cut.descent.is_some();
-            let mut start = 0;
-            while start < keys.len() {
-                let end = window_end(&cut.starts, start);
-                // Only a chunk's first window meets an edge, against the
-                // pending window's key; a continuing run builds no key.
-                let edge = match runs.last() {
-                    Some(last) if start == 0 => {
-                        keys.compare_to_row(&last.0, 0, SortOptions::default())
-                    }
-                    _ => Ordering::Less,
-                };
-                if edge == Ordering::Equal
-                    && let Some(last) = runs.last_mut()
-                {
-                    last.2 += end;
-                } else {
-                    descent |= edge == Ordering::Greater;
-                    runs.push((proven_row(&keys, start), base + start, end - start));
-                }
-                start = end;
-            }
-            base += chunk.len();
-        }
-        if !(sorted && descent) {
-            return runs
-                .into_iter()
-                .map(|(value, offset, length)| Ok((value, self.slice(offset, length)?)))
-                .collect();
-        }
-        // Stable, so the runs of one key keep their arrival order.
-        runs.sort_by(|left, right| compare_values(&left.0, &right.0, SortOptions::default()));
-        // Each window as its key - its first run's - and its runs' pieces,
-        // in one vector a window grown geometrically, never once a run.
-        let mut windows: Vec<(Scalar, Vec<Serie>)> = Vec::new();
-        for (value, offset, length) in runs {
-            // A run is never empty, so its first and its last row locate.
-            let reach = (
-                self.located(offset)?.0,
-                self.located(offset + length - 1)?.0,
-            );
-            match windows.last_mut() {
-                Some((last, pieces))
-                    if compare_values(last, &value, SortOptions::default()) == Ordering::Equal =>
-                {
-                    self.push_pieces(offset, length, reach, pieces)?;
-                }
-                _ => {
-                    let mut pieces = Vec::new();
-                    self.push_pieces(offset, length, reach, &mut pieces)?;
-                    windows.push((value, pieces));
-                }
-            }
-        }
-        Ok(windows
-            .into_iter()
-            .map(|(value, pieces)| (value, Self::from_landed(Arc::clone(&self.field), pieces)))
-            .collect())
-    }
-
-    /// Refuse a key count that is not this serie's length, naming the field.
-    fn require_keys(&self, keys: usize) -> crate::Result<()> {
-        if keys == self.len() {
-            return Ok(());
-        }
-        Err(crate::Error::InvalidRecord {
-            path: smol_str::SmolStr::new(self.field.name()),
-            reason: smol_str::format_smolstr!(
-                "{keys} keys cannot partition the {} rows {} holds",
-                self.len(),
-                self.field.name()
-            ),
-        })
-    }
-
-    /// Group every chunk by the keys `keys_of` answers for it, as long as
-    /// the chunk, and merge each chunk's groups by key in order of first
-    /// occurrence, every group keeping what each chunk contributed apart.
-    fn partition_chunks<'k>(
-        &self,
-        mut keys_of: impl FnMut(&Serie) -> crate::Result<Cow<'k, Serie>>,
-    ) -> crate::Result<Vec<(Scalar, Self)>> {
-        let mut groups: Vec<(Scalar, Vec<Serie>)> = Vec::new();
-        // `Scalar`'s hash reads canonical content only, never the
-        // interior-mutable caches a datatype holds, so the key is stable.
-        #[allow(clippy::mutable_key_type)]
-        let mut group_of: std::collections::HashMap<Scalar, usize> =
-            std::collections::HashMap::new();
-        for chunk in &self.chunks {
-            let keys = keys_of(chunk)?;
-            for (key, rows) in chunk.partition_by(&keys)? {
-                let next = groups.len();
-                let group = *group_of.entry(key.clone()).or_insert(next);
-                if group == next {
-                    groups.push((key, Vec::new()));
-                }
-                groups[group].1.push(rows);
-            }
-        }
-        Ok(groups
-            .into_iter()
-            .map(|(key, chunks)| (key, Self::from_landed(Arc::clone(&self.field), chunks)))
-            .collect())
-    }
-
     /// The bytes the rows occupy: every chunk's, as its own slice counts
     /// them.
     ///
@@ -1841,6 +1588,7 @@ impl ChunkedSerie {
         if options.is_never() {
             return Ok(());
         }
+        self.held = OnceLock::new();
         let bound = options.byte_size();
         let resident = |chunks: &[Serie]| {
             chunks

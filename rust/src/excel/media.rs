@@ -15,7 +15,8 @@ use smol_str::SmolStr;
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::{
-    ArrowCastOptions, DataType, Error, Field, IOBase, IOMedia, Result, SerieReader, StructType,
+    ArrowCastOptions, DataType, Error, Field, IOBase, IOMedia, Result, StreamChunkedSerie,
+    StructType,
 };
 
 use super::cell::CellRef;
@@ -223,7 +224,8 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
     // Refused before the stream is read, an empty handle included.
     super::reject_outer_coding(handle)?;
     let root = field_from_arrow_schema(options.name(), batches.schema().as_ref())?;
-    let rows = SerieReader::from_arrow_reader(Some(&root), batches, ArrowCastOptions::default())?;
+    let rows =
+        StreamChunkedSerie::from_arrow_reader(Some(&root), batches, ArrowCastOptions::default())?;
     let mut workbook = if handle.size() == 0 {
         Workbook::new()
     } else {
@@ -461,41 +463,58 @@ impl<H: IOBase> IOMedia for Excel<H> {
         }
     }
 
-    fn overwrite_arrow_reader(
-        &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        self.require_options(options)?;
-        self.invalidate();
-        crate::iobase::overwrite_arrow_reader_default(self, batches, options)
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
+        let options = crate::iomedia::own_options(self, options)?;
+        self.require_options(&options)?;
+        crate::iomedia::read_record_serie(self, Some(&options))
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: BatchReader,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
+    ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
+        self.require_options(options)?;
+        self.invalidate();
+        crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
+            .map(|(_, result)| result)
+    }
+
+    fn overwrite_prepared_serie(
+        &mut self,
+        value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> Result<()> {
+        let batches = value.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::leaf_writer(self, batches, options)
     }
 
-    fn append_arrow_reader(
+    fn append_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
 
-    fn merge_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::merge_arrow_reader_default(self, batches, options)
@@ -569,3 +588,5 @@ impl<H: IOBase> IOBase for Excel<H> {
         self.handle.remove(recursive)
     }
 }
+
+crate::media_serie::media_serie!(ExcelSerie, Excel, as_excel, get_excel_mut);

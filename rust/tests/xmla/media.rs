@@ -485,7 +485,15 @@ fn record_options_of_another_encoding_are_refused_naming_both() {
     assert_eq!(
         refusal(
             media
-                .overwrite_prepared_arrow_reader(two_batches(), &ipc)
+                .overwrite_prepared_serie(
+                    yggdryl::StreamChunkedSerie::from_arrow_reader(
+                        None,
+                        two_batches(),
+                        yggdryl::ArrowCastOptions::new()
+                    )
+                    .unwrap(),
+                    &ipc
+                )
                 .unwrap_err()
         ),
         expected
@@ -1091,11 +1099,12 @@ fn read_arrow_reader_reads_the_rows_as_one_batch() {
     );
 
     // The column-shaped read answers the same rows.
-    let columns = media
-        .read_serie(None)
-        .expect("a serie reader")
-        .collect::<Result<Vec<_>, _>>()
-        .expect("the columns");
+    let columns =
+        yggdryl::StreamChunkedSerie::from_serie(media.read_serie(None).expect("a serie reader"))
+            .expect("native record stream")
+            .into_chunks()
+            .collect::<Result<Vec<_>, _>>()
+            .expect("the columns");
     assert_eq!(columns.iter().map(yggdryl::Serie::len).sum::<usize>(), 4);
 }
 
@@ -2565,7 +2574,15 @@ fn every_mutation_through_the_wrapper_drops_the_cached_schema() {
     // stored document back, and drops the cache as every write does.
     calls.reset();
     media
-        .overwrite_prepared_arrow_reader(two_batches(), &options)
+        .overwrite_prepared_serie(
+            yggdryl::StreamChunkedSerie::from_arrow_reader(
+                None,
+                two_batches(),
+                yggdryl::ArrowCastOptions::new(),
+            )
+            .unwrap(),
+            &options,
+        )
         .expect("published");
     assert_eq!(calls.get(Call::ReadAllBytes), 0);
     assert_eq!(calls.get(Call::Truncate), 1);

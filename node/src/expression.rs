@@ -16,12 +16,12 @@
 
 use napi::bindgen_prelude::{ClassInstance, Either, Either3, Either4, Either5, Error, Result};
 use napi_derive::napi;
+use yggdryl::StreamSerie as CoreStreamSerie;
 use yggdryl::expression::{
     Bound as CoreBound, BoundSelector as CoreBoundSelector, Comparison as CoreComparison,
     FieldSegment as CoreSegment, Function as CoreFunction, IntoPlan, Operator,
-    Ordering as CoreOrdering, Plan as CorePlan, Projection as CoreProjection,
-    Records as CoreRecords, Source as CoreSource, Target as CoreTarget, Term as CoreTerm,
-    Verb as CoreVerb, Write as CoreWrite,
+    Ordering as CoreOrdering, Plan as CorePlan, Projection as CoreProjection, Source as CoreSource,
+    Target as CoreTarget, Term as CoreTerm, Verb as CoreVerb, Write as CoreWrite,
 };
 use yggdryl::{
     Expression as CoreExpression, Field as CoreField, Filter as CoreFilter, Scalar,
@@ -1128,10 +1128,10 @@ impl JsFilter {
         &self,
         rows: &JsScalar,
         schema: Option<&JsField>,
-    ) -> Result<JsRecords> {
+    ) -> Result<JsStreamSerie> {
         let rows = rows_from_scalar(rows)?;
         let schema = schema.map(|field| field.inner.clone());
-        Ok(JsRecords::from_core(
+        Ok(JsStreamSerie::from_core(
             self.inner
                 .apply_records(schema.as_ref(), rows)
                 .map_err(napi_error)?,
@@ -1434,10 +1434,10 @@ impl JsSelector {
         &self,
         rows: &JsScalar,
         schema: Option<&JsField>,
-    ) -> Result<JsRecords> {
+    ) -> Result<JsStreamSerie> {
         let rows = rows_from_scalar(rows)?;
         let schema = schema.map(|field| field.inner.clone());
-        Ok(JsRecords::from_core(
+        Ok(JsStreamSerie::from_core(
             self.inner
                 .apply_records(schema.as_ref(), rows)
                 .map_err(napi_error)?,
@@ -2047,11 +2047,11 @@ impl JsPlan {
         &self,
         rows: &JsScalar,
         schema: Option<&JsField>,
-    ) -> Result<JsRecords> {
+    ) -> Result<JsStreamSerie> {
         let rows = rows_from_scalar(rows)?;
         let schema = schema.map(|field| field.inner.clone());
         let expression = CoreExpression::Plan(Box::new(self.inner.clone()));
-        Ok(JsRecords::from_core(
+        Ok(JsStreamSerie::from_core(
             expression
                 .apply_records(schema.as_ref(), rows)
                 .map_err(napi_error)?,
@@ -2369,10 +2369,10 @@ impl JsExpression {
         &self,
         rows: &JsScalar,
         schema: Option<&JsField>,
-    ) -> Result<JsRecords> {
+    ) -> Result<JsStreamSerie> {
         let rows = rows_from_scalar(rows)?;
         let schema = schema.map(|field| field.inner.clone());
-        Ok(JsRecords::from_core(
+        Ok(JsStreamSerie::from_core(
             self.inner
                 .apply_records(schema.as_ref(), rows)
                 .map_err(napi_error)?,
@@ -2448,14 +2448,19 @@ impl JsExpression {
 
 /// Native rows streaming out of an expression, each a `Scalar` sequence in
 /// the order of `field`.
-#[napi(js_name = "Records")]
-pub struct JsRecords {
+#[napi(js_name = "StreamSerie")]
+pub struct JsStreamSerie {
     field: CoreField,
-    rows: Option<CoreRecords>,
+    rows: Option<CoreStreamSerie>,
 }
 
-impl JsRecords {
-    fn from_core(records: CoreRecords) -> Self {
+impl JsStreamSerie {
+    pub(crate) fn take(&mut self) -> Result<CoreStreamSerie> {
+        self.rows
+            .take()
+            .ok_or_else(|| napi_error("StreamSerie was already consumed"))
+    }
+    pub(crate) fn from_core(records: CoreStreamSerie) -> Self {
         Self {
             field: records.field().clone(),
             rows: Some(records),
@@ -2464,7 +2469,7 @@ impl JsRecords {
 }
 
 #[napi]
-impl JsRecords {
+impl JsStreamSerie {
     /// The struct root every row is shaped under.
     #[napi(getter)]
     pub fn field(&self) -> JsField {
@@ -2495,7 +2500,7 @@ impl JsRecords {
     #[napi(factory)]
     pub fn from_arrow_reader(reader: &mut JsBatchReader) -> Result<Self> {
         Ok(Self::from_core(
-            CoreRecords::from_arrow_reader(reader.take()?).map_err(napi_error)?,
+            CoreStreamSerie::from_arrow_reader(reader.take()?).map_err(napi_error)?,
         ))
     }
 
@@ -2545,4 +2550,63 @@ pub fn expression_vocabularies() -> ExpressionVocabularies {
 #[napi]
 pub fn expression_needs_quoting(name: String) -> bool {
     yggdryl::expression::needs_quoting(&name)
+}
+
+#[napi]
+impl JsStreamSerie {
+    /// Collects the remaining rows in one native call and consumes the stream.
+    #[napi]
+    pub fn collect(&mut self) -> Result<Vec<JsScalar>> {
+        self.take()?
+            .collect_rows()
+            .map(|rows| rows.into_iter().map(JsScalar::from_core).collect())
+            .map_err(napi_error)
+    }
+    /// Moves these values into a native scalar-row stream.
+    #[napi]
+    pub fn into_stream(&mut self) -> Result<Self> {
+        Ok(Self::from_core(self.take()?))
+    }
+    /// Moves these values into native chunks under optional row and byte bounds.
+    #[napi]
+    pub fn into_chunked_stream(
+        &mut self,
+        row_size: Option<f64>,
+        byte_size: Option<f64>,
+    ) -> Result<crate::serie::JsStreamChunkedSerie> {
+        self.take()?
+            .into_chunked_stream(
+                crate::key_serie::row_bound(row_size)?,
+                crate::key_serie::byte_bound(byte_size)?,
+            )
+            .map_err(napi_error)
+            .map(crate::serie::JsStreamChunkedSerie::from_core)
+    }
+    /// Cuts adjacent equal keys under one selector, path, or typed external-key layout.
+    #[napi(js_name = "_windowByNative", skip_typescript)]
+    pub fn window_by_native(
+        &mut self,
+        by: crate::key_serie::KeyInput<'_>,
+        sorted: Option<bool>,
+    ) -> Result<crate::key_serie::JsStreamKeySerie> {
+        let by = crate::key_serie::key_by(by)?;
+        self.take()?
+            .window_by(by, sorted.unwrap_or(false))
+            .map(crate::key_serie::JsStreamKeySerie::from_core)
+            .map_err(napi_error)
+    }
+    /// Groups equal keys under the same key layout, retaining native payloads.
+    #[napi(js_name = "_partitionByNative", skip_typescript)]
+    pub fn partition_by_native(
+        &mut self,
+        by: crate::key_serie::KeyInput<'_>,
+        options: Option<crate::serie::PartitionOptionsInput>,
+    ) -> Result<crate::key_serie::JsStreamKeySerie> {
+        let by = crate::key_serie::key_by(by)?;
+        let options = crate::serie::partition_options(options)?;
+        self.take()?
+            .partition_by(by, options)
+            .map(crate::key_serie::JsStreamKeySerie::from_core)
+            .map_err(napi_error)
+    }
 }

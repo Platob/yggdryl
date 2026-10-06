@@ -484,6 +484,13 @@ impl<H: IOBase> IOMedia for Csv<H> {
         Ok(RecordOptions::Csv(self.options.clone()))
     }
 
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
+        let options = crate::iomedia::own_options(self, options)?;
+        self.require_options(&options)?;
+        // A located handle resolves its role once before native decoding.
+        IOMedia::read_serie(&self.handle, Some(&options))
+    }
+
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
         let options = self.require_options(options)?;
         if let Some(field) = options.field() {
@@ -515,41 +522,52 @@ impl<H: IOBase> IOMedia for Csv<H> {
         )?)
     }
 
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
-        crate::iobase::overwrite_arrow_reader_default(self, batches, options)
+        crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
+            .map(|(_, result)| result)
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
         &mut self,
-        batches: BatchReader,
+        value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> Result<()> {
+        let batches = value.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::leaf_writer(self, batches, options)
     }
 
-    fn append_arrow_reader(
+    fn append_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
 
-    fn merge_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::merge_arrow_reader_default(self, batches, options)
@@ -621,5 +639,41 @@ impl<H: IOBase> IOBase for Csv<H> {
         self.invalidate();
         self.opened = false;
         self.handle.remove(recursive)
+    }
+}
+
+crate::media_serie::media_serie!(CSVSerie, Csv, as_csv, get_csv_mut);
+
+/// Decode only the native row scan's source columns, without forming batches.
+///
+/// # Errors
+/// Header, schema, transport and row-decoding failures.
+pub fn read_stream<H: IOBase + ?Sized>(
+    handle: &H,
+    field: Option<&Field>,
+    options: &CsvOptions,
+) -> Result<crate::StreamSerie> {
+    let declared = field.cloned().or_else(|| options.field());
+    let opened = reader::open_projected(
+        decoded_over(handle)?,
+        options,
+        declared.as_ref(),
+        handle.url().cloned(),
+    )?;
+    match opened {
+        Some(opened) => Ok(crate::StreamSerie::from_rows(
+            crate::StreamChunkedSerie::root_of(&opened.field)?,
+            opened.rows,
+        )),
+        None => {
+            let root = declared.unwrap_or_else(|| {
+                crate::DataType::from(crate::StructType::from_fields([]).expect("an empty record"))
+                    .required_field(options.name())
+            });
+            Ok(crate::StreamSerie::from_rows(
+                crate::StreamChunkedSerie::root_of(&root)?,
+                std::iter::empty(),
+            ))
+        }
     }
 }

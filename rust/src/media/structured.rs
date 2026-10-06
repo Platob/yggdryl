@@ -23,7 +23,7 @@ use std::collections::VecDeque;
 use smol_str::SmolStr;
 
 use crate::text::{Format, Formatting, Plan};
-use crate::{Error, Field, IOBase, Result, Scalar, Serie, SerieReader};
+use crate::{Error, Field, IOBase, Result, Scalar, Serie, StreamChunkedSerie};
 
 /// Read a handle's structured text document as one record column.
 ///
@@ -91,7 +91,7 @@ pub(crate) fn read_arrow<H: IOBase + ?Sized>(handle: &H, field: Option<&Field>) 
 /// Returns a schema, value, encoding, compression, or write failure.
 pub(crate) fn write_arrow<H: IOBase + ?Sized>(
     handle: &mut H,
-    value: SerieReader,
+    value: StreamChunkedSerie,
     formatting: Formatting,
 ) -> Result<u64> {
     let plan = Plan::infer(handle)?;
@@ -237,7 +237,7 @@ fn rows_of(documents: Vec<Scalar>, format: Format, name: &str, declared: bool) -
 /// partial document, because nothing reaches the handle until the encoder is
 /// finished.
 struct Rows {
-    batches: Option<SerieReader>,
+    batches: Option<StreamChunkedSerie>,
     root: Field,
     format: Format,
     buffered: VecDeque<Scalar>,
@@ -246,7 +246,7 @@ struct Rows {
 }
 
 impl Rows {
-    const fn new(batches: SerieReader, root: Field, format: Format) -> Self {
+    const fn new(batches: StreamChunkedSerie, root: Field, format: Format) -> Self {
         Self {
             batches: Some(batches),
             root,
@@ -269,7 +269,7 @@ impl Rows {
         let Some(batches) = self.batches.as_mut() else {
             return Ok(false);
         };
-        let Some(batch) = batches.next() else {
+        let Some(batch) = batches.next_chunk() else {
             self.batches = None;
             return Ok(false);
         };

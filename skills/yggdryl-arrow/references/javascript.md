@@ -1,6 +1,6 @@
 # yggdryl-arrow in JavaScript
 
-`const { Serie, ChunkedSerie, SerieReader, ArrowCastPlan, BatchReader, Field,
+`const { Serie, ChunkedSerie, StreamChunkedSerie, ArrowCastPlan, BatchReader, Field,
 fields } = require('yggdryl')` beside `require('apache-arrow')`. Every Arrow
 door is copied IPC - one self-contained IPC stream per vector, batch or table -
 so cross whole tables or readers, never a row at a time. Cast options are
@@ -126,7 +126,7 @@ assert.throws(() => Serie.fromArrowReader(table))
 
 ## Stream a reader under one plan
 
-`SerieReader.fromArrowReader(reader, root?)` compiles one plan from the
+`StreamChunkedSerie.fromArrowReader(reader, root?)` compiles one plan from the
 stream's schema before a batch is pulled; each pulled batch is one record
 `Serie`. A bad batch fails at its pull and the reader is fused after it.
 `intoArrowReader()` is the transport face, never landed.
@@ -134,7 +134,7 @@ stream's schema before a batch is pulled; each pulled batch is one record
 ```javascript
 const assert = require('node:assert/strict')
 const arrow = require('apache-arrow')
-const { BatchReader, Field, SerieReader } = require('yggdryl')
+const { BatchReader, Field, StreamChunkedSerie } = require('yggdryl')
 
 const root = Field.from('row: struct<id: int64, symbol: utf8 not null> not null')
 const batch = (id, symbol) =>
@@ -144,7 +144,7 @@ const batch = (id, symbol) =>
   }).batches
 const source = () => new arrow.Table([...batch(1, 'A'), ...batch(2, 'B'), ...batch(3, null)])
 
-const series = SerieReader.fromArrowReader(BatchReader.from(source()), root)
+const series = StreamChunkedSerie.fromArrowReader(BatchReader.from(source()), root)
 assert.ok(series.field.equals(root))
 const pulled = series[Symbol.iterator]()
 assert.deepEqual(pulled.next().value.child('id').asJs(), [1])
@@ -154,7 +154,7 @@ assert.equal(pulled.next().done, true)
 
 // Transport: a native BatchReader under the root's schema, read once.
 const good = new arrow.Table([...batch(1, 'A'), ...batch(2, 'B')])
-const reader = SerieReader.fromArrowReader(BatchReader.from(good), root).intoArrowReader()
+const reader = StreamChunkedSerie.fromArrowReader(BatchReader.from(good), root).intoArrowReader()
 assert.ok(reader instanceof BatchReader)
 assert.equal(reader.intoTable().numRows, 2)
 ```
@@ -379,9 +379,9 @@ assert.equal(held.asSorted().asUnique().asReversed(), held)
 assert.deepEqual(held.asJs(), [null, 3, 1])
 
 // One [key, rows] per distinct key, in first-occurrence order.
-const groups = prices.partitionBy(['XNAS', 'XNYS', 'XNAS', 'XNYS'])
-assert.deepEqual([groups.length, groups[0][0].asJs()], [2, 'XNAS'])
-assert.deepEqual(groups[0][1].asJs(), [3, 1])
+const groups = prices.partitionBy(Serie.fromScalars(Field.from('venue: utf8 not null'), ['XNAS', 'XNYS', 'XNAS', 'XNYS']))
+assert.deepEqual([groups.length, groups.get(0).key.asJs()], [2, ['XNAS']])
+assert.deepEqual(groups.get(0).rows.child('price').asJs(), [3, 1])
 
 // A window reads and writes a stretch where it stands, window-relative.
 const column = Serie.fromScalars(Field.from('price: int64 not null'), [9n, 3n, 1n, 2n, 0n])
@@ -441,7 +441,7 @@ assert.equal(spilled.asSpilled(new SpillOptions({ byteSize: 0 })).isSpilled(), t
 
 ```javascript
 const assert = require('node:assert/strict')
-const { Field, Serie, SerieReader } = require('yggdryl')
+const { Field, Serie, StreamChunkedSerie } = require('yggdryl')
 
 const trades = Serie.fromScalars(
   Field.from('trade: struct<id: int64 not null, size: int64 not null> not null'),
@@ -458,64 +458,57 @@ assert.deepEqual(left.child('venue').asJs(), ['XNAS', 'XNYS', null])
 assert.equal(trades.joinWith(venues, 'id', 'anti', { build: 'right' }).length, 1)
 // A stream probes lazily against the held side.
 let rows = 0
-for (const batch of SerieReader.fromSerie(trades).joinWith(venues, 'id', 'inner', { build: 'right' })) rows += batch.length
+for (const batch of StreamChunkedSerie.fromSerie(trades).joinWith(venues, 'id', 'inner', { build: 'right' })) rows += batch.length
 assert.equal(rows, 2)
 ```
 
 ## Cut rows into windows by key
 
-`windowBy(by, sorted?)` computes the key once and answers `[key, WindowSerie]`
-pairs, each window a view stating the record of its key cells, `windownum`
-and `rownum` as `staticValues`. `sorted: true` asks for each key once in key
-order: keys already in order copy nothing, and only a descent gathers the
-rows once. A `ChunkedSerie` regroups its runs as zero-copy pieces and states
-no record; a `SerieReader` yields one lazy reader per window, read in order.
-Contract and costs:
-[windows by key](https://platob.github.io/yggdryl/types/serie/#windows-by-key).
+`window_by` and `windowBy` compute the key once and return `KeySeries`.
+Each `KeySerie` exposes `key`, `rows`, and an optional absolute `rownum`.
+Sorted windows regroup equal keys while retaining native payload pieces.
+A stream returns `StreamKeySerie`; read each borrowed payload before advancing.
 
 ```javascript
 const assert = require('node:assert/strict')
-const { ChunkedSerie, Field, Serie, SerieReader } = require('yggdryl')
+const { ChunkedSerie, Field, Serie, StreamChunkedSerie } = require('yggdryl')
 
 const root = Field.from('fill: struct<venue: utf8 not null, qty: int64 not null> not null')
 const fills = Serie.fromScalars(root, [['XNAS', 5n], ['XNYS', 2n], ['XNAS', 3n]])
 
 // Each key once, in key order; the record names the window's key.
 const totals = {}
-for (const [, window] of fills.windowBy('venue', true)) {
-  const venue = window.staticValues.get('venue').asJs()
-  totals[venue] = window.intoSerie().child('qty').asJs().reduce((sum, qty) => sum + qty, 0)
+for (const group of fills.windowBy('venue', true)) {
+  const venue = group.key.get(0).asJs()
+  totals[venue] = group.rows.child('qty').asJs().reduce((sum, qty) => sum + qty, 0)
 }
 assert.deepEqual(totals, { XNAS: 8, XNYS: 2 })
 
 // Across chunks: zero-copy pieces, no join, no record.
 const chunked = ChunkedSerie.fromSeries([fills.slice(0, 2), fills.slice(2, 1)], root)
-const [[, xnas]] = chunked.windowBy('venue', true)
-assert.deepEqual([xnas.length, xnas.numChunks], [2, 2])
+const xnas = chunked.windowBy('venue', true).get(0).rows
+assert.deepEqual([xnas.length, [...xnas.intoChunkedStream(1, null)].length], [2, 2])
 
 // A stream: one lazy reader per window - read each before taking the next.
 const places = []
-for (const window of SerieReader.fromSerie(fills).windowBy('venue')) {
-  const rownum = window.staticValues.get('rownum').asJs()
-  places.push([rownum, [...window].reduce((rows, piece) => rows + piece.length, 0)])
+for (const group of StreamChunkedSerie.fromSerie(fills).windowBy('venue')) {
+  places.push([group.rownum, [...group.rows.intoChunkedStream()].reduce((rows, piece) => rows + piece.length, 0)])
 }
 assert.deepEqual(places, [[0, 1], [1, 1], [2, 1]])
 ```
 
 ## Cut a stream into partitions
 
-`reader.partitionBy(by, { maxOpen, threads, clustered })` yields
-`[key, rows]` as each partition closes: past `maxOpen` the lowest keys,
-`clustered` once another key arrives, the rest in key order when the stream
-ends; `rows` is a `ChunkedSerie`. Contract:
-[partitions of a stream](https://platob.github.io/yggdryl/arrow/readers/#partitions-of-a-stream).
+Stream partitioning yields `KeySerie` values as partitions close.
+The key stays explicit and the payload remains native; `clustered` closes a
+partition when the next key arrives. `max_open` bounds active partitions.
 
 ```javascript
 const assert = require('node:assert/strict')
-const { ChunkedSerie, Field, Serie, SerieReader } = require('yggdryl')
+const { ChunkedSerie, Field, Serie, StreamChunkedSerie } = require('yggdryl')
 
 const root = Field.from('fill: struct<venue: utf8 not null, qty: int64 not null> not null')
-const stream = SerieReader.fromChunked(
+const stream = StreamChunkedSerie.fromChunked(
   ChunkedSerie.fromSeries(
     [Serie.fromScalars(root, [['XLON', 1n], ['XNAS', 2n]]), Serie.fromScalars(root, [['XNAS', 3n], ['XNYS', 4n]])],
     root,
@@ -523,7 +516,7 @@ const stream = SerieReader.fromChunked(
 )
 
 // Sorted on the venue: each partition is handed over as soon as the next one opens.
-const sizes = [...stream.partitionBy('venue', { clustered: true })].map(([key, rows]) => [key.asJs(), rows.length])
+const sizes = [...stream.partitionBy('venue', { clustered: true })].map(group => [group.key.asJs(), group.rows.length])
 assert.deepEqual(sizes, [[['XLON'], 1], [['XNAS'], 2], [['XNYS'], 1]])
 ```
 
@@ -565,28 +558,28 @@ assert.throws(() => new ChunkedSerie())
 
 ## Hand a held column on as a stream
 
-`SerieReader.fromSerie` and `fromChunked` read held data as a stream with no
+`StreamChunkedSerie.fromSerie` and `fromChunked` read held data as a stream with no
 plan and no copy. `reader.cast(field)` re-roots the stream under one plan and
 consumes the reader.
 
 ```javascript
 const assert = require('node:assert/strict')
-const { ChunkedSerie, Field, Serie, SerieReader, fields } = require('yggdryl')
+const { ChunkedSerie, Field, Serie, StreamChunkedSerie, fields } = require('yggdryl')
 
 const root = Field.from('row: struct<id: int64 not null> not null')
 const rows = Serie.fromScalars(root, [[1n], [2n]])
-const held = [...SerieReader.fromSerie(rows)]
+const held = [...StreamChunkedSerie.fromSerie(rows)]
 assert.equal(held.length, 1)
 assert.ok(held[0].equals(rows))
 
 // A leaf column is the one child of a `row` record.
 const price = Serie.fromScalars(fields.int64('price'), [1n, 2n])
-assert.deepEqual([...SerieReader.fromSerie(price)][0].child('price').asJs(), [1, 2])
+assert.deepEqual([...StreamChunkedSerie.fromSerie(price)][0].child('price').asJs(), [1, 2])
 
 const chunks = ChunkedSerie.fromSeries([price, price])
-assert.deepEqual([...SerieReader.fromChunked(chunks)].map((record) => record.length), [2, 2])
+assert.deepEqual([...StreamChunkedSerie.fromChunked(chunks)].map((record) => record.length), [2, 2])
 
-const wide = SerieReader.fromSerie(rows).cast(Field.from('row: struct<id: float64 not null> not null'))
+const wide = StreamChunkedSerie.fromSerie(rows).cast(Field.from('row: struct<id: float64 not null> not null'))
 assert.deepEqual([...wide][0].child('id').asJs(), [1, 2])
 ```
 
@@ -669,9 +662,9 @@ assert.deepEqual([...joined.getChild('venue')], [null, 'XPAR'])
 - `int64` values go in as `bigint`; `asJs()` answers a `number` where the
   value is a safe integer and a `bigint` past 2^53, and `intoArrowArray()` a
   `BigInt64Array`-backed vector.
-- `fromArrowReader` and `SerieReader.fromArrowReader` take only a native
+- `fromArrowReader` and `StreamChunkedSerie.fromArrowReader` take only a native
   `BatchReader` and consume it; convert with `BatchReader.from(value)`.
-- A `SerieReader` is read once: iterating it, `cast` and `intoArrowReader`
+- A `StreamChunkedSerie` is read once: iterating it, `cast` and `intoArrowReader`
   each consume it.
 - `new ChunkedSerie()` throws; `new Serie(rows)` builds a schema-free run,
   not a column - use `Serie.fromScalars(field, rows)` for a column.

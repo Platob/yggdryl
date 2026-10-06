@@ -11,7 +11,6 @@ use super::{
     FolderCatalog, IntoObjectPath, MemoryCatalog, Namespace, NamespaceValue, Object, ObjectValue,
     Objects, Properties, Table,
 };
-use crate::arrow::BatchReader;
 use crate::media::RecordOptions;
 use crate::{Arn, Error, Field, IOBase, IOKind, IOMedia, Result, Scheme, Uri, Url};
 

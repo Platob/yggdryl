@@ -230,3 +230,5 @@ pub fn patch(url: &str, body: Body) -> Result<Response> {
 pub fn delete(url: &str) -> Result<Response> {
     session().delete(url)?.send()
 }
+
+pub use request::HttpSerie;

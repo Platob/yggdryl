@@ -805,6 +805,61 @@ mod lake {
     }
 
     #[test]
+    fn a_merge_that_changes_no_row_of_a_partition_leaves_its_leaf_untouched() {
+        let (root, mut handle) = lake("merge-unchanged");
+        seed(&root, "year=2024/month=01", &prices());
+        seed(&root, "year=2024/month=02", &prices());
+        let january = root.join("year=2024/month=01/part-0.arrows");
+        let february = root.join("year=2024/month=02/part-0.arrows");
+        let (january_before, february_before) = (stamp(&january), stamp(&february));
+
+        let field = schema();
+        let merging = options(Some(field.clone()))
+            .with_merge_by(["price"])
+            .unwrap();
+        // The rows January already holds, replayed: nothing differs, so the
+        // leaf is not written.
+        let replay = with_partitions(&prices(), &partitions(), Some(&field)).unwrap();
+        handle
+            .merge_arrow_reader(
+                yggdryl::arrow::batch_reader(replay.schema(), [replay]),
+                &merging,
+            )
+            .unwrap();
+        assert_eq!(stamp(&january), january_before);
+        assert_eq!(stamp(&february), february_before);
+
+        // A new key is a change: January is rewritten, February never read.
+        let added = with_partitions(&prices(), &partitions(), Some(&field)).unwrap();
+        let added = RecordBatch::try_new(
+            added.schema(),
+            vec![
+                std::sync::Arc::new(arrow_array::Int64Array::from(vec![10, 20, 99])),
+                added.column(1).clone(),
+                added.column(2).clone(),
+            ],
+        )
+        .unwrap();
+        handle
+            .merge_arrow_reader(
+                yggdryl::arrow::batch_reader(added.schema(), [added]),
+                &merging,
+            )
+            .unwrap();
+        assert_ne!(stamp(&january).0, january_before.0);
+        assert_eq!(stamp(&february), february_before);
+        assert_eq!(
+            rows(&handle, &field)
+                .iter()
+                .filter(|(_, month, _)| month == "01")
+                .count(),
+            4
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn an_empty_partition_directory_is_enough_to_declare_the_layout() {
         let (root, mut handle) = lake("declared");
         // Nothing has been written yet: the directories alone say which columns

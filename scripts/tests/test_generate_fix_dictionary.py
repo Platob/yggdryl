@@ -399,6 +399,19 @@ class FixCatalogGeneration(unittest.TestCase):
             (out / "codesets").mkdir()
             (out / "codesets" / "quotecodeset.json").write_text("{}", encoding="utf-8")
             (out / "layouts.json").write_text("{}", encoding="utf-8")
+            # The crate's own documents are never generated and never swept.
+            crated = (
+                "codesets/marketdatakindcodeset.json",
+                "codesets/msgpluginsidecodeset.json",
+                "components/fixmsg.json",
+                "groups/metadata.json",
+                "fields/000000650.json",
+            )
+            for name in crated:
+                self.assertTrue(GENERATOR.crate_owned(name), name)
+                self.assertNotIn(name, documents)
+                (out / name).parent.mkdir(exist_ok=True)
+                (out / name).write_text("{}", encoding="utf-8")
             hashes = GENERATOR.write_tree(out, documents)
             self.assertFalse((out / "primitive").exists())
             self.assertFalse((out / "layouts.json").exists())
@@ -406,6 +419,8 @@ class FixCatalogGeneration(unittest.TestCase):
             # stale document; the folder itself stays.
             self.assertFalse((out / "codesets" / "quotecodeset.json").exists())
             self.assertTrue((out / "codesets" / "sidecodeset.json").exists())
+            for name in crated:
+                self.assertEqual((out / name).read_text(encoding="utf-8"), "{}", name)
             self.assertEqual(set(documents), set(hashes))
 
 

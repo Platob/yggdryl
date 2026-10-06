@@ -33,7 +33,7 @@ use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::serie::{Closing, Partitions};
 use crate::string::is_text_storage;
-use crate::{ChunkedSerie, DataType, Error, Field, Result, Serie, SerieReader, Url};
+use crate::{ChunkedSerie, DataType, Error, Field, Result, Serie, StreamChunkedSerie, Url};
 use crate::{IOBase, IOMedia, Listing};
 
 pub use super::NULL_PARTITION;
@@ -629,7 +629,7 @@ type PartitionPiece = (Vec<(String, String)>, Serie);
 /// the directory text their partition columns spell.
 ///
 /// The batch is cut by the typed values of its partition columns
-/// ([`Serie::partition_by_paths`]) - one zero-copy slice per run of a key,
+/// ([`Serie::partition_by`]) - one zero-copy slice per run of a key,
 /// one take per key otherwise - and each piece's text rendered once, from its
 /// first row; two values spelling one text are one partition. A folder with
 /// no partition columns is one partition, the batch itself.
@@ -645,8 +645,16 @@ fn cut_by_partition(
     if paths.is_empty() {
         return Ok(vec![(Vec::new(), record)]);
     }
+    let keys = crate::Selector::new(
+        paths
+            .iter()
+            .cloned()
+            .map(crate::expression::Projection::from),
+    )
+    .bind_key(record.require_field()?, record.name(), "partition by")?
+    .apply_serie(&record)?;
     record
-        .partition_by_paths(paths)?
+        .cut_partitions(&keys)?
         .into_iter()
         .map(|(_, piece)| {
             let first = piece.slice(0, 1)?.into_arrow_batch()?;
@@ -891,7 +899,7 @@ fn part_reader(
     }
     let reader = crate::iobase::leaf_reader(part, &leaf)?;
     let restored = partitioned_reader(reader, pairs, Some(field.clone()))?;
-    Ok(crate::SerieReader::from_arrow_reader(
+    Ok(crate::StreamChunkedSerie::from_arrow_reader(
         Some(field),
         restored,
         ArrowCastOptions::new().with_safe(options.safe()),
@@ -1180,7 +1188,7 @@ impl FolderWriter {
     }
 
     /// Split one cadence by partition through the one partitioner a split
-    /// of a stream runs through ([`SerieReader::map_landed`] and
+    /// of a stream runs through ([`StreamChunkedSerie::map_landed`] and
     /// [`Partitions`]): each batch landed under the stream's own root - less
     /// any order it declares, which the rows need not keep - keyed and cut on
     /// the write's threads ([`cut_by_partition`]), and every partition held
@@ -1201,7 +1209,8 @@ impl FolderWriter {
             .options
             .num_threads()
             .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from));
-        let reader = SerieReader::from_arrow_reader(Some(&root), batches, ArrowCastOptions::new())?;
+        let reader =
+            StreamChunkedSerie::from_arrow_reader(Some(&root), batches, ArrowCastOptions::new())?;
         let pieces = reader.map_landed(threads, move |record| {
             Ok(cut_by_partition(record, &paths, &columns, &rendering)?)
         });

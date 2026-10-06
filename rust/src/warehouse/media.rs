@@ -22,7 +22,11 @@ use crate::{DataType, Error, Field, IOBase, IOKind, IOMedia, MediaType, Result, 
 /// verb delegates to that handle, [`record_options`](IOMedia::record_options)
 /// applying the declared field and the table name first and
 /// [`read_arrow_field`](IOMedia::read_arrow_field) answering the declared
-/// field before anything is read.
+/// field before anything is read. A successful leaf record write closes its
+/// located holder's session, releasing mappings and wrapper caches while
+/// retaining its media and backend options. A bound handle with no site is
+/// retained as the data itself. Folder and format writes and direct byte
+/// operations keep their held session.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MediaTable {
     path: Vec<SmolStr>,
@@ -190,6 +194,15 @@ impl MediaTable {
     /// The handle, mutably, opened on the first call.
     fn handle_mut(&mut self) -> Result<&mut Holder> {
         self.handle.get_mut()
+    }
+
+    /// A completed leaf write no longer owns a read snapshot or a writer
+    /// mapping. Close its located session before returning the descriptor.
+    fn finish_write<T>(&mut self, result: Result<T>) -> Result<T> {
+        if result.is_ok() && self.layout == FolderLayout::Leaf {
+            self.handle.release_after_write()?;
+        }
+        result
     }
 
     /// Whether anything is at the table's location now.
@@ -416,10 +429,12 @@ impl IOBase for MediaTable {
     }
 
     fn close(&mut self) -> Result<()> {
-        match self.handle.held().map(IOBase::opened) {
-            Some(true) => self.handle_mut()?.close(),
-            // Nothing was resolved or opened, so there is nothing to close.
-            _ => Ok(()),
+        if self.handle.held().is_some() {
+            // A media wrapper can hold mapped bytes without an explicit open.
+            self.handle_mut()?.close()
+        } else {
+            // Closing an unresolved descriptor never opens its storage.
+            Ok(())
         }
     }
 
@@ -520,74 +535,49 @@ impl IOMedia for MediaTable {
         IOMedia::read_arrow_field(self.handle()?, options)
     }
 
-    fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
-        IOMedia::read_arrow_reader(self.handle()?, options)
+    // The table's own options carry its declared field and its name, so an
+    // absent option set is resolved here rather than by the handle.
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
+        let options = crate::iomedia::own_options(self, options)?;
+        IOMedia::read_serie(self.handle()?, Some(&options))
     }
 
-    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
-        match options {
-            Some(options) => IOMedia::read_serie(self.handle()?, Some(options)),
-            // The table's own options carry its declared field and its name.
-            None => {
-                let options = self.options()?;
-                IOMedia::read_serie(self.handle()?, Some(&options))
-            }
-        }
-    }
-
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        IOMedia::overwrite_arrow_reader(self.handle_mut()?, batches, options)
+        let options = crate::iomedia::own_options(&*self, options)?;
+        let result = IOMedia::overwrite_serie(self.handle_mut()?, value, Some(&options));
+        self.finish_write(result)
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
+        value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> Result<()> {
-        IOMedia::overwrite_prepared_arrow_reader(self.handle_mut()?, batches, options)
+        let result = IOMedia::overwrite_prepared_serie(self.handle_mut()?, value, options);
+        self.finish_write(result)
     }
 
-    fn overwrite_arrow_batch(
+    fn append_serie(
         &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        IOMedia::overwrite_arrow_batch(self.handle_mut()?, batch, options)
+        let options = crate::iomedia::own_options(&*self, options)?;
+        let result = IOMedia::append_serie(self.handle_mut()?, value, Some(&options));
+        self.finish_write(result)
     }
 
-    fn append_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        IOMedia::append_arrow_reader(self.handle_mut()?, batches, options)
-    }
-
-    fn append_arrow_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        IOMedia::append_arrow_batch(self.handle_mut()?, batch, options)
-    }
-
-    fn merge_arrow_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        IOMedia::merge_arrow_reader(self.handle_mut()?, batches, options)
-    }
-
-    fn merge_arrow_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        IOMedia::merge_arrow_batch(self.handle_mut()?, batch, options)
+        let options = crate::iomedia::own_options(&*self, options)?;
+        let result = IOMedia::merge_serie(self.handle_mut()?, value, Some(&options));
+        self.finish_write(result)
     }
 }

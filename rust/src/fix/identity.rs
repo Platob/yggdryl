@@ -7,15 +7,15 @@ use crate::Decimal;
 use crate::graph::Market;
 use crate::graph::facts::OperationEventFacts;
 use crate::{
-    Bbg, DataType, Error, Field, Figi, Forex, IdType, Identifiers, Isin, Mic, Result, Scalar,
-    TimeUnit, Timezone, Value,
+    Bbg, DataType, Error, Field, Figi, Forex, IdType, Identifiers, Isin, Mic, PluginSide, Result,
+    Scalar, TimeUnit, Timezone, Value,
 };
 
 use super::schema::CLOCK_DATATYPE;
 use super::{
     CONVERSATIONID_TAG_NAME, FixRegistry, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
-    MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME,
-    SOURCEURL_TAG_NAME,
+    MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGPLUGINSIDE_TAG_NAME, MSGSESSEVENTID_TAG_NAME,
+    MSGSESSIONID_TAG_NAME, SOURCEURL_TAG_NAME,
 };
 
 /// The standard header and trailer facts every message holds typed, beside
@@ -228,6 +228,12 @@ pub(super) fn integer_of<T: TryFrom<i128> + TryFrom<u128>>(value: &Scalar) -> Op
 /// its own; it remains delivery provenance and is neither the message's
 /// content identity nor its chain code.
 ///
+/// The role of the plugin whose session the line belongs to -
+/// [`Self::msgpluginside`] - is the one fact here no line states: the
+/// codec stamps it from the dialect's source entry it reads under, and a
+/// row-header capture or a row cell named `msgpluginside` is the row's
+/// word over it.
+///
 /// What the *reader* says about the line is not here: the object the line
 /// was read from, the body it was cut from, its place in that object are
 /// [the cells the message carries](super::FixMsg::carried), stated by
@@ -237,6 +243,7 @@ pub(super) fn integer_of<T: TryFrom<i128> + TryFrom<u128>>(value: &Scalar) -> Op
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixCapture {
     msgpluginid: Option<SmolStr>,
+    msgpluginside: PluginSide,
     msgctxid: Option<SmolStr>,
     msgsessionid: Option<SmolStr>,
     msgsesseventid: Option<SmolStr>,
@@ -250,6 +257,20 @@ impl FixCapture {
     #[must_use]
     pub fn msgpluginid(&self) -> Option<&str> {
         self.msgpluginid.as_deref()
+    }
+
+    /// The role of the FIX plugin whose session produced the message:
+    /// `BUYS` for a Buy-Side plugin, `SELL` for a Sell-Side one, `UKNW`
+    /// where the codec read under no source or one stating no role. Never
+    /// absent: the neutral member is a stated value.
+    #[must_use]
+    pub const fn msgpluginside(&self) -> PluginSide {
+        self.msgpluginside
+    }
+
+    /// States the plugin's role, the codec's stamp at build.
+    pub(super) const fn set_msgpluginside(&mut self, side: PluginSide) {
+        self.msgpluginside = side;
     }
 
     /// The message context a bridge handled the line in.
@@ -322,6 +343,8 @@ impl FixCapture {
         let is = |held: (i32, &str)| held.0 == tag;
         if is(MSGPLUGINID_TAG_NAME) {
             text(&self.msgpluginid)
+        } else if is(MSGPLUGINSIDE_TAG_NAME) {
+            Some(Scalar::PluginSide(self.msgpluginside))
         } else if is(MSGCTXID_TAG_NAME) {
             text(&self.msgctxid)
         } else if is(MSGSESSIONID_TAG_NAME) {
@@ -347,6 +370,11 @@ impl FixCapture {
         let is = |held: (i32, &str)| held.0 == tag;
         if is(MSGPLUGINID_TAG_NAME) {
             self.msgpluginid = text();
+        } else if is(MSGPLUGINSIDE_TAG_NAME) {
+            // The member the cell names, in any spelling the enum reads; a
+            // null, or a value naming no member, is the neutral member.
+            self.msgpluginside =
+                <PluginSide as crate::EnumValue>::from_scalar_value(value).unwrap_or_default();
         } else if is(MSGCTXID_TAG_NAME) {
             self.msgctxid = text();
         } else if is(MSGSESSIONID_TAG_NAME) {
@@ -384,7 +412,7 @@ pub(super) const CROSS_TAGS: [i32; 6] = [37, 11, 41, 117, 131, 262];
 /// instrument keys a rule folds into `securityids` included - is the
 /// [envelope's](super::digest), and an identifier map's sources are the
 /// registry's. A group listed here, by its counter, is read whole.
-pub(super) const MARKET_TAGS: [i32; 45] = [
+pub(super) const MARKET_TAGS: [i32; 47] = [
     54,              // Side: side
     132,             // BidPx: bidpx, and the price of a quote tagging the bid
     133,             // OfferPx: askpx, and the price of a quote tagging the ask
@@ -400,6 +428,7 @@ pub(super) const MARKET_TAGS: [i32; 45] = [
     22,              // SecurityIDSource: securityids, the primary's source
     48,              // SecurityID: securityids, the primary
     454,             // NoSecurityAltID, the `secaltids` group: securityids
+    2737,            // FinancialInstrumentShortName: securityids, the short name
     30,              // LastMkt: miccode
     100,             // ExDestination: miccode, where 30 states none
     207,             // SecurityExchange: miccode, where the others state none
@@ -424,6 +453,7 @@ pub(super) const MARKET_TAGS: [i32; 45] = [
     768,             // NoTrdRegTimestamps, a clock group: currunix, execunix
     140,             // PrevClosePx: prevpx
     99,              // StopPx: stoppx
+    202,             // StrikePrice: strikepx
     1138,            // DisplayQty: displayqty, and hiddenqty below the quantity
     111,             // MaxFloor: displayqty, where 1138 states none
     84,              // CxlQty: cxlqty

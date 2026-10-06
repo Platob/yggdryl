@@ -11,7 +11,7 @@ from ._common import MetadataInput
 from ._typing import TypedField
 
 class MarketDataKind(enum.IntEnum):
-    UNKN = 0
+    UKNW = 0
     ACCT = 1
     ALLO = 2
     BOOK = 3

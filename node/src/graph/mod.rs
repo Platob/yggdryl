@@ -237,7 +237,7 @@ macro_rules! market_getters {
             }
 
             /// The type of its kind this is, as the `marketdatatype` member's
-            /// stored name; `UNKN` where none, never `null`.
+            /// stored name; `UKNW` where none, never `null`.
             #[napi(getter)]
             pub fn marketdatatype(&self) -> String {
                 ::yggdryl::graph::Market::get_marketdatatype(&self.inner)
@@ -245,7 +245,7 @@ macro_rules! market_getters {
                     .to_owned()
             }
 
-            /// The side, as the `side` member's four-letter code; `UNKN` where
+            /// The side, as the `side` member's four-letter code; `UKNW` where
             /// none, never `null`.
             #[napi(getter)]
             pub fn side(&self) -> String {
@@ -329,6 +329,13 @@ macro_rules! market_getters {
             #[napi(getter)]
             pub fn prevpx(&self) -> Option<String> {
                 $crate::graph::decimal_text(::yggdryl::graph::Market::get_prevpx(&self.inner))
+            }
+
+            /// The strike price of the option the element is about, as
+            /// decimal text; `null` where none is stated.
+            #[napi(getter)]
+            pub fn strikepx(&self) -> Option<String> {
+                $crate::graph::decimal_text(::yggdryl::graph::Market::get_strikepx(&self.inner))
             }
 
             /// The quantity the step before this one settled on; `null`

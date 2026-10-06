@@ -22,7 +22,7 @@ use crate::{Error, IOBase, IOFolder, IOKind, Listing, MediaType, Result, Uri, Ur
 /// | [`IOBase::child_by_path`] | none |
 /// | [`IOBase::ls`], flat or recursive | one listing per 1000 entries |
 /// | [`IOBase::glob`] | one listing per 1000 entries under the fixed prefix |
-/// | [`IOFolder::folder_exists`] | one listing of one key |
+/// | [`IOFolder::folder_exists`] | one listing of one key; a glob its listing up to the first match, one request per 1000 entries |
 /// | [`IOBase::clear`] | one listing per 1000 keys, plus one bulk delete per 1000 |
 /// | [`IOBase::remove`] with `recursive` | the same |
 /// | [`IOBase::remove`] without | one listing of one key |
@@ -82,16 +82,18 @@ impl S3Folder {
         self.client.snapshot()
     }
 
-    /// Return whether anything lives under this prefix.
+    /// Return whether anything lives under this prefix - a glob location
+    /// whether its pattern selects an object.
     ///
     /// One listing of a single key: the cheapest question the store answers.
+    /// A glob is its listing up to the first match.
     pub fn exists(&self) -> bool {
         self.folder_exists()
     }
 
     /// Whether anything lives under this prefix, or the store's refusal.
     ///
-    /// [`IOFolder::folder_exists`] answers `bool` and so has to read a refusal
+    /// [`IOFolder::has_folder`] answers `bool` and so has to read a refusal
     /// as a `false`. Anything that *acts* on the answer asks here instead: a
     /// listing nobody was allowed to see must not read as an empty prefix and
     /// turn a refused removal into a silent success.
@@ -329,7 +331,7 @@ impl IOFolder for S3Folder {
     ///
     /// One listing bounded to a single key: a prefix exists exactly while a
     /// key starts with it, so one entry settles it and the page stops there.
-    fn folder_exists(&self) -> bool {
+    fn has_folder(&self) -> bool {
         self.populated().unwrap_or(false)
     }
 

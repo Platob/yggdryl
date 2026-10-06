@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 
 use smol_str::format_smolstr;
 
-use crate::{DataType, Error, Field, Result, Scalar, Serie, SerieReader};
+use crate::{DataType, Error, Field, Result, Scalar, Serie, StreamChunkedSerie};
 
 use super::cell::{CellRef, DateSystem, MAX_COLUMNS, MAX_ROWS, cell_text};
 
@@ -85,7 +85,7 @@ fn utf8_stored(child: &Serie) -> bool {
 
 /// The worksheet part of a record stream, rendered as it is read.
 pub(crate) struct SheetXml {
-    batches: Option<SerieReader>,
+    batches: Option<StreamChunkedSerie>,
     root: Field,
     kinds: Vec<Kind>,
     system: DateSystem,
@@ -126,7 +126,7 @@ impl SheetXml {
     /// Returns [`Error::InvalidRecord`] when the root holds more columns than
     /// fit from the anchor, before a byte is rendered.
     pub(crate) fn new(
-        batches: SerieReader,
+        batches: StreamChunkedSerie,
         root: Field,
         sheet: impl Into<smol_str::SmolStr>,
         system: DateSystem,
@@ -205,7 +205,11 @@ impl SheetXml {
                 Ok(true)
             }
             Stage::Rows => {
-                let Some(batch) = self.batches.as_mut().and_then(Iterator::next) else {
+                let Some(batch) = self
+                    .batches
+                    .as_mut()
+                    .and_then(crate::StreamChunkedSerie::next_chunk)
+                else {
                     self.batches = None;
                     self.stage = Stage::Epilogue;
                     return Ok(true);

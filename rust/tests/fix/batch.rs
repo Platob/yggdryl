@@ -493,6 +493,78 @@ fn messages_without_residual_entries_are_charged_and_rebuilt_by_their_columns() 
     assert_eq!(each.len(), 200);
 }
 
+/// The FIX-row door stamps the codec's plugin role the way the line doors
+/// do: a row rebuilt through `messages` - and so through every reader
+/// composed over it - states the source the codec reads under where its
+/// schema holds no `msgpluginside` column, and a row carrying the cell is
+/// the row's word over the codec's, a codec told no source included.
+#[test]
+fn the_row_door_stamps_the_codecs_plugin_role_where_the_row_states_none() {
+    use yggdryl::{FixSource, PluginSide};
+
+    let mut registry = registry().as_ref().clone();
+    for (id, side) in [("buy", PluginSide::BuySide), ("sell", PluginSide::SellSide)] {
+        assert!(registry.add_source(FixSource::new(id).unwrap().with_pluginside(side)));
+    }
+    let registry = Arc::new(registry);
+    let lines = [
+        "8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|52=20240102-10:15:30|10=0|",
+        "8=FIX.4.4|35=D|11=B|55=AAPL|54=2|38=5|40=2|44=100|52=20240102-10:15:31|10=0|",
+    ];
+    // The rows laid out under the Buy-Side source carry `BUYS`.
+    let laid = batches(
+        super::fixed_codec(Arc::clone(&registry))
+            .with_source("buy")
+            .unwrap()
+            .parse_text_arrow_reader(capture_reader(&lines, 2))
+            .unwrap(),
+    );
+    assert_eq!(laid.len(), 1);
+    let whole = &laid[0];
+    let carrying = || yggdryl::arrow::batch_reader(whole.schema(), [whole.clone()]);
+    let kept: Vec<usize> = (0..whole.num_columns())
+        .filter(|at| whole.schema().field(*at).name() != "msgpluginside")
+        .collect();
+    let projected = whole.project(&kept).unwrap();
+    let stating_none = || yggdryl::arrow::batch_reader(projected.schema(), [projected.clone()]);
+    for (source, stamped) in [
+        (Some("sell"), PluginSide::SellSide),
+        (None, PluginSide::Unknown),
+    ] {
+        let mut codec = super::fixed_codec(Arc::clone(&registry));
+        if let Some(id) = source {
+            codec = codec.with_source(id).unwrap();
+        }
+        let read = |reader| {
+            codec
+                .messages(reader)
+                .collect::<yggdryl::Result<Vec<FixMsg>>>()
+                .unwrap()
+        };
+        let carried = read(carrying());
+        assert_eq!(carried.len(), 2);
+        for message in &carried {
+            assert_eq!(message.msgpluginside(), PluginSide::BuySide, "{source:?}");
+        }
+        let rebuilt = read(stating_none());
+        assert_eq!(rebuilt.len(), 2);
+        for message in &rebuilt {
+            assert_eq!(message.msgpluginside(), stamped, "{source:?}");
+        }
+        // A reader composed over `messages` lays the stamp out again under
+        // a schema holding the column: `lifecycle_arrow_reader` writes the
+        // source's own schema, which the projection left the column out
+        // of, and `format_arrow_reader` under the fixed row states it.
+        let fixed = fix_schema(codec.registry(), "fix").unwrap();
+        let formatted = batches(codec.format_arrow_reader(stating_none(), &fixed).unwrap());
+        let cells = column(&formatted[0], "msgpluginside")
+            .as_any()
+            .downcast_ref::<arrow_array::UInt8Array>()
+            .expect("the enum's uint8 codes");
+        assert_eq!(cells.values().as_ref(), [stamped.code(), stamped.code()]);
+    }
+}
+
 #[test]
 fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() {
     let codec = codec();
@@ -707,7 +779,7 @@ fn a_walk_written_under_a_table_schema_keeps_its_enum_columns_as_their_codes() {
         .next()
         .expect("one walked message")
         .expect("a message");
-    let as_stored = yggdryl::SerieReader::from_arrow_reader(
+    let as_stored = yggdryl::StreamChunkedSerie::from_arrow_reader(
         Some(&stored),
         yggdryl::arrow::batch_reader(rows[0].schema(), rows),
         yggdryl::ArrowCastOptions::new(),
@@ -719,7 +791,10 @@ fn a_walk_written_under_a_table_schema_keeps_its_enum_columns_as_their_codes() {
     for (name, code) in [
         ("state", i32::from(walked_message.get_state().code())),
         ("side", i32::from(walked_message.get_side().code())),
-        ("marketdatakind", i32::from(walked_message.msgcat().code())),
+        (
+            "marketdatakind",
+            i32::from(walked_message.marketdatakind().code()),
+        ),
     ] {
         assert_ne!(code, 0, "{name} states a member");
         let column = walked[0].column_by_name(name).unwrap();
@@ -945,7 +1020,7 @@ fn a_walked_message_names_its_predecessor_and_keeps_its_own_source() {
     let (executions, walked): (Vec<FixMsg>, Vec<FixMsg>) = every
         .iter()
         .cloned()
-        .partition(|message| message.msgcat() == yggdryl::MarketDataKind::Execution);
+        .partition(|message| message.marketdatakind() == yggdryl::MarketDataKind::Execution);
     assert_eq!(walked.len(), 3);
     let identities: Vec<_> = walked.iter().map(Element::get_curruuid).collect();
     assert_eq!(
@@ -2392,7 +2467,7 @@ fn plugin_registry() -> Arc<FixRegistry> {
     let mut registry = registry().as_ref().clone();
     let mut field = DataType::utf8().nullable_field("VenueTag");
     field.as_fix_mut().set_tag(5001).unwrap();
-    field.as_fix_mut().set_branches(["venue"]).unwrap();
+    field.as_fix_mut().set_sources(["venue"]).unwrap();
     registry.insert(field).unwrap();
     Arc::new(registry)
 }
@@ -2432,8 +2507,8 @@ fn a_rows_msgpluginid_fills_its_own_column_and_selects_no_dialect() {
     // it, and the message root says nothing, because a message is not a
     // dictionary member.
     let venue = registry.field_by_tag(5001).unwrap().as_fix();
-    assert!(venue.has_branch("venue"));
-    assert_eq!(venue.branches().collect::<Vec<_>>(), ["venue"]);
+    assert!(venue.has_source("venue"));
+    assert_eq!(venue.sources().collect::<Vec<_>>(), ["venue"]);
 
     // Every way a row can name its plugin - the dictionary's own name, an
     // alias in another case, a plugin no dictionary is named after, and a
@@ -2444,7 +2519,7 @@ fn a_rows_msgpluginid_fills_its_own_column_and_selects_no_dialect() {
     for spelled in ["venue", "VNU", "OMS_X1_TradeCapture", long.as_str()] {
         let message = one_of(&codec, &plugin_line(body, Some(spelled)));
         assert_eq!(
-            message.as_field().as_fix().branches().count(),
+            message.as_field().as_fix().sources().count(),
             0,
             "{spelled}: a message root carries no membership"
         );
@@ -2740,7 +2815,7 @@ fn a_payload_column_spelled_msgpluginid_is_the_payload_and_fills_no_plugin() {
     assert_eq!(streamed.len(), 1);
 
     for message in [&alone, &streamed[0]] {
-        assert_eq!(message.as_field().as_fix().branches().count(), 0);
+        assert_eq!(message.as_field().as_fix().sources().count(), 0);
         assert!(
             message
                 .get_by_tag(yggdryl::MSGPLUGINID_TAG_NAME.0)
@@ -3179,7 +3254,7 @@ fn a_dated_capture_reads_a_retired_spelling_and_the_fact_it_names_is_the_events(
     let quiet = one(&line(b"8=FIX.4.4|35=D|11=A|10=0|", [None, Some("")]));
     assert_eq!(quiet.as_field().name(), "D");
     assert_eq!(
-        quiet.as_field().as_fix().branches().count(),
+        quiet.as_field().as_fix().sources().count(),
         0,
         "a plugin names no dialect: a message is not a dictionary member"
     );
@@ -3203,8 +3278,9 @@ fn bridge_capture() -> (yggdryl::holder::Buffer, yggdryl::media::RecordOptions) 
 }
 
 /// Every record a serie face answered, as the batch it is.
-fn serie_batches(reader: yggdryl::SerieReader) -> Vec<RecordBatch> {
+fn serie_batches(reader: yggdryl::StreamChunkedSerie) -> Vec<RecordBatch> {
     reader
+        .into_chunks()
         .map(|record| {
             record
                 .expect("a record")
@@ -3230,7 +3306,12 @@ fn each_serie_face_yields_exactly_the_rows_its_arrow_door_yields() {
     let codec = codec();
     let (source, options) = bridge_capture();
     let text = || source.read_arrow_reader(&options).expect("a text reader");
-    let read = || source.read_serie(Some(&options)).expect("a text serie");
+    let read = || {
+        yggdryl::StreamChunkedSerie::from_serie(
+            source.read_serie(Some(&options)).expect("a text serie"),
+        )
+        .expect("native record stream")
+    };
 
     // Text rows in, FIX rows out: the root the Arrow door writes, declaring
     // no order, and its batches row for row.
@@ -3277,7 +3358,7 @@ fn each_serie_face_yields_exactly_the_rows_its_arrow_door_yields() {
             .unwrap(),
     );
     let faced = codec
-        .serie_reader(root.clone(), codec.messages(fix_rows()))
+        .chunked_stream(root.clone(), codec.messages(fix_rows()))
         .unwrap();
     assert_eq!(faced.field(), &root);
     assert_eq!(serie_batches(faced), written);
@@ -3307,7 +3388,12 @@ fn the_serie_faces_answer_alike_on_several_threads() {
     let one = codec();
     let four = codec().with_threads(4);
     let (source, options) = bridge_capture();
-    let read = || source.read_serie(Some(&options)).expect("a text serie");
+    let read = || {
+        yggdryl::StreamChunkedSerie::from_serie(
+            source.read_serie(Some(&options)).expect("a text serie"),
+        )
+        .expect("native record stream")
+    };
     let walk = |codec: &FixCodec| {
         serie_batches(
             codec
@@ -3341,7 +3427,7 @@ fn a_walk_states_no_order_its_source_declared() {
     assert!(!walked.schema().metadata().contains_key("SORT:by"));
     assert!(row_count(&batches(walked)) > 0);
 
-    let rows = yggdryl::SerieReader::from_arrow_reader(
+    let rows = yggdryl::StreamChunkedSerie::from_arrow_reader(
         None,
         yggdryl::arrow::batch_reader(schema, declared),
         yggdryl::ArrowCastOptions::new(),
@@ -3360,4 +3446,122 @@ fn a_serie_face_refuses_a_run_before_a_row_is_read() {
     assert!(codec().lifecycle_serie(run.clone()).is_err());
     assert!(codec().market_data_serie(run.clone()).is_err());
     assert!(codec().messages_serie(run).is_err());
+}
+
+/// A bridge line's thread and level are the capture's own columns: no
+/// dictionary field is named for either, so the batch door carries both in
+/// front of every message the row answers for, as the row's own cells -
+/// outside the content, the entries, the wire and the digest - and the
+/// rows read back carry them again.
+#[test]
+fn a_bridge_lines_thread_and_level_ride_its_fix_row_and_fill_nothing() {
+    use yggdryl::IOMedia;
+    let codec = codec();
+    for own in ["msgthreadid", "loglevel"] {
+        assert!(
+            codec.registry().get_field_by_name(own).is_none(),
+            "{own} names no field, which is what keeps it out of every fill"
+        );
+    }
+    let (source, options) = bridge_capture();
+    let text = source.read_arrow_reader(&options).unwrap();
+    let text_schema = text.schema();
+    assert_eq!(
+        text_schema
+            .field_with_name("msgthreadid")
+            .unwrap()
+            .data_type(),
+        &arrow_schema::DataType::Int64
+    );
+    assert_eq!(
+        text_schema.field_with_name("loglevel").unwrap().data_type(),
+        &arrow_schema::DataType::Utf8
+    );
+    let parsed = codec.parse_text_arrow_reader(text).unwrap();
+    let root = yggdryl::Field::from_arrow_schema("fix", &parsed.schema()).unwrap();
+    let body = root.index_of("body").unwrap();
+    assert_eq!(root.index_of("msgthreadid"), Some(body + 1));
+    assert_eq!(root.index_of("loglevel"), Some(body + 2));
+    let tags = yggdryl::fix_column_tags(&root);
+    for own in ["msgthreadid", "loglevel"] {
+        let at = root.index_of(own).unwrap();
+        assert_eq!(tags[at], None, "{own}");
+        assert!(root.fields()[at].is_nullable(), "{own}");
+    }
+    // Every message carries both cells, and neither reaches the wire.
+    let messages: Vec<FixMsg> = codec
+        .messages(parsed)
+        .map(|message| message.expect("a message"))
+        .collect();
+    assert!(!messages.is_empty());
+    for message in &messages {
+        let carried: Vec<&str> = message
+            .carried()
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert!(carried.contains(&"msgthreadid"), "{carried:?}");
+        assert!(carried.contains(&"loglevel"), "{carried:?}");
+        let wire = String::from_utf8(message.into_bytes(b'|')).unwrap();
+        assert!(
+            !wire.contains("msgthreadid") && !wire.contains("loglevel"),
+            "{wire}"
+        );
+    }
+}
+
+/// The Arrow batch door stamps the codec's plugin role as the line doors
+/// do: every message read out of a capture batch under a source states the
+/// source's side as its `msgpluginside`, the fixed row the text reader lays
+/// out carries the cell, and a codec told no source stamps `UKNW`.
+#[test]
+fn the_arrow_batch_door_stamps_the_codecs_plugin_role_on_every_message() {
+    use yggdryl::{FixSource, MSGPLUGINSIDE_TAG_NAME, PluginSide};
+
+    let mut registry = registry().as_ref().clone();
+    assert!(
+        registry.add_source(
+            FixSource::new("ms")
+                .unwrap()
+                .with_pluginside(PluginSide::SellSide)
+        )
+    );
+    let registry = Arc::new(registry);
+    let lines = [
+        "8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|52=20240102-10:15:30|10=0|",
+        "8=FIX.4.4|35=D|11=B|55=AAPL|54=2|38=5|40=2|44=100|52=20240102-10:15:31|10=0|",
+    ];
+    for (source, side) in [
+        (Some("MS"), PluginSide::SellSide),
+        (None, PluginSide::Unknown),
+    ] {
+        let mut codec = super::fixed_codec(Arc::clone(&registry));
+        if let Some(id) = source {
+            codec = codec.with_source(id).expect("a held source");
+        }
+        let messages = codec
+            .parse_arrow_messages(capture_reader(&lines, 1))
+            .expect("a readable capture")
+            .collect::<yggdryl::Result<Vec<FixMsg>>>()
+            .expect("the messages");
+        assert_eq!(messages.len(), 2);
+        for message in &messages {
+            assert_eq!(message.msgpluginside(), side, "{source:?}");
+            assert_eq!(
+                message.get_by_tag(MSGPLUGINSIDE_TAG_NAME.0),
+                Some(Scalar::PluginSide(side))
+            );
+        }
+        let parsed = batches(
+            codec
+                .parse_text_arrow_reader(capture_reader(&lines, 2))
+                .expect("a readable capture"),
+        );
+        assert_eq!(row_count(&parsed), 2);
+        let cells = column(&parsed[0], "msgpluginside")
+            .as_any()
+            .downcast_ref::<arrow_array::UInt8Array>()
+            .expect("the enum's uint8 codes");
+        assert_eq!(cells.values().as_ref(), [side.code(), side.code()]);
+    }
 }

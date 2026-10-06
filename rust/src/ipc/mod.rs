@@ -976,11 +976,14 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         Ok(field)
     }
 
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> crate::Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
         let opened = self.opened;
         match crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options) {
@@ -1006,11 +1009,12 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         }
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
         &mut self,
-        batches: BatchReader,
+        value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> crate::Result<()> {
+        let batches = value.into_arrow_reader();
         self.require_record_options(options)?;
         let opened = self.opened;
         let published = if opened {
@@ -1036,20 +1040,26 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         }
     }
 
-    fn append_arrow_reader(
+    fn append_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> crate::Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
 
-    fn merge_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> crate::Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
         crate::iobase::merge_arrow_reader_default(self, batches, options)
     }
@@ -1164,3 +1174,5 @@ pub mod internals {
         &mut media.handle
     }
 }
+
+crate::media_serie::media_serie!(IpcSerie, Ipc, as_ipc, get_ipc_mut);

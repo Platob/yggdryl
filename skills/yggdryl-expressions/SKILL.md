@@ -25,7 +25,7 @@ to the row tier.
 | `Selector` -> `BoundSelector` | a projection list, a `select` clause | `id, price * 2 as doubled int32` |
 | `Plan` | the sections of one read or write | `upsert into t by (id) select id from s where x > 0` |
 | `Expression` | whichever of those the text is, or a `;` sequence | `where a > 1; select b` |
-| `Records` | native rows streaming out of any of them | - |
+| `StreamSerie` | native rows streaming out of any of them | - |
 | `FieldPath` | one resolved path into a nested schema or value | `order.line[0].price as price` |
 
 Pipeline: parse -> type -> simplify -> **bind(schema)** -> apply (row, batch,

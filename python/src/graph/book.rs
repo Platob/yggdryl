@@ -14,7 +14,7 @@ use yggdryl::{DataType, Scalar, Side as CoreSide};
 
 use super::decimal_scalar;
 use super::market_data::{PyMarketData, event_market_of, market_data_of};
-use super::operation::PyBookRef;
+use super::operation::{PyBookRef, PyExecutionEvent, PyOrderEvent, PyQuoteEvent};
 use crate::expression::filter_from_value;
 use crate::scalar::{PyScalar, from_py};
 use crate::{Failed, Pulled, python_failure, value_error};
@@ -113,14 +113,77 @@ graph_methods!(PyBookEvent, "BookEvent"; [
             .collect())
     }
 
-    /// The orders and quotes applied since the book before this one, each a
-    /// `MarketData`, in the order applied across both sides: what a book
-    /// stating its deltas alone states, and what `with_previous` replays
-    /// over the book before it.
+    /// Every event of the book's instant since the book before this one,
+    /// each a `MarketData`, in the order applied across both sides: the
+    /// orders and quotes applied, and the executions recorded, which rest on
+    /// no side. What a book stating its deltas alone states, and what
+    /// `with_previous` replays over the book before it.
     #[getter]
     fn deltas(&self) -> Vec<PyMarketData> {
         self.inner
             .deltas()
+            .cloned()
+            .map(PyMarketData::from_core)
+            .collect()
+    }
+
+    /// The orders resting on the book - every `alive` entry that is an
+    /// order - each an `OrderEvent`, in `alive`'s order: the bid side's,
+    /// best price first, then the ask side's. Empty on a book stating its
+    /// deltas alone.
+    #[getter]
+    fn ordlive(&self) -> Vec<PyOrderEvent> {
+        self.inner
+            .ordlive()
+            .cloned()
+            .map(PyOrderEvent::from_core)
+            .collect()
+    }
+
+    /// The orders among `deltas`, each an `OrderEvent`, in the order
+    /// applied: every order the book's instant placed, changed or ended.
+    #[getter]
+    fn orddelta(&self) -> Vec<PyOrderEvent> {
+        self.inner
+            .orddelta()
+            .cloned()
+            .map(PyOrderEvent::from_core)
+            .collect()
+    }
+
+    /// The quotes among `deltas`, each a `QuoteEvent`, in the order applied;
+    /// a quote resting since an earlier instant is `alive`'s and not here.
+    #[getter]
+    fn quotes(&self) -> Vec<PyQuoteEvent> {
+        self.inner
+            .quotes()
+            .cloned()
+            .map(PyQuoteEvent::from_core)
+            .collect()
+    }
+
+    /// The executions among `deltas`, each an `ExecutionEvent`, in the order
+    /// applied: recorded at the book's instant, resting on no side.
+    #[getter]
+    fn executions(&self) -> Vec<PyExecutionEvent> {
+        self.inner
+            .executions()
+            .cloned()
+            .map(PyExecutionEvent::from_core)
+            .collect()
+    }
+
+    /// Every other delta - none an order, a quote or an execution - each a
+    /// `MarketData`, in the order applied: `orddelta`, `quotes`,
+    /// `executions` and these partition `deltas`. Empty today, by
+    /// construction: a fold prunes a trade, a batch and a session message,
+    /// refuses an undated order, quote or execution and a nested book by
+    /// kind, and folds a snapshot control into the sides, never among the
+    /// deltas.
+    #[getter]
+    fn events(&self) -> Vec<PyMarketData> {
+        self.inner
+            .events()
             .cloned()
             .map(PyMarketData::from_core)
             .collect()
@@ -285,11 +348,12 @@ impl PyBookIterator {
     /// their own event order; `snapshot_millis == 0` disables grid
     /// snapshots, so a book is emitted whole only at a full refresh.
     ///
-    /// The walk folds orders, quotes and snapshot controls and prunes every
-    /// other input where it is pulled. `filter` - a `Filter`, a `Term`, an
-    /// `Expression` or the text of a predicate over the `marketdata` row -
-    /// narrows it further, bound once here; it never admits an execution or
-    /// a trade. `None` keeps every booked input.
+    /// The walk folds orders, quotes and snapshot controls, records every
+    /// execution among the deltas of its book at its instant, and prunes
+    /// every other input where it is pulled. `filter` - a `Filter`, a
+    /// `Term`, an `Expression` or the text of a predicate over the
+    /// `marketdata` row - narrows it further, bound once here; it never
+    /// admits a trade. `None` keeps every recorded input.
     #[new]
     #[pyo3(signature = (items, snapshot_millis=0, filter=None))]
     fn new(

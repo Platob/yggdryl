@@ -205,9 +205,10 @@ pub trait CodeValue: Value {
     /// whether the text is the one that states no value - is this reading,
     /// which every merge decides by: an [`Isin`](crate::Isin) closing under a
     /// listed prefix is two, closing or listed one, neither zero; a
-    /// [`Cusip`](crate::Cusip), a [`Sedol`](crate::Sedol) and a [`Figi`](crate::Figi)
-    /// one where they close; a [`Country`](crate::Country) one where ISO 3166
-    /// lists it; a [`Ccy`](crate::Ccy) `XXX`, a [`Mic`](crate::Mic) `XXXX` and an
+    /// [`Cusip`](crate::Cusip), a [`Sedol`](crate::Sedol), a [`Figi`](crate::Figi),
+    /// an [`Lei`](crate::Lei) and a [`Dti`](crate::Dti) one where they close;
+    /// a [`Country`](crate::Country) one where ISO 3166 lists it, and a
+    /// [`Bic`](crate::Bic) one where its country is listed or SWIFT's `XK`; a [`Ccy`](crate::Ccy) `XXX`, a [`Mic`](crate::Mic) `XXXX` and an
     /// empty [`Unit`](crate::Unit) zero; a [`Cfi`](crate::Cfi) unclassified zero,
     /// classified one and detailed two; every other code one.
     fn rank(&self) -> u8 {

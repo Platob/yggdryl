@@ -668,3 +668,20 @@ def test_scheme_compatibility_is_native_recursive_and_typed() -> None:
         DataType.from_arrow(pa.timestamp("ns")).into_scheme_compat("spark")
     with pytest.raises(ValueError):
         source.into_scheme_compat("parquet")  # type: ignore[arg-type]
+
+
+def test_an_unsigned_column_stating_bits_is_exchanged_as_the_signed_integer_of_its_width() -> None:
+    digest = Field("digest", "uint64", nullable=False)
+    digest.field_properties.representation = "bits"
+    source = Field(
+        "root",
+        DataType.from_fields((digest, Field("count", "uint64", nullable=False))),
+        nullable=False,
+    )
+
+    for exchanged in (source.into_scheme_compat("iceberg"), source.into_scheme_compat("spark")):
+        assert exchanged.dtype["digest"].dtype == DataType("int64")
+        assert exchanged.dtype["digest"].field_properties.representation == "bits"
+        # A column stating nothing still widens to the twenty digits.
+        assert exchanged.dtype["count"].dtype == DataType.decimal(20, 0)
+    assert source.into_scheme_compat("polars").dtype["digest"].dtype == DataType("uint64")

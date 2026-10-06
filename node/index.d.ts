@@ -273,12 +273,36 @@ export declare class BookEvent {
    */
   aliveOn(side: string | number): Array<JsMarketData>
   /**
-   * The orders and quotes applied since the book before this one, each a
-   * `MarketData`, in the order applied across both sides: what a book
-   * stating its deltas alone states, and what `withPrevious` replays
-   * over the book before it.
+   * Every event of the book's instant since the book before this one,
+   * each a `MarketData`, in the order applied across both sides: the
+   * orders and quotes applied, and the executions recorded, which rest on
+   * no side. What a book stating its deltas alone states, and what
+   * `withPrevious` replays over the book before it.
    */
   deltas(): Array<JsMarketData>
+  /**
+   * The orders resting on the book - every `alive()` entry that is an
+   * order - each an `OrderEvent`, in `alive()`'s order: the bid side's,
+   * best price first, then the ask side's. Empty on a book stating its
+   * deltas alone.
+   */
+  ordlive(): Array<JsOrderEvent>
+  /**
+   * The orders among `deltas()`, each an `OrderEvent`, in the order
+   * applied: every order the book's instant placed, changed or ended.
+   */
+  orddelta(): Array<JsOrderEvent>
+  /**
+   * The quotes among `deltas()`, each a `QuoteEvent`, in the order
+   * applied; a quote resting since an earlier instant is `alive()`'s and
+   * not here.
+   */
+  quotes(): Array<JsQuoteEvent>
+  /**
+   * The executions among `deltas()`, each an `ExecutionEvent`, in the
+   * order applied: recorded at the book's instant, resting on no side.
+   */
+  executions(): Array<JsExecutionEvent>
   /**
    * One limit per price level of the side `side` names - read through
    * the `Side` vocabulary - best first and the one unpriced limit last,
@@ -417,11 +441,11 @@ export declare class BookEvent {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -461,6 +485,11 @@ export declare class BookEvent {
    * none.
    */
   get prevpx(): string | null
+  /**
+   * The strike price of the option the element is about, as
+   * decimal text; `null` where none is stated.
+   */
+  get strikepx(): string | null
   /**
    * The quantity the step before this one settled on; `null`
    * where none.
@@ -1194,6 +1223,10 @@ export declare class ChunkedSerie {
    * apart.
    */
   intoReversed(): ChunkedSerie
+  /** Moves these values into a native scalar-row stream. */
+  intoStream(): JsStreamSerie
+  /** Moves these values into native chunks under optional row and byte bounds. */
+  intoChunkedStream(rowSize?: number | undefined | null, byteSize?: number | undefined | null): JsStreamChunkedSerie
 }
 export type JsChunkedSerie = ChunkedSerie
 
@@ -1707,11 +1740,11 @@ export declare class Execution {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -1751,6 +1784,11 @@ export declare class Execution {
    * none.
    */
   get prevpx(): string | null
+  /**
+   * The strike price of the option the element is about, as
+   * decimal text; `null` where none is stated.
+   */
+  get strikepx(): string | null
   /**
    * The quantity the step before this one settled on; `null`
    * where none.
@@ -1975,11 +2013,11 @@ export declare class ExecutionEvent {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -2019,6 +2057,11 @@ export declare class ExecutionEvent {
    * none.
    */
   get prevpx(): string | null
+  /**
+   * The strike price of the option the element is about, as
+   * decimal text; `null` where none is stated.
+   */
+  get strikepx(): string | null
   /**
    * The quantity the step before this one settled on; `null`
    * where none.
@@ -2903,7 +2946,12 @@ export declare class FixCodec {
    * unstated; `isinRegistry` is the `IsinRegistry` every `lifecycle`
    * learns into and fills from, shared so a walk run after another starts
    * from what the first learned, each walk learning into its own when
-   * unstated.
+   * unstated; `source` is the id of the dictionary's source the codec
+   * reads under, whose catalog entry's plugin side every message it
+   * builds states as its `msgpluginside` - a row-header capture or a row
+   * cell named `msgpluginside` being the row's word over it - resolved
+   * once and refused when the catalog holds no such id, `UKNW` on every
+   * message when unstated.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /**
@@ -2934,6 +2982,12 @@ export declare class FixCodec {
    * or `null` where no pin fills silence.
    */
   get direction(): string | null
+  /**
+   * The source this codec reads under, folded: the dictionary's
+   * catalog entry whose plugin side every message it builds states as
+   * its `msgpluginside`; `null` where none was named.
+   */
+  get source(): string | null
   /**
    * The raw bytes one Arrow batch targets.
    *
@@ -3307,14 +3361,17 @@ export declare class FixMsg {
   /**
    * The business category the message's type files under, as the
    * `marketdatakind` member's stored name - `ORDR`, `QUOT`, `EXEC`,
-   * `TRAD`, `BOOK` - and `UNKN` where it files none.
+   * `TRAD`, `BOOK` - and `UKNW` where it files none.
    */
-  get msgcat(): string
+  get marketdatakind(): string
+  /** The role of the plugin whose session produced this message. */
+  get msgpluginside(): string
   /**
-   * The option strike price the message identifies - `StrikePrice(202)`
-   * read off the dictionary field - as decimal text, or `null`.
+   * The strike price of the option the message identifies - its market
+   * fact `strikepx`, derived from `StrikePrice(202)` - as decimal text, or
+   * `null`.
    */
-  get strikeprice(): string | null
+  get strikepx(): string | null
   /**
    * This message's own `UUIDv7` identity, ordered by millisecond and
    * sequence with a content payload seeded by its cross hash, as
@@ -3478,12 +3535,12 @@ export declare class FixMsg {
   get unit(): string
   /**
    * The type of its kind the message is, as the `marketdatatype` member's
-   * stored name: `UNKN` where none.
+   * stored name: `UKNW` where none.
    */
   get marketdatatype(): string
   /**
    * The side, as the `side` member's four-letter code: the one stated, else
-   * `UNKN` - never `null`.
+   * `UKNW` - never `null`.
    */
   get side(): string
   /** The currency; `XXX` where none is stated. */
@@ -3638,7 +3695,7 @@ export declare class FixMsg {
    *
    * A key reaching no field and no child, or a value the field refuses,
    * throws the core's refusal and leaves the message as it was. So does a
-   * key reaching the capture's own column - `sourceurl` (65049), by tag
+   * key reaching the capture's own column - `sourceurl` (65051), by tag
    * or by name: a message holds no fact for it, and a row child would put
    * it on the wire.
    */
@@ -3808,11 +3865,14 @@ export declare class FixRegistry {
    * Read an Ullink `CBlock` into a dictionary, with what it declared.
    *
    * Answers the dictionary and the message roots the file spelled out, in
-   * the order it spelled them. `dialect` is the membership every field,
+   * the order it spelled them. `dialect` is the source id every field,
    * group, component and message the file produces is stamped with, on
-   * its `FIX:branches` - standard tags included, since membership means
-   * the dictionary speaks it; with none named nothing is stamped. A
-   * dialect that is empty or carries a comma is refused.
+   * its `FIX:sources` - standard tags included, since membership means
+   * the dictionary speaks it - and the registry holds its catalog entry:
+   * the file's name and the plugin side the root's `type` states. With
+   * none named nothing is stamped and no entry is made. A dialect that is
+   * empty or holds a quote, a backslash or a control character is
+   * refused.
    *
    * A file this cannot be read from throws the native sentence whole: the
    * byte the reader stopped at, what was expected, what arrived, and the
@@ -4051,7 +4111,7 @@ export declare class FixRegistry {
    * The set is filed under the folded name, which is the stem a store
    * writes it as. An empty array removes the set, and one a held field
    * still reads by is refused: a field may not be left naming a
-   * vocabulary nothing states. `msgcatcodeset` is intrinsic: its stable
+   * vocabulary nothing states. `marketdatakindcodeset` is intrinsic: its stable
    * integer market operation IDs cannot be replaced or removed.
    */
   setCodeset(name: string, codes: Array<FixCode>): void
@@ -4061,7 +4121,7 @@ export declare class FixRegistry {
    * Keyed by wire value: a placeholder name yields to a real one, every
    * surviving spelling is kept as an alias, and a set the dictionary did
    * not hold arrives whole. So a venue's statement of a vocabulary
-   * enriches the one held rather than replacing it. `msgcatcodeset` is
+   * enriches the one held rather than replacing it. `marketdatakindcodeset` is
    * intrinsic and refuses any merge that would change its stable integer
    * IDs.
    */
@@ -4071,18 +4131,39 @@ export declare class FixRegistry {
    *
    * A set no field reads by leaves; one a held field still names is
    * refused, naming the field. A name nothing is filed under answers
-   * `null`. `msgcatcodeset` is intrinsic and cannot be removed.
+   * `null`. `marketdatakindcodeset` is intrinsic and cannot be removed.
    */
   removeCodeset(name: string): Array<FixCode> | null
   /**
-   * The distinct dictionaries any field or definition names on its
-   * `FIX:branches`, sorted.
+   * The distinct source ids any field or definition names on its
+   * `FIX:sources`, folded, sorted.
    *
    * Membership is provenance and this is its listing; nothing resolves
-   * through it. A registry holding only the specification's own fields
-   * answers an empty array.
+   * through it. The ids fields state, not the catalog `sources()`
+   * answers: an entry no field names is not listed here, and an id no
+   * entry holds is. A registry holding only the specification's own
+   * fields answers an empty array.
    */
   dialects(): Array<string>
+  /**
+   * The sources catalog, in id order: one plain object per source this
+   * dictionary was built from - a `CBlock` folded in, a dialect a
+   * definition was created under - holding what is known of it once,
+   * `{ id, file?, pluginside }`. A store writes it as `sources.json`.
+   */
+  sources(): Array<FixSourceView>
+  /**
+   * Record one source in the catalog, answering whether it arrived.
+   *
+   * `id` is held to the id grammar - a non-empty word holding no quote,
+   * backslash or control character - and folded to ASCII lowercase. An id
+   * already held, under the same fold, keeps its entry and takes only
+   * what it lacked: a file where it stated none, a plugin side where it
+   * stated `UKNW`; two stated sides that disagree keep the held one.
+   * Nothing here touches a field: a field names its sources itself, on
+   * `field.fix.sources`.
+   */
+  addSource(id: string, options?: FixSourceOptions | undefined | null): boolean
   /**
    * Every field, lazily: the scalar fields in ascending identifier order,
    * then the components and the groups in the catalog's name order.
@@ -4104,8 +4185,9 @@ export declare class FixRegistry {
   /** A one-line summary: the dictionary itself is reached by iterating it. */
   toString(): string
   /**
-   * A complete native catalog snapshot: the fields, the components and
-   * the groups.
+   * A complete native catalog snapshot: the code sets, the sources
+   * catalog where it holds an entry, the fields, the components and the
+   * groups.
    */
   toJSON(): any
   /** Load a complete native catalog snapshot. */
@@ -4778,24 +4860,29 @@ export declare class IcebergTable {
    * A row whose key is already stored updates it and a row whose key is not
    * appends. Only the files whose recorded bounds could hold an incoming key
    * are read and rewritten - the rest are carried into the new snapshot
-   * untouched - so an upsert costs the files it can actually change. A
-   * non-empty `mergeBy` is required because nothing else identifies a
-   * row.
+   * untouched - so an upsert costs the files it can actually change.
+   *
+   * `mergeBy` left out, or `null`, matches on the table's own key: its
+   * identity partition columns, then the columns its schema's
+   * `identifier-field-ids` name. A partitioned table stating no
+   * identifier replaces the partitions the rows fall in, and an
+   * unpartitioned one stating none is refused naming `$.merge_by`.
    *
    * `safe` decides what a cast that cannot convert a value does: the
    * default nulls it, and `false` throws instead. `options` configures this
    * one write, exactly as on [`append`](Self::append).
    */
-  merge(batches: JsBatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  merge(batches: JsBatchReader, mergeBy?: Selector | Term | string | Array<Term | string> | undefined | null, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /**
-   * Merge `batches` into the rows `filters` selects, on `mergeBy`.
+   * Merge `batches` into the rows `filters` selects, on `mergeBy`, else on
+   * the table's own key, as [`merge`](Self::merge).
    *
    * [`merge`](Self::merge) narrowed to a part of the table first: the
    * filters decide which files are candidates at all, and the match-key
    * statistics then decide which of those are actually read. `options`
    * configures this one write, exactly as on [`append`](Self::append).
    */
-  mergeWhere(filters: ScanFilters | undefined | null, batches: JsBatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  mergeWhere(filters: ScanFilters | undefined | null, batches: JsBatchReader, mergeBy?: Selector | Term | string | Array<Term | string> | undefined | null, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /** Add a schema, make it current, and write a new metadata document. */
   evolveSchema(schema: Field): number
   /**
@@ -5201,11 +5288,19 @@ export declare class IOBase {
    * Return whether anything is here now, as `fs.existsSync`.
    *
    * Each role answers its own question - a folder whether its container
-   * is there, a file whether its leaf is - so a folder `mkdir` made and
-   * `remove` deleted answers `false`.
+   * is there, a file whether its leaf is, a glob whether its pattern
+   * selects an entry (its listing, up to the first match) - so a folder
+   * `mkdir` made and `remove` deleted answers `false`.
    */
   exists(): boolean
-  /** Return whether this resource contains others, as `Stats.isDirectory`. */
+  /**
+   * Return whether this resource contains others - the role it has, not
+   * whether it is there.
+   *
+   * A glob or a name ending in `/` is a container by its spelling and asks
+   * nothing, and a removed folder's handle still answers `true`; `exists`
+   * is the presence question.
+   */
   isDir(): boolean
   /** Return whether this resource holds bytes, as `Stats.isFile`. */
   isFile(): boolean
@@ -5489,7 +5584,7 @@ export declare class IOBase {
    */
   readArrowReader(options?: JsRecordOptions | undefined | null): JsBatchReader
   /**
-   * Read this resource's rows as a `SerieReader`, one record serie per
+   * Read this resource's rows as a `StreamChunkedSerie`, one record serie per
    * batch.
    *
    * Absent options are the handle's own: the encoding its media type
@@ -5498,7 +5593,7 @@ export declare class IOBase {
    * its rows parse into, of which a declared field is the only option it
    * reads.
    */
-  readSerie(options?: JsRecordOptions | undefined | null): JsSerieReader
+  readSerie(options?: JsRecordOptions | undefined | null): JsSerie
   /**
    * Decode this resource into typed text lines.
    *
@@ -5534,12 +5629,15 @@ export declare class IOBase {
    */
   appendArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): JsIOResult
   /**
-   * Merge every incoming row by `options.mergeBy`.
+   * Merge every incoming row by `options.mergeBy`, else by the
+   * destination's own key.
    *
-   * A non-empty match key is required. The core keeps the incoming reader
-   * streaming, applies `options.field` once, and publishes through the
-   * implementor's overwrite hook without casting the shaped rows twice.
-   * Answers the rows the write read, wrote and skipped.
+   * A non-empty match key is required where the destination states none
+   * of its own; an Iceberg table's is its identity partition columns, then
+   * its identifier columns. The core keeps the incoming reader streaming,
+   * applies `options.field` once, and publishes through the implementor's
+   * overwrite hook without casting the shaped rows twice. Answers the rows
+   * the write read, wrote and skipped.
    */
   mergeArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): JsIOResult
   /** Decode this location as a host-independent forward-slash path. */
@@ -5630,7 +5728,8 @@ export type JsIOResult = IOResult
 
 /**
  * A table of instruments keyed by ISIN - each row the instrument's CFI
- * code, its country of issue, its currency pair, its market, its ticker
+ * code, its country of issue, its currency pair, the instrument it is
+ * written on, its market, its ticker
  * and trading currency and one code per `SecurityIDSource(22)` type - that
  * a lifecycle learns into and fills from, and a parse fills from. Bound to
  * the store it was loaded from, committed back only where it moved.
@@ -5644,6 +5743,14 @@ export declare class IsinRegistry {
    * ISIN past the bound and loading refuses it.
    */
   constructor(maxInstruments?: number | undefined | null)
+  /**
+   * The registry's row: the required struct `isinregistry` every row is
+   * laid out as - `isin`, `updunix`, `cficode`, `countrycode`,
+   * `forexcode`, `underlyingisin`, `eusipacode`, `miccode`, `ticker`, `currency`, then
+   * one column per `SecurityIDSource(22)` type but the ISIN: forty-two
+   * columns - what a table holding the registry is created from.
+   */
+  static field(): Field
   /**
    * A registry bound to the store `location` names and loaded from it:
    * a URL of any scheme this build holds, a path or an `IOBase` - an
@@ -5758,6 +5865,54 @@ export declare class IsinRegistry {
   toString(): string
 }
 export type JsIsinRegistry = IsinRegistry
+
+/** One immutable key context and its native payload. */
+export declare class KeySerie {
+  /** The complete field: key columns followed by payload columns. */
+  get field(): Field
+  /** The field of the explicit key context. */
+  get keyField(): Field
+  /** The payload field, without columns moved into the key. */
+  get serieField(): Field
+  /** Source paths for moved columns; computed and external keys have no path. */
+  get keyPaths(): Array<JsFieldPath | undefined | null>
+  /** The key as a scalar record in key-field order. */
+  get key(): JsScalar
+  /** The absolute start of an adjacent window, absent for a partition or gather. */
+  get rownum(): number | null
+  /** The context and payload as separate native values. */
+  intoParts(): [JsScalar, JsSerie]
+  /** The bytes currently held, without pulling a stream. */
+  memorySize(): number
+  /** Moves these values into a native scalar-row stream. */
+  intoStream(): StreamSerie
+  /** Moves these values into native chunks under optional row and byte bounds. */
+  intoChunkedStream(rowSize?: number | undefined | null, byteSize?: number | undefined | null): JsStreamChunkedSerie
+}
+export type JsKeySerie = KeySerie
+
+/** A repeatable collection of native key items sharing one layout. */
+export declare class KeySeries {
+  /** The complete field: key columns followed by payload columns. */
+  get field(): Field
+  /** The field of the explicit key context. */
+  get keyField(): Field
+  /** The payload field, without columns moved into the key. */
+  get serieField(): Field
+  /** Source paths for moved columns; computed and external keys have no path. */
+  get keyPaths(): Array<JsFieldPath | undefined | null>
+  /** The number of held key items. */
+  get length(): number
+  /** The held item at this position, absent outside the collection. */
+  get(index: number): KeySerie | null
+  /** The bytes currently held, without pulling a stream. */
+  memorySize(): number
+  /** Moves these values into a native scalar-row stream. */
+  intoStream(): StreamSerie
+  /** Moves these values into native chunks under optional row and byte bounds. */
+  intoChunkedStream(rowSize?: number | undefined | null, byteSize?: number | undefined | null): JsStreamChunkedSerie
+}
+export type JsKeySeries = KeySeries
 
 /**
  * The entries of one listing, one at a time.
@@ -5899,7 +6054,7 @@ export declare class MarketData {
    * The market data category of this value's leaf, as the
    * `marketdatakind` member's stored name: an order `ORDR`, a quote
    * `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a snapshot
-   * `BOOK`, a FIX message its own `msgcat`.
+   * `BOOK`, a FIX message the category its dictionary files it under.
    */
   get marketdatakind(): string
   /** Whether the leaf is one of the six dated ones. */
@@ -5941,13 +6096,13 @@ export declare class MarketData {
   static fromArrowReader(reader: JsBatchReader): JsMarketDataRowIterator
   /**
    * The deltas of the books `source` holds - a `Serie`, a `ChunkedSerie`
-   * or a `SerieReader`, consumed - laid out as `marketdata` rows in book
-   * order, as a `SerieReader`: every event each book states among its
+   * or a `StreamChunkedSerie`, consumed - laid out as `marketdata` rows in book
+   * order, as a `StreamChunkedSerie`: every event each book states among its
    * deltas, of `kind` where one is named (`'ORDR'`, `'QUOT'`, `'EXEC'`,
    * any spelling the kind reads), every kind otherwise; a row that is no
    * book is refused by its kind where it is read.
    */
-  static deltasSerie(source: JsSerie | ChunkedSerie | JsSerieReader, kind?: string | undefined | null): JsSerieReader
+  static deltasSerie(source: JsSerie | ChunkedSerie | JsStreamChunkedSerie, kind?: string | undefined | null): JsStreamChunkedSerie
   /**
    * The plan one named view is over a `marketdata` stream - `orders`,
    * `quotes`, `executions`, `trades`, `books`, or the
@@ -6009,11 +6164,11 @@ export declare class MarketData {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -6053,6 +6208,11 @@ export declare class MarketData {
    * none.
    */
   get prevpx(): string | null
+  /**
+   * The strike price of the option the element is about, as
+   * decimal text; `null` where none is stated.
+   */
+  get strikepx(): string | null
   /**
    * The quantity the step before this one settled on; `null`
    * where none.
@@ -6339,7 +6499,7 @@ export declare class MsgType {
    * `marketdatakind` member's stored name, or `null` for an unclassified
    * custom definition.
    */
-  get msgcat(): string | null
+  get marketdatakind(): string | null
   /** The native canonical name. */
   get name(): string
   /** The complete wire message code. */
@@ -6608,11 +6768,11 @@ export declare class Order {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -6652,6 +6812,11 @@ export declare class Order {
    * none.
    */
   get prevpx(): string | null
+  /**
+   * The strike price of the option the element is about, as
+   * decimal text; `null` where none is stated.
+   */
+  get strikepx(): string | null
   /**
    * The quantity the step before this one settled on; `null`
    * where none.
@@ -6876,11 +7041,11 @@ export declare class OrderEvent {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -6920,6 +7085,11 @@ export declare class OrderEvent {
    * none.
    */
   get prevpx(): string | null
+  /**
+   * The strike price of the option the element is about, as
+   * decimal text; `null` where none is stated.
+   */
+  get strikepx(): string | null
   /**
    * The quantity the step before this one settled on; `null`
    * where none.
@@ -7340,30 +7510,46 @@ export declare class ProtocolField {
    */
   removeTerm(): string | null
   /**
-   * The dictionaries that contributed this field, on the `fix` view.
+   * What crosses when a same-width integer of the other signedness meets
+   * this integer column, on the `fieldProperties` view: `'bits'` where it
+   * states them, `'value'` - the default - otherwise. Every other view
+   * refuses the property.
+   */
+  get representation(): 'value' | 'bits'
+  /**
+   * State what crosses when a same-width integer of the other signedness
+   * meets this integer column; `'value'` or `null` removes the
+   * declaration, and `'bits'` on a column that is no integer is refused,
+   * leaving the field unchanged.
+   */
+  set representation(representation: 'value' | 'bits' | null)
+  /**
+   * The sources that contributed this field, on the `fix` view.
    *
-   * `FIX:branches` read as an array: sorted, ASCII lowercase, and empty
+   * `FIX:sources` read as an array: sorted, ASCII lowercase, and empty
    * where the field states none - every field the specification alone
-   * defines. Membership is provenance a caller filters on; no lookup
-   * consults it. Assigning an array replaces the list - folded once,
-   * deduplicated, sorted - and an empty array removes the property; a
-   * name that is empty or carries a comma is refused and the field is
-   * left unchanged.
+   * defines. Each id names an entry of the registry's sources catalog
+   * (`FixRegistry.sources()`), where the file behind it is recorded once.
+   * Membership is provenance a caller filters on; no lookup consults it.
+   * Assigning an array replaces the list - folded once, deduplicated,
+   * sorted - and an empty array removes the property; an id that is
+   * empty or holds a quote, a backslash or a control character is
+   * refused and the field is left unchanged.
    */
-  get branches(): Array<string>
-  /** Record the dictionaries that contributed this field. */
-  set branches(values: Array<string>)
+  get sources(): Array<string>
+  /** Record the sources that contributed this field. */
+  set sources(values: Array<string>)
   /**
-   * Add one dictionary to those that contributed this field.
+   * Add one source to those that contributed this field.
    *
-   * Idempotent under the fold: a name already listed is listed once.
+   * Idempotent under the fold: an id already listed is listed once.
    */
-  addBranch(name: string): void
+  addSource(id: string): void
   /**
-   * Whether `name` is one of the dictionaries that contributed this
-   * field, ASCII case folded.
+   * Whether `id` is one of the sources that contributed this field,
+   * under the crate's one fold.
    */
-  hasBranch(name: string): boolean
+  hasSource(id: string): boolean
   /**
    * This field's identity, on the `fix` view.
    *
@@ -7627,11 +7813,11 @@ export declare class Quote {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -7671,6 +7857,11 @@ export declare class Quote {
    * none.
    */
   get prevpx(): string | null
+  /**
+   * The strike price of the option the element is about, as
+   * decimal text; `null` where none is stated.
+   */
+  get strikepx(): string | null
   /**
    * The quantity the step before this one settled on; `null`
    * where none.
@@ -7895,11 +8086,11 @@ export declare class QuoteEvent {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -7939,6 +8130,11 @@ export declare class QuoteEvent {
    * none.
    */
   get prevpx(): string | null
+  /**
+   * The strike price of the option the element is about, as
+   * decimal text; `null` where none is stated.
+   */
+  get strikepx(): string | null
   /**
    * The quantity the step before this one settled on; `null`
    * where none.
@@ -8442,22 +8638,6 @@ export declare class RecordOptions {
   toString(): string
 }
 export type JsRecordOptions = RecordOptions
-
-/**
- * Native rows streaming out of an expression, each a `Scalar` sequence in
- * the order of `field`.
- */
-export declare class Records {
-  /** The struct root every row is shaped under. */
-  get field(): JsField
-  /** The remaining rows as a native batch reader, batched lazily. */
-  intoArrowReader(): JsBatchReader
-  /** The records a native batch reader holds, one row at a time. */
-  static fromArrowReader(reader: JsBatchReader): Records
-  /** The struct root the rows are shaped under, as text. */
-  toString(): string
-}
-export type JsRecords = Records
 
 /**
  * One HTTP request, and the resource its URL names.
@@ -9035,6 +9215,10 @@ export declare class Serie {
    * and a root declaring none.
    */
   declaredOrder(): Array<string> | null
+  /** Moves these values into a native scalar-row stream. */
+  intoStream(): StreamSerie
+  /** Moves these values into native chunks under optional row and byte bounds. */
+  intoChunkedStream(rowSize?: number | undefined | null, byteSize?: number | undefined | null): StreamChunkedSerie
 }
 export type JsSerie = Serie
 
@@ -9051,100 +9235,6 @@ export declare class SerieIterator {
 
 }
 export type JsSerieIterator = SerieIterator
-
-/**
- * One record serie per batch of a native `BatchReader`, each cast by the
- * one plan the core compiled from the stream's schema, or the one record
- * serie a held column is.
- *
- * The reader is a stream, read once: iterating it, `cast` and
- * `intoArrowReader` each consume it, and a batch's failure surfaces at the
- * pull that read it.
- */
-export declare class SerieReader {
-  /** The record every yielded serie is typed by. */
-  get field(): Field
-  /**
-   * The values constant over every row this reader yields, where it is a
-   * window `windowBy` cut: one struct value, read with `Scalar`'s own
-   * accessors - the cells of the record the windowed reader states but
-   * `windownum` and `rownum`, the key cells, `windownum` (the window's
-   * place, from 0) and `rownum` (the number its first row has in the
-   * stream). `null` for every other reader. Kept once the reader is
-   * consumed; never a column, and dropped at the Arrow face.
-   */
-  get staticValues(): Scalar | null
-  /**
-   * The bytes the records this reader holds occupy in memory: the held
-   * records still to yield, or the batch a window's walk stands in; a
-   * stream holds no landed batch between pulls, and a consumed reader
-   * nothing, and both answer zero.
-   */
-  residentSize(): number
-  /**
-   * Whether every record this reader holds lies in a spill file: held
-   * records only, never a stream, which holds none.
-   */
-  isSpilled(): boolean
-  /**
-   * Move the records this reader holds to disk under the bound `options`
-   * states - the process default where it is `undefined` or `null` -
-   * each held record as `Serie.spill` moves it; a stream holds none and
-   * is untouched. Refused once the reader was taken.
-   */
-  spill(options?: JsSpillOptions | undefined | null): void
-  /**
-   * The stream's batches reconciled to the root as a native
-   * `BatchReader`, never landed; the reader is consumed.
-   */
-  intoArrowReader(): BatchReader
-}
-export type JsSerieReader = SerieReader
-
-/**
- * The partitions of a stream, one `[key, rows]` pair as each closes: the
- * key the record of the cells `by` computes, the rows a `ChunkedSerie`
- * under the partitioned reader's root, in the order they arrived.
- *
- * Each partition is yielded as soon as it closes. Past `maxOpen` open
- * partitions, the ones of the lowest keys close, so a stream arriving in
- * key order closes each once it has been read whole; when the stream ends,
- * every partition still open closes in ascending key order. A clustered
- * stream closes each partition as soon as another key arrives, in arrival
- * order. A key arriving again after its partition closed is yielded again,
- * as a new piece under the same key. The open partitions are held under the
- * process spill bound; a yielded partition's rows are the caller's.
- */
-export declare class SerieReaderPartitions {
-  /**
-   * The record root every partition's rows are held under: the
-   * partitioned reader's own.
-   */
-  get field(): Field
-}
-export type JsSerieReaderPartitions = SerieReaderPartitions
-
-/**
- * The windows of a stream, one lazy `SerieReader` per run of equal adjacent
- * keys, in the order they arrive.
- *
- * Every window is pulled through one walk holding at most one batch of the
- * stream, so windows are read in order: taking the next window drops the
- * unread rows of the one before, and a window read after the walk passed
- * rows of it refuses once, naming it. Each window states its record as its
- * `staticValues`.
- */
-export declare class SerieReaderWindows {
-  /** The record root every window yields: the windowed reader's own. */
-  get field(): Field
-  /**
-   * The record every window's `staticValues` is typed by, known before
-   * the first pull: the windowed reader's own but `windownum` and
-   * `rownum`, the key cells, `windownum` and `rownum`.
-   */
-  get staticField(): Field
-}
-export type JsSerieReaderWindows = SerieReaderWindows
 
 /**
  * An HTTP/1.1 server hosting `IOBase` handles and fixed answers, answering
@@ -9459,11 +9549,11 @@ export declare class SnapshotEvent {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -9503,6 +9593,11 @@ export declare class SnapshotEvent {
    * none.
    */
   get prevpx(): string | null
+  /**
+   * The strike price of the option the element is about, as
+   * decimal text; `null` where none is stated.
+   */
+  get strikepx(): string | null
   /**
    * The quantity the step before this one settled on; `null`
    * where none.
@@ -9680,6 +9775,49 @@ export declare class SpillOptions {
 }
 export type JsSpillOptions = SpillOptions
 
+/**
+ * One record serie per batch of a native `BatchReader`, each cast by the
+ * one plan the core compiled from the stream's schema, or the one record
+ * serie a held column is.
+ *
+ * The reader is a stream, read once: iterating it, `cast` and
+ * `intoArrowReader` each consume it, and a batch's failure surfaces at the
+ * pull that read it.
+ */
+export declare class StreamChunkedSerie {
+  /** The record every yielded serie is typed by. */
+  get field(): Field
+  /**
+   * The bytes the records this reader holds occupy in memory: the held
+   * records still to yield, or the batch a window's walk stands in; a
+   * stream holds no landed batch between pulls, and a consumed reader
+   * nothing, and both answer zero.
+   */
+  residentSize(): number
+  /**
+   * Whether every record this reader holds lies in a spill file: held
+   * records only, never a stream, which holds none.
+   */
+  isSpilled(): boolean
+  /**
+   * Move the records this reader holds to disk under the bound `options`
+   * states - the process default where it is `undefined` or `null` -
+   * each held record as `Serie.spill` moves it; a stream holds none and
+   * is untouched. Refused once the reader was taken.
+   */
+  spill(options?: JsSpillOptions | undefined | null): void
+  /**
+   * The stream's batches reconciled to the root as a native
+   * `BatchReader`, never landed; the reader is consumed.
+   */
+  intoArrowReader(): BatchReader
+  /** Moves these values into a native scalar-row stream. */
+  intoStream(): StreamSerie
+  /** Moves these values into native chunks under optional row and byte bounds. */
+  intoChunkedStream(rowSize?: number | undefined | null, byteSize?: number | undefined | null): StreamChunkedSerie
+}
+export type JsStreamChunkedSerie = StreamChunkedSerie
+
 /** Writes each record as one line to standard error or standard output. */
 export declare class StreamHandler {
   /** A handler on `stream`: `stderr`, the default, or `stdout`. */
@@ -9705,6 +9843,45 @@ export declare class StreamHandler {
   close(): void
 }
 export type JsStreamHandler = StreamHandler
+
+/** A lazy, single-use walk of native key items. */
+export declare class StreamKeySerie {
+  /** The complete field: key columns followed by payload columns. */
+  get field(): Field
+  /** The field of the explicit key context. */
+  get keyField(): Field
+  /** The payload field, without columns moved into the key. */
+  get serieField(): Field
+  /** Source paths for moved columns; computed and external keys have no path. */
+  get keyPaths(): Array<JsFieldPath | undefined | null>
+  /** Moves these values into a native scalar-row stream. */
+  intoStream(): StreamSerie
+  /** Moves these values into native chunks under optional row and byte bounds. */
+  intoChunkedStream(rowSize?: number | undefined | null, byteSize?: number | undefined | null): JsStreamChunkedSerie
+}
+export type JsStreamKeySerie = StreamKeySerie
+
+/**
+ * Native rows streaming out of an expression, each a `Scalar` sequence in
+ * the order of `field`.
+ */
+export declare class StreamSerie {
+  /** The struct root every row is shaped under. */
+  get field(): JsField
+  /** The remaining rows as a native batch reader, batched lazily. */
+  intoArrowReader(): JsBatchReader
+  /** The records a native batch reader holds, one row at a time. */
+  static fromArrowReader(reader: JsBatchReader): StreamSerie
+  /** The struct root the rows are shaped under, as text. */
+  toString(): string
+  /** Collects the remaining rows in one native call and consumes the stream. */
+  collect(): Array<JsScalar>
+  /** Moves these values into a native scalar-row stream. */
+  intoStream(): StreamSerie
+  /** Moves these values into native chunks under optional row and byte bounds. */
+  intoChunkedStream(rowSize?: number | undefined | null, byteSize?: number | undefined | null): JsStreamChunkedSerie
+}
+export type JsStreamSerie = StreamSerie
 
 /**
  * The enum a string field's values name: one value per member name.
@@ -10600,11 +10777,11 @@ export declare class TradeEvent {
   get unit(): string
   /**
    * The type of its kind this is, as the `marketdatatype` member's
-   * stored name; `UNKN` where none, never `null`.
+   * stored name; `UKNW` where none, never `null`.
    */
   get marketdatatype(): string
   /**
-   * The side, as the `side` member's four-letter code; `UNKN` where
+   * The side, as the `side` member's four-letter code; `UKNW` where
    * none, never `null`.
    */
   get side(): string
@@ -10644,6 +10821,11 @@ export declare class TradeEvent {
    * none.
    */
   get prevpx(): string | null
+  /**
+   * The strike price of the option the element is about, as
+   * decimal text; `null` where none is stated.
+   */
+  get strikepx(): string | null
   /**
    * The quantity the step before this one settled on; `null`
    * where none.
@@ -11380,20 +11562,6 @@ export declare class WindowSerie {
    * `window` was called on.
    */
   get serie(): Serie
-  /**
-   * The values constant over this window's rows, where `windowBy` lent
-   * it: one struct value, read with `Scalar`'s own accessors - the cells
-   * of the record the windowed window states but `windownum` and
-   * `rownum`, the key cells as the key's projections name them,
-   * `windownum` (the window's place among the windows, from 0) and
-   * `rownum` (the number its first row has in what was windowed,
-   * absolute through windows of windows, `null` where `sorted` gathered
-   * the rows out of their order) - read off the rows as they stood when
-   * `windowBy` cut them. `null` for every other window: one `window`
-   * takes, and a narrower one. Never the window's identity, and never
-   * carried by `intoSerie` or an Arrow array of it.
-   */
-  get staticValues(): Scalar | null
   /** The field every row is typed by, or `null` for a window over a run. */
   get field(): Field | null
   /**
@@ -11442,6 +11610,10 @@ export declare class WindowSerie {
   toString(): string
   /** Swap window rows `left` and `right`. */
   swap(left: number, right: number): void
+  /** Moves these values into a native scalar-row stream. */
+  intoStream(): StreamSerie
+  /** Moves these values into native chunks under optional row and byte bounds. */
+  intoChunkedStream(rowSize?: number | undefined | null, byteSize?: number | undefined | null): StreamChunkedSerie
 }
 export type JsWindowSerie = WindowSerie
 
@@ -11914,6 +12086,16 @@ export interface FixCaptureView {
    * it.
    */
   msgpluginid: string | null
+  /**
+   * The role of the FIX plugin whose session produced the message, as
+   * the `pluginside` member's stored name: `BUYS` for a Buy-Side plugin,
+   * `SELL` for a Sell-Side one, `UKNW` where the codec read under no
+   * source or one stating no role - never `null`. The codec stamps it from
+   * the source it reads under (`FixCodec`'s `source`), and a row-header
+   * capture or a row cell named `msgpluginside` is the row's word over
+   * it; also `byTag(65042)`.
+   */
+  msgpluginside: string
   /** The message context a bridge handled the line in. */
   msgctxid: string | null
   /** The session instance a bridge handled the line on. */
@@ -11922,19 +12104,19 @@ export interface FixCaptureView {
    * The session event the message was delivered as - `MsgType`,
    * `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
    * `8:e7256476:9effef3e6a:1094` - where all four are stated; also
-   * `byTag(65043)`.
+   * `byTag(65046)`.
    */
   msgsesseventid: string | null
   /**
    * The plugin the message came into a bridge through, as the bridge's
    * log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-   * (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65040)`.
+   * (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65043)`.
    */
   msgoriginator: string | null
   /**
    * The conversation a bridge filed the message under - a
    * `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
-   * of its log line; also `byTag(65044)`.
+   * of its log line; also `byTag(65047)`.
    */
   conversationid: string | null
 }
@@ -12043,6 +12225,14 @@ export interface FixCodecOptions {
    * learned; each walk learns into its own, starting empty, when unstated.
    */
   isinRegistry?: IsinRegistry
+  /**
+   * The id of the dictionary's source this codec reads under, folded:
+   * the catalog entry (`FixRegistry.sources()`) whose plugin side every
+   * message the codec builds states as its `msgpluginside`, resolved
+   * once here and refused when the catalog holds no such id; `UKNW` on
+   * every message when unstated.
+   */
+  source?: string
 }
 
 /**
@@ -12088,12 +12278,12 @@ export interface FixCommitReport {
  * `msgsessionid` - and the `msgsesseventid` the session and the context
  * join to with the message type and sequence; the capture's own column,
  * `sourceurl`, which whoever read the line states on the row and no message
- * holds; the `msgcat` the message type files under; the normalized
+ * holds; the `marketdatakind` the message type files under; the normalized
  * instrument codes (`isincode`, `bloombergcode`, `figicode`, `forexcode`,
  * `miccode`) and the market and operation facts a message names - each a
  * fact no FIX dictionary publishes, at the datatype its graph column names,
- * numbered contiguously from `65001` through `fixmsg` (`65050`). The strike
- * price is the dictionary's `StrikePrice(202)`, no crate field, and a
+ * numbered contiguously from `65001` through `fixmsg` (`65052`). The strike
+ * price is the derived market fact `strikepx` over `StrikePrice(202)`, and a
  * bridge's own identifier keys are no crate field either: they arrive as
  * unmapped entries and are read for the identifier name they end with.
  *
@@ -12288,6 +12478,43 @@ export declare function fixSchemaCarrying(carrier: Field, read: Field): Field
  * groups - each by the counter tag naming it - and the frame.
  */
 export declare function fixSchemaTags(): Array<number>
+
+/** What `addSource` records beside the id: each left out states nothing. */
+export interface FixSourceOptions {
+  /** The file the source was read from, as it was named. */
+  file?: string
+  /**
+   * The role of the source's plugin: a `PluginSide` member's stored name
+   * in any case, the role's own name - `BuySide`, `sell-side` - or its
+   * code, what `PluginSide.BUYS` holds.
+   */
+  pluginside?: string | number
+}
+
+/**
+ * One entry of a dictionary's sources catalog, as the plain object
+ * JavaScript reads: what a `FIX:sources` id names, recorded once.
+ *
+ * The keys are the entry a store writes in `sources.json` - `file` left out
+ * where none is known, `pluginside` always stated.
+ */
+export interface FixSourceView {
+  /**
+   * The id, folded to ASCII lowercase: what a field's `FIX:sources`
+   * states.
+   */
+  id: string
+  /**
+   * The file the source was read from, as it was named - `venue.cfb` -
+   * where one is known.
+   */
+  file?: string
+  /**
+   * The role of the source's plugin, as the `pluginside` member's stored
+   * name: `BUYS`, `SELL`, or `UKNW` where the source states none.
+   */
+  pluginside: string
+}
 
 /**
  * One `{ wire, timeinforce }` pair of a FIX field's `timeinforces`: the
@@ -12686,7 +12913,7 @@ export interface MarketDataKindMember {
 
 /**
  * The FIX field and wire value the member `name` stands for, or `null` for
- * `UNKN` and a catch-all; throws on a name that is no member.
+ * `UKNW` and a catch-all; throws on a name that is no member.
  */
 export declare function marketDataTypeFixCode(name: string): MarketDataTypeFixCode | null
 
@@ -12761,7 +12988,7 @@ export interface PartitionEntry {
 }
 
 /**
- * How `SerieReader.partitionBy` cuts a stream, each slot `undefined` or
+ * How `StreamChunkedSerie.partitionBy` cuts a stream, each slot `undefined` or
  * `null` where not given, which is its default.
  */
 export interface PartitionOptionsInput {
@@ -12804,6 +13031,24 @@ export interface PlanOrder {
   nulls: 'first' | 'last'
 }
 
+/**
+ * The role one plugin class names, as its stored name: a `CBlock` root's
+ * `type`, whose last `.`-separated segment, folded, holding `buyside` is
+ * `BUYS`, holding `sellside` is `SELL`, and anything else `UKNW`. Never
+ * throws.
+ */
+export declare function pluginSideFromPluginType(pluginType: string): string
+
+/**
+ * One member of the core's plugin-side enum: its stored name, the code a
+ * `pluginside` column stores, and what it means.
+ */
+export interface PluginSideMember {
+  name: string
+  code: number
+  description: string
+}
+
 /** What one predicate let a scan leave alone. */
 export interface ScanPlanCounts {
   /** Data files the scan will open. */
@@ -12829,7 +13074,7 @@ export interface SheetOptions {
 /**
  * One member of the core's side enum - FIX's `Side(54)`: its four-letter code,
  * the code a `side` column stores, what it means, its one-character FIX
- * code (`null` for `UNKN`), and whether it is a bid or an ask.
+ * code (`null` for `UKNW` and `BOTH`), and whether it is a bid or an ask.
  */
 export interface SideMember {
   name: string
@@ -12927,7 +13172,7 @@ export interface StringParametersInput {
 
 /**
  * The `TimeInForce(59)` wire value the member `name` stands for, or `null`
- * for `UNKN` and `OTHER`; throws on a name that is no member.
+ * for `UKNW` and `OTHER`; throws on a name that is no member.
  */
 export declare function timeInForceFixCode(name: string): string | null
 

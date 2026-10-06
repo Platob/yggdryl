@@ -293,15 +293,64 @@ mod lenient {
         assert_eq!(registry, before);
 
         // A canonical tag another field holds canonically under another name
-        // is a field of its own, added beside the holder - but its name is
-        // `Symbol`'s canonical one, and a canonical name is one field's: the
-        // conflict names the holder of the name, not the holder of the tag.
-        let error = registry
-            .add_field(tagged("symbol", 44, DataType::utf8()))
-            .unwrap_err();
-        assert!(error.is_conflict(), "{error}");
-        assert!(error.to_string().contains("Symbol"), "{error}");
+        // would be a field of its own beside the holder - but its name is
+        // `Symbol`'s canonical one, and a name reaching a held field is rule
+        // 4 before rule 5: this is `Symbol` spelled with `Price`'s number, so
+        // it merges into `Symbol`, which gains nothing it already has, and 44
+        // stays `Price`'s.
+        assert!(
+            !registry
+                .add_field(tagged("symbol", 44, DataType::utf8()))
+                .unwrap()
+        );
         assert_eq!(registry, before);
+        assert_eq!(registry.field_by_tag(44).unwrap().name(), "Price");
+    }
+
+    #[test]
+    fn a_held_tag_under_a_held_name_merges_into_the_holder_of_the_name_and_the_tag_stays() {
+        // `MaturityDate` holds 541 and `MaturityDate2` holds 9999. A source
+        // calling 541 `MaturityDate2` names a field the dictionary holds
+        // under another number - rule 4, the same field spelled with another
+        // tag - and is no field beside the holder of 541, whose name would be
+        // `MaturityDate2`'s: it merges into `MaturityDate2`, which gains
+        // nothing it already has, and 541 stays `MaturityDate`'s.
+        let registry = FixRegistry::from_fields([
+            tagged("MaturityDate", 541, DataType::Date32),
+            tagged("MaturityDate2", 9999, DataType::Date32),
+        ])
+        .unwrap();
+        let arriving = tagged("maturitydate2", 541, DataType::Date32);
+
+        let mut folded = registry.clone();
+        assert!(!folded.add_field(arriving.clone()).unwrap());
+        assert_eq!(folded, registry);
+        assert_eq!(folded.field_by_tag(541).unwrap().name(), "MaturityDate");
+        let second = folded.field_by_name("MaturityDate2").unwrap();
+        assert_eq!(second.as_fix().tag().unwrap(), Some(9999));
+        assert!(second.as_fix().tags().unwrap().is_empty());
+        assert_eq!(super::scalars(&folded), 2 + super::seeded_fields());
+
+        // The same through a fold with another dictionary: merged, clean.
+        let other = FixRegistry::from_fields([arriving.clone()]).unwrap();
+        let mut folded = registry.clone();
+        let merge = folded.merge_with(&other).unwrap();
+        assert!(merge.is_clean(), "{:?}", merge.dropped);
+        assert_eq!(merge.added, 0);
+        assert_eq!(folded, registry);
+
+        // A holder of the tag named by nothing but its digits changes
+        // nothing: the name is held already, so the arrival is the named
+        // field spelled with another number, never the holder's name.
+        let mut unnamed = FixRegistry::from_fields([
+            tagged("541", 541, DataType::Date32),
+            tagged("MaturityDate2", 9999, DataType::Date32),
+        ])
+        .unwrap();
+        let before = unnamed.clone();
+        assert!(!unnamed.add_field(arriving).unwrap());
+        assert_eq!(unnamed, before);
+        assert_eq!(unnamed.field_by_tag(541).unwrap().name(), "541");
     }
 
     #[test]
@@ -765,9 +814,12 @@ mod lenient {
         let parties = target.field_by_name("Parties").unwrap();
         assert_eq!(parties.as_fix().component(), before.as_fix().component());
         assert_eq!(names(occurrence(parties)), ["PartyID", "PartyRole"]);
+        // Once its members folded into `Party`, `PartyExtra` states the
+        // structure `Party` holds: one structure is one definition, so it is
+        // `Party` and arrives as nothing of its own.
         assert!(
-            target.get_field_by_name("PartyExtra").is_some(),
-            "it still arrives"
+            target.get_field_by_name("PartyExtra").is_none(),
+            "it is the component it widened"
         );
         assert_eq!(
             target
@@ -1144,11 +1196,674 @@ mod lenient {
         );
     }
 
+    #[test]
+    fn an_inline_group_alike_to_a_reference_arriving_in_the_same_merge_keeps_its_statement() {
+        // As above, with the target's inline group stating its counter: the
+        // target's Route and the source's are then of one structure, and so
+        // is a component the source names otherwise. The pass over alike
+        // definitions meets a group stated inline against a member reading
+        // a group of that structure - a reference, which the fold's
+        // documents state as a placeholder - and keeps the inline statement
+        // rather than refusing the fold: the merge is clean, Route keeps its
+        // own nullability and its inline group, and the component the source
+        // names otherwise is Route.
+        let fields = [
+            tagged("NoHops", 627, DataType::Int32),
+            tagged("HopID", 628, DataType::utf8()),
+        ];
+        let hop = StructType::from_fields([DataType::utf8().nullable_field("HopID")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("Hop");
+        for name in ["Route", "Path"] {
+            let mut target = FixRegistry::from_fields(fields.clone()).unwrap();
+            let mut inline = DataType::serie(hop.clone()).nullable_field("Hops");
+            inline.as_fix_mut().set_counter(627).unwrap();
+            target
+                .insert(
+                    StructType::from_fields([inline])
+                        .map(DataType::from)
+                        .unwrap()
+                        .required_field("Route"),
+                )
+                .unwrap();
+
+            let mut source = FixRegistry::from_fields(fields.clone()).unwrap();
+            let mut hops = DataType::serie(hop.clone()).nullable_field("Hops");
+            hops.as_fix_mut().set_counter(627).unwrap();
+            source.insert(hops).unwrap();
+            let mut restated = source.field_by_name("Hops").unwrap().clone();
+            restated.as_fix_mut().set_group("Hops").unwrap();
+            source
+                .insert(
+                    StructType::from_fields([restated])
+                        .map(DataType::from)
+                        .unwrap()
+                        .nullable_field(name),
+                )
+                .unwrap();
+
+            let merge = target
+                .merge_with(&source)
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+            assert!(merge.is_clean(), "{name}: {:?}", merge.dropped);
+            let route = target.field_by_name("Route").unwrap();
+            assert_eq!(names(route), ["Hops"], "{name}");
+            assert!(
+                route.fields()[0].as_fix().group().is_none(),
+                "{name}: kept inline"
+            );
+            assert!(
+                !route.is_nullable(),
+                "{name}: a definition's own nullability is the held one's"
+            );
+            assert!(
+                target
+                    .get_definition(FixCategory::Components, "Path")
+                    .is_none(),
+                "{name}: one structure is one definition, Route"
+            );
+            assert_eq!(
+                target
+                    .field_by_name("Hops")
+                    .unwrap()
+                    .as_fix()
+                    .counter()
+                    .unwrap(),
+                Some(627),
+                "{name}"
+            );
+            assert_eq!(
+                FixRegistry::from_json(&target.into_json().unwrap()).unwrap(),
+                target,
+                "{name}"
+            );
+        }
+    }
+
+    /// A component of one member reading `HopID(628)`, the structure the
+    /// three cases below declare under two names.
+    fn hop_of(registry: &FixRegistry, name: &str) -> Field {
+        let mut hopid = registry.field(628).unwrap().clone();
+        hopid.as_fix_mut().set_field_ref("HopID").unwrap();
+        StructType::from_fields([hopid])
+            .map(DataType::from)
+            .unwrap()
+            .required_field(name)
+    }
+
+    /// A group on 627 drawing its occurrences from the held component
+    /// `component`.
+    fn hops_of(registry: &FixRegistry, name: &str, component: &str) -> Field {
+        let item = registry.field_by_name(component).unwrap().clone();
+        let mut group = DataType::serie(item).nullable_field(name);
+        group.as_fix_mut().set_counter(627).unwrap();
+        group.as_fix_mut().set_component(component).unwrap();
+        group
+    }
+
+    #[test]
+    fn a_reference_inside_an_inline_group_follows_the_component_it_folded_into() {
+        // The target holds `Hop`; the source holds `Stop`, of Hop's
+        // structure, and `Route`, whose `Hops` is a group stated inline on
+        // 627 with its occurrence reading Stop. Stop is Hop, so every
+        // reference to it reads Hop once the fold settles - the one in
+        // Route's inline occurrence included, which no walk of Route's
+        // members reaches: left naming the removed Stop, it would refuse
+        // the whole merge.
+        let fields = [
+            tagged("NoHops", 627, DataType::Int32),
+            tagged("HopID", 628, DataType::utf8()),
+        ];
+        let mut target = FixRegistry::from_fields(fields.clone()).unwrap();
+        target.insert(hop_of(&target, "Hop")).unwrap();
+        let mut source = FixRegistry::from_fields(fields).unwrap();
+        source.insert(hop_of(&source, "Stop")).unwrap();
+        let mut item = source.field_by_name("Stop").unwrap().clone();
+        item.as_fix_mut().set_component("Stop").unwrap();
+        let mut hops = DataType::serie(item).nullable_field("Hops");
+        hops.as_fix_mut().set_counter(627).unwrap();
+        source
+            .insert(
+                StructType::from_fields([hops])
+                    .map(DataType::from)
+                    .unwrap()
+                    .required_field("Route"),
+            )
+            .unwrap();
+
+        let merge = target
+            .merge_with(&source)
+            .expect("Stop is Hop, read as Hop wherever Stop was read");
+        assert!(merge.is_clean(), "{:?}", merge.dropped);
+        assert!(
+            target
+                .get_definition(FixCategory::Components, "Stop")
+                .is_none(),
+            "one structure is one definition, Hop"
+        );
+        let route = target.field_by_name("Route").unwrap();
+        assert_eq!(names(route), ["Hops"]);
+        let hops = &route.fields()[0];
+        assert!(hops.as_fix().group().is_none(), "stated inline");
+        assert_eq!(hops.as_fix().counter().unwrap(), Some(627));
+        assert!(
+            occurrence(hops)
+                .as_fix()
+                .component()
+                .is_some_and(|name| name.eq_ignore_ascii_case("Hop")),
+            "the inline occurrence reads the component Stop folded into: {:?}",
+            occurrence(hops).as_fix().component()
+        );
+        assert_eq!(names(occurrence(hops)), ["HopID"]);
+        assert_eq!(
+            FixRegistry::from_json(&target.into_json().unwrap()).unwrap(),
+            target
+        );
+    }
+
+    #[test]
+    fn two_definitions_of_one_structure_arriving_with_one_source_stay_two() {
+        // The source states Hop and Stop, two components of one structure,
+        // and Hops and Stops, two groups on 627 drawing on each - as FIX
+        // Latest states InstrmtLegSecList beside SecLstUpdRelSymsLeg and
+        // their groups on 555. A dictionary stating two definitions of one
+        // structure states two, and a fold keeps what its source states:
+        // folded into a dictionary holding neither, all four stand, so a
+        // dictionary folded into an empty one is that dictionary. Only what
+        // was held before the fold makes two alike: folded into one holding
+        // Hop and Hops, Stop is Hop and Stops is Hops.
+        let fields = [
+            tagged("NoHops", 627, DataType::Int32),
+            tagged("HopID", 628, DataType::utf8()),
+        ];
+        let mut source = FixRegistry::from_fields(fields.clone()).unwrap();
+        source.insert(hop_of(&source, "Hop")).unwrap();
+        source.insert(hop_of(&source, "Stop")).unwrap();
+        source.insert(hops_of(&source, "Hops", "Hop")).unwrap();
+        source.insert(hops_of(&source, "Stops", "Stop")).unwrap();
+
+        let mut empty = FixRegistry::from_fields(fields.clone()).unwrap();
+        let merge = empty.merge_with(&source).unwrap();
+        assert!(merge.is_clean(), "{:?}", merge.dropped);
+        for (category, name) in [
+            (FixCategory::Components, "Hop"),
+            (FixCategory::Components, "Stop"),
+            (FixCategory::Groups, "Hops"),
+            (FixCategory::Groups, "Stops"),
+        ] {
+            assert!(
+                empty.get_definition(category, name).is_some(),
+                "{name} stands: the source states two"
+            );
+        }
+        for (group, component) in [("Hops", "Hop"), ("Stops", "Stop")] {
+            let held = empty.field_by_name(group).unwrap();
+            assert!(
+                held.as_fix()
+                    .component()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(component)),
+                "{group} draws on {component}: {:?}",
+                held.as_fix().component()
+            );
+        }
+        assert_eq!(
+            FixRegistry::from_json(&empty.into_json().unwrap()).unwrap(),
+            empty
+        );
+
+        let mut held = FixRegistry::from_fields(fields).unwrap();
+        held.insert(hop_of(&held, "Hop")).unwrap();
+        held.insert(hops_of(&held, "Hops", "Hop")).unwrap();
+        let merge = held.merge_with(&source).unwrap();
+        assert!(merge.is_clean(), "{:?}", merge.dropped);
+        for (category, name) in [
+            (FixCategory::Components, "Stop"),
+            (FixCategory::Groups, "Stops"),
+        ] {
+            assert!(
+                held.get_definition(category, name).is_none(),
+                "{name} is the definition held before the fold"
+            );
+        }
+        assert_eq!(names(held.field_by_name("Hop").unwrap()), ["HopID"]);
+    }
+
+    #[test]
+    fn a_name_held_for_another_structure_merges_by_name_and_folding_it_again_changes_nothing() {
+        // The target holds Party (448, 447) under Parties on 453, and
+        // NestedParty (524, 525) under NestedParties on 539, each spoken by
+        // `a`. The source, spoken by `c`, declares NestedParty as 448 and
+        // 447 - Party's structure under NestedParty's name - NestedParties on
+        // 453 drawing on it, and a message G reading that group. Every
+        // definition folds by name first: NestedParty is widened by the
+        // source's members, as a name both dialects spell always merges, and
+        // the group on 453 stands beside the held NestedParties on 539 as
+        // NestedParties_453, drawing on the widened NestedParty - a structure
+        // Parties does not state, so nothing folds into Parties, which keeps
+        // its own source. Folding the source a second time finds every name
+        // where the first fold left it and changes nothing.
+        let mut target = FixRegistry::from_fields([
+            tagged("NoPartyIDs", 453, DataType::Int32),
+            tagged("PartyID", 448, DataType::utf8()),
+            tagged("PartyIDSource", 447, DataType::utf8()),
+            tagged("NoNestedPartyIDs", 539, DataType::Int32),
+            tagged("NestedPartyID", 524, DataType::utf8()),
+            tagged("NestedPartyIDSource", 525, DataType::utf8()),
+        ])
+        .unwrap();
+        let party_of = |registry: &FixRegistry, name: &str, tags: [i32; 2], source: &str| {
+            let members: Vec<Field> = tags
+                .into_iter()
+                .map(|tag| {
+                    let mut member = registry.field(tag).unwrap().clone();
+                    let spelling = member.name().to_owned();
+                    member.as_fix_mut().set_field_ref(&spelling).unwrap();
+                    member
+                })
+                .collect();
+            let mut component = StructType::from_fields(members)
+                .map(DataType::from)
+                .unwrap()
+                .required_field(name);
+            component.as_fix_mut().set_sources([source]).unwrap();
+            component
+        };
+        let parties_of =
+            |registry: &FixRegistry, name: &str, counter: i32, component: &str, source: &str| {
+                let item = registry.field_by_name(component).unwrap().clone();
+                let mut group = DataType::serie(item).nullable_field(name);
+                group.as_fix_mut().set_counter(counter).unwrap();
+                group.as_fix_mut().set_component(component).unwrap();
+                group.as_fix_mut().set_sources([source]).unwrap();
+                group
+            };
+        target
+            .insert(party_of(&target, "Party", [448, 447], "a"))
+            .unwrap();
+        target
+            .insert(party_of(&target, "NestedParty", [524, 525], "a"))
+            .unwrap();
+        target
+            .insert(parties_of(&target, "Parties", 453, "Party", "a"))
+            .unwrap();
+        target
+            .insert(parties_of(
+                &target,
+                "NestedParties",
+                539,
+                "NestedParty",
+                "a",
+            ))
+            .unwrap();
+
+        let mut source = FixRegistry::from_fields([
+            tagged("NoPartyIDs", 453, DataType::Int32),
+            tagged("PartyID", 448, DataType::utf8()),
+            tagged("PartyIDSource", 447, DataType::utf8()),
+        ])
+        .unwrap();
+        source
+            .insert(party_of(&source, "NestedParty", [448, 447], "c"))
+            .unwrap();
+        source
+            .insert(parties_of(
+                &source,
+                "NestedParties",
+                453,
+                "NestedParty",
+                "c",
+            ))
+            .unwrap();
+        let mut member = source.field_by_name("NestedParties").unwrap().clone();
+        member.as_fix_mut().set_group("NestedParties").unwrap();
+        let mut message = StructType::from_fields([member])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("Message47");
+        message.as_fix_mut().set_msgtype("G").unwrap();
+        source.insert(message).unwrap();
+
+        let merge = target.merge_with(&source).unwrap();
+        assert!(merge.is_clean(), "{:?}", merge.dropped);
+        let nested = target.field_by_name("NestedParty").unwrap();
+        assert_eq!(
+            names(nested),
+            [
+                "NestedPartyID",
+                "NestedPartyIDSource",
+                "PartyID",
+                "PartyIDSource"
+            ],
+            "a name both dialects spell merges by name"
+        );
+        assert_eq!(nested.as_fix().sources().collect::<Vec<_>>(), ["a", "c"]);
+        let beside = target
+            .get_definition(FixCategory::Groups, "NestedParties_453")
+            .expect("the group on 453 stands beside the one on 539");
+        assert_eq!(beside.as_fix().counter().unwrap(), Some(453));
+        assert!(
+            beside
+                .as_fix()
+                .component()
+                .is_some_and(|component| component.eq_ignore_ascii_case("NestedParty"))
+        );
+        let party = target.field_by_name("Party").unwrap();
+        assert_eq!(names(party), ["PartyID", "PartyIDSource"]);
+        assert_eq!(
+            party.as_fix().sources().collect::<Vec<_>>(),
+            ["a"],
+            "no structure the fold made is Party's"
+        );
+        let message = target.msgtype("G").unwrap().as_field();
+        let members: Vec<(&str, Option<&str>)> = message
+            .fields()
+            .iter()
+            .map(|member| (member.name(), member.as_fix().group()))
+            .collect();
+        assert_eq!(members.len(), 1, "{members:?}");
+        assert!(
+            members[0]
+                .1
+                .is_some_and(|group| group.eq_ignore_ascii_case("NestedParties_453")),
+            "G reads the group on its own counter: {members:?}"
+        );
+        assert_eq!(
+            FixRegistry::from_json(&target.into_json().unwrap()).unwrap(),
+            target
+        );
+
+        let once = target.clone();
+        let again = target.merge_with(&source).unwrap();
+        assert!(again.is_clean(), "{:?}", again.dropped);
+        assert_eq!(target, once, "folding one source twice changes nothing");
+    }
+
+    #[test]
+    fn a_held_definition_the_fold_widens_into_another_s_structure_is_one_definition_under_its_name()
+    {
+        // The target holds `Leg` (600) and `LegFull` (600, 624), each spoken
+        // by `a`, and a message X reading `LegFull`. The source, spoken by
+        // `c`, declares `Leg` as 600 and 624: merged by name, `Leg` now
+        // states `LegFull`'s structure - a pair the fold made, so it is one
+        // definition. The name the source widened keeps answering for it,
+        // `LegFull` folds into it, X reads `Leg`, and both sources are
+        // listed. Folding the source a second time changes nothing.
+        let mut target = FixRegistry::from_fields([
+            tagged("LegSymbol", 600, DataType::utf8()),
+            tagged("LegSide", 624, DataType::utf8()),
+        ])
+        .unwrap();
+        let component = |registry: &FixRegistry, name: &str, tags: &[i32], source: &str| {
+            let members: Vec<Field> = tags
+                .iter()
+                .map(|tag| {
+                    let mut member = registry.field(*tag).unwrap().clone();
+                    let spelling = member.name().to_owned();
+                    member.as_fix_mut().set_field_ref(&spelling).unwrap();
+                    member
+                })
+                .collect();
+            let mut component = StructType::from_fields(members)
+                .map(DataType::from)
+                .unwrap()
+                .required_field(name);
+            component.as_fix_mut().set_sources([source]).unwrap();
+            component
+        };
+        target
+            .insert(component(&target, "Leg", &[600], "a"))
+            .unwrap();
+        target
+            .insert(component(&target, "LegFull", &[600, 624], "a"))
+            .unwrap();
+        let mut member = target.field_by_name("LegFull").unwrap().clone();
+        member.set_name("Legs");
+        member.as_fix_mut().set_component("LegFull").unwrap();
+        let mut message = StructType::from_fields([member])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("MessageX");
+        message.as_fix_mut().set_msgtype("X").unwrap();
+        target.insert(message).unwrap();
+
+        let mut source = FixRegistry::from_fields([
+            tagged("LegSymbol", 600, DataType::utf8()),
+            tagged("LegSide", 624, DataType::utf8()),
+        ])
+        .unwrap();
+        source
+            .insert(component(&source, "Leg", &[600, 624], "c"))
+            .unwrap();
+
+        let merge = target.merge_with(&source).unwrap();
+        assert!(merge.is_clean(), "{:?}", merge.dropped);
+        assert!(
+            target
+                .get_definition(FixCategory::Components, "LegFull")
+                .is_none(),
+            "one structure is one definition"
+        );
+        let leg = target.field_by_name("Leg").unwrap();
+        assert_eq!(names(leg), ["LegSymbol", "LegSide"]);
+        assert_eq!(leg.as_fix().sources().collect::<Vec<_>>(), ["a", "c"]);
+        let message = target.msgtype("X").unwrap().as_field();
+        assert!(
+            message.fields()[0]
+                .as_fix()
+                .component()
+                .is_some_and(|component| component.eq_ignore_ascii_case("Leg")),
+            "X reads the definition the other folded into: {:?}",
+            message.fields()[0]
+        );
+        assert_eq!(
+            FixRegistry::from_json(&target.into_json().unwrap()).unwrap(),
+            target
+        );
+
+        let once = target.clone();
+        let again = target.merge_with(&source).unwrap();
+        assert!(again.is_clean(), "{:?}", again.dropped);
+        assert_eq!(target, once, "folding one source twice changes nothing");
+    }
+
+    /// The members of `component`, as `(name, tags)` - each a reference to the
+    /// field on that tag - under one group on 453 each, read by one message
+    /// per `(msgtype, group)`: a dictionary of party groups a CBlock would
+    /// bring, every definition stating `source`.
+    fn parties_dictionary(
+        components: &[(&str, &[i32])],
+        groups: &[(&str, &str)],
+        messages: &[(&str, &str)],
+        source: &str,
+    ) -> FixRegistry {
+        let mut registry = FixRegistry::from_fields([
+            tagged("NoPartyIDs", 453, DataType::Int32),
+            tagged("PartyIDSource", 447, DataType::utf8()),
+            tagged("PartyID", 448, DataType::utf8()),
+            tagged("PartyRole", 452, DataType::utf8()),
+            tagged("PartySubID", 523, DataType::utf8()),
+        ])
+        .unwrap();
+        for (name, tags) in components {
+            let members: Vec<Field> = tags
+                .iter()
+                .map(|tag| {
+                    let mut member = registry.field(*tag).unwrap().clone();
+                    let spelling = member.name().to_owned();
+                    member.as_fix_mut().set_field_ref(&spelling).unwrap();
+                    member
+                })
+                .collect();
+            let mut component = StructType::from_fields(members)
+                .map(DataType::from)
+                .unwrap()
+                .required_field(*name);
+            component.as_fix_mut().set_sources([source]).unwrap();
+            registry.insert(component).unwrap();
+        }
+        for (name, component) in groups {
+            let item = registry.field_by_name(component).unwrap().clone();
+            let mut group = DataType::serie(item).nullable_field(*name);
+            group.as_fix_mut().set_counter(453).unwrap();
+            group.as_fix_mut().set_component(component).unwrap();
+            group.as_fix_mut().set_sources([source]).unwrap();
+            registry.insert(group).unwrap();
+        }
+        for (msgtype, group) in messages {
+            let mut member = registry.field_by_name(group).unwrap().clone();
+            member.as_fix_mut().set_group(group).unwrap();
+            let mut message = StructType::from_fields([member])
+                .map(DataType::from)
+                .unwrap()
+                .required_field(format!("Message{msgtype}"));
+            message.as_fix_mut().set_msgtype(msgtype).unwrap();
+            registry.insert(message).unwrap();
+        }
+        registry
+    }
+
+    /// The tags message `msgtype` reads through the one group it reads, in
+    /// the order its component states them.
+    fn tags_read(registry: &FixRegistry, msgtype: &str) -> Vec<i32> {
+        let message = registry.msgtype(msgtype).unwrap().as_field();
+        let group = message.fields()[0].as_fix().group().unwrap().to_owned();
+        let group = registry
+            .definition(FixCategory::Groups, &group)
+            .unwrap()
+            .as_fix()
+            .component()
+            .unwrap()
+            .to_owned();
+        registry
+            .definition(FixCategory::Components, &group)
+            .unwrap()
+            .fields()
+            .iter()
+            .map(|member| member.as_fix().tag().unwrap().unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn a_member_folds_what_the_source_states_for_its_target_whichever_definition_sorts_first() {
+        // `a` reads `Parties` (452) in E and `Dealers` (452, 523) in D, both
+        // on 453; `b` reads `Parties` (447, 452, 523) in D. D's one member on
+        // 453 is read two ways, so what `b` states for the group it reads
+        // folds into the group the held D reads - what `b` states, never the
+        // `Parties` held before `b`'s own `Parties` merged by name. `MessageD`
+        // sorts before `Party`, so it folds first: read off the held
+        // dictionary, the target would be `a`'s `Party` (452) and D would
+        // lose 447 until `b` folded a second time.
+        let a = || {
+            parties_dictionary(
+                &[("Dealer", &[452, 523]), ("Party", &[452])],
+                &[("Dealers", "Dealer"), ("Parties", "Party")],
+                &[("D", "Dealers"), ("E", "Parties")],
+                "a",
+            )
+        };
+        let b = || {
+            parties_dictionary(
+                &[("Party", &[447, 452, 523])],
+                &[("Parties", "Party")],
+                &[("D", "Parties")],
+                "b",
+            )
+        };
+        for (first, second, order) in [(a(), b(), "a then b"), (b(), a(), "b then a")] {
+            let mut target = FixRegistry::new();
+            assert!(target.merge_with(&first).unwrap().is_clean(), "{order}");
+            let merge = target.merge_with(&second).unwrap();
+            assert!(merge.is_clean(), "{order}: {:?}", merge.dropped);
+            let mut d = tags_read(&target, "D");
+            d.sort_unstable();
+            assert_eq!(d, [447, 452, 523], "{order}: D reads what each file states");
+            assert!(
+                tags_read(&target, "E").contains(&452),
+                "{order}: E reads what a states"
+            );
+
+            let once = target.clone();
+            let again = target.merge_with(&second).unwrap();
+            assert!(again.is_clean(), "{order}: {:?}", again.dropped);
+            assert_eq!(
+                target, once,
+                "{order}: folding one source twice changes nothing"
+            );
+        }
+    }
+
+    #[test]
+    fn a_split_a_source_widens_takes_what_the_source_states_and_the_held_group_keeps_its_name() {
+        // The target holds `Party` (448, 447, 452, 523) under `Parties`, spoken
+        // by `spec`, and a split one dialect `d` took for message E,
+        // `Party_E` (448, 447) under `Parties_E`, which E reads. The source,
+        // spoken by `e`, states `Party` as 448, 447, 452 and reads it in its
+        // own E. E's one member on 453 is read two ways, so what `e` states
+        // for it folds into the split E reads: the split states 448, 447 and
+        // 452 - what `e` states, never the held `Party` that `e`'s `Party`
+        // merged into by name - so it states no structure the dictionary
+        // holds, and `Party` keeps its name and every member it held.
+        // Widened by the held `Party` instead, the split would state its
+        // structure, and the fold would file the dictionary's own `Party`
+        // under a dialect's split, every message reading it renamed.
+        let mut target = parties_dictionary(
+            &[("Party", &[448, 447, 452, 523])],
+            &[("Parties", "Party")],
+            &[],
+            "spec",
+        );
+        target
+            .merge_with(&parties_dictionary(
+                &[("Party_E", &[448, 447])],
+                &[("Parties_E", "Party_E")],
+                &[("E", "Parties_E")],
+                "d",
+            ))
+            .unwrap();
+        let source = parties_dictionary(
+            &[("Party", &[448, 447, 452])],
+            &[("Parties", "Party")],
+            &[("E", "Parties")],
+            "e",
+        );
+
+        let merge = target.merge_with(&source).unwrap();
+        assert!(merge.is_clean(), "{:?}", merge.dropped);
+        let party = target
+            .get_definition(FixCategory::Components, "Party")
+            .expect("the held group keeps its name");
+        assert_eq!(
+            names(party),
+            ["PartyID", "PartyIDSource", "PartyRole", "PartySubID"]
+        );
+        assert_eq!(party.as_fix().sources().collect::<Vec<_>>(), ["e", "spec"]);
+        assert!(
+            target
+                .get_definition(FixCategory::Groups, "Parties")
+                .is_some()
+        );
+        let split = target
+            .get_definition(FixCategory::Components, "Party_E")
+            .expect("the split states no structure the dictionary holds");
+        assert_eq!(names(split), ["PartyID", "PartyIDSource", "PartyRole"]);
+        assert_eq!(tags_read(&target, "E"), [448, 447, 452]);
+        assert_eq!(
+            FixRegistry::from_json(&target.into_json().unwrap()).unwrap(),
+            target
+        );
+
+        let once = target.clone();
+        let again = target.merge_with(&source).unwrap();
+        assert!(again.is_clean(), "{:?}", again.dropped);
+        assert_eq!(target, once, "folding one source twice changes nothing");
+    }
+
     /// The registry a fold-table fixture starts from: `Symbol` on 55, spoken by
     /// `fix44`, `Price` on 44 and `MsgType` on 35.
     fn holders() -> FixRegistry {
         let mut symbol = tagged("Symbol", 55, DataType::utf8());
-        symbol.as_fix_mut().set_branches(["fix44"]).unwrap();
+        symbol.as_fix_mut().set_sources(["fix44"]).unwrap();
         FixRegistry::from_fields([
             symbol,
             tagged("Price", 44, DataType::Float64),
@@ -1170,7 +1885,7 @@ mod lenient {
             tagged("Account", 1, DataType::utf8()),
         ];
         for arrival in &mut arrivals {
-            arrival.as_fix_mut().set_branches(["venue"]).unwrap();
+            arrival.as_fix_mut().set_sources(["venue"]).unwrap();
         }
         arrivals
     }
@@ -1193,7 +1908,7 @@ mod lenient {
                 "{spelling}"
             );
         }
-        assert_eq!(msgtype.as_fix().branches().collect::<Vec<_>>(), ["venue"]);
+        assert_eq!(msgtype.as_fix().sources().collect::<Vec<_>>(), ["venue"]);
 
         // Row 2: a held tag under another name is a second field beside the
         // holder, and neither learns the other's name: two fields sharing a
@@ -1205,7 +1920,7 @@ mod lenient {
         assert!(symbol.as_fix().names().next().is_none());
         assert!(symbol.as_fix().tags().unwrap().is_empty());
         assert_eq!(
-            symbol.as_fix().branches().collect::<Vec<_>>(),
+            symbol.as_fix().sources().collect::<Vec<_>>(),
             ["fix44"],
             "the arrival's membership is its own"
         );
@@ -1226,7 +1941,7 @@ mod lenient {
                 .unwrap(),
             symbol
         ));
-        assert_eq!(venue.as_fix().branches().collect::<Vec<_>>(), ["venue"]);
+        assert_eq!(venue.as_fix().sources().collect::<Vec<_>>(), ["venue"]);
 
         // Row 3: a held name under another tag is the holder spelled with
         // another number: the tag becomes the holder's alternate and no second
@@ -1240,12 +1955,12 @@ mod lenient {
                 .get_field_by_id(FixId::of(9001, "price").unwrap())
                 .is_none()
         );
-        assert_eq!(price.as_fix().branches().collect::<Vec<_>>(), ["venue"]);
+        assert_eq!(price.as_fix().sources().collect::<Vec<_>>(), ["venue"]);
 
         // Row 4: neither, so it arrived as it was.
         let account = registry.field_by_tag(1).unwrap();
         assert_eq!(account.name(), "Account");
-        assert_eq!(account.as_fix().branches().collect::<Vec<_>>(), ["venue"]);
+        assert_eq!(account.as_fix().sources().collect::<Vec<_>>(), ["venue"]);
 
         // Membership is provenance, listed and never resolved through.
         assert_eq!(registry.dialects(), ["fix44", "venue"]);
@@ -1372,7 +2087,7 @@ mod lenient {
                 .field_by_tag(9001)
                 .unwrap()
                 .as_fix()
-                .branches()
+                .sources()
                 .collect::<Vec<_>>(),
             ["venue"]
         );
@@ -1382,7 +2097,7 @@ mod lenient {
     #[test]
     fn a_merged_membership_is_the_union_of_what_each_side_spoke() {
         let mut symbol = tagged("Symbol", 55, DataType::utf8());
-        symbol.as_fix_mut().set_branches(["fix44"]).unwrap();
+        symbol.as_fix_mut().set_sources(["fix44"]).unwrap();
         let mut registry = FixRegistry::from_fields([symbol.clone()]).unwrap();
 
         // By identity, by name and by tag, the dialects union, folded once,
@@ -1390,19 +2105,19 @@ mod lenient {
         let mut respelled = tagged("SYMBOL", 55, DataType::utf8());
         respelled
             .as_fix_mut()
-            .set_branches(["Venue", "FIX44"])
+            .set_sources(["Venue", "FIX44"])
             .unwrap();
         assert!(!registry.add_field(respelled).unwrap());
         let mut alternate = tagged("symbol", 9001, DataType::utf8());
-        alternate.as_fix_mut().set_branches(["other"]).unwrap();
+        alternate.as_fix_mut().set_sources(["other"]).unwrap();
         assert!(!registry.add_field(alternate).unwrap());
         let stored = registry.field_by_tag(55).unwrap();
         assert_eq!(
-            stored.as_fix().branches().collect::<Vec<_>>(),
+            stored.as_fix().sources().collect::<Vec<_>>(),
             ["fix44", "other", "venue"]
         );
-        assert!(stored.as_fix().has_branch("VENUE"));
-        assert!(!stored.as_fix().has_branch("standard"));
+        assert!(stored.as_fix().has_source("VENUE"));
+        assert!(!stored.as_fix().has_source("standard"));
         assert_eq!(registry.dialects(), ["fix44", "other", "venue"]);
 
         // A field spoken by nobody stays spoken by nobody, and a source that
@@ -1414,13 +2129,13 @@ mod lenient {
                 .field_by_tag(44)
                 .unwrap()
                 .as_fix()
-                .branches()
+                .sources()
                 .next()
                 .is_none()
         );
         assert!(target.dialects().is_empty());
         let mut price = tagged("Price", 44, DataType::Float64);
-        price.as_fix_mut().set_branches(["venue"]).unwrap();
+        price.as_fix_mut().set_sources(["venue"]).unwrap();
         let source = FixRegistry::from_fields([price, symbol]).unwrap();
         assert_eq!(
             target
@@ -1434,7 +2149,7 @@ mod lenient {
                 .field_by_tag(44)
                 .unwrap()
                 .as_fix()
-                .branches()
+                .sources()
                 .collect::<Vec<_>>(),
             ["venue"]
         );
@@ -1443,7 +2158,7 @@ mod lenient {
                 .field_by_tag(55)
                 .unwrap()
                 .as_fix()
-                .branches()
+                .sources()
                 .collect::<Vec<_>>(),
             ["fix44"]
         );
@@ -1703,10 +2418,10 @@ mod lenient {
         let mut declared = Vec::new();
         for (name, tag, stored, incoming) in precisions() {
             let mut field = tagged(name, tag, stored);
-            field.as_fix_mut().set_branches(["fix44"]).unwrap();
+            field.as_fix_mut().set_sources(["fix44"]).unwrap();
             held.push(field);
             let mut field = tagged(name, tag, incoming);
-            field.as_fix_mut().set_branches(["venue"]).unwrap();
+            field.as_fix_mut().set_sources(["venue"]).unwrap();
             field
                 .as_fix_mut()
                 .set_description(format!("{name} per venue"))
@@ -1727,7 +2442,7 @@ mod lenient {
             assert_eq!(field.name(), name);
             assert_eq!(field.dtype(), &stored, "{name}: the held datatype stays");
             assert_eq!(
-                field.as_fix().branches().collect::<Vec<_>>(),
+                field.as_fix().sources().collect::<Vec<_>>(),
                 ["fix44", "venue"],
                 "{name}: the membership is the union"
             );
@@ -1843,7 +2558,7 @@ mod lenient {
         // A CBlock declaring the tag with no name of its own names it after
         // the digits: a placeholder, which folds into whatever holds the tag.
         let mut unnamed = tagged("541", 541, DataType::utf8());
-        unnamed.as_fix_mut().set_branches(["cblock"]).unwrap();
+        unnamed.as_fix_mut().set_sources(["cblock"]).unwrap();
         unnamed
             .as_fix_mut()
             .set_description("a tag the file never named")
@@ -1858,7 +2573,7 @@ mod lenient {
             Some(FixId::of(541, "maturitydate").unwrap())
         );
         assert_eq!(
-            stored.as_fix().branches().collect::<Vec<_>>(),
+            stored.as_fix().sources().collect::<Vec<_>>(),
             ["cblock", "fix44"]
         );
         assert_eq!(stored.description(), Some("a tag the file never named"));
@@ -1914,11 +2629,82 @@ mod lenient {
         );
     }
 
+    #[test]
+    fn a_member_pairs_with_the_held_member_reading_its_field_before_the_one_of_its_name() {
+        // A dialect spelling `Urgency` over 61 and 9252 names each by its
+        // decimal, and its message carries the spelling on both members:
+        // `urgency` reading 61, `urgency2` reading 9252. Another names 9252
+        // `Urgency` and its message reads it under that name. A member is the
+        // field it reads before the name it carries, so the one reading 9252
+        // is the held one reading 9252 whatever either is called, and one
+        // reading 61 under a name a held member reads 9252 by stands beside
+        // it: nothing is passed over, and the message reads both tags
+        // whichever dictionary folds into the other.
+        fn message(members: Vec<Field>) -> Field {
+            let mut message = StructType::from_fields(members)
+                .map(DataType::from)
+                .unwrap()
+                .required_field("NewOrderSingle");
+            message.as_fix_mut().set_msgtype("D").unwrap();
+            message
+        }
+        fn contended() -> FixRegistry {
+            let mut first = tagged("61", 61, DataType::utf8());
+            first.as_fix_mut().set_tags(&[9252]).unwrap();
+            let mut second = tagged("9252", 9252, DataType::utf8());
+            second.as_fix_mut().set_tags(&[61]).unwrap();
+            let mut registry = FixRegistry::from_fields([first, second]).unwrap();
+            let mut urgency = registry.field(61).unwrap().clone();
+            urgency.set_name("urgency");
+            urgency.as_fix_mut().set_field_ref("61").unwrap();
+            let mut urgency2 = registry.field(9252).unwrap().clone();
+            urgency2.set_name("urgency2");
+            urgency2.as_fix_mut().set_field_ref("9252").unwrap();
+            registry.insert(message(vec![urgency, urgency2])).unwrap();
+            registry
+        }
+        fn named() -> FixRegistry {
+            let mut registry =
+                FixRegistry::from_fields([tagged("Urgency", 9252, DataType::utf8())]).unwrap();
+            let mut member = registry.field(9252).unwrap().clone();
+            member.as_fix_mut().set_field_ref("Urgency").unwrap();
+            registry.insert(message(vec![member])).unwrap();
+            registry
+        }
+        for (mut held, other) in [(contended(), named()), (named(), contended())] {
+            let merge = held.merge_with(&other).unwrap();
+            assert!(merge.is_clean(), "{:?}", merge.dropped);
+            let message = held.msgtype("D").unwrap().as_field();
+            let mut read: Vec<(Option<i32>, String)> = message
+                .fields()
+                .iter()
+                .map(|member| {
+                    (
+                        member.as_fix().tag().unwrap(),
+                        member.as_fix().field_ref().unwrap().to_ascii_lowercase(),
+                    )
+                })
+                .collect();
+            read.sort_unstable();
+            assert_eq!(
+                read,
+                [
+                    (Some(61), "61".to_owned()),
+                    (Some(9252), "urgency".to_owned())
+                ]
+            );
+            assert_eq!(
+                FixRegistry::from_json(&held.into_json().unwrap()).unwrap(),
+                held
+            );
+        }
+    }
+
     /// A dictionary whose tag 541 is named by nothing but its digits, and a
     /// component reading it under them.
     fn unnamed_with_reader() -> FixRegistry {
         let mut unnamed = tagged("541", 541, DataType::utf8());
-        unnamed.as_fix_mut().set_branches(["cblock"]).unwrap();
+        unnamed.as_fix_mut().set_sources(["cblock"]).unwrap();
         let mut registry = FixRegistry::from_fields([unnamed]).unwrap();
         let mut member = registry.field(541).unwrap().clone();
         member.as_fix_mut().set_field_ref("541").unwrap();
@@ -1937,7 +2723,7 @@ mod lenient {
     fn maturity() -> Field {
         let mut named = tagged("maturitydate", 541, DataType::utf8());
         named.set_display("MaturityDate").unwrap();
-        named.as_fix_mut().set_branches(["fix44"]).unwrap();
+        named.as_fix_mut().set_sources(["fix44"]).unwrap();
         named
     }
 
@@ -1960,7 +2746,7 @@ mod lenient {
             "the placeholder identity is gone"
         );
         assert_eq!(
-            stored.as_fix().branches().collect::<Vec<_>>(),
+            stored.as_fix().sources().collect::<Vec<_>>(),
             ["cblock", "fix44"]
         );
         let instrument = registry.field_by_name("Instrument").unwrap();
@@ -2011,6 +2797,273 @@ mod lenient {
         assert_eq!(registry.add_fields([unnamed.clone()]).unwrap(), (1, 0));
         assert_eq!(registry.field_by_tag(9999).unwrap(), &unnamed);
         assert_eq!(registry.field_by_tag(541).unwrap(), &maturity());
+    }
+
+    #[test]
+    fn the_sources_catalog_takes_an_entry_once_and_keeps_what_a_field_names() {
+        use yggdryl::FixSource;
+        let mut registry = FixRegistry::new();
+        assert_eq!(registry.sources().len(), 0);
+        assert!(registry.add_source(FixSource::new("Venue").unwrap()));
+        assert!(
+            !registry.add_source(FixSource::new("VENUE").unwrap().with_file("Venue.cfb")),
+            "a held id keeps its entry"
+        );
+        assert_eq!(
+            registry.get_source("venue").unwrap().file(),
+            Some("Venue.cfb"),
+            "and takes the file it lacked"
+        );
+        assert!(!registry.add_source(FixSource::new("venue").unwrap().with_file("other.cfb")));
+        assert_eq!(
+            registry.get_source("Venue").unwrap().file(),
+            Some("Venue.cfb"),
+            "a stated file is kept"
+        );
+        assert!(registry.add_source(FixSource::new("desk").unwrap()));
+        assert_eq!(
+            registry.sources().map(FixSource::id).collect::<Vec<_>>(),
+            ["desk", "venue"]
+        );
+        assert!(registry.get_source("nobody").is_none());
+        // The fold a field's list is deduplicated under reaches the entry too.
+        assert_eq!(registry.get_source("VE_NUE").unwrap().id(), "venue");
+
+        // The catalog and the fields are two statements: an entry nothing
+        // names stands, and an id no entry holds is the field's alone.
+        let mut field = tagged("VenueTrade", 5001, DataType::utf8());
+        field.as_fix_mut().set_sources(["venue", "ghost"]).unwrap();
+        registry.insert(field).unwrap();
+        assert_eq!(registry.dialects(), ["ghost", "venue"]);
+        assert!(registry.get_source("ghost").is_none());
+
+        // Removal is refused while a field names the id, by that field, and
+        // removes nothing; an entry nothing names comes back; absence is
+        // nothing.
+        let error = registry.remove_source("VENUE").unwrap_err();
+        assert!(matches!(error, Error::Conflict { .. }), "{error}");
+        let text = error.to_string();
+        assert!(
+            text.contains("VenueTrade") && text.contains("venue"),
+            "{text}"
+        );
+        assert_eq!(
+            registry.get_source("venue").unwrap().file(),
+            Some("Venue.cfb")
+        );
+        assert_eq!(
+            registry.remove_source("desk").unwrap().unwrap().id(),
+            "desk"
+        );
+        assert_eq!(registry.remove_source("desk").unwrap(), None);
+        assert_eq!(registry.sources().len(), 1);
+    }
+
+    /// A held entry takes the plugin role it lacked - `UKNW` is none
+    /// stated - and keeps the one it states: two files of one dialect
+    /// disagreeing on the role keep the first, and a file stating none
+    /// says nothing against it.
+    #[test]
+    fn the_catalog_takes_a_plugin_role_it_lacked_and_keeps_a_stated_one() {
+        use yggdryl::{FixSource, PluginSide};
+        let mut registry = FixRegistry::new();
+        assert!(registry.add_source(FixSource::new("venue").unwrap()));
+        assert_eq!(
+            registry.get_source("venue").unwrap().pluginside(),
+            PluginSide::Unknown
+        );
+        assert!(
+            !registry.add_source(
+                FixSource::new("VENUE")
+                    .unwrap()
+                    .with_pluginside(PluginSide::SellSide)
+            )
+        );
+        assert_eq!(
+            registry.get_source("venue").unwrap().pluginside(),
+            PluginSide::SellSide,
+            "a role the entry lacked is taken"
+        );
+        assert!(
+            !registry.add_source(
+                FixSource::new("venue")
+                    .unwrap()
+                    .with_pluginside(PluginSide::BuySide)
+            )
+        );
+        assert_eq!(
+            registry.get_source("venue").unwrap().pluginside(),
+            PluginSide::SellSide,
+            "a stated role is kept over a disagreeing one"
+        );
+        assert!(!registry.add_source(FixSource::new("venue").unwrap()));
+        assert_eq!(
+            registry.get_source("venue").unwrap().pluginside(),
+            PluginSide::SellSide,
+            "none stated says nothing"
+        );
+        // The fold of two registries unions the catalogs under the same
+        // rule, so the role rides a merge.
+        let mut other = FixRegistry::new();
+        other.add_source(
+            FixSource::new("desk")
+                .unwrap()
+                .with_pluginside(PluginSide::BuySide),
+        );
+        other.add_source(FixSource::new("venue").unwrap());
+        registry.merge_with(&other).unwrap();
+        assert_eq!(
+            registry
+                .sources()
+                .map(|source| (source.id(), source.pluginside()))
+                .collect::<Vec<_>>(),
+            [
+                ("desk", PluginSide::BuySide),
+                ("venue", PluginSide::SellSide)
+            ]
+        );
+    }
+
+    #[test]
+    fn the_catalog_holds_one_entry_per_id_under_the_fold_a_field_reads_by() {
+        use yggdryl::FixSource;
+        let mut registry = FixRegistry::new();
+        assert!(registry.add_source(FixSource::new("venue").unwrap()));
+        // A spelling the fold reads as a held id is that entry: it arrives
+        // nowhere, keeps the held spelling, and hands over the file the
+        // held entry lacked.
+        assert!(!registry.add_source(FixSource::new("VE_NUE").unwrap().with_file("x.cfb")));
+        assert!(!registry.add_source(FixSource::new("ve-nue").unwrap().with_file("y.cfb")));
+        assert_eq!(registry.sources().len(), 1);
+        assert_eq!(
+            registry
+                .sources()
+                .map(|source| (source.id(), source.file()))
+                .collect::<Vec<_>>(),
+            [("venue", Some("x.cfb"))]
+        );
+        assert_eq!(registry.get_source("ve nue").unwrap().id(), "venue");
+        // A field stating the other spelling names that entry, so the
+        // catalog and the field agree on what one id is: the removal is
+        // refused by the field, and the entry stands.
+        let mut field = tagged("VenueTrade", 5001, DataType::utf8());
+        field.as_fix_mut().set_sources(["ve_nue"]).unwrap();
+        registry.insert(field).unwrap();
+        assert!(
+            registry
+                .field_by_tag(5001)
+                .unwrap()
+                .as_fix()
+                .has_source("venue")
+        );
+        let error = registry.remove_source("venue").unwrap_err();
+        assert!(matches!(error, Error::Conflict { .. }), "{error}");
+        assert_eq!(registry.sources().len(), 1);
+    }
+
+    #[test]
+    fn a_sources_text_the_setter_never_writes_is_refused_where_a_definition_enters() {
+        // The read walks a hand edit as nothing; the doors a definition
+        // enters a registry through refuse it instead, naming the key and
+        // what the setter writes.
+        for (stored, expected) in [
+            ("venue", "a JSON array of source ids"),
+            (r#"["Venue"]"#, "each source id ASCII lowercase"),
+            (r#"["b","a"]"#, "the source ids sorted"),
+            (r#"["venue","venue"]"#, "each source once"),
+            (r#"["ve_nue","venue"]"#, "each source once"),
+        ] {
+            let mut field = tagged("VenueTrade", 5001, DataType::utf8());
+            field.insert_metadata("FIX:sources", stored).unwrap();
+            for error in [
+                FixRegistry::from_fields([field.clone()]).unwrap_err(),
+                FixRegistry::new().insert(field.clone()).unwrap_err(),
+            ] {
+                assert!(
+                    matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:sources"),
+                    "{stored}: {error}"
+                );
+                assert!(error.to_string().contains(expected), "{stored}: {error}");
+            }
+            // A named definition is held to the same text.
+            let mut registry =
+                FixRegistry::from_fields([tagged("PartyID", 448, DataType::utf8())]).unwrap();
+            let mut member = registry.field_by_tag(448).unwrap().clone();
+            member.as_fix_mut().set_field_ref("PartyID").unwrap();
+            let mut party =
+                DataType::from(StructType::from_fields([member]).unwrap()).required_field("Party");
+            party.insert_metadata("FIX:sources", stored).unwrap();
+            let error = registry
+                .create_definition(FixCategory::Components, party)
+                .unwrap_err();
+            assert!(
+                matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:sources"),
+                "{stored}: {error}"
+            );
+            assert!(
+                registry
+                    .definition(FixCategory::Components, "Party")
+                    .is_err()
+            );
+        }
+        // The retired membership key is refused by its own name rather than
+        // loaded as inert text with the membership gone.
+        let mut field = tagged("VenueTrade", 5001, DataType::utf8());
+        field.insert_metadata("FIX:branches", "venue").unwrap();
+        let error = FixRegistry::from_fields([field]).unwrap_err();
+        assert!(
+            matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:branches"),
+            "{error}"
+        );
+        let text = error.to_string();
+        assert!(
+            text.contains("retired")
+                && text.contains("FIX:sources")
+                && text.contains("sources.json"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn merging_unions_the_sources_catalogs_as_it_unions_the_ids_on_a_field() {
+        use yggdryl::FixSource;
+        let mut held = FixRegistry::new();
+        held.add_source(FixSource::new("cme").unwrap());
+        held.add_source(FixSource::new("venue").unwrap().with_file("held.cfb"));
+        let mut other = FixRegistry::new();
+        other.add_source(FixSource::new("venue").unwrap().with_file("other.cfb"));
+        other.add_source(FixSource::new("blp").unwrap().with_file("blp.cfb"));
+        let mut symbol = tagged("Symbol", 55, DataType::utf8());
+        symbol.as_fix_mut().set_sources(["blp"]).unwrap();
+        other.insert(symbol).unwrap();
+        held.merge_with(&other).unwrap();
+        assert_eq!(
+            held.sources()
+                .map(|source| (source.id(), source.file()))
+                .collect::<Vec<_>>(),
+            [
+                ("blp", Some("blp.cfb")),
+                ("cme", None),
+                ("venue", Some("held.cfb"))
+            ],
+            "a held entry keeps its file; what only the other holds arrives"
+        );
+        assert_eq!(
+            held.field_by_tag(55)
+                .unwrap()
+                .as_fix()
+                .sources()
+                .collect::<Vec<_>>(),
+            ["blp"]
+        );
+        // Equality and the hash read the catalog: two dictionaries whose
+        // fields agree and whose catalogs do not are two dictionaries.
+        let mut twin = held.clone();
+        assert_eq!(twin, held);
+        assert_eq!(twin.stable_hash(), held.stable_hash());
+        twin.add_source(FixSource::new("desk").unwrap());
+        assert_ne!(twin, held);
+        assert_ne!(twin.stable_hash(), held.stable_hash());
     }
 }
 

@@ -23,21 +23,25 @@ fn every_message_answers_its_category_as_the_member_it_names() {
             .expect("a registered wire code reads back");
         match field.as_fix().msgcat() {
             Some(text) => {
-                let member = msgtype.msgcat();
+                let member = msgtype.marketdatakind();
                 assert!(member.is_some(), "{code}: {text}");
                 assert_eq!(member.map(MarketDataKind::as_str), Some(text), "{code}");
                 filed += 1;
             }
-            None => assert_eq!(msgtype.msgcat(), None, "{code}"),
+            None => assert_eq!(msgtype.marketdatakind(), None, "{code}"),
         }
     }
     assert!(filed > 100, "the dictionary files its messages: {filed}");
     assert_eq!(
-        registry.get_msgtype("D").and_then(|held| held.msgcat()),
+        registry
+            .get_msgtype("D")
+            .and_then(|held| held.marketdatakind()),
         Some(MarketDataKind::Order)
     );
     assert_eq!(
-        registry.get_msgtype("W").and_then(|held| held.msgcat()),
+        registry
+            .get_msgtype("W")
+            .and_then(|held| held.marketdatakind()),
         Some(MarketDataKind::Book)
     );
 }

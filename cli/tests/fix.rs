@@ -6,7 +6,7 @@ use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, Field, FixDirection, FixId, FixRegistry};
+use yggdryl::{DataType, Field, FixCategory, FixDirection, FixId, FixRegistry, FixSource};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -326,9 +326,9 @@ fn field_membership_is_stamped_folded_and_replaced_by_update() {
     create_member(&workspace, "DeskValue", "int32", "5001", "Alpha");
     let created = workspace.read("fields", "5001");
     assert_eq!(created.name(), "DeskValue");
-    assert_eq!(created.as_fix().branches().collect::<Vec<_>>(), ["alpha"]);
-    assert!(created.as_fix().has_branch("ALPHA"));
-    assert!(!created.as_fix().has_branch("beta"));
+    assert_eq!(created.as_fix().sources().collect::<Vec<_>>(), ["alpha"]);
+    assert!(created.as_fix().has_source("ALPHA"));
+    assert!(!created.as_fix().has_source("beta"));
 
     // One namespace: the same tag under the same folded name is one identity,
     // whatever dictionary claims it.
@@ -357,15 +357,15 @@ fn field_membership_is_stamped_folded_and_replaced_by_update() {
     ]);
     let updated = workspace.read("fields", "5001");
     assert_eq!(
-        updated.as_fix().branches().collect::<Vec<_>>(),
+        updated.as_fix().sources().collect::<Vec<_>>(),
         ["alpha", "gamma"]
     );
     let shown = output_text(&workspace.success(&["fields", "read", "DeskValue"]));
     assert!(
-        shown.contains("dialects") && shown.contains("alpha, gamma"),
+        shown.contains("sources") && shown.contains("alpha, gamma"),
         "{shown}"
     );
-    // A dialect name is held to the alias grammar; a refusal leaves the
+    // A dialect name is held to the source id grammar; a refusal leaves the
     // field as it was.
     workspace.failure(&[
         "fields",
@@ -375,12 +375,12 @@ fn field_membership_is_stamped_folded_and_replaced_by_update() {
         "--tag",
         "5001",
         "--dialect",
-        "a,b",
+        "a\"b",
     ]);
     assert_eq!(workspace.read("fields", "5001"), updated);
     workspace.success(&["fields", "update", "DeskValue", "int32", "--tag", "5001"]);
     assert_eq!(
-        workspace.read("fields", "5001").as_fix().branches().count(),
+        workspace.read("fields", "5001").as_fix().sources().count(),
         0
     );
 
@@ -418,7 +418,7 @@ fn one_namespace_holds_two_fields_on_one_tag_and_lists_by_membership() {
     create_member(&workspace, "OtherName", "int64", "5001", "beta");
     let other = workspace.read("fields", "OtherName");
     assert_eq!(other.dtype(), &DataType::Int64);
-    assert_eq!(other.as_fix().branches().collect::<Vec<_>>(), ["beta"]);
+    assert_eq!(other.as_fix().sources().collect::<Vec<_>>(), ["beta"]);
     let holder = workspace.read("fields", "DeskValue");
     assert_eq!(holder.dtype(), &DataType::Int32);
     assert!(!holder.as_fix().names().any(|alias| alias == "OtherName"));
@@ -458,14 +458,14 @@ fn one_namespace_holds_two_fields_on_one_tag_and_lists_by_membership() {
             .field_by_name("DeskValue")
             .unwrap()
             .as_fix()
-            .has_branch("alpha")
+            .has_source("alpha")
     );
     assert!(
         stored
             .field_by_name("OtherName")
             .unwrap()
             .as_fix()
-            .has_branch("beta")
+            .has_source("beta")
     );
 
     // Deleting one of the two leaves the other alone on the tag, and the
@@ -765,7 +765,7 @@ fn ingest_folds_a_glob_of_cblocks_in_one_commit_and_names_what_it_passes_over() 
     let held = stored.field_by_tag(532).expect("tag 532 stored");
     assert_eq!(held.dtype(), &DataType::Boolean);
     assert_eq!(
-        held.as_fix().branches().collect::<Vec<_>>(),
+        held.as_fix().sources().collect::<Vec<_>>(),
         ["axessiq_fix44", "tradeweb_fix44"]
     );
     assert!(stored.msgtype("r").is_ok(), "the message arrived");
@@ -921,7 +921,7 @@ fn ingest_refuses_a_location_holding_nothing_and_sync_names_the_verb_for_a_cbloc
             .field_by_tag(532)
             .expect("stored")
             .as_fix()
-            .branches()
+            .sources()
             .collect::<Vec<_>>(),
         ["venue"]
     );
@@ -979,4 +979,170 @@ fn a_runner_variable_turns_annotations_on_by_what_it_says_rather_than_by_being_s
     assert!(!refused.status.success(), "{text}");
     assert!(text.contains("GITHUB_ACTIONS"), "{text}");
     assert!(!text.contains("warning(s) while reading"), "{text}");
+}
+
+#[test]
+fn a_dialect_creates_its_sources_entry_and_check_reports_what_dangles_or_is_unreferenced() {
+    let workspace = Workspace::new();
+    create_member(&workspace, "DeskValue", "int32", "5001", "Alpha");
+    // The entry the id names is written beside the categories, folded, and
+    // read back as the catalog it is.
+    let stored = std::fs::read_to_string(workspace.root().join("sources.json")).unwrap();
+    let catalog = yggdryl::from_json_scalar(&stored).unwrap();
+    assert_eq!(
+        yggdryl::into_json_scalar(&catalog).unwrap(),
+        r#"[{"id":"alpha","pluginside":"UKNW"}]"#
+    );
+    let registry = FixRegistry::from_handle(&LocalFolder::new(workspace.root()).expect("root"))
+        .expect("stored dictionary");
+    assert_eq!(registry.get_source("alpha").unwrap().file(), None);
+    let shown = output_text(&workspace.success(&["fields", "read", "DeskValue"]));
+    assert!(
+        shown.contains("sources") && shown.contains("alpha"),
+        "{shown}"
+    );
+    let checked = output_text(&workspace.success(&["check"]));
+    assert!(checked.contains("sources"), "{checked}");
+    // Update under a second dialect adds its entry and keeps the first.
+    workspace.success(&[
+        "fields",
+        "update",
+        "DeskValue",
+        "int32",
+        "--tag",
+        "5001",
+        "--dialect",
+        "gamma",
+    ]);
+    let registry = FixRegistry::from_handle(&LocalFolder::new(workspace.root()).expect("root"))
+        .expect("stored dictionary");
+    assert_eq!(
+        registry.sources().map(FixSource::id).collect::<Vec<_>>(),
+        ["alpha", "gamma"]
+    );
+
+    // An id no entry holds fails the check, naming the definition and the
+    // id; an entry nothing names is a note, in the shape the code-set note
+    // has. Both are staged outside the tool, which never writes either: the
+    // definition is replaced rather than merged, since a merge unions the
+    // ids and would keep `gamma` named.
+    let mut folder = LocalFolder::new(workspace.root()).expect("root");
+    let mut registry = FixRegistry::from_handle(&folder).expect("stored dictionary");
+    let mut field = registry.field_by_name("DeskValue").unwrap().clone();
+    field.as_fix_mut().set_sources(["ghost"]).unwrap();
+    registry
+        .update_definition(FixCategory::Fields, field)
+        .unwrap();
+    assert!(registry.add_source(FixSource::new("orphan").unwrap()));
+    registry.commit(&mut folder).unwrap();
+    let text = output_text(&workspace.failure(&["check", "--annotate"]));
+    assert!(
+        text.contains(
+            "::error title=fix sources::fields/DeskValue: names source \"ghost\", which sources.json does not hold"
+        ),
+        "{text}"
+    );
+    for unreferenced in ["alpha", "gamma", "orphan"] {
+        assert!(
+            text.contains(&format!(
+                "::note title=fix sources::sources/{unreferenced}: no field or definition names it"
+            )),
+            "{text}"
+        );
+    }
+}
+
+/// The fixture `rejection` carries, under a root naming the plugin's class
+/// the way a vendor's file does.
+fn sided(role: &str) -> String {
+    rejection("string").replace(
+        "<cplugin-configuration fix-version=\"4.4\">",
+        &format!(
+            "<cplugin-configuration type=\"com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.{role}FIXCPluginCBlock\" version=\"1.2\" fix-version=\"4.4\">"
+        ),
+    )
+}
+
+/// The plugin's role is a column of the schema right after the plugin id,
+/// read by an intrinsic set the tool lists and reads like any other and
+/// refuses to write, and a fresh store holding one ingested Sell-Side file
+/// - whose entry states `SELL` - is clean under `check`.
+#[test]
+fn the_plugin_side_is_a_schema_column_an_intrinsic_set_and_clean_under_check() {
+    use yggdryl::PluginSide;
+    let workspace = Workspace::new();
+    let folder = workspace.cblocks(&[("ms_fix44.cfb", &sided("SellSide"))]);
+    let file = folder.join("ms_fix44.cfb");
+    let text = output_text(&workspace.success(&["ingest", file.to_str().expect("test path")]));
+    assert!(text.contains("1 file(s)"), "{text}");
+    let registry = workspace.loaded();
+    assert_eq!(
+        registry.get_source("ms_fix44").unwrap().pluginside(),
+        PluginSide::SellSide
+    );
+    let stored = std::fs::read_to_string(workspace.root().join("sources.json")).unwrap();
+    assert_eq!(
+        yggdryl::into_json_scalar(&yggdryl::from_json_scalar(&stored).unwrap()).unwrap(),
+        r#"[{"file":"ms_fix44.cfb","id":"ms_fix44","pluginside":"SELL"}]"#
+    );
+
+    // The schema lists the column after the plugin id; the strike moves its
+    // tag to 65042, at the terminal and as JSON.
+    let schema = output_text(&workspace.success(&["schema"]));
+    let plugin = schema
+        .lines()
+        .position(|line| line.contains("msgpluginid"))
+        .unwrap_or_else(|| panic!("msgpluginid listed: {schema}"));
+    let side = schema
+        .lines()
+        .position(|line| line.contains("msgpluginside"))
+        .unwrap_or_else(|| panic!("msgpluginside listed: {schema}"));
+    assert!(side > plugin, "{schema}");
+    let line = schema.lines().nth(side).unwrap();
+    assert!(
+        line.contains("pluginside")
+            && line.contains("65042")
+            && line.contains("Message Plugin Side"),
+        "{line}"
+    );
+    let out = workspace.0.join("schema.json");
+    workspace.success(&["schema", "--out", out.to_str().expect("test path")]);
+    let written = Field::from_json(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    let columns: Vec<&str> = written.fields().iter().map(Field::name).collect();
+    let at = columns
+        .iter()
+        .position(|name| *name == "msgpluginside")
+        .unwrap();
+    assert_eq!(columns[at - 1], "msgpluginid");
+    assert_eq!(columns[at + 1], "msgoriginator");
+    assert_eq!(written.fields()[at].dtype(), &DataType::PluginSide);
+    assert!(!written.fields()[at].is_nullable());
+
+    // The intrinsic set is listed and read like any other, and refuses a
+    // write; the store carries it as a document.
+    let listed = output_text(&workspace.success(&["codesets", "list"]));
+    assert!(listed.contains("msgpluginsidecodeset"), "{listed}");
+    let read = output_text(&workspace.success(&["codesets", "read", "msgpluginsidecodeset"]));
+    for spelling in ["UKNW", "BUYS", "SELL"] {
+        assert!(read.contains(spelling), "{read}");
+    }
+    workspace.failure(&[
+        "codesets",
+        "write",
+        "msgpluginsidecodeset",
+        "--codes",
+        r#"[{"value":"3","name":"MIDL"}]"#,
+    ]);
+    assert!(
+        workspace
+            .root()
+            .join("codesets/msgpluginsidecodeset.json")
+            .is_file()
+    );
+
+    // Clean: the entry is named by the ingested fields, and the set is read
+    // by the crate's own column, so neither is a finding.
+    let checked = output_text(&workspace.success(&["check"]));
+    assert!(!checked.contains("msgpluginside"), "{checked}");
+    assert!(!checked.contains("ms_fix44"), "{checked}");
 }

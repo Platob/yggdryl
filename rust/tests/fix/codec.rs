@@ -4015,6 +4015,14 @@ mod equivalence {
     /// no rule of its own, and a difference here means the reading moved. Where
     /// that was the point, the snapshot is regenerated in the commit that moved
     /// it; where it was not, it is a defect.
+    ///
+    /// It last moved when the digest's category label `msgcat` became
+    /// `marketdatakind`: every message's `currhashcode` and `curruuid`, a
+    /// `crossuuid` that is its own `curruuid`, the `srcuuids` and `prevuuid`
+    /// naming a moved message, and the `crosscode`, `crosshashcode` and
+    /// `crossuuid` of an execution split off a report naming no `ExecID` or
+    /// `TradeID` - its cross code derives from the report's `currhashcode` -
+    /// changed; no wire, entry or `seqnum` did.
     #[test]
     fn the_codec_answers_what_it_answered() {
         let pinned = read();
@@ -4922,4 +4930,187 @@ fn a_message_split_off_one_of_three_twins_names_its_own_report() {
             }
         }
     }
+}
+
+/// A codec reading under a source stamps that source's plugin role on every
+/// message it builds, on every door, as the fixed row's `msgpluginside`;
+/// a codec told no source stamps `UKNW`; the cell round-trips through the
+/// row; and a row-header capture named `msgpluginside` is the row's word
+/// over the stamp. An id the catalog does not hold is refused by name.
+#[test]
+fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
+    use yggdryl::graph::Market;
+    use yggdryl::{FixMsg, FixSource, MSGPLUGINSIDE_TAG_NAME, PluginSide, Side};
+
+    let mut registry = committed_registry().as_ref().clone();
+    assert!(
+        registry.add_source(
+            FixSource::new("ms")
+                .unwrap()
+                .with_pluginside(PluginSide::SellSide)
+        )
+    );
+    assert!(
+        registry.add_source(
+            FixSource::new("desk")
+                .unwrap()
+                .with_pluginside(PluginSide::BuySide)
+        )
+    );
+    assert!(registry.add_source(FixSource::new("bare").unwrap()));
+    let registry = Arc::new(registry);
+    let schema = yggdryl::fix_schema(&registry, "fix").expect("a fixed schema");
+    let at = yggdryl::fix_column_of(&schema, MSGPLUGINSIDE_TAG_NAME.0).expect("the column");
+    let line: &[u8] = b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|10=0|";
+
+    for (id, side) in [
+        ("MS", PluginSide::SellSide),
+        ("desk", PluginSide::BuySide),
+        ("bare", PluginSide::Unknown),
+    ] {
+        let codec = super::fixed_codec(Arc::clone(&registry))
+            .with_source(id)
+            .expect("a held source");
+        assert_eq!(codec.source(), Some(id.to_ascii_lowercase().as_str()));
+        // The line door.
+        let message = codec.parse_fix_line(line).expect("a message");
+        assert_eq!(message.msgpluginside(), side, "{id}");
+        assert_eq!(message.capture().msgpluginside(), side);
+        assert_eq!(
+            message.get_by_tag(MSGPLUGINSIDE_TAG_NAME.0),
+            Some(Scalar::PluginSide(side))
+        );
+        assert_eq!(
+            message.by_name("msgpluginside").unwrap(),
+            Scalar::PluginSide(side)
+        );
+        // Independent of the message's own side, and no entry on the wire.
+        assert_eq!(message.get_side(), Side::Buy);
+        assert!(
+            message
+                .entries()
+                .iter()
+                .all(|entry| entry.tag() != MSGPLUGINSIDE_TAG_NAME.0)
+        );
+        // The row cell, and the message read back off it.
+        let row = message.into_row(&schema).expect("a fixed row");
+        assert_eq!(
+            row.as_sequence().expect("a row")[at],
+            Scalar::PluginSide(side)
+        );
+        let again = FixMsg::from_row(Arc::clone(&registry), &schema, &row).expect("the row read");
+        assert_eq!(again.msgpluginside(), side, "{id}: the row's word");
+        assert_eq!(again.into_row(&schema).unwrap(), row);
+        // The lines door stamps the same; the Arrow batch door is pinned
+        // beside it in `batch.rs`.
+        let bytes = codec
+            .parse_lines([line])
+            .collect::<Result<Vec<_>, _>>()
+            .expect("one message");
+        assert_eq!(bytes[0].msgpluginside(), side);
+    }
+
+    // The stamp is outside the identity, the wire and the digest: a dated
+    // line parsed under a Buy-Side source and under no source is the one
+    // message, stamped differently.
+    let dated: &[u8] =
+        b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|52=20240102-10:15:30|10=0|";
+    let stamped = super::fixed_codec(Arc::clone(&registry))
+        .with_source("desk")
+        .expect("a held source")
+        .parse_fix_line(dated)
+        .expect("a message");
+    let bare = super::fixed_codec(Arc::clone(&registry))
+        .parse_fix_line(dated)
+        .expect("a message");
+    assert_eq!(stamped.msgpluginside(), PluginSide::BuySide);
+    assert_eq!(bare.msgpluginside(), PluginSide::Unknown);
+    assert_eq!(stamped.get_currhashcode(), bare.get_currhashcode());
+    assert_eq!(stamped.get_curruuid(), bare.get_curruuid());
+    assert_eq!(stamped.stable_hash(), bare.stable_hash());
+    assert_eq!(stamped.into_bytes(b'|'), bare.into_bytes(b'|'));
+
+    // A line spelling the crate tag itself is a row stating the cell, and
+    // the row's word over the stamp, as every crate tag a line spells is.
+    let spelled = super::fixed_codec(Arc::clone(&registry))
+        .with_source("ms")
+        .expect("a held source")
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|65042=BUYS|10=0|")
+        .expect("a message");
+    assert_eq!(spelled.msgpluginside(), PluginSide::BuySide);
+    assert!(
+        spelled
+            .entries()
+            .iter()
+            .all(|entry| entry.tag() != MSGPLUGINSIDE_TAG_NAME.0),
+        "a typed fact, never an entry"
+    );
+
+    // No source named: none stated, and the column still answers.
+    let codec = super::fixed_codec(Arc::clone(&registry));
+    assert_eq!(codec.source(), None);
+    let message = codec.parse_fix_line(line).expect("a message");
+    assert_eq!(message.msgpluginside(), PluginSide::Unknown);
+    assert_eq!(
+        message.get_by_tag(MSGPLUGINSIDE_TAG_NAME.0),
+        Some(Scalar::PluginSide(PluginSide::Unknown))
+    );
+
+    // A row-header capture named for the column is the row's word, and one
+    // stating nothing leaves the stamp.
+    let codec = super::fixed_codec(Arc::clone(&registry))
+        .with_source("ms")
+        .expect("a held source")
+        .with_capture_names(["msgpluginside"]);
+    let captured = |capture: Option<&str>| {
+        let options = Arc::new(yggdryl::text::TextOptions::new());
+        let line = TextLine::from_bytes(0, TextBytes::from_bytes(line).unwrap(), options)
+            .unwrap()
+            .with_captures(vec![
+                capture.map(|text| TextBytes::from_bytes(text.as_bytes()).unwrap()),
+            ])
+            .unwrap();
+        codec
+            .parse_text_line(&line)
+            .expect("a readable line")
+            .next()
+            .expect("one message")
+            .expect("a message")
+    };
+    assert_eq!(
+        captured(Some("buy-side")).msgpluginside(),
+        PluginSide::BuySide
+    );
+    assert_eq!(captured(Some("UKNW")).msgpluginside(), PluginSide::Unknown);
+    assert_eq!(captured(None).msgpluginside(), PluginSide::SellSide);
+    // A cell written over a parsed message is the writer's word too, in any
+    // spelling the enum reads, and a spelling naming no member is refused
+    // with the message unchanged.
+    let mut message = codec.parse_fix_line(line).expect("a message");
+    message
+        .set(MSGPLUGINSIDE_TAG_NAME.0, Scalar::from("buy-side"))
+        .expect("a stated role");
+    assert_eq!(message.msgpluginside(), PluginSide::BuySide);
+    message
+        .set("msgpluginside", Scalar::from(2_i64))
+        .expect("a stated code");
+    assert_eq!(message.msgpluginside(), PluginSide::SellSide);
+    assert!(
+        message
+            .set(MSGPLUGINSIDE_TAG_NAME.0, Scalar::from("UNKN"))
+            .is_err()
+    );
+    assert_eq!(message.msgpluginside(), PluginSide::SellSide);
+
+    // An id the catalog does not hold is refused by name, and the codec is
+    // not built.
+    let error = super::fixed_codec(Arc::clone(&registry))
+        .with_source("ghost")
+        .err()
+        .expect("refused");
+    assert!(matches!(error, yggdryl::Error::Absent { .. }), "{error}");
+    assert_eq!(
+        error.to_string(),
+        r#"expected a FIX source at "ghost", got nothing"#
+    );
 }

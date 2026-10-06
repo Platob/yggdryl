@@ -6,9 +6,9 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 89 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the twelve [codes](codes/index.md), the five [enums](enum/index.md) |
+| Owns | 97 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the seventeen [codes](codes/index.md), the six [enums](enum/index.md) |
 | Parses | Arrow, SQL, Hive, Spark, Iceberg, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
-| Identity | `id()`, `kind()`: 90 ids, 13 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
+| Identity | `id()`, `kind()`: 97 ids, 13 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
@@ -172,7 +172,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, and the codes `unit` and `forex`, each resolving to its own [code](codes/index.md), and `side`, `state`, `marketdatakind`, `marketdatatype` and `timeinforce` to the [Side](enum/side.md), [State](enum/state.md), [MarketDataKind](enum/marketdatakind.md), [MarketDataType](enum/marketdatatype.md) and [TimeInForce](enum/timeinforce.md) enums; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
+The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, the codes `unit` and `forex`, and the reference-data codes `lei`, `bic`, `elf`, `dti` and `fisn`, each resolving to its own [code](codes/index.md), and `side`, `state`, `marketdatakind`, `marketdatatype` and `timeinforce` to the [Side](enum/side.md), [State](enum/state.md), [MarketDataKind](enum/marketdatakind.md), [MarketDataType](enum/marketdatatype.md) and [TimeInForce](enum/timeinforce.md) enums; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
@@ -187,6 +187,11 @@ The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifie
 | `ric` | - | `ric` | a Refinitiv Identification Code, one token of at most 32 bytes |
 | `figi` | - | `figi` | ANSI X9.145, twelve bytes of its shape, ranked by its check digit |
 | `forex` | - | `forex` | an ISO 4217 currency pair, `CCY/CCY`, seven bytes |
+| `lei` | - | `lei` | ISO 17442, twenty bytes of its shape, ranked by its check digits |
+| `bic` | - | `bic` | ISO 9362, eight or eleven bytes of its shape, ranked by its country |
+| `elf` | - | `elf` | ISO 20275, four letters or digits |
+| `dti` | - | `dti` | ISO 24165, nine bytes of its shape, ranked by its check character |
+| `fisn` | - | `fisn` | ISO 18774, `ISSUER/DESCRIPTION`, at most 35 bytes |
 | `Language` | String | `fixed_ascii(2)` | ISO 639-1 alpha-2 |
 | `MonthYear` | String | `fixed_ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
 | `Tenor` | Pattern | `fixed_ascii(8)` | `D5`, `W2`, `M3`, `Y1` |
@@ -417,24 +422,27 @@ A datatype Arrow cannot state alone rides an extension name, one per datatype id
 (`DataTypeId::arrow_extension_name`): `arrow.uuid`, `arrow.parquet.variant`, `geoarrow.wkb`,
 `yggdryl.string` for every string leaf but plain `utf8`, `large_utf8` and `utf8_view`,
 `yggdryl.bytes` for `sized_binary` and `large_binary_view`, and `yggdryl.<name>` for the fixed
-decimals, the version, URL, URN, timezone, MIME and media types, the five enum leaves and the
-twelve codes - thirty names in all, `DataTypeId::arrow_extension_names()`. The name over the
+decimals, the version, URL, URN, timezone, MIME and media types, the six enum leaves and the
+seventeen codes - thirty-six names in all, `DataTypeId::arrow_extension_names()`. The name over the
 storage its datatype lays out reads back as that datatype, a dictionary of it included; over any
 other storage it is a foreign field wearing the name and reads as its storage.
 
-- Rust: each parameter-free datatype marker - `CcyType`, `StateType`, `UuidType` and the twenty
+- Rust: each parameter-free datatype marker - `CcyType`, `StateType`, `UuidType` and the twenty-six
   beside them - and the `StringType` and `BytesType` leaves that ride a document implement
   arrow-rs's `ExtensionType`, every method answering as the field import does. The fixed decimals,
   the URL and the URN have no marker of their own; `Field::from_arrow_field` reads them.
 - Python: `import yggdryl` registers one pyarrow extension type per `yggdryl.*` name
   (`yggdryl.extension.YggdrylType`), so a type, a field, a column, a chunked column, a scalar, a
   batch, a table and a stream cross into pyarrow as extension types and back as the datatype they
-  name, at any depth; `arrow.uuid` is pyarrow's own. An extension column's `to_pylist` reads the
-  column once (`YggdrylArray`), and a value of a type holding one below its top level -
-  `serie(ccy)` - is laid out by the core. pyarrow before 21 exports an extension laid out over a
-  view without its buffers, so there a view leaf (`ascii_view`, `large_utf8_view`,
-  `large_binary_view` and their kin) crosses back as its storage under the field its type states,
-  and one nested below a column's top level is refused by name.
+  name, at any depth; `arrow.uuid` is pyarrow's own. A type prints as pyarrow's own extension
+  types do - `extension<yggdryl.ccy>`, a string or bytes leaf its leaf in brackets,
+  `extension<yggdryl.string[fixed_ascii(4)]>` - while a pyarrow field or schema renders through
+  Arrow C++ with the registered class, `extension<yggdryl.ccy<YggdrylType>>`. An extension
+  column's `to_pylist` reads the column once (`YggdrylArray`), and a value of a type holding one
+  below its top level - `serie(ccy)` - is laid out by the core. pyarrow before 21 exports an
+  extension laid out over a view without its buffers, so there a view leaf (`ascii_view`,
+  `large_utf8_view`, `large_binary_view` and their kin) crosses back as its storage under the
+  field its type states, and one nested below a column's top level is refused by name.
 - JavaScript: Arrow JS has no extension types, so the name rides a field's metadata:
   `Field.intoArrow()` and `Field.fromArrow` carry it, and so do batches and tables; a bare
   `DataType`, a Vector and an `intoArrowScalar` value cannot.
@@ -466,6 +474,7 @@ other storage it is a foreign field wearing the name and reads as its storage.
     ccy = DataType("ccy").into_arrow()
     assert isinstance(ccy, YggdrylType)
     assert ccy.extension_name == "yggdryl.ccy"
+    assert str(ccy) == "extension<yggdryl.ccy>"
     assert ccy.storage_type == pa.string()
     assert DataType.from_arrow(ccy) == DataType("ccy")
 
@@ -754,12 +763,88 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 | target | rewrite |
 | --- | --- |
 | `arrow` | validated clone |
-| `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, `fixed_size_serie` -> `serie` |
+| `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, `fixed_size_serie` -> `serie`; a column stating `bits`: `uintN` -> `intN` |
 | `polars`, `pandas` | no map, and the error names key/value structs; Polars keeps unsigned and `fixed_size_serie` |
-| `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; keeps `fixed[n]`, us/ns timestamps; no duration or interval |
+| `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; keeps `fixed[n]`, us/ns timestamps; no duration or interval; a column stating `bits`: `uint32` -> `int32`, `uint64` -> `int64` |
 
 On a [Field](field.md) the call keeps name, nullability, and metadata, and rebuilds the Arrow projection cache only when something changed.
 [Iceberg](../media/iceberg.md) is a closed primitive vocabulary, not an engine.
+
+What either layout wrote reads back as what it was. An integer column's value door takes a decimal with no fraction, so a `uint64` digest or count stored as `decimal(20,0)` returns as the number it was wherever a row is read back into its facts - a FIX message's `currhashcode` and `seqnum`, a market row's - and a column stating `bits` takes the `long` of its width by its bits, so a digest stored that way returns as the digest it was. The two digest columns of a FIX or market row read an `int64` cell as its bits whatever the schema states, since a negative cell is no other `u64`; `seqnum` is a count and is read by value. A FIX row whose digest or place cell cannot be read so is refused by its column rather than read as zero ([integer edges](numeric/integer.md#edges)).
+
+### A column stating its bits
+
+An unsigned integer column stating
+[`FIELD:representation=bits`](protocol.md#integers-stated-as-bits) - a digest nobody does
+arithmetic on - is exchanged as the signed integer of its width wherever the target names that
+width and no unsigned one, rather than widened, and keeps the declaration, so the
+[cast](cast.md#a-column-that-states-its-bits) onto the rewritten field carries the bits: Spark
+every width, Iceberg `uint32` and `uint64` (it has no 8- or 16-bit integer, so `uint8` and
+`uint16` still widen to `int32`). Arrow, Polars and pandas hold unsigned integers themselves and
+change nothing. A bare `DataType` has no field to state it on, so its unsigned integers widen; a
+struct's children state their own.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Representation, Scheme, StructType};
+
+    let mut digest = DataType::UInt64.required_field("currhashcode");
+    digest.as_field_properties_mut().set_representation(Representation::Bits)?;
+    let row = DataType::from(StructType::from_fields([
+        digest,
+        DataType::UInt64.required_field("count"),
+    ])?)
+    .required_field("row");
+
+    for scheme in [Scheme::ICEBERG, Scheme::SPARK] {
+        let exchanged = row.clone().into_scheme_compat(&scheme)?;
+        assert_eq!(exchanged.fields()[0].dtype(), &DataType::Int64);
+        assert_eq!(
+            exchanged.fields()[0].as_field_properties().representation(),
+            Representation::Bits
+        );
+        // A column stating nothing still widens.
+        assert_eq!(exchanged.fields()[1].dtype(), &DataType::decimal128(20, 0)?);
+    }
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field
+
+    digest = Field("currhashcode", "uint64", nullable=False)
+    digest.field_properties.representation = "bits"
+    row = Field(
+        "row",
+        DataType.from_fields([digest, Field("count", "uint64", nullable=False)]),
+        nullable=False,
+    )
+
+    iceberg = row.into_scheme_compat("iceberg")
+    assert iceberg.dtype["currhashcode"].dtype == DataType("int64")
+    assert iceberg.dtype["currhashcode"].field_properties.representation == "bits"
+    assert iceberg.dtype["count"].dtype == DataType.decimal(20, 0)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { fields } = require('yggdryl')
+
+    const digest = fields.uint64('currhashcode', { nullable: false })
+    digest.fieldProperties.representation = 'bits'
+    const row = fields.struct('row', [digest, fields.uint64('count', { nullable: false })], {
+      nullable: false,
+    })
+
+    const iceberg = row.intoSchemeCompat('iceberg')
+    assert.equal(iceberg.dtype.getField('currhashcode').dtype.toString(), 'int64')
+    assert.equal(iceberg.dtype.getField('currhashcode').fieldProperties.representation, 'bits')
+    assert.equal(iceberg.dtype.getField('count').dtype.toString(), 'decimal128(20,0)')
+    ```
 
 ## Building the enum directly
 
@@ -791,6 +876,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - nesting past 64 -> error, in parsing, default construction, and compatibility walks alike; `into_struct_type` counts the level its wrap adds.
 - `into_scheme_compat("duckdb")` -> refused by name, listing the accepted targets.
 - `datetime64(ns)` to `spark` -> refused with `got ns` and the node path; scale never clamped, extension metadata never relabeled.
+- `DataType::UInt64.into_scheme_compat(&Scheme::ICEBERG)` -> `decimal128(20, 0)` always: a bare datatype states no `FIELD:representation`, only a field does.
 - `DataType.fromArrow({})` -> `TypeError`: only a `DataType`, datatype text or an Apache Arrow JS type is read, and an arbitrary object is never stringified.
 - `int`, `float`, `char`, `String`, `Boolean` -> grammar meanings (`int32`, `float32`, `utf8`, `boolean`), not FIX.
 - `TZTimestamp` -> the instant, offset dropped; read under `datetime64(ns,"<zone>")` for the local value.

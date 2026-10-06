@@ -1453,6 +1453,7 @@ Object.defineProperties(Scalar.prototype, {
 // leaf classes nested columns are handed out as are defined here, over the
 // private natives the loader keeps.
 const nativeSerie = Object.freeze({
+  fromSource: NativeSerie._fromSourceNative.bind(NativeSerie),
   fromScalars: NativeSerie._fromScalarsNative.bind(NativeSerie),
   fromDefault: NativeSerie._fromDefaultNative.bind(NativeSerie),
   lit: NativeSerie._litNative.bind(NativeSerie),
@@ -1493,8 +1494,7 @@ const nativeSerie = Object.freeze({
   intoTaken: NativeSerie.prototype._intoTakenNative,
   intoFiltered: NativeSerie.prototype._intoFilteredNative,
   partitionBy: NativeSerie.prototype._partitionByNative,
-  partitionByPaths: NativeSerie.prototype._partitionByPathsNative,
-  asSorted: NativeSerie.prototype._asSortedNative,
+    asSorted: NativeSerie.prototype._asSortedNative,
   asUnique: NativeSerie.prototype._asUniqueNative,
   asReversed: NativeSerie.prototype._asReversedNative,
   asTaken: NativeSerie.prototype._asTakenNative,
@@ -1716,13 +1716,7 @@ function partitionOptionArgs(options, label) {
 
 // The windows a held serie lends hold the serie windowed, or the one serie
 // of the rows `sorted` gathered, which is handed out as its leaf's class.
-function lentWindows(windows, holder) {
-  if (windows.length !== 0) {
-    const serie = windows[0][1].serie
-    if (serie !== holder) describedSerie(serie)
-  }
-  return windows
-}
+
 
 // The field paths a record partitions by: one path - its text or a FieldPath
 // - or an iterable of them.
@@ -1746,6 +1740,7 @@ const Serie = publicNativeClass(
     '_emptyNative',
     '_withCapacityNative',
     '_fromArrowReaderNative',
+    '_fromSourceNative',
   ]),
   (args) => (args[0] == null ? [] : [serieValues(args[0], undefined, 'Serie values')]),
 )
@@ -1858,6 +1853,26 @@ Object.defineProperties(
 Object.defineProperties(StructSerie.prototype, leafVerbs(['names', 'withoutChild']))
 
 Object.defineProperties(Serie, {
+  from: {
+    configurable: true,
+    value(value, field, options) {
+      let held
+      if ([NativeSerie, NativeChunkedSerie, NativeStreamChunkedSerie, NativeStreamSerie, KeySerie, KeySeries, StreamKeySerie, NativeWindowSerie].some(Owner => value instanceof Owner)) {
+        held = describedSerie(nativeSerie.fromSource(value))
+      } else if (value instanceof arrow().Vector) {
+        return Serie.fromArrowArray(value, field, options)
+      } else if (value instanceof arrow().Table || value instanceof arrow().RecordBatch) {
+        return Serie.fromArrowBatch(value, field, options)
+      } else if (value instanceof binding.BatchReader) {
+        return Serie.fromArrowReader(value, field, options)
+      } else if (field != null) {
+        return Serie.fromScalars(field, value)
+      } else {
+        return new Serie(value)
+      }
+      return field == null ? held : held.cast(field, options)
+    },
+  },
   fromScalars: {
     configurable: true,
     value(field, rows) {
@@ -2144,24 +2159,8 @@ Object.defineProperties(Serie.prototype, {
       )
     },
   },
-  partitionBy: {
-    configurable: true,
-    writable: true,
-    value(keys) {
-      return Reflect.apply(nativeSerie.partitionBy, this, [
-        serieArgument(keys, 'Serie.partitionBy keys'),
-      ]).map(([key, rows]) => [key, describedSerie(rows)])
-    },
-  },
-  partitionByPaths: {
-    configurable: true,
-    writable: true,
-    value(paths) {
-      return Reflect.apply(nativeSerie.partitionByPaths, this, [
-        fieldPathsArgument(paths, 'Serie.partitionByPaths paths'),
-      ]).map(([key, rows]) => [key, describedSerie(rows)])
-    },
-  },
+  partitionBy: { configurable: true, writable: true, value(by, options) { return Reflect.apply(nativeSerie.partitionBy, this, [nativeKeyBy(by, 'Serie.prototype.partitionBy'), ]) } },
+
   asSorted: {
     configurable: true,
     writable: true,
@@ -2274,19 +2273,7 @@ Object.defineProperties(Serie.prototype, {
   },
   // One window per run of equal adjacent keys - or, sorted, per key in key
   // order - each stating its record as its `staticValues`.
-  windowBy: {
-    configurable: true,
-    writable: true,
-    value(by, sorted) {
-      return lentWindows(
-        Reflect.apply(nativeSerie.windowBy, this, [
-          windowKey(by, 'Serie.windowBy'),
-          windowSorted(sorted, 'Serie.windowBy'),
-        ]),
-        this,
-      )
-    },
-  },
+  windowBy: { configurable: true, writable: true, value(by, sorted) { return Reflect.apply(nativeSerie.windowBy, this, [nativeKeyBy(by, 'Serie.prototype.windowBy'), windowSorted(sorted, 'Serie.prototype.windowBy')]) } },
 })
 
 // A sequence value holds a serie: the pivot hands it out as its leaf's class.
@@ -2425,19 +2412,7 @@ Object.defineProperties(WindowSerie.prototype, {
       return Reflect.apply(nativeWindowSerie.window, this, [offset, length])
     },
   },
-  windowBy: {
-    configurable: true,
-    writable: true,
-    value(by, sorted) {
-      return lentWindows(
-        Reflect.apply(nativeWindowSerie.windowBy, this, [
-          windowKey(by, 'WindowSerie.windowBy'),
-          windowSorted(sorted, 'WindowSerie.windowBy'),
-        ]),
-        this.serie,
-      )
-    },
-  },
+  windowBy: { configurable: true, writable: true, value(by, sorted) { return Reflect.apply(nativeWindowSerie.windowBy, this, [nativeKeyBy(by, 'WindowSerie.prototype.windowBy'), windowSorted(sorted, 'WindowSerie.prototype.windowBy')]) } },
   intoSerie: {
     configurable: true,
     writable: true,
@@ -2494,15 +2469,7 @@ Object.defineProperties(WindowSerie.prototype, {
       )
     },
   },
-  partitionBy: {
-    configurable: true,
-    writable: true,
-    value(keys) {
-      return Reflect.apply(nativeWindowSerie.partitionBy, this, [
-        serieArgument(keys, 'WindowSerie.partitionBy keys'),
-      ]).map(([key, rows]) => [key, describedSerie(rows)])
-    },
-  },
+  partitionBy: { configurable: true, writable: true, value(by, options) { return Reflect.apply(nativeWindowSerie.partitionBy, this, [nativeKeyBy(by, 'WindowSerie.prototype.partitionBy'), ]) } },
   // The rows compare against another window's or a serie's, however held.
   equals: {
     configurable: true,
@@ -2605,20 +2572,20 @@ Object.defineProperties(WindowSerie.prototype, {
 
 // A stream of record series: the natives it reads by are kept here, and
 // each serie it yields is handed out as its leaf's class.
-const NativeSerieReader = binding.SerieReader
-const nativeSerieReader = Object.freeze({
-  fromArrowReader: NativeSerieReader._fromArrowReaderNative.bind(NativeSerieReader),
-  fromSerie: NativeSerieReader._fromSerieNative.bind(NativeSerieReader),
-  fromChunked: NativeSerieReader._fromChunkedNative.bind(NativeSerieReader),
-  next: NativeSerieReader.prototype._nextNative,
-  cast: NativeSerieReader.prototype._castNative,
-  windowBy: NativeSerieReader.prototype._windowByNative,
-  partitionBy: NativeSerieReader.prototype._partitionByNative,
-  intoSorted: NativeSerieReader.prototype._intoSortedNative,
-  intoSortBy: NativeSerieReader.prototype._intoSortByNative,
-  joinWith: NativeSerieReader.prototype._joinWithNative,
-  asSpilled: NativeSerieReader.prototype._asSpilledNative,
-  intoSpilled: NativeSerieReader.prototype._intoSpilledNative,
+const NativeStreamChunkedSerie = binding.StreamChunkedSerie
+const nativeStreamChunkedSerie = Object.freeze({
+  fromArrowReader: NativeStreamChunkedSerie._fromArrowReaderNative.bind(NativeStreamChunkedSerie),
+  fromSerie: NativeStreamChunkedSerie._fromSerieNative.bind(NativeStreamChunkedSerie),
+  fromChunked: NativeStreamChunkedSerie._fromChunkedNative.bind(NativeStreamChunkedSerie),
+  next: NativeStreamChunkedSerie.prototype._nextNative,
+  cast: NativeStreamChunkedSerie.prototype._castNative,
+  windowBy: NativeStreamChunkedSerie.prototype._windowByNative,
+  partitionBy: NativeStreamChunkedSerie.prototype._partitionByNative,
+  intoSorted: NativeStreamChunkedSerie.prototype._intoSortedNative,
+  intoSortBy: NativeStreamChunkedSerie.prototype._intoSortByNative,
+  joinWith: NativeStreamChunkedSerie.prototype._joinWithNative,
+  asSpilled: NativeStreamChunkedSerie.prototype._asSpilledNative,
+  intoSpilled: NativeStreamChunkedSerie.prototype._intoSpilledNative,
 })
 for (const name of [
   '_nextNative',
@@ -2631,38 +2598,38 @@ for (const name of [
   '_asSpilledNative',
   '_intoSpilledNative',
 ]) {
-  delete NativeSerieReader.prototype[name]
+  delete NativeStreamChunkedSerie.prototype[name]
 }
-const SerieReader = publicNativeClass(
-  NativeSerieReader,
-  'SerieReader',
+const StreamChunkedSerie = publicNativeClass(
+  NativeStreamChunkedSerie,
+  'StreamChunkedSerie',
   new Set(['_fromArrowReaderNative', '_fromSerieNative', '_fromChunkedNative']),
 )
-Object.defineProperty(SerieReader, 'fromArrowReader', {
+Object.defineProperty(StreamChunkedSerie, 'fromArrowReader', {
   configurable: true,
   value(reader, root, options) {
-    return nativeSerieReader.fromArrowReader(
-      nativeBatchReader(reader, 'SerieReader.fromArrowReader'),
+    return nativeStreamChunkedSerie.fromArrowReader(
+      nativeBatchReader(reader, 'StreamChunkedSerie.fromArrowReader'),
       optionalField(root),
       ...castOptionArgs(options),
     )
   },
 })
 // A held column is a stream of the one record serie it is.
-Object.defineProperty(SerieReader, 'fromSerie', {
+Object.defineProperty(StreamChunkedSerie, 'fromSerie', {
   configurable: true,
   value(serie) {
     if (!(serie instanceof NativeSerie)) {
-      throw new TypeError('SerieReader.fromSerie takes a Serie')
+      throw new TypeError('StreamChunkedSerie.fromSerie takes a Serie')
     }
-    return nativeSerieReader.fromSerie(serie)
+    return nativeStreamChunkedSerie.fromSerie(serie)
   },
 })
-Object.defineProperties(SerieReader.prototype, {
+Object.defineProperties(StreamChunkedSerie.prototype, {
   [Symbol.iterator]: {
     configurable: true,
     value: function* series() {
-      for (let serie; (serie = Reflect.apply(nativeSerieReader.next, this, [])) !== null; ) {
+      for (let serie; (serie = Reflect.apply(nativeStreamChunkedSerie.next, this, [])) !== null; ) {
         yield describedSerie(serie)
       }
     },
@@ -2671,49 +2638,33 @@ Object.defineProperties(SerieReader.prototype, {
   cast: {
     configurable: true,
     value(field, options) {
-      return Reflect.apply(nativeSerieReader.cast, this, [
+      return Reflect.apply(nativeStreamChunkedSerie.cast, this, [
         field instanceof NativeField || field instanceof NativeDataType ? field : Field.from(field),
         ...castOptionArgs(options),
       ])
     },
   },
   // The stream cut into one lazy reader per window; the reader is consumed.
-  windowBy: {
-    configurable: true,
-    value(by, sorted) {
-      return Reflect.apply(nativeSerieReader.windowBy, this, [
-        windowKey(by, 'SerieReader.windowBy'),
-        windowSorted(sorted, 'SerieReader.windowBy'),
-      ])
-    },
-  },
+  windowBy: { configurable: true, writable: true, value(by, sorted) { return Reflect.apply(nativeStreamChunkedSerie.windowBy, this, [nativeKeyBy(by, 'StreamChunkedSerie.prototype.windowBy'), windowSorted(sorted, 'StreamChunkedSerie.prototype.windowBy')]) } },
   // The stream cut by key into partitions, each `[key, rows]` pair yielded
   // as its partition closes; the reader is consumed.
-  partitionBy: {
-    configurable: true,
-    value(by, options) {
-      return Reflect.apply(nativeSerieReader.partitionBy, this, [
-        windowKey(by, 'SerieReader.partitionBy'),
-        partitionOptionArgs(options, 'SerieReader.partitionBy'),
-      ])
-    },
-  },
+  partitionBy: { configurable: true, writable: true, value(by, options) { return Reflect.apply(nativeStreamChunkedSerie.partitionBy, this, [nativeKeyBy(by, 'StreamChunkedSerie.prototype.partitionBy'), partitionOptionArgs(options, 'StreamChunkedSerie.prototype.partitionBy')]) } },
   // The stream drained, sorted and read back as the held stream of the
   // merged chunks; the reader is consumed.
   intoSorted: {
     configurable: true,
     value(options) {
       return Reflect.apply(
-        nativeSerieReader.intoSorted,
+        nativeStreamChunkedSerie.intoSorted,
         this,
-        sortOptionArgs(options, 'SerieReader.intoSorted'),
+        sortOptionArgs(options, 'StreamChunkedSerie.intoSorted'),
       )
     },
   },
   intoSortBy: {
     configurable: true,
     value(by) {
-      return Reflect.apply(nativeSerieReader.intoSortBy, this, [orderingKeys(by)])
+      return Reflect.apply(nativeStreamChunkedSerie.intoSortBy, this, [orderingKeys(by)])
     },
   },
   // The records this reader holds spilled in place, answering this reader;
@@ -2721,14 +2672,14 @@ Object.defineProperties(SerieReader.prototype, {
   asSpilled: {
     configurable: true,
     value(options) {
-      Reflect.apply(nativeSerieReader.asSpilled, this, [options])
+      Reflect.apply(nativeStreamChunkedSerie.asSpilled, this, [options])
       return this
     },
   },
   intoSpilled: {
     configurable: true,
     value(options) {
-      return Reflect.apply(nativeSerieReader.intoSpilled, this, [options])
+      return Reflect.apply(nativeStreamChunkedSerie.intoSpilled, this, [options])
     },
   },
   // The stream joined with a held column, a chunked one or another stream,
@@ -2737,88 +2688,56 @@ Object.defineProperties(SerieReader.prototype, {
     configurable: true,
     value(other, by, how, options) {
       if (other === this) {
-        throw new TypeError('SerieReader.joinWith cannot join a stream with itself')
+        throw new TypeError('StreamChunkedSerie.joinWith cannot join a stream with itself')
       }
       if (
         !(other instanceof NativeSerie) &&
         !(other instanceof NativeChunkedSerie) &&
-        !(other instanceof NativeSerieReader)
+        !(other instanceof NativeStreamChunkedSerie)
       ) {
-        throw new TypeError('SerieReader.joinWith takes a Serie, a ChunkedSerie or a SerieReader')
+        throw new TypeError('StreamChunkedSerie.joinWith takes a Serie, a ChunkedSerie or a StreamChunkedSerie')
       }
-      return Reflect.apply(nativeSerieReader.joinWith, this, [
+      return Reflect.apply(nativeStreamChunkedSerie.joinWith, this, [
         other,
         literalValue(by),
-        joinHow(how, 'SerieReader.joinWith'),
-        joinOptionArgs(options, 'SerieReader.joinWith'),
+        joinHow(how, 'StreamChunkedSerie.joinWith'),
+        joinOptionArgs(options, 'StreamChunkedSerie.joinWith'),
       ])
     },
   },
 })
 
-// The windows of a stream, an iterator of their own: each `next` pulls one
-// window's reader through the one walk they share, and a refusal the walk
-// raises is thrown once, after which it is done.
-const NativeSerieReaderWindows = binding.SerieReaderWindows
-const nativeSerieReaderWindowsNext = NativeSerieReaderWindows.prototype._nextNative
-delete NativeSerieReaderWindows.prototype._nextNative
-const SerieReaderWindows = function () {
-  throw new TypeError(
-    'SerieReaderWindows is handed out by SerieReader; take one with reader.windowBy(by, sorted)',
-  )
-}
-Object.defineProperty(SerieReaderWindows, 'name', { value: 'SerieReaderWindows' })
-SerieReaderWindows.prototype = NativeSerieReaderWindows.prototype
-Object.defineProperties(SerieReaderWindows.prototype, {
-  constructor: { configurable: true, value: SerieReaderWindows, writable: true },
-  next: {
-    configurable: true,
-    writable: true,
-    value() {
-      const window = Reflect.apply(nativeSerieReaderWindowsNext, this, [])
-      return window === null ? { done: true, value: undefined } : { done: false, value: window }
-    },
-  },
-  [Symbol.iterator]: {
-    configurable: true,
-    value: function windows() {
-      return this
-    },
-  },
+// Key items have explicit context and payload. Held collections iterate repeatedly.
+const KeySerie = publicNativeClass(binding.KeySerie, 'KeySerie', new Set(), () => { throw new TypeError('KeySerie is returned by clustering') })
+const KeySeries = publicNativeClass(binding.KeySeries, 'KeySeries', new Set(), () => { throw new TypeError('KeySeries is returned by clustering') })
+const StreamKeySerie = publicNativeClass(binding.StreamKeySerie, 'StreamKeySerie', new Set(), () => { throw new TypeError('StreamKeySerie is returned by clustering') })
+const nativeKeyRows = Object.getOwnPropertyDescriptor(KeySerie.prototype, '_rowsNative').get
+delete KeySerie.prototype._rowsNative
+Object.defineProperty(KeySerie.prototype, 'rows', { configurable: true, get() { return describedSerie(nativeKeyRows.call(this)) } })
+Object.defineProperty(KeySeries.prototype, Symbol.iterator, { configurable: true, value: function* () {
+  for (let at = 0; at < this.length; at++) yield this.get(at)
+} })
+const nativeKeyNext = StreamKeySerie.prototype._nextNative
+delete StreamKeySerie.prototype._nextNative
+Object.defineProperties(StreamKeySerie.prototype, {
+  next: { configurable: true, value() { const value = nativeKeyNext.call(this); return value == null ? { done: true, value: undefined } : { done: false, value } } },
+  [Symbol.iterator]: { configurable: true, value() { return this } },
 })
-
-// The partitions of a stream, an iterator of their own: each `next` pulls
-// the stream until a partition closes and yields its `[key, rows]` pair, and
-// a failure the stream raises is thrown once, after which it is done.
-const NativeSerieReaderPartitions = binding.SerieReaderPartitions
-const nativeSerieReaderPartitionsNext = NativeSerieReaderPartitions.prototype._nextNative
-delete NativeSerieReaderPartitions.prototype._nextNative
-const SerieReaderPartitions = function () {
-  throw new TypeError(
-    'SerieReaderPartitions is handed out by SerieReader; take one with reader.partitionBy(by, options)',
-  )
+for (const Owner of [KeySerie, KeySeries, StreamKeySerie]) {
+  const window = Owner.prototype._windowByNative
+  const partition = Owner.prototype._partitionByNative
+  delete Owner.prototype._windowByNative
+  delete Owner.prototype._partitionByNative
+  Object.defineProperties(Owner.prototype, {
+    windowBy: { configurable: true, value(by, sorted) { return window.call(this, nativeKeyBy(by, Owner.name + '.windowBy'), windowSorted(sorted, Owner.name + '.windowBy')) } },
+    partitionBy: { configurable: true, value(by, options) {
+      return partition.call(this, nativeKeyBy(by, Owner.name + '.partitionBy'), ...(Owner === StreamKeySerie ? [partitionOptionArgs(options, Owner.name + '.partitionBy')] : []))
+    } },
+  })
 }
-Object.defineProperty(SerieReaderPartitions, 'name', { value: 'SerieReaderPartitions' })
-SerieReaderPartitions.prototype = NativeSerieReaderPartitions.prototype
-Object.defineProperties(SerieReaderPartitions.prototype, {
-  constructor: { configurable: true, value: SerieReaderPartitions, writable: true },
-  next: {
-    configurable: true,
-    writable: true,
-    value() {
-      const partition = Reflect.apply(nativeSerieReaderPartitionsNext, this, [])
-      return partition === null
-        ? { done: true, value: undefined }
-        : { done: false, value: partition }
-    },
-  },
-  [Symbol.iterator]: {
-    configurable: true,
-    value: function partitions() {
-      return this
-    },
-  },
-})
+binding.KeySerie = KeySerie
+binding.KeySeries = KeySeries
+binding.StreamKeySerie = StreamKeySerie
 
 // Many columns under one field, held apart: what an Arrow JS vector of
 // several Data is, and a table of one batch per chunk. The natives answering
@@ -2848,8 +2767,7 @@ const nativeChunkedSerie = Object.freeze({
   intoTaken: NativeChunkedSerie.prototype._intoTakenNative,
   intoFiltered: NativeChunkedSerie.prototype._intoFilteredNative,
   partitionBy: NativeChunkedSerie.prototype._partitionByNative,
-  partitionByChunked: NativeChunkedSerie.prototype._partitionByChunkedNative,
-  windowBy: NativeChunkedSerie.prototype._windowByNative,
+    windowBy: NativeChunkedSerie.prototype._windowByNative,
   asSorted: NativeChunkedSerie.prototype._asSortedNative,
   asUnique: NativeChunkedSerie.prototype._asUniqueNative,
   asReversed: NativeChunkedSerie.prototype._asReversedNative,
@@ -3136,42 +3054,11 @@ Object.defineProperties(ChunkedSerie.prototype, {
   // Arrow JS vector, one chunk per Data - group chunk beside chunk where both
   // are cut at the same rows, through the core's chunked partition; any other
   // keys are one serie as long as the whole.
-  partitionBy: {
-    configurable: true,
-    writable: true,
-    value(keys) {
-      if (keys instanceof NativeChunkedSerie) {
-        return Reflect.apply(nativeChunkedSerie.partitionByChunked, this, [keys])
-      }
-      if (
-        keys !== null &&
-        typeof keys === 'object' &&
-        !(keys instanceof NativeSerie) &&
-        arrow().isArrowVector(keys)
-      ) {
-        const chunked = nativeChunkedSerie.fromArrowArray(
-          arrowVectorChunksIntoIPC(keys, 'ChunkedSerie.partitionBy keys'),
-        )
-        return Reflect.apply(nativeChunkedSerie.partitionByChunked, this, [chunked])
-      }
-      return Reflect.apply(nativeChunkedSerie.partitionBy, this, [
-        serieArgument(keys, 'ChunkedSerie.partitionBy keys'),
-      ])
-    },
-  },
+  partitionBy: { configurable: true, writable: true, value(by, options) { return Reflect.apply(nativeChunkedSerie.partitionBy, this, [nativeKeyBy(by, 'ChunkedSerie.prototype.partitionBy'), ]) } },
   // One window per run of equal adjacent keys across the chunks - or,
   // sorted, per key in key order - each the pieces of the chunks it spans.
   // A chunked window states no record: its key is the pair's first half.
-  windowBy: {
-    configurable: true,
-    writable: true,
-    value(by, sorted) {
-      return Reflect.apply(nativeChunkedSerie.windowBy, this, [
-        windowKey(by, 'ChunkedSerie.windowBy'),
-        windowSorted(sorted, 'ChunkedSerie.windowBy'),
-      ])
-    },
-  },
+  windowBy: { configurable: true, writable: true, value(by, sorted) { return Reflect.apply(nativeChunkedSerie.windowBy, this, [nativeKeyBy(by, 'ChunkedSerie.prototype.windowBy'), windowSorted(sorted, 'ChunkedSerie.prototype.windowBy')]) } },
   asSorted: {
     configurable: true,
     writable: true,
@@ -3283,13 +3170,13 @@ Object.defineProperties(ChunkedSerie.prototype, {
 })
 
 // A held chunked column is a stream of one record serie per chunk.
-Object.defineProperty(SerieReader, 'fromChunked', {
+Object.defineProperty(StreamChunkedSerie, 'fromChunked', {
   configurable: true,
   value(chunked) {
     if (!(chunked instanceof NativeChunkedSerie)) {
-      throw new TypeError('SerieReader.fromChunked takes a ChunkedSerie')
+      throw new TypeError('StreamChunkedSerie.fromChunked takes a ChunkedSerie')
     }
-    return nativeSerieReader.fromChunked(chunked)
+    return nativeStreamChunkedSerie.fromChunked(chunked)
   },
 })
 
@@ -3376,9 +3263,10 @@ delete binding._defaultSpillByteSizeNative
 binding.SpillOptions = SpillOptions
 binding.Serie = Serie
 binding.WindowSerie = WindowSerie
-binding.SerieReader = SerieReader
-binding.SerieReaderWindows = SerieReaderWindows
-binding.SerieReaderPartitions = SerieReaderPartitions
+binding.StreamChunkedSerie = StreamChunkedSerie
+binding.KeySerie = KeySerie
+binding.KeySeries = KeySeries
+binding.StreamKeySerie = StreamKeySerie
 binding.ChunkedSerie = ChunkedSerie
 binding.ArrowCastPlan = ArrowCastPlan
 binding.SerieSerie = SerieSerie
@@ -4973,7 +4861,12 @@ const { intoField } = installRecords({
   IOResult: binding.IOResult,
   RecordOptions,
   Serie,
-  SerieReader,
+  StreamChunkedSerie,
+  StreamSerie: binding.StreamSerie,
+  KeySerie,
+  KeySeries,
+  StreamKeySerie,
+  WindowSerie,
   TextOptions,
   Table: binding.IcebergTable,
   nativeWriteMode,
@@ -4991,7 +4884,7 @@ const NativeBoundSelector = binding.BoundSelector
 const NativeBound = binding.Bound
 const NativePlan = binding.Plan
 const NativeExpression = binding.Expression
-const NativeRecords = binding.Records
+const NativeStreamSerie = binding.StreamSerie
 
 function takePrivate(owner, name) {
   const method = owner.prototype[name]
@@ -5162,10 +5055,11 @@ defineArrowAppliers(NativeExpression, 'Expression')
   })
 }
 
-// Records stream one native row at a time and iterate as JavaScript does.
+// StreamSerie stream one native row at a time and iterate as JavaScript does.
 {
-  const nativeNext = takePrivate(NativeRecords, '_nextNative')
-  Object.defineProperties(NativeRecords.prototype, {
+  const nativeNext = takePrivate(NativeStreamSerie, '_nextNative')
+  const nativeCollect = NativeStreamSerie.prototype.collect
+  Object.defineProperties(NativeStreamSerie.prototype, {
     next: {
       configurable: true,
       value() {
@@ -5184,7 +5078,7 @@ defineArrowAppliers(NativeExpression, 'Expression')
     collect: {
       configurable: true,
       value() {
-        return Array.from(this)
+        return nativeCollect.call(this)
       },
     },
   })
@@ -5887,7 +5781,7 @@ Object.defineProperty(NativeFixMsg.prototype, Symbol.iterator, {
 
 // The FIX surface is reached through this namespace: a dictionary is one
 // namespace of tags and names, an identity is the number `field.fix.id`
-// derives from both, and a dictionary's membership is `fix:branches` on the
+// derives from both, and a dictionary's membership is `FIX:sources` on the
 // field it contributed to - so no dictionary fact is a constant here. The
 // one constant that is, is a capture's shape rather than a dictionary's: the
 // row header a ULBridge log writes, carried across so a reader of a bridge
@@ -7335,7 +7229,7 @@ binding.yaml = yaml
 }
 
 // How long an order stands: FIX's TimeInForce(59) code set, each member's
-// stored name under the code a `timeinforce` column stores - `UNKN` at zero,
+// stored name under the code a `timeinforce` column stores - `UKNW` at zero,
 // the FIX values in wire order, `OTHER` for a venue's own.
 {
   const members = binding._timeInForceMembersNative()
@@ -7345,9 +7239,21 @@ binding.yaml = yaml
   )
 }
 
+// The role of a FIX plugin: the side of the session a dialect's plugin stands
+// on, each member's stored name under the code a `pluginside` column stores -
+// `UKNW` at zero for a plugin stating no role, then `BUYS` and `SELL`. A
+// separate enum from `Side`, though two names are spelled alike.
+{
+  const members = binding._pluginSideMembersNative()
+  delete binding._pluginSideMembersNative
+  binding.PluginSide = Object.freeze(
+    Object.fromEntries(members.map(({ name, code }) => [name, code])),
+  )
+}
+
 // Which side of the market a trade took: FIX's Side(54), each member's
-// four-letter code under the code a `side` column stores - `UNKN` at zero,
-// then the seventeen sides in FIX's own order.
+// four-letter code under the code a `side` column stores - `UKNW` at zero,
+// then the seventeen sides in FIX's own order, and BOTH (99), both sides at once.
 {
   const members = binding._sideMembersNative()
   delete binding._sideMembersNative
@@ -7487,3 +7393,28 @@ delete binding._hostnameNative
 }
 
 module.exports = binding
+
+function nativeKeyBy(value, label) {
+  if (typeof value === 'string' || value instanceof binding.Selector) return value
+  if (value instanceof binding.FieldPath) return [value]
+  if (Array.isArray(value) && value.every(path => path instanceof binding.FieldPath)) return value
+  if (value instanceof NativeTerm || Array.isArray(value)) return windowKey(value, label)
+  if ([NativeSerie, NativeChunkedSerie, NativeStreamChunkedSerie, NativeStreamSerie, KeySerie, KeySeries, StreamKeySerie, NativeWindowSerie].some(Owner => value instanceof Owner)) return value
+  if (value && typeof value === 'object' && (value instanceof arrow().Vector || value instanceof arrow().Table || value instanceof arrow().RecordBatch)) return Serie.from(value)
+  throw new TypeError(label + ' takes selector text, a Selector, FieldPath values, or typed external keys; construct value keys with Serie.from')
+}
+for (const Owner of [NativeStreamSerie]) {
+  const window = Owner.prototype._windowByNative
+  const partition = Owner.prototype._partitionByNative
+  delete Owner.prototype._windowByNative
+  delete Owner.prototype._partitionByNative
+  Object.defineProperties(Owner.prototype, {
+    windowBy: { configurable: true, value(by, sorted) { return window.call(this, nativeKeyBy(by, 'StreamSerie.windowBy'), windowSorted(sorted, 'StreamSerie.windowBy')) } },
+    partitionBy: { configurable: true, value(by, options) { return partition.call(this, nativeKeyBy(by, 'StreamSerie.partitionBy'), partitionOptionArgs(options, 'StreamSerie.partitionBy')) } },
+  })
+}
+Object.defineProperties(StreamChunkedSerie.prototype, {
+  schema: { configurable: true, get() { const root = this.field.intoArrow(); return new (arrow().Schema)(root.type.children, root.metadata) } },
+  readNextBatch: { configurable: true, value() { const chunk = nativeStreamChunkedSerie.next.call(this); if (chunk == null) return null; return describedSerie(chunk).intoArrowBatch() } },
+  readAll: { configurable: true, value() { return this.intoArrowReader().intoTable() } },
+})

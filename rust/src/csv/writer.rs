@@ -20,7 +20,7 @@ use crate::text::expected_got;
 use crate::text::transport::transports;
 use crate::{
     ArrowCastOptions, Charset, Codec, DataType, DataTypeKind, Error, Field, Result, Serie,
-    SerieReader,
+    StreamChunkedSerie,
 };
 
 use super::options::CsvOptions;
@@ -263,7 +263,8 @@ fn render(
     target: &mut impl Write,
 ) -> Result<()> {
     let root = field_from_arrow_schema(options.name(), batches.schema().as_ref())?;
-    let rows = SerieReader::from_arrow_reader(Some(&root), batches, ArrowCastOptions::default())?;
+    let rows =
+        StreamChunkedSerie::from_arrow_reader(Some(&root), batches, ArrowCastOptions::default())?;
     let dialect = Dialect {
         separator: options.separator(),
         quote: options.quote(),
@@ -312,7 +313,7 @@ fn render(
         out.extend_from_slice(dialect.terminator);
     }
     let mut index = 0_u64;
-    for record in rows {
+    for record in rows.into_chunks() {
         let record = record?;
         let columns = record.children();
         let writers: Vec<CellWriter> = columns

@@ -44,7 +44,7 @@ mod dataset {
     /// How many executions the parse splits off the capture: one per
     /// execution report reporting a fill - 52 bridge rows and 4 frames - and
     /// one for the trade capture, whose one side states no `Side(54)`: an
-    /// execution of side `UNKN`, said as a warning, never a lost fill.
+    /// execution of side `UKNW`, said as a warning, never a lost fill.
     const SPLIT: usize = 57;
 
     fn registry() -> Arc<FixRegistry> {
@@ -159,22 +159,60 @@ mod dataset {
         assert_eq!(dated.len(), clocks.len());
         assert!(!dated.contains(&handle.expect("the file's time")));
         // The clock is consumed into `currunix`, so no column carries it; the
-        // thread and the level are matched and never captured, so no column
-        // carries them either.
+        // thread and the level name no field, so each is a column of the
+        // line's own, typed from the pattern.
         let names = header_captures();
         assert_eq!(
             names,
             [
                 "mtime",
+                "msgthreadid",
                 "msgsessionid",
                 "msgctxid",
                 "msgseqnum",
-                "msgpluginid"
+                "msgpluginid",
+                "loglevel"
             ]
         );
         let carried = options.source_field().expect("the source field");
         assert!(carried.field("mtime").is_err() && carried.field("timestamp").is_err());
-        assert!(carried.field("msgthreadid").is_err() && carried.field("loglevel").is_err());
+        assert_eq!(
+            carried.field("msgthreadid").unwrap().dtype(),
+            &yggdryl::DataType::Int64
+        );
+        assert_eq!(
+            carried.field("loglevel").unwrap().dtype(),
+            &yggdryl::DataType::utf8()
+        );
+        // Every line of the capture states its thread, sixteen threads
+        // wrote it, and three levels: what the bridge logged, line by line.
+        let at = |name: &str| {
+            names
+                .iter()
+                .position(|held| held == name)
+                .expect("a capture")
+        };
+        let threads: std::collections::BTreeSet<&str> = lines
+            .iter()
+            .map(|line| {
+                line.capture(at("msgthreadid"))
+                    .expect("a thread on every line")
+            })
+            .collect();
+        assert_eq!(threads.len(), 16, "{threads:?}");
+        assert_eq!(lines[0].capture(at("msgthreadid")), Some("15254"));
+        let mut levels: std::collections::BTreeMap<&str, usize> = Default::default();
+        for line in &lines {
+            *levels
+                .entry(line.capture(at("loglevel")).expect("a level on every line"))
+                .or_default() += 1;
+        }
+        assert_eq!(
+            levels,
+            [("DEBUG", 84_usize), ("INFO", 59), ("WARN", 1)]
+                .into_iter()
+                .collect()
+        );
     }
 
     #[test]
@@ -374,7 +412,8 @@ mod dataset {
     /// off: filed under `EXEC` while its type stays the trade's `AE`, it
     /// carries the trade's bridge row whole.
     fn is_trade_execution(message: &FixMsg) -> bool {
-        message.header().msgtype() == "AE" && message.msgcat() == yggdryl::MarketDataKind::Execution
+        message.header().msgtype() == "AE"
+            && message.marketdatakind() == yggdryl::MarketDataKind::Execution
     }
 
     /// Every message the line door answers for the capture, in line order.
@@ -549,7 +588,7 @@ mod dataset {
         // dated by its line. Under the one instant every line shared, they
         // were two deliveries, one of them a twin the window dropped; at
         // their own instants they are seven deliveries and no twin. One more
-        // is the execution of side `UNKN` the trade capture splits off.
+        // is the execution of side `UKNW` the trade capture splits off.
         assert_eq!(direct.len(), 39);
         assert_eq!(
             direct
@@ -1282,6 +1321,7 @@ mod dataset {
                 "|timestamp=",
                 "|level=",
                 "|msgthreadid=",
+                "|loglevel=",
             ] {
                 assert!(!written[at].contains(carried), "row {at}: {}", written[at]);
             }
@@ -1422,7 +1462,7 @@ mod dataset {
         // shared one instant because each typeless row is now dated by its
         // own line, one per fill (A12), every hop's execution of one fill
         // folded onto one, and the trade capture's execution of side
-        // `UNKNOWN` - less the three twins its window yields once, and the
+        // `UKNW` - less the three twins its window yields once, and the
         // sorted door expands those.
         let walked = codec
             .lifecycle(messages)
@@ -1447,7 +1487,7 @@ mod dataset {
         // bridge rows no market data holds. Nothing is refused: the trade is no market
         // data itself, since a trade's fills are the executions its parse
         // splits off - and its single side states no `Side(54)`, so that
-        // execution is of side `UNKN`.
+        // execution is of side `UKNW`.
         assert!(refused.is_empty(), "{refused:?}");
         assert_eq!(operations.len(), 21);
         // The two a walk remembering nothing answers beside them each repeat
@@ -1583,7 +1623,7 @@ mod dataset {
             assert!(!delta.get_state().is_live());
         }
         // The one instant no order states is the trade capture's, which its
-        // execution of side `UNKN` alone touched: the book of that instant
+        // execution of side `UKNW` alone touched: the book of that instant
         // states that execution alone.
         let alone: Vec<&yggdryl::graph::BookEvent> = books
             .iter()
@@ -1712,8 +1752,12 @@ mod dataset {
         // so it no longer feeds its two sides' digests. It moved again when
         // a book came to be keyed by its instrument's ISIN and to hold it as
         // its `isin` security identifier: the book's stored cross code reads
-        // `3:0:TW0002454006` and its digest feeds that identifier.
-        assert_eq!(last.get_currhashcode(), 9_341_042_899_919_963_577);
+        // `3:0:TW0002454006` and its digest feeds that identifier. It moved
+        // again when a book came to state `BOTH` as its side: the book's own
+        // market event feeds its side, `BOTH` where a side nobody stated fed.
+        // The zero-side spelling `UKNW` does not move this book: its side is
+        // `BOTH`, and both deltas still name `SELL`.
+        assert_eq!(last.get_currhashcode(), 1_914_142_786_384_712_743);
 
         // No leaf keys a typed fact, save the one the NOVN delivery's hops
         // disagree on: its rows state two `OMSDEALERORDERID` values, the
@@ -2163,11 +2207,12 @@ mod pipeline {
         // message's own columns follow those. A capture whose folded name a
         // fixed column takes is not carried, it fills that column: the
         // reader's `msgtype`, and the header's `bridgesessionid`, `msgctxid`
-        // and `msgseqnum`, each named for the field it fills. Nothing is
-        // left for the header to carry: the thread and the level are
-        // matched and never captured, and the clock the bridge printed
-        // dates the line, so it is the line's `currunix` and leads no
-        // column of its own. Where the
+        // and `msgseqnum`, each named for the field it fills. What is left
+        // for the header to carry is what no column is spelled for - the
+        // thread that wrote the line and its level, carried in front and
+        // filling nothing - and the clock the bridge printed dates the
+        // line, so it is the line's `currunix` and leads no column of its
+        // own. Where the
         // line came out of, which line it was and when it was written are
         // `crosscode`, `seqnum` and `currunix`, the columns both halves open
         // with.
@@ -2178,8 +2223,8 @@ mod pipeline {
             + 1;
         assert_eq!(names[0], "curruuid", "{names:?}");
         assert_eq!(
-            &names[shared..shared + 3],
-            ["mimetype", "body", "sendingtime"],
+            &names[shared..shared + 5],
+            ["mimetype", "body", "msgthreadid", "loglevel", "sendingtime"],
             "{names:?}"
         );
         let at = |name: &str| {
@@ -2188,7 +2233,17 @@ mod pipeline {
                 .position(|held| *held == name)
                 .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
         };
-        for pair in ["currunix", "creaunix", "prevunix", "body", "beginstring"].windows(2) {
+        for pair in [
+            "currunix",
+            "creaunix",
+            "prevunix",
+            "body",
+            "msgthreadid",
+            "loglevel",
+            "beginstring",
+        ]
+        .windows(2)
+        {
             assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
         }
         let header = names
@@ -2206,6 +2261,8 @@ mod pipeline {
             "seqnum",
             "currunix",
             "body",
+            "msgthreadid",
+            "loglevel",
             "msgsessionid",
             "msgctxid",
             "msgpluginid",
@@ -2355,12 +2412,21 @@ mod pipeline {
         }
 
         // The thread that wrote the line and the level it was logged at are
-        // matched by the row header and lifted into no column.
-        for unlifted in ["msgthreadid", "loglevel"] {
-            assert!(
-                read.schema().column_with_name(unlifted).is_none(),
-                "{unlifted}"
-            );
+        // the capture's own columns: carried in front of every message the
+        // row answers for - a split execution carrying its row's cells -
+        // and answering no FIX tag, so never a fill or an entry.
+        let levels = text_column(&read, "loglevel");
+        assert_eq!(levels[FILL_ROW].as_deref(), Some("INFO"));
+        assert_eq!(levels[ROUTED_ROW].as_deref(), Some("DEBUG"));
+        let threads = column(&read, "msgthreadid");
+        assert_eq!(threads[ROUTED_ROW].as_i64(), Some(15_333));
+        assert_eq!(threads[HEARTBEAT_ROW].as_i64(), Some(15_261));
+        assert_eq!(threads[FILL_ROW].as_i64(), Some(653));
+        assert_eq!(threads[FILL_EXECUTION_ROW].as_i64(), Some(653));
+        let root = yggdryl::Field::from_arrow_schema("fix", &read.schema()).unwrap();
+        let tags = yggdryl::fix_column_tags(&root);
+        for own in ["msgthreadid", "loglevel"] {
+            assert_eq!(tags[root.index_of(own).unwrap()], None, "{own}");
         }
         // The bracket's sequence number is FIX's own `MsgSeqNum(34)`, so it fills
         // that column rather than riding in front of the row - and only where the
@@ -2804,6 +2870,8 @@ mod pipeline {
                 "|mimetype=",
                 "|timestamp=",
                 "|level=",
+                "|msgthreadid=",
+                "|loglevel=",
                 "Receiving :",
             ] {
                 assert!(!line.contains(carried), "{line}");

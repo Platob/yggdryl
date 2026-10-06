@@ -136,6 +136,9 @@ nav:
       - Scalar: types/scalar.md
       - Serie: types/serie.md
       - Chunked serie: types/chunked-serie.md
+      - Scalar row streams: types/stream-serie.md
+      - Native chunk streams: types/stream-chunked-serie.md
+      - Key series: types/key-serie.md
       - Window serie: types/window-serie.md
       - Cast: types/cast.md
       - Paths: types/paths.md
@@ -172,6 +175,11 @@ nav:
       - RIC: types/codes/ric.md
       - Forex: types/codes/forex.md
       - Unit: types/codes/unit.md
+      - LEI: types/codes/lei.md
+      - BIC: types/codes/bic.md
+      - ELF: types/codes/elf.md
+      - DTI: types/codes/dti.md
+      - FISN: types/codes/fisn.md
     - Enums:
       - types/enum/index.md
       - State: types/enum/state.md
@@ -179,6 +187,7 @@ nav:
       - MarketDataType: types/enum/marketdatatype.md
       - Side: types/enum/side.md
       - TimeInForce: types/enum/timeinforce.md
+      - PluginSide: types/enum/pluginside.md
     - Nested:
       - types/nested/index.md
       - Struct: types/nested/struct.md

@@ -25,7 +25,7 @@ use crate::expression::JsPlan;
 use crate::field::JsField;
 use crate::fix::JsFixMsg;
 use crate::iomedia::JsBatchReader;
-use crate::serie::{JsSerie, JsSerieReader, serie_source};
+use crate::serie::{JsSerie, JsStreamChunkedSerie, serie_source};
 use crate::text::line::{JsFieldPath, path_from_input};
 use crate::{Pulled, exact_u64, javascript_failure, napi_error};
 
@@ -167,7 +167,7 @@ impl JsMarketData {
     /// The market data category of this value's leaf, as the
     /// `marketdatakind` member's stored name: an order `ORDR`, a quote
     /// `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a snapshot
-    /// `BOOK`, a FIX message its own `msgcat`.
+    /// `BOOK`, a FIX message the category its dictionary files it under.
     #[napi(getter)]
     pub fn marketdatakind(&self) -> &'static str {
         self.inner.marketdatakind().as_str()
@@ -294,8 +294,8 @@ impl JsMarketData {
     }
 
     /// The deltas of the books `source` holds - a `Serie`, a `ChunkedSerie`
-    /// or a `SerieReader`, consumed - laid out as `marketdata` rows in book
-    /// order, as a `SerieReader`: every event each book states among its
+    /// or a `StreamChunkedSerie`, consumed - laid out as `marketdata` rows in book
+    /// order, as a `StreamChunkedSerie`: every event each book states among its
     /// deltas, of `kind` where one is named (`'ORDR'`, `'QUOT'`, `'EXEC'`,
     /// any spelling the kind reads), every kind otherwise; a row that is no
     /// book is refused by its kind where it is read.
@@ -304,10 +304,10 @@ impl JsMarketData {
         source: Either3<
             ClassInstance<'_, JsSerie>,
             ClassInstance<'_, JsChunkedSerie>,
-            ClassInstance<'_, JsSerieReader>,
+            ClassInstance<'_, JsStreamChunkedSerie>,
         >,
         kind: Option<String>,
-    ) -> Result<JsSerieReader> {
+    ) -> Result<JsStreamChunkedSerie> {
         let kind = kind
             .as_deref()
             .map(yggdryl::MarketDataKind::read)
@@ -315,7 +315,7 @@ impl JsMarketData {
             .map_err(napi_error)?;
         let source = serie_source(source)?;
         let reader = CoreMarketData::deltas_serie(source, kind).map_err(napi_error)?;
-        JsSerieReader::from_core(reader)
+        Ok(JsStreamChunkedSerie::from_core(reader))
     }
 
     /// The plan one named view is over a `marketdata` stream - `orders`,

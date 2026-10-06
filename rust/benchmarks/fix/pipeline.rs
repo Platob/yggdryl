@@ -41,7 +41,7 @@ use yggdryl::media::RecordOptions;
 use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
     ArrowCastOptions, DataType, Field, Filter, FixCodec, FixMsg, FixRegistry, IOMedia, Identifier,
-    SerieReader, State, StructType, Timezone, Url, fix_schema,
+    State, StreamChunkedSerie, StructType, Timezone, Url, fix_schema,
 };
 
 use super::seed;
@@ -67,7 +67,7 @@ const REPEATS: usize = crate::bench_profile::corpus(64, 1);
 ///
 /// It is the 94 messages the capture carries plus the 57 executions its
 /// parse splits off: one per report that reports a fill, and one of side
-/// `UNKNOWN` off the trade capture's side, which states no `Side(54)` (A12).
+/// `UKNW` off the trade capture's side, which states no `Side(54)` (A12).
 const MESSAGES: usize = 94 + 57;
 
 /// How many three-entry snapshots one market-book measurement consumes.
@@ -120,10 +120,10 @@ fn batched_text(rows: usize) -> RecordOptions {
 /// once and each row's bytes borrowed where they lie.
 fn bodies(source: &Buffer) -> Vec<Vec<u8>> {
     let read = source.read_arrow_reader(&text()).expect("a reader");
-    let columns = SerieReader::from_arrow_reader(None, read, ArrowCastOptions::new())
+    let columns = StreamChunkedSerie::from_arrow_reader(None, read, ArrowCastOptions::new())
         .expect("the text reader's rows are records");
     let mut held = Vec::new();
-    for records in columns {
+    for records in columns.into_chunks() {
         let records = records.expect("a batch");
         let body = records
             .child("body")

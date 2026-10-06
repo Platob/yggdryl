@@ -50,6 +50,26 @@ fn malformed_bounds_are_unknown_instead_of_zero() {
 }
 
 #[test]
+fn a_bound_is_read_under_the_one_iceberg_mapping_and_a_decimal_s_stays_unknown() {
+    use yggdryl::Side;
+    // An enum column is Iceberg's `int` - the one mapping's word - so its
+    // bound reads back as the member the code names.
+    assert_eq!(
+        single_to_value(&2_i32.to_le_bytes(), &DataType::Side),
+        Some(Scalar::Side(Side::Sell))
+    );
+    // A text column is a string whatever its layout, a code too.
+    assert_eq!(
+        single_to_value(b"XNAS", &DataType::fixed_utf8(4).unwrap()),
+        Some(Scalar::from("XNAS"))
+    );
+    // A decimal's bound is unknown rather than read: the pruner declines
+    // where two writers may spell the encoding apart.
+    assert!(single_to_value(&[0, 42], &DataType::decimal128(9, 2).unwrap()).is_none());
+    assert!(single_to_value(&[0, 42], &DataType::Decimal).is_none());
+}
+
+#[test]
 fn nan_is_never_encoded_or_decoded_as_a_bound() {
     let f32_nan = f32::NAN.to_le_bytes();
     let f64_nan = f64::NAN.to_le_bytes();

@@ -54,7 +54,7 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 import yggdryl
-from yggdryl import Catalog, ChunkedSerie, Field, IOBase, IOResult, Namespace, SerieReader, Table, TextOptions
+from yggdryl import Catalog, ChunkedSerie, Field, IOBase, IOResult, IsinRegistry, Namespace, StreamChunkedSerie, Table, TextOptions
 from yggdryl.http import process_stats
 from yggdryl.fix import ULBRIDGE_ROWHEADER, FixCodec, FixRegistry
 from yggdryl.graph import MarketData
@@ -62,13 +62,14 @@ from yggdryl.iceberg import IcebergCatalog
 
 NAMESPACE = "record_keeping"
 
-# The primary key every table of the pipeline declares: when a row happened
-# and the hash of what it states.
-PRIMARY_KEY = ("currunix", "currhashcode")
+# The primary key every table of the pipeline declares: when a row happened,
+# which object it came from, its place there and the hash of what it states -
+# the instant and the content alone repeat wherever two lines are one text.
+PRIMARY_KEY = ("currunix", "crosshashcode", "seqnum", "currhashcode")
 
-# What every table of the pipeline requires of each row: its key, its place
-# among the rows of its instant, and the code and hash of its chain.
-REQUIRED = (*PRIMARY_KEY, "seqnum", "crosscode", "crosshashcode")
+# What every table of the pipeline requires of each row: its key and the code
+# of its chain.
+REQUIRED = (*PRIMARY_KEY, "crosscode")
 
 # The partition every table computes for each row it is written: the quarter
 # of an hour the row's instant falls in.
@@ -124,7 +125,8 @@ def declared(row: Field, partition_by: Iterable[str] = (PARTUNIX,)) -> Field:
     Partitioned by `partunix` - the quarter hour the table computes for every
     row written to it - and whatever else `partition_by` names, sorted by it,
     the instant, the place within the instant and the content hash, with the
-    instant and the hash its primary key, every required column non-null,
+    instant, the object, the place and the hash its primary key, every
+    required column non-null,
     numbered by this table alone.
     """
     schema = unnumbered(row.into_scheme_compat("iceberg")).with_partition_by(list(partition_by))
@@ -206,11 +208,34 @@ class Lake:
         return held
 
 
-def stored_rows(table: Table, start: dt.datetime, end: dt.datetime) -> SerieReader:
+def stored_rows(table: Table, start: dt.datetime, end: dt.datetime) -> StreamChunkedSerie:
     """The rows `table` holds inside the window, in the table's own order,
     as the row the stage wrote: the partition column the table computed
     taken off, the window pushed into the read."""
-    return table.read_serie(select="* exclude (partunix)", filter=window_filter(start, end))
+    return StreamChunkedSerie.from_serie(table.read_serie(select="* exclude (partunix)", filter=window_filter(start, end)))
+
+
+def instruments(silver: Catalog, namespace_name: str = NAMESPACE) -> IsinRegistry:
+    """The registry of the instruments the pipeline meets, bound to
+    `silver.record_keeping.instruments`: the table opened as it is or created
+    from the registry's own row, unpartitioned, so the registry loads what an
+    earlier run committed and commits what this run's lifecycle learns. Hand
+    it to the codec (`FixCodec(..., isin_registry=...)`) and commit it after
+    the lifecycle stage (`commit_instruments`)."""
+    namespace = silver.namespaces.open_or_create(namespace_name)
+    row = yggdryl.iceberg.assign_field_ids(
+        unnumbered(IsinRegistry.field().into_scheme_compat("iceberg"))
+    )
+    table = namespace.tables.open_or_create("instruments", row, **TABLE_PROPERTIES)
+    return IsinRegistry.from_url(table)
+
+
+def commit_instruments(registry: IsinRegistry) -> IOResult:
+    """What the lifecycle learned of the instruments it met, to the table the
+    registry is bound to - `silver.record_keeping.instruments` - as one
+    snapshot replacing every row, only where the registry moved: a run that
+    learned nothing new writes nothing."""
+    return registry.commit()
 
 
 def parse_log_messages(
@@ -228,7 +253,7 @@ def parse_log_messages(
     options.rowheader = rowheader
     options.timezone = "UTC"
     options.start_rownum = 1
-    lines = lake.logs.read_serie(options=options, filter=window_filter(start, end))
+    lines = StreamChunkedSerie.from_serie(lake.logs.read_serie(options=options, filter=window_filter(start, end)))
     return lake.table_of("bronze", "log_messages", lines.field).overwrite_serie(lines)
 
 
@@ -277,10 +302,15 @@ def parse_events(lake: Lake, start: dt.datetime, end: dt.datetime) -> dict[str, 
     books = ChunkedSerie.from_(stored_rows(lake.source_of("silver", "books"), start, end))
     written: dict[str, IOResult] = {}
     for name, kind in EVENTS:
-        rows = MarketData.deltas_serie(SerieReader.from_chunked(books), kind)
+        rows = MarketData.deltas_serie(StreamChunkedSerie.from_chunked(books), kind)
         written[f"silver.{name}"] = lake.table_of("silver", name, rows.field).overwrite_serie(rows)
     return written
 
+
+def parse_instruments(lake: Lake, _start: dt.datetime, _end: dt.datetime) -> dict[str, IOResult]:
+    """Commit the registry the lifecycle just taught, where one is bound."""
+    registry = lake.codec.isin_registry
+    return {} if registry is None else {"silver.instruments": commit_instruments(registry)}
 
 Stage = Callable[[Lake, dt.datetime, dt.datetime], dict[str, IOResult]]
 
@@ -290,6 +320,7 @@ STAGES_OF: dict[str, Stage] = {
     "bronze.log_messages": lambda lake, start, end: {"bronze.log_messages": parse_log_messages(lake, start, end)},
     "bronze.fix_messages": lambda lake, start, end: {"bronze.fix_messages": parse_fix_messages_raw(lake, start, end)},
     "silver.fix_messages": lambda lake, start, end: {"silver.fix_messages": parse_fix_messages_refined(lake, start, end)},
+    "silver.instruments": parse_instruments,
     "silver.books": lambda lake, start, end: {"silver.books": parse_books(lake, start, end)},
     "silver.events": parse_events,
 }

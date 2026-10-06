@@ -621,3 +621,125 @@ mod declared_order {
         }
     }
 }
+
+/// A column of `dtype` stating its integers are bits.
+fn bits_column(dtype: DataType, name: &str, nullable: bool) -> Field {
+    let mut field = if nullable {
+        dtype.nullable_field(name)
+    } else {
+        dtype.required_field(name)
+    };
+    field
+        .as_field_properties_mut()
+        .set_representation(yggdryl::Representation::Bits)
+        .unwrap();
+    field
+}
+
+/// Whether the column `id` names in `schema` states its integers are bits.
+fn states_bits(schema: &Field, id: i32) -> bool {
+    schema
+        .field_by_parquet_field_id(id)
+        .unwrap_or_else(|| panic!("no column {id}"))
+        .as_field_properties()
+        .representation()
+        .is_bits()
+}
+
+#[test]
+fn columns_stating_bits_ride_one_table_property_by_identifier() {
+    use yggdryl::iceberg::SchemaUpdate;
+
+    let item = DataType::from(
+        StructType::from_fields([bits_column(DataType::Int64, "d", false)]).unwrap(),
+    )
+    .required_field("item");
+    let schema = DataType::from(
+        StructType::from_fields([
+            bits_column(DataType::Int64, "d", false),
+            DataType::Int64.required_field("n"),
+            DataType::serie(item).nullable_field("alive"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let mut metadata = TableMetadata::new(
+        FormatVersion::V2,
+        "file:///tmp/bits-metadata",
+        schema,
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    let current = metadata.current_schema().unwrap().clone();
+    let id = |path: &str| {
+        current
+            .get_field_by_path(path)
+            .unwrap_or_else(|| panic!("no column {path}"))
+            .parquet_field_id()
+            .unwrap()
+            .unwrap()
+    };
+    let (root_digest, plain, nested_digest) = (id("d"), id("n"), id("alive[0].d"));
+    let mut stated = [root_digest, nested_digest];
+    stated.sort_unstable();
+    assert_eq!(
+        metadata.property(TableMetadata::REPRESENTATION_BITS_PROPERTY),
+        Some(format!("{},{}", stated[0], stated[1]).as_str())
+    );
+
+    // Read back, the property declares both columns again, at any depth,
+    // and nothing else.
+    let read = TableMetadata::from_json(&metadata.clone().into_json().unwrap()).unwrap();
+    let schema = read.current_schema().unwrap();
+    assert!(states_bits(schema, root_digest));
+    assert!(states_bits(schema, nested_digest));
+    assert!(!states_bits(schema, plain));
+
+    // A property naming an identifier no schema holds declares nothing, and
+    // the property is the authority: the two columns state nothing now.
+    let mut absent = read.clone();
+    absent
+        .set_property(TableMetadata::REPRESENTATION_BITS_PROPERTY, "999")
+        .unwrap();
+    let schema = absent.current_schema().unwrap();
+    assert!(!states_bits(schema, root_digest));
+    assert!(!states_bits(schema, nested_digest));
+
+    // A property that is no list of identifiers is refused naming it.
+    let mut garbled = read.clone();
+    let message = garbled
+        .set_property(TableMetadata::REPRESENTATION_BITS_PROPERTY, "x")
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.contains(TableMetadata::REPRESENTATION_BITS_PROPERTY),
+        "{message}"
+    );
+    assert_eq!(garbled, read);
+
+    // An evolution adding a column stating bits restates the property.
+    let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
+    update.add_column("", bits_column(DataType::Int64, "e", true));
+    let schema_id = metadata.add_schema(update.into_field().unwrap()).unwrap();
+    let added = metadata.schema_by_id(schema_id).unwrap();
+    let added_digest = added
+        .get_field_by_path("e")
+        .unwrap()
+        .parquet_field_id()
+        .unwrap()
+        .unwrap();
+    assert!(states_bits(added, added_digest));
+    assert!(states_bits(added, root_digest));
+    let mut ids = [root_digest, nested_digest, added_digest];
+    ids.sort_unstable();
+    assert_eq!(
+        metadata.property(TableMetadata::REPRESENTATION_BITS_PROPERTY),
+        Some(
+            ids.iter()
+                .map(i32::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+                .as_str()
+        )
+    );
+}

@@ -90,6 +90,16 @@ impl IOPath for FsPath {
 
 impl crate::IOMedia for FsPath {
     crate::impl_default_iomedia!();
+
+    fn read_serie(&self, options: Option<&crate::media::RecordOptions>) -> Result<crate::Serie> {
+        // Resolve the role once; a file's media type then needs no second
+        // store query to decide whether its bytes form a document.
+        if self.current_kind().is_ok_and(IOKind::is_container) {
+            crate::IOMedia::read_serie(&self.as_directory(), options)
+        } else {
+            crate::IOMedia::read_serie(&self.as_file(), options)
+        }
+    }
 }
 
 impl IOBase for FsPath {

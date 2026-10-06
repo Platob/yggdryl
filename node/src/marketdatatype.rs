@@ -46,7 +46,7 @@ pub fn market_data_type_from_fix(tag: i32, wire: String) -> Option<String> {
 }
 
 /// The FIX field and wire value the member `name` stands for, or `null` for
-/// `UNKN` and a catch-all; throws on a name that is no member.
+/// `UKNW` and a catch-all; throws on a name that is no member.
 #[napi(js_name = "marketDataTypeFixCode")]
 pub fn market_data_type_fix_code(name: String) -> Result<Option<MarketDataTypeFixCode>> {
     let member = MarketDataType::from_spelling(&name)

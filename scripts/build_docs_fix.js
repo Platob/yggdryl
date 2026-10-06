@@ -16,8 +16,8 @@
  * rather than to a field: the sets are listed once beside the catalog and a
  * field's `FIX:codeset` states the name of the one it reads by, which is how
  * one unit set is written once for the 165 fields that read it. Membership
- * (`FIX:branches`, the dictionaries that contributed a field) stays inline
- * in its owning native Field metadata.
+ * (`FIX:sources`, the ids of the sources that contributed a field) stays
+ * inline in its owning native Field metadata.
  *
  * The manifest is committed, so the same build runs on any machine: fixed corpus,
  * fixed key order, two-space JSON, LF, no timestamps and no paths. `--check`
@@ -192,7 +192,7 @@ function dictionary() {
 }
 
 /** The `FIX:` properties a store writes as the JSON they are, `fix::document::Kind::ALL`. */
-const DOCUMENT_KEYS = ['FIX:replacements', 'FIX:directions', 'FIX:names', 'FIX:tags']
+const DOCUMENT_KEYS = ['FIX:directions', 'FIX:idmap', 'FIX:names', 'FIX:parents', 'FIX:sources', 'FIX:tags']
 
 /**
  * The categories a snapshot files definitions under, `FixCategory::ALL`.
@@ -300,7 +300,7 @@ function fieldRecords(registry, snapshot) {
     if (tag === null) continue
     const record = { t: tag, n: field.name, y: field.dtype.toString() }
     if (field.display !== null && field.display !== field.name) record.d = field.display
-    const memberships = view.branches
+    const memberships = view.sources
     if (memberships.length > 0) record.m = memberships
     if (field.description !== null) record.x = field.description
     const names = view.names
@@ -320,8 +320,8 @@ function fieldRecords(registry, snapshot) {
 
 /** What the dictionary is, counted once so the page states no arithmetic. */
 function counts(records, catalog, row, sets, dialects) {
-  // Membership is provenance on the field: `FIX:branches` lists every
-  // dictionary that contributed it, and a field the specification alone
+  // Membership is provenance on the field: `FIX:sources` lists every
+  // source that contributed it, and a field the specification alone
   // defines lists none. The shipped dictionary carries no membership at all.
   const members = new Map(dialects.map((name) => [name, 0]))
   const dtypes = new Map()
