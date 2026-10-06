@@ -201,7 +201,7 @@ impl Located {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         self.table
-            .commit_overwrite_cadence(&pairs, batches, replaced, threads)
+            .commit_overwrite_cadence(&pairs, batches, replaced, threads, &[])
     }
 
     /// Publish one already-shaped append cadence.
@@ -210,7 +210,7 @@ impl Located {
         batches: crate::arrow::BatchReader,
         threads: Option<usize>,
     ) -> Result<()> {
-        self.table.commit_append_on(batches, threads)
+        self.table.commit_append_on(batches, threads, &[])
     }
 
     /// Publish one already-shaped merge cadence.
@@ -233,7 +233,7 @@ impl Located {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         self.table
-            .commit_merge_cadence(&pairs, batches, merge_by, safe, replaced, threads)
+            .commit_merge_cadence(&pairs, batches, merge_by, safe, replaced, threads, &[])
     }
 
     /// Return the table a container handle addresses, if it addresses one.

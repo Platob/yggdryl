@@ -249,6 +249,7 @@ from .serie import (
     Serie as Serie,
     SerieField as SerieField,
     SerieReader as SerieReader,
+    SerieReaderPartitions as SerieReaderPartitions,
     SerieReaderWindows as SerieReaderWindows,
     SerieSerie as SerieSerie,
     WindowSerie as WindowSerie,

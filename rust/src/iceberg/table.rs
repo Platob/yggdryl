@@ -165,8 +165,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{BuildHasherDefault, Hash, Hasher};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, StructArray, UInt32Array};
 use arrow_row::{Row, RowConverter, SortField};
@@ -185,11 +184,12 @@ use super::snapshot::{Snapshot, SnapshotRef};
 use super::staging::{Staging, container, leaf, sized};
 use super::value::{compare_single, is_portable, single_value};
 use crate::arrow::BatchReader;
-use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
+use crate::cast::ArrowCastOptions;
 use crate::expression::Projection;
 use crate::holder::Holder;
 use crate::media::{Cadence, IORecordOptions, RecordOptions};
-use crate::{ChunkedSerie, IOBase, IOMedia, Serie, SpillOptions};
+use crate::serie::{Closing, Partitions};
+use crate::{ChunkedSerie, IOBase, IOMedia, Serie, SerieReader};
 use crate::{
     DataType, Error, Field, Filter, IOKind, MimeType, Result, Scalar, Selector, StructType, Term,
 };
@@ -726,6 +726,17 @@ fn read_current<H: IOBase>(root: &H) -> Result<Option<Opened>> {
 }
 
 impl<H: IOBase> IcebergTable<H> {
+    /// The read settings this table resolves for `metadata`: its options,
+    /// then its properties, then the defaults - on one thread where its root
+    /// answers only on the calling thread ([`IOBase::is_thread_bound`]).
+    fn read_settings(&self, metadata: &TableMetadata) -> Result<super::options::ReadSettings> {
+        let mut settings = IcebergOptions::read_settings(self.options.as_ref(), metadata)?;
+        if self.root.is_thread_bound() {
+            settings.parallelism = 1;
+        }
+        Ok(settings)
+    }
+
     /// Create a table, writing its first metadata document.
     ///
     /// The table has a schema and a partition spec but no snapshot, which is
@@ -1452,8 +1463,7 @@ impl<H: IOBase> IcebergTable<H> {
         let location = metadata.location();
         // The manifests a plan keeps are read side by side on the scan's own
         // parallelism, resolved by the one three-layer rule.
-        let parallelism =
-            IcebergOptions::read_settings(self.options.as_ref(), metadata)?.parallelism;
+        let parallelism = self.read_settings(metadata)?.parallelism;
         log::debug!(
             "planning iceberg scan of {location} over {} manifests on up to {parallelism} threads",
             manifests.len()
@@ -1933,8 +1943,7 @@ impl<H: IOBase> IcebergTable<H> {
         // predicate's own columns even when the caller projected them away.
         let predicates = super::scan::conjuncts(&read_root, filter)?;
         let parts = self.scan_parts(tasks, stored, &read_root)?;
-        let parallel =
-            IcebergOptions::read_settings(self.options.as_ref(), &self.opened()?.metadata)?;
+        let parallel = self.read_settings(&self.opened()?.metadata)?;
         super::scan::reader(
             parts,
             root,
@@ -2099,7 +2108,7 @@ impl<H: IOBase> IcebergTable<H> {
             .into_iter()
             .map(|tasks| self.scan_parts(tasks, &stored, &read_root))
             .collect::<Result<Vec<_>>>()?;
-        let mut parallel = IcebergOptions::read_settings(self.options.as_ref(), metadata)?;
+        let mut parallel = self.read_settings(metadata)?;
         if options.max_row_size().is_some() {
             // A limited read decodes one file at a time, on one thread, so it
             // stops where its limit does rather than decoding ahead of it.
@@ -2205,8 +2214,9 @@ impl<H: IOBase> IcebergTable<H> {
     /// batch cannot be cast to the table schema, when any write fails, or a
     /// [`CommitConflict`] when concurrent writers exhausted the retries.
     pub fn commit_append(&mut self, batches: BatchReader) -> Result<()> {
+        let claimed = claimed_order(&batches.schema());
         let batches = self.derived(batches)?;
-        self.commit_append_on(batches, None)
+        self.commit_append_on(batches, None, &claimed)
     }
 
     /// The rows of `batches` with every column the schema derives computed.
@@ -2229,14 +2239,24 @@ impl<H: IOBase> IcebergTable<H> {
 
     /// [`Self::commit_append`] with its partition groups written on
     /// `threads` at once where one is stated, else on the table's own
-    /// parallelism.
+    /// parallelism, and each partition written as soon as the rows move past
+    /// it while they keep the order the source `claimed`
+    /// ([`Self::partitions`]).
     pub(crate) fn commit_append_on(
         &mut self,
         batches: BatchReader,
         threads: Option<usize>,
+        claimed: &[crate::expression::Ordering],
     ) -> Result<()> {
-        let writes = self.partition_writes(batches, false)?;
-        self.commit(writes, None, "append", Retained::All, threads)?;
+        let partitions = self.partitions(batches, false, threads, true, claimed)?;
+        self.commit(
+            Groups::Streamed(partitions),
+            None,
+            "append",
+            |_, _| Ok(Retained::All),
+            threads,
+            Empty::Commits,
+        )?;
         Ok(())
     }
 
@@ -2264,8 +2284,15 @@ impl<H: IOBase> IcebergTable<H> {
     /// source reaches - rewrite it into the current spec first - when any
     /// write fails, or a [`CommitConflict`] when a concurrent commit won.
     pub fn commit_overwrite(&mut self, batches: BatchReader) -> Result<()> {
+        let claimed = claimed_order(&batches.schema());
         let batches = self.derived(batches)?;
-        self.commit_overwrite_cadence(&[], batches, &mut ReplacedPartitions::default(), None)
+        self.commit_overwrite_cadence(
+            &[],
+            batches,
+            &mut ReplacedPartitions::default(),
+            None,
+            &claimed,
+        )
     }
 
     /// One commit of a streamed overwrite.
@@ -2283,6 +2310,7 @@ impl<H: IOBase> IcebergTable<H> {
         batches: BatchReader,
         replaced: &mut ReplacedPartitions,
         threads: Option<usize>,
+        claimed: &[crate::expression::Ordering],
     ) -> Result<()> {
         if filters.is_empty() && !self.opened()?.metadata.default_spec()?.is_unpartitioned() {
             return self.commit_partitions(
@@ -2292,12 +2320,13 @@ impl<H: IOBase> IcebergTable<H> {
                 false,
                 replaced,
                 threads,
+                claimed,
             );
         }
         if replaced.scope {
-            return self.commit_append_on(batches, threads);
+            return self.commit_append_on(batches, threads, claimed);
         }
-        self.commit_overwrite_where_on(filters, batches, threads)?;
+        self.commit_overwrite_where_on(filters, batches, threads, claimed)?;
         replaced.scope = true;
         Ok(())
     }
@@ -2332,8 +2361,9 @@ impl<H: IOBase> IcebergTable<H> {
         filters: &[(&str, &str)],
         batches: BatchReader,
     ) -> Result<()> {
+        let claimed = claimed_order(&batches.schema());
         let batches = self.derived(batches)?;
-        self.commit_overwrite_where_on(filters, batches, None)
+        self.commit_overwrite_where_on(filters, batches, None, &claimed)
     }
 
     /// [`Self::commit_overwrite_where`] with its partition groups written
@@ -2344,18 +2374,23 @@ impl<H: IOBase> IcebergTable<H> {
         filters: &[(&str, &str)],
         batches: BatchReader,
         threads: Option<usize>,
+        claimed: &[crate::expression::Ordering],
     ) -> Result<()> {
         let plan = self.plan(filters)?;
-        let writes = self.partition_writes(batches, false)?;
+        let partitions = self.partitions(batches, false, threads, true, claimed)?;
+        // The scope is replaced whether or not a row falls in it.
         self.commit(
-            writes,
+            Groups::Streamed(partitions),
             None,
             "overwrite",
-            Retained::Only {
-                manifests: plan.skipped,
-                entries: plan.excluded,
+            move |_, _| {
+                Ok(Retained::Only {
+                    manifests: plan.skipped,
+                    entries: plan.excluded,
+                })
             },
             threads,
+            Empty::Commits,
         )?;
         Ok(())
     }
@@ -2420,6 +2455,7 @@ impl<H: IOBase> IcebergTable<H> {
         merge_by: &crate::Selector,
         safe: bool,
     ) -> Result<()> {
+        let claimed = claimed_order(&batches.schema());
         let batches = self.derived(batches)?;
         self.commit_merge_cadence(
             filters,
@@ -2428,6 +2464,7 @@ impl<H: IOBase> IcebergTable<H> {
             safe,
             &mut ReplacedPartitions::default(),
             None,
+            &claimed,
         )
     }
 
@@ -2441,6 +2478,7 @@ impl<H: IOBase> IcebergTable<H> {
     /// replaced: the first commit that reaches a partition replaces it and
     /// records it, every later one carries its files and appends beside
     /// them. A keyed merge joins by key on every commit and records nothing.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn commit_merge_cadence(
         &mut self,
         filters: &[(&str, &str)],
@@ -2449,6 +2487,7 @@ impl<H: IOBase> IcebergTable<H> {
         safe: bool,
         replaced: &mut ReplacedPartitions,
         threads: Option<usize>,
+        claimed: &[crate::expression::Ordering],
     ) -> Result<()> {
         let schema = self.schema()?.clone();
         let spec = self.opened()?.metadata.default_spec()?.clone();
@@ -2470,7 +2509,7 @@ impl<H: IOBase> IcebergTable<H> {
         // Every key column is checked against the schema before a file is
         // read, computed keys included, so a bad key costs nothing.
         keys.bind(&schema)?;
-        self.commit_partitions(filters, batches, row_keys, safe, replaced, threads)
+        self.commit_partitions(filters, batches, row_keys, safe, replaced, threads, claimed)
     }
 
     /// One commit over the partitions `batches` falls in: each joined with
@@ -2482,6 +2521,7 @@ impl<H: IOBase> IcebergTable<H> {
     /// by partition tuple, the plan opened over those partitions alone, and
     /// every file of every other partition carried untouched. A source with
     /// no row commits nothing.
+    #[allow(clippy::too_many_arguments)]
     fn commit_partitions(
         &mut self,
         filters: &[(&str, &str)],
@@ -2490,15 +2530,57 @@ impl<H: IOBase> IcebergTable<H> {
         safe: bool,
         replaced: &mut ReplacedPartitions,
         threads: Option<usize>,
+        claimed: &[crate::expression::Ordering],
     ) -> Result<()> {
         let schema = self.schema()?.clone();
         let spec = self.opened()?.metadata.default_spec()?.clone();
+        if row_keys.is_empty() {
+            // The partition is the key: its files are replaced, not read, so
+            // each partition is written as it closes and the plan - the
+            // files this commit replaces - is opened over the partitions the
+            // rows fell in once the last of them is written.
+            let partitions = self.partitions(batches, safe, threads, true, claimed)?;
+            let mut replacing: Vec<Vec<Scalar>> = Vec::new();
+            let committed = self.commit(
+                Groups::Streamed(partitions),
+                None,
+                "overwrite",
+                |table, tuples| {
+                    let (retained, newly) =
+                        table.replaced_by(filters, &schema, &spec, tuples, replaced)?;
+                    replacing = newly;
+                    Ok(retained)
+                },
+                threads,
+                Empty::CommitsNothing,
+            )?;
+            if committed.is_some() {
+                // Recorded once the commit is published: a commit that
+                // failed replaced nothing, and the write it belonged to is
+                // over.
+                replaced.tuples.extend(replacing);
+            }
+            return Ok(());
+        }
 
-        // The incoming side is held, grouped by partition, and this is why:
+        // A keyed merge's incoming side is held, grouped by partition, and
+        // this is why:
         // the files a merge has to read are the ones of the partitions the
         // rows fall in whose statistics say they can hold an incoming key,
-        // and neither is known from a reader that has not been read.
-        let mut writes = self.partition_writes(batches, safe)?;
+        // and neither is known from a reader that has not been read. Each
+        // partition is joined with its stored files once, so every one is
+        // held until the source ends.
+        let mut writes: Vec<PartitionWrite> = self
+            .partitions(batches, safe, threads, false, &[])?
+            .map(|closed| {
+                let (values, hold) = closed?;
+                Ok(PartitionWrite {
+                    values,
+                    hold,
+                    stored: Vec::new(),
+                })
+            })
+            .collect::<Result<_>>()?;
         if writes.is_empty() {
             return Ok(());
         }
@@ -2553,20 +2635,7 @@ impl<H: IOBase> IcebergTable<H> {
                 )));
             }
         }
-        let mut replacing: Vec<Vec<Scalar>> = Vec::new();
         for (write, tasks) in writes.iter_mut().zip(own) {
-            if !keyed {
-                // The partition is the key: its files are replaced, not
-                // read, by the first commit of the write that reaches it,
-                // and carried - this commit appends beside them - by every
-                // later commit of the same write.
-                if replaced.contains(&write.values) {
-                    carried.extend(tasks);
-                } else {
-                    replacing.push(write.values.clone());
-                }
-                continue;
-            }
             let incoming = hold_batches(&write.hold)?;
             let bounds = KeyBounds::of(&incoming, &schema, &row_keys)?;
             let mut selected = Vec::new();
@@ -2584,34 +2653,145 @@ impl<H: IOBase> IcebergTable<H> {
             safe,
         };
         self.commit(
-            writes,
-            keyed.then_some(&join),
+            Groups::Held(writes),
+            Some(&join),
             "overwrite",
+            move |_, _| {
+                Ok(Retained::Only {
+                    manifests: plan.skipped,
+                    entries: carried,
+                })
+            },
+            threads,
+            Empty::Commits,
+        )?;
+        Ok(())
+    }
+
+    /// What an overwrite of the partitions `tuples` retains: the plan opened
+    /// over the `filters` scope and those partitions alone, every file of
+    /// every other partition carried untouched, and - of the partitions the
+    /// rows fell in - the files of one an earlier commit of the same write
+    /// already replaced carried too, this commit appending beside them. The
+    /// partitions this commit replaces come back beside it, recorded only
+    /// once the commit is published. A file of another spec belongs to no
+    /// partition of this one, and is refused naming both specs.
+    fn replaced_by(
+        &mut self,
+        filters: &[(&str, &str)],
+        schema: &Field,
+        spec: &PartitionSpec,
+        tuples: &[Vec<Scalar>],
+        replaced: &ReplacedPartitions,
+    ) -> Result<(Retained, Vec<Vec<Scalar>>)> {
+        let scope = Filter::all([
+            pairs_predicate(schema, filters),
+            partition_tuples_filter(spec, schema, tuples),
+        ]);
+        let conjuncts = super::scan::conjuncts(schema, &scope)?;
+        let plan = self.planned(&conjuncts, schema, false)?;
+        let mut carried = plan.excluded;
+        let mut replacing: Vec<Vec<Scalar>> = Vec::new();
+        for task in plan.tasks {
+            if task.spec.spec_id != spec.spec_id {
+                return Err(invalid(format_smolstr!(
+                    "expected every live file this write could replace to belong to partition \
+                     spec {}, got {:?} under spec {}; rewrite it into the current spec first",
+                    spec.spec_id,
+                    task.entry.data_file.file_path,
+                    task.spec.spec_id
+                )));
+            }
+            match tuples
+                .iter()
+                .find(|values| **values == task.entry.data_file.partition)
+            {
+                // The partition is the key: its files are replaced, not read,
+                // by the first commit of the write that reaches it, and
+                // carried - this commit appends beside them - by every later
+                // commit of the same write.
+                Some(values) if replaced.contains(values) => carried.push(task),
+                Some(_) => {}
+                // A partition no incoming row falls in: the filter kept the
+                // file on bounds a transformed field cannot settle, and the
+                // tuple settles it now.
+                None => carried.push(task),
+            }
+        }
+        for values in tuples {
+            if !replaced.contains(values) && !replacing.contains(values) {
+                replacing.push(values.clone());
+            }
+        }
+        Ok((
             Retained::Only {
                 manifests: plan.skipped,
                 entries: carried,
             },
-            threads,
-        )?;
-        // Recorded once the commit is published: a commit that failed
-        // replaced nothing, and the write it belonged to is over.
-        replaced.tuples.extend(replacing);
-        Ok(())
+            replacing,
+        ))
     }
 
-    /// Group an incoming reader by partition tuple, each group a write.
-    fn partition_writes(&self, batches: BatchReader, safe: bool) -> Result<Vec<PartitionWrite>> {
+    /// The incoming reader's rows cut into the partitions of the table's
+    /// spec through the one partitioner a split of a stream runs through
+    /// ([`SerieReader::map_landed`] and [`Partitions`]): each batch landed
+    /// under the stored schema, keyed by its tuples and cut into its
+    /// partitions' pieces on the write's threads - `threads` where the write
+    /// states them, else the table's own parallelism, as [`Self::commit`]
+    /// resolves it - each partition held under the process spill bound, and,
+    /// where `bounded`, closed as soon as the source moves past it: once
+    /// another tuple arrives while the rows keep an order the source
+    /// `claimed` that clusters the spec's tuples ([`ClaimedOrder`]), else
+    /// past the table's `write.max-open-partitions` open, the lowest tuple
+    /// first. Unbounded, every partition is held until the source ends.
+    fn partitions(
+        &self,
+        batches: BatchReader,
+        safe: bool,
+        threads: Option<usize>,
+        bounded: bool,
+        claimed: &[crate::expression::Ordering],
+    ) -> Result<Partitions<Vec<Scalar>>> {
         let schema = self.schema()?;
-        let spec = self.opened()?.metadata.default_spec()?;
+        let metadata = &self.opened()?.metadata;
+        let spec = metadata.default_spec()?;
         let partition = spec.partition_field(schema)?;
-        Ok(grouped_holds(batches, schema, spec, &partition, safe)?
-            .into_iter()
-            .map(|(values, hold)| PartitionWrite {
-                values,
-                hold,
-                stored: Vec::new(),
-            })
-            .collect())
+        let settings = IcebergOptions::write_settings(self.options.as_ref(), metadata)?;
+        let threads = threads.map_or(settings.parallelism, |threads| threads.max(1));
+        let transforms = spec.write_transforms(schema, &partition)?;
+        let unpartitioned = spec.is_unpartitioned();
+        let claim = bounded
+            .then(|| ClaimedOrder::of(spec, schema, claimed))
+            .flatten();
+        let closing = match (&claim, bounded) {
+            (_, false) => Closing::Never,
+            (Some(claim), true) => {
+                Closing::ClusteredWhile(Arc::clone(&claim.holds), settings.max_open_partitions)
+            }
+            (None, true) => Closing::Bounded(settings.max_open_partitions),
+        };
+        // The landing root is the schema without the order it declares: a
+        // declaring root would refuse rows out of that order where they land,
+        // and ordering them is the writer's work.
+        let root = Arc::new(schema.clone().with_metadata_removed("SORT:by"));
+        let reader = SerieReader::from_arrow_reader(
+            Some(&root),
+            batches,
+            ArrowCastOptions::new().with_safe(safe),
+        )?;
+        let cuts = reader.map_landed(threads, move |record| {
+            Ok(cut_by_partition(record, &transforms, unpartitioned)?)
+        });
+        let pieces: Box<dyn Iterator<Item = crate::arrow::Result<_>> + Send> = match claim {
+            Some(mut claim) => Box::new(cuts.map(move |cut| {
+                cut.map(|(pieces, runs)| {
+                    claim.check(&pieces, runs);
+                    pieces
+                })
+            })),
+            None => Box::new(cuts.map(|cut| cut.map(|(pieces, _)| pieces))),
+        };
+        Ok(Partitions::new(root, pieces, closing))
     }
 
     /// Merge the current snapshot's undersized data files, one partition at a time.
@@ -2696,17 +2876,22 @@ impl<H: IOBase> IcebergTable<H> {
         );
         let schema = self.schema()?.clone();
         let rows = self.reader(selected, &schema, None, &crate::Filter::always_true())?;
-        let writes = self.partition_writes(rows, false)?;
-        let files_after = self.commit(
-            writes,
-            None,
-            "replace",
-            Retained::Only {
-                manifests: plan.skipped,
-                entries: carried,
-            },
-            None,
-        )?;
+        let partitions = self.partitions(rows, false, None, true, &[])?;
+        let files_after = self
+            .commit(
+                Groups::Streamed(partitions),
+                None,
+                "replace",
+                move |_, _| {
+                    Ok(Retained::Only {
+                        manifests: plan.skipped,
+                        entries: carried,
+                    })
+                },
+                None,
+                Empty::Commits,
+            )?
+            .unwrap_or(0);
         log::info!(
             "compacted {}: {files_before} files of {bytes_rewritten} bytes rewritten as {files_after}",
             self.opened()?.metadata.location(),
@@ -3235,12 +3420,13 @@ impl<H: IOBase> IcebergTable<H> {
     /// concurrent commit may have replaced.
     fn commit(
         &mut self,
-        writes: Vec<PartitionWrite>,
+        groups: Groups,
         join: Option<&Join>,
         operation: &str,
-        retained: Retained,
+        retain: impl FnOnce(&mut Self, &[Vec<Scalar>]) -> Result<Retained>,
         threads: Option<usize>,
-    ) -> Result<usize> {
+        empty: Empty,
+    ) -> Result<Option<usize>> {
         let schema = self.schema()?.clone();
         let spec = self.opened()?.metadata.default_spec()?.clone();
         spec.require_writable()?;
@@ -3253,6 +3439,11 @@ impl<H: IOBase> IcebergTable<H> {
             // The thread count the write's options state is the explicit
             // layer over the table's `write.parallelism` property.
             settings.parallelism = threads.max(1);
+        }
+        if self.root.is_thread_bound() {
+            // A root that answers only on the calling thread is written
+            // there alone, whatever the write states.
+            settings.parallelism = 1;
         }
         require_encodable(&settings.mime_type)?;
         let (sort, sort_order_id) = sort_orderings(
@@ -3288,29 +3479,44 @@ impl<H: IOBase> IcebergTable<H> {
             sort_order_id,
             join,
             staging: &staging,
-            file_threads: (settings.parallelism / settings.parallelism.min(writes.len()).max(1))
-                .max(1),
         };
         log::debug!(
-            "writing an iceberg {operation} snapshot {snapshot_id} to {} in {} partition groups",
+            "writing an iceberg {operation} snapshot {snapshot_id} to {}",
             self.opened()?.metadata.location(),
-            writes.len(),
         );
-        let mut jobs = Vec::with_capacity(writes.len());
-        for write in writes {
-            let directory = spec.partition_path(&write.values)?;
-            // Each group gets its own handle on the table folder: the file
-            // writes resolve their full relative path against it, exactly as
-            // a single-threaded write does, and the table's own root handle
-            // never crosses a thread.
-            let root = self.root.child_by_path(".")?;
-            jobs.push(PartitionJob {
+        // Each group gets its own handle on the table folder, resolved on
+        // this thread as the group arrives: the file writes resolve their
+        // full relative path against it, exactly as a single-threaded write
+        // does, and the table's own root handle never crosses a thread.
+        let root = &self.root;
+        let job = |write: PartitionWrite| -> Result<PartitionJob> {
+            Ok(PartitionJob {
+                directory: spec.partition_path(&write.values)?,
+                root: root.child_by_path(".")?,
                 write,
-                directory,
-                root,
-            });
+            })
+        };
+        let (written, tuples) = match groups {
+            Groups::Held(writes) => write_partitions(
+                Feed::Held(writes.into_iter().map(job).collect::<Result<_>>()?),
+                &write,
+            )?,
+            Groups::Streamed(partitions) => write_partitions(
+                Feed::Streamed(Box::new(partitions.map(|closed| {
+                    let (values, hold) = closed?;
+                    job(PartitionWrite {
+                        values,
+                        hold,
+                        stored: Vec::new(),
+                    })
+                }))),
+                &write,
+            )?,
+        };
+        if tuples.is_empty() && matches!(empty, Empty::CommitsNothing) {
+            return Ok(None);
         }
-        let written = write_partitions(jobs, &write)?;
+        let retained = retain(self, &tuples)?;
         let files_written = written.len();
 
         let added_records = checked_file_sum(&written, |file| file.record_count, "record count")?;
@@ -3511,7 +3717,7 @@ impl<H: IOBase> IcebergTable<H> {
         // The staging is committed inside, the moment the versioned document
         // is durable; what is left of it when it drops is the directory.
         self.commit_document(on_conflict, apply, Some(&staging))?;
-        Ok(files_written)
+        Ok(Some(files_written))
     }
 
     /// Reject rewrites that would assign fresh row IDs to retained v3 rows.
@@ -4144,6 +4350,9 @@ impl<H: IOBase> IcebergTable<H> {
         let Some(batches) = batches else {
             return Ok(crate::IOResult::default());
         };
+        // The order the caller's rows claim, read before they are shaped
+        // onto the stored schema, which states the table's own order.
+        let claimed = claimed_order(&batches.schema());
         let (batches, count) =
             crate::iobase::prepare_arrow_write_deriving(batches, options, &stored)?;
         let batches = if overwrite {
@@ -4165,17 +4374,24 @@ impl<H: IOBase> IcebergTable<H> {
                         crate::arrow::batch_reader(schema, []),
                         &mut replaced,
                         threads,
+                        &claimed,
                     )?;
                     return Ok(count.result());
                 };
-                self.commit_overwrite_cadence(pairs, first?, &mut replaced, threads)?;
+                self.commit_overwrite_cadence(pairs, first?, &mut replaced, threads, &claimed)?;
                 for commit in commits {
-                    self.commit_overwrite_cadence(pairs, commit?, &mut replaced, threads)?;
+                    self.commit_overwrite_cadence(
+                        pairs,
+                        commit?,
+                        &mut replaced,
+                        threads,
+                        &claimed,
+                    )?;
                 }
             }
             crate::IOMode::Append => {
                 for commit in commits {
-                    self.commit_append_on(commit?, threads)?;
+                    self.commit_append_on(commit?, threads, &claimed)?;
                 }
             }
             crate::IOMode::Merge => {
@@ -4188,6 +4404,7 @@ impl<H: IOBase> IcebergTable<H> {
                         options.safe(),
                         &mut replaced,
                         threads,
+                        &claimed,
                     )?;
                 }
             }
@@ -4436,9 +4653,6 @@ struct CommitWrite<'a> {
     join: Option<&'a Join>,
     /// The staging every file of the commit is published through.
     staging: &'a Staging,
-    /// The threads one file's columns encode on: the write parallelism's
-    /// share left over by the partition groups written side by side.
-    file_threads: usize,
 }
 
 /// Resolve the table's default sort order into the `order by` keys files
@@ -4497,79 +4711,421 @@ fn sort_orderings(
     Ok((keys, order_id))
 }
 
-/// Write every partition group, on up to the resolved parallelism threads.
+/// Where a commit's partition groups come from.
+enum Groups {
+    /// Every group held, a keyed merge's: each joined with its stored files.
+    Held(Vec<PartitionWrite>),
+    /// Each partition as it closes, written while the source is still read.
+    Streamed(Partitions<Vec<Scalar>>),
+}
+
+/// What a commit whose source wrote no partition does.
+#[derive(Clone, Copy)]
+enum Empty {
+    /// Publishes the snapshot anyway: an append's empty snapshot was refused
+    /// before, and an overwrite of a stated scope replaces it rows or not.
+    Commits,
+    /// Publishes nothing: an overwrite reaching no partition replaces none.
+    CommitsNothing,
+}
+
+/// The groups a commit's writer pool is fed, each built on the calling
+/// thread as it arrives.
+enum Feed<'a> {
+    /// Every group up front, scheduled heaviest first.
+    Held(Vec<PartitionJob>),
+    /// Each group as its partition closes, pulled while the pool writes.
+    Streamed(Box<dyn Iterator<Item = Result<PartitionJob>> + 'a>),
+}
+
+/// Write every partition group the feed gives, on up to the resolved
+/// parallelism threads, and answer the files with each group's tuple.
 ///
-/// The files come back in group order whatever order the groups finished
-/// in, so the manifest a commit writes does not depend on scheduling. The
-/// first failing group fails the whole commit: the others stop at their
-/// next group rather than writing files no manifest will name.
-fn write_partitions(jobs: Vec<PartitionJob>, write: &CommitWrite<'_>) -> Result<Vec<DataFile>> {
-    let parallelism = write.settings.parallelism.min(jobs.len()).max(1);
+/// The unit of work is a file. A group is first prepared - a keyed merge's
+/// stored side joined in, its rows sorted by the table's order, its rows cut
+/// into files of the target size - and each of its files is then encoded as
+/// a task of its own, so one large partition is written on as many threads
+/// as it has files, and a skewed commit is not held by its heaviest group.
+/// A streamed feed is pulled on the calling thread while the pool writes, so
+/// a partition's files are written as soon as it closes; at most as many
+/// groups as there are threads wait unprepared, the feed blocking until one
+/// is claimed, so what a commit holds beyond its open partitions is bounded.
+/// A held feed is scheduled heaviest first. A prepared group's files are
+/// claimed before another group is prepared, so a group's sorted rows are
+/// held only while its own files are written. Each task runs on a share of
+/// the parallelism - the parallelism over the tasks running or waiting when
+/// it is claimed - which is what a file's columns encode on and what a
+/// group's chunks sort and its stored side reads on.
+///
+/// The files come back in group order - the order a held feed lists its
+/// groups in, the order a streamed one closes them in - each group's in
+/// file order, whatever order they finished in, so the manifest a commit
+/// writes does not depend on scheduling, and a file's name carries its index
+/// within its group. The first failure fails the whole commit: the source's
+/// own is reported first, else the task of the lowest group and file that
+/// failed, and the others stop at their next claim rather than writing files
+/// no manifest will name.
+fn write_partitions(
+    feed: Feed<'_>,
+    write: &CommitWrite<'_>,
+) -> Result<(Vec<DataFile>, Vec<Vec<Scalar>>)> {
+    let parallelism = write.settings.parallelism.max(1);
     if parallelism == 1 {
+        let jobs: Box<dyn Iterator<Item = Result<PartitionJob>> + '_> = match feed {
+            Feed::Held(jobs) => Box::new(jobs.into_iter().map(Ok)),
+            Feed::Streamed(jobs) => jobs,
+        };
         let mut written = Vec::new();
+        let mut tuples = Vec::new();
         for job in jobs {
-            written.extend(write_partition(job, write)?);
+            let prepared = prepare_partition(job?, write, 1)?;
+            for (index, slice) in prepared.files.into_iter().enumerate() {
+                written.push(write_data_file(
+                    &prepared.root,
+                    &prepared.directory,
+                    write,
+                    index,
+                    &prepared.values,
+                    slice,
+                    1,
+                )?);
+            }
+            tuples.push(prepared.values);
         }
-        return Ok(written);
+        return Ok((written, tuples));
     }
-    let total = jobs.len();
-    let queue: Mutex<VecDeque<(usize, PartitionJob)>> =
-        Mutex::new(jobs.into_iter().enumerate().collect());
-    let outcomes: Mutex<Vec<Option<Result<Vec<DataFile>>>>> =
-        Mutex::new((0..total).map(|_| None).collect());
-    let failed = AtomicBool::new(false);
-    std::thread::scope(|scope| {
+    let pool = Mutex::new(Pool::new());
+    let ready = Condvar::new();
+    let fed = std::thread::scope(|scope| {
         for _ in 0..parallelism {
-            scope.spawn(|| {
-                loop {
-                    if failed.load(Ordering::Acquire) {
-                        return;
-                    }
-                    let next = match queue.lock() {
-                        Ok(mut queue) => queue.pop_front(),
-                        Err(_) => return,
-                    };
-                    let Some((index, job)) = next else {
-                        return;
-                    };
-                    let outcome = write_partition(job, write);
-                    if outcome.is_err() {
-                        failed.store(true, Ordering::Release);
-                    }
-                    if let Ok(mut outcomes) = outcomes.lock() {
-                        outcomes[index] = Some(outcome);
-                    }
-                }
-            });
+            scope.spawn(|| work_partitions(&pool, &ready, write, parallelism));
         }
+        let fed = feed_pool(&pool, &ready, feed, parallelism);
+        if let Ok(mut held) = pool.lock() {
+            held.fed = true;
+            held.stopped |= fed.is_err();
+        }
+        ready.notify_all();
+        fed
     });
-    let outcomes = outcomes.into_inner().map_err(|_| {
+    let pool = pool.into_inner().map_err(|_| {
         invalid(SmolStr::new_static(
-            "expected every partition writer to finish, got a poisoned result",
+            "expected every partition writer to finish, got a poisoned pool",
         ))
     })?;
+    fed?;
+    if let Some((_, error)) = pool.failure {
+        return Err(error);
+    }
     let mut written = Vec::new();
-    for outcome in outcomes {
-        match outcome {
-            Some(Ok(files)) => written.extend(files),
-            Some(Err(error)) => return Err(error),
-            None => {
-                return Err(invalid(SmolStr::new_static(
-                    "expected every partition group to be written, got one no writer took",
-                )));
+    for files in pool.files {
+        let Some(files) = files else {
+            return Err(invalid(SmolStr::new_static(
+                "expected every partition group to be prepared, got one no writer took",
+            )));
+        };
+        for file in files {
+            written.push(file.ok_or_else(|| {
+                invalid(SmolStr::new_static(
+                    "expected every data file to be written, got one no writer took",
+                ))
+            })?);
+        }
+    }
+    let tuples = pool
+        .tuples
+        .into_iter()
+        .map(|values| {
+            values.ok_or_else(|| {
+                invalid(SmolStr::new_static(
+                    "expected every partition group's tuple, got a group never fed",
+                ))
+            })
+        })
+        .collect::<Result<_>>()?;
+    Ok((written, tuples))
+}
+
+/// Feed the pool every group of `feed` on the calling thread, each at the
+/// position it is listed in, waiting while `parallelism` groups wait
+/// unprepared; stop at the source's first failure, or once a task failed.
+fn feed_pool(
+    pool: &Mutex<Pool>,
+    ready: &Condvar,
+    feed: Feed<'_>,
+    parallelism: usize,
+) -> Result<()> {
+    let poisoned = || {
+        invalid(SmolStr::new_static(
+            "expected the partition writers' pool, got a poisoned one",
+        ))
+    };
+    // Whether the pool took the group: false once a task has failed.
+    let submit = |group: usize, job: PartitionJob| -> Result<bool> {
+        let mut held = pool.lock().map_err(|_| poisoned())?;
+        while held.failure.is_none() && held.waiting >= parallelism {
+            held = ready.wait(held).map_err(|_| poisoned())?;
+        }
+        if held.failure.is_some() {
+            return Ok(false);
+        }
+        if held.files.len() <= group {
+            held.files.resize_with(group + 1, || None);
+            held.tuples.resize_with(group + 1, || None);
+        }
+        held.tuples[group] = Some(job.write.values.clone());
+        held.waiting += 1;
+        held.queue.push_back(Task::Prepare(group, job));
+        ready.notify_all();
+        Ok(true)
+    };
+    match feed {
+        Feed::Held(jobs) => {
+            // Heaviest first, so the longest preparation and the most files
+            // start while the rest of the pool fills; a tie keeps group order.
+            let mut order: Vec<(usize, PartitionJob)> = jobs.into_iter().enumerate().collect();
+            order.sort_by_key(|(_, job)| std::cmp::Reverse(job.write.hold.memory_size()));
+            for (group, job) in order {
+                if !submit(group, job)? {
+                    break;
+                }
+            }
+        }
+        Feed::Streamed(jobs) => {
+            for (group, job) in jobs.enumerate() {
+                if !submit(group, job?)? {
+                    break;
+                }
             }
         }
     }
-    Ok(written)
+    Ok(())
 }
 
-/// Write one partition group's files: join, sort, cut, encode.
+/// The work a commit's writer pool shares, under one lock.
+struct Pool {
+    /// The tasks not yet claimed: a prepared group's files at the front,
+    /// the groups not yet prepared behind them.
+    queue: VecDeque<Task>,
+    /// How many groups wait unprepared in the queue.
+    waiting: usize,
+    /// How many tasks are running now.
+    running: usize,
+    /// Whether the feed is over: every group it will give is in the queue.
+    fed: bool,
+    /// Whether the feed failed: nothing more is claimed.
+    stopped: bool,
+    /// The failure of the lowest group and file that failed, by
+    /// `(group, file)` - a group's preparation is its file `0`.
+    failure: Option<((usize, usize), Error)>,
+    /// Each group's files, in file order, once the group is prepared.
+    files: Vec<Option<Vec<Option<DataFile>>>>,
+    /// Each group's partition tuple, once the group is fed.
+    tuples: Vec<Option<Vec<Scalar>>>,
+}
+
+impl Pool {
+    /// A pool fed nothing yet.
+    const fn new() -> Self {
+        Self {
+            queue: VecDeque::new(),
+            waiting: 0,
+            running: 0,
+            fed: false,
+            stopped: false,
+            failure: None,
+            files: Vec::new(),
+            tuples: Vec::new(),
+        }
+    }
+}
+
+/// One task of a commit's writer pool.
+enum Task {
+    /// A group to join, sort and cut into files, by its position.
+    Prepare(usize, PartitionJob),
+    /// One file of a prepared group.
+    Encode(EncodeFile),
+}
+
+/// One data file to encode: its group and its index there, the handle it is
+/// written through, and its rows.
+struct EncodeFile {
+    group: usize,
+    index: usize,
+    root: Holder,
+    group_of: Arc<PreparedGroup>,
+    rows: Vec<RecordBatch>,
+}
+
+/// What every file of one prepared group shares: where its files land and
+/// the partition tuple they record.
+struct PreparedGroup {
+    directory: String,
+    values: Vec<Scalar>,
+}
+
+/// One writer thread of the pool: claim a task, run it on its share of the
+/// parallelism, record what it answered - until the feed is over and nothing
+/// is left to claim or running, or a task or the feed has failed.
+fn work_partitions(
+    pool: &Mutex<Pool>,
+    ready: &Condvar,
+    write: &CommitWrite<'_>,
+    parallelism: usize,
+) {
+    loop {
+        let (task, share) = {
+            let Ok(mut held) = pool.lock() else {
+                return;
+            };
+            loop {
+                if held.failure.is_some() || held.stopped {
+                    return;
+                }
+                if let Some(task) = held.queue.pop_front() {
+                    if matches!(task, Task::Prepare(..)) {
+                        held.waiting -= 1;
+                        // The feed may be waiting for a group to be claimed.
+                        ready.notify_all();
+                    }
+                    held.running += 1;
+                    let busy = held.running + held.queue.len();
+                    break (task, (parallelism / busy.max(1)).max(1));
+                }
+                if held.fed && held.running == 0 {
+                    return;
+                }
+                held = match ready.wait(held) {
+                    Ok(held) => held,
+                    Err(_) => return,
+                };
+            }
+        };
+        let done = run_task(task, write, share);
+        let Ok(mut held) = pool.lock() else {
+            return;
+        };
+        held.running -= 1;
+        match done {
+            Ok(Done::Prepared(group, encodes)) => {
+                if let Some(files) = held.files.get_mut(group) {
+                    *files = Some((0..encodes.len()).map(|_| None).collect());
+                }
+                for encode in encodes.into_iter().rev() {
+                    held.queue.push_front(Task::Encode(encode));
+                }
+            }
+            Ok(Done::Encoded(group, index, file)) => {
+                if let Some(Some(files)) = held.files.get_mut(group)
+                    && let Some(slot) = files.get_mut(index)
+                {
+                    *slot = Some(file);
+                }
+            }
+            Err(failed) => {
+                let (at, error) = *failed;
+                if held.failure.as_ref().is_none_or(|(first, _)| at < *first) {
+                    held.failure = Some((at, error));
+                }
+            }
+        }
+        ready.notify_all();
+    }
+}
+
+/// What one task answered.
+enum Done {
+    /// A group prepared, by its position, with its files to encode.
+    Prepared(usize, Vec<EncodeFile>),
+    /// One file written, by its group and index.
+    Encoded(usize, usize, DataFile),
+}
+
+/// A task's failure, located by group and file - boxed: an `Error` is large,
+/// and a task answers far more often than it fails.
+type TaskFailure = Box<((usize, usize), Error)>;
+
+/// Run one task on `share` threads, its failure located by group and file.
+fn run_task(
+    task: Task,
+    write: &CommitWrite<'_>,
+    share: usize,
+) -> std::result::Result<Done, TaskFailure> {
+    match task {
+        Task::Prepare(group, job) => {
+            let failed = |error| Box::new(((group, 0), error));
+            let prepared = prepare_partition(job, write, share).map_err(failed)?;
+            // Every file after the first resolves a handle of its own on the
+            // table folder, so the files of one group are written side by
+            // side; the first keeps the group's.
+            let mut handles = Vec::with_capacity(prepared.files.len());
+            for _ in 1..prepared.files.len() {
+                handles.push(prepared.root.child_by_path(".").map_err(failed)?);
+            }
+            let group_of = Arc::new(PreparedGroup {
+                directory: prepared.directory,
+                values: prepared.values,
+            });
+            let encodes = std::iter::once(prepared.root)
+                .chain(handles)
+                .zip(prepared.files)
+                .enumerate()
+                .map(|(index, (root, rows))| EncodeFile {
+                    group,
+                    index,
+                    root,
+                    group_of: Arc::clone(&group_of),
+                    rows,
+                })
+                .collect();
+            Ok(Done::Prepared(group, encodes))
+        }
+        Task::Encode(file) => {
+            let EncodeFile {
+                group,
+                index,
+                root,
+                group_of,
+                rows,
+            } = file;
+            write_data_file(
+                &root,
+                &group_of.directory,
+                write,
+                index,
+                &group_of.values,
+                rows,
+                share,
+            )
+            .map(|written| Done::Encoded(group, index, written))
+            .map_err(|error| Box::new(((group, index), error)))
+        }
+    }
+}
+
+/// One partition group, prepared: where its files land, its tuple, the
+/// group's handle on the table folder, and each file's rows in file order.
+struct Prepared {
+    directory: String,
+    values: Vec<Scalar>,
+    root: Holder,
+    files: Vec<Vec<RecordBatch>>,
+}
+
+/// Prepare one partition group's files: join, sort, cut.
 ///
-/// A keyed merge reads the group's selected stored files here, on the
-/// writer's own thread, and joins them with the group's rows - the last of
-/// the rows arriving with one key wins - so a group's stored files are in
-/// memory only while its files are being written.
-fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Vec<DataFile>> {
+/// A keyed merge reads the group's selected stored files here, on `threads`
+/// threads, and joins them with the group's rows - the last of the rows
+/// arriving with one key wins - so a group's stored files are in memory only
+/// while its files are being cut. A group out of the table's order is
+/// sorted with its chunks on `threads` threads, and the unsorted rows are let
+/// go of before the sorted ones are cut.
+fn prepare_partition(
+    job: PartitionJob,
+    write: &CommitWrite<'_>,
+    threads: usize,
+) -> Result<Prepared> {
     let PartitionJob {
         write: group,
         directory,
@@ -4581,13 +5137,17 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Vec<Dat
             let stored = if group.stored.is_empty() {
                 crate::arrow::batch_reader(arrow_schema, [])
             } else {
+                let read = super::options::ReadSettings {
+                    parallelism: threads,
+                    ..write.settings.read
+                };
                 super::scan::reader(
                     group.stored,
                     write.schema.clone(),
                     write.schema.clone(),
                     None,
                     Vec::new(),
-                    &write.settings.read,
+                    &read,
                     false,
                 )?
             };
@@ -4606,39 +5166,48 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Vec<Dat
         }
         None => group.hold,
     };
+    let values = group.values;
     if hold.is_empty() {
-        return Ok(Vec::new());
+        return Ok(Prepared {
+            directory,
+            values,
+            root,
+            files: Vec::new(),
+        });
     }
     // A group already in order - by its root's proven declaration, or read
     // once chunk by chunk and edge by edge - goes to the encoder as the
-    // chunks it arrived in; one out of order is sorted out of core, each
-    // chunk on its own and the chunks merged, the output settled.
+    // chunks it arrived in; one out of order is sorted out of core, its
+    // chunks on `threads` threads and the chunks merged, the output settled,
+    // and the unsorted rows dropped before the sorted ones are cut.
     let hold = if write.sort.is_empty() || hold.keeps_order(write.sort)? {
         hold
     } else {
-        hold.into_sort_by(write.sort)?
+        let sorted = hold.sorted_by_on(write.sort, threads)?;
+        drop(hold);
+        sorted
     };
     let rows: Vec<RecordBatch> = hold_batches(&hold)?
         .into_iter()
         .filter(|batch| batch.num_rows() > 0)
         .collect();
+    drop(hold);
     if rows.is_empty() {
-        return Ok(Vec::new());
+        return Ok(Prepared {
+            directory,
+            values,
+            root,
+            files: Vec::new(),
+        });
     }
-    let mut written = Vec::new();
-    for slice in sliced(rows, write.settings.target_file_size_bytes) {
-        // Deliberately no record per file: a commit is the unit worth
-        // watching, and a wide partition write is thousands of files.
-        written.push(write_data_file(
-            &root,
-            &directory,
-            write,
-            written.len(),
-            &group.values,
-            slice,
-        )?);
-    }
-    Ok(written)
+    // Deliberately no record per file: a commit is the unit worth watching,
+    // and a wide partition write is thousands of files.
+    Ok(Prepared {
+        directory,
+        values,
+        root,
+        files: sliced(rows, write.settings.target_file_size_bytes),
+    })
 }
 
 /// Cut one partition group's ordered rows into files of roughly `target` bytes.
@@ -4698,6 +5267,7 @@ fn write_data_file(
     index: usize,
     values: &[Scalar],
     batches: Vec<RecordBatch>,
+    threads: usize,
 ) -> Result<DataFile> {
     let snapshot_id = write.snapshot_id;
     let schema = write.schema;
@@ -4728,7 +5298,7 @@ fn write_data_file(
                 .record_options()?
                 .with_safe(false)
                 .with_field(stored.clone());
-            options.set_file_threads(write.file_threads);
+            options.set_file_threads(threads);
             if parquet {
                 handle.overwrite_arrow_reader(
                     crate::arrow::batch_reader(arrow_schema, batches),
@@ -5376,89 +5946,210 @@ pub(super) fn extreme(
     Ok(single_value(&scalar, field.dtype()))
 }
 
-/// Land every incoming batch under the table schema and cut it into one
-/// hold per partition tuple.
-///
-/// Every batch lands once, through one plan per layout the batches arrive
-/// in; the pieces a partition takes out of it share its buffers - a
-/// batch falling whole in one partition is the batch, a run of its rows a
-/// slice, interleaved rows one take. A partitioned spec computes each
-/// batch's tuples once ([`row_groups`]); an unpartitioned one holds every
-/// batch under the one empty tuple. Each hold settles as it is pushed to,
-/// and the holds together are settled against the process bound after each
-/// batch, heaviest hold first, so a commit of any size keeps that bound in
-/// memory.
-fn grouped_holds(
-    batches: BatchReader,
-    schema: &Field,
-    spec: &PartitionSpec,
-    partition: &Field,
-    safe: bool,
-) -> Result<Vec<(Vec<Scalar>, ChunkedSerie)>> {
-    let mut groups: Vec<(Vec<Scalar>, ChunkedSerie)> = Vec::new();
-    // `Scalar`'s hash reads canonical content only, never the
-    // interior-mutable caches a datatype holds, so the key is stable.
-    #[allow(clippy::mutable_key_type)]
-    let mut index: HashMap<Vec<Scalar>, usize> = HashMap::new();
-    let transforms = spec.write_transforms(schema, partition)?;
-    // The landing root is the schema without the order it declares: a
-    // declaring root would refuse rows out of that order where they land,
-    // and ordering them is the writer's work. One plan per layout the
-    // batches arrive in, compiled once.
-    let root = std::sync::Arc::new(schema.clone().with_metadata_removed("SORT:by"));
-    let mut plans = PlanCache::new();
-    for batch in batches {
-        let batch = batch.map_err(Error::Arrow)?;
-        let record = plans
-            .get_or_compile(batch.schema_ref().fields(), || {
-                ArrowCastPlan::compile_schema(
-                    batch.schema_ref(),
-                    &root,
-                    ArrowCastOptions::new().with_safe(safe),
-                    Deferred::default(),
-                )
-            })?
-            .cast_batch(batch)?;
-        if record.is_empty() {
-            continue;
-        }
-        if spec.is_unpartitioned() {
-            if groups.is_empty() {
-                groups.push((
-                    Vec::new(),
-                    ChunkedSerie::from_landed(std::sync::Arc::clone(&root), Vec::new()),
-                ));
-            }
-            groups[0].1.push_landed(record)?;
-            settle_holds(&mut groups)?;
-            continue;
-        }
+/// The order an incoming stream's schema claims its rows keep - the
+/// `SORT:by` its root states, as a record stream's schema carries it, a
+/// serie's proven and any other source's a claim - or none where it states
+/// none or a declaration that does not parse: what the writer verifies the
+/// rows by as they arrive, to close each partition as soon as the stream has
+/// moved past it ([`ClaimedOrder`]). Read off the caller's stream, before
+/// the rows are shaped onto the table's schema, which states the table's own
+/// order whatever order the rows are in.
+pub(crate) fn claimed_order(schema: &arrow_schema::Schema) -> Vec<crate::expression::Ordering> {
+    let Some(stored) = schema.metadata().get(crate::metadata::SORT_BY_KEY) else {
+        return Vec::new();
+    };
+    let Ok(entries) = crate::metadata::parse_by_list(crate::metadata::SORT_BY_KEY, stored) else {
+        return Vec::new();
+    };
+    entries
+        .iter()
+        .map(|entry| crate::metadata::parse_by_ordering(crate::metadata::SORT_BY_KEY, entry))
+        .collect::<crate::Result<_>>()
+        .unwrap_or_default()
+}
 
-        let batch = record.into_arrow_batch()?;
-        let found = row_groups(&batch, &transforms)?;
-        let whole = found.len() == 1;
-        for (values, rows) in found {
-            let position = match index.get(&values) {
-                Some(position) => *position,
-                None => {
-                    groups.push((
-                        values.clone(),
-                        ChunkedSerie::from_landed(std::sync::Arc::clone(&root), Vec::new()),
-                    ));
-                    index.insert(values, groups.len() - 1);
-                    groups.len() - 1
-                }
-            };
-            let piece = if whole {
-                record.clone()
-            } else {
-                piece_of(&record, &rows)?
-            };
-            groups[position].1.push_landed(piece)?;
+/// The order a write's source claims its rows arrive in, read as the order
+/// of `spec`'s tuples and verified batch by batch as the rows arrive: while
+/// it holds, every row of a tuple arrives before any row of the next, so
+/// each partition closes as soon as another tuple arrives.
+///
+/// A claim clusters the tuples where its leading keys are the spec's source
+/// columns as `schema` names them, in spec order, in either direction: every
+/// field but the last the identity of a column that is not floating - equal
+/// sources adjacent - and the last the identity or a transform that keeps
+/// its source's order (a truncation, a time period), whose equal images are
+/// adjacent where the source is sorted. A `void` field is the one constant
+/// and asks for no key; an unpartitioned spec is one partition and closes
+/// nothing early. A batch is in the claimed order when every partition's
+/// rows are one run of it and its tuples follow one another, and the batch
+/// before it, in the claimed directions; the first batch that is not
+/// clears [`Self::holds`] before its pieces are pushed, and the write is
+/// bounded by `write.max-open-partitions` from then on. A claim the rows
+/// break therefore costs each partition closed before the break, and
+/// returned to after it, a second file - never a row.
+struct ClaimedOrder {
+    /// Each tuple position's claimed direction; `None` for a `void` field.
+    directions: Vec<Option<crate::SortOptions>>,
+    /// The last tuple a batch ended with.
+    last: Option<Vec<Scalar>>,
+    /// Whether the rows have kept the claim so far.
+    holds: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl ClaimedOrder {
+    /// The claim `claimed` makes about `spec`'s tuples, where it clusters
+    /// them.
+    fn of(
+        spec: &PartitionSpec,
+        schema: &Field,
+        claimed: &[crate::expression::Ordering],
+    ) -> Option<Self> {
+        use super::partition::Transform;
+
+        let keyed = spec
+            .fields
+            .iter()
+            .filter(|part| part.transform != Transform::Void)
+            .count();
+        if keyed == 0 || claimed.len() < keyed {
+            return None;
         }
-        settle_holds(&mut groups)?;
+        let mut keys = claimed.iter();
+        let mut directions = Vec::with_capacity(spec.fields.len());
+        let mut position = 0;
+        for part in &spec.fields {
+            if part.transform == Transform::Void {
+                directions.push(None);
+                continue;
+            }
+            position += 1;
+            let key = keys.next()?;
+            let keeps_order = match part.transform {
+                Transform::Identity => true,
+                Transform::Truncate(_)
+                | Transform::Year
+                | Transform::Quarter
+                | Transform::Month
+                | Transform::Week
+                | Transform::Day
+                | Transform::Hour
+                | Transform::Minutes(_) => position == keyed,
+                Transform::Bucket(_) | Transform::Void | Transform::Unknown => false,
+            };
+            let (path, source) = super::partition::source_path(schema, part.source_id).ok()?;
+            let mut segments = path.iter();
+            let column = segments.next().map(|root| {
+                segments.fold(Term::column(root.clone()), |term, name| {
+                    term.child(name.clone())
+                })
+            })?;
+            let floating =
+                part.transform == Transform::Identity && source.dtype().id().is_floating();
+            if !keeps_order || floating || key.term() != &column {
+                return None;
+            }
+            directions.push(Some(key.options()));
+        }
+        Some(Self {
+            directions,
+            last: None,
+            holds: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+        })
     }
-    Ok(groups)
+
+    /// Verify one batch's pieces - in the order their first rows arrived,
+    /// `runs` when every partition's rows were one run of the batch -
+    /// against the claim, clearing [`Self::holds`] at the first batch out
+    /// of it.
+    fn check(&mut self, pieces: &[TuplePiece], runs: bool) {
+        use std::sync::atomic::Ordering as Atomic;
+
+        if !self.holds.load(Atomic::Acquire) {
+            return;
+        }
+        let mut keeps = runs;
+        for (position, (tuple, _)) in pieces.iter().enumerate() {
+            if !keeps {
+                break;
+            }
+            if let Some(last) = &self.last {
+                let order = self.compare(last, tuple);
+                // A run may cross the edge into this batch; within it every
+                // tuple is new.
+                keeps = order.is_lt() || (position == 0 && order.is_eq());
+            }
+            self.last = Some(tuple.clone());
+        }
+        if !keeps {
+            self.holds.store(false, Atomic::Release);
+        }
+    }
+
+    /// Two tuples in the claimed order: position by position, each in its
+    /// direction with its nulls where the claim puts them.
+    fn compare(&self, left: &[Scalar], right: &[Scalar]) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+
+        for ((left, right), direction) in left.iter().zip(right).zip(&self.directions) {
+            let Some(direction) = direction else {
+                continue;
+            };
+            let order = match (left.is_null(), right.is_null()) {
+                (true, true) => Ordering::Equal,
+                (true, false) if direction.is_nulls_first() => Ordering::Less,
+                (true, false) => Ordering::Greater,
+                (false, true) if direction.is_nulls_first() => Ordering::Greater,
+                (false, true) => Ordering::Less,
+                (false, false) if direction.is_descending() => right.cmp(left),
+                (false, false) => left.cmp(right),
+            };
+            if order.is_ne() {
+                return order;
+            }
+        }
+        Ordering::Equal
+    }
+}
+
+/// One partition's tuple and a piece of its rows.
+type TuplePiece = (Vec<Scalar>, Serie);
+
+/// One landed batch cut into the pieces its partitions take, in the order
+/// their first row arrives in, and whether every partition's rows are one
+/// run of it: an unpartitioned spec's every batch the one piece of the empty
+/// tuple; a partitioned spec's tuples computed once per batch
+/// ([`row_groups`]), a batch falling whole in one partition the batch
+/// itself, a run of its rows a slice, interleaved rows one take
+/// ([`piece_of`]). An empty batch answers no piece.
+fn cut_by_partition(
+    record: Serie,
+    transforms: &[super::partition::PartitionTransform],
+    unpartitioned: bool,
+) -> Result<(Vec<TuplePiece>, bool)> {
+    if record.is_empty() {
+        return Ok((Vec::new(), true));
+    }
+    if unpartitioned {
+        return Ok((vec![(Vec::new(), record)], true));
+    }
+    let found = row_groups(&record.into_arrow_batch()?, transforms)?;
+    if let [(values, _)] = found.as_slice() {
+        return Ok((vec![(values.clone(), record)], true));
+    }
+    let runs = found.iter().all(|(_, rows)| is_run(rows));
+    let pieces = found
+        .into_iter()
+        .map(|(values, rows)| Ok((values, piece_of(&record, &rows)?)))
+        .collect::<Result<_>>()?;
+    Ok((pieces, runs))
+}
+
+/// Whether row indices in batch order are one run of the batch.
+fn is_run(rows: &[u32]) -> bool {
+    match (rows.first(), rows.last()) {
+        (Some(&first), Some(&last)) => (last - first) as usize + 1 == rows.len(),
+        _ => true,
+    }
 }
 
 /// The rows of `record` at `rows`, in that order: one zero-copy slice where
@@ -5466,11 +6157,9 @@ fn grouped_holds(
 /// the order its partitions advance - and one take where they interleave
 /// with another partition's.
 fn piece_of(record: &Serie, rows: &[u32]) -> Result<Serie> {
-    match (rows.first(), rows.last()) {
+    match rows.first() {
         // Indices arrive in batch order, so a run is first..=last.
-        (Some(&first), Some(&last)) if (last - first) as usize + 1 == rows.len() => {
-            Ok(record.slice(first as usize, rows.len())?)
-        }
+        Some(&first) if is_run(rows) => Ok(record.slice(first as usize, rows.len())?),
         _ => {
             let indices = Serie::from_arrow_array(
                 None,
@@ -5480,40 +6169,6 @@ fn piece_of(record: &Serie, rows: &[u32]) -> Result<Serie> {
             Ok(record.into_taken(&indices)?)
         }
     }
-}
-
-/// Spill the heaviest holds whole until what every hold of one commit keeps
-/// resident is under the process bound. Each hold alone settles as it is
-/// pushed to; this is the bound across them.
-fn settle_holds(groups: &mut [(Vec<Scalar>, ChunkedSerie)]) -> Result<()> {
-    let options = SpillOptions::from_env()?;
-    if options.is_never() {
-        return Ok(());
-    }
-    let bound = options.byte_size();
-    let resident = |groups: &[(Vec<Scalar>, ChunkedSerie)]| {
-        groups
-            .iter()
-            .map(|(_, hold)| u64::try_from(hold.resident_size()).unwrap_or(u64::MAX))
-            .fold(0_u64, u64::saturating_add)
-    };
-    if resident(groups) <= bound {
-        return Ok(());
-    }
-    let mut order: Vec<(usize, usize)> = groups
-        .iter()
-        .enumerate()
-        .map(|(index, (_, hold))| (index, hold.resident_size()))
-        .collect();
-    order.sort_by_key(|(_, bytes)| std::cmp::Reverse(*bytes));
-    let whole = options.clone().with_byte_size(0);
-    for (index, _) in order {
-        if resident(groups) <= bound {
-            break;
-        }
-        groups[index].1.spill(&whole)?;
-    }
-    Ok(())
 }
 
 /// Group row indices by their computed, typed partition tuple.

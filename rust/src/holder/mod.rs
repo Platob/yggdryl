@@ -1223,6 +1223,10 @@ impl IOBase for Holder {
         self.as_io().is_atomic()
     }
 
+    fn is_thread_bound(&self) -> bool {
+        self.as_io().is_thread_bound()
+    }
+
     fn is_tabular(&self) -> bool {
         self.as_io().is_tabular()
     }

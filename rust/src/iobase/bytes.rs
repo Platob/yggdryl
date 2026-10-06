@@ -147,7 +147,7 @@ macro_rules! delegate_iobase {
             read_digest, read_range_digest, write_all_bytes, create_bytes, append_bytes,
             applied_codec, pstream_bytes, pwrite, size, capacity, reserve,
             truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
-            ls, kind, is_container, clear, remove, is_atomic, is_tabular, is_io);
+            ls, kind, is_container, clear, remove, is_atomic, is_tabular, is_io, is_thread_bound);
     };
 
     // Everything but [`IOBase::clear`] and [`IOBase::remove`], which a wrapper
@@ -159,7 +159,7 @@ macro_rules! delegate_iobase {
     ($handle:ident, except_lifecycle) => {
         $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, create_bytes, size, capacity, reserve,
             truncate, uri, url, bound_location, mtime, media_type, set_media_type, applied_codec, flush, open, opened, close,
-            parent, child_by_path, ls, kind, is_container);
+            parent, child_by_path, ls, kind, is_container, is_thread_bound);
     };
 
     ($handle:ident: $($method:ident),+ $(,)?) => {
@@ -380,6 +380,12 @@ macro_rules! delegate_iobase {
         }
     };
 
+    (@method $handle:ident, is_thread_bound) => {
+        fn is_thread_bound(&self) -> bool {
+            $crate::IOBase::is_thread_bound(&self.$handle)
+        }
+    };
+
     (@method $handle:ident, is_tabular) => {
         fn is_tabular(&self) -> bool {
             $crate::IOBase::is_tabular(&self.$handle)
@@ -571,6 +577,10 @@ macro_rules! __delegate_resolved_iobase {
 
         fn is_atomic(&self) -> bool {
             self.$get().is_ok_and($crate::IOBase::is_atomic)
+        }
+
+        fn is_thread_bound(&self) -> bool {
+            self.$get().is_ok_and($crate::IOBase::is_thread_bound)
         }
 
         fn is_tabular(&self) -> bool {
@@ -891,6 +901,10 @@ impl IOBase for Box<dyn IOBase> {
     // trait's `kind` here rather than the one the value inside answers.
     fn is_atomic(&self) -> bool {
         self.as_ref().is_atomic()
+    }
+
+    fn is_thread_bound(&self) -> bool {
+        self.as_ref().is_thread_bound()
     }
 
     fn is_tabular(&self) -> bool {

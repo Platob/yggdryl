@@ -367,6 +367,138 @@ write takes. [Eager and lazy](../types/cast.md#eager-and-lazy) has the failure t
 
 `sorted` is `False` by default in Python, where `None` clears to it, and absent or `null` is `false` in JavaScript. Python's `SerieReaderWindows` is an iterator - every pull runs off the GIL - and JavaScript's an iterable that is its own iterator, `next()` answering one window; both carry `field` and `static_field` / `staticField`, and a window's record is a struct `Scalar` read by name.
 
+## Partitions of a stream
+
+`SerieReader::partition_by(by, options)` cuts a stream by a key into partitions and answers `SerieReaderPartitions`: each partition yielded as soon as it closes, as a `SeriePartition` - its key, the record of the cells `by` computes, and its rows, a [`ChunkedSerie`](../types/chunked-serie.md) under the reader's root in the order they arrived. `by` is read as [`window_by`](#windows-of-a-stream) reads it and bound once against the root before any batch is pulled; the reader is consumed. It is the one partitioner every split of a stream by partition runs through: an [Iceberg table's write](../media/iceberg.md#write) and a [partitioned folder's](../holder/index.md#partitions) are this cut.
+
+| Aspect | Rule |
+| --- | --- |
+| A batch | Landed, keyed and cut on [`PartitionOptions::threads`](#partitions-of-a-stream) threads, one batch per thread and answered in the order the batches arrive - a run of a key one zero-copy slice, any other key one take. The pieces are pushed to their partitions on the pulling thread in that order, so a partition's rows are the order they arrived in whatever thread cut them |
+| Held | Every open partition is a `ChunkedSerie` held under the [process spill bound](../types/serie.md#spilling-to-disk): the open partitions are settled after each batch, heaviest first. A closed partition's rows are the caller's and no longer counted |
+| `max_open` | Past it, the open partitions of the lowest keys close. A stream in key order closes each partition once it was read whole, so no partition is held longer than it takes to read it. Unset, every partition stays open until the stream ends |
+| `clustered` | Every row of a key arrives before any row of the next, as a stream sorted on the key's terms in either direction is: each partition closes as soon as another key arrives, so one is open at a time and the partitions close in the order they arrived. A reader whose root [declares an order](../types/serie.md#a-declared-order) - proven as its batches land - leading with the terms `by` projects, uncast and in any order, is clustered without being told |
+| A key again | A key arriving again after its partition closed opens a new piece of it, yielded again under the same key: a stream that is not what the options say costs pieces, never rows |
+| The end | Every partition still open closes in ascending key order |
+| Failures | The stream's own failure, or a spill that cannot be written, is the next item, once; then the partitions end. A key that does not bind is refused before any batch is pulled, naming the root |
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, PartitionOptions, Scalar, Serie, SerieReader, StructType};
+
+    let root = DataType::from(StructType::from_fields([
+        DataType::utf8().required_field("venue"),
+        DataType::Int64.required_field("price"),
+    ])?)
+    .required_field("quote");
+    let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    let batches = [
+        Serie::from_scalars(root.clone(), [quote("XPAR", 1), quote("XNAS", 2)])?,
+        Serie::from_scalars(root.clone(), [quote("XLON", 3), quote("XPAR", 4)])?,
+    ];
+    let stream = || -> yggdryl::arrow::Result<SerieReader> {
+        SerieReader::from_chunked(ChunkedSerie::from_series(Some(&root), batches.clone(), ArrowCastOptions::new())?)
+    };
+    let closed = |stream: SerieReader, options: PartitionOptions| -> yggdryl::arrow::Result<Vec<(Scalar, usize)>> {
+        stream
+            .partition_by("venue", options)?
+            .map(|partition| partition.map(|partition| (partition.key().clone(), partition.rows().len())))
+            .collect()
+    };
+    let venue = |name: &str| Scalar::from_sequence([Scalar::from(name)]);
+
+    // Every partition open until the stream ends, then closed in key order.
+    let all = closed(stream()?, PartitionOptions::new())?;
+    assert_eq!(all, [(venue("XLON"), 1), (venue("XNAS"), 1), (venue("XPAR"), 2)]);
+
+    // One open at a time: the lowest closes while the stream still arrives.
+    let bounded = closed(stream()?, PartitionOptions::new().with_max_open(1))?;
+    assert_eq!(bounded, [(venue("XNAS"), 1), (venue("XLON"), 1), (venue("XPAR"), 2)]);
+
+    // Clustered: each closes once another key arrives; XPAR returning is a second piece.
+    let clustered = closed(stream()?, PartitionOptions::new().with_clustered(true))?;
+    assert_eq!(
+        clustered,
+        [(venue("XPAR"), 1), (venue("XNAS"), 1), (venue("XLON"), 1), (venue("XPAR"), 1)]
+    );
+
+    // A root declaring an order that leads with the key is clustered untold.
+    let rows = Serie::from_scalars(root.clone(), [quote("XLON", 3), quote("XPAR", 1), quote("XNAS", 2)])?;
+    let sorted = rows.into_sort_by("venue desc")?;
+    let declared = closed(SerieReader::from_serie(sorted)?, PartitionOptions::new())?;
+    assert_eq!(declared, [(venue("XPAR"), 1), (venue("XNAS"), 1), (venue("XLON"), 1)]);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import ChunkedSerie, Field, Serie, SerieReader
+
+    root = Field("quote", "struct<venue: utf8 not null, price: int64 not null>", nullable=False)
+
+
+    def stream() -> SerieReader:
+        batches = [[["XPAR", 1], ["XNAS", 2]], [["XLON", 3], ["XPAR", 4]]]
+        return SerieReader.from_chunked(
+            ChunkedSerie.from_series([Serie.from_scalars(root, rows) for rows in batches], root)
+        )
+
+
+    def closed(reader: SerieReader, **options: object) -> list[tuple[object, int]]:
+        return [(key.as_py(), len(rows)) for key, rows in reader.partition_by("venue", **options)]
+
+
+    # Every partition open until the stream ends, then closed in key order.
+    assert closed(stream()) == [(["XLON"], 1), (["XNAS"], 1), (["XPAR"], 2)]
+    # One open at a time: the lowest closes while the stream still arrives.
+    assert closed(stream(), max_open=1) == [(["XNAS"], 1), (["XLON"], 1), (["XPAR"], 2)]
+    # Clustered: each closes once another key arrives; XPAR returning is a second piece.
+    assert closed(stream(), clustered=True) == [(["XPAR"], 1), (["XNAS"], 1), (["XLON"], 1), (["XPAR"], 1)]
+
+    # A root declaring an order that leads with the key is clustered untold.
+    rows = Serie.from_scalars(root, [["XLON", 3], ["XPAR", 1], ["XNAS", 2]])
+    declared = closed(SerieReader.from_serie(rows.into_sort_by("venue desc")))
+    assert declared == [(["XPAR"], 1), (["XNAS"], 1), (["XLON"], 1)]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { ChunkedSerie, Field, Serie, SerieReader } = require('yggdryl')
+
+    const root = Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null')
+    const stream = () =>
+      SerieReader.fromChunked(
+        ChunkedSerie.fromSeries(
+          [
+            Serie.fromScalars(root, [['XPAR', 1n], ['XNAS', 2n]]),
+            Serie.fromScalars(root, [['XLON', 3n], ['XPAR', 4n]]),
+          ],
+          root,
+        ),
+      )
+    const closed = (reader, options) =>
+      [...reader.partitionBy('venue', options)].map(([key, rows]) => [key.asJs(), rows.length])
+
+    // Every partition open until the stream ends, then closed in key order.
+    assert.deepEqual(closed(stream()), [[['XLON'], 1], [['XNAS'], 1], [['XPAR'], 2]])
+    // One open at a time: the lowest closes while the stream still arrives.
+    assert.deepEqual(closed(stream(), { maxOpen: 1 }), [[['XNAS'], 1], [['XLON'], 1], [['XPAR'], 2]])
+    // Clustered: each closes once another key arrives; XPAR returning is a second piece.
+    assert.deepEqual(closed(stream(), { clustered: true }), [
+      [['XPAR'], 1],
+      [['XNAS'], 1],
+      [['XLON'], 1],
+      [['XPAR'], 1],
+    ])
+
+    // A root declaring an order that leads with the key is clustered untold.
+    const rows = Serie.fromScalars(root, [['XLON', 3n], ['XPAR', 1n], ['XNAS', 2n]])
+    const declared = closed(SerieReader.fromSerie(rows.intoSortBy('venue desc')))
+    assert.deepEqual(declared, [[['XPAR'], 1], [['XNAS'], 1], [['XLON'], 1]])
+    ```
+
 ## Merge rules
 
 | Rule | Behavior |

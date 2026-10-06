@@ -4470,6 +4470,25 @@ export declare class IcebergOptions {
    */
   set writeParallelism(threads: number)
   /**
+   * How many partitions an append, an overwrite or a compaction holds
+   * open at once. Default: 128. Past it, the open partition of the
+   * lowest tuple closes and its files are written while the source is
+   * still read, so a source in partition order is written as it arrives
+   * and never held whole; a partition arriving again after it closed is
+   * written again, as further files of the same commit. A keyed merge
+   * holds every partition open whatever this says.
+   */
+  get maxOpenPartitions(): number
+  /**
+   * Set how many partitions a write holds open at once.
+   *
+   * # Errors
+   *
+   * Throws the core's typed error naming the value when the count is zero,
+   * which would hold no partition at all.
+   */
+  set maxOpenPartitions(partitions: number)
+  /**
    * Where a commit stages its files before uploading them: `"off"`, or
    * a local folder URL. `null` - the default - is the table's own: the
    * temporary folder for a remote root, off for a local one.
@@ -9083,6 +9102,29 @@ export declare class SerieReader {
 export type JsSerieReader = SerieReader
 
 /**
+ * The partitions of a stream, one `[key, rows]` pair as each closes: the
+ * key the record of the cells `by` computes, the rows a `ChunkedSerie`
+ * under the partitioned reader's root, in the order they arrived.
+ *
+ * Each partition is yielded as soon as it closes. Past `maxOpen` open
+ * partitions, the ones of the lowest keys close, so a stream arriving in
+ * key order closes each once it has been read whole; when the stream ends,
+ * every partition still open closes in ascending key order. A clustered
+ * stream closes each partition as soon as another key arrives, in arrival
+ * order. A key arriving again after its partition closed is yielded again,
+ * as a new piece under the same key. The open partitions are held under the
+ * process spill bound; a yielded partition's rows are the caller's.
+ */
+export declare class SerieReaderPartitions {
+  /**
+   * The record root every partition's rows are held under: the
+   * partitioned reader's own.
+   */
+  get field(): Field
+}
+export type JsSerieReaderPartitions = SerieReaderPartitions
+
+/**
  * The windows of a stream, one lazy `SerieReader` per run of equal adjacent
  * keys, in the order they arrive.
  *
@@ -12551,7 +12593,7 @@ export interface HttpStats {
  * Every field is optional because an options value records only what was set
  * on it: a field left out is not "the default" but unresolved, and a table
  * still answers it from its own properties. The names are the ones the
- * getters carry, so the object and the setters spell the same eleven things.
+ * getters carry, so the object and the setters spell the same twelve things.
  */
 export interface IcebergOptionsInput {
   /** How many beaten commit attempts are retried. */
@@ -12575,6 +12617,8 @@ export interface IcebergOptionsInput {
   readParallelMinFileSize?: number
   /** How many partition groups a commit writes at once. */
   writeParallelism?: number
+  /** How many partitions a write holds open at once. */
+  maxOpenPartitions?: number
   /** Where a commit stages its files: `off`, or a local folder URL or path. */
   writeStaging?: string
   /** The MIME type for new data files. Table writes encode Parquet and Avro. */
@@ -12714,6 +12758,32 @@ export interface PartitionEntry {
   column: string
   /** The value that directory assigns it. */
   value: string
+}
+
+/**
+ * How `SerieReader.partitionBy` cuts a stream, each slot `undefined` or
+ * `null` where not given, which is its default.
+ */
+export interface PartitionOptionsInput {
+  /**
+   * At most this many partitions open at once - at least one, `0` read
+   * as `1` - the partitions of the lowest keys closed past it; every
+   * partition open until the stream ends by default.
+   */
+  maxOpen?: number | null
+  /**
+   * The threads the batches are cut on - at least one, `0` read as `1`;
+   * `1` cuts each batch as it is pulled and reads nothing ahead. Every
+   * thread the host offers by default.
+   */
+  threads?: number | null
+  /**
+   * Whether every row of a key arrives before any row of the next, so
+   * each partition closes as soon as another key arrives; `false` by
+   * default. A reader whose root declares an order leading with the
+   * key's terms is clustered untold.
+   */
+  clustered?: boolean | null
 }
 
 /** The two halves of a predicate a partition layout splits it into. */

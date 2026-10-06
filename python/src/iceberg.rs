@@ -313,7 +313,7 @@ fn table_root_from_value(
 }
 
 /// The keyword fields accepted by the `IcebergOptions` constructor.
-const ICEBERG_OPTION_FIELDS: [&str; 11] = [
+const ICEBERG_OPTION_FIELDS: [&str; 12] = [
     "commit_retries",
     "commit_min_backoff_ms",
     "commit_max_backoff_ms",
@@ -323,6 +323,7 @@ const ICEBERG_OPTION_FIELDS: [&str; 11] = [
     "read_parallel_min_files",
     "read_parallel_min_file_size",
     "write_parallelism",
+    "max_open_partitions",
     "write_staging",
     "data_mime_type",
 ];
@@ -373,6 +374,9 @@ fn set_iceberg_option(
         }
         "write_parallelism" => options
             .set_write_parallelism(value.extract::<usize>()?)
+            .map_err(value_error)?,
+        "max_open_partitions" => options
+            .set_max_open_partitions(value.extract::<usize>()?)
             .map_err(value_error)?,
         "write_staging" => options
             .set_write_staging(write_staging_from_value(value)?)
@@ -581,6 +585,9 @@ impl PyIcebergOptions {
         if let Some(value) = self.inner.write_parallelism_option() {
             state.set_item("write_parallelism", value)?;
         }
+        if let Some(value) = self.inner.max_open_partitions_option() {
+            state.set_item("max_open_partitions", value)?;
+        }
         if let Some(value) = self.inner.write_staging() {
             state.set_item("write_staging", value.to_string())?;
         }
@@ -746,6 +753,26 @@ impl PyIcebergOptions {
         self.require_mutable()?;
         self.inner
             .set_write_parallelism(threads)
+            .map_err(value_error)
+    }
+
+    /// How many partitions an append, an overwrite or a compaction holds
+    /// open at once. Default: 128. Past it, the open partition of the lowest
+    /// tuple closes and its files are written while the source is still
+    /// read, so a source in partition order is written as it arrives and
+    /// never held whole; a partition arriving again after it closed is
+    /// written again, as further files of the same commit. A keyed merge
+    /// holds every partition open whatever this says.
+    #[getter]
+    fn max_open_partitions(&self) -> usize {
+        self.inner.max_open_partitions()
+    }
+
+    #[setter]
+    fn set_max_open_partitions(&mut self, partitions: usize) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_max_open_partitions(partitions)
             .map_err(value_error)
     }
 
@@ -1517,8 +1544,10 @@ impl PyIcebergTable {
         let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
-        with_call_options(table, resolved, |table| {
-            table.commit_append(batches).map_err(value_error)
+        slf.py().detach(|| {
+            with_call_options(table, resolved, |table| {
+                table.commit_append(batches).map_err(value_error)
+            })
         })
     }
 
@@ -1540,8 +1569,10 @@ impl PyIcebergTable {
         let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
-        with_call_options(table, resolved, |table| {
-            table.commit_overwrite(batches).map_err(value_error)
+        slf.py().detach(|| {
+            with_call_options(table, resolved, |table| {
+                table.commit_overwrite(batches).map_err(value_error)
+            })
         })
     }
 
@@ -1569,10 +1600,12 @@ impl PyIcebergTable {
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
-        with_call_options(table, resolved, |table| {
-            table
-                .commit_overwrite_where(&borrowed_pairs(&pairs), batches)
-                .map_err(value_error)
+        slf.py().detach(|| {
+            with_call_options(table, resolved, |table| {
+                table
+                    .commit_overwrite_where(&borrowed_pairs(&pairs), batches)
+                    .map_err(value_error)
+            })
         })
     }
 
@@ -1604,10 +1637,12 @@ impl PyIcebergTable {
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let keys = crate::expression::selector_from_value(merge_by)?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
-        with_call_options(table, resolved, |table| {
-            table
-                .commit_merge(batches, &keys, safe)
-                .map_err(value_error)
+        slf.py().detach(|| {
+            with_call_options(table, resolved, |table| {
+                table
+                    .commit_merge(batches, &keys, safe)
+                    .map_err(value_error)
+            })
         })
     }
 
@@ -1635,10 +1670,12 @@ impl PyIcebergTable {
         let pairs = filter_pairs_from_value(filters)?;
         let keys = crate::expression::selector_from_value(merge_by)?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
-        with_call_options(table, resolved, |table| {
-            table
-                .commit_merge_where(&borrowed_pairs(&pairs), batches, &keys, safe)
-                .map_err(value_error)
+        slf.py().detach(|| {
+            with_call_options(table, resolved, |table| {
+                table
+                    .commit_merge_where(&borrowed_pairs(&pairs), batches, &keys, safe)
+                    .map_err(value_error)
+            })
         })
     }
 
@@ -1845,8 +1882,8 @@ impl PyIcebergTable {
     fn compact(slf: &Bound<'_, Self>) -> PyResult<PyCompaction> {
         let mut base = base_mut(slf)?;
         let table = held_mut(&mut base)?;
-        table
-            .compact()
+        slf.py()
+            .detach(|| table.compact())
             .map(PyCompaction::from_core)
             .map_err(value_error)
     }

@@ -925,6 +925,8 @@ test('an options value answers the fields it was given and defaults the rest', (
   // write parallelism defaults to it.
   assert.equal(untouched.readParallelism, require('node:os').availableParallelism())
   assert.equal(untouched.writeParallelism, untouched.readParallelism)
+  // A write holds at most 128 partitions open unless told otherwise.
+  assert.equal(untouched.maxOpenPartitions, 128)
   // The staging folder is unset until a layer speaks: the table decides.
   assert.equal(untouched.writeStaging, null)
 
@@ -938,6 +940,7 @@ test('an options value answers the fields it was given and defaults the rest', (
     readParallelMinFiles: 3,
     readParallelMinFileSize: 1024,
     writeParallelism: 5,
+    maxOpenPartitions: 6,
     writeStaging: 'off',
     dataMimeType: MimeType.AVRO,
   })
@@ -951,6 +954,7 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(given.readParallelMinFiles, 3)
   assert.equal(given.readParallelMinFileSize, 1024)
   assert.equal(given.writeParallelism, 5)
+  assert.equal(given.maxOpenPartitions, 6)
   assert.ok(given.dataMimeType.equals(MimeType.AVRO))
   const cloned = given.clone()
   assert.notEqual(cloned, given)
@@ -1036,6 +1040,10 @@ test('a zero file size and a zero read parallelism are refused by property name'
     () => new iceberg.IcebergOptions({ writeParallelism: 0 }),
     /write\.parallelism.*expected at least one writer thread, got 0/,
   )
+  assert.throws(
+    () => new iceberg.IcebergOptions({ maxOpenPartitions: 0 }),
+    /write\.max-open-partitions.*expected at least one open partition, got 0/,
+  )
   // A staging folder is a local folder: a URL, a path, or `off`, and a
   // remote one is refused naming the key.
   assert.throws(
@@ -1051,7 +1059,11 @@ test('a zero file size and a zero read parallelism are refused by property name'
   }, /write\.staging/)
   assert.equal(staged.writeStaging, 'off')
 
-  const options = new iceberg.IcebergOptions({ targetFileSize: 4096, readParallelism: 2 })
+  const options = new iceberg.IcebergOptions({
+    targetFileSize: 4096,
+    readParallelism: 2,
+    maxOpenPartitions: 3,
+  })
   assert.throws(() => {
     options.targetFileSize = 0
   }, /expected a positive byte count, got 0/)
@@ -1061,9 +1073,15 @@ test('a zero file size and a zero read parallelism are refused by property name'
   assert.throws(() => {
     options.writeParallelism = 0
   }, /expected at least one writer thread, got 0/)
+  assert.throws(() => {
+    options.maxOpenPartitions = 0
+  }, /expected at least one open partition, got 0/)
   assert.equal(options.targetFileSize, 4096)
   assert.equal(options.readParallelism, 2)
   assert.equal(options.writeParallelism, 2, 'the write default follows the read parallelism')
+  assert.equal(options.maxOpenPartitions, 3)
+  options.maxOpenPartitions = 1
+  assert.equal(options.maxOpenPartitions, 1)
 })
 
 test('a per-call data MIME type writes AVRO files beside the PARQUET ones', (t) => {

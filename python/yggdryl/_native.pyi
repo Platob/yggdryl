@@ -1012,6 +1012,16 @@ class SerieReader(Iterator[Serie]):
     # One lazy `SerieReader` per run of equal adjacent keys, read in order;
     # this reader is spent. `sorted=True` verifies the keys arrive in order.
     def window_by(self, by: SelectorLike, sorted: bool | None = False) -> SerieReaderWindows: ...
+    # One `(key, rows)` pair per partition, yielded as it closes; this reader
+    # is spent. Past `max_open` the lowest keys close, `clustered=True` closes
+    # each once another key arrives; `None` holds every one to the end.
+    def partition_by(
+        self,
+        by: SelectorLike,
+        max_open: int | None = None,
+        threads: int | None = None,
+        clustered: bool = False,
+    ) -> SerieReaderPartitions: ...
     def __iter__(self) -> SerieReader: ...
     def __next__(self) -> Serie: ...
     def into_arrow_reader(self) -> pyarrow.RecordBatchReader: ...
@@ -1036,6 +1046,24 @@ class SerieReaderWindows(Iterator[SerieReader]):
     def static_field(self) -> Field: ...
     def __iter__(self) -> SerieReaderWindows: ...
     def __next__(self) -> SerieReader: ...
+
+class SerieReaderPartitions(Iterator[tuple[Scalar, ChunkedSerie]]):
+    """The partitions of a stream, each a ``(key, rows)`` pair yielded as
+    soon as it closes: the key a ``Scalar`` record of the cells ``by``
+    computes, the rows a ``ChunkedSerie`` under the reader's root in the
+    order they arrived.
+
+    Past ``max_open`` open partitions the lowest keys close; clustered, each
+    closes once another key arrives, in arrival order; every partition still
+    open when the stream ends closes in ascending key order. A key arriving
+    again after its partition closed is yielded again, as a new piece.
+    """
+
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+    @property
+    def field(self) -> Field: ...
+    def __iter__(self) -> SerieReaderPartitions: ...
+    def __next__(self) -> tuple[Scalar, ChunkedSerie]: ...
 
 class ChunkedSerie:
     """Many columns under one field, held apart: a chunked array, or a table.
@@ -5529,6 +5557,7 @@ class IcebergProperties(TypedDict, total=False):
     read_parallel_min_files: int | EllipsisType
     read_parallel_min_file_size: int | EllipsisType
     write_parallelism: int | EllipsisType
+    max_open_partitions: int | EllipsisType
     write_staging: str | PathLike[str] | EllipsisType
     data_mime_type: MimeType | str | EllipsisType
 
@@ -5552,6 +5581,7 @@ class IcebergOptions:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         write_parallelism: int | None = None,
+        max_open_partitions: int | None = None,
         write_staging: str | PathLike[str] | None = None,
         data_mime_type: MimeType | str | None = None,
     ) -> None: ...
@@ -5593,6 +5623,10 @@ class IcebergOptions:
     def write_parallelism(self) -> int: ...
     @write_parallelism.setter
     def write_parallelism(self, threads: int) -> None: ...
+    @property
+    def max_open_partitions(self) -> int: ...
+    @max_open_partitions.setter
+    def max_open_partitions(self, partitions: int) -> None: ...
     @property
     def write_staging(self) -> str | None: ...
     @write_staging.setter

@@ -35,7 +35,7 @@ use crate::arrow::{
     BatchReader, Error, Result, arrow_schema_from_field, batch_reader, field_from_arrow_schema,
     from_reader_error,
 };
-use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
+use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
 use crate::expression::{BoundSelector, IntoSelector};
 use crate::media::DEFAULT_ROOT_NAME;
 use crate::window_serie::{WindowRecord, key_cells};
@@ -2154,6 +2154,69 @@ impl SerieReader {
             schema,
             statics,
         })
+    }
+}
+
+impl SerieReader {
+    /// `work` over every record column this stream yields, on `threads`
+    /// threads, answered in the order the batches arrive: the one parallel
+    /// map a verb consuming a stream runs its per-batch work through. A plain
+    /// stream - one plan, no later cast, no order its root declares, no
+    /// static values - hands each raw batch to a thread, which lands it there
+    /// under the reader's plan, or, for a batch whose layout is not the
+    /// reader's schema, under the one drift plan compiled from that layout
+    /// and recompiled only when it changes - the loop whose batches may change
+    /// schema; any other source is landed on the pulling thread as
+    /// [`Iterator::next`] lands it, and its column handed on. One batch per
+    /// thread is in flight, and one thread works each batch as it is pulled.
+    pub(crate) fn map_landed<R, F>(
+        mut self,
+        threads: usize,
+        work: F,
+    ) -> Box<dyn Iterator<Item = Result<R>> + Send>
+    where
+        R: Send + 'static,
+        F: Fn(Serie) -> Result<R> + Send + Sync + 'static,
+    {
+        let plain = self.statics.is_none()
+            && !self.root.as_sort().declares_order()
+            && matches!(&self.inner, Some(Source::Stream(_, _, then)) if then.is_empty());
+        if plain && let Some(Source::Stream(reader, plan, _)) = self.inner.take() {
+            let plan: Arc<ArrowCastPlan> = Arc::from(plan);
+            let drift: Mutex<PlanCache<Arc<ArrowCastPlan>>> = Mutex::new(PlanCache::new());
+            return Box::new(
+                crate::parallel::ordered(reader, threads, 1, move |batch| {
+                    let batch = batch.map_err(from_reader_error)?;
+                    let fields = batch.schema_ref().fields();
+                    let planned = plan.source_schema().is_none_or(|schema| {
+                        schema.fields().as_ptr() == fields.as_ptr() || schema.fields() == fields
+                    });
+                    if planned {
+                        return work(plan.cast_batch(batch)?);
+                    }
+                    let drifted = {
+                        let mut drift = drift
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        Arc::clone(drift.get_or_compile(fields, || {
+                            ArrowCastPlan::compile_schema(
+                                batch.schema_ref(),
+                                plan.as_target(),
+                                *plan.as_options(),
+                                Deferred::default(),
+                            )
+                            .map(Arc::new)
+                        })?)
+                    };
+                    work(drifted.cast_batch(batch)?)
+                })
+                .with_lane_depth(1),
+            );
+        }
+        Box::new(
+            crate::parallel::ordered(self, threads, 1, move |landed: Result<Serie>| work(landed?))
+                .with_lane_depth(1),
+        )
     }
 }
 

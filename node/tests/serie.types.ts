@@ -10,6 +10,7 @@ import {
   Serie,
   Selector,
   SerieReader,
+  SerieReaderPartitions,
   SerieReaderWindows,
   SerieSerie,
   SerieViewSerie,
@@ -23,6 +24,7 @@ import {
   type JoinOptionsInput,
   type OrderingKey,
   type OrderingKeys,
+  type PartitionOptionsInput,
   type SortOptions,
 } from '..'
 import type {
@@ -292,6 +294,46 @@ walk._nextNative
 
 void [windows, sortedWindows, clearedWindows, termWindows, windowRecord, walkField,
   walkStaticField, step, self, readerRecord]
+
+// Partitions by key: a stream cut into `[key, rows]` pairs, each yielded as
+// its partition closes.
+const partitionOptions: PartitionOptionsInput = { maxOpen: 2, threads: 1, clustered: false }
+const clearedPartitionOptions: PartitionOptionsInput = {
+  maxOpen: null,
+  threads: null,
+  clustered: null,
+}
+const partitions: SerieReaderPartitions = SerieReader.fromSerie(records).partitionBy('id')
+const boundedPartitions: SerieReaderPartitions = SerieReader.fromSerie(records).partitionBy(
+  [Term.column('id')],
+  partitionOptions,
+)
+const clearedPartitions: SerieReaderPartitions = SerieReader.fromSerie(records).partitionBy(
+  new Selector('id'),
+  null,
+)
+const partitionRoot: Field = partitions.field
+const partitionStep: IteratorResult<[Scalar, ChunkedSerie]> = partitions.next()
+const partitionsSelf: SerieReaderPartitions = partitions[Symbol.iterator]()
+for (const [partitionKey, partitionRows] of boundedPartitions) {
+  const key: Scalar = partitionKey
+  const rows: ChunkedSerie = partitionRows
+  void [key, rows]
+}
+// @ts-expect-error a bound is a number
+SerieReader.fromSerie(records).partitionBy('id', { maxOpen: '2' })
+// @ts-expect-error `clustered` is a boolean
+SerieReader.fromSerie(records).partitionBy('id', { clustered: 1 })
+// @ts-expect-error a key is a Selector, a Term, a text or an array of them
+SerieReader.fromSerie(records).partitionBy(7)
+// @ts-expect-error the walk is handed out by a reader, never constructed
+new SerieReaderPartitions()
+// @ts-expect-error the private partitioning bridges are hidden
+partitions._nextNative
+// @ts-expect-error the private partitioning bridges are hidden
+SerieReader.fromSerie(records)._partitionByNative
+
+void [clearedPartitionOptions, clearedPartitions, partitionRoot, partitionStep, partitionsSelf]
 
 // Spill: where the rows live; `spill` takes options or the process default.
 const resident: number = wide.residentSize()

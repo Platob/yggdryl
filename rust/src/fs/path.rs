@@ -247,6 +247,10 @@ impl IOBase for FsPath {
         self.path_is_atomic()
     }
 
+    fn is_thread_bound(&self) -> bool {
+        self.filesystem().is_thread_bound()
+    }
+
     fn is_tabular(&self) -> bool {
         self.path_is_tabular()
     }

@@ -17,6 +17,7 @@ const {
   Selector,
   Serie,
   SerieReader,
+  SerieReaderPartitions,
   SerieReaderWindows,
   SpillOptions,
   StructSerie,
@@ -1429,6 +1430,280 @@ test('reader static values survive cast and hand over and never reach a batch', 
     ['venue', 'count', 'ts'],
   )
   assert.equal(table.numRows, 2)
+})
+
+// ---------------------------------------------------------------------------
+// partitionBy: a stream's rows cut by key, each partition yielded as it
+// closes - mirrors rust/tests/serie/partition.rs
+// ---------------------------------------------------------------------------
+
+// The record `row{venue, qty}`, every row present.
+const venueQtyField = () =>
+  new Field('row', 'struct<venue: utf8 not null, qty: int64 not null>', false)
+
+// One batch of `[venue, qty]` rows.
+const venueBatch = (rows, field = venueQtyField()) =>
+  Serie.fromScalars(
+    field,
+    rows.map(([venue, qty]) => ({ venue, qty })),
+  )
+
+// One stream of `batches` under `field`, a chunk per batch.
+const venueStream = (batches, field = venueQtyField()) =>
+  SerieReader.fromChunked(
+    ChunkedSerie.fromSeries(
+      batches.map((rows) => venueBatch(rows, field)),
+      field,
+    ),
+  )
+
+// Every partition in the order it closes: its key, and the quantities of
+// its rows in the order they are held.
+const closedPartitions = (partitions) =>
+  [...partitions].map(([key, rows]) => [key.asJs(), rows.asJs().map((row) => row.qty)])
+
+test('SerieReader.partitionBy reads its key and options before the reader is taken', () => {
+  // A key that does not parse, and options no partitioning reads, leave the
+  // reader usable.
+  const reader = venueStream([[['XNAS', 1]]])
+  assert.throws(() => reader.partitionBy('venue,'), /expected a value or a name/)
+  assert.throws(() => reader.partitionBy(3), {
+    name: 'TypeError',
+    message: /SerieReader\.partitionBy by must be a Selector, a Term/,
+  })
+  assert.throws(() => reader.partitionBy('venue', 2), {
+    name: 'TypeError',
+    message: /SerieReader\.partitionBy options must be an object of maxOpen, threads and clustered/,
+  })
+  assert.throws(() => reader.partitionBy('venue', { maxopen: 2 }), {
+    name: 'TypeError',
+    message: /SerieReader\.partitionBy options take maxOpen, threads and clustered, got "maxopen"/,
+  })
+  for (const maxOpen of [-1, 1.5, Number.NaN]) {
+    assert.throws(
+      () => reader.partitionBy('venue', { maxOpen }),
+      /maxOpen must be a non-negative whole number/,
+    )
+  }
+  assert.throws(
+    () => reader.partitionBy('venue', { threads: -1 }),
+    /threads must be a non-negative whole number/,
+  )
+  assert.throws(() => reader.partitionBy('venue', { clustered: 'yes' }))
+  assert.deepEqual(readerRows(reader), [{ venue: 'XNAS', qty: 1 }])
+  // A key the root refuses consumes it, as a refused windowBy does, before
+  // any batch is pulled.
+  for (const [refused, reason] of [
+    ['missing', /missing/],
+    ['*', /empty match key/],
+  ]) {
+    const spent = venueStream([[['XNAS', 1]]])
+    assert.throws(() => spent.partitionBy(refused), reason)
+    assert.throws(() => [...spent], /already been consumed/)
+    assert.throws(() => spent.partitionBy('venue'), /already been consumed/)
+  }
+  // The walk has no public constructor, and its bridges are hidden.
+  assert.throws(() => new SerieReaderPartitions(), /handed out by SerieReader/)
+  assert.equal('_nextNative' in SerieReaderPartitions.prototype, false)
+  assert.equal('_partitionByNative' in SerieReader.prototype, false)
+})
+
+test('an unbounded stream holds every partition and closes them in key order', () => {
+  const stream = venueStream([
+    [
+      ['XPAR', 1],
+      ['XNAS', 2],
+    ],
+    [
+      ['XLON', 3],
+      ['XNAS', 4],
+    ],
+  ])
+  const root = stream.field
+  const walk = stream.partitionBy('venue')
+  assert.ok(walk instanceof SerieReaderPartitions)
+  assert.strictEqual(walk[Symbol.iterator](), walk)
+  // The root every partition is held under is the reader's own, known
+  // before a batch is pulled.
+  assert.ok(walk.field.equals(root))
+  assert.throws(() => [...stream], /already been consumed/)
+  const first = walk.next()
+  assert.equal(first.done, false)
+  const [key, rows] = first.value
+  assert.deepEqual(key.asJs(), ['XLON'])
+  assert.ok(rows instanceof ChunkedSerie)
+  assert.ok(rows.field.equals(root))
+  assert.deepEqual(rows.asJs(), [{ venue: 'XLON', qty: 3 }])
+  // A partition's rows are the chunks the batches gave it, in arrival order.
+  const [, xnas] = walk.next().value
+  assert.equal(xnas.numChunks, 2)
+  assert.deepEqual(
+    xnas.asJs().map((row) => row.qty),
+    [2, 4],
+  )
+  assert.deepEqual(walk.next().value[0].asJs(), ['XPAR'])
+  assert.deepEqual(walk.next(), { done: true, value: undefined })
+  assert.deepEqual([...walk], [])
+  // Options absent, `undefined` or `null` are the default.
+  const batches = [
+    [
+      ['XPAR', 1],
+      ['XNAS', 2],
+    ],
+    [['XLON', 3]],
+  ]
+  const expected = [
+    [['XLON'], [3]],
+    [['XNAS'], [2]],
+    [['XPAR'], [1]],
+  ]
+  for (const options of [
+    undefined,
+    null,
+    {},
+    { maxOpen: undefined, threads: undefined, clustered: undefined },
+    { maxOpen: null, threads: null, clustered: null },
+  ]) {
+    assert.deepEqual(
+      closedPartitions(venueStream(batches).partitionBy('venue', options)),
+      expected,
+    )
+  }
+  // Any key the windows take: a Selector, a Term, an array of them.
+  assert.deepEqual(
+    closedPartitions(venueStream(batches).partitionBy(new Selector('venue'))),
+    expected,
+  )
+  assert.deepEqual(
+    closedPartitions(venueStream(batches).partitionBy([Term.column('venue')])),
+    expected,
+  )
+})
+
+test('past maxOpen the lowest keys close and a returning key opens a new piece', () => {
+  const batches = [
+    [
+      ['XNAS', 1],
+      ['XLON', 2],
+    ],
+    [['XPAR', 3]],
+    [['XLON', 4]],
+  ]
+  // The third venue closes the lowest open, XLON; XLON returning is the
+  // lowest open again and closes at once; the rest close at the end, in key
+  // order.
+  assert.deepEqual(closedPartitions(venueStream(batches).partitionBy('venue', { maxOpen: 2 })), [
+    [['XLON'], [2]],
+    [['XLON'], [4]],
+    [['XNAS'], [1]],
+    [['XPAR'], [3]],
+  ])
+  // A bound of none is a bound of one.
+  assert.deepEqual(
+    closedPartitions(venueStream(batches).partitionBy('venue', { maxOpen: 0 })),
+    closedPartitions(venueStream(batches).partitionBy('venue', { maxOpen: 1 })),
+  )
+})
+
+test('a clustered stream closes each partition once another key arrives', () => {
+  const batches = [
+    [
+      ['XNAS', 1],
+      ['XNAS', 2],
+      ['XLON', 3],
+    ],
+    [
+      ['XLON', 4],
+      ['XPAR', 5],
+    ],
+    [['XNAS', 6]],
+  ]
+  // In arrival order, a run across a batch edge one partition, and a key the
+  // stream returns to a second piece of it: pieces, never rows.
+  const walk = venueStream(batches).partitionBy('venue', { clustered: true })
+  const pieces = [...walk].map(([key, rows]) => [key.asJs(), rows.numChunks, rows.length])
+  assert.deepEqual(pieces, [
+    [['XNAS'], 1, 2],
+    [['XLON'], 2, 2],
+    [['XPAR'], 1, 1],
+    [['XNAS'], 1, 1],
+  ])
+  // Unclustered, every partition is held to the end and closed in key order.
+  for (const clustered of [false, null, undefined]) {
+    assert.deepEqual(closedPartitions(venueStream(batches).partitionBy('venue', { clustered })), [
+      [['XLON'], [3, 4]],
+      [['XNAS'], [1, 2, 6]],
+      [['XPAR'], [5]],
+    ])
+  }
+})
+
+test('a root declaring an order that leads with the key is clustered untold', () => {
+  // Venue descending, then quantity: the declaration the sort writes, kept
+  // by every slice and proven at every chunk edge where the chunks land.
+  const sorted = venueBatch([
+    ['XLON', 4],
+    ['XNAS', 3],
+    ['XPAR', 1],
+    ['XNAS', 2],
+  ]).intoSortBy('venue desc, qty')
+  const declaring = sorted.field
+  assert.notEqual(sorted.declaredOrder(), null)
+  const stream = SerieReader.fromChunked(
+    ChunkedSerie.fromSeries([sorted.slice(0, 2), sorted.slice(2, 2)], declaring),
+  )
+  assert.ok(stream.field.equals(declaring))
+  // The partitions close in the order they arrive, venue descending, where an
+  // undeclared stream of the same rows closes in key order.
+  assert.deepEqual(closedPartitions(stream.partitionBy('venue')), [
+    [['XPAR'], [1]],
+    [['XNAS'], [2, 3]],
+    [['XLON'], [4]],
+  ])
+  const undeclared = venueStream([
+    [
+      ['XPAR', 1],
+      ['XNAS', 2],
+    ],
+    [
+      ['XNAS', 3],
+      ['XLON', 4],
+    ],
+  ])
+  assert.deepEqual(closedPartitions(undeclared.partitionBy('venue')), [
+    [['XLON'], [4]],
+    [['XNAS'], [2, 3]],
+    [['XPAR'], [1]],
+  ])
+})
+
+test('partitions cut on many threads are the ones cut on one', () => {
+  const venues = ['XNAS', 'XLON', 'XPAR', 'XAMS', 'XETR']
+  const batches = Array.from({ length: 40 }, (_, index) =>
+    Array.from({ length: 25 }, (_, row) => {
+      const position = index * 25 + row
+      return [venues[position % 5], position]
+    }),
+  )
+  for (const options of [{}, { maxOpen: 2 }, { clustered: true }]) {
+    const one = closedPartitions(
+      venueStream(batches).partitionBy('venue', { ...options, threads: 1 }),
+    )
+    const many = closedPartitions(
+      venueStream(batches).partitionBy('venue', { ...options, threads: 4 }),
+    )
+    assert.deepEqual(one, many, JSON.stringify(options))
+    assert.equal(
+      one.reduce((rows, [, quantities]) => rows + quantities.length, 0),
+      1_000,
+      JSON.stringify(options),
+    )
+  }
+  // Zero threads is one.
+  assert.deepEqual(
+    closedPartitions(venueStream(batches).partitionBy('venue', { threads: 0 })),
+    closedPartitions(venueStream(batches).partitionBy('venue', { threads: 1 })),
+  )
 })
 
 // ---------------------------------------------------------------------------

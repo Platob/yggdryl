@@ -1093,6 +1093,9 @@ iceberg_options_scan: pa.RecordBatchReader = iceberg_table.scan(
     options=iceberg.IcebergOptions(read_parallelism=2)
 )
 iceberg_write_parallelism: int = iceberg.IcebergOptions(write_parallelism=2).write_parallelism
+iceberg_max_open_partitions: int = iceberg.IcebergOptions(
+    max_open_partitions=2
+).max_open_partitions
 iceberg_write_staging: str | None = iceberg.IcebergOptions(write_staging="off").write_staging
 
 assert iceberg_retries >= 0
@@ -2502,6 +2505,19 @@ assert window_by_venue and window_by_sorted and window_by_default and window_of_
 assert window_record is not None and window_chunked is not None
 assert window_walk_field is not None and window_walk_static is not None
 assert window_readers and window_reader_record is not None
+
+# A stream's partitions: one `(key, rows)` pair per partition, as it closes.
+partition_walk: yggdryl.SerieReaderPartitions = SerieReader.from_serie(
+    window_quotes
+).partition_by("venue", max_open=2, threads=1, clustered=False)
+partition_walk_field: Field = partition_walk.field
+partition_pairs: list[tuple[Scalar, yggdryl.ChunkedSerie]] = list(partition_walk)
+partition_default: yggdryl.SerieReaderPartitions = SerieReader.from_serie(
+    window_quotes
+).partition_by(yggdryl.Selector("venue"), None, None)
+SerieReader.from_serie(window_quotes).partition_by("venue", clustered="yes")  # type: ignore[arg-type]
+assert partition_walk_field is not None and partition_pairs is not None
+assert partition_default is not None
 
 # Spill, `order by` keys and joins: a bound and a folder as `SpillOptions`
 # or its keywords, keys as one text, a list or a `Selector`, `how` a word.

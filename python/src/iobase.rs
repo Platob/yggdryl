@@ -729,36 +729,23 @@ impl PyIOBase {
         batch_reader_to_pyarrow(py, reader)
     }
 
-    /// Write one core reader with resolved options and explicit intent.
+    /// Write one core reader with resolved options and explicit intent, the
+    /// GIL released.
+    ///
+    /// A write may run on core threads - an Iceberg commit cuts and encodes
+    /// its partitions on the write's threads - and a core thread that logs,
+    /// or lets go of a batch whose buffers a Python object owns, takes the
+    /// GIL: held by the thread waiting on it, the two wait on each other for
+    /// good. A source this binding pulls through Python, and a C stream's
+    /// producer, take the interpreter back for each pull themselves.
     fn write_reader(
         &mut self,
         batches: yggdryl::arrow::BatchReader,
         mode: IOMode,
         options: &RecordOptions,
     ) -> PyResult<PyIOResult> {
-        self.inner_mut()?
-            .write_arrow_reader(batches, mode, options)
-            .map(PyIOResult::from_core)
-            .map_err(crate::holder::fs::storage_error)
-    }
-
-    /// Write one Arrow C stream with resolved options and explicit intent,
-    /// the GIL released.
-    ///
-    /// A C stream's producer takes the interpreter for itself where it needs
-    /// it, and it may be a core reader come back through `pyarrow` - a parse
-    /// spread over worker threads, whose warnings reach Python's `logging`.
-    /// A worker that logs takes the GIL, so the thread waiting on it must
-    /// not hold it: held, the two wait on each other for good.
-    fn write_stream(
-        &mut self,
-        py: Python<'_>,
-        batches: yggdryl::arrow::BatchReader,
-        mode: IOMode,
-        options: &RecordOptions,
-    ) -> PyResult<PyIOResult> {
         let inner = self.inner_mut()?;
-        py.detach(|| inner.write_arrow_reader(batches, mode, options))
+        Python::attach(|py| py.detach(|| inner.write_arrow_reader(batches, mode, options)))
             .map(PyIOResult::from_core)
             .map_err(crate::holder::fs::storage_error)
     }
@@ -766,10 +753,8 @@ impl PyIOBase {
     /// The one write every `*_serie` method is: the options resolved and
     /// their zero counts refused before `value` is read, so no refusal pulls
     /// a one-shot source; then `value` read once as the shape it holds and
-    /// written by the core - off the GIL when the rows are native or cross
-    /// the Arrow C stream, whose producer takes the interpreter for itself,
-    /// under it when they are a Python stream this binding pulls, whose
-    /// every pull would take it back.
+    /// written by the core off the GIL - a Python stream this binding pulls
+    /// taking it back for each pull, as `write_reader` says why.
     fn write_source(
         &mut self,
         value: &Bound<'_, PyAny>,
@@ -784,15 +769,8 @@ impl PyIOBase {
             options.require_num_threads().map_err(value_error)?;
         }
         let source = crate::serie::serie_source_of(value)?;
-        let native = matches!(
-            source,
-            yggdryl::SerieSource::Serie(_) | yggdryl::SerieSource::Chunked(_)
-        ) || value.is_instance_of::<crate::serie::PySerieReader>()
-            || value.hasattr(pyo3::intern!(py, "__arrow_c_stream__"))?;
         let inner = self.inner_mut()?;
-        let write = move || inner.write_serie(source, mode, options.as_ref());
-        let written = if native { py.detach(write) } else { write() };
-        written
+        py.detach(move || inner.write_serie(source, mode, options.as_ref()))
             .map(PyIOResult::from_core)
             .map_err(crate::holder::fs::storage_error)
     }
@@ -2766,7 +2744,7 @@ impl PyIOBase {
             return Ok(PyIOResult::default());
         };
         let batches = batch_reader_from_arrow_reader(reader)?;
-        self.write_stream(reader.py(), batches, IOMode::Overwrite, &options)
+        self.write_reader(batches, IOMode::Overwrite, &options)
     }
 
     /// Append the batches `reader` yields after this resource's stored rows.
@@ -2781,7 +2759,7 @@ impl PyIOBase {
             return Ok(PyIOResult::default());
         };
         let batches = batch_reader_from_arrow_reader(reader)?;
-        self.write_stream(reader.py(), batches, IOMode::Append, &options)
+        self.write_reader(batches, IOMode::Append, &options)
     }
 
     /// Merge the batches `reader` yields by the non-empty match key.
@@ -2796,7 +2774,7 @@ impl PyIOBase {
             return Ok(PyIOResult::default());
         };
         let batches = batch_reader_from_arrow_reader(reader)?;
-        self.write_stream(reader.py(), batches, IOMode::Merge, &options)
+        self.write_reader(batches, IOMode::Merge, &options)
     }
 
     /// Write the batches `reader` yields using an explicit mode.
@@ -2815,7 +2793,7 @@ impl PyIOBase {
             return Ok(PyIOResult::default());
         };
         let batches = batch_reader_from_arrow_reader(reader)?;
-        self.write_stream(reader.py(), batches, mode, &options)
+        self.write_reader(batches, mode, &options)
     }
 
     /// Replace this resource from exactly one `pyarrow.Table`.

@@ -53,7 +53,7 @@ answers the task.
 | Task | Skill |
 | --- | --- |
 | declare a schema, parse a type expression, build or check a value, dataclass/record classes, metadata, codes (`ccy`, `forex`) and enums (`side`, `marketdatakind`, `state`) | `yggdryl-types` |
-| Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts, sorting, grouping and windows of equal keys (`window_by`) | `yggdryl-arrow` |
+| Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts, sorting, grouping, windows of equal keys (`window_by`) and the partitions of a stream (`partition_by`) | `yggdryl-arrow` |
 | open a file, bytes, list or glob a folder, local/ZIP/S3/GCS/Azure and their credentials, HTTP(S) resources and requests-style sessions, gzip/zlib/zstd, charsets, digests of a handle | `yggdryl-storage` |
 | a catalog of namespaces of tables - a folder read as one, a table registered at a dotted path, `SystemWarehouse`, `Properties`, the `namespaces`/`tables` views, `Catalog.from_url` | `yggdryl-warehouse` |
 | parse or build a URI, URL, URN, ARN, path; glob pattern text or a hive partition path (listing is `yggdryl-storage`) | `yggdryl-uri` |

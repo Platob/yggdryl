@@ -155,6 +155,8 @@ pub struct IcebergOptions {
     read_parallel_min_file_size_bytes: Option<u64>,
     /// How many partition groups a commit writes at once, when set.
     write_parallelism: Option<usize>,
+    /// How many partitions a write holds open at once, when set.
+    max_open_partitions: Option<usize>,
     /// Where a commit stages its files before they reach the table, when set.
     write_staging: Option<WriteStaging>,
     /// The MIME type new data files are written with, when set.
@@ -197,6 +199,8 @@ impl IcebergOptions {
     pub const READ_PARALLEL_MIN_FILE_SIZE_KEY: &'static str = "read.parallel.min-file-size-bytes";
     /// The property naming how many partition groups a commit writes at once.
     pub const WRITE_PARALLELISM_KEY: &'static str = "write.parallelism";
+    /// The property naming how many partitions a write holds open at once.
+    pub const MAX_OPEN_PARTITIONS_KEY: &'static str = "write.max-open-partitions";
     /// The property naming where a commit stages its files: `off`, or a
     /// local folder URL.
     pub const WRITE_STAGING_KEY: &'static str = "write.staging";
@@ -226,6 +230,11 @@ impl IcebergOptions {
     pub const DEFAULT_READ_PARALLEL_MIN_FILE_SIZE_BYTES: u64 = 64 * 1024;
     /// The data file format nothing configures: Parquet, the spec's default.
     pub const DEFAULT_DATA_MIME_TYPE: MimeType = MimeType::PARQUET;
+    /// The open partitions nothing configures: 128, enough that a write of
+    /// a day's quarter hours or a few venues never closes a partition early,
+    /// few enough that a stream over thousands of partitions in key order is
+    /// written as it arrives.
+    pub const DEFAULT_MAX_OPEN_PARTITIONS: usize = 128;
 
     /// Build an options value with nothing set, so every field defaults.
     pub fn new() -> Self {
@@ -355,6 +364,27 @@ impl IcebergOptions {
     /// Return the explicitly configured write parallelism.
     pub const fn write_parallelism_option(&self) -> Option<usize> {
         self.write_parallelism
+    }
+
+    /// Return how many partitions an append, an overwrite or a compaction
+    /// holds open at once.
+    ///
+    /// Default: [`Self::DEFAULT_MAX_OPEN_PARTITIONS`]. Past it, the open
+    /// partition of the lowest tuple closes and its files are written while
+    /// the source is still read: a source in partition order closes each
+    /// partition once it has been read whole, so it is written as it arrives
+    /// and never held whole; a partition arriving again after it closed is
+    /// written again, as further files of the same commit. A keyed merge
+    /// joins each partition with its stored files once, so it holds every
+    /// partition open whatever this says.
+    pub fn max_open_partitions(&self) -> usize {
+        self.max_open_partitions
+            .unwrap_or(Self::DEFAULT_MAX_OPEN_PARTITIONS)
+    }
+
+    /// Return the explicitly configured bound on open partitions.
+    pub const fn max_open_partitions_option(&self) -> Option<usize> {
+        self.max_open_partitions
     }
 
     /// Return where a commit stages its files, when a layer says.
@@ -571,6 +601,33 @@ impl IcebergOptions {
         Ok(self)
     }
 
+    /// Set how many partitions a write holds open at once.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed error naming the key when `partitions` is zero; the
+    /// value is unchanged.
+    pub fn set_max_open_partitions(&mut self, partitions: usize) -> Result<()> {
+        if partitions == 0 {
+            return Err(Error::InvalidMetadataValue {
+                key: SmolStr::new_static(Self::MAX_OPEN_PARTITIONS_KEY),
+                reason: SmolStr::new_static("expected at least one open partition, got 0"),
+            });
+        }
+        self.max_open_partitions = Some(partitions);
+        Ok(())
+    }
+
+    /// Set how many partitions a write holds open at once, persistently.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`Self::set_max_open_partitions`] failure.
+    pub fn try_with_max_open_partitions(mut self, partitions: usize) -> Result<Self> {
+        self.set_max_open_partitions(partitions)?;
+        Ok(self)
+    }
+
     /// Set how many large-enough files justify a parallel scan.
     pub fn set_read_parallel_min_files(&mut self, files: usize) {
         self.read_parallel_min_files = Some(files);
@@ -653,6 +710,7 @@ impl IcebergOptions {
                 explicit, metadata,
             )?,
             write_parallelism: write_parallelism_layer(explicit, metadata)?,
+            max_open_partitions: max_open_partitions_layer(explicit, metadata)?,
             write_staging: write_staging_layer(explicit, metadata)?,
             data_mime_type: data_mime_type_layer(explicit, metadata)?,
         })
@@ -703,6 +761,8 @@ impl IcebergOptions {
         let read = Self::read_settings(explicit, metadata)?;
         Ok(WriteSettings {
             parallelism: write_parallelism_layer(explicit, metadata)?.unwrap_or(read.parallelism),
+            max_open_partitions: max_open_partitions_layer(explicit, metadata)?
+                .unwrap_or(Self::DEFAULT_MAX_OPEN_PARTITIONS),
             staging: write_staging_layer(explicit, metadata)?,
             target_file_size_bytes: Self::target_size(explicit, metadata)?,
             mime_type: Self::write_mime_type(explicit, metadata)?,
@@ -743,6 +803,9 @@ pub(super) struct CommitSettings {
 pub(super) struct WriteSettings {
     /// How many partition groups are written at once; 1 is the calling thread.
     pub(super) parallelism: usize,
+    /// How many partitions an append, an overwrite or a compaction holds
+    /// open at once, the lowest tuple closed past it.
+    pub(super) max_open_partitions: usize,
     /// Where the files are staged, or `None` for the root's own default.
     pub(super) staging: Option<WriteStaging>,
     /// The size a data file aims for, in bytes.
@@ -881,6 +944,21 @@ fn write_parallelism_layer(
         "a positive writer-thread count",
         integer_from_text_as,
         |threads| *threads >= 1,
+    )
+}
+
+/// The one resolver for [`IcebergOptions::MAX_OPEN_PARTITIONS_KEY`].
+fn max_open_partitions_layer(
+    explicit: Option<&IcebergOptions>,
+    metadata: &TableMetadata,
+) -> Result<Option<usize>> {
+    layered(
+        explicit.and_then(|options| options.max_open_partitions),
+        metadata,
+        IcebergOptions::MAX_OPEN_PARTITIONS_KEY,
+        "a positive open-partition count",
+        integer_from_text_as,
+        |partitions| *partitions >= 1,
     )
 }
 

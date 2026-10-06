@@ -172,6 +172,13 @@ impl Default for FileInfos {
 pub trait FileSystem: Send + Sync + Any {
     /// Backend name used only for safe diagnostics.
     fn type_name(&self) -> &str;
+    /// Whether this filesystem answers only on the thread that made it - a
+    /// handler a JavaScript isolate implements runs on that isolate's
+    /// thread - so work over it stays on the calling thread
+    /// ([`crate::IOBase::is_thread_bound`]). Native backends answer on any.
+    fn is_thread_bound(&self) -> bool {
+        false
+    }
     /// Filesystem equality, including configuration and credential scope.
     fn equals(&self, other: &dyn FileSystem) -> bool;
     /// Fallible host-runtime equality. Native implementations use [`Self::equals`];

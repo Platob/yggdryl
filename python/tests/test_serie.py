@@ -39,6 +39,7 @@ from yggdryl import (
     Selector,
     Serie,
     SerieReader,
+    SerieReaderPartitions,
     SerieReaderWindows,
     SerieSerie,
     SerieViewSerie,
@@ -2220,6 +2221,212 @@ class TestReaderWindowBy:
         assert cast.static_values == record
         assert batches.schema.names == ["venue", "count", "ts"]
         assert batches.read_all().num_rows == 2
+
+
+# ---------------------------------------------------------------------------
+# partition_by: a stream cut by a key into partitions, each yielded as it
+# closes - mirrors rust/tests/serie/partition.rs
+# ---------------------------------------------------------------------------
+
+
+def order_root() -> Field:
+    """The record `row{venue, qty}`, every row and cell stated."""
+    return Field("row", "struct<venue: utf8 not null, qty: int64 not null>", nullable=False)
+
+
+def order_batch(rows: list[tuple[str, int]], root: Field | None = None) -> Serie:
+    return Serie.from_scalars(order_root() if root is None else root, [list(row) for row in rows])
+
+
+def order_stream(batches: list[Serie]) -> SerieReader:
+    """One stream of `batches` under the first one's root, a chunk per batch."""
+    return SerieReader.from_chunked(ChunkedSerie.from_series(batches, batches[0].field))
+
+
+def closed(partitions: SerieReaderPartitions) -> list[tuple[object, list[int]]]:
+    """Every partition in the order it closes: its key, and the quantities of
+    its rows in the order they are held."""
+    answered = []
+    for key, rows in partitions:
+        assert isinstance(key, Scalar)
+        assert isinstance(rows, ChunkedSerie)
+        assert rows.field == partitions.field
+        answered.append((key.as_py(), rows.into_arrow_table().column("qty").to_pylist()))
+    return answered
+
+
+class TestReaderPartitionBy:
+    def test_partition_by_refuses_before_any_pull(self) -> None:
+        # A text that does not parse, or an argument of the wrong type,
+        # leaves the reader usable.
+        reader = order_stream([order_batch([("XNAS", 1)])])
+        with pytest.raises(ValueError, match="expected a value or a name"):
+            reader.partition_by("venue,")
+        with pytest.raises(TypeError):
+            reader.partition_by("venue", "two")  # type: ignore[arg-type]
+        with pytest.raises(TypeError):
+            reader.partition_by("venue", clustered=1)  # type: ignore[arg-type]
+        with pytest.raises(OverflowError):
+            reader.partition_by("venue", max_open=-1)
+        assert [batch.as_py() for batch in reader] == [[{"venue": "XNAS", "qty": 1}]]
+        # A key the root refuses spends it, as a refused cast does.
+        reader = order_stream([order_batch([("XNAS", 1)])])
+        with pytest.raises(ValueError, match="missing"):
+            reader.partition_by("missing")
+        assert list(reader) == []
+        with pytest.raises(ValueError, match="already handed over"):
+            reader.partition_by("venue")
+
+    def test_partition_by_answers_a_lazy_walk_under_the_reader_root(self) -> None:
+        reader = order_stream([order_batch([("XNAS", 1)])])
+        root = reader.field
+        walk = reader.partition_by("venue")
+        assert isinstance(walk, SerieReaderPartitions)
+        assert iter(walk) is walk
+        assert walk.field == root
+        assert SerieReaderPartitions.__hash__ is None
+        with pytest.raises(TypeError):
+            hash(walk)
+        assert repr(walk).startswith("SerieReaderPartitions(field=")
+        assert closed(walk) == [(["XNAS"], [1])]
+        with pytest.raises(StopIteration):
+            next(walk)
+        assert walk.field == root
+
+    def test_an_unbounded_stream_closes_every_partition_in_key_order_at_its_end(self) -> None:
+        batches = [
+            order_batch([("XPAR", 1), ("XNAS", 2)]),
+            order_batch([("XLON", 3), ("XNAS", 4)]),
+        ]
+        assert closed(order_stream(batches).partition_by("venue")) == [
+            (["XLON"], [3]),
+            (["XNAS"], [2, 4]),
+            (["XPAR"], [1]),
+        ]
+
+    def test_past_max_open_the_lowest_keys_close_and_a_returning_key_is_a_new_piece(
+        self,
+    ) -> None:
+        batches = [
+            order_batch([("XNAS", 1), ("XLON", 2)]),
+            order_batch([("XPAR", 3)]),
+            order_batch([("XLON", 4)]),
+        ]
+        # The third venue closes the lowest open, XLON; XLON returning is the
+        # lowest open again and closes at once; the rest close at the end.
+        expected = [(["XLON"], [2]), (["XLON"], [4]), (["XNAS"], [1]), (["XPAR"], [3])]
+        assert closed(order_stream(batches).partition_by("venue", 2)) == expected
+        assert closed(order_stream(batches).partition_by("venue", max_open=2)) == expected
+        # The rows cross as Arrow and as Python values alike.
+        _, rows = next(order_stream(batches).partition_by("venue", max_open=2))
+        assert rows.as_py() == [{"venue": "XLON", "qty": 2}]
+        assert rows.into_arrow_table().to_pylist() == [{"venue": "XLON", "qty": 2}]
+        # A bound of none is a bound of one: each batch keeps only its
+        # highest key open.
+        assert closed(order_stream(batches).partition_by("venue", max_open=0)) == closed(
+            order_stream(batches).partition_by("venue", max_open=1)
+        )
+        assert closed(order_stream(batches).partition_by("venue", max_open=1)) == [
+            (["XLON"], [2]),
+            (["XNAS"], [1]),
+            (["XLON"], [4]),
+            (["XPAR"], [3]),
+        ]
+
+    def test_a_clustered_stream_closes_each_partition_once_another_key_arrives(self) -> None:
+        batches = [
+            order_batch([("XNAS", 1), ("XNAS", 2), ("XLON", 3)]),
+            order_batch([("XLON", 4), ("XPAR", 5)]),
+            order_batch([("XNAS", 6)]),
+        ]
+        # In arrival order, a run across a batch edge one partition, and a key
+        # the stream returns to a second piece of it: pieces, never rows.
+        assert closed(order_stream(batches).partition_by("venue", clustered=True)) == [
+            (["XNAS"], [1, 2]),
+            (["XLON"], [3, 4]),
+            (["XPAR"], [5]),
+            (["XNAS"], [6]),
+        ]
+
+    def test_a_root_declaring_an_order_that_leads_with_the_key_is_clustered_untold(
+        self,
+    ) -> None:
+        rows = order_batch([("XLON", 4), ("XNAS", 3), ("XPAR", 1), ("XNAS", 2)])
+        # Venue descending, then quantity: the declaration the sort writes,
+        # proven where the rows land.
+        ordered = rows.into_sort_by("venue desc, qty")
+        assert ordered.declared_order() is not None
+        chunks = [ordered.slice(0, 2), ordered.slice(2, 2)]
+        assert closed(order_stream(chunks).partition_by("venue")) == [
+            (["XPAR"], [1]),
+            (["XNAS"], [2, 3]),
+            (["XLON"], [4]),
+        ]
+        # Undeclared, the same rows close in key order.
+        plain = [chunk.cast(order_root()) for chunk in chunks]
+        assert plain[0].declared_order() is None
+        assert closed(order_stream(plain).partition_by("venue")) == [
+            (["XLON"], [4]),
+            (["XNAS"], [2, 3]),
+            (["XPAR"], [1]),
+        ]
+        # A key the order does not lead with is not clustered by it.
+        keys = [key for key, _ in closed(order_stream(chunks).partition_by("qty"))]
+        assert keys == [[1], [2], [3], [4]]
+
+    def test_partitions_cut_on_many_threads_are_the_ones_cut_on_one(self) -> None:
+        venues = ["XNAS", "XLON", "XPAR", "XAMS", "XETR"]
+
+        def batches() -> list[Serie]:
+            return [
+                order_batch(
+                    [(venues[(index * 25 + row) % 5], index * 25 + row) for row in range(25)]
+                )
+                for index in range(40)
+            ]
+
+        for max_open, clustered in ((None, False), (2, False), (None, True)):
+            one, many = (
+                closed(
+                    order_stream(batches()).partition_by(
+                        "venue", max_open=max_open, threads=threads, clustered=clustered
+                    )
+                )
+                for threads in (1, 4)
+            )
+            assert one == many, (max_open, clustered)
+            assert sum(len(quantities) for _, quantities in one) == 1_000
+        # Zero threads is one.
+        assert closed(order_stream(batches()).partition_by("venue", threads=0)) == closed(
+            order_stream(batches()).partition_by("venue", threads=1)
+        )
+
+    def test_a_python_source_is_pulled_off_the_gil_and_a_dropped_walk_joins_its_workers(
+        self,
+    ) -> None:
+        pulled: list[int] = []
+
+        def tables() -> Iterator[pa.Table]:
+            for index in range(8):
+                pulled.append(index)
+                yield pa.table(
+                    {
+                        "venue": pa.array(["XNAS", "XLON", "XNAS"], pa.utf8()),
+                        "qty": pa.array([index] * 3, pa.int64()),
+                    }
+                )
+
+        root = Field("row", "struct<venue: utf8, qty: int64>", nullable=False)
+        walk = SerieReader.from_(tables(), root).partition_by("venue", max_open=1, threads=4)
+        key, rows = next(walk)
+        assert key.as_py() in (["XLON"], ["XNAS"])
+        assert len(rows) > 0
+        # Dropped mid-stream, the walk lets go of its workers and its source.
+        del walk
+        gc.collect()
+        streamed = SerieReader.from_(tables(), root).partition_by("venue", threads=4)
+        assert [key.as_py() for key, _ in streamed] == [["XLON"], ["XNAS"]]
+        assert pulled[-8:] == list(range(8))
 
 
 # ---------------------------------------------------------------------------

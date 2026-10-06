@@ -42,8 +42,9 @@ use yggdryl::arrow::BatchReader;
 use yggdryl::expression::{IntoOrderings, Ordering as CoreOrdering};
 use yggdryl::media::RecordOptions;
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, MimeType, Scalar, Serie,
-    SerieReader, SerieReaderWindows, SerieSource, SortOptions,
+    ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, MimeType, PartitionOptions,
+    Scalar, Serie, SerieReader, SerieReaderPartitions, SerieReaderWindows, SerieSource,
+    SortOptions,
 };
 
 use crate::chunked_serie::{PyChunkedSerie, chunked_from_arrays};
@@ -2166,6 +2167,53 @@ impl PySerieReader {
             .map_err(value_error)
     }
 
+    /// Cut the stream by `by` into partitions, each yielded as soon as it
+    /// closes as a `(key, rows)` pair - the key a `Scalar` record of the
+    /// cells `by` computes, the rows a `ChunkedSerie` under this reader's
+    /// root in the order they arrived; this reader is spent. The key is
+    /// parsed before the reader is taken, so a text that does not parse
+    /// leaves it usable; a key the root refuses spends it, as a refused cast
+    /// does.
+    ///
+    /// `max_open` bounds the partitions open at once, the lowest keys
+    /// closing past it; `None` keeps every one open until the stream ends,
+    /// then closes them all in ascending key order. `threads` is the threads
+    /// the batches are cut on; `None` is the host's. `clustered=True` states
+    /// that every row of a key arrives before any row of the next, so each
+    /// partition closes as soon as another key arrives and the partitions
+    /// close in arrival order; a reader whose root declares an order
+    /// (`SORT:by`) leading with the key's terms is clustered without being
+    /// told. A key arriving again after its partition closed opens a new
+    /// piece of it, yielded again under the same key.
+    #[pyo3(
+        signature = (by, max_open = None, threads = None, clustered = false),
+        text_signature = "($self, by, max_open=None, threads=None, clustered=False)"
+    )]
+    fn partition_by(
+        &mut self,
+        by: &Bound<'_, PyAny>,
+        max_open: Option<usize>,
+        threads: Option<usize>,
+        clustered: bool,
+    ) -> PyResult<PySerieReaderPartitions> {
+        let selector = selector_from_value(by)?;
+        let mut options = PartitionOptions::new().with_clustered(clustered);
+        if let Some(max_open) = max_open {
+            options = options.with_max_open(max_open);
+        }
+        if let Some(threads) = threads {
+            options = options.with_threads(threads);
+        }
+        let reader = self.take()?;
+        let partitions = reader
+            .partition_by(selector, options)
+            .map_err(value_error)?;
+        Ok(PySerieReaderPartitions {
+            field: partitions.field().clone(),
+            inner: Mutex::new(Some(partitions)),
+        })
+    }
+
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -2259,6 +2307,77 @@ impl PySerieReaderWindows {
             self.inner.field(),
             self.inner.static_field()
         )
+    }
+}
+
+/// The partitions of a stream, each a `(key, rows)` pair yielded as soon as
+/// it closes - what `SerieReader.partition_by` answers.
+///
+/// The core value is `Send` but not `Sync`, so it sits behind a lock; every
+/// pull runs off the GIL, since the source may be a Python iterator the core
+/// attaches to pull. The root is read once beside it, so `field` never takes
+/// the lock. Fused after its first error.
+#[pyclass(name = "SerieReaderPartitions", module = "yggdryl._native")]
+pub(crate) struct PySerieReaderPartitions {
+    /// `None` only while the value is dropped.
+    inner: Mutex<Option<SerieReaderPartitions>>,
+    field: CoreField,
+}
+
+impl Drop for PySerieReaderPartitions {
+    fn drop(&mut self) {
+        // Dropping the walk joins the workers cutting its batches, each
+        // finishing the batch it holds; a worker logging through the
+        // interpreter needs it, so they are joined with it released.
+        let partitions = self
+            .inner
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if partitions.is_some() {
+            Python::attach(|py| py.detach(move || drop(partitions)));
+        }
+    }
+}
+
+#[pymethods]
+impl PySerieReaderPartitions {
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    /// The record root every partition's rows are held under: the
+    /// partitioned reader's own.
+    #[getter]
+    fn field(&self) -> PyField {
+        PyField::from_inner(self.field.clone())
+    }
+
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// The next closed partition as its `(key, rows)` pair, or the end of
+    /// the stream.
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<(PyScalar, PyChunkedSerie)>> {
+        let partitions = self
+            .inner
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match py.detach(|| partitions.as_mut().and_then(Iterator::next)) {
+            Some(Ok(partition)) => {
+                let (key, rows) = partition.into_parts();
+                Ok(Some((
+                    PyScalar::from_inner(key),
+                    PyChunkedSerie::from_inner(rows),
+                )))
+            }
+            Some(Err(error)) => Err(value_error(error)),
+            None => Ok(None),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!("SerieReaderPartitions(field={})", self.field)
     }
 }
 

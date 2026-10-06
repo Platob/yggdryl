@@ -9,7 +9,7 @@
 
 use std::any::Any;
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use yggdryl::Result;
@@ -25,6 +25,10 @@ pub struct CountingFileSystem {
     calls: Mutex<BTreeMap<&'static str, usize>>,
     sizeless: AtomicBool,
     name: Option<&'static str>,
+    /// The one thread this filesystem answers on, where it is bound to one.
+    bound: Mutex<Option<std::thread::ThreadId>>,
+    /// The calls that reached it from any other thread while bound.
+    off_thread: AtomicUsize,
 }
 
 impl CountingFileSystem {
@@ -49,6 +53,19 @@ impl CountingFileSystem {
             info.size = None;
         }
         info
+    }
+
+    /// Answer only on the calling thread from here on, as a filesystem a
+    /// JavaScript handler implements does: `is_thread_bound` says so, and
+    /// every call from another thread is counted.
+    pub fn bind_to_current_thread(&self) {
+        *self.bound.lock().expect("the bound thread") = Some(std::thread::current().id());
+    }
+
+    /// The calls that reached this filesystem from another thread while it
+    /// was bound to one.
+    pub fn off_thread_calls(&self) -> usize {
+        self.off_thread.load(Ordering::Relaxed)
     }
 
     /// The calls made so far, in all.
@@ -79,6 +96,14 @@ impl CountingFileSystem {
     }
 
     fn count(&self, name: &'static str) {
+        if self
+            .bound
+            .lock()
+            .expect("the bound thread")
+            .is_some_and(|bound| bound != std::thread::current().id())
+        {
+            self.off_thread.fetch_add(1, Ordering::Relaxed);
+        }
         *self
             .calls
             .lock()
@@ -100,6 +125,10 @@ pub fn counted_folder(name: &str) -> (Arc<CountingFileSystem>, FsFolder) {
 impl FileSystem for CountingFileSystem {
     fn type_name(&self) -> &str {
         self.name.unwrap_or_else(|| self.inner.type_name())
+    }
+
+    fn is_thread_bound(&self) -> bool {
+        self.bound.lock().expect("the bound thread").is_some()
     }
 
     fn equals(&self, other: &dyn FileSystem) -> bool {

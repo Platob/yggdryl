@@ -75,6 +75,7 @@ export {
   type MetadataEntry,
   type ObjectOptions,
   type PartitionEntry,
+  type PartitionOptionsInput,
   type SpillOptionsInit,
   type StringParameters,
   type StringParametersInput,
@@ -115,11 +116,13 @@ import type {
   Selector,
   Serie as NativeSerie,
   SerieReader,
+  SerieReaderPartitions as NativeSerieReaderPartitions,
   SerieReaderWindows as NativeSerieReaderWindows,
   SpillOptions,
   WindowSerie as NativeWindowSerie,
   ArrowCastPlan,
   JoinOptionsInput,
+  PartitionOptionsInput,
   StringParametersInput,
   Term,
   TextLine,
@@ -241,6 +244,17 @@ export type SerieReaderWindows = NativeSerieReaderWindows
 export declare const SerieReaderWindows: Omit<typeof NativeSerieReaderWindows, 'prototype'> &
   (abstract new () => SerieReaderWindows) & {
     readonly prototype: SerieReaderWindows
+  }
+
+/** The partitions of a stream: one `[key, rows]` pair as each partition closes. */
+export type SerieReaderPartitions = NativeSerieReaderPartitions
+/** Handed out by `reader.partitionBy(by, options)`: there is no public constructor. */
+export declare const SerieReaderPartitions: Omit<
+  typeof NativeSerieReaderPartitions,
+  'prototype'
+> &
+  (abstract new () => SerieReaderPartitions) & {
+    readonly prototype: SerieReaderPartitions
   }
 
 /** Many columns under one field, held apart: a chunked array, or a table. */
@@ -1347,6 +1361,29 @@ declare module './index' {
      */
     windowBy(by: WindowKey, sorted?: boolean | null): SerieReaderWindows
     /**
+     * The stream cut by `by` into partitions, each `[key, rows]` pair
+     * yielded as soon as its partition closes: `key` the record of the
+     * cells `by` computes, `rows` a ChunkedSerie under this reader's root,
+     * in the order the rows arrived. `by` is bound against the root before
+     * any batch is pulled, and the batches are cut on `threads` threads -
+     * every thread the host offers by default - and answered in order. The
+     * open partitions are held under the process spill bound. Past
+     * `maxOpen` open partitions - every partition open by default - the
+     * ones of the lowest keys close, so a stream arriving in key order
+     * closes each once it has been read whole; when the stream ends, every
+     * partition still open closes in ascending key order. `clustered: true`
+     * states that every row of a key arrives before any row of the next, so
+     * each partition closes as soon as another key arrives, in arrival
+     * order; a reader whose root declares an order leading with the key's
+     * terms is clustered untold. A key arriving again after its partition
+     * closed is yielded again, as a new piece under the same key. Each
+     * option `undefined` or `null` is its default, and an unknown one is
+     * refused. A key text that does not parse and a refused option leave
+     * the reader usable; otherwise the reader is consumed, a key the root
+     * refuses included.
+     */
+    partitionBy(by: WindowKey, options?: PartitionOptionsInput | null): SerieReaderPartitions
+    /**
      * Every record this reader yields in sorted order under `options`: the
      * stream drained into its chunks, each settled under the spill bound as
      * it lands, merged, and read back as a held stream of the merged
@@ -1398,6 +1435,17 @@ declare module './index' {
     next(): IteratorResult<SerieReader>
     /** The windows themselves: one walk, iterated once. */
     [Symbol.iterator](): SerieReaderWindows
+  }
+
+  interface SerieReaderPartitions extends IterableIterator<[Scalar, ChunkedSerie]> {
+    /**
+     * Pull the stream until the next partition closes and answer its
+     * `[key, rows]` pair, or done after the last. A failure of the stream
+     * is thrown once, and the walk is done after it.
+     */
+    next(): IteratorResult<[Scalar, ChunkedSerie]>
+    /** The partitions themselves: one walk, iterated once. */
+    [Symbol.iterator](): SerieReaderPartitions
   }
 
   namespace ChunkedSerie {
@@ -4839,6 +4887,7 @@ export type IcebergProperties = {
   readonly readParallelMinFiles?: number
   readonly readParallelMinFileSize?: number
   readonly writeParallelism?: number
+  readonly maxOpenPartitions?: number
   readonly writeStaging?: string
   readonly dataMimeType?: MimeTypeInput
 }

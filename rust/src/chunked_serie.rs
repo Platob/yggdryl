@@ -1106,6 +1106,22 @@ impl ChunkedSerie {
     /// publishing one name - raised before any chunk is read, with no chunk
     /// as with many; then [`Self::into_sorted`]'s.
     pub fn into_sort_by(&self, by: impl IntoOrderings) -> crate::Result<Self> {
+        self.sorted_by_on(by, 1)
+    }
+
+    /// [`Self::into_sort_by`] with the chunks sorted on up to `threads`
+    /// threads before the one merge - what a write that hands each of its
+    /// parts a share of its threads sorts a part by. The result is the one
+    /// the sequential sort answers, row for row: each chunk is sorted on its
+    /// own whichever thread sorts it, and the sorted chunks land in chunk
+    /// order, so the merge's tie to the earlier chunk keeps it stable. At
+    /// most `threads` sorted chunks are held beyond what has landed and
+    /// settled.
+    pub(crate) fn sorted_by_on(
+        &self,
+        by: impl IntoOrderings,
+        threads: usize,
+    ) -> crate::Result<Self> {
         let by = by.into_orderings()?;
         let key = self.sort_key(&by)?;
         if self
@@ -1115,7 +1131,7 @@ impl ChunkedSerie {
             // The field proves the order across every chunk edge: a clone.
             return Ok(self.clone());
         }
-        let sorted = self.sorted_chunks(|chunk| chunk.into_sort_by(by.as_slice()))?;
+        let sorted = self.sorted_chunks_on(threads, |chunk| chunk.into_sort_by(by.as_slice()))?;
         let options: Vec<SortOptions> = by.iter().map(expression::Ordering::options).collect();
         sorted
             .merged(&options, |chunk, start, len| {
@@ -1215,6 +1231,52 @@ impl ChunkedSerie {
         let mut sorted = Self::with_chunk_capacity(Arc::clone(&self.field), self.chunks.len());
         for chunk in self.chunks.iter().filter(|chunk| !chunk.is_empty()) {
             sorted.push_landed(sort(chunk)?)?;
+        }
+        Ok(sorted)
+    }
+
+    /// [`Self::sorted_chunks`] on up to `threads` threads: the chunks
+    /// holding a row sorted `threads` at a time, each window's sorted chunks
+    /// landed in chunk order and settled before the next window is sorted,
+    /// so what is held beyond the settled chunks is at most one window.
+    fn sorted_chunks_on(
+        &self,
+        threads: usize,
+        sort: impl Fn(&Serie) -> crate::Result<Serie> + Sync,
+    ) -> crate::Result<Self> {
+        let chunks: Vec<&Serie> = self
+            .chunks
+            .iter()
+            .filter(|chunk| !chunk.is_empty())
+            .collect();
+        let threads = threads.min(chunks.len()).max(1);
+        if threads <= 1 {
+            return self.sorted_chunks(sort);
+        }
+        let mut sorted = Self::with_chunk_capacity(Arc::clone(&self.field), chunks.len());
+        for window in chunks.chunks(threads) {
+            let answers: Vec<crate::Result<Serie>> = std::thread::scope(|scope| {
+                let sorting: Vec<_> = window
+                    .iter()
+                    .map(|chunk| scope.spawn(|| sort(chunk)))
+                    .collect();
+                sorting
+                    .into_iter()
+                    .map(|sorting| {
+                        sorting.join().unwrap_or_else(|_| {
+                            Err(crate::Error::InvalidRecord {
+                                path: smol_str::SmolStr::new_static("$"),
+                                reason: smol_str::SmolStr::new_static(
+                                    "expected every chunk sort to finish, got one that panicked",
+                                ),
+                            })
+                        })
+                    })
+                    .collect()
+            });
+            for answer in answers {
+                sorted.push_landed(answer?)?;
+            }
         }
         Ok(sorted)
     }

@@ -644,6 +644,38 @@ for window in SerieReader::from_serie(fills)?.window_by("venue", false)? {
 assert_eq!(places, [(Some(Scalar::from(0_u64)), 1), (Some(Scalar::from(1_u64)), 1), (Some(Scalar::from(2_u64)), 1)]);
 ```
 
+## Cut a stream into partitions
+
+`reader.partition_by(by, options)` yields each partition as soon as it
+closes: past `max_open` the lowest keys, `clustered` once another key
+arrives, the rest in key order when the stream ends. Contract:
+[partitions of a stream](https://platob.github.io/yggdryl/arrow/readers/#partitions-of-a-stream).
+
+```rust
+use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, PartitionOptions, Scalar, Serie, SerieReader, StructType};
+
+let root = DataType::from(StructType::from_fields([
+    DataType::utf8().required_field("venue"),
+    DataType::Int64.required_field("qty"),
+])?)
+.required_field("fill");
+let fill = |venue: &str, qty: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(qty)]);
+let batches = [
+    Serie::from_scalars(root.clone(), [fill("XLON", 1), fill("XNAS", 2)])?,
+    Serie::from_scalars(root.clone(), [fill("XNAS", 3), fill("XNYS", 4)])?,
+];
+let stream = SerieReader::from_chunked(ChunkedSerie::from_series(Some(&root), batches, ArrowCastOptions::new())?)?;
+
+// Sorted on the venue: each partition is handed over as soon as the next one opens.
+let mut sizes = Vec::new();
+for partition in stream.partition_by("venue", PartitionOptions::new().with_clustered(true))? {
+    let (key, rows) = partition?.into_parts();
+    sizes.push((key, rows.len()));
+}
+let venue = |name: &str| Scalar::from_sequence([Scalar::from(name)]);
+assert_eq!(sizes, [(venue("XLON"), 1), (venue("XNAS"), 2), (venue("XNYS"), 1)]);
+```
+
 ## Keep chunks and batches apart
 
 `ChunkedSerie` holds arrays or batches without concatenating: a row is a

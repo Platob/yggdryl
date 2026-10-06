@@ -1793,17 +1793,23 @@ impl Serie {
             .iter()
             .map(|child| child.require_arrow_array())
             .collect::<Result<Vec<_>>>()?;
+        // Each child keeps its field's metadata - an extension name, a code's
+        // identity - so the record lays out as the key root it lands under.
         let arrow_fields: arrow_schema::Fields = arrays
             .iter()
             .zip(&fields)
             .map(|(array, field)| {
-                Arc::new(arrow_schema::Field::new(
-                    field.name(),
-                    array.data_type().clone(),
-                    field.is_nullable(),
+                let projected = field.as_arrow_field_ref()?;
+                Ok(Arc::new(
+                    arrow_schema::Field::new(
+                        field.name(),
+                        array.data_type().clone(),
+                        field.is_nullable(),
+                    )
+                    .with_metadata(projected.metadata().clone()),
                 ))
             })
-            .collect::<Vec<_>>()
+            .collect::<Result<Vec<_>>>()?
             .into();
         let record =
             arrow_array::StructArray::try_new(arrow_fields, arrays, None).map_err(Error::Arrow)?;

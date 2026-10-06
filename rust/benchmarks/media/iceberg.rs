@@ -9,11 +9,12 @@
 //! folder write go through it for every directory name they spell.
 
 use std::hint::black_box;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
-use criterion::{BatchSize, Criterion, Throughput};
+use arrow_array::{Array, Float64Array, Int64Array, RecordBatch, StringArray};
+use criterion::measurement::WallTime;
+use criterion::{BatchSize, BenchmarkGroup, Criterion, Throughput};
 use smol_str::SmolStr;
 use yggdryl::IOBase;
 use yggdryl::holder::Buffer;
@@ -57,12 +58,23 @@ const MERGE_PARTITIONS: usize = bench_profile::corpus(64, 8);
 /// Partitions one parallel commit lays out, and the rows each one holds.
 const COMMIT_PARTITIONS: usize = bench_profile::corpus(32, 8);
 const COMMIT_ROWS_PER_PARTITION: usize = bench_profile::corpus(2_000, 50);
+/// Rows each large commit writes, and the rows of each batch they arrive in;
+/// the smoke corpus is one batch.
+const COMMIT_BIG_ROWS: usize = bench_profile::corpus(2_097_152, 2_048);
+const COMMIT_BIG_BATCH_ROWS: usize = bench_profile::corpus(65_536, 2_048);
+/// The default target, stated so the label holds if the default moves.
+const COMMIT_LARGE_TARGET_BYTES: u64 = 512 << 20;
+/// The cut target: the smoke corpus is a thousandth of the full one, so its
+/// target is too, or its one group would never be cut into two files.
+const COMMIT_SMALL_TARGET_BYTES: u64 = bench_profile::corpus(16 << 20, 16 << 10) as u64;
+/// Venues of the ingest case, one batch each when contiguous.
+const INGEST_PARTITIONS: usize = 64;
 
 /// The filter the pruned plan asks for: one of the eight venue values.
 const PRUNED_FILTER: (&str, &str) = ("venue", "venue-2");
 
 /// The scratch labels the benchmark tables live under, cleaned at exit.
-const SCRATCH_LABELS: [&str; 8] = [
+const SCRATCH_LABELS: [&str; 12] = [
     "files-10",
     "files-200",
     "compact-200",
@@ -71,6 +83,10 @@ const SCRATCH_LABELS: [&str; 8] = [
     "commit-contended",
     "merge-partitions",
     "commit-parallel",
+    "commit-big",
+    "commit-uniform",
+    "commit-skewed",
+    "commit-ingest",
 ];
 
 /// Spell one of the [`VENUES`] partition values.
@@ -972,50 +988,55 @@ fn streamed_commit_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
-/// One partitioned commit on one thread against four: the partition groups
-/// are independent, so their files are written concurrently and the
-/// manifest still lists them in group order.
+/// One partitioned commit on one thread against four and against the
+/// host: the partition groups are independent, so their files are written
+/// concurrently and the manifest still lists them in group order.
 fn parallel_commit_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("commit");
     group.sample_size(10);
     let path = scratch(SCRATCH_LABELS[7]);
     let schema = plan_schema();
     let batch = partitioned_commit_batch(COMMIT_PARTITIONS, COMMIT_ROWS_PER_PARTITION);
+    let created = |parallelism: usize| {
+        let _ = std::fs::remove_dir_all(&path);
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).expect("the scratch directory is addressable"),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column"),
+        )
+        .expect("the scratch table creates");
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_write_parallelism(parallelism)
+                .expect("a positive parallelism is valid"),
+        );
+        table
+    };
+    let append = |table: &mut IcebergTable<LocalFolder>| {
+        table
+            .commit_append(yggdryl::arrow::batch_reader(
+                batch.schema(),
+                [batch.clone()],
+            ))
+            .expect("the partitioned append commits");
+    };
     group.throughput(Throughput::Elements(batch.num_rows() as u64));
-    for parallelism in [1_usize, 4] {
+    let host = IcebergOptions::default_read_parallelism();
+    for (label, parallelism) in [("1", 1_usize), ("4", 4), ("host", host)] {
+        // Proven once outside the timer: one file per partition.
+        let mut proof = created(parallelism);
+        append(&mut proof);
+        assert_eq!(
+            proof.data_files().expect("the table lists its files").len(),
+            COMMIT_PARTITIONS
+        );
         group.bench_function(
-            format!("parallel_partitions_{COMMIT_PARTITIONS}/parallelism-{parallelism}"),
+            format!("parallel_partitions_{COMMIT_PARTITIONS}/parallelism-{label}"),
             |bencher| {
                 bencher.iter_batched(
-                    || {
-                        let _ = std::fs::remove_dir_all(&path);
-                        let mut table = IcebergTable::create(
-                            LocalFolder::new(&path).expect("the scratch directory is addressable"),
-                            FormatVersion::V2,
-                            schema.clone(),
-                            PartitionSpec::identity(1, &schema, &["venue"])
-                                .expect("venue is a schema column"),
-                        )
-                        .expect("the scratch table creates");
-                        table.set_options(
-                            IcebergOptions::new()
-                                .try_with_write_parallelism(parallelism)
-                                .expect("a positive parallelism is valid"),
-                        );
-                        table
-                    },
-                    |mut table| {
-                        table
-                            .commit_append(yggdryl::arrow::batch_reader(
-                                batch.schema(),
-                                [batch.clone()],
-                            ))
-                            .expect("the partitioned append commits");
-                        assert_eq!(
-                            table.data_files().expect("the table lists its files").len(),
-                            COMMIT_PARTITIONS
-                        );
-                    },
+                    || created(parallelism),
+                    |mut table| append(&mut table),
                     BatchSize::PerIteration,
                 );
             },
@@ -1142,6 +1163,270 @@ fn read_benchmarks(criterion: &mut Criterion) {
             bencher.iter(|| scan_rows(black_box(&table)));
         },
     );
+    group.finish();
+}
+
+/// Batches of [`read_schema`] rows, `sizes[b]` rows in batch `b`, numbered
+/// on from one batch to the next; row `r` of batch `b` holds the venue
+/// `venue_of(b, r)`, and `ts` descends within every batch, so a table ordered
+/// by `ts` ascending has to sort every group it is handed.
+fn trade_batches(sizes: &[usize], venue_of: impl Fn(usize, usize) -> usize) -> Vec<RecordBatch> {
+    let arrow = read_schema()
+        .into_arrow_schema()
+        .expect("the schema projects to Arrow");
+    let mut first = 0_usize;
+    sizes
+        .iter()
+        .enumerate()
+        .map(|(index, &rows)| {
+            let start = first;
+            let base = i64::try_from(start).expect("the row fits an id");
+            let ids = (0..rows).map(move |row| base + i64::try_from(row).expect("fits"));
+            let batch = RecordBatch::try_new(
+                arrow.clone(),
+                vec![
+                    Arc::new(Int64Array::from_iter_values(ids.clone())),
+                    #[allow(clippy::cast_precision_loss)]
+                    Arc::new(Float64Array::from_iter_values(
+                        ids.map(|id| id as f64 * 0.01),
+                    )),
+                    Arc::new(StringArray::from_iter_values(
+                        (start..start + rows).map(|row| venue(venue_of(index, row))),
+                    )),
+                    Arc::new(Int64Array::from_iter_values((0..rows).map(|row| {
+                        1_700_000_000_000 + base + i64::try_from(rows - 1 - row).expect("fits")
+                    }))),
+                ],
+            )
+            .expect("the batch matches the schema");
+            first += rows;
+            batch
+        })
+        .collect()
+}
+
+/// A fresh venue-partitioned table of [`read_schema`] at `path`, written
+/// under `options`, its files ordered by `ts` ascending when `sorted`.
+fn trade_table(path: &Path, sorted: bool, options: &IcebergOptions) -> IcebergTable<LocalFolder> {
+    let _ = std::fs::remove_dir_all(path);
+    let schema = read_schema();
+    let root = LocalFolder::new(path).expect("the scratch directory is addressable");
+    let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
+    let mut table = if sorted {
+        IcebergTable::create_sorted(
+            root,
+            FormatVersion::V2,
+            schema,
+            spec,
+            SortOrder {
+                order_id: 1,
+                fields: vec![SortField {
+                    // `ts`, the fourth column `read_schema` numbers.
+                    source_id: 4,
+                    transform: Transform::Identity,
+                    direction: "asc".into(),
+                    null_order: "nulls-last".into(),
+                }],
+            },
+        )
+    } else {
+        IcebergTable::create(root, FormatVersion::V2, schema, spec)
+    }
+    .expect("the scratch table creates");
+    table.set_options(options.clone());
+    table
+}
+
+/// Append `batches` as one commit through the table's own parallelism.
+fn commit_trades(table: &mut IcebergTable<LocalFolder>, batches: &[RecordBatch]) {
+    table
+        .commit_append(yggdryl::arrow::batch_reader(
+            batches[0].schema(),
+            batches.to_vec(),
+        ))
+        .expect("the append commits");
+}
+
+/// The write options of one case: `threads` writers, `target` bytes a file.
+fn trade_options(threads: usize, target: u64) -> IcebergOptions {
+    IcebergOptions::new()
+        .try_with_write_parallelism(threads)
+        .expect("a positive parallelism is valid")
+        .try_with_target_file_size_bytes(target)
+        .expect("a positive target is valid")
+}
+
+/// Bench one commit of `batches` into a fresh table, proving once outside the
+/// timer what every timed run writes: one snapshot of every row, across
+/// exactly `partitions` partitions, in at least `min_files` files.
+#[allow(clippy::too_many_arguments)]
+fn bench_trade_commit(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    name: String,
+    path: &Path,
+    sorted: bool,
+    options: &IcebergOptions,
+    batches: &[RecordBatch],
+    partitions: usize,
+    min_files: usize,
+) {
+    let mut proof = trade_table(path, sorted, options);
+    commit_trades(&mut proof, batches);
+    let files = proof.data_files().expect("the table lists its files");
+    let rows: i64 = files.iter().map(|(file, _)| file.record_count).sum();
+    let expected: usize = batches.iter().map(RecordBatch::num_rows).sum();
+    assert_eq!(usize::try_from(rows), Ok(expected), "{name}: every row");
+    // `Scalar`'s order reads canonical content only, never the
+    // interior-mutable caches a datatype holds, so the key is stable.
+    #[allow(clippy::mutable_key_type)]
+    let tuples: std::collections::BTreeSet<&[Scalar]> = files
+        .iter()
+        .map(|(file, _)| file.partition.as_slice())
+        .collect();
+    assert_eq!(tuples.len(), partitions, "{name}: the partitions written");
+    assert!(
+        files.len() >= min_files,
+        "{name}: expected at least {min_files} data files, got {}",
+        files.len()
+    );
+    assert_eq!(
+        proof
+            .metadata()
+            .expect("current metadata")
+            .snapshots()
+            .len(),
+        1,
+        "{name}: one commit"
+    );
+    drop(proof);
+    group.bench_function(name, |bencher| {
+        bencher.iter_batched(
+            || trade_table(path, sorted, options),
+            |mut table| commit_trades(&mut table, batches),
+            BatchSize::PerIteration,
+        );
+    });
+}
+
+/// Two million rows committed at once, one writer against the host, over
+/// the shapes a partition load takes: one partition (unsorted or sorted, one
+/// file or cut into several), partitions of equal size interleaved row by
+/// row, one partition holding half the rows and arriving last, and many
+/// partitions arriving one batch each - with or without their order claimed -
+/// or every batch spanning all of them.
+fn large_commit_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("commit");
+    group.sample_size(10);
+    group.throughput(Throughput::Elements(COMMIT_BIG_ROWS as u64));
+    let host = IcebergOptions::default_read_parallelism();
+    let parallelisms = [("1", 1_usize), ("host", host)];
+    let even = vec![COMMIT_BIG_BATCH_ROWS; COMMIT_BIG_ROWS / COMMIT_BIG_BATCH_ROWS];
+
+    let path = scratch(SCRATCH_LABELS[8]);
+    let one = trade_batches(&even, |_, _| 0);
+    for (order, sorted) in [("unsorted", false), ("sorted", true)] {
+        for (target, bytes, min_files) in [
+            ("512mb", COMMIT_LARGE_TARGET_BYTES, 1_usize),
+            ("16mb", COMMIT_SMALL_TARGET_BYTES, 2),
+        ] {
+            for (label, threads) in parallelisms {
+                bench_trade_commit(
+                    &mut group,
+                    format!("one_partition_2m/{order}/target-{target}/parallelism-{label}"),
+                    &path,
+                    sorted,
+                    &trade_options(threads, bytes),
+                    &one,
+                    1,
+                    min_files,
+                );
+            }
+        }
+    }
+
+    let path = scratch(SCRATCH_LABELS[9]);
+    for partitions in [8_usize, 32] {
+        let batches = trade_batches(&even, |_, row| row % partitions);
+        for (label, threads) in parallelisms {
+            bench_trade_commit(
+                &mut group,
+                format!("uniform_partitions_2m/{partitions}/parallelism-{label}"),
+                &path,
+                false,
+                &trade_options(threads, COMMIT_LARGE_TARGET_BYTES),
+                &batches,
+                partitions,
+                partitions,
+            );
+        }
+    }
+
+    // `venue-0` holds the second half alone, as the last batch, so it is the
+    // last group to arrive and the heaviest one.
+    let path = scratch(SCRATCH_LABELS[10]);
+    let half = COMMIT_BIG_ROWS / 2;
+    let mut sizes = vec![COMMIT_BIG_BATCH_ROWS.min(half); half.div_ceil(COMMIT_BIG_BATCH_ROWS)];
+    sizes.push(half);
+    let last = sizes.len() - 1;
+    let skewed = trade_batches(
+        &sizes,
+        |index, row| {
+            if index == last { 0 } else { 1 + row % 31 }
+        },
+    );
+    for (label, threads) in parallelisms {
+        bench_trade_commit(
+            &mut group,
+            format!("skewed_partitions_2m/32/parallelism-{label}"),
+            &path,
+            false,
+            &trade_options(threads, COMMIT_LARGE_TARGET_BYTES),
+            &skewed,
+            32,
+            32,
+        );
+    }
+
+    let path = scratch(SCRATCH_LABELS[11]);
+    let sizes = vec![COMMIT_BIG_ROWS / INGEST_PARTITIONS; INGEST_PARTITIONS];
+    let contiguous = trade_batches(&sizes, |index, _| index);
+    let interleaved = trade_batches(&sizes, |_, row| row % INGEST_PARTITIONS);
+    // The contiguous batches in venue order, their schema claiming it: each
+    // partition is written as soon as the next one arrives.
+    let mut declared = contiguous.clone();
+    declared.sort_by_key(|batch| {
+        let venues = batch.column(2).as_any().downcast_ref::<StringArray>();
+        venues.map(|venues| venues.value(0).to_owned())
+    });
+    let claiming = Arc::new(declared[0].schema().as_ref().clone().with_metadata(
+        std::collections::HashMap::from([("SORT:by".to_owned(), r#"["venue"]"#.to_owned())]),
+    ));
+    let declared: Vec<RecordBatch> = declared
+        .into_iter()
+        .map(|batch| {
+            batch
+                .with_schema(Arc::clone(&claiming))
+                .expect("the same columns")
+        })
+        .collect();
+    for (layout, batches) in [
+        ("contiguous", &contiguous),
+        ("contiguous-declared", &declared),
+        ("interleaved", &interleaved),
+    ] {
+        for (label, threads) in parallelisms {
+            bench_trade_commit(
+                &mut group,
+                format!("ingest_64_partitions_2m/{layout}/parallelism-{label}"),
+                &path,
+                false,
+                &trade_options(threads, COMMIT_LARGE_TARGET_BYTES),
+                batches,
+                INGEST_PARTITIONS,
+                INGEST_PARTITIONS,
+            );
+        }
+    }
     group.finish();
 }
 
@@ -1859,6 +2144,7 @@ pub(crate) fn benchmarks(criterion: &mut Criterion) {
     read_benchmarks(criterion);
     contended_commit_benchmarks(criterion);
     parallel_commit_benchmarks(criterion);
+    large_commit_benchmarks(criterion);
     streamed_commit_benchmarks(criterion);
     catalog_resolve_benchmarks(criterion);
 }

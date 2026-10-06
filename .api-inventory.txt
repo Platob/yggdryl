@@ -1214,6 +1214,7 @@ pub struct FileInfos  (a deterministic listing that fuses after its first failur
   impl Debug, Default for FileInfos
 pub trait FileSystem: Send + Sync + Any  (the complete synchronous Arrow filesystem contract)
   fn type_name(&self) -> &str  (backend name used only for safe diagnostics)
+  fn is_thread_bound(&self) -> bool  (whether it answers only on the thread that made it - a JavaScript handler's; native backends answer false)
   fn equals(&self, other: &dyn FileSystem) -> bool  (including configuration and credential scope)
   fn try_equals(&self, other: &dyn FileSystem) -> Result<bool>  (defaults to `equals`; a language adapter overrides it so a handler exception is never reclassified as inequality)
   fn normalize_path(&self, path: &str) -> Result<String>
@@ -2856,6 +2857,7 @@ pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   fn read_scalar(&self, field: Option<&Field>) -> Result<Scalar>
   fn write_scalar(&mut self, value: &Scalar) -> Result<()>
   fn is_io(&self) -> bool
+  fn is_thread_bound(&self) -> bool  (work over the handle stays on the calling thread: an Iceberg table on it reads and writes its files there alone; the fs roles answer their filesystem's, every wrapper forwards)
   pub struct ArrowWriteSession
   pub fn overwrite(options: &RecordOptions) -> Result<Self>
   pub fn append(options: &RecordOptions) -> Result<Self>
@@ -3240,6 +3242,7 @@ pub struct IcebergOptions
   pub const READ_PARALLEL_MIN_FILES_KEY: &'static str = "read.parallel.min-files";
   pub const READ_PARALLEL_MIN_FILE_SIZE_KEY: &'static str = "read.parallel.min-file-size-bytes";
   pub const WRITE_PARALLELISM_KEY: &'static str = "write.parallelism";
+  pub const MAX_OPEN_PARTITIONS_KEY: &'static str = "write.max-open-partitions";
   pub const WRITE_STAGING_KEY: &'static str = "write.staging";
   pub const DATA_MIME_TYPE_KEY: &'static str = "write.format.default";
   pub const DEFAULT_COMMIT_RETRIES: u32 = 4;
@@ -3249,6 +3252,7 @@ pub struct IcebergOptions
   pub const DEFAULT_READ_PARALLEL_MIN_FILES: usize = 2;
   pub const DEFAULT_READ_PARALLEL_MIN_FILE_SIZE_BYTES: u64 = 64 * 1024;
   pub const DEFAULT_DATA_MIME_TYPE: MimeType = MimeType::PARQUET;
+  pub const DEFAULT_MAX_OPEN_PARTITIONS: usize = 128;
   pub fn new() -> Self
   pub fn default_read_parallelism() -> usize
   pub fn commit_retries(&self) -> u32
@@ -3260,6 +3264,8 @@ pub struct IcebergOptions
   pub fn read_parallel_min_file_size_bytes(&self) -> u64
   pub fn write_parallelism(&self) -> usize
   pub const fn write_parallelism_option(&self) -> Option<usize>
+  pub fn max_open_partitions(&self) -> usize  (the partitions a write keeps open while its source arrives in no order it claims and keeps; past it the lowest tuple closes and is written, and one the source returns to is written again as another file of it)
+  pub const fn max_open_partitions_option(&self) -> Option<usize>
   pub const fn write_staging(&self) -> Option<&WriteStaging>
   pub fn set_write_staging(&mut self, staging: WriteStaging) -> Result<()>
   pub fn try_with_write_staging(mut self, staging: WriteStaging) -> Result<Self>
@@ -3283,6 +3289,8 @@ pub struct IcebergOptions
   pub fn with_read_parallel_min_file_size_bytes(mut self, bytes: u64) -> Self
   pub fn set_write_parallelism(&mut self, threads: usize) -> Result<()>
   pub fn try_with_write_parallelism(mut self, threads: usize) -> Result<Self>
+  pub fn set_max_open_partitions(&mut self, partitions: usize) -> Result<()>  (zero refused, naming the key)
+  pub fn try_with_max_open_partitions(mut self, partitions: usize) -> Result<Self>
   pub fn from_metadata(metadata: &TableMetadata) -> Result<Self>
 pub enum WriteStaging
   Off
@@ -6158,6 +6166,24 @@ pub struct ProtocolField<'field>
   impl PartialOrd<ChunkedSerie> for Serie
   impl IntoIterator for &ChunkedSerie  (item Scalar)
   pub struct ChunkedRows<'a>  (the rows, each built as the walk reaches it, chunk after chunk; Iterator<Item = Scalar> with an exact size_hint, FusedIterator)
+
+### yggdryl::serie::partition  [rust/src/serie/partition.rs]  (a stream's rows cut by a key into partitions held apart under the process spill bound, each closed as it completes; the one partitioner every split of a stream by partition runs through - the Iceberg table writer's and the partitioned folder writer's - is crate-private here; re-exported at the root)
+  pub struct PartitionOptions  (how SerieReader::partition_by cuts a stream: the partitions open at once, the threads its batches are cut on, and whether its rows of one key arrive together; Copy, Default every partition open on the host's threads, unclustered; Debug, Eq, Hash)
+  pub const fn new() -> Self
+  pub const fn with_clustered(mut self, clustered: bool) -> Self  (every row of a key arrives before any row of the next: each partition closed as soon as another key arrives, one open at a time, max_open moot; a key returning after its partition closed a new piece of it - pieces, never rows)
+  pub const fn with_max_open(mut self, partitions: usize) -> Self  (at most partitions open, at least one, the lowest keys closed past it)
+  pub const fn with_threads(mut self, threads: usize) -> Self  (at least one; one cuts each batch as it is pulled and reads nothing ahead)
+  pub const fn max_open(&self) -> Option<usize>
+  pub fn threads(&self) -> usize  (as stated, else the host's)
+  pub const fn is_clustered(&self) -> bool
+  pub struct SeriePartition  (one closed partition: its key and its rows, in arrival order, held as the chunks the stream's batches gave it; Clone, Debug)
+  pub const fn key(&self) -> &Scalar  (the record of the key cells, as ChunkedSerie::window_by states a key)
+  pub const fn rows(&self) -> &ChunkedSerie
+  pub fn into_parts(self) -> (Scalar, ChunkedSerie)
+  pub fn into_arrow_reader(&self) -> Result<BatchReader>  (one batch per chunk, buffers shared)
+  pub struct SerieReaderPartitions  (Iterator<Item = crate::arrow::Result<SeriePartition>>, Send; each partition yielded as it closes - past max_open the lowest keys, clustered once another key arrives - and every one still open when the stream ends in ascending key order; fused after its first error)
+  pub fn field(&self) -> &Field  (the record root every partition's rows are held under)
+  pub fn partition_by(self, by: impl IntoSelector, options: PartitionOptions) -> Result<SerieReaderPartitions>  (SerieReader's: by bound once against the root before any pull; each batch landed, keyed and cut on options.threads() threads in order - a run of a key one zero-copy slice, a key otherwise one take - and pushed on the pulling thread, the open partitions settled under the process spill bound after each batch, heaviest first; clustered where stated, or where the root declares an order, proven as its batches land, leading with the terms by projects, uncast, in any order and direction)
 
 ### yggdryl::serie::primitive  [rust/src/serie/primitive.rs]  (one column of fixed-width rows over every Arrow primitive type, and the 35 named leaves)
   pub trait PrimitiveLeaf: ArrowPrimitiveType + Sized + Send + Sync + 'static  (ties one Arrow primitive type to the leaf its column widens to)

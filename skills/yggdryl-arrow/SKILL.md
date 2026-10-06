@@ -70,6 +70,7 @@ cross-language conventions: see the `yggdryl` entry skill.
 | Rows into windows of equal keys, as views | `serie.window_by("venue", sorted)?` -> `SerieWindows`; `for (key, window) in &windows`, each a `WindowSerie`; also on a `WindowSerie` | `serie.window_by("venue", sorted=False)` -> `[(key, WindowSerie)]` | `serie.windowBy('venue', sorted?)` -> `[[key, WindowSerie]]` |
 | The same across chunks, no join | `chunked.window_by("venue", sorted)?` -> `Vec<(Scalar, ChunkedSerie)>` | `chunked.window_by("venue", sorted=False)` | `chunked.windowBy('venue', sorted?)` |
 | A stream's windows, lazily, in order | `reader.window_by("venue", sorted)?` -> `SerieReaderWindows` of `SerieReader` | `reader.window_by(...)` -> `SerieReaderWindows` | `reader.windowBy(...)` -> `SerieReaderWindows` |
+| A stream cut into partitions, each as it closes | `reader.partition_by("venue", PartitionOptions::new().with_max_open(n))?` -> `SerieReaderPartitions` of `SeriePartition` (`key()`, `rows()`) | `reader.partition_by("venue", max_open=None, threads=None, clustered=False)` -> `(Scalar, ChunkedSerie)` pairs | `reader.partitionBy('venue', { maxOpen, threads, clustered })` -> `[Scalar, ChunkedSerie]` pairs |
 | The values constant over a window | `window.static_values()` / `reader.static_values()` -> `Option<FieldScalar>`: `get_key_str("venue")`, `windownum`, `rownum` | `window.static_values` -> struct `Scalar` or `None`, `record["venue"]` | `window.staticValues` -> struct `Scalar` or `null`, `record.get('venue')` |
 | Bytes a column occupies | `serie.memory_size()` | `serie.memory_size()` | `serie.memorySize()` |
 | Column -> Arrow | `into_arrow_array()` (`None` for a run), `require_arrow_array()?`, `into_arrow_batch()?`, `into_arrow_reader()?`, `into_arrow_scalar()?` | `into_arrow_array()`, `into_arrow_batch()`, `into_arrow_table()`, `into_arrow_reader()`, `into_arrow_scalar()`, `into_pandas()`, `into_polars()`, `into_numpy()`; PyCapsule: `pa.array(serie)`, `pa.table(record)` | `intoArrowArray()`, `intoArrowBatch()`, `intoArrowReader()`, `intoArrowScalar()` |
@@ -228,6 +229,15 @@ the record `row`.
     `rownum` (null after a gather) - as `static_values`; a chunked window
     states none, its key and index being its record. A key cell named
     `windownum` or `rownum` is refused wherever a record is stated: alias it.
+17. **Partition a stream instead of holding it.** `reader.partition_by(by,
+    options)` cuts each batch on the stream's threads and yields every
+    partition as soon as it closes - a `ChunkedSerie` of its rows under the
+    spill bound. `max_open` closes the lowest keys past it; a stream sorted
+    on the key, or stated `clustered`, holds one partition at a time and
+    yields them in arrival order; a root that declares an order leading with
+    the key is clustered untold. A key that returns after its partition
+    closed is yielded again as a new piece - pieces, never rows. Iceberg and
+    partitioned-folder writes run through this cut.
 
 ## Pitfalls
 
@@ -280,6 +290,10 @@ the record `row`.
   over a stream whose keys arrive out of order. **Right:** `window_by(..,
   sorted=False)` cuts runs; a stream is never reordered, so window it
   unsorted or hold it (`ChunkedSerie.from_(reader)`) and window that sorted.
+- **Wrong:** `ChunkedSerie.from_(reader)` then `partition_by(keys)` to split
+  a long stream by key: the whole stream is held. **Right:**
+  `reader.partition_by("venue", max_open=64)` yields each partition as it
+  closes; sort the stream on the key (or say `clustered=True`) to hold one.
 - **Wrong:** mutating a child column to edit a nested cell. **Right:** no
   child is handed out mutably; use `set_cell("a.b", i, v)` or replace a whole
   child with `set_child`.

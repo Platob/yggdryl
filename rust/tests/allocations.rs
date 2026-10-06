@@ -5088,6 +5088,64 @@ fn a_chunked_child_is_its_two_vectors_whatever_the_rows_or_chunks() {
 }
 
 #[test]
+fn a_streams_partitions_start_no_worker_beyond_the_batches_it_holds() {
+    // A worker is spawned by the first batch it takes, so three batches
+    // cut on three threads or on eight cost the caller the same lanes: no
+    // lane is opened for a batch the stream does not hold, at either size.
+    use yggdryl::{PartitionOptions, SerieReader};
+
+    let root = DataType::from(
+        StructType::from_fields([
+            DataType::utf8().required_field("venue"),
+            DataType::Int64.required_field("qty"),
+        ])
+        .expect("a record"),
+    )
+    .required_field("fill");
+    let venues = ["XNAS", "XLON", "XPAR"];
+    for rows in [96_usize, 4_096] {
+        let stream = || {
+            let batches: Vec<Serie> = (0..3)
+                .map(|batch| {
+                    let cells = (0..rows / 3).map(|row| {
+                        Scalar::from_sequence(vec![
+                            Scalar::from(venues[(batch + row) % 3]),
+                            Scalar::from(i64::try_from(row).expect("fits")),
+                        ])
+                    });
+                    Serie::from_scalars(root.clone(), cells).expect("a batch")
+                })
+                .collect();
+            SerieReader::from_chunked(
+                ChunkedSerie::from_series(Some(&root), batches, ArrowCastOptions::new())
+                    .expect("chunks"),
+            )
+            .expect("a stream")
+        };
+        let cut = |threads: usize| {
+            let stream = stream();
+            counted(move || {
+                stream
+                    .partition_by("venue", PartitionOptions::new().with_threads(threads))
+                    .expect("a key")
+                    .count()
+            })
+        };
+        // What the first spawn of a process sets up once is no cut's cost.
+        let _ = cut(8);
+        let (three, partitions) = cut(3);
+        assert_eq!(partitions, 3);
+        let (eight, _) = cut(8);
+        // A lane costs its two channels and its thread, about six; a
+        // receive that has to park may cost one, which is timing.
+        assert!(
+            eight.abs_diff(three) <= 2,
+            "{rows} rows: workers beyond the batches held ({three} on three threads, {eight} on eight)"
+        );
+    }
+}
+
+#[test]
 fn a_chunked_cast_compiles_one_plan_and_applies_it_per_chunk() {
     // A cast compiles its plan once and applies it to every chunk, so eight
     // chunks cost six applications more than two - never six compilations.

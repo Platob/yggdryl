@@ -1627,9 +1627,9 @@ function serieArgument(values, label) {
   return new NativeSerie(serieValues(values, undefined, label))
 }
 
-// The key a serie is windowed by: a Selector, a Term, the text of a
-// projection list, or an array of Terms and projection texts - each read by
-// the core's one key rule.
+// The key a serie is windowed or a stream partitioned by: a Selector, a
+// Term, the text of a projection list, or an array of Terms and projection
+// texts - each read by the core's one key rule.
 function windowKey(by, label) {
   if (
     typeof by === 'string' ||
@@ -1689,6 +1689,25 @@ function joinOptionArgs(options, label) {
     if (!JOIN_OPTION_NAMES.has(key)) {
       throw new TypeError(
         `${label} options take coalesce, suffix, build, prune, spill and pushdownKeys, got ${JSON.stringify(key)}`,
+      )
+    }
+  }
+  return options
+}
+
+// How a stream is cut into partitions, one plain object the native door
+// reads once; an absent object or answer is skipped, and a key no
+// partitioning knows is refused.
+const PARTITION_OPTION_NAMES = new Set(['maxOpen', 'threads', 'clustered'])
+function partitionOptionArgs(options, label) {
+  if (options === undefined || options === null) return undefined
+  if (typeof options !== 'object' || Array.isArray(options)) {
+    throw new TypeError(`${label} options must be an object of maxOpen, threads and clustered`)
+  }
+  for (const key of Object.keys(options)) {
+    if (!PARTITION_OPTION_NAMES.has(key)) {
+      throw new TypeError(
+        `${label} options take maxOpen, threads and clustered, got ${JSON.stringify(key)}`,
       )
     }
   }
@@ -2594,6 +2613,7 @@ const nativeSerieReader = Object.freeze({
   next: NativeSerieReader.prototype._nextNative,
   cast: NativeSerieReader.prototype._castNative,
   windowBy: NativeSerieReader.prototype._windowByNative,
+  partitionBy: NativeSerieReader.prototype._partitionByNative,
   intoSorted: NativeSerieReader.prototype._intoSortedNative,
   intoSortBy: NativeSerieReader.prototype._intoSortByNative,
   joinWith: NativeSerieReader.prototype._joinWithNative,
@@ -2604,6 +2624,7 @@ for (const name of [
   '_nextNative',
   '_castNative',
   '_windowByNative',
+  '_partitionByNative',
   '_intoSortedNative',
   '_intoSortByNative',
   '_joinWithNative',
@@ -2663,6 +2684,17 @@ Object.defineProperties(SerieReader.prototype, {
       return Reflect.apply(nativeSerieReader.windowBy, this, [
         windowKey(by, 'SerieReader.windowBy'),
         windowSorted(sorted, 'SerieReader.windowBy'),
+      ])
+    },
+  },
+  // The stream cut by key into partitions, each `[key, rows]` pair yielded
+  // as its partition closes; the reader is consumed.
+  partitionBy: {
+    configurable: true,
+    value(by, options) {
+      return Reflect.apply(nativeSerieReader.partitionBy, this, [
+        windowKey(by, 'SerieReader.partitionBy'),
+        partitionOptionArgs(options, 'SerieReader.partitionBy'),
       ])
     },
   },
@@ -2750,6 +2782,39 @@ Object.defineProperties(SerieReaderWindows.prototype, {
   [Symbol.iterator]: {
     configurable: true,
     value: function windows() {
+      return this
+    },
+  },
+})
+
+// The partitions of a stream, an iterator of their own: each `next` pulls
+// the stream until a partition closes and yields its `[key, rows]` pair, and
+// a failure the stream raises is thrown once, after which it is done.
+const NativeSerieReaderPartitions = binding.SerieReaderPartitions
+const nativeSerieReaderPartitionsNext = NativeSerieReaderPartitions.prototype._nextNative
+delete NativeSerieReaderPartitions.prototype._nextNative
+const SerieReaderPartitions = function () {
+  throw new TypeError(
+    'SerieReaderPartitions is handed out by SerieReader; take one with reader.partitionBy(by, options)',
+  )
+}
+Object.defineProperty(SerieReaderPartitions, 'name', { value: 'SerieReaderPartitions' })
+SerieReaderPartitions.prototype = NativeSerieReaderPartitions.prototype
+Object.defineProperties(SerieReaderPartitions.prototype, {
+  constructor: { configurable: true, value: SerieReaderPartitions, writable: true },
+  next: {
+    configurable: true,
+    writable: true,
+    value() {
+      const partition = Reflect.apply(nativeSerieReaderPartitionsNext, this, [])
+      return partition === null
+        ? { done: true, value: undefined }
+        : { done: false, value: partition }
+    },
+  },
+  [Symbol.iterator]: {
+    configurable: true,
+    value: function partitions() {
       return this
     },
   },
@@ -3313,6 +3378,7 @@ binding.Serie = Serie
 binding.WindowSerie = WindowSerie
 binding.SerieReader = SerieReader
 binding.SerieReaderWindows = SerieReaderWindows
+binding.SerieReaderPartitions = SerieReaderPartitions
 binding.ChunkedSerie = ChunkedSerie
 binding.ArrowCastPlan = ArrowCastPlan
 binding.SerieSerie = SerieSerie

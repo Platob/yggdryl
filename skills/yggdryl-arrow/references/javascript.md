@@ -502,6 +502,31 @@ for (const window of SerieReader.fromSerie(fills).windowBy('venue')) {
 assert.deepEqual(places, [[0, 1], [1, 1], [2, 1]])
 ```
 
+## Cut a stream into partitions
+
+`reader.partitionBy(by, { maxOpen, threads, clustered })` yields
+`[key, rows]` as each partition closes: past `maxOpen` the lowest keys,
+`clustered` once another key arrives, the rest in key order when the stream
+ends; `rows` is a `ChunkedSerie`. Contract:
+[partitions of a stream](https://platob.github.io/yggdryl/arrow/readers/#partitions-of-a-stream).
+
+```javascript
+const assert = require('node:assert/strict')
+const { ChunkedSerie, Field, Serie, SerieReader } = require('yggdryl')
+
+const root = Field.from('fill: struct<venue: utf8 not null, qty: int64 not null> not null')
+const stream = SerieReader.fromChunked(
+  ChunkedSerie.fromSeries(
+    [Serie.fromScalars(root, [['XLON', 1n], ['XNAS', 2n]]), Serie.fromScalars(root, [['XNAS', 3n], ['XNYS', 4n]])],
+    root,
+  ),
+)
+
+// Sorted on the venue: each partition is handed over as soon as the next one opens.
+const sizes = [...stream.partitionBy('venue', { clustered: true })].map(([key, rows]) => [key.asJs(), rows.length])
+assert.deepEqual(sizes, [[['XLON'], 1], [['XNAS'], 2], [['XNYS'], 1]])
+```
+
 ## Keep chunks and batches apart
 
 `ChunkedSerie` holds a vector's `Data` or a table's batches without

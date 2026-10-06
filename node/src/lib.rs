@@ -117,7 +117,9 @@ pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBas
 pub use iomedia::JsBatchReader;
 pub use ioresult::JsIOResult;
 pub use media::options::JsRecordOptions;
-pub use serie::{JsSerie, JsSerieIterator, JsSerieReader, JsSerieReaderWindows};
+pub use serie::{
+    JsSerie, JsSerieIterator, JsSerieReader, JsSerieReaderPartitions, JsSerieReaderWindows,
+};
 pub use spill::JsSpillOptions;
 pub use text::codec::{
     CodecLimitsInput, JsScalar, JsScalarIterator, codec_infer_format, codec_loads_inferred_native,

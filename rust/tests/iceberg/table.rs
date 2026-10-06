@@ -515,8 +515,8 @@ mod iceberg {
         assert_eq!(ordered, [1, 2, 3, 4]);
 
         // Runs at a batch's start, middle and end, then two partitions
-        // interleaved: files follow the groups' first rows, each group's
-        // rows in symbol order.
+        // interleaved: files follow the groups' tuples in order, each
+        // group's rows in symbol order.
         let runs = appended(
             "runs",
             vec![
@@ -528,7 +528,350 @@ mod iceberg {
                 batch(&[6, 7, 8], &["b", "a", "a"], &["W", "V", "W"]),
             ],
         );
-        assert_eq!(runs, [1, 2, 3, 4, 5, 8, 6, 7]);
+        assert_eq!(runs, [7, 8, 6, 1, 2, 3, 4, 5]);
+    }
+
+    /// A source whose schema declares the order its rows keep, and the
+    /// writer reading that declaration to close each partition as the
+    /// stream moves past it.
+    mod clustered {
+        use super::{root, schema};
+        use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
+        use arrow_schema::{ArrowError, SchemaRef};
+        use std::collections::HashMap;
+        use std::sync::{Arc, Mutex};
+        use yggdryl::iceberg::{FormatVersion, IcebergOptions, IcebergTable, PartitionSpec};
+        use yggdryl::local::LocalFolder;
+
+        /// A batch stream that records, as each batch is pulled, how many
+        /// data files the table beneath `data` has written so far.
+        struct Watched {
+            schema: SchemaRef,
+            batches: std::vec::IntoIter<RecordBatch>,
+            data: std::path::PathBuf,
+            seen: Arc<Mutex<Vec<usize>>>,
+        }
+
+        fn data_files(folder: &std::path::Path) -> usize {
+            let Ok(entries) = std::fs::read_dir(folder) else {
+                return 0;
+            };
+            entries
+                .map(|entry| entry.unwrap().path())
+                .map(|path| {
+                    if path.is_dir() {
+                        data_files(&path)
+                    } else {
+                        usize::from(
+                            path.extension()
+                                .is_some_and(|extension| extension == "parquet"),
+                        )
+                    }
+                })
+                .sum()
+        }
+
+        impl Iterator for Watched {
+            type Item = Result<RecordBatch, ArrowError>;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                let batch = self.batches.next()?;
+                self.seen.lock().unwrap().push(data_files(&self.data));
+                Some(Ok(batch))
+            }
+        }
+
+        impl RecordBatchReader for Watched {
+            fn schema(&self) -> SchemaRef {
+                Arc::clone(&self.schema)
+            }
+        }
+
+        /// The arrow schema of the test rows, declaring `order` where given.
+        fn arrow_schema(order: Option<&str>) -> SchemaRef {
+            let plain = schema().into_arrow_schema().unwrap();
+            match order {
+                Some(order) => Arc::new(
+                    plain
+                        .as_ref()
+                        .clone()
+                        .with_metadata(HashMap::from([("SORT:by".to_owned(), order.to_owned())])),
+                ),
+                None => plain,
+            }
+        }
+
+        /// One batch of a row per venue in `venues`, its ids from `first`.
+        fn venue_batch(first: i64, venues: &[&str]) -> RecordBatch {
+            let ids: Vec<i64> = (first..).take(venues.len()).collect();
+            RecordBatch::try_new(
+                arrow_schema(None),
+                vec![
+                    Arc::new(Int64Array::from(ids)),
+                    Arc::new(StringArray::from(vec!["S"; venues.len()])),
+                    Arc::new(StringArray::from(venues.to_vec())),
+                ],
+            )
+            .unwrap()
+        }
+
+        /// Append `batches` - each the venues of its rows, ids counted from
+        /// zero across them - on one thread under a stream declaring
+        /// `order`: the data files written before each pull, the files each
+        /// venue holds, and every id read back.
+        fn appended(
+            label: &str,
+            order: Option<&str>,
+            batches: &[&[&str]],
+        ) -> (Vec<usize>, Vec<(String, usize)>, Vec<i64>) {
+            let path = root(label);
+            let schema = schema();
+            let mut table = IcebergTable::create(
+                LocalFolder::new(&path).unwrap(),
+                FormatVersion::V2,
+                schema.clone(),
+                PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+            )
+            .unwrap();
+            table.set_options(IcebergOptions::new().try_with_write_parallelism(1).unwrap());
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let mut first = 0_i64;
+            let batches: Vec<RecordBatch> = batches
+                .iter()
+                .map(|venues| {
+                    let batch = venue_batch(first, venues);
+                    first += i64::try_from(venues.len()).unwrap();
+                    batch
+                })
+                .collect();
+            let source = Watched {
+                schema: arrow_schema(order),
+                batches: batches.into_iter(),
+                data: path.join("data"),
+                seen: Arc::clone(&seen),
+            };
+            table.commit_append(Box::new(source)).unwrap();
+            let mut files: Vec<(String, usize)> = Vec::new();
+            for (file, _) in table.data_files().unwrap() {
+                let path = file.file_path.to_string().replace('\\', "/");
+                let venue = path
+                    .split('/')
+                    .find_map(|part| part.strip_prefix("venue="))
+                    .unwrap()
+                    .to_owned();
+                match files.iter_mut().find(|(held, _)| *held == venue) {
+                    Some((_, count)) => *count += 1,
+                    None => files.push((venue, 1)),
+                }
+            }
+            files.sort();
+            let mut ids: Vec<i64> = table
+                .scan(None)
+                .unwrap()
+                .flat_map(|batch| {
+                    let batch = batch.unwrap();
+                    let ids = batch.column_by_name("id").unwrap();
+                    ids.as_any()
+                        .downcast_ref::<Int64Array>()
+                        .unwrap()
+                        .values()
+                        .to_vec()
+                })
+                .collect();
+            ids.sort_unstable();
+            let _ = std::fs::remove_dir_all(&path);
+            let seen = seen.lock().unwrap().clone();
+            (seen, files, ids)
+        }
+
+        const IN_ORDER: &[&[&str]] = &[&["A", "A"], &["B", "B"], &["C", "C"], &["D", "D"]];
+
+        #[test]
+        fn a_source_declaring_its_partition_order_writes_each_partition_once_the_next_arrives() {
+            // Declared in venue order and kept, each venue is written while
+            // the source still streams: by the third pull the first venue's
+            // file is on disk, the second one's by the fourth.
+            let (seen, files, ids) = appended("clustered-declared", Some(r#"["venue"]"#), IN_ORDER);
+            assert_eq!(seen, [0, 0, 1, 2]);
+            assert_eq!(
+                files,
+                [
+                    ("A".into(), 1),
+                    ("B".into(), 1),
+                    ("C".into(), 1),
+                    ("D".into(), 1)
+                ]
+            );
+            assert_eq!(ids, (0..8).collect::<Vec<_>>());
+
+            // Descending, and the venue ahead of other keys, cluster as well.
+            let (seen, _, _) = appended(
+                "clustered-descending",
+                Some(r#"["venue desc", "id"]"#),
+                &[&["D", "D"], &["C", "C"], &["B", "B"], &["A", "A"]],
+            );
+            assert_eq!(seen, [0, 0, 1, 2]);
+
+            // Undeclared, or declared on another column first, every
+            // partition stays open until the source ends.
+            let (seen, files, _) = appended("clustered-undeclared", None, IN_ORDER);
+            assert_eq!(seen, [0, 0, 0, 0]);
+            assert_eq!(files.len(), 4);
+            let (seen, _, _) =
+                appended("clustered-other-key", Some(r#"["id", "venue"]"#), IN_ORDER);
+            assert_eq!(seen, [0, 0, 0, 0]);
+        }
+
+        #[test]
+        fn a_claim_the_rows_break_is_dropped_at_the_first_batch_out_of_it() {
+            // Broken in the first batch - a venue's rows not one run - or by
+            // the second running against the claimed direction: dropped
+            // before any partition closed, one file per venue.
+            let (seen, files, ids) = appended(
+                "clustered-broken-at-once",
+                Some(r#"["venue"]"#),
+                &[&["A", "B", "A"], &["B", "B"]],
+            );
+            assert_eq!(seen, [0, 0]);
+            assert_eq!(files, [("A".into(), 1), ("B".into(), 1)]);
+            assert_eq!(ids, (0..5).collect::<Vec<_>>());
+            let (seen, files, _) = appended(
+                "clustered-wrong-direction",
+                Some(r#"["venue desc"]"#),
+                &[&["A", "A"], &["B", "B"], &["C", "C"]],
+            );
+            assert_eq!(seen, [0, 0, 0]);
+            assert_eq!(files, [("A".into(), 1), ("B".into(), 1), ("C".into(), 1)]);
+
+            // Kept long enough to close A, then broken by A returning: A's
+            // rows land in two files, every row read back - a second file,
+            // never a row.
+            let (_, files, ids) = appended(
+                "clustered-broken-late",
+                Some(r#"["venue"]"#),
+                &[&["A", "A"], &["B", "B"], &["A", "A"]],
+            );
+            assert_eq!(files, [("A".into(), 2), ("B".into(), 1)]);
+            assert_eq!(ids, (0..6).collect::<Vec<_>>());
+            // The same rows undeclared hold A open: one file each.
+            let (_, files, _) = appended(
+                "clustered-broken-undeclared",
+                None,
+                &[&["A", "A"], &["B", "B"], &["A", "A"]],
+            );
+            assert_eq!(files, [("A".into(), 1), ("B".into(), 1)]);
+        }
+
+        #[test]
+        fn a_serie_sorted_by_venue_closes_its_partitions_in_the_order_they_arrive() {
+            use yggdryl::{IOMedia, IOMode, Serie};
+
+            // The serie's sort declares the order, proven, and its record
+            // stream carries it: each venue closes as the next arrives, so the
+            // manifest lists them as they arrived, venue descending. The same
+            // rows through the arrow door claim nothing - the shaping onto
+            // the table's schema, which states the table's own order, is no
+            // claim - and close in key order when the source ends.
+            let written = |label: &str, serie: bool| -> Vec<String> {
+                let path = root(label);
+                let schema = schema();
+                let mut table = IcebergTable::create(
+                    LocalFolder::new(&path).unwrap(),
+                    FormatVersion::V2,
+                    schema.clone(),
+                    PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+                )
+                .unwrap();
+                table.set_options(IcebergOptions::new().try_with_write_parallelism(1).unwrap());
+                let rows = Serie::from_arrow_batch(
+                    None,
+                    &venue_batch(0, &["C", "A", "B", "A", "C", "B"]),
+                    yggdryl::ArrowCastOptions::new(),
+                )
+                .unwrap()
+                .into_sort_by("venue desc")
+                .unwrap();
+                let result = if serie {
+                    table
+                        .write_serie(rows.into(), IOMode::Append, None)
+                        .unwrap()
+                } else {
+                    let batch = rows.into_arrow_batch().unwrap();
+                    let plain = arrow_schema(None);
+                    let batch = RecordBatch::try_new(plain, batch.columns().to_vec()).unwrap();
+                    let options = table.record_options().unwrap();
+                    table
+                        .append_arrow_reader(
+                            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+                            &options,
+                        )
+                        .unwrap()
+                };
+                assert_eq!(result.written_rows, 6);
+                let venues = table
+                    .data_files()
+                    .unwrap()
+                    .into_iter()
+                    .map(|(file, _)| {
+                        let path = file.file_path.to_string().replace('\\', "/");
+                        path.split('/')
+                            .find_map(|part| part.strip_prefix("venue="))
+                            .unwrap()
+                            .to_owned()
+                    })
+                    .collect();
+                let _ = std::fs::remove_dir_all(&path);
+                venues
+            };
+            assert_eq!(written("clustered-serie", true), ["C", "B", "A"]);
+            assert_eq!(written("clustered-serie-arrow", false), ["A", "B", "C"]);
+        }
+    }
+
+    #[test]
+    fn a_root_bound_to_its_thread_is_written_and_scanned_there_alone() {
+        // A filesystem that answers only on the thread that made it - a
+        // JavaScript handler's - holds a table asked to write and scan on
+        // four threads: every call reaches it from the calling thread, and
+        // every row lands and reads back.
+        let (filesystem, folder) = crate::counting_filesystem::counted_folder("thread-bound");
+        filesystem.bind_to_current_thread();
+        let schema = schema();
+        let mut table = IcebergTable::create(
+            folder,
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+        )
+        .unwrap();
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_write_parallelism(4)
+                .unwrap()
+                .try_with_read_parallelism(4)
+                .unwrap()
+                .with_read_parallel_min_files(1)
+                .with_read_parallel_min_file_size_bytes(0),
+        );
+        let ids: Vec<i64> = (0..64).collect();
+        let symbols: Vec<&str> = ids.iter().map(|_| "S").collect();
+        let venues: Vec<&str> = ids
+            .iter()
+            .map(|id| ["XNAS", "XLON", "XPAR", "XAMS"][usize::try_from(*id).unwrap() % 4])
+            .collect();
+        table.commit_append(rows(&ids, &symbols, &venues)).unwrap();
+        assert_eq!(table.data_files().unwrap().len(), 4);
+        let read: usize = table
+            .scan(None)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        assert_eq!(read, 64);
+        assert_eq!(
+            filesystem.off_thread_calls(),
+            0,
+            "every call on the calling thread"
+        );
     }
 
     #[test]

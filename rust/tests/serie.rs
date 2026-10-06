@@ -30,6 +30,8 @@ mod mapping;
 mod null;
 #[path = "serie/order.rs"]
 mod order;
+#[path = "serie/partition.rs"]
+mod partition;
 #[path = "serie/primitive.rs"]
 mod primitive;
 #[path = "serie/runend.rs"]

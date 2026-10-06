@@ -27,18 +27,14 @@ use arrow_schema::{
 };
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema, rebuilt_batch};
-use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
+use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
+use crate::expression::{FieldPath, FieldSegment};
 use crate::holder::Holder;
-use crate::media::{Cadence, CommitBuffer, IORecordOptions, RecordOptions};
+use crate::media::{IORecordOptions, RecordOptions};
+use crate::serie::{Closing, Partitions};
 use crate::string::is_text_storage;
-use crate::{DataType, Error, Field, Result, Url};
+use crate::{ChunkedSerie, DataType, Error, Field, Result, Serie, SerieReader, Url};
 use crate::{IOBase, IOMedia, Listing};
-
-/// One partition's `column=value` pairs and the rows that belong to it.
-type PartitionGroup = (Vec<(String, String)>, RecordBatch);
-
-/// One partition's held rows of one cadence, in arrival order.
-type PartitionRows = (Vec<(String, String)>, Vec<RecordBatch>);
 
 pub use super::NULL_PARTITION;
 
@@ -626,50 +622,54 @@ fn partition_values(batch: &RecordBatch, rendering: &Rendering) -> Result<Vec<Ve
     Ok(rendered)
 }
 
-/// Split one batch into the partitions its rows belong to.
+/// One partition's `column=value` pairs and a piece of its rows.
+type PartitionPiece = (Vec<(String, String)>, Serie);
+
+/// One landed batch cut into the partitions its rows belong to, keyed by
+/// the directory text their partition columns spell.
 ///
-/// Groups keep first-appearance order so a write lands in a stable sequence,
-/// and the partition columns are removed from each group: the directory name
-/// carries them, which is the whole point of the layout.
-fn split_by_partition(
-    batch: &RecordBatch,
+/// The batch is cut by the typed values of its partition columns
+/// ([`Serie::partition_by_paths`]) - one zero-copy slice per run of a key,
+/// one take per key otherwise - and each piece's text rendered once, from its
+/// first row; two values spelling one text are one partition. A folder with
+/// no partition columns is one partition, the batch itself.
+fn cut_by_partition(
+    record: Serie,
+    paths: &[FieldPath],
     columns: &[String],
     rendering: &Rendering,
-) -> Result<Vec<PartitionGroup>> {
-    if columns.is_empty() {
-        return Ok(vec![(Vec::new(), batch.clone())]);
+) -> Result<Vec<PartitionPiece>> {
+    if record.is_empty() {
+        return Ok(Vec::new());
     }
-    let rendered = partition_values(batch, rendering)?;
-    let mut order: Vec<Vec<String>> = Vec::new();
-    let mut groups: HashMap<Vec<String>, Vec<u32>> = HashMap::new();
-    for (row, values) in rendered.into_iter().enumerate() {
-        let row = u32::try_from(row).map_err(|_| Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$"),
-            reason: smol_str::SmolStr::new_static(
-                "expected a batch addressable by u32 row indices, got one with more rows than that",
-            ),
-        })?;
-        match groups.get_mut(&values) {
-            Some(rows) => rows.push(row),
-            None => {
-                order.push(values.clone());
-                groups.insert(values, vec![row]);
-            }
+    if paths.is_empty() {
+        return Ok(vec![(Vec::new(), record)]);
+    }
+    record
+        .partition_by_paths(paths)?
+        .into_iter()
+        .map(|(_, piece)| {
+            let first = piece.slice(0, 1)?.into_arrow_batch()?;
+            let values = partition_values(&first, rendering)?
+                .pop()
+                .unwrap_or_default();
+            Ok((columns.iter().cloned().zip(values).collect(), piece))
+        })
+        .collect()
+}
+
+/// One partition's held rows as the batches its leaf is written from, the
+/// partition columns removed: the directory name carries them, which is the
+/// whole point of the layout.
+fn leaf_batches(rows: &ChunkedSerie, pairs: &[(String, String)]) -> Result<Vec<RecordBatch>> {
+    let mut batches = Vec::new();
+    for batch in rows.into_arrow_reader()? {
+        let batch = batch.map_err(crate::arrow::from_reader_error)?;
+        if batch.num_rows() > 0 {
+            batches.push(without_partitions(&batch, pairs)?);
         }
     }
-
-    let mut split = Vec::with_capacity(order.len());
-    for values in order {
-        let rows = groups
-            .remove(&values)
-            .expect("a group that was just ordered");
-        let pairs: Vec<(String, String)> = columns.iter().cloned().zip(values).collect();
-        let taken = arrow_select::take::take_record_batch(batch, &UInt32Array::from(rows))
-            .map_err(Error::Arrow)?;
-        let narrowed = without_partitions(&taken, &pairs)?;
-        split.push((pairs, narrowed));
-    }
-    Ok(split)
+    Ok(batches)
 }
 
 /// Return the relative location of the leaf holding one partition.
@@ -905,9 +905,11 @@ fn part_reader(
 /// leaf it reaches is written once per cadence rather than once per batch:
 /// these encodings rewrite a whole leaf, and appending batch by batch would
 /// rewrite a partition touched by five batches five times. What is held is the
-/// cadence's own rows, kept under the process spill bound ([`CommitBuffer`]),
-/// so an unset cadence publishes every leaf once when the source ends and a
-/// source failing before then publishes nothing of that cadence.
+/// cadence's own rows, split by the one partitioner a split of a stream runs
+/// through ([`Partitions`]) and kept under the process spill bound, so an
+/// unset cadence publishes every leaf once when the source ends, in the
+/// order the partitions' directory texts sort in, and a source failing
+/// before then publishes nothing of that cadence.
 ///
 /// An overwrite replaces what it touches: a partition is replaced - its first
 /// stored leaf rewritten and every other leaf of it cleared - the first time a
@@ -1161,7 +1163,10 @@ impl FolderWriter {
         batches: BatchReader,
         first: bool,
     ) -> Result<()> {
-        for (pairs, held) in self.hold(batches)? {
+        for closed in self.partitions(batches)? {
+            let (pairs, rows) = closed?;
+            let held = leaf_batches(&rows, &pairs)?;
+            drop(rows);
             self.publish(folder, pairs, held)?;
         }
         if first {
@@ -1174,47 +1179,33 @@ impl FolderWriter {
         Ok(())
     }
 
-    /// Split one cadence by partition and hold it under the process spill
-    /// bound, partitions in first-appearance order.
-    fn hold(&self, batches: BatchReader) -> Result<Vec<PartitionRows>> {
-        let mut order: Vec<Vec<(String, String)>> = Vec::new();
-        let mut positions: HashMap<Vec<(String, String)>, usize> = HashMap::new();
-        // The partition of each held piece, in the order the window holds them.
-        let mut owners: Vec<usize> = Vec::new();
-        let mut window: Option<CommitBuffer> = None;
-        let mut renderings = PlanCache::new();
-        for batch in batches {
-            let batch = batch.map_err(crate::arrow::from_reader_error)?;
-            if batch.num_rows() == 0 {
-                continue;
-            }
-            let rendering = renderings.get_or_compile(batch.schema_ref().fields(), || {
-                Ok(Rendering::compile(batch.schema_ref(), &self.columns)?)
-            })?;
-            for (pairs, piece) in split_by_partition(&batch, &self.columns, rendering)? {
-                let owner = match positions.get(&pairs) {
-                    Some(owner) => *owner,
-                    None => {
-                        order.push(pairs.clone());
-                        positions.insert(pairs, order.len() - 1);
-                        order.len() - 1
-                    }
-                };
-                let window =
-                    window.get_or_insert_with(|| CommitBuffer::new(piece.schema(), Cadence::Once));
-                // A once-only window is never full, so a push completes no
-                // cadence; it only spills what passes the bound.
-                let _ = window.push(piece)?;
-                owners.push(owner);
-            }
-        }
-        let mut held: Vec<Vec<RecordBatch>> = vec![Vec::new(); order.len()];
-        if let Some(pieces) = window.as_mut().and_then(CommitBuffer::finish) {
-            for (piece, owner) in pieces.zip(owners) {
-                held[owner].push(piece.map_err(crate::arrow::from_reader_error)?);
-            }
-        }
-        Ok(order.into_iter().zip(held).collect())
+    /// Split one cadence by partition through the one partitioner a split
+    /// of a stream runs through ([`SerieReader::map_landed`] and
+    /// [`Partitions`]): each batch landed under the stream's own root - less
+    /// any order it declares, which the rows need not keep - keyed and cut on
+    /// the write's threads ([`cut_by_partition`]), and every partition held
+    /// under the process spill bound until the cadence ends.
+    fn partitions(&self, batches: BatchReader) -> Result<Partitions<Vec<(String, String)>>> {
+        let schema = batches.schema();
+        let root = Arc::new(
+            field_from_arrow_schema(self.options.name(), schema.as_ref())?
+                .with_metadata_removed("SORT:by"),
+        );
+        let rendering = Rendering::compile(&arrow_schema_from_field(&root)?, &self.columns)?;
+        let columns = self.columns.clone();
+        let paths: Vec<FieldPath> = columns
+            .iter()
+            .map(|column| FieldPath::new([FieldSegment::Field(column.as_str().into())]))
+            .collect();
+        let threads = self
+            .options
+            .num_threads()
+            .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from));
+        let reader = SerieReader::from_arrow_reader(Some(&root), batches, ArrowCastOptions::new())?;
+        let pieces = reader.map_landed(threads, move |record| {
+            Ok(cut_by_partition(record, &paths, &columns, &rendering)?)
+        });
+        Ok(Partitions::new(root, pieces, Closing::Never))
     }
 
     /// Write one partition's held rows of one cadence to its leaf.

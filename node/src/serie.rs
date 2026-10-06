@@ -16,7 +16,8 @@
 //! per chunk of a held chunked column - and, cast into another root, the
 //! reader the core hands back with every record cast by one plan more.
 //! [`JsSerieReaderWindows`] is the core's walk over a stream's windows, one
-//! lazy `SerieReader` per window.
+//! lazy `SerieReader` per window, and [`JsSerieReaderPartitions`] the core's
+//! walk over a stream's partitions, one `[key, rows]` pair as each closes.
 
 use std::borrow::Cow;
 use std::io::Cursor;
@@ -27,20 +28,21 @@ use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions};
 use arrow_ipc::reader::StreamReader;
 use arrow_schema::{Schema, SchemaRef};
 use napi::bindgen_prelude::{
-    Buffer, ClassInstance, Either, Either3, Env, Generator, Reference, Result, Uint8Array,
+    Buffer, ClassInstance, Either, Either3, Env, Generator, Null, Reference, Result, Uint8Array,
 };
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
 use yggdryl::expression::{IntoOrderings as _, Ordering};
 use yggdryl::{
-    ArrowCastOptions, Field as CoreField, FieldPath, FieldScalar, Scalar, Serie, SerieReader,
-    SerieReaderWindows, SerieSource, SerieValue, SortOptions,
+    ArrowCastOptions, Field as CoreField, FieldPath, FieldScalar, PartitionOptions, Scalar, Serie,
+    SerieReader, SerieReaderPartitions, SerieReaderWindows, SerieSource, SerieValue, SortOptions,
 };
 
 use crate::chunked_serie::JsChunkedSerie;
 use crate::datatype::JsDataType;
 use crate::expression::{JsSelector, SelectorInput, selector_from_input};
 use crate::field::JsField;
+use crate::graph::optional;
 use crate::iomedia::{JsBatchReader, encoded};
 use crate::join::{JoinOptionsInput, join_kind, join_options};
 use crate::napi_error;
@@ -1492,6 +1494,27 @@ impl JsSerieReader {
             .map_err(napi_error)
     }
 
+    /// Cut the stream by `by` into partitions, each yielded as soon as it
+    /// closes: `by` bound against the root before any batch is pulled, the
+    /// options read before the reader is taken, so a key text that does not
+    /// parse and an option no partitioning reads leave the reader usable.
+    /// The reader is consumed, a key the root refuses included.
+    #[napi(js_name = "_partitionByNative", skip_typescript)]
+    pub fn partition_by_native(
+        &mut self,
+        by: SelectorInput<'_>,
+        options: Option<PartitionOptionsInput>,
+    ) -> Result<JsSerieReaderPartitions> {
+        let by = selector_from_input(by)?;
+        let options = partition_options(options)?;
+        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        self.taken = true;
+        reader
+            .partition_by(by, options)
+            .map(|inner| JsSerieReaderPartitions { inner })
+            .map_err(napi_error)
+    }
+
     /// The bytes the records this reader holds occupy in memory: the held
     /// records still to yield, or the batch a window's walk stands in; a
     /// stream holds no landed batch between pulls, and a consumed reader
@@ -1677,6 +1700,91 @@ impl JsSerieReaderWindows {
                 .map_err(napi_error)
                 .and_then(JsSerieReader::from_core)
                 .map(Some),
+        }
+    }
+}
+
+/// How `SerieReader.partitionBy` cuts a stream, each slot `undefined` or
+/// `null` where not given, which is its default.
+#[napi(object, object_to_js = false)]
+#[derive(Default)]
+pub struct PartitionOptionsInput {
+    /// At most this many partitions open at once - at least one, `0` read
+    /// as `1` - the partitions of the lowest keys closed past it; every
+    /// partition open until the stream ends by default.
+    #[napi(ts_type = "number | null")]
+    pub max_open: Option<Either<f64, Null>>,
+    /// The threads the batches are cut on - at least one, `0` read as `1`;
+    /// `1` cuts each batch as it is pulled and reads nothing ahead. Every
+    /// thread the host offers by default.
+    #[napi(ts_type = "number | null")]
+    pub threads: Option<Either<f64, Null>>,
+    /// Whether every row of a key arrives before any row of the next, so
+    /// each partition closes as soon as another key arrives; `false` by
+    /// default. A reader whose root declares an order leading with the
+    /// key's terms is clustered untold.
+    #[napi(ts_type = "boolean | null")]
+    pub clustered: Option<Either<bool, Null>>,
+}
+
+/// The core options `options` states, read once: every slot not given
+/// keeps [`PartitionOptions::new`]'s answer.
+fn partition_options(options: Option<PartitionOptionsInput>) -> Result<PartitionOptions> {
+    let options = options.unwrap_or_default();
+    let mut partition = PartitionOptions::new();
+    if let Some(max_open) = optional(options.max_open) {
+        partition = partition.with_max_open(position(max_open, "maxOpen")?);
+    }
+    if let Some(threads) = optional(options.threads) {
+        partition = partition.with_threads(position(threads, "threads")?);
+    }
+    if let Some(clustered) = optional(options.clustered) {
+        partition = partition.with_clustered(clustered);
+    }
+    Ok(partition)
+}
+
+/// The partitions of a stream, one `[key, rows]` pair as each closes: the
+/// key the record of the cells `by` computes, the rows a `ChunkedSerie`
+/// under the partitioned reader's root, in the order they arrived.
+///
+/// Each partition is yielded as soon as it closes. Past `maxOpen` open
+/// partitions, the ones of the lowest keys close, so a stream arriving in
+/// key order closes each once it has been read whole; when the stream ends,
+/// every partition still open closes in ascending key order. A clustered
+/// stream closes each partition as soon as another key arrives, in arrival
+/// order. A key arriving again after its partition closed is yielded again,
+/// as a new piece under the same key. The open partitions are held under the
+/// process spill bound; a yielded partition's rows are the caller's.
+#[napi(js_name = "SerieReaderPartitions")]
+pub struct JsSerieReaderPartitions {
+    inner: SerieReaderPartitions,
+}
+
+#[napi]
+impl JsSerieReaderPartitions {
+    /// The record root every partition's rows are held under: the
+    /// partitioned reader's own.
+    #[napi(getter)]
+    pub fn field(&self) -> JsField {
+        JsField::from_core(self.inner.field().clone())
+    }
+
+    /// Pull the stream until the next partition closes and answer its
+    /// `[key, rows]` pair, or `null` after the last.
+    ///
+    /// The native half of the iteration protocol; the loader wraps it so
+    /// `for...of` yields each pair.
+    #[napi(js_name = "_nextNative", skip_typescript)]
+    pub fn next_native(&mut self) -> Result<Option<(JsScalar, JsChunkedSerie)>> {
+        match self.inner.next() {
+            None => Ok(None),
+            Some(partition) => partition
+                .map(|partition| {
+                    let (key, rows) = partition.into_parts();
+                    Some((JsScalar::from_core(key), JsChunkedSerie::from_core(rows)))
+                })
+                .map_err(napi_error),
         }
     }
 }

@@ -2238,7 +2238,7 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
 
 ### Append and merge
 
-Overwrite replaces - a leaf whole, a partitioned folder or table only the partitions its rows reach and the ones its `where` pins, every other partition's leaves kept, so an overwrite with no row touches nothing outside that scope - append keeps the stored rows, merge updates matching `merge_by` keys and adds the rest. A folder holds each commit's rows split by partition under the process spill bound and writes every leaf it reaches once. Keys use Arrow's row format: null matches null and the last arrival wins. Merge holds only the stored side in memory.
+Overwrite replaces - a leaf whole, a partitioned folder or table only the partitions its rows reach and the ones its `where` pins, every other partition's leaves kept, so an overwrite with no row touches nothing outside that scope - append keeps the stored rows, merge updates matching `merge_by` keys and adds the rest. A folder holds each commit's rows split by partition under the process spill bound - through the one partitioner [`SerieReader::partition_by`](../arrow/readers.md#partitions-of-a-stream) cuts a stream with, each batch cut on the write's threads by the typed values of its partition columns and the directory text rendered once per piece - and writes every leaf it reaches once, in the order the directory texts sort in. Keys use Arrow's row format: null matches null and the last arrival wins. Merge holds only the stored side in memory.
 
 === "Rust"
 
@@ -4104,7 +4104,7 @@ Each open on a bridged filesystem retains one of its backend streams; on a store
 
 ### JavaScript handler protocol
 
-A handler is any object answering sixteen synchronous calls - `typeName`, `equals`, `normalizePath`, `fileInfo`, `list`, the five deletes and `createDir`, `copyFile`, `move`, and the four opens. Sizes, offsets and nanosecond mtimes are `bigint`.
+A handler is any object answering sixteen synchronous calls - `typeName`, `equals`, `normalizePath`, `fileInfo`, `list`, the five deletes and `createDir`, `copyFile`, `move`, and the four opens. Sizes, offsets and nanosecond mtimes are `bigint`. A handler runs on its isolate's thread alone, so a handle bound to one answers `is_thread_bound` and work over it stays on the calling thread: an Iceberg table on it reads and writes its files there, whatever `read.parallelism` and `write.parallelism` state.
 
 === "JavaScript"
 

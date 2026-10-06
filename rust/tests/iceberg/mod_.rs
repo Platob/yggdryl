@@ -9311,9 +9311,13 @@ mod isolation {
 
     use std::sync::{Arc, Mutex};
 
+    use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
     use arrow_array::{
-        Array, ArrayRef, BinaryArray, Int64Array, NullArray, RecordBatch, TimestampMicrosecondArray,
+        Array, ArrayRef, BinaryArray, Int64Array, NullArray, RecordBatch, RecordBatchIterator,
+        RecordBatchReader, StringArray, TimestampMicrosecondArray,
     };
+    use arrow_schema::{ArrowError, SchemaRef};
 
     use super::{
         FormatVersion, IcebergOptions, IcebergTable, PartitionSpec, SortField, SortOrder,
@@ -10078,6 +10082,465 @@ mod isolation {
         let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata_version().unwrap(), version);
         assert!(reopened.current_snapshot().unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// The write parallelism a host leg runs at: the host's, and never one,
+    /// so the threaded path runs on a one-core runner too.
+    fn host_parallelism() -> usize {
+        IcebergOptions::default_read_parallelism().max(2)
+    }
+
+    /// A venue-partitioned table, sorted where `order` says, writing on
+    /// `parallelism` threads and cutting files at `target` where one is given.
+    fn venue_table(
+        label: &str,
+        parallelism: usize,
+        order: Option<SortOrder>,
+        target: Option<u64>,
+    ) -> (std::path::PathBuf, IcebergTable<LocalFolder>) {
+        let path = root(label);
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let folder = LocalFolder::new(&path).unwrap();
+        let mut table = match order {
+            Some(order) => {
+                IcebergTable::create_sorted(folder, FormatVersion::V2, schema, spec, order)
+            }
+            None => IcebergTable::create(folder, FormatVersion::V2, schema, spec),
+        }
+        .unwrap();
+        let mut options = IcebergOptions::new()
+            .try_with_write_parallelism(parallelism)
+            .unwrap();
+        if let Some(target) = target {
+            options = options.try_with_target_file_size_bytes(target).unwrap();
+        }
+        table.set_options(options);
+        (path, table)
+    }
+
+    /// `batches` batches of `rows` rows whose venue cycles through `venues`
+    /// row by row, so every batch spans every venue. A row's id is its
+    /// arrival position in the stream, and its symbol cycles through `symbols`
+    /// two rows at a time, so sort keys repeat within and across batches.
+    fn interleaved(
+        venues: &[&str],
+        symbols: &[&str],
+        batches: usize,
+        rows: usize,
+    ) -> Vec<RecordBatch> {
+        (0..batches)
+            .map(|batch| {
+                let positions = batch * rows..(batch + 1) * rows;
+                let ids: Vec<i64> = positions
+                    .clone()
+                    .map(|position| i64::try_from(position).unwrap())
+                    .collect();
+                let symbols: Vec<Option<&str>> = positions
+                    .clone()
+                    .map(|position| Some(symbols[(position / 2) % symbols.len()]))
+                    .collect();
+                let venues: Vec<Option<&str>> = positions
+                    .map(|position| Some(venues[position % venues.len()]))
+                    .collect();
+                trades(&ids, &symbols, &venues)
+            })
+            .collect()
+    }
+
+    /// Every row of a reader as `(id, symbol, venue)`, in the order it yields them.
+    fn rows_in_order(
+        reader: yggdryl::arrow::BatchReader,
+    ) -> Vec<(i64, Option<String>, Option<String>)> {
+        let mut rows = Vec::new();
+        for batch in reader {
+            let batch = batch.unwrap();
+            let text = |name: &str| {
+                batch
+                    .column_by_name(name)
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap()
+                    .clone()
+            };
+            let ids = batch
+                .column_by_name("id")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap()
+                .clone();
+            let (symbols, venues) = (text("symbol"), text("venue"));
+            for row in 0..batch.num_rows() {
+                let cell = |column: &StringArray| {
+                    (!column.is_null(row)).then(|| column.value(row).to_owned())
+                };
+                rows.push((ids.value(row), cell(&symbols), cell(&venues)));
+            }
+        }
+        rows
+    }
+
+    /// The ids of one venue's rows, in the order `rows` holds them.
+    fn venue_ids(rows: &[(i64, Option<String>, Option<String>)], venue: &str) -> Vec<i64> {
+        rows.iter()
+            .filter(|(_, _, value)| value.as_deref() == Some(venue))
+            .map(|(id, _, _)| *id)
+            .collect()
+    }
+
+    /// The manifest's data files in plan order, each as its path below
+    /// `data/` with the snapshot id and the uuid masked off the name - so the
+    /// partition directory and the file's index are what remains - beside
+    /// its record count.
+    fn file_layout(table: &IcebergTable<LocalFolder>) -> Vec<(String, i64)> {
+        table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, _)| {
+                let path = file.file_path.to_string().replace('\\', "/");
+                let start = path.rfind("/data/").map_or(0, |slash| slash + 1);
+                let below = path[start..].strip_prefix("data/").expect("a data path");
+                let (directory, name) = below.rsplit_once('/').unwrap();
+                let index = name.split_once('-').expect("an indexed name").0;
+                (format!("{directory}/{index}"), file.record_count)
+            })
+            .collect()
+    }
+
+    /// The table's metadata documents, by name.
+    fn metadata_documents(path: &std::path::Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(path.join("metadata"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn a_group_cut_into_files_lists_them_in_one_order_and_numbering_on_any_parallelism() {
+        // Three venues interleaved over six batches, sixty rows each, under a
+        // target small enough to cut each venue into several files. The
+        // cuts are computed from the whole group, so the manifest lists the
+        // groups in tuple order - every one open when the source ends - and
+        // each group's files by their index from 00000 up, whatever thread
+        // wrote which file.
+        let venues = ["v3", "v1", "v2"];
+        let batches = interleaved(&venues, &["a", "b", "c", "d", "e", "f", "g"], 6, 30);
+        let mut legs = Vec::new();
+        for parallelism in [1, host_parallelism()] {
+            let (path, mut table) = venue_table(
+                &format!("isolation-cut-files-{parallelism}"),
+                parallelism,
+                None,
+                Some(128),
+            );
+            table
+                .commit_append(yggdryl::arrow::batch_reader(
+                    batches[0].schema(),
+                    batches.clone(),
+                ))
+                .unwrap();
+            assert_eq!(table.metadata().unwrap().snapshots().len(), 1);
+            let layout = file_layout(&table);
+            let mut seen = Vec::new();
+            for venue in ["v1", "v2", "v3"] {
+                let files: Vec<&(String, i64)> = layout
+                    .iter()
+                    .filter(|(name, _)| name.starts_with(&format!("venue={venue}/")))
+                    .collect();
+                assert!(files.len() >= 3, "{venue}: {layout:?}");
+                for (index, (name, _)) in files.iter().enumerate() {
+                    assert_eq!(*name, format!("venue={venue}/{index:05}"), "{layout:?}");
+                }
+                assert_eq!(files.iter().map(|(_, rows)| rows).sum::<i64>(), 60);
+                seen.extend(files.into_iter().cloned());
+            }
+            assert_eq!(seen, layout, "group order is the tuples': v1, v2, v3");
+            let rows = rows_in_order(table.scan(None).unwrap());
+            for (position, venue) in venues.iter().enumerate() {
+                let expected: Vec<i64> = (0..180).skip(position).step_by(3).collect();
+                assert_eq!(
+                    venue_ids(&rows, venue),
+                    expected,
+                    "{venue} in arrival order"
+                );
+            }
+            legs.push((layout, rows));
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        assert_eq!(legs[0], legs[1]);
+    }
+
+    #[test]
+    fn a_skewed_commit_lists_its_partitions_in_tuple_order_never_by_size() {
+        // Four light venues arrive first, out of their sorted order; the
+        // heaviest venue arrives only in the last batch, and sorts first.
+        // Every partition is open when the source ends, so the manifest
+        // lists them in tuple order: neither a group's size, nor when it
+        // arrived, nor which group finishes last moves it.
+        let light = trades(
+            &[1, 2, 3, 4, 5, 6, 7, 8],
+            &[Some("a"); 8],
+            &[
+                Some("v3"),
+                Some("v1"),
+                Some("v4"),
+                Some("v2"),
+                Some("v1"),
+                Some("v3"),
+                Some("v2"),
+                Some("v4"),
+            ],
+        );
+        let heavy_ids: Vec<i64> = (100..4_100).collect();
+        let mut heavy_venues = vec![Some("v0"); heavy_ids.len()];
+        heavy_venues[0] = Some("v2");
+        let heavy = trades(&heavy_ids, &vec![Some("b"); heavy_ids.len()], &heavy_venues);
+        for parallelism in [1, host_parallelism()] {
+            let (path, mut table) = venue_table(
+                &format!("isolation-skewed-{parallelism}"),
+                parallelism,
+                None,
+                None,
+            );
+            table
+                .commit_append(yggdryl::arrow::batch_reader(
+                    light.schema(),
+                    [light.clone(), light.slice(0, 0), heavy.clone()],
+                ))
+                .unwrap();
+            let layout: Vec<(String, i64)> = file_layout(&table);
+            assert_eq!(
+                layout,
+                [
+                    ("venue=v0/00000".to_owned(), 3_999),
+                    ("venue=v1/00000".to_owned(), 2),
+                    ("venue=v2/00000".to_owned(), 3),
+                    ("venue=v3/00000".to_owned(), 2),
+                    ("venue=v4/00000".to_owned(), 2),
+                ],
+                "parallelism {parallelism}"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    #[test]
+    fn a_sorted_table_sorts_each_group_stably_across_the_batches_of_one_commit() {
+        // Sort keys repeat within and across eight batches, every batch
+        // spanning both venues; ids are arrival positions. Each partition
+        // reads back ordered by symbol, and rows of one symbol keep the
+        // order they arrived in.
+        let order = SortOrder {
+            order_id: 1,
+            fields: vec![SortField {
+                source_id: 2,
+                transform: Transform::Identity,
+                direction: "asc".into(),
+                null_order: "nulls-last".into(),
+            }],
+        };
+        let venues = ["v2", "v1"];
+        let batches = interleaved(&venues, &["d", "b", "c", "a"], 8, 12);
+        let arrived = rows_in_order(yggdryl::arrow::batch_reader(
+            batches[0].schema(),
+            batches.clone(),
+        ));
+        let mut legs = Vec::new();
+        for parallelism in [1, host_parallelism()] {
+            let (path, mut table) = venue_table(
+                &format!("isolation-stable-sort-{parallelism}"),
+                parallelism,
+                Some(order.clone()),
+                None,
+            );
+            table
+                .commit_append(yggdryl::arrow::batch_reader(
+                    batches[0].schema(),
+                    batches.clone(),
+                ))
+                .unwrap();
+            let scanned = rows_in_order(table.scan(None).unwrap());
+            let options = table.record_options().unwrap();
+            let read = rows_in_order(table.read_arrow_reader(&options).unwrap());
+            for venue in venues {
+                let mut expected: Vec<(i64, Option<String>, Option<String>)> = arrived
+                    .iter()
+                    .filter(|(_, _, value)| value.as_deref() == Some(venue))
+                    .cloned()
+                    .collect();
+                expected.sort_by(|left, right| left.1.cmp(&right.1));
+                let ids: Vec<i64> = expected.iter().map(|(id, _, _)| *id).collect();
+                assert_eq!(venue_ids(&scanned, venue), ids, "{venue}, scanned");
+                assert_eq!(venue_ids(&read, venue), ids, "{venue}, read");
+            }
+            assert_eq!(scanned.len(), 96);
+            legs.push(scanned);
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        assert_eq!(legs[0], legs[1]);
+    }
+
+    #[test]
+    fn an_unsorted_table_keeps_each_partitions_rows_in_arrival_order_across_many_batches() {
+        // Sixteen batches of nine rows, each spanning three venues; with no
+        // sort order a partition's file holds its rows as they arrived.
+        let venues = ["v2", "v3", "v1"];
+        let batches = interleaved(&venues, &["z", "y"], 16, 9);
+        let mut legs = Vec::new();
+        for parallelism in [1, host_parallelism()] {
+            let (path, mut table) = venue_table(
+                &format!("isolation-arrival-order-{parallelism}"),
+                parallelism,
+                None,
+                None,
+            );
+            table
+                .commit_append(yggdryl::arrow::batch_reader(
+                    batches[0].schema(),
+                    batches.clone(),
+                ))
+                .unwrap();
+            let scanned = rows_in_order(table.scan(None).unwrap());
+            let options = table.record_options().unwrap();
+            let read = rows_in_order(table.read_arrow_reader(&options).unwrap());
+            for (position, venue) in venues.iter().enumerate() {
+                let expected: Vec<i64> = (0..144).skip(position).step_by(3).collect();
+                assert_eq!(venue_ids(&scanned, venue), expected, "{venue}, scanned");
+                assert_eq!(venue_ids(&read, venue), expected, "{venue}, read");
+            }
+            legs.push(scanned);
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        assert_eq!(legs[0], legs[1]);
+    }
+
+    #[test]
+    fn a_source_failing_mid_stream_fails_the_commit_with_that_batchs_error_and_writes_no_metadata()
+    {
+        // The source fails at its third batch and again at its fourth; the
+        // commit answers the first failure in stream order, whatever was
+        // pulled ahead of it, and leaves the table as it was.
+        let batches = interleaved(&["v1", "v2", "v3"], &["a"], 5, 6);
+        let failing = || -> yggdryl::arrow::BatchReader {
+            Box::new(RecordBatchIterator::new(
+                [
+                    Ok(batches[0].clone()),
+                    Ok(batches[1].clone()),
+                    Err(ArrowError::ComputeError("source failure at batch 2".into())),
+                    Err(ArrowError::ComputeError("source failure at batch 3".into())),
+                    Ok(batches[4].clone()),
+                ],
+                batches[0].schema(),
+            ))
+        };
+        for parallelism in [1, host_parallelism()] {
+            let (path, mut table) = venue_table(
+                &format!("isolation-source-failure-{parallelism}"),
+                parallelism,
+                None,
+                None,
+            );
+            let seed = trades(&[900], &[Some("SEED")], &[Some("v1")]);
+            table
+                .commit_append(yggdryl::arrow::batch_reader(seed.schema(), [seed]))
+                .unwrap();
+            let version = table.metadata_version().unwrap();
+            let files = table.data_files().unwrap();
+            let documents = metadata_documents(&path);
+
+            let options = table
+                .record_options()
+                .unwrap()
+                .with_field(trade_schema())
+                .with_num_threads(parallelism);
+            let errors = [
+                table.commit_append(failing()).unwrap_err().to_string(),
+                table
+                    .append_arrow_reader(failing(), &options)
+                    .unwrap_err()
+                    .to_string(),
+            ];
+            for error in errors {
+                assert!(error.contains("source failure at batch 2"), "{error}");
+                assert!(!error.contains("batch 3"), "{error}");
+            }
+            for table in [
+                table,
+                IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap(),
+            ] {
+                assert_eq!(table.metadata_version().unwrap(), version);
+                assert_eq!(table.metadata().unwrap().snapshots().len(), 1);
+                assert_eq!(table.data_files().unwrap(), files);
+                assert_eq!(
+                    rows_in_order(table.scan(None).unwrap()),
+                    [(900, Some("SEED".to_owned()), Some("v1".to_owned()))]
+                );
+            }
+            assert_eq!(metadata_documents(&path), documents);
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    /// A source of many batches that counts each one pulled from it.
+    struct Pulled {
+        schema: SchemaRef,
+        batches: std::vec::IntoIter<RecordBatch>,
+        pulls: Arc<AtomicUsize>,
+    }
+
+    impl Iterator for Pulled {
+        type Item = std::result::Result<RecordBatch, ArrowError>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let batch = self.batches.next()?;
+            self.pulls.fetch_add(1, AtomicOrdering::SeqCst);
+            Some(Ok(batch))
+        }
+    }
+
+    impl RecordBatchReader for Pulled {
+        fn schema(&self) -> SchemaRef {
+            Arc::clone(&self.schema)
+        }
+    }
+
+    #[test]
+    fn zero_threads_is_refused_at_every_table_write_door_before_a_batch_is_pulled() {
+        let (path, mut table) = venue_table("isolation-zero-threads-pulls", 1, None, None);
+        let batches = interleaved(&["v1", "v2", "v3"], &["a", "b"], 64, 256);
+        let options = table
+            .record_options()
+            .unwrap()
+            .with_field(trade_schema())
+            .with_num_threads(0);
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let source = || -> yggdryl::arrow::BatchReader {
+            Box::new(Pulled {
+                schema: batches[0].schema(),
+                batches: batches.clone().into_iter(),
+                pulls: Arc::clone(&pulls),
+            })
+        };
+        let keyed = options.clone().with_merge_by(["id"]).unwrap();
+        let errors = [
+            table.append_arrow_reader(source(), &options).unwrap_err(),
+            table
+                .overwrite_arrow_reader(source(), &options)
+                .unwrap_err(),
+            table.merge_arrow_reader(source(), &keyed).unwrap_err(),
+        ];
+        for error in errors {
+            let error = error.to_string();
+            assert!(error.contains("$.num_threads"), "{error}");
+        }
+        assert_eq!(pulls.load(AtomicOrdering::SeqCst), 0);
+        assert!(table.current_snapshot().unwrap().is_none());
         let _ = std::fs::remove_dir_all(&path);
     }
 

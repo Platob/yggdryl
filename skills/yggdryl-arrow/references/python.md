@@ -530,6 +530,28 @@ for window in SerieReader.from_serie(fills).window_by("venue"):
 assert places == [(0, 1), (1, 1), (2, 1)]
 ```
 
+## Cut a stream into partitions
+
+`reader.partition_by(by, max_open=None, threads=None, clustered=False)`
+yields `(key, rows)` as each partition closes: past `max_open` the lowest
+keys, `clustered` once another key arrives, the rest in key order when the
+stream ends; `rows` is a `ChunkedSerie`. Contract:
+[partitions of a stream](https://platob.github.io/yggdryl/arrow/readers/#partitions-of-a-stream).
+
+```python
+from yggdryl import ChunkedSerie, Field, Serie, SerieReader
+
+root = Field("fill", "struct<venue: utf8 not null, qty: int64 not null>", nullable=False)
+batches = [[["XLON", 1], ["XNAS", 2]], [["XNAS", 3], ["XNYS", 4]]]
+stream = SerieReader.from_chunked(
+    ChunkedSerie.from_series([Serie.from_scalars(root, rows) for rows in batches], root)
+)
+
+# Sorted on the venue: each partition is handed over as soon as the next one opens.
+sizes = [(key.as_py(), len(rows)) for key, rows in stream.partition_by("venue", clustered=True)]
+assert sizes == [(["XLON"], 1), (["XNAS"], 2), (["XNYS"], 1)]
+```
+
 ## Keep chunks and batches apart
 
 `ChunkedSerie` holds a chunked array or a table without concatenating;

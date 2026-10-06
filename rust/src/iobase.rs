@@ -716,6 +716,16 @@ pub trait IOBase: Send + IOMedia {
         !media.is_tabular() && !media.base().is_directory() && !self.kind().is_container()
     }
 
+    /// Return whether this handle answers only on the thread that made it,
+    /// as a filesystem a JavaScript handler implements does
+    /// ([`crate::fs::FileSystem::is_thread_bound`]): work over it then stays
+    /// on the calling thread - an Iceberg table on it reads and writes its
+    /// files there alone, whatever parallelism it states. Every native
+    /// backend answers on any thread.
+    fn is_thread_bound(&self) -> bool {
+        false
+    }
+
     /// Return whether this resource holds rows and columns.
     ///
     /// *Tabular* names the record surface: what

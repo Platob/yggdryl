@@ -325,6 +325,38 @@ fn partition_by_groups_in_first_occurrence_order_and_slices_sorted_keys_zero_cop
 }
 
 #[test]
+fn partition_by_paths_keys_by_columns_whose_fields_carry_metadata() {
+    // A code rides an extension name and a column may state its own
+    // metadata: the key record keeps both, so it lands under the key root.
+    let mut venue = DataType::utf8().required_field("venue");
+    venue
+        .insert_metadata("FIELD:partition", "true")
+        .expect("metadata");
+    let root = DataType::from(
+        StructType::from_fields([venue, DataType::Ccy.required_field("ccy")]).expect("a record"),
+    )
+    .required_field("trade");
+    let trades = Serie::from_scalars(
+        root,
+        [("XNAS", "USD"), ("XLON", "GBP"), ("XNAS", "USD")].map(|(venue, ccy)| {
+            Scalar::from_sequence([
+                Scalar::from(venue),
+                DataType::Ccy.scalar(Scalar::from(ccy)).expect("a currency"),
+            ])
+        }),
+    )
+    .expect("trades");
+    let paths: Vec<FieldPath> = ["venue", "ccy"]
+        .into_iter()
+        .map(|path| path.parse().expect("a path"))
+        .collect();
+    let groups = trades.partition_by_paths(&paths).expect("groups");
+    assert_eq!(groups.len(), 2);
+    assert_eq!(groups[0].1.len(), 2);
+    assert_eq!(groups[1].1.len(), 1);
+}
+
+#[test]
 fn partition_by_paths_keys_a_record_by_the_run_of_its_cells() {
     let quotes = quotes(&[("XNAS", 1), ("XNYS", 2), ("XNAS", 1), ("XNAS", 3)]);
     let venue: FieldPath = "venue".parse().expect("a path");
