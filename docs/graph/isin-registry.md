@@ -458,13 +458,13 @@ An Iceberg table is the store a pipeline keeps its instruments in: created from 
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { IcebergCatalog, IsinRegistry } = require('yggdryl')
+    const { IsinRegistry, iceberg } = require('yggdryl')
 
     const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'instruments-lake-'))
     try {
-      const catalog = IcebergCatalog.openOrCreate('lake', folder)
-      const namespace = catalog.namespaces.openOrCreate('reference')
-      const table = namespace.tables.openOrCreate('instruments', IsinRegistry.field())
+      const catalog = iceberg.IcebergCatalog.openOrCreate('lake', folder)
+      const namespace = catalog.namespaces().openOrCreate('reference')
+      const table = namespace.tables().openOrCreate('instruments', IsinRegistry.field())
       const registry = IsinRegistry.fromUrl(String(table.url))
       registry.merge({ isin: 'CH0012214059', ric: 'HOLN.S' })
       assert.equal(registry.commit().writtenRows, 1, 'one snapshot holds the registry')
