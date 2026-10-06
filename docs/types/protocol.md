@@ -111,8 +111,8 @@ The view remembers the scheme; the caller writes the bare name.
         mapping through `field.iceberg`, and the validated HTTP values stay attributes on the
         field. The `fix`, `digest`, `partition`, `sort`, `transform` and `python` views add typed
         vocabulary, each answered only by its own view: `id`, `tag`, `tags`, `aliases`,
-        `branches`, `identifiers`, `description`, `nulls`, `directions` and the catalog
-        references on `field.fix`; `is_holder`, `algorithm`, `time`, `unit`, `is_coupled` and
+        `sources`, `add_source`, `has_source`, `identifiers`, `description`, `nulls`,
+        `directions` and the catalog references on `field.fix`; `is_holder`, `algorithm`, `time`, `unit`, `is_coupled` and
         `apply_arrow_batch` on `field.digest`;
         [`apply_arrow_batch`](../holder/index.md#derived-partition-columns) on `field.partition`
         and `field.transform`; `class_metadata` and its three parts on `field.python`. `by` is the
@@ -162,8 +162,8 @@ The view remembers the scheme; the caller writes the bare name.
         `IdentityField`, `PartitionField`, `SortField`, `PythonField`, and fifteen others) are
         Rust-only, and so is the Python-class vocabulary Python binds. JavaScript reads the
         generic property `Map` through `field.iceberg` and `field.python`; `field.fix` is the
-        exception, answering `id`, `tag`, `tags`, `aliases`, `branches`, `identifiers`,
-        `description`, `nulls`, `directions`, `addBranch` and `hasBranch`, and the validated HTTP
+        exception, answering `id`, `tag`, `tags`, `aliases`, `sources`, `identifiers`,
+        `description`, `nulls`, `directions`, `addSource` and `hasSource`, and the validated HTTP
         values stay accessors on the field. The `partition`, `sort`, `digest` and `transform`
         views add `by`: a `string[]` of canonical texts, `null` when absent, assigned as an array
         and removed by `removeBy()` - read only on `transform`, whose `term` is written (a `Term`
@@ -304,7 +304,7 @@ its stored schema derives for every row written to it.
 | --- | --- |
 | `HttpField`, `HttpFieldMut` | `content_type`, `content_length`, `mime_type`, `media_type`, `location` |
 | [`IcebergField`, `IcebergFieldMut`](../media/iceberg.md) | `doc`, `schema_id`, `spec_id`, `transform` |
-| [`FixField`, `FixFieldMut`](../fix/index.md) | `id` (derived from the tag and the name, never stored), `tag` and `tags` (positive only), `aliases`, `branches`, `identifiers` (a component's direct scalar members), `codeset` (the name of the vocabulary the dictionary holds its values under), `description` |
+| [`FixField`, `FixFieldMut`](../fix/index.md) | `id` (derived from the tag and the name, never stored), `tag` and `tags` (positive only), `aliases`, `sources` (the ids of the sources that contributed it, each an entry of the registry's catalog), `identifiers` (a component's direct scalar members), `codeset` (the name of the vocabulary the dictionary holds its values under), `description` |
 | [`DigestField`, `DigestFieldMut`](../hashing.md) | `is_holder`, `algorithm`, `by`, `apply_arrow_batch`, and their setters; `time`, `unit`, `is_coupled` and their setters |
 | `IdentityField` | no typed vocabulary: arbitrary inert text under `IDENTITY:` |
 | [`PartitionField`, `PartitionFieldMut`](#partition-columns) | `by`, `declares_partition`; `set_by`, `set_by_texts`, `remove_by`; [`Field::with_partition_by`](#partition-columns) is what marks the identity columns and materializes the derived ones, each a [transform](../expression/selectors.md#a-selector-declares-a-schema) column applied through `as_transform().apply_arrow_batch` |

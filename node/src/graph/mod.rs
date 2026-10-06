@@ -237,7 +237,7 @@ macro_rules! market_getters {
             }
 
             /// The type of its kind this is, as the `marketdatatype` member's
-            /// stored name; `UNKN` where none, never `null`.
+            /// stored name; `UKNW` where none, never `null`.
             #[napi(getter)]
             pub fn marketdatatype(&self) -> String {
                 ::yggdryl::graph::Market::get_marketdatatype(&self.inner)
@@ -245,7 +245,7 @@ macro_rules! market_getters {
                     .to_owned()
             }
 
-            /// The side, as the `side` member's four-letter code; `UNKN` where
+            /// The side, as the `side` member's four-letter code; `UKNW` where
             /// none, never `null`.
             #[napi(getter)]
             pub fn side(&self) -> String {

@@ -78,7 +78,7 @@ pub fn empty_fxrates() -> &'static FxRates {
 /// Every setter takes `overwrite`. `true` states the value whatever the
 /// element held - `None` included, which clears it; `false` fills: the value
 /// lands only where the element states nothing yet - `None`, a side of
-/// `UNKN`, a currency or unit of none, a type of `UNKN` - and a map fills
+/// `UKNW`, a currency or unit of none, a type of `UKNW` - and a map fills
 /// only the keys it lacks. A value equal to the held one changes nothing
 /// either way.
 ///

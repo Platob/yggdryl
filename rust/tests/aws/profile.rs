@@ -12,7 +12,8 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use yggdryl::aws::{CredentialSource, Credentials, Profile, Session, Sso};
 use yggdryl::internals::aws_profile::{
-    Files, boto_config, ec2_credential_file, expand_user, service_key, split_command, split_words,
+    Files, boto_config, ec2_credential_file, expand_path, expand_vars, is_partial_set, service_key,
+    split_command, split_words,
 };
 
 /// The profile `name` two spelled files hold, read through a session that
@@ -92,7 +93,7 @@ cli_legacy_plugin_path = /opt/plugins
     }
 
     #[test]
-    fn profile_default_and_default_name_one_profile_and_the_later_value_wins() {
+    fn the_later_of_default_and_profile_default_replaces_the_earlier_whole() {
         const CONFIG: &str = "\
 [default]
 region = us-east-1
@@ -103,16 +104,50 @@ region = eu-west-3
 ";
         let default = configured(CONFIG, "default");
         assert_eq!(
-            default.region(),
-            Some("eu-west-3"),
-            "the later spelling's value wins"
+            default.output(),
+            None,
+            "a key only the earlier spelling states is not the profile's, as botocore's build_profile_map reads it"
         );
         assert_eq!(
-            default.output(),
-            Some("json"),
-            "a key only the first spells is kept"
+            default.region(),
+            Some("eu-west-3"),
+            "the later spelling is the profile"
         );
         assert_eq!(Files::parse(Some(CONFIG), None).names(), ["default"]);
+
+        const REVERSED: &str = "\
+[profile default]
+region = eu-west-3
+output = json
+
+[default]
+region = us-east-1
+";
+        let default = configured(REVERSED, "default");
+        assert_eq!(default.output(), None, "whichever spelling comes first");
+        assert_eq!(default.region(), Some("us-east-1"));
+
+        const REPEATED: &str = "\
+[default]
+region = us-east-1
+
+[default]
+output = json
+";
+        let default = configured(REPEATED, "default");
+        assert_eq!(
+            (default.region(), default.output()),
+            (Some("us-east-1"), Some("json")),
+            "one spelling repeated extends the section as any repeated section does"
+        );
+
+        let laid_over = read_profile(CONFIG, "[default]\noutput = text\n", "default")
+            .expect("the default profile");
+        assert_eq!(
+            (laid_over.region(), laid_over.output()),
+            (Some("eu-west-3"), Some("text")),
+            "the credentials file still lays its values over the section that won"
+        );
     }
 
     #[test]
@@ -398,6 +433,73 @@ output = json
             "a value is no table"
         );
         assert_eq!(desk.nested("dynamodb", "anything"), None, "an absent table");
+    }
+
+    #[test]
+    fn a_crlf_file_reads_its_keys_tables_and_pairs_as_an_lf_one() {
+        // Spelled with escapes: the compiler normalizes a line break written
+        // in the source, so only an escaped `\r` reaches the reader.
+        const CONFIG: &str = "# written by Notepad\r\n\
+[profile desk]\r\n\
+region = eu-west-3\r\n\
+; region = us-east-1\r\n\
+s3 =\r\n\
+\x20\x20addressing_style = path\r\n\
+\tpayload_signing_enabled = false\r\n\
+output = json\r\n\
+\r\n\
+[profile \"quoted desk\"]\r\n\
+region = ap-south-1";
+        const CREDENTIALS: &str = "[desk]\r\n\
+aws_access_key_id = AKIACRLF\r\n\
+aws_secret_access_key = crlf-secret\r\n\
+aws_session_token = crlf-token\r\n\
+aws_credential_expiration = 2026-10-03T03:20:00Z\r\n";
+        let crlf = read_profile(CONFIG, CREDENTIALS, "desk").expect("the profile desk");
+        let lf = read_profile(
+            &CONFIG.replace("\r\n", "\n"),
+            &CREDENTIALS.replace("\r\n", "\n"),
+            "desk",
+        )
+        .expect("the profile desk");
+        assert_eq!(crlf.region(), Some("eu-west-3"));
+        assert_eq!(
+            crlf.output(),
+            Some("json"),
+            "an unindented key closes the table"
+        );
+        assert_eq!(crlf.s3("addressing_style"), Some("path"));
+        assert_eq!(crlf.s3("payload_signing_enabled"), Some("false"));
+        assert_eq!(
+            pair(&crlf),
+            Some(
+                Credentials::new("AKIACRLF", "crlf-secret")
+                    .with_session_token("crlf-token")
+                    .with_expiry(UNIX_EPOCH + Duration::from_secs(1_790_997_600))
+            ),
+            "the pair and its expiry carry no carriage return"
+        );
+        assert_eq!(pair(&crlf), pair(&lf));
+        assert_eq!(
+            crlf.iter().collect::<Vec<_>>(),
+            lf.iter().collect::<Vec<_>>(),
+            "every value reads as the LF file's"
+        );
+        assert!(
+            crlf.iter()
+                .all(|(key, value)| !key.ends_with('\r') && !value.ends_with('\r')),
+            "no key or value keeps a carriage return"
+        );
+        assert_eq!(
+            read_profile(CONFIG, CREDENTIALS, "quoted desk")
+                .and_then(|quoted| quoted.region().map(str::to_owned)),
+            Some("ap-south-1".to_owned()),
+            "a quoted header and a last line with no break read too"
+        );
+        assert_eq!(
+            Files::parse(Some(CONFIG), Some(CREDENTIALS)).names(),
+            ["desk", "quoted desk"]
+        );
     }
 
     #[test]
@@ -696,8 +798,20 @@ region = eu-west-3
         let both = read_profile("", CREDENTIALS, "both").and_then(|both| pair(&both));
         assert_eq!(
             both.as_ref().and_then(Credentials::session_token),
-            Some("session-token"),
-            "aws_session_token wins over its older name"
+            Some("security-token"),
+            "aws_security_token is read before aws_session_token, botocore's TOKENS order"
+        );
+        let reordered = read_profile(
+            "",
+            "[both]\naws_access_key_id = AKIABOTH\naws_secret_access_key = both-secret\n\
+             aws_session_token = session-token\naws_security_token = security-token\n",
+            "both",
+        )
+        .and_then(|both| pair(&both));
+        assert_eq!(
+            reordered.as_ref().and_then(Credentials::session_token),
+            Some("security-token"),
+            "the order is the names', not the lines'"
         );
 
         let half = read_profile("", CREDENTIALS, "half").expect("a profile with half a pair");
@@ -757,6 +871,100 @@ region = eu-west-3
         assert!(
             message.contains("configuration file"),
             "the refusal names the file the half set is in: {message}"
+        );
+    }
+
+    #[test]
+    fn half_a_set_in_either_file_is_the_partial_set_refusal_and_no_other_refusal_is() {
+        const CREDENTIALS: &str = "\
+[key_only]
+aws_access_key_id = AKIAHALF
+
+[secret_only]
+aws_secret_access_key = lonely-secret
+
+[security_token_only]
+aws_security_token = lonely-token
+
+[shadowing]
+aws_access_key_id = AKIASHADOW
+
+[expiring]
+aws_access_key_id = ASIADUMPED
+aws_secret_access_key = s
+x_security_token_expires = soon
+";
+        const CONFIG: &str = "\
+[profile shadowing]
+aws_access_key_id = AKIAWHOLE
+aws_secret_access_key = whole-secret
+
+[profile desk]
+aws_secret_access_key = config-secret
+
+[profile roleless]
+role_arn = arn:aws:iam::123456789012:role/lake-reader
+";
+        let read = |name| read_profile(CONFIG, CREDENTIALS, name).expect("the profile");
+        for (name, stated) in [
+            (
+                "key_only",
+                "aws_access_key_id without aws_secret_access_key",
+            ),
+            (
+                "secret_only",
+                "aws_secret_access_key without aws_access_key_id",
+            ),
+            (
+                "security_token_only",
+                "aws_security_token without aws_access_key_id",
+            ),
+        ] {
+            let profile = read(name);
+            let error = profile.credentials().expect_err("half a set is refused");
+            assert!(is_partial_set(&error), "{name}: {error}");
+            let message = error.to_string();
+            assert!(
+                message.contains(&format!("the profile {name}"))
+                    && message.contains("credentials file")
+                    && message.contains(stated),
+                "{name}: the refusal names the profile, the file and the missing key: {message}"
+            );
+            assert!(
+                !message.contains("AKIAHALF") && !message.contains("lonely"),
+                "{name}: no value is quoted: {message}"
+            );
+        }
+
+        let shadowing = read("shadowing")
+            .credentials()
+            .expect_err("half a set in the credentials file is refused");
+        assert!(
+            is_partial_set(&shadowing),
+            "a whole pair in the configuration file does not stand in for the half one written over it: {shadowing}"
+        );
+
+        let desk = read("desk").credentials().expect_err("half a set");
+        assert!(is_partial_set(&desk), "{desk}");
+        assert!(desk.to_string().contains("configuration file"), "{desk}");
+
+        let expiring = read("expiring")
+            .credentials()
+            .expect_err("an expiry nothing reads");
+        assert!(
+            !is_partial_set(&expiring),
+            "a whole set with an unreadable expiry is no partial set: {expiring}"
+        );
+        let roleless = read("roleless")
+            .assumed_role()
+            .expect_err("a role with no source");
+        assert!(!is_partial_set(&roleless), "{roleless}");
+        assert!(
+            !is_partial_set(&yggdryl::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "the profile key_only in the credentials file sets aws_access_key_id without aws_secret_access_key",
+            ))),
+            "only the refusal itself is recognised, never its wording"
         );
     }
 
@@ -938,16 +1146,13 @@ region = eu-west-3
         );
         assert_eq!(source("environment"), Some(CredentialSource::Environment));
 
-        let federated = configured(&config, "federated")
-            .assumed_role()
-            .expect("a well-formed role")
-            .expect("a role");
-        assert_eq!(
-            federated.web_identity_token_file(),
-            Some(Path::new("/var/run/secrets/token")),
-            "a web identity token is a source of its own"
+        assert!(
+            configured(&config, "federated")
+                .assumed_role()
+                .expect("a web identity profile is no refusal")
+                .is_none(),
+            "a profile stating web_identity_token_file is a web identity profile, not a role profile"
         );
-        assert_eq!(federated.source_profile(), None);
 
         assert!(
             configured(&config, "plain")
@@ -956,6 +1161,44 @@ region = eu-west-3
                 .is_none(),
             "a profile without role_arn assumes nothing"
         );
+    }
+
+    #[test]
+    fn a_profile_stating_web_identity_token_file_assumes_no_role_whatever_else_it_states() {
+        let config = format!(
+            "\
+[profile federated]
+role_arn = {ARN}
+web_identity_token_file = /var/run/secrets/token
+role_session_name = pod
+
+[profile sourced]
+role_arn = {ARN}
+web_identity_token_file = /var/run/secrets/token
+source_profile = base
+credential_source = Environment
+
+[profile typo]
+role_arn = lake-reader
+web_identity_token_file = /var/run/secrets/token
+duration_seconds = an hour
+"
+        );
+        for name in ["federated", "sourced", "typo"] {
+            let profile = configured(&config, name);
+            assert!(
+                profile
+                    .assumed_role()
+                    .unwrap_or_else(|error| panic!("{name}: {error}"))
+                    .is_none(),
+                "{name}: botocore's AssumeRoleProvider leaves a web identity profile to the web identity step"
+            );
+            assert_eq!(
+                profile.get("web_identity_token_file"),
+                Some("/var/run/secrets/token"),
+                "{name}: the profile still states its token file for that step"
+            );
+        }
     }
 
     #[test]
@@ -1308,32 +1551,170 @@ mod words {
 mod legacy {
     use super::*;
 
+    /// The variables a test states, and no other.
+    fn variables(
+        pairs: &'static [(&'static str, &'static str)],
+    ) -> impl Fn(&str) -> Option<String> {
+        move |name: &str| {
+            pairs
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| (*value).to_owned())
+        }
+    }
+
+    const NONE: &[(&str, &str)] = &[];
+
     #[test]
-    fn a_leading_tilde_is_the_home_directory_and_nothing_else_is_expanded() {
+    fn a_leading_tilde_is_the_home_directory_and_another_user_s_is_not_guessed() {
         let home = Path::new("/home/trader");
+        let none = variables(NONE);
         assert_eq!(
-            expand_user("~/.aws/config", Some(home)),
+            expand_path("~/.aws/config", &none, Some(home)),
             PathBuf::from("/home/trader/.aws/config")
         );
-        assert_eq!(expand_user("~", Some(home)), PathBuf::from("/home/trader"));
         assert_eq!(
-            expand_user("~trader/.aws/config", Some(home)),
+            expand_path("~", &none, Some(home)),
+            PathBuf::from("/home/trader")
+        );
+        assert_eq!(
+            expand_path("~trader/.aws/config", &none, Some(home)),
             PathBuf::from("~trader/.aws/config"),
             "another user's home is not guessed"
         );
         assert_eq!(
-            expand_user("/etc/aws/config", Some(home)),
+            expand_path("/etc/aws/config", &none, Some(home)),
             PathBuf::from("/etc/aws/config")
         );
         assert_eq!(
-            expand_user("config/~/x", Some(home)),
+            expand_path("config/~/x", &none, Some(home)),
             PathBuf::from("config/~/x"),
             "only a leading tilde"
         );
         assert_eq!(
-            expand_user("~/.aws/config", None),
+            expand_path("~/.aws/config", &none, None),
             PathBuf::from("~/.aws/config"),
             "no home, no expansion"
+        );
+    }
+
+    #[test]
+    fn variables_expand_before_the_home_as_botocore_opens_aws_config_file() {
+        let home = Path::new("/home/trader");
+        let stated = variables(&[
+            ("AWS_TEST_DIR", "/srv/ci"),
+            ("TILDE", "~"),
+            ("HOME", "/home/elsewhere"),
+        ]);
+        assert_eq!(
+            expand_path("$AWS_TEST_DIR/alt/config", &stated, Some(home)),
+            PathBuf::from("/srv/ci/alt/config")
+        );
+        assert_eq!(
+            expand_path("${AWS_TEST_DIR}/alt/config", &stated, Some(home)),
+            PathBuf::from("/srv/ci/alt/config")
+        );
+        assert_eq!(
+            expand_path("$TILDE/.aws/config", &stated, Some(home)),
+            PathBuf::from("/home/trader/.aws/config"),
+            "a variable whose value opens with a tilde is a home, since the home is expanded after"
+        );
+        assert_eq!(
+            expand_path("$HOME/.aws/config", &stated, Some(home)),
+            PathBuf::from("/home/elsewhere/.aws/config"),
+            "$HOME is a variable like any other, read from what the session reads"
+        );
+        assert_eq!(
+            expand_path("$MISSING/config", &stated, Some(home)),
+            PathBuf::from("$MISSING/config"),
+            "an unknown variable is kept as written, as Python keeps it"
+        );
+    }
+
+    #[test]
+    fn posix_variables_expand_as_posixpath_does() {
+        let stated = variables(&[("DIR", "/srv"), ("A_1", "one"), ("NESTED", "$DIR")]);
+        let posix = |text: &str| expand_vars(text, &stated, false);
+        assert_eq!(posix("$DIR/x"), "/srv/x");
+        assert_eq!(posix("${DIR}/x"), "/srv/x");
+        assert_eq!(
+            posix("$A_1-$A_1"),
+            "one-one",
+            "a name is letters, digits and _"
+        );
+        assert_eq!(posix("${DIR"), "${DIR", "an unclosed brace is kept");
+        assert_eq!(posix("${}x"), "${}x", "an empty name is no variable");
+        assert_eq!(posix("$ $/x$"), "$ $/x$", "a dollar naming nothing is kept");
+        assert_eq!(posix("$NESTED"), "$DIR", "a value is never scanned again");
+        assert_eq!(posix("$$DIR"), "$/srv", "POSIX has no $$ escape");
+        assert_eq!(
+            posix("%DIR%/'$DIR'"),
+            "%DIR%/'/srv'",
+            "neither percent signs nor quotes mean anything on POSIX"
+        );
+        assert_eq!(posix("caf\u{e9}/$DIR"), "caf\u{e9}//srv");
+    }
+
+    #[test]
+    fn windows_variables_expand_as_ntpath_does() {
+        let stated = variables(&[
+            ("USERPROFILE", r"C:\Users\trader"),
+            ("DIR", r"D:\ci"),
+            ("WITH-DASH", "dash"),
+        ]);
+        let windows = |text: &str| expand_vars(text, &stated, true);
+        assert_eq!(
+            windows(r"%USERPROFILE%\.aws\work-config"),
+            r"C:\Users\trader\.aws\work-config"
+        );
+        assert_eq!(windows(r"$DIR\config"), r"D:\ci\config");
+        assert_eq!(windows(r"${DIR}\config"), r"D:\ci\config");
+        assert_eq!(windows("$WITH-DASH"), "dash", "a bare name takes a hyphen");
+        assert_eq!(windows("%%DIR%%"), "%DIR%", "%% is one percent sign");
+        assert_eq!(windows("$$DIR"), "$DIR", "$$ is one dollar");
+        assert_eq!(windows("%MISSING%/x"), "%MISSING%/x");
+        assert_eq!(windows("${MISSING}/x"), "${MISSING}/x");
+        assert_eq!(windows("$MISSING/x"), "$MISSING/x");
+        assert_eq!(
+            windows("'$DIR'/$DIR"),
+            r"'$DIR'/D:\ci",
+            "a quoted run is kept, quotes included"
+        );
+        assert_eq!(
+            windows("'$DIR"),
+            "'$DIR",
+            "an unclosed quote keeps the rest"
+        );
+        assert_eq!(
+            windows("%DIR"),
+            "%DIR",
+            "an unclosed percent keeps the rest"
+        );
+        assert_eq!(
+            windows("${DIR $DIR"),
+            "${DIR $DIR",
+            "an unclosed brace keeps the rest"
+        );
+        assert_eq!(windows("$"), "$");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn expand_path_reads_percent_variables_on_windows() {
+        let stated = variables(&[("USERPROFILE", r"C:\Users\trader")]);
+        assert_eq!(
+            expand_path(r"%USERPROFILE%\.aws\work-config", &stated, None),
+            PathBuf::from(r"C:\Users\trader\.aws\work-config")
+        );
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn expand_path_leaves_percent_signs_alone_off_windows() {
+        let stated = variables(&[("USERPROFILE", "/home/trader")]);
+        assert_eq!(
+            expand_path("%USERPROFILE%/.aws/config", &stated, None),
+            PathBuf::from("%USERPROFILE%/.aws/config")
         );
     }
 

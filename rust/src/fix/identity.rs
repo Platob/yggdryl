@@ -7,15 +7,15 @@ use crate::Decimal;
 use crate::graph::Market;
 use crate::graph::facts::OperationEventFacts;
 use crate::{
-    Bbg, DataType, Error, Field, Figi, Forex, IdType, Identifiers, Isin, Mic, Result, Scalar,
-    TimeUnit, Timezone, Value,
+    Bbg, DataType, Error, Field, Figi, Forex, IdType, Identifiers, Isin, Mic, PluginSide, Result,
+    Scalar, TimeUnit, Timezone, Value,
 };
 
 use super::schema::CLOCK_DATATYPE;
 use super::{
     CONVERSATIONID_TAG_NAME, FixRegistry, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
-    MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME,
-    SOURCEURL_TAG_NAME,
+    MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGPLUGINSIDE_TAG_NAME, MSGSESSEVENTID_TAG_NAME,
+    MSGSESSIONID_TAG_NAME, SOURCEURL_TAG_NAME,
 };
 
 /// The standard header and trailer facts every message holds typed, beside
@@ -228,6 +228,12 @@ pub(super) fn integer_of<T: TryFrom<i128> + TryFrom<u128>>(value: &Scalar) -> Op
 /// its own; it remains delivery provenance and is neither the message's
 /// content identity nor its chain code.
 ///
+/// The role of the plugin whose session the line belongs to -
+/// [`Self::msgpluginside`] - is the one fact here no line states: the
+/// codec stamps it from the dialect's source entry it reads under, and a
+/// row-header capture or a row cell named `msgpluginside` is the row's
+/// word over it.
+///
 /// What the *reader* says about the line is not here: the object the line
 /// was read from, the body it was cut from, its place in that object are
 /// [the cells the message carries](super::FixMsg::carried), stated by
@@ -237,6 +243,7 @@ pub(super) fn integer_of<T: TryFrom<i128> + TryFrom<u128>>(value: &Scalar) -> Op
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixCapture {
     msgpluginid: Option<SmolStr>,
+    msgpluginside: PluginSide,
     msgctxid: Option<SmolStr>,
     msgsessionid: Option<SmolStr>,
     msgsesseventid: Option<SmolStr>,
@@ -250,6 +257,20 @@ impl FixCapture {
     #[must_use]
     pub fn msgpluginid(&self) -> Option<&str> {
         self.msgpluginid.as_deref()
+    }
+
+    /// The role of the FIX plugin whose session produced the message:
+    /// `BUYS` for a Buy-Side plugin, `SELL` for a Sell-Side one, `UKNW`
+    /// where the codec read under no source or one stating no role. Never
+    /// absent: the neutral member is a stated value.
+    #[must_use]
+    pub const fn msgpluginside(&self) -> PluginSide {
+        self.msgpluginside
+    }
+
+    /// States the plugin's role, the codec's stamp at build.
+    pub(super) const fn set_msgpluginside(&mut self, side: PluginSide) {
+        self.msgpluginside = side;
     }
 
     /// The message context a bridge handled the line in.
@@ -322,6 +343,8 @@ impl FixCapture {
         let is = |held: (i32, &str)| held.0 == tag;
         if is(MSGPLUGINID_TAG_NAME) {
             text(&self.msgpluginid)
+        } else if is(MSGPLUGINSIDE_TAG_NAME) {
+            Some(Scalar::PluginSide(self.msgpluginside))
         } else if is(MSGCTXID_TAG_NAME) {
             text(&self.msgctxid)
         } else if is(MSGSESSIONID_TAG_NAME) {
@@ -347,6 +370,11 @@ impl FixCapture {
         let is = |held: (i32, &str)| held.0 == tag;
         if is(MSGPLUGINID_TAG_NAME) {
             self.msgpluginid = text();
+        } else if is(MSGPLUGINSIDE_TAG_NAME) {
+            // The member the cell names, in any spelling the enum reads; a
+            // null, or a value naming no member, is the neutral member.
+            self.msgpluginside =
+                <PluginSide as crate::EnumValue>::from_scalar_value(value).unwrap_or_default();
         } else if is(MSGCTXID_TAG_NAME) {
             self.msgctxid = text();
         } else if is(MSGSESSIONID_TAG_NAME) {

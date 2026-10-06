@@ -705,10 +705,160 @@ fn a_content_range_states_the_total_and_a_redirect_states_the_region() {
     assert_eq!(total_of_content_range(None), None);
 
     let region = [("x-amz-bucket-region".to_owned(), "eu-west-3".to_owned())];
-    assert_eq!(bucket_region_of(301, &region), Some("eu-west-3".to_owned()));
+    assert_eq!(
+        bucket_region_of(301, &region, b""),
+        Some(Some("eu-west-3".to_owned()))
+    );
 
     // A 200 is never a redirect, whatever headers it carries.
-    assert_eq!(bucket_region_of(200, &region), None);
+    assert_eq!(bucket_region_of(200, &region, b""), None);
+}
+
+/// Amazon S3's refusal of a request signed for `us-east-1` that reached a
+/// bucket in `eu-west-3`, with `extra` inside the `<Error>`.
+fn malformed(extra: &str) -> String {
+    format!(
+        "<Error><Code>AuthorizationHeaderMalformed</Code><Message>The authorization header \
+         is malformed; the region 'us-east-1' is wrong; expecting 'eu-west-3'</Message>\
+         {extra}</Error>"
+    )
+}
+
+#[test]
+fn a_malformed_authorization_answer_states_the_region_it_expects() {
+    // With no header, the message's region is the one it expects - the last
+    // it quotes - and never the one the request was signed for.
+    assert_eq!(
+        bucket_region_of(400, &[], malformed("").as_bytes()),
+        Some(Some("eu-west-3".to_owned()))
+    );
+    // The document's own `<Region>` is read before the message; a region
+    // that differs from the message's shows which was read.
+    assert_eq!(
+        bucket_region_of(
+            400,
+            &[],
+            malformed("<Region>eu-central-1</Region>").as_bytes()
+        ),
+        Some(Some("eu-central-1".to_owned()))
+    );
+    // And the header before both.
+    let header = [("x-amz-bucket-region".to_owned(), "ap-south-1".to_owned())];
+    assert_eq!(
+        bucket_region_of(
+            400,
+            &header,
+            malformed("<Region>eu-central-1</Region>").as_bytes()
+        ),
+        Some(Some("ap-south-1".to_owned()))
+    );
+}
+
+#[test]
+fn a_redirect_naming_no_region_asks_the_bucket_and_a_refusal_that_is_none_asks_nothing() {
+    let refusal = |code: &str| format!("<Error><Code>{code}</Code><Message>m</Message></Error>");
+    // A refusal that is no redirect, and the bodyless `400` a lapsed key
+    // answers a `HEAD` with, are no redirect at all.
+    assert_eq!(
+        bucket_region_of(403, &[], refusal("AccessDenied").as_bytes()),
+        None
+    );
+    assert_eq!(bucket_region_of(400, &[], b""), None);
+    // A redirect status, a `PermanentRedirect` and a bucket in an opt-in
+    // region reached through another region's host each say the request went
+    // to the wrong region without saying which is right.
+    assert_eq!(bucket_region_of(301, &[], b""), Some(None));
+    assert_eq!(bucket_region_of(302, &[], b""), Some(None));
+    assert_eq!(bucket_region_of(307, &[], b""), Some(None));
+    assert_eq!(
+        bucket_region_of(301, &[], refusal("PermanentRedirect").as_bytes()),
+        Some(None)
+    );
+    assert_eq!(
+        bucket_region_of(
+            400,
+            &[],
+            refusal("IllegalLocationConstraintException").as_bytes()
+        ),
+        Some(None)
+    );
+}
+
+#[test]
+fn a_redirect_moves_a_published_host_to_the_region_and_leaves_a_stated_endpoint_alone() {
+    let signing = |region: &str| Session::new().with_environment(false).with_region(region);
+    let published = client(
+        "s3://lake/part.parquet",
+        sealed().with_session(signing("us-east-1")),
+    );
+    // A store answering a region that is no host label moves nothing: the
+    // region would be spliced into the host the next request is sent to.
+    assert!(published.adopt_region("eu-west-3.example.org#").is_err());
+    assert_eq!(published.region(), "us-east-1");
+    assert_eq!(
+        published.host_header("lake"),
+        "lake.s3.us-east-1.amazonaws.com"
+    );
+
+    published.adopt_region("eu-west-3").expect("a region");
+    assert_eq!(published.region(), "eu-west-3");
+    assert_eq!(
+        published.host_header("lake"),
+        "lake.s3.eu-west-3.amazonaws.com",
+        "the regional host answers the bucket's region with another redirect"
+    );
+    published.adopt_region("cn-north-1").expect("a region");
+    assert_eq!(
+        published.host_header("lake"),
+        "lake.s3.cn-north-1.amazonaws.com.cn",
+        "on the partition the new region belongs to"
+    );
+
+    // The switches the host was chosen by stay switched.
+    let fips = client(
+        "s3://lake/part.parquet",
+        sealed().with_session(signing("us-east-1").with_use_fips_endpoint(true)),
+    );
+    fips.adopt_region("eu-west-3").expect("a region");
+    assert_eq!(
+        fips.host_header("lake"),
+        "lake.s3-fips.eu-west-3.amazonaws.com"
+    );
+
+    // A stated endpoint is where the store is whatever region signs.
+    let stated = client(
+        "s3://lake/part.parquet",
+        sealed()
+            .with_endpoint("http://localhost:9000")
+            .with_region("us-east-1"),
+    );
+    stated.adopt_region("eu-west-3").expect("a region");
+    assert_eq!(stated.region(), "eu-west-3");
+    assert_eq!(stated.host_header("lake"), "localhost:9000");
+}
+
+#[test]
+fn a_region_that_is_no_host_label_is_refused_naming_where_it_came_from_before_a_host_is_built() {
+    let refusal = |options: S3Options| {
+        Client::new(&url("s3://lake/part.parquet"), options)
+            .err()
+            .expect("a refusal")
+            .to_string()
+    };
+    let stated = refusal(sealed().with_region("eu-west-3/"));
+    assert!(stated.contains("eu-west-3/"), "{stated}");
+    assert!(stated.contains("S3 options"), "{stated}");
+    assert!(stated.contains("host label"), "{stated}");
+
+    let ambient = refusal(
+        sealed().with_session(
+            Session::new()
+                .with_environment(false)
+                .with_region("x.example.org#"),
+        ),
+    );
+    assert!(ambient.contains("x.example.org#"), "{ambient}");
+    assert!(ambient.contains("AWS_REGION"), "{ambient}");
 }
 
 #[test]

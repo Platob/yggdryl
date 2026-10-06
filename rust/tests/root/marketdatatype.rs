@@ -123,6 +123,39 @@ fn a_spelling_is_a_stored_name_or_a_name_only_one_set_gives() {
     assert!(MarketDataType::read_code(198).is_err());
 }
 
+/// `UKNW` is the zero member's four-letter spelling, and `UNKN`, the
+/// spelling it was stored under before, names no type at any door, so a
+/// dictionary whose `marketdatatypecodeset` still names it is rebuilt,
+/// never read back as the member; a stored column holds the code `0` and
+/// reads unchanged.
+#[test]
+fn the_retired_spelling_unkn_names_no_type() {
+    assert_eq!(
+        MarketDataType::from_spelling("UKNW"),
+        Some(MarketDataType::Unknown)
+    );
+    assert_eq!(
+        MarketDataType::from_spelling("uknw"),
+        Some(MarketDataType::Unknown)
+    );
+    for spelling in ["UNKN", "unkn", "Unkn"] {
+        assert_eq!(MarketDataType::from_spelling(spelling), None, "{spelling}");
+        let refused = MarketDataType::read(spelling).unwrap_err().to_string();
+        assert!(refused.contains("marketdatatype"), "{refused}");
+        assert!(refused.contains(spelling), "{refused}");
+    }
+    assert!(serde_json::from_str::<MarketDataType>("\"UNKN\"").is_err());
+    assert_eq!(
+        serde_json::from_str::<MarketDataType>("\"UKNW\"").unwrap(),
+        MarketDataType::Unknown
+    );
+    assert!(
+        DataType::MarketDataType
+            .scalar(Scalar::from("UNKN"))
+            .is_err()
+    );
+}
+
 #[test]
 fn a_kind_names_the_fields_that_type_it_first() {
     assert_eq!(MarketDataType::fix_tags(MarketDataKind::Order), [40]);

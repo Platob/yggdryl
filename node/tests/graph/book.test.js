@@ -238,7 +238,7 @@ test('BookEvent: aliveOn reads one side best first, and alive the bids then the 
   assert.ok(book.aliveOn('BUYS').every((entry) => entry instanceof graph.MarketData))
   assert.deepEqual(codes(book.aliveOn('BUYS')), ['10:1:B-2', '10:1:B-1', '10:1:B-M'])
   assert.deepEqual(codes(book.aliveOn(Side.SELL)), ['10:2:A-1'])
-  assert.deepEqual(book.aliveOn('UNKN'), [])
+  assert.deepEqual(book.aliveOn('UKNW'), [])
   assert.deepEqual(codes(book.alive()), [...codes(book.aliveOn('BUYS')), ...codes(book.aliveOn('SELL'))])
   // The deltas are the four orders, in the order applied.
   assert.deepEqual(codes(book.deltas()), ['10:1:B-1', '10:1:B-M', '10:1:B-2', '10:2:A-1'])

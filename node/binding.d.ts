@@ -62,6 +62,8 @@ export {
   type FixDirection,
   type FixEntryView,
   type FixHeaderView,
+  type FixSourceOptions,
+  type FixSourceView,
   type HttpContentRange,
   type HttpCookie,
   type HttpETag,
@@ -498,6 +500,7 @@ export type DataTypeId =
   | 'marketdatakind'
   | 'marketdatatype'
   | 'timeinforce'
+  | 'pluginside'
   | 'unit'
   | 'ric'
   | 'forex'
@@ -618,6 +621,7 @@ interface DataTypeKindById {
   marketdatakind: 'enum'
   marketdatatype: 'enum'
   timeinforce: 'enum'
+  pluginside: 'enum'
   unit: 'code'
   ric: 'code'
   forex: 'code'
@@ -1817,6 +1821,8 @@ export type DtiField = FieldOf<'dti', string>
 export type FisnField = FieldOf<'fisn', string>
 /** FIX TimeInForce(59), how long an order stands, an enum stored as the `uint8` code of its member and crossing as the member's name. */
 export type TimeInForceField = FieldOf<'timeinforce', TimeInForceName>
+/** The role of a FIX plugin, an enum stored as the `uint8` code of its member and crossing as the member's name. */
+export type PluginSideField = FieldOf<'pluginside', PluginSideName>
 /** The unit a quantity is counted in, FIX UnitOfMeasure(996), ASCII held to thirty-two bytes. */
 export type UnitField = FieldOf<'unit', string>
 /** A Refinitiv Identification Code - a ticker and an exchange code - printable ASCII bounded at thirty-two bytes. */
@@ -2124,6 +2130,7 @@ export interface FieldsNamespace {
   marketdatakind(name: string, options?: FieldOptions): MarketDataKindField
   marketdatatype(name: string, options?: FieldOptions): MarketDataTypeField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
+  pluginside(name: string, options?: FieldOptions): PluginSideField
   unit(name: string, options?: FieldOptions): UnitField
   ric(name: string, options?: FieldOptions): RicField
   forex(name: string, options?: FieldOptions): ForexField
@@ -2780,6 +2787,13 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'timeinforce', TimeInForceName, N, O>
+  pluginside<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'pluginside', PluginSideName, N, O>
   unit<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -3615,10 +3629,10 @@ export type StateName = keyof typeof State
  * member's four-letter name under the `uint8` code a `marketdatakind`
  * column stores - an order `ORDR`, a quote `QUOT`, an execution `EXEC`, a
  * trade `TRAD`, a book `BOOK`, the batches `ORDB`, `QUOB`, `EXEB` and
- * `TRDB`, and `UNKN` for a type the dictionary files under none.
+ * `TRDB`, and `UKNW` for a type the dictionary files under none.
  */
 export declare const MarketDataKind: Readonly<{
-  UNKN: 0
+  UKNW: 0
   ACCT: 1
   ALLO: 2
   BOOK: 3
@@ -3656,11 +3670,11 @@ export type MarketDataKindName = keyof typeof MarketDataKind
  * (300-399), the book entry types `BOOK*` (400-499), the trade report types
  * `TRPT*` (500-599), the quote request types `QRQ*` (600-699), the mass
  * cancel scopes `MCX*` (700-799) and the market data request types `MDR*`
- * (800-899), each set closed by its catch-all, and `UNKN` at zero for an
+ * (800-899), each set closed by its catch-all, and `UKNW` at zero for an
  * element that states none.
  */
 export declare const MarketDataType: Readonly<{
-  UNKN: 0
+  UKNW: 0
   ORDMKT: 101
   ORDLIMIT: 102
   ORDSTOP: 103
@@ -3794,7 +3808,7 @@ export type MarketDataTypeName = keyof typeof MarketDataType
 export declare function marketDataTypeFromFix(tag: number, wire: string): MarketDataTypeName | null
 
 /**
- * The FIX field and wire value the member stands for, or `null` for `UNKN`
+ * The FIX field and wire value the member stands for, or `null` for `UKNW`
  * and a catch-all; throws on a name that is no member.
  */
 export declare function marketDataTypeFixCode(
@@ -3803,12 +3817,12 @@ export declare function marketDataTypeFixCode(
 
 /**
  * FIX's `TimeInForce(59)`: how long an order stands, each member's stored
- * name under the `uint8` code a `timeinforce` column stores - `UNKN` at zero
+ * name under the `uint8` code a `timeinforce` column stores - `UKNW` at zero
  * for none stated, the FIX values in wire order, and `OTHER` for a venue's
  * own value no member names.
  */
 export declare const TimeInForce: Readonly<{
-  UNKN: 0
+  UKNW: 0
   DAY: 1
   GTC: 2
   OPG: 3
@@ -3836,19 +3850,43 @@ export declare function timeInForceFromFix(wire: string): TimeInForceName
 
 /**
  * The `TimeInForce(59)` wire value the member stands for, or `null` for
- * `UNKN` and `OTHER`; throws on a name that is no member.
+ * `UKNW` and `OTHER`; throws on a name that is no member.
  */
 export declare function timeInForceFixCode(name: TimeInForceName): string | null
 
 /**
+ * The role of a FIX plugin: the side of the session a dialect's plugin
+ * stands on, each member's stored name under the `uint8` code a
+ * `pluginside` column stores - `UKNW` at zero for a plugin stating no role,
+ * then `BUYS` and `SELL`. A session fact read off a dialect's source entry,
+ * never off a FIX tag, and a separate enum from `Side` though two names are
+ * spelled alike.
+ */
+export declare const PluginSide: Readonly<{
+  UKNW: 0
+  BUYS: 1
+  SELL: 2
+}>
+
+/** The stored name of one plugin side. */
+export type PluginSideName = keyof typeof PluginSide
+
+/**
+ * The role one plugin class names: a `CBlock` root's `type`, whose last
+ * `.`-separated segment, folded, holding `buyside` is `BUYS`, holding
+ * `sellside` is `SELL`, and anything else `UKNW`. Never throws.
+ */
+export declare function pluginSideFromPluginType(pluginType: string): PluginSideName
+
+/**
  * FIX's `Side(54)`: which side of the market a trade took, each member's
- * four-letter code under the `uint8` code a `side` column stores - `UNKN` at
+ * four-letter code under the `uint8` code a `side` column stores - `UKNW` at
  * zero, then the seventeen sides in FIX's own order, so a code is the
  * position of its one-character wire code, and `BOTH` at 99, both sides at
  * once - a book's and a two-sided quote's - which has no wire code.
  */
 export declare const Side: Readonly<{
-  UNKN: 0
+  UKNW: 0
   BUYS: 1
   SELL: 2
   BUYM: 3
@@ -5354,8 +5392,9 @@ export interface Fix {
    * FIX field definitions resolved by identifier, by tag, by name, or by
    * dotted path. One namespace: an identifier is the number `field.fix.id`
    * derives from a tag and a name, a bare number is a tag, and a
-   * dictionary's membership is `FIX:branches` on the field it contributed
-   * to - provenance a caller filters on, never a lookup tier.
+   * dictionary's membership is `FIX:sources` on the field it contributed
+   * to, each id an entry of the dictionary's sources catalog - provenance
+   * a caller filters on, never a lookup tier.
    */
   readonly FixRegistry: typeof FixRegistry
   /**

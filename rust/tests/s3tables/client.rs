@@ -146,10 +146,12 @@ fn a_region_that_is_no_host_label_is_refused_naming_where_it_came_from_with_no_r
             .region_of(bucket.as_ref())
             .expect_err("no host label");
         match &error {
+            // The one region rule every AWS host is built under.
             Error::Parse { target, reason, .. } => {
-                assert_eq!(*target, "s3tables region");
+                assert_eq!(*target, "region");
                 assert!(
-                    reason.contains(source) && reason.contains(region),
+                    reason.contains(&format!("the region {source} states"))
+                        && reason.contains(region),
                     "{reason}"
                 );
             }
@@ -958,7 +960,16 @@ fn every_error_type_is_the_services_refusal_as_it_said_it() {
                 // The type is what precedes the colon the service qualifies
                 // it after.
                 assert_eq!(code.as_str(), error_type);
-                assert_eq!(message.as_str(), said);
+                // The service's own words, then where the request went and
+                // the region it was signed for, with where that came from.
+                assert_eq!(
+                    message.as_str(),
+                    format!(
+                        "{said} (sent to {}, signed for the region us-east-1 the table \
+                         bucket's ARN states)",
+                        fake.endpoint()
+                    )
+                );
                 assert_eq!(path.as_str(), format!("{lake}/trial/events"));
             }
             other => panic!("expected the service's refusal, got {other:?}"),
@@ -967,6 +978,116 @@ fn every_error_type_is_the_services_refusal_as_it_said_it() {
         assert_eq!(fake.request_count(), 1, "{error_type}");
     }
     assert!(fake.table("lake", "trial", "events").is_some());
+}
+
+#[test]
+fn a_key_refused_in_an_opt_in_region_names_the_region_and_the_endpoint_before_the_key() {
+    // AWS answers every key - sound or not - with the code an unknown key
+    // earns in a region the account has not enabled, so the refusal says
+    // where the request went and which region, and that the region is the
+    // first thing to check.
+    let fake = S3TablesFake::start();
+    fake.set_region("eu-central-2");
+    let lake = lake(&fake);
+    assert_eq!(lake.region(), Some("eu-central-2"));
+    let tables = client(&fake);
+    for code in ["UnrecognizedClientException", "InvalidClientTokenId"] {
+        fake.clear_requests();
+        fake.refuse_next(
+            403,
+            code,
+            "The security token included in the request is invalid.",
+            1,
+        );
+        let error = tables.get_table_bucket(&lake).expect_err("a refused key");
+        assert_eq!(refusal(&error), (403, code));
+        let message = error.to_string();
+        for named in [
+            "The security token included in the request is invalid.",
+            fake.endpoint().as_str(),
+            "signed for the region eu-central-2 the table bucket's ARN states",
+            "eu-central-2 is an opt-in region",
+            "check the region before the key",
+        ] {
+            assert!(message.contains(named), "{named}: {message}");
+        }
+        // A key the caller stated is never traded for another: one request.
+        assert_eq!(fake.request_count(), 1, "{code}");
+    }
+
+    // A code that refuses the request rather than its key says nothing of
+    // the region's being enabled.
+    fake.refuse_next(403, "AccessDeniedException", "not yours", 1);
+    let message = tables
+        .get_table_bucket(&lake)
+        .expect_err("a refusal")
+        .to_string();
+    assert!(
+        message.contains("signed for the region eu-central-2") && !message.contains("opt-in"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_key_refused_in_a_region_enabled_by_default_names_the_region_and_no_opt_in() {
+    let fake = S3TablesFake::start();
+    fake.set_region("eu-west-3");
+    let lake = lake(&fake);
+    fake.refuse_next(
+        403,
+        "UnrecognizedClientException",
+        "The security token included in the request is invalid.",
+        1,
+    );
+    let message = client(&fake)
+        .get_table_bucket(&lake)
+        .expect_err("a refused key")
+        .to_string();
+    assert!(
+        message.contains(&format!(
+            "(sent to {}, signed for the region eu-west-3",
+            fake.endpoint()
+        )) && !message.contains("opt-in"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_refusal_names_the_region_where_the_client_or_the_session_stated_it() {
+    let fake = S3TablesFake::start();
+    // A verb that names no table bucket signs for the session's region.
+    fake.refuse_next(403, "ForbiddenException", "not yours", 1);
+    let message = client(&fake)
+        .create_table_bucket("staging")
+        .expect_err("a refusal")
+        .to_string();
+    assert!(
+        message.contains("signed for the region us-east-1 the session states"),
+        "{message}"
+    );
+    // A region stated on the client wins over the bucket's own, and says so.
+    let lake = lake(&fake);
+    fake.refuse_next(403, "ForbiddenException", "not yours", 1);
+    let message = client(&fake)
+        .with_region("us-east-1")
+        .get_table_bucket(&lake)
+        .expect_err("a refusal")
+        .to_string();
+    assert!(
+        message.contains("signed for the region us-east-1 S3Tables::with_region states"),
+        "{message}"
+    );
+    // The service's message is bounded, so what follows it is never cut.
+    let long = "x".repeat(4096);
+    fake.refuse_next(400, "BadRequestException", &long, 1);
+    let message = client(&fake)
+        .get_table_bucket(&lake)
+        .expect_err("a refusal")
+        .to_string();
+    assert!(
+        message.ends_with("signed for the region us-east-1 the table bucket's ARN states)"),
+        "{message}"
+    );
 }
 
 #[test]
@@ -1083,7 +1204,10 @@ fn the_error_type_is_read_wherever_the_protocol_lets_a_service_state_it() {
         .rename_table(&lake, "trial", "events", None, Some("fills"), None)
         .expect_err("a refusal");
     assert_eq!(refusal(&error), (400, "BadRequestException"));
-    assert!(error.to_string().ends_with("no such member"), "{error}");
+    assert!(
+        error.to_string().contains(": no such member (sent to "),
+        "{error}"
+    );
 
     // The header wins over the body when both state one.
     fake.refuse_next(403, "ForbiddenException", "not yours", 1);

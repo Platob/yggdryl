@@ -1144,7 +1144,7 @@ impl FixMsg {
     ///   `SideExecID(1427)`, `SideTradeID(1506)`, `SideTradeReportID(1005)`,
     ///   `OrderID(37)`, `ClOrdID(11)` it states, else the occurrence's own
     ///   digest. An occurrence stating no side, or one no side reads, splits
-    ///   off an execution of side `UNKN` with a warning; an unreadable
+    ///   off an execution of side `UKNW` with a warning; an unreadable
     ///   side is also kept beside the trade as an anomaly, and so is an
     ///   occurrence whose facts make no execution, which splits off none.
     /// - An order's, a quote's or an execution report's report of an
@@ -1344,12 +1344,12 @@ fn trade_sides(trade: &mut FixMsg) -> Vec<FixMsg> {
 
 /// Says that the `index`th occurrence of a trade's `group` states no side -
 /// `stated` the text no side reads, where it states one - so the execution
-/// it splits off is of side `UNKN`: as a warning, and a stated text
+/// it splits off is of side `UKNW`: as a warning, and a stated text
 /// beside the trade as an anomaly too.
 fn unsided(trade: &mut FixMsg, group: &str, index: usize, stated: Option<&str>) {
     let Some(stated) = stated else {
         warned!(
-            "FIX trade side states no Side; its execution's side defaulted to UNKN",
+            "FIX trade side states no Side; its execution's side defaulted to UKNW",
             "Side",
             "{group}[{index}] of trade {:?}",
             trade.get_crosscode()
@@ -1357,7 +1357,7 @@ fn unsided(trade: &mut FixMsg, group: &str, index: usize, stated: Option<&str>) 
         return;
     };
     warned!(
-        "FIX trade side's Side is unreadable; its execution's side defaulted to UNKN",
+        "FIX trade side's Side is unreadable; its execution's side defaulted to UKNW",
         "Side",
         "{group}[{index}] of trade {:?} states {stated:?}",
         trade.get_crosscode()
@@ -1935,7 +1935,7 @@ fn build_book_operation(
         (_, None) => Side::Unknown,
         (_, Some(stated)) => Side::from_spelling(stated).unwrap_or_else(|| {
             warned!(
-                "FIX book entry Side is unreadable; defaulted to UNKN",
+                "FIX book entry Side is unreadable; defaulted to UKNW",
                 "Side",
                 "{} states {stated:?}",
                 at(54, "Side")

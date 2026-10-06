@@ -2,7 +2,7 @@
 
 A closed vocabulary stored as the unsigned integer code of its member - `uint8` where every code fits a byte, `uint16` where one passes 255: the member is the value, the code is what a column holds, and the codes are laid out so the stored integers sort the way the vocabulary is read.
 
-An enum is not a [code](../codes/index.md). A code is an identity over a published registry that stores as the text it is; an enum's members are fixed by the crate - its own lifecycle, or a FIX code set it adopts whole - each already a fact a reader asks about, so it stores as the number that answers by order alone: a [state](state.md) by lifecycle, a [market data kind](marketdatakind.md) by its MsgCat value, a [market data type](marketdatatype.md) by the FIX code set it types, a [side](side.md) and a [time in force](timeinforce.md) in FIX's wire order. The family is the `enum` range of identifier bytes, `0xc0`-`0xcf`.
+An enum is not a [code](../codes/index.md). A code is an identity over a published registry that stores as the text it is; an enum's members are fixed by the crate - its own lifecycle, or a FIX code set it adopts whole - each already a fact a reader asks about, so it stores as the number that answers by order alone: a [state](state.md) by lifecycle, a [market data kind](marketdatakind.md) by its MsgCat value, a [market data type](marketdatatype.md) by the FIX code set it types, a [side](side.md) and a [time in force](timeinforce.md) in FIX's wire order, a [plugin side](pluginside.md) by the role a FIX plugin plays. The family is the `enum` range of identifier bytes, `0xc0`-`0xcf`.
 
 ## Contract
 
@@ -14,7 +14,7 @@ An enum is not a [code](../codes/index.md). A code is an identity over a publish
 | Cached | The Arrow projection of a [`Field`](../field.md), built once per field |
 | Refuses | An integer that is the code of no member, a spelling that names none; `code_width`, `string_parameters` and `bytes_parameters`, which an enum has none of |
 | Errors | Rust `Error::InvalidDataType { kind, reason }` where `kind` is the enum's own name; Python `ValueError`; JavaScript throws |
-| Storage | Arrow `UInt8` (`side`, `marketdatakind`, `timeinforce`) or `UInt16` (`state`, `marketdatatype`) under the enum's own extension name - the width is the leaf's, so a column is one value buffer of one or two bytes a row and a row group's min and max are its first and last member |
+| Storage | Arrow `UInt8` (`side`, `marketdatakind`, `timeinforce`, `pluginside`) or `UInt16` (`state`, `marketdatatype`) under the enum's own extension name - the width is the leaf's, so a column is one value buffer of one or two bytes a row and a row group's min and max are its first and last member |
 | Identity | The extension *name*: `yggdryl.state` over `uint16` is a state, `yggdryl.side` over `uint8` a side, and the same integers under no name are the integers they are |
 | Intake | Any integer column - signed or unsigned, any width, nested as deep as it likes - casts into an enum column, each value read as a code and refused by name where it names no member; a text column is read as spellings |
 | Crossing | Rust holds the member; Python the member of an `enum.IntEnum` built from the core's table; JavaScript the member's name, beside a frozen object mapping every name to its code ([below](#enum-facts-in-the-bindings)) |
@@ -29,6 +29,7 @@ An enum is not a [code](../codes/index.md). A code is an identity over a publish
 | [MarketDataType](marketdatatype.md) | What type of its kind a market element is: FIX's `OrdType(40)`, `QuoteType(537)`, `TrdType(828)`, `MDEntryType(269)`, `TradeReportType(856)`, `QuoteRequestType(303)`, `MassCancelRequestType(530)` and `SubscriptionRequestType(263)` values | 118 | `uint16` | `yggdryl.marketdatatype` |
 | [Side](side.md) | Which side of the market a trade took: FIX `Side(54)`, and both sides at once | 19 | `uint8` | `yggdryl.side` |
 | [TimeInForce](timeinforce.md) | How long an order stands: FIX `TimeInForce(59)` | 15 | `uint8` | `yggdryl.timeinforce` |
+| [PluginSide](pluginside.md) | Which role a FIX plugin plays in its session: Buy-Side, Sell-Side or none stated, read off a CBlock's plugin class | 3 | `uint8` | `yggdryl.pluginside` |
 
 ## A spelling reads by its words
 
@@ -133,26 +134,27 @@ One rule for every enum value a binding answers, wherever it comes from - a `Sca
 ## Edges
 
 - A member of one enum is refused by another's value door, even where its code is one of the other's: a `state`, a `side` and a `marketdatakind` of one code are three values, and their digests differ.
-- The default value of every enum is its code `0` member - `UNKN` for a side, a kind, a type and a time in force, `UNKNOWN` for a state - a stated value rather than an absence; an empty text cell entering an enum column is null ([Cast](../cast.md#empty-text)).
+- The default value of every enum is its code `0` member - `UKNW` for a side, a kind, a type, a time in force and a plugin side, `UNKNOWN` for a state - a stated value rather than an absence; an empty text cell entering an enum column is null ([Cast](../cast.md#empty-text)).
+- The zero member of every four-letter enum - a side, a kind, a type and a time in force - is spelled `UKNW` as of this release, and the retired spelling `UNKN` is no spelling at all: no door reads the old name as an alias. A column of the enum stores the code, so a stored `0` reads as `UKNW` unchanged; what spells the name - a text column cast into the enum, a JSON, YAML or TOML document, a FIX dictionary's `marketdatakindcodeset` - is rebuilt by its writer where it was written under `UNKN`, never reinterpreted ([Store](../../fix/store.md#edges) names the refusal a stale dictionary meets). An identity that digests the name moves with it: a [market element](../../graph/market.md)'s digest feeds its side's stored name and an [operation](../../graph/operation.md)'s the stored name of the time in force it states, so every element whose side is `UKNW` - every book, and a quote, a trade, an order or an execution stating none - and every operation stating a time in force of `UKNW` digests under the new name: its `currhashcode` and `curruuid` move, its `crossuuid` where it states no cross code, and its followers' identities with them, while the stored cross code carries codes, never names, and keeps every chain where it was. A `marketdata` or book table written before this release is therefore rebuilt from its capture, never merged into by `curruuid`; the UKNW spelling alone does not change FIX hashes. The separate digest-label rename from `msgcat` to `marketdatakind` changes each FIX message's `currhashcode` and `curruuid`, and an anonymous split execution's `crosshashcode`; a kind's or a type's `UKNW` feeds no digest.
 - JSON, TOML, YAML and XML write a member as its stored name; the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under the enum's own identifier whatever width the column stores, so a digest does not move with the storage; Iceberg stores it as an `int`.
-- A cast between two enums reads every member again, and refuses a code the target names nothing by: a `state` column's `2001` is no `marketdatakind`.
+- A cast between two enums is refused by name, whatever `safe` says: a member code of one leaf is a value of another vocabulary, so a `state` column never lands as `marketdatakind`, and a `side` column never as `pluginside` though both store `BUYS` as `1` and `SELL` as `2`. An integer column of codes, or a text column of spellings, is the way into an enum column.
 
 ## Commands
 
 === "Rust"
 
     ```bash
-    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test root -- state:: marketdatakind:: marketdatatype:: side:: timeinforce:: datatype_id::
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test root -- state:: marketdatakind:: marketdatatype:: side:: timeinforce:: pluginside:: datatype_id::
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/test_state.py python/tests/test_marketdatakind.py python/tests/test_marketdatatype.py python/tests/test_side.py python/tests/test_timeinforce.py -q
+    python/.venv/bin/python -m pytest python/tests/test_state.py python/tests/test_marketdatakind.py python/tests/test_marketdatatype.py python/tests/test_side.py python/tests/test_timeinforce.py python/tests/test_pluginside.py -q
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/state.test.js node/tests/marketdatakind.test.js node/tests/marketdatatype.test.js node/tests/side.test.js node/tests/timeinforce.test.js
+    node --test node/tests/state.test.js node/tests/marketdatakind.test.js node/tests/marketdatatype.test.js node/tests/side.test.js node/tests/timeinforce.test.js node/tests/pluginside.test.js
     ```

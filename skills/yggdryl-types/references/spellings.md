@@ -140,7 +140,7 @@ The same number rule holds: `large_binary(16)` is refused.
 | --- | --- | --- |
 | `ccy`, `country`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `figi`, `ric`, `forex`, `unit`, `lei`, `bic`, `elf`, `dti`, `fisn` | FIX `Ccy`, `Country`, `Exchange` (= `mic`) | seventeen registered codes, kind `code`; widths 8, 2, 4, 6, 12, 9, 7, 32, 12, 32, 7, 32, 20, 11, 4, 9, 35 - a `ccy` is ISO 4217's three letters or a digital-asset ticker |
 | `forex` | - | the currency pair `CCY/CCY` under `yggdryl.forex`; a value reads `EURUSD`, `EUR-USD`, `EUR.USD`, `EUR_USD` in any case, never a pair of one currency, `XXX` or `XTS` |
-| `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` | - | kind `enum`: each stored as the code of its member - `uint8` for `side`, `marketdatakind`, `timeinforce`, `uint16` for `state`, `marketdatatype` - under `yggdryl.<name>`; a value reads the member's name, its integer code and the vocabulary's other spellings (`side`: FIX's wire code `1`; `marketdatakind`: the MsgCat word `order`) |
+| `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`, `pluginside` | - | kind `enum`: each stored as the code of its member - `uint8` for `side`, `marketdatakind`, `timeinforce`, `pluginside`, `uint16` for `state`, `marketdatatype` - under `yggdryl.<name>`; a value reads the member's name, its integer code and the vocabulary's other spellings (`side`: FIX's wire code `1`; `marketdatakind`: the MsgCat word `order`; `pluginside`: the role's own name, `SellSide`) |
 | `uuid` | - | 16 bytes under `arrow.uuid` |
 | `version` | - | a sixteen-bit `major` and `minor` then an optional text patch (`5.0SP2` is `5.0.2`, `1.0-rc1` keeps `-rc1`), naturally ordered |
 | `mimetype` | `mime` | one `type/subtype` |

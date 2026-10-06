@@ -1602,6 +1602,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "marketdatatype": yggdryl.marketdatatype("value"),
         "forex": yggdryl.forex("value"),
         "timeinforce": yggdryl.timeinforce("value"),
+        "pluginside": yggdryl.pluginside("value"),
         "unit": yggdryl.unit("value"),
         "geometry": yggdryl.geometry("value"),
         "geography": yggdryl.geography("value", "OGC:CRS84", "vincenty"),

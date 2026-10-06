@@ -17,7 +17,7 @@ from yggdryl import DataType, Field, MarketDataKind, Scalar
 def test_the_members_are_the_cores_in_code_order() -> None:
     codes = [int(kind) for kind in MarketDataKind]
     assert codes == list(range(26))
-    assert MarketDataKind.UNKN == 0 and MarketDataKind.BOOK == 3
+    assert MarketDataKind.UKNW == 0 and MarketDataKind.BOOK == 3
     assert MarketDataKind.EXEC == 8 and MarketDataKind.ORDR == 10
     assert MarketDataKind.QUOT == 14 and MarketDataKind.TRAD == 21
     assert MarketDataKind.ORDB == 22 and MarketDataKind.QUOB == 23

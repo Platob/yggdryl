@@ -1067,6 +1067,13 @@ impl IOBase for Holder {
         self.as_io().pstream_bytes(position, batch_size)
     }
 
+    fn owned_stream_bytes(
+        &self,
+        position: u64,
+    ) -> Result<Option<Box<dyn std::io::Read + Send + 'static>>> {
+        self.as_io().owned_stream_bytes(position)
+    }
+
     fn read_all_bytes(&self) -> Result<Vec<u8>> {
         self.as_io().read_all_bytes()
     }

@@ -21,6 +21,26 @@ pub(crate) fn parse_error(xml: &[u8]) -> Option<ErrorBody> {
     Some(error_body(&root))
 }
 
+/// Read the refusal document both XML stores answer with, beside the
+/// `<Region>` Amazon S3 states in it when the bucket lives in another region
+/// than the request was signed for (`AuthorizationHeaderMalformed`,
+/// `PermanentRedirect`): the region the bucket is in, read off the document
+/// once rather than off its message.
+///
+/// `None` when the bytes are not one; the region is `None` when the document
+/// states none, or states it empty.
+pub(crate) fn parse_error_region(xml: &[u8]) -> Option<(ErrorBody, Option<String>)> {
+    let root = parse_document(xml)
+        .ok()
+        .filter(|root| root.name() == "Error")?;
+    let region = root
+        .child_text("Region")
+        .map(str::trim)
+        .filter(|region| !region.is_empty())
+        .map(str::to_owned);
+    Some((error_body(&root), region))
+}
+
 /// The fields of one `<Error>` element; an absent code or message reads as
 /// empty rather than failing, since the document still says something went
 /// wrong.

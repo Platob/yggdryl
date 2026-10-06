@@ -39,7 +39,7 @@ pub fn time_in_force_from_fix(wire: String) -> String {
 }
 
 /// The `TimeInForce(59)` wire value the member `name` stands for, or `null`
-/// for `UNKN` and `OTHER`; throws on a name that is no member.
+/// for `UKNW` and `OTHER`; throws on a name that is no member.
 #[napi(js_name = "timeInForceFixCode")]
 pub fn time_in_force_fix_code(name: String) -> Result<Option<String>> {
     let member = TimeInForce::from_spelling(&name)

@@ -60,8 +60,11 @@ impl S3Options {
     /// # Errors
     ///
     /// Returns a refusal when a value will not parse as what its name means,
-    /// when a customer key is unusable, or when a name asks for something this
-    /// client does not do.
+    /// when a customer key is unusable, when a name asks for something this
+    /// client does not do, or when half a credential set is stated - a key
+    /// with no secret, a secret with no key, a token with neither - naming
+    /// the property that stated it and the half that is missing. An Azure
+    /// account name and shared key are Azure's alone and state no set.
     ///
     /// ```
     /// use yggdryl::s3::S3Options;
@@ -208,13 +211,25 @@ impl S3Options {
     /// are no knob, and `AZURE_STORAGE_BLOB_ENDPOINT` never addresses an
     /// `s3://` location. Stated as a property, each is the endpoint it names.
     ///
+    /// The environment swept is the session's: the variables a session was
+    /// handed with [`Session::with_variables`](crate::aws::Session::with_variables)
+    /// in place of the process's, else the process's own - so an environment
+    /// a caller closed is closed to every reader, this one included.
+    ///
     /// Answers nothing when [`Self::with_environment`] is off.
     #[must_use]
     pub fn environment_properties(&self) -> Vec<(String, String)> {
         if !self.reads_environment() {
             return Vec::new();
         }
-        self.swept(std::env::vars())
+        match self.session().given_variables() {
+            Some(given) => self.swept(
+                given
+                    .iter()
+                    .map(|(name, value)| (name.clone(), value.clone())),
+            ),
+            None => self.swept(std::env::vars()),
+        }
     }
 
     /// The knobs `variables` name under this one's prefixes: the sweep
@@ -264,6 +279,12 @@ impl S3Options {
     /// environment" an order rather than a special case per knob. A knob left
     /// at its default takes the ambient answer; one the caller set keeps
     /// theirs.
+    ///
+    /// Who signs is the one knob stated in two places: a credential set, or
+    /// `anonymous`, is taken from `ambient` only where these options state
+    /// neither and their session states no identity of its own - a set, a
+    /// profile, a role, a sign-in or a process - since an ambient set would
+    /// sign ahead of every source the session's walk reads.
     #[must_use]
     pub fn under(mut self, ambient: &Self) -> Self {
         let fallback = Self::default();
@@ -277,12 +298,10 @@ impl S3Options {
         {
             self = self.with_region(region);
         }
-        if self.credentials().is_none() && !self.anonymous() {
+        if self.credentials().is_none() && !self.anonymous() && !self.session().states_identity() {
             if let Some(credentials) = ambient.credentials() {
                 self = self.with_credentials(credentials.clone());
-            } else if ambient.anonymous() && !self.session().states_identity() {
-                // An ambient `anonymous` never silences an identity the
-                // caller stated on the session.
+            } else if ambient.anonymous() {
                 self = self.with_anonymous(true);
             }
         }
@@ -370,12 +389,12 @@ impl S3Options {
 
             // --- who is asking ----------------------------------------------
             "access_key" | "access_key_id" | "hmac_access_key" | "hmac_key_id" => {
-                parts.access_key = Some(value.to_owned());
+                parts.access_key = Some(Stated::new(name, value));
             }
             "secret_key" | "secret_access_key" | "hmac_secret" | "hmac_secret_key" => {
-                parts.secret_key = Some(value.to_owned());
+                parts.secret_key = Some(Stated::new(name, value));
             }
-            "session_token" => parts.session_token = Some(value.to_owned()),
+            "session_token" => parts.session_token = Some(Stated::new(name, value)),
             "anonymous" | "allow_anonymous" | "no_sign_request" => {
                 options = options.with_anonymous(flag(name, value)?);
             }
@@ -583,9 +602,9 @@ struct Parts {
     scheme: Option<String>,
     region: Option<String>,
     default_region: Option<String>,
-    access_key: Option<String>,
-    secret_key: Option<String>,
-    session_token: Option<String>,
+    access_key: Option<Stated>,
+    secret_key: Option<Stated>,
+    session_token: Option<Stated>,
     /// Who this process is to AWS, beyond the pair and the region above.
     identity: Identity,
     sse_type: Option<String>,
@@ -616,18 +635,7 @@ impl Parts {
                 _ => options.with_endpoint(endpoint),
             };
         }
-        // An Azure account name and key are a credential pair like any other,
-        // and the pair is what a shared-key signature is built from.
-        let access_key = self
-            .access_key
-            .clone()
-            .or_else(|| self.azure.account().map(str::to_owned));
-        let secret_key = self.secret_key.clone().or_else(|| azure_key(&self.azure));
-        if let (Some(access_key), Some(secret_key)) = (&access_key, &secret_key) {
-            let mut credentials = Credentials::new(access_key, secret_key);
-            if let Some(token) = &self.session_token {
-                credentials = credentials.with_session_token(token);
-            }
+        if let Some(credentials) = self.credentials()? {
             options = options.with_credentials(credentials);
         }
         let session = self.identity.apply(options.session())?;
@@ -657,11 +665,65 @@ impl Parts {
             .with_google(self.google)
             .with_azure(azure))
     }
+
+    /// The credential set the pair names, with its token.
+    ///
+    /// Only the pair's own names state one: an Azure account and shared key
+    /// stay Azure's, read by Azure's signature off the Azure options, so an
+    /// `AZURE_STORAGE_ACCOUNT_*` pair never signs for another store.
+    ///
+    /// # Errors
+    ///
+    /// Half a set - a key with no secret, a secret with no key, a token with
+    /// neither - naming the property that stated the half and the half that
+    /// is missing, as the session's own reader refuses it: a caller who
+    /// meant one set is never signed as whoever the chain answers instead.
+    fn credentials(&self) -> Result<Option<Credentials>> {
+        match (&self.access_key, &self.secret_key) {
+            (Some(access_key), Some(secret_key)) => {
+                let mut credentials = Credentials::new(&access_key.value, &secret_key.value);
+                if let Some(token) = &self.session_token {
+                    credentials = credentials.with_session_token(&token.value);
+                }
+                Ok(Some(credentials))
+            }
+            (Some(access_key), None) => Err(refusal(&format!(
+                "a credential set is an access_key_id and a secret_access_key: \
+                 {} states the access_key_id, and the secret_access_key is missing",
+                access_key.name
+            ))),
+            (None, Some(secret_key)) => Err(refusal(&format!(
+                "a credential set is an access_key_id and a secret_access_key: \
+                 {} states the secret_access_key, and the access_key_id is missing",
+                secret_key.name
+            ))),
+            (None, None) => match &self.session_token {
+                Some(token) => Err(refusal(&format!(
+                    "a session_token is part of a credential set: \
+                     {} states the session_token, \
+                     and the access_key_id and the secret_access_key are missing",
+                    token.name
+                ))),
+                None => Ok(None),
+            },
+        }
+    }
 }
 
-/// The shared key an Azure options block carries, when it carries one.
-fn azure_key(options: &AzureOptions) -> Option<String> {
-    options.account_key().map(str::to_owned)
+/// One half of a credential set as stated: the property as written, which a
+/// refusal of half a set names, and its value.
+struct Stated {
+    name: String,
+    value: String,
+}
+
+impl Stated {
+    fn new(name: &str, value: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            value: value.to_owned(),
+        }
+    }
 }
 
 /// The rest of `name` after `prefix`, matched without regard to case.

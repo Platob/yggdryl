@@ -6,11 +6,14 @@
 //! `Version` 1, `AccessKeyId`, `SecretAccessKey`, `SessionToken` and
 //! `Expiration`. The process is what every external secret store integrates
 //! through, so the document is read by the same reader every other credential
-//! document is - and a helper that hangs is killed after a minute rather than
-//! hanging every request behind it. It is given no standard input, so a
-//! helper that prompts fails at once rather than waiting on a terminal
-//! nobody is at.
+//! document is. A process runs under a bound its caller states - a helper
+//! that hangs is killed at it rather than hanging every request behind it -
+//! or under none, which is botocore's own rule. It is handed this process's
+//! standard input only where that is a terminal, so a helper that prompts
+//! (`aws-vault --prompt=terminal`) can ask the person at it, and one that
+//! reads anything else reads nothing rather than waiting on a pipe.
 
+use std::io::IsTerminal;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -19,26 +22,43 @@ use crate::{Error, Result};
 
 /// The most of a process's standard error a refusal quotes.
 const MAX_STDERR: usize = 512;
-/// How long a process is given before it is killed and reported.
-const TIMEOUT: Duration = Duration::from_secs(60);
+/// The bound a process runs under where its caller states no other.
+pub(crate) const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 /// How often the process is looked at while it runs.
 const POLL: Duration = Duration::from_millis(20);
 
-/// Run `command` and read the credential set it prints.
+/// Run `command` under [`DEFAULT_TIMEOUT`] and read the credential set it
+/// prints.
+///
+/// # Errors
+///
+/// What [`run_with`] refuses.
+pub(crate) fn run(command: &str) -> Result<Credentials> {
+    run_with(command, Some(DEFAULT_TIMEOUT))
+}
+
+/// Run `command` and read the credential set it prints, killing it once it
+/// has run for `timeout`; `None` waits for it however long it takes.
 ///
 /// # Errors
 ///
 /// An empty command line, a program that cannot be started, one that exits
-/// non-zero (its standard error quoted) or does not exit within a minute, or
-/// output that is not a credential document.
-pub(crate) fn run(command: &str) -> Result<Credentials> {
+/// non-zero (its standard error quoted) or does not exit within `timeout`
+/// (the bound and the program named), or output that is not a credential
+/// document.
+pub(crate) fn run_with(command: &str, timeout: Option<Duration>) -> Result<Credentials> {
     let words = super::profile::split_command(command, cfg!(windows));
     let Some((program, arguments)) = words.split_first() else {
         return Err(refusal("credential_process names no program"));
     };
+    let stdin = if std::io::stdin().is_terminal() {
+        Stdio::inherit()
+    } else {
+        Stdio::null()
+    };
     let mut child = Command::new(program)
         .args(arguments)
-        .stdin(Stdio::null())
+        .stdin(stdin)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -55,15 +75,18 @@ pub(crate) fn run(command: &str) -> Result<Credentials> {
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
-            Ok(None) if started.elapsed() < TIMEOUT => std::thread::sleep(POLL),
-            Ok(None) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(refusal(format!(
-                    "credential_process {program} did not exit within {} seconds",
-                    TIMEOUT.as_secs()
-                )));
-            }
+            Ok(None) => match timeout {
+                Some(bound) if started.elapsed() >= bound => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    // The drain threads are left to end with the pipes: a
+                    // grandchild the helper started may hold them open.
+                    return Err(refusal(format!(
+                        "credential_process {program} did not exit within {bound:?}, so it was killed"
+                    )));
+                }
+                _ => std::thread::sleep(POLL),
+            },
             Err(error) => {
                 return Err(refusal(format!(
                     "could not wait for credential_process {program}: {error}"
@@ -107,4 +130,26 @@ fn refusal(message: impl Into<String>) -> Error {
         std::io::ErrorKind::InvalidData,
         message.into(),
     ))
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/aws/process.rs` pins and a caller cannot reach: a
+    //! process under a bound of the test's choosing, which no session states
+    //! below the default.
+
+    use std::time::Duration;
+
+    use crate::aws::Credentials;
+
+    /// Run `command` under `timeout` (`None` unbounded) and read the set it
+    /// prints.
+    ///
+    /// # Errors
+    ///
+    /// What `run_with` refuses.
+    pub fn run_with(command: &str, timeout: Option<Duration>) -> crate::Result<Credentials> {
+        super::run_with(command, timeout)
+    }
 }

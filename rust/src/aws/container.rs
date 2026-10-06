@@ -99,10 +99,15 @@ pub(crate) fn credentials(
 
 /// The endpoint the environment names, when it names one.
 ///
+/// `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` is a path on the ECS agent at
+/// `169.254.170.2` and wins: a full URI beside it is never read, so never
+/// judged. `None` when neither variable is set.
+///
 /// # Errors
 ///
-/// A full URI that is neither `https` nor on a loopback or link-local
-/// address the platforms serve from.
+/// A relative URI that does not start with `/`, or a full URI that is
+/// neither `https` nor on a loopback or link-local address the platforms
+/// serve from; each names its variable.
 pub(crate) fn uri(env: &Environment) -> Result<Option<String>> {
     // The relative URI first, as the AWS tools read them; it is a path on
     // the agent's address, so it starts with `/` or it names nothing.
@@ -176,11 +181,28 @@ pub mod internals {
     //! What `rust/tests/aws/container.rs` pins and a caller cannot reach.
     //!
     //! The host rule is the whole of what keeps a token off a stranger's
-    //! host, so it is pinned by spelling; the fetch itself is driven over a
-    //! socket by the suite.
+    //! host, so it is pinned by spelling, and so is which variable names the
+    //! endpoint: the relative URI is on the agent's link-local address, which
+    //! no test can serve. The fetch itself is driven over a socket by the
+    //! suite.
 
     /// Whether a full URI is on a host the AWS tools present a token to.
     pub fn is_allowed_full_uri(url: &str) -> bool {
         super::allowed_full_uri(url).is_some()
+    }
+
+    /// The endpoint an environment of exactly `pairs` names, when it names
+    /// one.
+    ///
+    /// # Errors
+    ///
+    /// What `uri` refuses.
+    pub fn uri(pairs: &[(&str, &str)]) -> crate::Result<Option<String>> {
+        super::uri(&crate::auth::Environment::Given(
+            pairs
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect(),
+        ))
     }
 }

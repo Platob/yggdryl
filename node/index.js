@@ -668,5 +668,6 @@ module.exports.fixSchemaCarrying = nativeBinding.fixSchemaCarrying
 module.exports.fixSchemaTags = nativeBinding.fixSchemaTags
 module.exports.marketDataTypeFixCode = nativeBinding.marketDataTypeFixCode
 module.exports.marketDataTypeFromFix = nativeBinding.marketDataTypeFromFix
+module.exports.pluginSideFromPluginType = nativeBinding.pluginSideFromPluginType
 module.exports.timeInForceFixCode = nativeBinding.timeInForceFixCode
 module.exports.timeInForceFromFix = nativeBinding.timeInForceFromFix

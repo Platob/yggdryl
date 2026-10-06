@@ -86,11 +86,12 @@ use yggdryl::{DataType, FixId};
 let mut field = DataType::decimal128(20, 8)?.nullable_field("OrderQty");
 field.as_fix_mut().set_tag(38)?;
 field.as_fix_mut().set_names(["Qty", "Quantity"])?;
-field.as_fix_mut().set_branches(["Venue", "desk"])?;
+field.as_fix_mut().set_sources(["Venue", "desk"])?;
 
 assert_eq!(field.as_fix().tag()?, Some(38));
 assert_eq!(field.get_metadata("FIX:names"), Some("[\"Qty\",\"Quantity\"]"));
-assert_eq!(field.as_fix().branches().collect::<Vec<_>>(), ["desk", "venue"]);
+assert_eq!(field.as_fix().sources().collect::<Vec<_>>(), ["desk", "venue"]);
+assert_eq!(field.get_metadata("FIX:sources"), Some(r#"["desk","venue"]"#));
 // Derived on every read, never stored; a folded rename keeps it.
 assert_eq!(field.as_fix().id()?, Some(FixId::of(38, "order_qty")?));
 assert!(!field.has_metadata("FIX:id"));
@@ -715,7 +716,9 @@ root.remove(true)?;
 ## Fold a venue CBlock into a dictionary
 
 `FixRegistry::from_cfb_file` reads one Ullink CBlock (`.cfb`) into a registry
-and its declared roots, stamping the dialect on everything it produced;
+and its declared roots, stamping the dialect in `FIX:sources` on everything it
+produced and recording the dialect's entry in the registry's sources catalog -
+the file's name and the `PluginSide` its root's `type` names;
 `add_cfb_file` folds one into a held registry, `add_cfb_files` folds what the
 locations it is handed hold - a glob every file it matches, a folder the `.cfb`
 files directly inside it, a file itself, a file reached twice folding once -
@@ -737,12 +740,12 @@ the reader did instead.
 ```rust
 use yggdryl::holder::Holder;
 use yggdryl::local::LocalFile;
-use yggdryl::FixRegistry;
+use yggdryl::{FixRegistry, FixSource, PluginSide};
 
 let path = std::env::temp_dir().join(format!("ygg-skill-fix-cfb-{}", std::process::id()));
 std::fs::create_dir_all(&path)?;
 let cblock = |name: &str| format!(r#"<?xml version="1.0" encoding="US-ASCII"?>
-<cplugin-configuration fix-version="4.4">
+<cplugin-configuration fix-version="4.4" type="com.ullink.SellSideFIXCPluginCBlock">
   <vocabulary><vocabulary-tag name="4" alt="AdvSide" type="char" /></vocabulary>
   <maps><map name="ADVSIDE"><entries><entry key="{name}" value="B" /></entries></map></maps>
 </cplugin-configuration>
@@ -752,7 +755,10 @@ std::fs::write(path.join("beta.cfb"), cblock("venue_buy"))?;
 std::fs::write(path.join("broken.cfb"), "<cplugin-configuration><vocabulary>")?;
 
 let (venue, roots) = FixRegistry::from_cfb_file(&LocalFile::new(path.join("alpha.cfb"))?, Some("venue"))?;
-assert_eq!(venue.field(4)?.as_fix().branches().collect::<Vec<_>>(), ["venue"]);
+assert_eq!(venue.field(4)?.as_fix().sources().collect::<Vec<_>>(), ["venue"]);
+// The catalog records the source once: its file and its plugin's role.
+let entry = venue.get_source("venue").expect("the dialect's entry");
+assert_eq!((entry.file(), entry.pluginside()), (Some("alpha.cfb"), PluginSide::SellSide));
 assert!(roots.is_empty());
 
 // `add_cfb_files` takes the locations alone: a folder holds the `.cfb`
@@ -767,7 +773,8 @@ assert_eq!(merge.failed.len(), 1);
 assert!(merge.failed[0].source.as_deref().is_some_and(|url| url.ends_with("broken.cfb")));
 assert!(!merge.is_clean());
 // Ascending URL order, each file stamped with its stem.
-assert_eq!(registry.field(4)?.as_fix().branches().collect::<Vec<_>>(), ["alpha", "beta"]);
+assert_eq!(registry.field(4)?.as_fix().sources().collect::<Vec<_>>(), ["alpha", "beta"]);
+assert_eq!(registry.sources().map(FixSource::id).collect::<Vec<_>>(), ["alpha", "beta"]);
 
 registry.merge_with(&venue)?;
 assert_eq!(registry.dialects(), ["alpha", "beta", "venue"]);

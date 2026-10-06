@@ -82,7 +82,7 @@ fn every_kind_is_reachable() {
 
 #[test]
 fn the_strings_and_the_codes_are_text() {
-    assert_eq!(DataTypeId::ALL.len(), 96);
+    assert_eq!(DataTypeId::ALL.len(), 97);
     for id in [
         DataTypeId::Utf8String,
         DataTypeId::FixedUtf8String,
@@ -297,6 +297,7 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::Side, 0xc3),
         (DataTypeId::MarketDataType, 0xc4),
         (DataTypeId::TimeInForce, 0xc5),
+        (DataTypeId::PluginSide, 0xc6),
     ];
     assert_eq!(pinned.len(), DataTypeId::ALL.len());
     for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {
@@ -541,6 +542,7 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
                 DataTypeId::Side,
                 DataTypeId::MarketDataType,
                 DataTypeId::TimeInForce,
+                DataTypeId::PluginSide,
             ],
         ),
     ];

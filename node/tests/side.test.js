@@ -12,14 +12,14 @@ test('Side is the core enum, member for member, in code order', () => {
   assert.ok(Object.isFrozen(Side))
   const codes = Object.values(Side)
   assert.deepEqual(codes, [...Array(18).keys(), 99])
-  assert.equal(Side.UNKN, 0)
+  assert.equal(Side.UKNW, 0)
   assert.equal(Side.BUYS, 1)
   assert.equal(Side.SELL, 2)
   assert.equal(Side.SSHT, 5)
   assert.equal(Side.SELU, 17)
   // Both sides at once - a book's, a two-sided quote's - stands last.
   assert.equal(Side.BOTH, 99)
-  assert.deepEqual(Object.keys(Side).slice(0, 3), ['UNKN', 'BUYS', 'SELL'])
+  assert.deepEqual(Object.keys(Side).slice(0, 3), ['UKNW', 'BUYS', 'SELL'])
   assert.equal('_sideMembersNative' in require('yggdryl'), false)
 })
 

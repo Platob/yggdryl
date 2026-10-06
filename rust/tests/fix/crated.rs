@@ -695,12 +695,12 @@ mod inferred {
 }
 
 /// The currency pair a message is about is one of the crate's instrument
-/// fields: a forex column, displayed `ForexCode`, under tag 65047, the
+/// fields: a forex column, displayed `ForexCode`, under tag 65048, the
 /// first of the fixed row's instrument band.
 #[test]
 fn the_currency_pair_is_an_instrument_field_after_the_isin() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
-    assert_eq!(held.len(), 50);
+    assert_eq!(held.len(), 51);
     let at = |name: &str| {
         held.iter()
             .position(|field| field.name() == name)
@@ -713,7 +713,7 @@ fn the_currency_pair_is_an_instrument_field_after_the_isin() {
     assert_eq!(pair.dtype(), &yggdryl::DataType::Forex);
     assert_eq!(pair.display(), Some("Forex Code"));
     assert!(pair.is_nullable());
-    assert_eq!(yggdryl::FOREXCODE_TAG_NAME, (65_047, "forexcode"));
+    assert_eq!(yggdryl::FOREXCODE_TAG_NAME, (65_048, "forexcode"));
     assert_eq!(
         pair.as_fix().tag().expect("a tag reading"),
         Some(yggdryl::FOREXCODE_TAG_NAME.0)
@@ -876,5 +876,81 @@ fn strikepx_is_a_derived_market_column_beside_the_dictionarys_strikeprice() {
             .any(|anomaly| anomaly.field() == "strikeprice"),
         "{:?}",
         unread.anomalies()
+    );
+}
+
+/// The plugin's role is one crate field right after the plugin that logged
+/// the line: required, typed as the `pluginside` enum, reading by the
+/// intrinsic set, a column of the fixed row's message band, and a column
+/// no FIX tag is read into - the codec stamps it from its source.
+#[test]
+fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_intrinsic_set() {
+    use yggdryl::{DataType, PluginSide, Scalar};
+
+    assert_eq!(yggdryl::MSGPLUGINSIDE_TAG_NAME, (65_042, "msgpluginside"));
+    assert_eq!(yggdryl::MSGPLUGINID_TAG_NAME, (65_041, "msgpluginid"));
+    assert_eq!(
+        yggdryl::MSGORIGINATOR_TAG_NAME,
+        (65_043, "msgoriginator"),
+        "every later crate tag moved up by one"
+    );
+    assert_eq!(yggdryl::FIXMSG_TAG_NAME, (65_052, "fixmsg"));
+    let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
+    assert_eq!(held.len(), 51);
+    let at = held
+        .iter()
+        .position(|field| field.name() == "msgpluginside")
+        .expect("the definition");
+    assert_eq!(held[at - 1].name(), "msgpluginid");
+    assert_eq!(held[at + 1].name(), "msgoriginator");
+    let field = &held[at];
+    assert_eq!(field.dtype(), &DataType::PluginSide);
+    assert!(!field.is_nullable(), "every row states it");
+    assert_eq!(field.display(), Some("Message Plugin Side"));
+    assert_eq!(field.as_fix().codeset(), Some("msgpluginsidecodeset"));
+    assert_eq!(field.as_fix().tag().unwrap(), Some(65_042));
+    assert!(
+        field
+            .description()
+            .is_some_and(|text| text.contains("BUYS") && text.contains("Side(54)")),
+        "{:?}",
+        field.description()
+    );
+    assert_eq!(
+        field.scalar("sell-side").unwrap(),
+        Scalar::PluginSide(PluginSide::SellSide)
+    );
+    assert!(field.scalar(Scalar::Null).is_err(), "required");
+
+    // The fixed row states it in the message band, right after the plugin
+    // id, required, and the band's tags run the same way.
+    let registry = super::committed_registry();
+    let schema = yggdryl::fix_schema(&registry, "fix").expect("a fixed schema");
+    let columns: Vec<&str> = schema.fields().iter().map(|column| column.name()).collect();
+    let column = columns
+        .iter()
+        .position(|name| *name == "msgpluginside")
+        .expect("a column");
+    assert_eq!(columns[column - 1], "msgpluginid");
+    assert_eq!(columns[column + 1], "msgoriginator");
+    assert!(!schema.fields()[column].is_nullable());
+    assert_eq!(schema.fields()[column].dtype(), &DataType::PluginSide);
+    let tags = yggdryl::fix_schema_tags();
+    let tag = tags.iter().position(|tag| *tag == 65_042).expect("the tag");
+    assert_eq!(tags[tag - 1], 65_041);
+    assert_eq!(tags[tag + 1], 65_043);
+    assert_eq!(yggdryl::fix_column_of(&schema, 65_042), Some(column));
+    // Every registry holds it, reading by the intrinsic set it holds too.
+    assert_eq!(
+        registry.field_by_tag(65_042).unwrap().name(),
+        "msgpluginside"
+    );
+    assert_eq!(
+        registry
+            .codeset("msgpluginsidecodeset")
+            .expect("the intrinsic set")
+            .codes()
+            .count(),
+        PluginSide::ALL.len()
     );
 }

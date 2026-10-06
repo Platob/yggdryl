@@ -3099,6 +3099,12 @@ counted.calls() -> &Arc<Calls>          // shared tally: get(Call), group(Group)
 counted.counts() -> CallCounts          // a snapshot; Display renders "read_all_bytes=1"
 ```
 
+HTTP request snapshots belong to the client that sent them. `Client::stats()` returns that client's `StatsSnapshot`, including request counts by method, retries, resumes, redirects and retry tokens; a separate client has a separate snapshot.
+
+```text
+client.stats() -> StatsSnapshot  // requests, gets, heads, posts, puts, patches, deletes, others, retries, resumes, redirects, retry_tokens
+```
+
 ```rust
 use std::sync::Arc;
 
@@ -4304,6 +4310,7 @@ The request count is the contract, asserted by tests.
 | `exists` on a glob | its listing up to the first match, one request per 1000 entries | the same | the same |
 | a ranged read | one ranged `GET` | one ranged `GET` with `alt=media` | one `GET` with `x-ms-range` |
 | a whole read, stream drain or digest | one `GET` | one `GET` | one `GET` |
+| a text or CSV read of a leaf, or of the objects under a glob | one `GET` per object - the listed leaf streamed through the resuming reader it owns (`IOBase::owned_stream_bytes`), no probe listing, no read past the end - and a glob's one listing of its prefix | the same | the same |
 | the size of a listed object | none | none | none |
 | `size` on a closed handle | one `HEAD`; none while open | one `objects.get`; none while open | one `HEAD`; none while open |
 | a whole write | one `PUT` | one `multipart/related` `POST` | one `PUT` |
@@ -4527,7 +4534,7 @@ The chain is botocore's, in botocore's order, with the console sign-in `aws logi
 | 11 | the container endpoint | `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` or `AWS_CONTAINER_CREDENTIALS_FULL_URI` | `container` |
 | 12 | the instance metadata service | IMDSv2; IMDSv1 when the service issues no token, unless `ec2_metadata_v1_disabled` | `instance metadata` |
 
-A profile that names a role means that role: when the exchange fails its own keys are not a fallback, so rows 5 to 9 are not asked. Where botocore fails on the first source that is configured and broken, the session records why and walks on, and refuses only when every source has been asked - naming each that failed and each that was not there. A temporary set is replaced fifteen minutes before it lapses (a console sign-in's, which lasts fifteen minutes, five minutes before), a refresh that fails keeps the set in hand until it has actually lapsed, and an unsigned answer is held five minutes and a failure thirty seconds, rather than costing every request a walk of every source. A role or a sign-in with no region stated is traded in its ARN partition's global region - `cn-northwest-1` for an `aws-cn` role - and the STS, IAM Identity Center, Sign-In and S3 hosts are built on the region's [`ArnPartition`](../uri/arn.md#partitions) suffixes. Assumed-role and SSO sessions are read from and written to `~/.aws/cli/cache` and `~/.aws/sso/cache`, and a console sign-in to `~/.aws/login/cache`, in the AWS CLI's own shape, so a sign-in or an MFA code the CLI already obtained serves this crate, and the other way round.
+A profile that names a role means that role: when the exchange fails its own keys are not a fallback, so rows 5 to 9 are not asked. A source the caller configured ends the walk when it fails, as botocore's does: a profile named by `AWS_PROFILE`, `AWS_DEFAULT_PROFILE` or `with_profile` that neither file holds, a role that cannot be assumed, a sign-in that has lapsed or was refused, a `credential_process` that fails, half a key pair in the environment or in either file - each is the refusal, naming the source and why, and never another identity further down the chain. Only a source that is absent - nothing configured there - lets the walk go on, and a refusal at the end names each source that was not there. A temporary set is replaced fifteen minutes before it lapses (a console sign-in's, which lasts fifteen minutes, five minutes before), a refresh that fails keeps the set in hand down to ten minutes before it lapses - botocore's mandatory window, inside which a failed refresh is the refusal rather than a request signed with a set about to lapse - and a refresh in progress never blocks a request that can still sign with the held set, and an unsigned answer is held five minutes and a failure thirty seconds, rather than costing every request a walk of every source. A role or a sign-in with no region stated is traded in its ARN partition's global region - `cn-northwest-1` for an `aws-cn` role - and the STS, IAM Identity Center, Sign-In and S3 hosts are built on the region's [`ArnPartition`](../uri/arn.md#partitions) suffixes. Assumed-role and SSO sessions are read from and written to `~/.aws/cli/cache` and `~/.aws/sso/cache`, and a console sign-in to `~/.aws/login/cache`, in the AWS CLI's own shape, so a sign-in or an MFA code the CLI already obtained serves this crate, and the other way round.
 
 ```rust
 use yggdryl::aws::{AssumedRole, Credentials, Session};
@@ -4687,7 +4694,7 @@ assert!(misspelt.sts_endpoint("eu-west-3").is_err());
 
 #### The shared files
 
-`~/.aws/config` and `~/.aws/credentials` - or the files `AWS_CONFIG_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, `with_config_file`, `with_credentials_file` and `with_directory` name - are read once, and read again whenever either moved on disk (its length or modification time): at every walk, after any refusal a store gave (`invalidate`, `invalidate_if`), and while an unsigned or failed answer is held. A set dumped anew into `~/.aws/credentials` is picked up by a running process at its next request, with no restart.
+`~/.aws/config` and `~/.aws/credentials` - or the files `AWS_CONFIG_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, `with_config_file`, `with_credentials_file` and `with_directory` name - are read once, and read again whenever either moved on disk (its length or modification time): at every walk, after any refusal a store gave (`invalidate`, `invalidate_if`), and while an unsigned or failed answer is held. A set dumped anew into `~/.aws/credentials` is picked up by a running process at its next walk of the chain - the next request after the held set lapses or a store refuses it - with no restart.
 
 - An expiry written beside a set is read under `aws_credential_expiration`, `x_security_token_expires` (saml2aws, gimme-aws-creds), `aws_session_expiration` (yawsso), `aws_expiration` (aws-azure-login) or `expiration` (aws-mfa), in the credentials file or in the configuration file's keys - as ISO 8601 with `Z` or an offset, blanks around it and the AWS CLI's trailing `UTC` taken off where the expiry enters, then read by [`DateTime64::from_text`](../types/temporal/datetime.md#reading-text) with a spelling that names no zone taken as UTC. A dumped set is refreshed from the file fifteen minutes before it lapses; two expiries that disagree, or one nothing reads, is a named refusal.
 - Pasted values read as meant: one pair of matching quotes and a `#` or `;` comment after a blank come off a credential value; a line written as the shell block the IAM Identity Center portal prints (`export AWS_ACCESS_KEY_ID=...`, `set AWS_...=...`, PowerShell `$Env:AWS_...="..."`) reads as the key it sets; a section header followed by a comment (`[default]   # dumped 12:30`) is that section, as Python's `configparser` reads it.
@@ -4697,7 +4704,7 @@ assert!(misspelt.sts_endpoint("eu-west-3").is_err());
 
 #### A set a store refused
 
-A set a source answers is passed over by name, and the sources after it are asked, when it has lapsed - its expiry is before the machine's clock, and the refusal names both instants - or when a store refused its key. An explicit `with_credentials` set is what the caller said and is never passed over.
+A set a source answers is passed over by name, and the sources after it are asked, when it has lapsed - its expiry is before the machine's clock, and the refusal names both instants - or when a store refused its key; a key a store refused is held refused in the region whose endpoint refused it, and a refusal from an opt-in region the account has not enabled says so beside the code rather than blaming the key everywhere. An explicit `with_credentials` set is what the caller said and is never passed over.
 
 | code a store answers | what it says of the key | passed over |
 | --- | --- | --- |

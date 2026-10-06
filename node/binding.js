@@ -5821,7 +5821,7 @@ Object.defineProperty(NativeFixMsg.prototype, Symbol.iterator, {
 
 // The FIX surface is reached through this namespace: a dictionary is one
 // namespace of tags and names, an identity is the number `field.fix.id`
-// derives from both, and a dictionary's membership is `fix:branches` on the
+// derives from both, and a dictionary's membership is `FIX:sources` on the
 // field it contributed to - so no dictionary fact is a constant here. The
 // one constant that is, is a capture's shape rather than a dictionary's: the
 // row header a ULBridge log writes, carried across so a reader of a bridge
@@ -7269,7 +7269,7 @@ binding.yaml = yaml
 }
 
 // How long an order stands: FIX's TimeInForce(59) code set, each member's
-// stored name under the code a `timeinforce` column stores - `UNKN` at zero,
+// stored name under the code a `timeinforce` column stores - `UKNW` at zero,
 // the FIX values in wire order, `OTHER` for a venue's own.
 {
   const members = binding._timeInForceMembersNative()
@@ -7279,8 +7279,20 @@ binding.yaml = yaml
   )
 }
 
+// The role of a FIX plugin: the side of the session a dialect's plugin stands
+// on, each member's stored name under the code a `pluginside` column stores -
+// `UKNW` at zero for a plugin stating no role, then `BUYS` and `SELL`. A
+// separate enum from `Side`, though two names are spelled alike.
+{
+  const members = binding._pluginSideMembersNative()
+  delete binding._pluginSideMembersNative
+  binding.PluginSide = Object.freeze(
+    Object.fromEntries(members.map(({ name, code }) => [name, code])),
+  )
+}
+
 // Which side of the market a trade took: FIX's Side(54), each member's
-// four-letter code under the code a `side` column stores - `UNKN` at zero,
+// four-letter code under the code a `side` column stores - `UKNW` at zero,
 // then the seventeen sides in FIX's own order, and BOTH (99), both sides at once.
 {
   const members = binding._sideMembersNative()

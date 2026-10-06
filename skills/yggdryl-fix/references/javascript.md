@@ -76,11 +76,12 @@ const { Field } = require('yggdryl')
 const field = Field.from('OrderQty: decimal128(20, 8)')
 field.fix.tag = 38
 field.fix.names = ['Qty', 'Quantity']
-field.fix.branches = ['Venue', 'desk']
+field.fix.sources = ['Venue', 'desk']
 
 assert.equal(field.fix.tag, 38)
 assert.equal(field.get('FIX:names'), '["Qty","Quantity"]')
-assert.deepEqual(field.fix.branches, ['desk', 'venue'])
+assert.deepEqual(field.fix.sources, ['desk', 'venue'])
+assert.equal(field.get('FIX:sources'), '["desk","venue"]')
 // Derived on every read from the tag and the folded name, never stored.
 const spelled = Field.from('order_qty: int64')
 spelled.fix.tag = 38
@@ -660,16 +661,20 @@ const { fix } = require('yggdryl')
 const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
 const file = path.join(folder, 'alpha.cfb')
 fs.writeFileSync(file, `<?xml version="1.0" encoding="US-ASCII"?>
-<cplugin-configuration fix-version="4.4">
+<cplugin-configuration fix-version="4.4" type="com.ullink.BuySideFIXCPluginCBlock">
   <vocabulary><vocabulary-tag name="20001" alt="VenueFlag" type="string" /></vocabulary>
 </cplugin-configuration>
 `)
 const [venue, roots] = fix.FixRegistry.fromCfbFile(file, 'venue')
-assert.deepEqual(venue.field(20001).fix.branches, ['venue'])
+assert.deepEqual(venue.field(20001).fix.sources, ['venue'])
 assert.deepEqual(venue.dialects(), ['venue'])
+// The catalog records the source once: its file and its plugin's role.
+assert.deepEqual(venue.sources(), [{ id: 'venue', file: 'alpha.cfb', pluginside: 'BUYS' }])
 assert.deepEqual(roots, [])
 // No dialect, no stamp: only the folds read a file's stem.
-assert.deepEqual(fix.FixRegistry.fromCfbFile(file)[0].field(20001).fix.branches, [])
+const [bare] = fix.FixRegistry.fromCfbFile(file)
+assert.deepEqual(bare.field(20001).fix.sources, [])
+assert.deepEqual(bare.sources(), [])
 fs.rmSync(folder, { recursive: true, force: true })
 ```
 

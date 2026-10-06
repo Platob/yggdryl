@@ -180,23 +180,23 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    group.bench_function("set_branches_one", |bencher| {
+    group.bench_function("set_sources_one", |bencher| {
         bencher.iter_batched(
             || movable.clone(),
             |mut field| {
-                field.as_fix_mut().set_branches([venue]).unwrap();
+                field.as_fix_mut().set_sources([venue]).unwrap();
                 field
             },
             BatchSize::SmallInput,
         );
     });
-    group.bench_function("set_branches_folded", |bencher| {
+    group.bench_function("set_sources_folded", |bencher| {
         bencher.iter_batched(
             || movable.clone(),
             |mut field| {
                 field
                     .as_fix_mut()
-                    .set_branches(["plugin", "CME", venue, "eurex"])
+                    .set_sources(["plugin", "CME", venue, "eurex"])
                     .unwrap();
                 field
             },
@@ -204,12 +204,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
         );
     });
     let mut member = movable.clone();
-    member.as_fix_mut().set_branches([venue]).unwrap();
-    group.bench_function("add_branch", |bencher| {
+    member.as_fix_mut().set_sources([venue]).unwrap();
+    group.bench_function("add_source", |bencher| {
         bencher.iter_batched(
             || member.clone(),
             |mut field| {
-                field.as_fix_mut().add_branch("eurex").unwrap();
+                field.as_fix_mut().add_source("eurex").unwrap();
                 field
             },
             BatchSize::SmallInput,

@@ -410,20 +410,21 @@ assert Eusipa(registry.get("CH0123456789")["eusipacode"]) == constant
 
 ## Enums: side, marketdatakind, state, timeinforce
 
-`side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
-`enum` family: each member is a code in a column - `uint8` for `side`,
-`marketdatakind` and `timeinforce`, `uint16` for `state` and `marketdatatype` -
-and its stored name in text. Python reads them as the `enum.IntEnum`s
-`yggdryl.Side`, `yggdryl.MarketDataKind`, `yggdryl.MarketDataType`,
-`yggdryl.State` and `yggdryl.TimeInForce`,
+`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` and
+`pluginside` are the `enum` family: each member is a code in a column - `uint8`
+for `side`, `marketdatakind`, `timeinforce` and `pluginside`, `uint16` for
+`state` and `marketdatatype` - and its stored name in text. Python reads them as
+the `enum.IntEnum`s `yggdryl.Side`, `yggdryl.MarketDataKind`,
+`yggdryl.MarketDataType`, `yggdryl.State`, `yggdryl.TimeInForce` and
+`yggdryl.PluginSide`,
 and a value of the column answers the member. A side is never absent -
-`Side.UNKN` (code 0) is unstated. A side's name is a four-letter code (`BUYS`,
+`Side.UKNW` (code 0) is unstated. A side's name is a four-letter code (`BUYS`,
 `SELL`, `SSHT`); the stored names before the codes (`BUY`, `SSHORT`, ...) are
 still read and never written.
 
 ```python
 import yggdryl
-from yggdryl import DataType, MarketDataKind, Side, State, TimeInForce
+from yggdryl import DataType, MarketDataKind, PluginSide, Side, State, TimeInForce
 
 # A side reads its stored name, FIX's wire code, the specification's name or its code.
 side = yggdryl.side("side", nullable=False)
@@ -449,6 +450,11 @@ assert State.UPDATED.is_live()
 assert DataType("timeinforce").scalar("0").as_py() is TimeInForce.DAY
 assert TimeInForce.from_fix("Z") is TimeInForce.OTHER   # a venue's own value
 assert (int(TimeInForce.GTC), TimeInForce.GTC.fix_code) == (2, "1")
+
+# A FIX plugin's role, read off a CBlock's plugin class; no `Side`, though
+# `BUYS` and `SELL` are spelled alike.
+assert PluginSide.from_plugin_type("x.SellSideFIXCPluginCBlock") is PluginSide.SELL
+assert DataType("pluginside").scalar("buy-side").as_py() is PluginSide.BUYS
 ```
 
 ## Nested values: serie, map, union, dictionary

@@ -260,11 +260,14 @@ pub enum DataTypeId {
     /// How long an order stands: FIX's `TimeInForce(59)` code set, stored
     /// as the `uint8` code of its member.
     TimeInForce = 0xc5,
+    /// The role of a FIX plugin - Buy-Side, Sell-Side or none stated -
+    /// stored as the `uint8` code of its member.
+    PluginSide = 0xc6,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 96] = [
+    pub const ALL: [Self; 97] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -361,6 +364,7 @@ impl DataTypeId {
         Self::Side,
         Self::MarketDataType,
         Self::TimeInForce,
+        Self::PluginSide,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -428,6 +432,7 @@ impl DataTypeId {
             Self::MarketDataKind => "marketdatakind",
             Self::MarketDataType => "marketdatatype",
             Self::TimeInForce => "timeinforce",
+            Self::PluginSide => "pluginside",
             Self::Unit => "unit",
             Self::Uuid => "uuid",
             Self::LargeBinaryView => "large_binary_view",
@@ -595,6 +600,7 @@ impl DataTypeId {
             Self::MarketDataType => crate::MARKETDATATYPE_EXTENSION_NAME,
             Self::Side => crate::SIDE_EXTENSION_NAME,
             Self::TimeInForce => crate::TIMEINFORCE_EXTENSION_NAME,
+            Self::PluginSide => crate::PLUGINSIDE_EXTENSION_NAME,
             Self::Country => crate::COUNTRY_EXTENSION_NAME,
             Self::Ccy => crate::CCY_EXTENSION_NAME,
             Self::Mic => crate::MIC_EXTENSION_NAME,

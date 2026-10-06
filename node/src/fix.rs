@@ -13,8 +13,9 @@
 //! bare tag or name uses the core's deterministic best match: a `number`
 //! there is a tag, never an identifier, and an identifier is only ever
 //! spelled through the `ById` doors. A dictionary's membership is
-//! `FIX:branches` on the field it contributed to, read on the protocol view;
-//! nothing here resolves through it.
+//! `FIX:sources` on the field it contributed to, read on the protocol view,
+//! each id an entry of the registry's sources catalog (`sources`,
+//! `addSource`); nothing here resolves through it.
 //!
 //! A code set is the dictionary's own, not the field's: a field states only
 //! the name it reads by, on `field.fix.codeset`, and the members are held
@@ -230,6 +231,47 @@ pub struct FixCodeSetView {
     pub codes: Vec<FixCode>,
 }
 
+/// One entry of a dictionary's sources catalog, as the plain object
+/// JavaScript reads: what a `FIX:sources` id names, recorded once.
+///
+/// The keys are the entry a store writes in `sources.json` - `file` left out
+/// where none is known, `pluginside` always stated.
+#[napi(object, object_from_js = false)]
+pub struct FixSourceView {
+    /// The id, folded to ASCII lowercase: what a field's `FIX:sources`
+    /// states.
+    pub id: String,
+    /// The file the source was read from, as it was named - `venue.cfb` -
+    /// where one is known.
+    pub file: Option<String>,
+    /// The role of the source's plugin, as the `pluginside` member's stored
+    /// name: `BUYS`, `SELL`, or `UKNW` where the source states none.
+    pub pluginside: String,
+}
+
+impl FixSourceView {
+    /// One borrowed catalog entry, as the object JavaScript reads.
+    fn from_core(source: &yggdryl::FixSource) -> Self {
+        Self {
+            id: source.id().to_owned(),
+            file: source.file().map(ToOwned::to_owned),
+            pluginside: source.pluginside().as_str().to_owned(),
+        }
+    }
+}
+
+/// What `addSource` records beside the id: each left out states nothing.
+#[napi(object)]
+pub struct FixSourceOptions {
+    /// The file the source was read from, as it was named.
+    pub file: Option<String>,
+    /// The role of the source's plugin: a `PluginSide` member's stored name
+    /// in any case, the role's own name - `BuySide`, `sell-side` - or its
+    /// code, what `PluginSide.BUYS` holds.
+    #[napi(ts_type = "string | number")]
+    pub pluginside: Option<Either<String, f64>>,
+}
+
 /// One borrowed code set, as the object JavaScript reads.
 ///
 /// The members are owned on the way across - a JavaScript value outlives the
@@ -431,11 +473,14 @@ impl JsFixRegistry {
     /// Read an Ullink `CBlock` into a dictionary, with what it declared.
     ///
     /// Answers the dictionary and the message roots the file spelled out, in
-    /// the order it spelled them. `dialect` is the membership every field,
+    /// the order it spelled them. `dialect` is the source id every field,
     /// group, component and message the file produces is stamped with, on
-    /// its `FIX:branches` - standard tags included, since membership means
-    /// the dictionary speaks it; with none named nothing is stamped. A
-    /// dialect that is empty or carries a comma is refused.
+    /// its `FIX:sources` - standard tags included, since membership means
+    /// the dictionary speaks it - and the registry holds its catalog entry:
+    /// the file's name and the plugin side the root's `type` states. With
+    /// none named nothing is stamped and no entry is made. A dialect that is
+    /// empty or holds a quote, a backslash or a control character is
+    /// refused.
     ///
     /// A file this cannot be read from throws the native sentence whole: the
     /// byte the reader stopped at, what was expected, what arrived, and the
@@ -937,15 +982,49 @@ impl JsFixRegistry {
             .map(|codes| codes.into_iter().map(FixCode::from_core).collect()))
     }
 
-    /// The distinct dictionaries any field or definition names on its
-    /// `FIX:branches`, sorted.
+    /// The distinct source ids any field or definition names on its
+    /// `FIX:sources`, folded, sorted.
     ///
     /// Membership is provenance and this is its listing; nothing resolves
-    /// through it. A registry holding only the specification's own fields
-    /// answers an empty array.
+    /// through it. The ids fields state, not the catalog `sources()`
+    /// answers: an entry no field names is not listed here, and an id no
+    /// entry holds is. A registry holding only the specification's own
+    /// fields answers an empty array.
     #[napi]
     pub fn dialects(&self) -> Vec<String> {
         self.inner.dialects()
+    }
+
+    /// The sources catalog, in id order: one plain object per source this
+    /// dictionary was built from - a `CBlock` folded in, a dialect a
+    /// definition was created under - holding what is known of it once,
+    /// `{ id, file?, pluginside }`. A store writes it as `sources.json`.
+    #[napi]
+    pub fn sources(&self) -> Vec<FixSourceView> {
+        self.inner.sources().map(FixSourceView::from_core).collect()
+    }
+
+    /// Record one source in the catalog, answering whether it arrived.
+    ///
+    /// `id` is held to the id grammar - a non-empty word holding no quote,
+    /// backslash or control character - and folded to ASCII lowercase. An id
+    /// already held, under the same fold, keeps its entry and takes only
+    /// what it lacked: a file where it stated none, a plugin side where it
+    /// stated `UKNW`; two stated sides that disagree keep the held one.
+    /// Nothing here touches a field: a field names its sources itself, on
+    /// `field.fix.sources`.
+    #[napi]
+    pub fn add_source(&mut self, id: String, options: Option<FixSourceOptions>) -> Result<bool> {
+        let mut source = yggdryl::FixSource::new(&id).map_err(napi_error)?;
+        if let Some(options) = options {
+            if let Some(file) = options.file {
+                source = source.with_file(file);
+            }
+            if let Some(side) = options.pluginside {
+                source = source.with_pluginside(crate::pluginside::plugin_side_of(side)?);
+            }
+        }
+        Ok(self.inner_mut()?.add_source(source))
     }
 
     /// Every field, lazily: the scalar fields in ascending identifier order,
@@ -991,8 +1070,9 @@ impl JsFixRegistry {
         format!("FixRegistry({} fields)", self.inner.len())
     }
 
-    /// A complete native catalog snapshot: the fields, the components and
-    /// the groups.
+    /// A complete native catalog snapshot: the code sets, the sources
+    /// catalog where it holds an entry, the fields, the components and the
+    /// groups.
     #[napi(js_name = "toJSON")]
     pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::from_str(&self.inner.into_json().map_err(napi_error)?).map_err(napi_error)
@@ -1247,6 +1327,14 @@ pub struct FixCaptureView {
     /// it.
     #[napi(ts_type = "string | null")]
     pub msgpluginid: Either<String, Null>,
+    /// The role of the FIX plugin whose session produced the message, as
+    /// the `pluginside` member's stored name: `BUYS` for a Buy-Side plugin,
+    /// `SELL` for a Sell-Side one, `UKNW` where the codec read under no
+    /// source or one stating no role - never `null`. The codec stamps it from
+    /// the source it reads under (`FixCodec`'s `source`), and a row-header
+    /// capture or a row cell named `msgpluginside` is the row's word over
+    /// it; also `byTag(65042)`.
+    pub msgpluginside: String,
     /// The message context a bridge handled the line in.
     #[napi(ts_type = "string | null")]
     pub msgctxid: Either<String, Null>,
@@ -1256,17 +1344,17 @@ pub struct FixCaptureView {
     /// The session event the message was delivered as - `MsgType`,
     /// `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
     /// `8:e7256476:9effef3e6a:1094` - where all four are stated; also
-    /// `byTag(65044)`.
+    /// `byTag(65046)`.
     #[napi(ts_type = "string | null")]
     pub msgsesseventid: Either<String, Null>,
     /// The plugin the message came into a bridge through, as the bridge's
     /// log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-    /// (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65041)`.
+    /// (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65043)`.
     #[napi(ts_type = "string | null")]
     pub msgoriginator: Either<String, Null>,
     /// The conversation a bridge filed the message under - a
     /// `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
-    /// of its log line; also `byTag(65045)`.
+    /// of its log line; also `byTag(65047)`.
     #[napi(ts_type = "string | null")]
     pub conversationid: Either<String, Null>,
 }
@@ -1274,6 +1362,7 @@ pub struct FixCaptureView {
 fn capture_view(capture: &FixCapture) -> FixCaptureView {
     FixCaptureView {
         msgpluginid: or_null(capture.msgpluginid().map(ToOwned::to_owned)),
+        msgpluginside: capture.msgpluginside().as_str().to_owned(),
         msgctxid: or_null(capture.msgctxid().map(ToOwned::to_owned)),
         msgsessionid: or_null(capture.msgsessionid().map(ToOwned::to_owned)),
         msgsesseventid: or_null(capture.msgsesseventid().map(ToOwned::to_owned)),
@@ -1467,10 +1556,16 @@ impl JsFixMsg {
 
     /// The business category the message's type files under, as the
     /// `marketdatakind` member's stored name - `ORDR`, `QUOT`, `EXEC`,
-    /// `TRAD`, `BOOK` - and `UNKN` where it files none.
+    /// `TRAD`, `BOOK` - and `UKNW` where it files none.
     #[napi(getter)]
     pub fn marketdatakind(&self) -> &'static str {
         self.inner.marketdatakind().as_str()
+    }
+
+    /// The role of the plugin whose session produced this message.
+    #[napi(getter)]
+    pub fn msgpluginside(&self) -> &'static str {
+        self.inner.msgpluginside().as_str()
     }
 
     /// The strike price of the option the message identifies - its market
@@ -1749,14 +1844,14 @@ impl JsFixMsg {
     }
 
     /// The type of its kind the message is, as the `marketdatatype` member's
-    /// stored name: `UNKN` where none.
+    /// stored name: `UKNW` where none.
     #[napi(getter)]
     pub fn marketdatatype(&self) -> String {
         self.inner.get_marketdatatype().as_str().to_owned()
     }
 
     /// The side, as the `side` member's four-letter code: the one stated, else
-    /// `UNKN` - never `null`.
+    /// `UKNW` - never `null`.
     #[napi(getter)]
     pub fn side(&self) -> String {
         self.inner.get_side().as_str().to_owned()
@@ -2069,7 +2164,7 @@ impl JsFixMsg {
     ///
     /// A key reaching no field and no child, or a value the field refuses,
     /// throws the core's refusal and leaves the message as it was. So does a
-    /// key reaching the capture's own column - `sourceurl` (65050), by tag
+    /// key reaching the capture's own column - `sourceurl` (65051), by tag
     /// or by name: a message holds no fact for it, and a row child would put
     /// it on the wire.
     #[napi(ts_args_type = "key: number | string, value: unknown")]
@@ -2437,7 +2532,12 @@ impl JsFixCodec {
     /// unstated; `isinRegistry` is the `IsinRegistry` every `lifecycle`
     /// learns into and fills from, shared so a walk run after another starts
     /// from what the first learned, each walk learning into its own when
-    /// unstated.
+    /// unstated; `source` is the id of the dictionary's source the codec
+    /// reads under, whose catalog entry's plugin side every message it
+    /// builds states as its `msgpluginside` - a row-header capture or a row
+    /// cell named `msgpluginside` being the row's word over it - resolved
+    /// once and refused when the catalog holds no such id, `UKNW` on every
+    /// message when unstated.
     #[napi(constructor)]
     pub fn new(
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -2546,6 +2646,9 @@ impl JsFixCodec {
         if let Some(held) = options.market_metadata {
             inner = inner.with_market_metadata(held);
         }
+        if let Some(held) = &options.source {
+            inner = inner.with_source(held).map_err(napi_error)?;
+        }
         Ok(Self { inner, registry })
     }
 }
@@ -2589,6 +2692,14 @@ impl JsFixCodec {
     #[napi(getter)]
     pub fn direction(&self) -> Option<String> {
         self.inner.direction().map(ToOwned::to_owned)
+    }
+
+    /// The source this codec reads under, folded: the dictionary's
+    /// catalog entry whose plugin side every message it builds states as
+    /// its `msgpluginside`; `null` where none was named.
+    #[napi(getter)]
+    pub fn source(&self) -> Option<String> {
+        self.inner.source().map(ToOwned::to_owned)
     }
 
     /// The raw bytes one Arrow batch targets.
@@ -3284,6 +3395,12 @@ pub struct FixCodecOptions<'env> {
     /// learned; each walk learns into its own, starting empty, when unstated.
     #[napi(ts_type = "IsinRegistry")]
     pub isin_registry: Option<ClassInstance<'env, JsIsinRegistry>>,
+    /// The id of the dictionary's source this codec reads under, folded:
+    /// the catalog entry (`FixRegistry.sources()`) whose plugin side every
+    /// message the codec builds states as its `msgpluginside`, resolved
+    /// once here and refused when the catalog holds no such id; `UKNW` on
+    /// every message when unstated.
+    pub source: Option<String>,
 }
 
 /// The default sending time one codec option names, as the core takes it.
@@ -3387,7 +3504,7 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// instrument codes (`isincode`, `bloombergcode`, `figicode`, `forexcode`,
 /// `miccode`) and the market and operation facts a message names - each a
 /// fact no FIX dictionary publishes, at the datatype its graph column names,
-/// numbered contiguously from `65001` through `fixmsg` (`65051`). The strike
+/// numbered contiguously from `65001` through `fixmsg` (`65052`). The strike
 /// price is the derived market fact `strikepx` over `StrikePrice(202)`, and a
 /// bridge's own identifier keys are no crate field either: they arrive as
 /// unmapped entries and are read for the identifier name they end with.

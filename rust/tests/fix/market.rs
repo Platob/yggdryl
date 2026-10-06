@@ -652,7 +652,7 @@ const NO_SIDE: &[u8] = b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AA
 const UNREADABLE_SIDE: &[u8] = b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|32=4|31=101.25|60=20260921-10:00:00|552=1|54=QQ|1427=BAD-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|";
 
 /// A trade side stating no side, or one no side reads, is still a fill:
-/// it splits off an execution of side `UNKN`, chained by its own
+/// it splits off an execution of side `UKNW`, chained by its own
 /// identifiers; the unreadable side stays beside the trade as the anomaly
 /// the parse noted, and stating none is no anomaly.
 #[test]
@@ -1181,7 +1181,7 @@ fn marketdatakind_registry_values_are_stable_int32_operation_ids() {
         .codeset_of(field)
         .expect("the marketdatakind vocabulary");
     for (name, value) in [
-        ("UNKN", "0"),
+        ("UKNW", "0"),
         ("ACCT", "1"),
         ("ALLO", "2"),
         ("BOOK", "3"),
@@ -1214,8 +1214,8 @@ fn marketdatakind_registry_values_are_stable_int32_operation_ids() {
 #[test]
 fn marketdatakind_operation_ids_are_intrinsic_while_custom_msgtypes_choose_a_category() {
     let mut registry = FixRegistry::new();
-    // The intrinsic set goes by the column's own name alone; the name it
-    // had before is no set of the registry's.
+    // Intrinsic sets go by their columns' own names; the retired category
+    // set is absent, and the plugin-side set joins them in name order.
     assert!(registry.get_codeset("msgcatcodeset").is_none());
     assert_eq!(
         registry
@@ -1225,6 +1225,7 @@ fn marketdatakind_operation_ids_are_intrinsic_while_custom_msgtypes_choose_a_cat
         [
             "marketdatakindcodeset",
             "marketdatatypecodeset",
+            "msgpluginsidecodeset",
             "statecodeset"
         ],
     );
@@ -3592,8 +3593,8 @@ fn a_lifecycle_merge_keeps_the_union_with_the_reference_leading() {
     let capture = messages(
         &codec,
         &[
-            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:00|65044=SESSION|65043=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=1|18=G|10=0|",
-            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:01|65044=SESSION|65043=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=2|111=3|10=0|",
+            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:00|65045=SESSION|65044=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=1|18=G|10=0|",
+            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:01|65045=SESSION|65044=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=2|111=3|10=0|",
         ],
     );
     let walked = codec
@@ -3850,14 +3851,14 @@ mod internal {
     #[test]
     fn a_trade_side_stating_no_side_is_warned_as_it_defaults_to_unknown() {
         warns(
-            "FIX trade side states no Side; its execution's side defaulted to UNKN",
+            "FIX trade side states no Side; its execution's side defaulted to UKNW",
             "Side",
             || split(NO_SIDE),
         );
         // The parse passed over the side no side reads, so the split meets
         // a side stating none.
         warns(
-            "FIX trade side states no Side; its execution's side defaulted to UNKN",
+            "FIX trade side states no Side; its execution's side defaulted to UKNW",
             "Side",
             || split(UNREADABLE_SIDE),
         );

@@ -10,7 +10,7 @@ from ._common import MetadataInput
 from ._typing import TypedField
 
 class Side(enum.IntEnum):
-    UNKN = 0
+    UKNW = 0
     BUYS = 1
     SELL = 2
     BUYM = 3

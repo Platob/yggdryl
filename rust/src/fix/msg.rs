@@ -22,7 +22,7 @@ use crate::isin_registry::IsinTable;
 use crate::xxhash;
 use crate::{
     Ccy, Cfi, Country, Decimal, Forex, IdKey, IdSource, IdType, Identifier, Identifiers,
-    MarketDataKind, Mic, Side, State, StructType, TimeInForce, Unit, Uuid,
+    MarketDataKind, Mic, PluginSide, Side, State, StructType, TimeInForce, Unit, Uuid,
 };
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie};
 
@@ -1369,6 +1369,7 @@ impl FixMsg {
             None,
             None,
             super::FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_NS,
+            PluginSide::Unknown,
         )?;
         message.resolve_views(viewed, true);
         message.settle();
@@ -1397,6 +1398,7 @@ impl FixMsg {
         fallback_sending_time: Option<&Scalar>,
         source: Option<Uuid>,
         official_time_delay_ns: i64,
+        pluginside: PluginSide,
     ) -> Result<(Self, Viewed)> {
         let super::build::Built {
             field,
@@ -1411,6 +1413,7 @@ impl FixMsg {
             fallback_sending_time,
             source,
             official_time_delay_ns,
+            pluginside,
         )?;
         // What arrived leads what the fields' reading recorded.
         message.arrival_anomalies = anomalies.len();
@@ -1422,11 +1425,14 @@ impl FixMsg {
     /// The rebuilt nested tree is canonicalized once against its newly built
     /// root. A row carrying its complete event identity keeps that recorded
     /// identity; a narrower row is settled from the facts it does carry.
+    /// `pluginside` is the role of the source the codec reads under, which a
+    /// row cell naming one overrides: the row's word.
     pub(super) fn from_rebuilt_row(
         registry: Arc<FixRegistry>,
         field: Field,
         value: Scalar,
         retains_identity: bool,
+        pluginside: PluginSide,
     ) -> Result<Self> {
         let value = field.canonicalize_value(value)?;
         let (mut message, viewed) = Self::assemble(
@@ -1436,6 +1442,7 @@ impl FixMsg {
             None,
             None,
             super::FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_NS,
+            pluginside,
         )?;
         message.resolve_views(viewed, true);
         message.sync_session_event_identifier();
@@ -1459,6 +1466,8 @@ impl FixMsg {
     /// stating a `srcuuids` column of its own states those instead.
     /// `official_time_delay_ns` is how far from the sending clock an
     /// official transaction may stand and still date the message.
+    /// `pluginside` is the role the codec's source states, which a row
+    /// cell naming one overrides: the row's word.
     fn assemble(
         registry: Arc<FixRegistry>,
         field: Field,
@@ -1466,6 +1475,7 @@ impl FixMsg {
         fallback_sending_time: Option<&Scalar>,
         source: Option<Uuid>,
         official_time_delay_ns: i64,
+        pluginside: PluginSide,
     ) -> Result<(Self, Viewed)> {
         let plan = super::schema::column_plan_of(&field, &registry)?;
         let held = value.as_sequence().ok_or_else(|| {
@@ -1477,6 +1487,7 @@ impl FixMsg {
         }
         let mut header = Box::new(FixHeader::unknown());
         let mut capture = Box::new(FixCapture::default());
+        capture.set_msgpluginside(pluginside);
         let mut lifted = Box::new(FixLifted::default());
         let mut text = None;
         let mut metadata = BTreeMap::new();
@@ -2922,7 +2933,7 @@ impl FixMsg {
             Side::read(&held)
                 .inspect_err(|_| {
                     self.unread(
-                        "FIX side defaulted to UNKN: the stated side does not read",
+                        "FIX side defaulted to UKNW: the stated side does not read",
                         54,
                         &held,
                     );
@@ -4101,6 +4112,18 @@ impl FixMsg {
     #[must_use]
     pub const fn header(&self) -> &FixHeader {
         &self.header
+    }
+
+    /// The role of the FIX plugin whose session produced the message:
+    /// `BUYS` for a Buy-Side plugin, `SELL` for a Sell-Side one, `UKNW`
+    /// where none is stated - the codec's source entry
+    /// ([`FixCodec::with_source`](super::FixCodec::with_source)), a
+    /// row-header capture or a row cell named `msgpluginside` being the
+    /// row's word over it; the fixed row's `msgpluginside` column, never a
+    /// FIX tag's, and independent of `Side(54)`.
+    #[must_use]
+    pub const fn msgpluginside(&self) -> PluginSide {
+        self.capture.msgpluginside()
     }
 
     /// The FIX fields the message lifted out of its row, exactly as it

@@ -98,7 +98,7 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
 
 def test_a_side_stated_as_none_is_unknown_never_none() -> None:
     event = graph.OrderEvent(CLOCK, crosscode="O-1")
-    assert event.side is Side.UNKN
+    assert event.side is Side.UKNW
     # An element stating no side states side 0 in its stored cross code.
     assert event.crosscode == "10:0:O-1"
     assert event.isincode is None and event.fxrates == {}

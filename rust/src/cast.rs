@@ -1717,9 +1717,9 @@ impl ArrayCastPlan {
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Code(source)) if source == field.dtype()
             ),
-            // An enum column written as its own leaf holds member codes; bare
-            // integers, and another leaf's codes, are codes nothing has
-            // checked under this leaf yet.
+            // An enum column written as its own leaf holds member codes;
+            // bare integers are codes nothing has checked under this leaf
+            // yet, and another leaf's codes were refused above.
             held if held.is_enum() => !matches!(
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Enum(source)) if source == field.dtype()
@@ -2649,6 +2649,13 @@ impl ArrayCastPlan {
                     exposure,
                     budget,
                 )?,
+                DataType::PluginSide => ingest_enum_array::<crate::PluginSide>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
                 other => return Err(enum_refusal(other.id()).into()),
             },
             ArrayCastKind::UuidIngest => ingest_uuid_array(
@@ -3088,7 +3095,12 @@ impl ArrayCastPlan {
 /// (bytes stay bytes, text renders as WKT), passes through to the planned
 /// arms. A string or code source is validated text and crosses to every
 /// target: another string re-reads it, text takes its characters, bytes
-/// keep what was stored. A bounded byte source crosses the same way.
+/// keep what was stored. A bounded byte source crosses the same way. An
+/// enum source is member codes of its own leaf: its own leaf, an integer
+/// and text take them, and another enum leaf refuses them by name, as the
+/// value door refuses a member of another leaf - `Side` and `PluginSide`
+/// both store `BUYS` as `1` and `SELL` as `2`, and a code that reads alike
+/// under two vocabularies is still a value of one of them.
 fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) -> Result<()> {
     let Some(source) = source else {
         return Ok(());
@@ -3105,8 +3117,19 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         // A UUID source is sixteen bytes: a UUID target re-validates them,
         // text renders them, and bytes keep them.
         (_, RecognizedExtension::Uuid) => Ok(()),
-        // An enum source is member codes: an enum target re-reads them, an
+        // An enum source is member codes: its own leaf re-reads them, an
         // integer reads the codes, and text spells each member's name.
+        // Another enum leaf is another vocabulary, which no code crosses.
+        (held, RecognizedExtension::Enum(source)) if held.is_enum() && source != held => {
+            Err(Error::Unsupported {
+                kind: held.name(),
+                reason: format!(
+                    "casting {source} to {held} is not supported: a member code of one enum \
+                     leaf is a value of another vocabulary, so a column of one enum is never \
+                     read as another"
+                ),
+            })
+        }
         (_, RecognizedExtension::Enum(_)) => Ok(()),
         // A fixed decimal source is its decimal storage with the scale
         // already fixed: every target reads it as it reads that storage,

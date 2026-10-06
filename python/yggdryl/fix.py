@@ -2,12 +2,13 @@
 
 A FIX field is an ordinary :class:`~yggdryl.Field` whose ``FIX:`` metadata the
 protocol view ``field.fix`` reads and writes as typed properties - ``id``,
-``tag``, ``tags``, ``branches``, ``aliases``, ``identifiers``, ``codeset``,
+``tag``, ``tags``, ``sources``, ``aliases``, ``identifiers``, ``codeset``,
 ``description`` - so nothing here is a second field class. A
 field is its tag and its name together: ``id`` is the ``int`` the core derives
-from both under the one fold, never stored, and what the dictionaries that
-contributed the field say is ``branches``, a sorted list of names that a caller
-filters on and no lookup consults. The registry is one namespace:
+from both under the one fold, never stored, and the sources that contributed
+the field are ``sources``, a sorted list of ids that a caller filters on and
+no lookup consults, each naming an entry of the registry's catalog
+(:meth:`FixRegistry.sources`). The registry is one namespace:
 :class:`FixRegistry` resolves scalar fields, components and repeating groups by
 identifier, by tag, by counter, by name or by dotted path - a Struct is a
 component, a Serie of Structs or a Map a group, a message a component carrying
@@ -27,9 +28,11 @@ them.
 
 :meth:`FixRegistry.from_cfb_file` reads one Ullink ``CBlock`` whole: the
 dictionary its vocabulary declares - every field keyed by its ``FIX:tag``,
-stamped with the dialect in ``FIX:branches`` and reading by the code set the
+stamped with the dialect in ``FIX:sources`` and reading by the code set the
 file's maps decode for it, which the dictionary carries under a name of its
-own - and the message roots its grammar bindings describe.
+own, and the dialect's catalog entry naming the file and the role of the
+plugin its root's ``type`` names - and the message roots its grammar
+bindings describe.
 :meth:`FixRegistry.add_cfb_file` folds that same file into a dictionary that
 already exists, adding what is absent, merging what is stored, and passing
 over - and naming, in the report it answers - what the file declares otherwise
@@ -45,7 +48,7 @@ vocabulary answers, each the message's own property (``curruuid``, ``crossuuid``
 the lifecycle's ``creaunix``, ``exprunix``, ``recdunix``,
 ``prevunix``, ``prevuuid`` and ``snapunix``; the market's ``price``,
 ``currency``, ``quantity``, ``unit``, ``side`` - a :class:`yggdryl.Side`,
-``UNKN`` where none is stated - its ``securityids`` - an :class:`yggdryl.Identifiers`
+``UKNW`` where none is stated - its ``securityids`` - an :class:`yggdryl.Identifiers`
 map keyed ``src:type`` of the codes it is known by, each sourced and typed ``isin``,
 ``cusip``, ``figi`` - and the ``isincode`` read off them, its CFI and
 MIC codes, the ``execunix`` clock it last executed at, last, average,
@@ -65,9 +68,13 @@ header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
 ``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``); the
 business category ``marketdatakind``, the :class:`yggdryl.MarketDataKind` member the
 message type is filed under (``MsgType.marketdatakind`` answers the same member for
-the definition); the ``strikepx`` of the option the message identifies, its market fact derived from ``StrikePrice(202)``;
+the definition); ``msgpluginside``, the :class:`yggdryl.PluginSide` member
+naming the role of the plugin whose session produced the message - the
+codec's ``source`` entry's, ``UKNW`` where none is named - never a FIX tag's
+and independent of ``Side(54)``; the ``strikepx`` of the option the message
+identifies, its market fact derived from ``StrikePrice(202)``;
 :meth:`FixMsg.capture`, what the line's own bridge row header said about
-the capture it was written for (``msgpluginid``, ``msgctxid``,
+the capture it was written for (``msgpluginid``, ``msgpluginside``, ``msgctxid``,
 ``msgsessionid``, and the ``msgsesseventid`` the message type, session,
 context and ``MsgSeqNum`` join to by ``:``) - never what a *reader* said
 about the line, which is held nowhere on a message; the free
@@ -172,7 +179,9 @@ every row's wire. :meth:`FixCodec.format_messages` and
 field a consumer reads by - a venue's own message type, :func:`fix_schema`
 itself, which keeps every column a capture lands in, or any Struct root a
 caller built. A pin - ``default_sending_time``, ``separator``,
-``payload_column``, ``null_values``, ``direction``, ``batch_byte_size``,
+``payload_column``, ``null_values``, ``direction``, ``source`` (the sources
+catalog entry whose plugin role every message is stamped with as
+``msgpluginside``), ``batch_byte_size``,
 ``snapshot_ns``, ``sorted_lifecycle``, ``official_time_delay_ms``,
 ``dedup_window_ms`` and ``market_metadata`` - is on the codec; a positive
 ``snapshot_ns`` emits independent living views on its epoch-aligned grid -
@@ -209,8 +218,14 @@ the specification, in tag order.
 
 A dictionary is a membership, not a namespace: :meth:`FixRegistry.from_cfb_file`
 and :meth:`FixRegistry.add_cfb_file` take a ``dialect`` and stamp it on every
-field the file produces, and :meth:`FixRegistry.dialects` lists the names any
-field or definition carries.
+field the file produces in ``FIX:sources``, and :meth:`FixRegistry.dialects`
+lists the ids any field or definition carries. What is known of a source is
+held once, in the catalog a store writes as ``sources.json``:
+:meth:`FixRegistry.sources` walks it as ``{"id", "file", "pluginside"}``
+records in id order, :meth:`FixRegistry.get_source` reads one,
+:meth:`FixRegistry.add_source` records one - an id already held taking only
+the file and the role it lacked - and :meth:`FixRegistry.remove_source`
+takes one away, refusing while a field still names it.
 
 Repeating counts such as ``NoPartyIDs`` are ``int32`` fields of the
 dictionary that frame a group on the wire and nothing else: ``Parties`` is a

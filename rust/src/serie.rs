@@ -547,6 +547,8 @@ pub enum Serie {
     MarketDataType(Arc<UInt16Serie>),
     /// A column of `TimeInForce` values, stored as their `uint8` codes.
     TimeInForce(Arc<UInt8Serie>),
+    /// A column of `PluginSide` values, stored as their `uint8` codes.
+    PluginSide(Arc<UInt8Serie>),
     /// A column of `Version` values, stored as their UTF-8 text.
     Version(Arc<Utf8StringSerie>),
     /// A column of `Url` values, stored as their UTF-8 text.
@@ -688,6 +690,7 @@ macro_rules! column {
             Serie::MarketDataKind($column) => $answer,
             Serie::MarketDataType($column) => $answer,
             Serie::TimeInForce($column) => $answer,
+            Serie::PluginSide($column) => $answer,
             Serie::Version($column) => $answer,
             Serie::Url($column) => $answer,
             Serie::Urn($column) => $answer,
@@ -943,6 +946,10 @@ macro_rules! column_mut {
                 $answer
             }
             Serie::TimeInForce(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::PluginSide(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -1267,6 +1274,7 @@ impl Leaf for UInt8Serie {
             DataType::MarketDataKind => Serie::MarketDataKind(Arc::new(self)),
             DataType::Side => Serie::Side(Arc::new(self)),
             DataType::TimeInForce => Serie::TimeInForce(Arc::new(self)),
+            DataType::PluginSide => Serie::PluginSide(Arc::new(self)),
             _ => Serie::UInt8(Arc::new(self)),
         }
     }
@@ -1276,7 +1284,8 @@ impl Leaf for UInt8Serie {
             Serie::UInt8(held)
             | Serie::MarketDataKind(held)
             | Serie::Side(held)
-            | Serie::TimeInForce(held) => Some(held.as_ref()),
+            | Serie::TimeInForce(held)
+            | Serie::PluginSide(held) => Some(held.as_ref()),
             _ => None,
         }
     }
@@ -1286,7 +1295,8 @@ impl Leaf for UInt8Serie {
             Serie::UInt8(held)
             | Serie::MarketDataKind(held)
             | Serie::Side(held)
-            | Serie::TimeInForce(held) => Some(Arc::make_mut(held)),
+            | Serie::TimeInForce(held)
+            | Serie::PluginSide(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -3123,6 +3133,9 @@ impl Serie {
                 Arc::make_mut(mine).append(theirs)
             }
             (Self::TimeInForce(mine), Self::TimeInForce(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::PluginSide(mine), Self::PluginSide(theirs)) => {
                 Arc::make_mut(mine).append(theirs)
             }
             (Self::Version(mine), Self::Version(theirs)) => Arc::make_mut(mine).append(theirs),

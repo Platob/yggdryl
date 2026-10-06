@@ -8,8 +8,8 @@
 //! fold to lower case, a `#` or `;` line is a comment, and where the two
 //! files name one profile the credentials file's values win. A file that is
 //! missing or unreadable contributes nothing: the shared files are optional on
-//! every machine, and a profile nobody wrote is not an error here - the
-//! session reports it as one source among the ones it walked.
+//! every machine. Whether a profile nobody wrote is an error is the session's
+//! question, not this reader's: one the caller named ends the session's walk.
 //!
 //! Nothing is read at construction; the session loads both files once, on the
 //! first question that needs them.
@@ -40,6 +40,9 @@ pub(crate) type Table = BTreeMap<String, Entry>;
 /// What a section header names, in the file it appears in.
 enum Header {
     Profile(String),
+    /// `[default]` in the configuration file: the profile `default`, under
+    /// the other spelling than `[profile default]`.
+    Default,
     SsoSession(String),
     Services(String),
     /// A section the AWS tools keep but nothing here reads, such as
@@ -73,26 +76,43 @@ pub struct Files {
 
 impl Files {
     /// Read both files from their text, each optional.
+    ///
+    /// A section spelled twice under one header extends the first, key by
+    /// key. `[default]` and `[profile default]` are two sections naming one
+    /// profile, as botocore's `build_profile_map` reads them: whichever is
+    /// read later replaces the other whole, so a key only the earlier one
+    /// spells is not the profile's.
     pub fn parse(config: Option<&str>, credentials: Option<&str>) -> Self {
         let mut files = Self::default();
+        // Whether the last section naming `default` was spelled `[default]`.
+        let mut default_bare: Option<bool> = None;
         for (header, table) in config
             .map(|text| parse(text, Style::Config))
             .unwrap_or_default()
         {
-            let target = match header {
-                Header::Profile(name) => {
-                    files
-                        .config_profiles
-                        .entry(name.clone())
-                        .or_default()
-                        .extend(table.clone());
-                    files.profiles.entry(name)
+            let (name, bare) = match header {
+                Header::Profile(name) => (name, false),
+                Header::Default => ("default".to_owned(), true),
+                Header::SsoSession(name) => {
+                    files.sso_sessions.entry(name).or_default().extend(table);
+                    continue;
                 }
-                Header::SsoSession(name) => files.sso_sessions.entry(name),
-                Header::Services(name) => files.services.entry(name),
+                Header::Services(name) => {
+                    files.services.entry(name).or_default().extend(table);
+                    continue;
+                }
                 Header::Other => continue,
             };
-            target.or_default().extend(table);
+            let replaces =
+                name == "default" && default_bare.replace(bare).is_some_and(|held| held != bare);
+            let config_held = files.config_profiles.entry(name.clone()).or_default();
+            let held = files.profiles.entry(name).or_default();
+            if replaces {
+                config_held.clear();
+                held.clear();
+            }
+            config_held.extend(table.clone());
+            held.extend(table);
         }
         for (header, table) in credentials
             .map(|text| parse(text, Style::Credentials))
@@ -109,6 +129,53 @@ impl Files {
             files.profiles.entry(name).or_default().extend(table);
         }
         files
+    }
+
+    /// The IAM Identity Center sign-in the `[sso-session name]` section
+    /// states for `account_id` and `role_name`: its start URL, its region
+    /// and its registration scopes, under the section's name - what a
+    /// profile naming the section signs in through, for a caller who named
+    /// the section and the account and role beside it rather than in a
+    /// profile.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Io`] naming the section no file defines, or the
+    /// start URL or region it lacks.
+    pub(crate) fn sso_session(&self, name: &str, account_id: &str, role_name: &str) -> Result<Sso> {
+        let refused = |reason: String| {
+            Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, reason))
+        };
+        let Some(table) = self.sso_sessions.get(name) else {
+            return Err(refused(format!(
+                "sso_session names {name}, which no [sso-session {name}] section defines"
+            )));
+        };
+        let missing: Vec<&str> = [
+            ("sso_start_url", text(table, "sso_start_url")),
+            ("sso_region", text(table, "sso_region")),
+        ]
+        .into_iter()
+        .filter(|(_, value)| value.is_none())
+        .map(|(key, _)| key)
+        .collect();
+        if !missing.is_empty() {
+            return Err(refused(format!(
+                "[sso-session {name}] signs in through IAM Identity Center without {}",
+                missing.join(", ")
+            )));
+        }
+        let mut sso = Sso::new(
+            text(table, "sso_start_url").unwrap_or_default(),
+            text(table, "sso_region").unwrap_or_default(),
+            account_id,
+            role_name,
+        )
+        .with_session_name(name);
+        if let Some(scopes) = text(table, "sso_registration_scopes") {
+            sso = sso.with_scopes(scopes.split(',').map(str::trim).filter(|s| !s.is_empty()));
+        }
+        Ok(sso)
     }
 
     /// The profile `name`, when either file holds one.
@@ -267,15 +334,20 @@ impl Profile {
     /// configuration file's, and never a pair with one file's key and the
     /// other's token.
     ///
-    /// A set carries the expiry a tool wrote beside it, under
-    /// `aws_credential_expiration`, `x_security_token_expires`,
-    /// `aws_session_expiration`, `aws_expiration` or `expiration`.
+    /// The session token is read under `aws_security_token`, then
+    /// `aws_session_token`, botocore's `TOKENS` order: where a section spells
+    /// both, the older name's value signs. A set carries the expiry a tool
+    /// wrote beside it, under `aws_credential_expiration`,
+    /// `x_security_token_expires`, `aws_session_expiration`, `aws_expiration`
+    /// or `expiration`.
     ///
     /// # Errors
     ///
     /// Half a set - a key id without its secret, a secret or a session
     /// token without a key id - or an expiry that is not an instant, or two
-    /// expiries that disagree.
+    /// expiries that disagree. A credentials file holding half a set is
+    /// refused even where the configuration file holds a whole one, since
+    /// the half is what was written for the profile.
     pub fn credentials(&self) -> Result<Option<Credentials>> {
         match self.credential_file_credentials()? {
             Some(found) => Ok(Some(found)),
@@ -283,16 +355,27 @@ impl Profile {
         }
     }
 
-    /// The key pair the credentials file alone holds.
+    /// The key pair the credentials file alone holds; refused as
+    /// [`Self::credentials`] is, half a set as [`is_partial_set`] recognises.
     pub(crate) fn credential_file_credentials(&self) -> Result<Option<Credentials>> {
-        credentials_of(&self.credential_values)
-            .map_err(|reason| self.refusal(format!("in the credentials file {reason}")))
+        self.credentials_in(&self.credential_values, "the credentials file")
     }
 
-    /// The key pair the configuration file alone holds.
+    /// The key pair the configuration file alone holds; refused as
+    /// [`Self::credentials`] is, half a set as [`is_partial_set`] recognises.
     pub(crate) fn config_file_credentials(&self) -> Result<Option<Credentials>> {
-        credentials_of(&self.config_values)
-            .map_err(|reason| self.refusal(format!("in the configuration file {reason}")))
+        self.credentials_in(&self.config_values, "the configuration file")
+    }
+
+    /// The key pair `table` holds, a refusal naming this profile and `file`.
+    fn credentials_in(&self, table: &Table, file: &str) -> Result<Option<Credentials>> {
+        credentials_of(table).map_err(|refused| match refused {
+            SetRefusal::Partial(reason) => Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                PartialSet(self.said(format!("in {file} {reason}"))),
+            )),
+            SetRefusal::Unreadable(reason) => self.refusal(format!("in {file} {reason}")),
+        })
     }
 
     /// The `credential_process` command line.
@@ -306,19 +389,27 @@ impl Profile {
         self.get("login_session")
     }
 
-    /// The role the profile assumes, with how it obtains the keys that sign
-    /// the exchange.
+    /// The role the profile assumes with keys it obtains through
+    /// `source_profile` or `credential_source`, which sign the exchange.
+    ///
+    /// A profile stating `web_identity_token_file` assumes no role here,
+    /// whatever else it states: it is a web identity profile, which the
+    /// session reads key by key beside `AWS_ROLE_ARN` and
+    /// `AWS_WEB_IDENTITY_TOKEN_FILE`, as botocore's `AssumeRoleProvider`
+    /// leaves such a profile to `AssumeRoleWithWebIdentityProvider`.
     ///
     /// # Errors
     ///
-    /// A `role_arn` with neither `source_profile`, `credential_source` nor
-    /// `web_identity_token_file`, or with both of the first two; a
-    /// `credential_source` that names no source; a `duration_seconds` that is
-    /// not a number.
+    /// A `role_arn` that is not an ARN; one with neither `source_profile`
+    /// nor `credential_source`, or with both; a `credential_source` that
+    /// names no source; a `duration_seconds` that is not a number.
     pub fn assumed_role(&self) -> Result<Option<AssumedRole>> {
         let Some(role_arn) = self.get("role_arn") else {
             return Ok(None);
         };
+        if self.get("web_identity_token_file").is_some() {
+            return Ok(None);
+        }
         // Read once where it is written, so a typo is this profile's refusal
         // rather than a request STS refuses with less to say.
         crate::Arn::from_str(role_arn).map_err(|error| {
@@ -344,9 +435,6 @@ impl Profile {
             })?;
             role = role.with_duration(duration);
         }
-        if let Some(token_file) = self.get("web_identity_token_file") {
-            role = role.with_web_identity_token_file(token_file);
-        }
         if let Some(source) = self.get("source_profile") {
             role = role.with_source_profile(source);
         }
@@ -359,12 +447,11 @@ impl Profile {
         match (
             role.source_profile().is_some(),
             role.credential_source().is_some(),
-            role.web_identity_token_file().is_some(),
         ) {
-            (true, true, _) => Err(self.refusal(
+            (true, true) => Err(self.refusal(
                 "names both source_profile and credential_source for its role, and a role has one source",
             )),
-            (false, false, false) => Err(self.refusal(
+            (false, false) => Err(self.refusal(
                 "names role_arn without source_profile, credential_source or web_identity_token_file",
             )),
             _ => Ok(Some(role)),
@@ -447,9 +534,37 @@ impl Profile {
     fn refusal(&self, reason: impl std::fmt::Display) -> Error {
         Error::Io(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("the profile {} {reason}", self.name),
+            self.said(reason),
         ))
     }
+
+    /// `reason`, said of this profile.
+    fn said(&self, reason: impl std::fmt::Display) -> String {
+        format!("the profile {} {reason}", self.name)
+    }
+}
+
+/// The payload of the refusal of half a key pair, which [`is_partial_set`]
+/// recognises; it renders as the message it holds.
+#[derive(Debug)]
+struct PartialSet(String);
+
+impl std::fmt::Display for PartialSet {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for PartialSet {}
+
+/// Whether `error` is a profile's refusal of half a key pair in one of the
+/// shared files - a key id without its secret, a secret or a session token
+/// without a key id - as [`Profile::credentials`] and the two per-file
+/// readers answer it. A configured source that is half there ends the
+/// session's walk, as botocore's `PartialCredentialsError` ends its chain;
+/// every other refusal, an unreadable expiry included, answers false.
+pub(crate) fn is_partial_set(error: &Error) -> bool {
+    matches!(error, Error::Io(io) if io.get_ref().is_some_and(|inner| inner.is::<PartialSet>()))
 }
 
 impl std::fmt::Debug for Files {
@@ -577,32 +692,53 @@ fn pasted<'a>(table: &'a Table, key: &str) -> Option<&'a str> {
     (!value.is_empty()).then_some(value)
 }
 
+/// Why a section's key pair cannot be read, worded to follow the section it
+/// is in.
+enum SetRefusal {
+    /// Half a pair: one key stated without the one it needs.
+    Partial(String),
+    /// A whole pair whose expiry cannot be read.
+    Unreadable(String),
+}
+
+/// The names a session token is written under, in botocore's `TOKENS` order:
+/// the first a section spells is the token.
+const TOKEN_KEYS: [&str; 2] = ["aws_security_token", "aws_session_token"];
+
 /// The key pair a section holds, when it holds one, with the session token
 /// and the expiry beside it.
 ///
 /// # Errors
 ///
-/// The reason half a set, or its expiry, cannot be read - worded to follow
-/// the section it is in.
-fn credentials_of(table: &Table) -> std::result::Result<Option<Credentials>, String> {
+/// Half a set, naming the key stated and the one missing, or an expiry that
+/// cannot be read.
+fn credentials_of(table: &Table) -> std::result::Result<Option<Credentials>, SetRefusal> {
     let access_key_id = pasted(table, "aws_access_key_id");
     let secret_access_key = pasted(table, "aws_secret_access_key");
-    let token = pasted(table, "aws_session_token").or_else(|| pasted(table, "aws_security_token"));
-    let (access_key_id, secret_access_key) = match (access_key_id, secret_access_key) {
-        (Some(id), Some(secret)) => (id, secret),
-        (Some(_), None) => {
-            return Err("sets aws_access_key_id without aws_secret_access_key".to_owned());
+    let token = TOKEN_KEYS
+        .into_iter()
+        .find_map(|key| pasted(table, key).map(|token| (key, token)));
+    let (access_key_id, secret_access_key) = match (access_key_id, secret_access_key, token) {
+        (Some(id), Some(secret), _) => (id, secret),
+        (Some(_), None, _) => {
+            return Err(SetRefusal::Partial(
+                "sets aws_access_key_id without aws_secret_access_key".to_owned(),
+            ));
         }
-        (None, Some(_)) => {
-            return Err("sets aws_secret_access_key without aws_access_key_id".to_owned());
+        (None, Some(_), _) => {
+            return Err(SetRefusal::Partial(
+                "sets aws_secret_access_key without aws_access_key_id".to_owned(),
+            ));
         }
-        (None, None) if token.is_some() => {
-            return Err("sets aws_session_token without aws_access_key_id".to_owned());
+        (None, None, Some((key, _))) => {
+            return Err(SetRefusal::Partial(format!(
+                "sets {key} without aws_access_key_id"
+            )));
         }
-        (None, None) => return Ok(None),
+        (None, None, None) => return Ok(None),
     };
     let mut credentials = Credentials::new(access_key_id, secret_access_key);
-    if let Some(token) = token {
+    if let Some((_, token)) = token {
         credentials = credentials.with_session_token(token);
     }
     if let Some(account_id) = pasted(table, "aws_account_id") {
@@ -613,11 +749,16 @@ fn credentials_of(table: &Table) -> std::result::Result<Option<Credentials>, Str
         let Some(value) = pasted(table, key) else {
             continue;
         };
-        let at = crate::auth::instant(value)
-            .ok_or_else(|| format!("sets {key} to {value:?}, which is not an ISO 8601 instant"))?;
+        let at = crate::auth::instant(value).ok_or_else(|| {
+            SetRefusal::Unreadable(format!(
+                "sets {key} to {value:?}, which is not an ISO 8601 instant"
+            ))
+        })?;
         match expiry {
             Some((first, held)) if held != at => {
-                return Err(format!("sets {first} and {key} to two different instants"));
+                return Err(SetRefusal::Unreadable(format!(
+                    "sets {first} and {key} to two different instants"
+                )));
             }
             Some(_) => {}
             None => expiry = Some((key, at)),
@@ -720,7 +861,7 @@ fn header(inner: &str, style: Style) -> Header {
         Style::Credentials => Header::Profile(inner.to_owned()),
         Style::Config => {
             if inner == "default" {
-                return Header::Profile(inner.to_owned());
+                return Header::Default;
             }
             let words = split_words(inner);
             let [kind, name] = words.as_slice() else {
@@ -855,15 +996,122 @@ pub(crate) fn split_command(text: &str, windows: bool) -> Vec<String> {
     words
 }
 
-/// `path` with a leading `~` replaced by `home`, the way the AWS tools read
-/// `AWS_CONFIG_FILE`.
-pub(crate) fn expand_user(path: &str, home: Option<&Path>) -> PathBuf {
+/// `path` as botocore's `raw_config_parse` opens `AWS_CONFIG_FILE` and
+/// `AWS_SHARED_CREDENTIALS_FILE`: its variables expanded from `variable`
+/// first, as Python's `os.path.expandvars` reads them on the platform this
+/// runs on ([`expand_vars`]), then a leading `~` replaced by `home`, as
+/// `os.path.expanduser` does after it. A variable `variable` does not answer
+/// is kept as written, and so is `~user`: another user's home is not guessed.
+pub(crate) fn expand_path(
+    path: &str,
+    variable: &dyn Fn(&str) -> Option<String>,
+    home: Option<&Path>,
+) -> PathBuf {
+    expand_home(&expand_vars(path, variable, cfg!(windows)), home)
+}
+
+/// `path` with a leading `~`, alone or before a `/` or a `\`, replaced by
+/// `home`.
+fn expand_home(path: &str, home: Option<&Path>) -> PathBuf {
     match (path.strip_prefix('~'), home) {
         (Some(rest), Some(home)) if rest.is_empty() || rest.starts_with(['/', '\\']) => {
             home.join(rest.trim_start_matches(['/', '\\']))
         }
         _ => PathBuf::from(path),
     }
+}
+
+/// `text` with its variables expanded as Python's `os.path.expandvars` does,
+/// a value never scanned again.
+///
+/// POSIX (`posixpath`): `$NAME` - ASCII letters, digits and `_` - and
+/// `${NAME}`, an unknown name or an unclosed brace kept as written. Windows
+/// (`ntpath`): the same with `-` in a bare name, plus `%NAME%`; `$$` and
+/// `%%` are one `$` and one `%`, a run in single quotes is kept as written,
+/// quotes included, and an unclosed `${` or `%` keeps the rest of the text.
+fn expand_vars(text: &str, variable: &dyn Fn(&str) -> Option<String>, windows: bool) -> String {
+    // An empty name is never a variable: no environment can hold one.
+    let lookup = |name: &str| {
+        if name.is_empty() {
+            None
+        } else {
+            variable(name)
+        }
+    };
+    let bare_len = |rest: &str| {
+        rest.bytes()
+            .take_while(|byte| {
+                byte.is_ascii_alphanumeric() || *byte == b'_' || (windows && *byte == b'-')
+            })
+            .count()
+    };
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(|c: char| c == '$' || (windows && matches!(c, '%' | '\''))) {
+        out.push_str(&rest[..at]);
+        let mark = rest.as_bytes()[at];
+        let body = &rest[at + 1..];
+        rest = match mark {
+            b'\'' => {
+                let end = body.find('\'').map_or(body.len(), |close| close + 1);
+                out.push('\'');
+                out.push_str(&body[..end]);
+                &body[end..]
+            }
+            b'%' => {
+                if let Some(after) = body.strip_prefix('%') {
+                    out.push('%');
+                    after
+                } else if let Some(end) = body.find('%') {
+                    let name = &body[..end];
+                    match lookup(name) {
+                        Some(value) => out.push_str(&value),
+                        None => out.push_str(&rest[at..at + end + 2]),
+                    }
+                    &body[end + 1..]
+                } else {
+                    out.push_str(&rest[at..]);
+                    ""
+                }
+            }
+            _ if windows && body.starts_with('$') => {
+                out.push('$');
+                &body[1..]
+            }
+            _ => match body.strip_prefix('{') {
+                Some(braced) => match braced.find('}') {
+                    Some(end) => {
+                        match lookup(&braced[..end]) {
+                            Some(value) => out.push_str(&value),
+                            None => out.push_str(&rest[at..at + end + 3]),
+                        }
+                        &braced[end + 1..]
+                    }
+                    None if windows => {
+                        out.push_str(&rest[at..]);
+                        ""
+                    }
+                    None => {
+                        out.push('$');
+                        body
+                    }
+                },
+                None => {
+                    let name = &body[..bare_len(body)];
+                    match lookup(name) {
+                        Some(value) => out.push_str(&value),
+                        None => {
+                            out.push('$');
+                            out.push_str(name);
+                        }
+                    }
+                    &body[name.len()..]
+                }
+            },
+        };
+    }
+    out.push_str(rest);
+    out
 }
 
 /// The key pair the original EC2 credential file spells, `AWSAccessKeyId=`
@@ -925,9 +1173,29 @@ pub mod internals {
         super::split_command(text, windows)
     }
 
-    /// `path` with a leading `~` replaced by `home`.
-    pub fn expand_user(path: &str, home: Option<&Path>) -> PathBuf {
-        super::expand_user(path, home)
+    /// `path` with its variables expanded from `variable`, then a leading
+    /// `~` replaced by `home`.
+    pub fn expand_path(
+        path: &str,
+        variable: &dyn Fn(&str) -> Option<String>,
+        home: Option<&Path>,
+    ) -> PathBuf {
+        super::expand_path(path, variable, home)
+    }
+
+    /// `text` with its variables expanded as Python's `os.path.expandvars`
+    /// does on Windows, or elsewhere.
+    pub fn expand_vars(
+        text: &str,
+        variable: &dyn Fn(&str) -> Option<String>,
+        windows: bool,
+    ) -> String {
+        super::expand_vars(text, variable, windows)
+    }
+
+    /// Whether `error` is a profile's refusal of half a key pair.
+    pub fn is_partial_set(error: &crate::Error) -> bool {
+        super::is_partial_set(error)
     }
 
     /// The key pair the original EC2 credential file spells.

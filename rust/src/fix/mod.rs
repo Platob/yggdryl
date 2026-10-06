@@ -12,7 +12,7 @@
 //! | property | key | type | meaning |
 //! | --- | --- | --- | --- |
 //! | tag | `FIX:tag` | `i32` | canonical FIX tag |
-//! | branches | `FIX:branches` | ordered name list | the dictionaries that contributed this field, folded and sorted; absent for a field the specification alone defines |
+//! | sources | `FIX:sources` | JSON array of ids | the sources that contributed this field - each the id of an entry of the registry's [sources catalog](FixRegistry::sources), which `sources.json` holds in a store - folded and sorted; absent for a field the specification alone defines |
 //! | tags | `FIX:tags` | JSON array of `i32` | alternate tags, highest priority first |
 //! | names | `FIX:names` | JSON array of names | alternate names, highest priority first |
 //! | identifiers | `FIX:identifiers` | ordered member name list | a component's direct scalar identifiers, in declaration order |
@@ -36,8 +36,8 @@
 //! together. It is derived on every read from `FIX:tag` and the field's
 //! name and never stored - there is no `FIX:id` key on disk - because the
 //! registry, the catalog and the store rename a field after it is built.
-//! A dictionary is not a namespace: the fields a dialect contributed carry
-//! its name in `FIX:branches`, which a merge unions and resolution never
+//! A dictionary is not a namespace: the fields a source contributed carry
+//! its id in `FIX:sources`, which a merge unions and resolution never
 //! consults.
 //!
 //! # Resolution
@@ -111,7 +111,7 @@
 //!
 //! let mut trade = DataType::utf8().required_field("TradeID");
 //! trade.as_fix_mut().set_tag(5001)?;
-//! trade.as_fix_mut().set_branches(["cme"])?;
+//! trade.as_fix_mut().set_sources(["cme"])?;
 //!
 //! let registry = FixRegistry::from_fields([symbol, trade])?;
 //! assert_eq!(registry.field_by_tag(55)?.name(), "Symbol");
@@ -119,7 +119,7 @@
 //! assert_eq!(registry.field("SYMBOL")?.as_fix().id()?, Some(FixId::of(55, "Symbol")?));
 //! // An identity is a tag and a name; membership says who contributed it.
 //! assert_eq!(registry.field(FixId::of(5001, "TradeID")?)?.name(), "TradeID");
-//! assert!(registry.field_by_tag(5001)?.as_fix().has_branch("CME"));
+//! assert!(registry.field_by_tag(5001)?.as_fix().has_source("CME"));
 //! # Ok(())
 //! # }
 //! ```
@@ -166,6 +166,7 @@ mod native_derivations;
 pub(crate) mod registry;
 pub(crate) mod retired;
 pub(crate) mod schema;
+mod source;
 pub(crate) mod store;
 mod ulbridge;
 
@@ -184,12 +185,12 @@ pub use crated::{
     FORWARDPOINTS_TAG_NAME, FXRATES_TAG_NAME, HIDDENQTY_TAG_NAME, IDENTIFIERS_TAG_NAME,
     ISINCODE_TAG_NAME, MARKETDATAKIND_TAG_NAME, MARKETDATATYPE_TAG_NAME, METADATA_TAG_NAME,
     MICCODE_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME,
-    MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, MSGTYPE_TAG_NAME,
-    ORDQTY_TAG_NAME, PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME,
-    PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME,
-    SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME, STATE_TAG_NAME, STRIKEPX_TAG_NAME,
-    TICKER_TAG_NAME, TRADABLE_TAG_NAME, UNIT_TAG_NAME, fix_crate_fields, is_crate_tag,
-    is_derived_tag,
+    MSGPLUGINID_TAG_NAME, MSGPLUGINSIDE_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME,
+    MSGTYPE_TAG_NAME, ORDQTY_TAG_NAME, PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME,
+    PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME,
+    SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME, STATE_TAG_NAME,
+    STRIKEPX_TAG_NAME, TICKER_TAG_NAME, TRADABLE_TAG_NAME, UNIT_TAG_NAME, fix_crate_fields,
+    is_crate_tag, is_derived_tag,
 };
 pub use digest::FixDedup;
 pub use direction::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};
@@ -204,6 +205,7 @@ pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
 pub use registry::{FixDrop, FixFailure, FixFieldIter, FixMerge, FixRegistry};
+pub use source::FixSource;
 pub use store::FixCommit;
 pub use ulbridge::ULBRIDGE_ROWHEADER;
 

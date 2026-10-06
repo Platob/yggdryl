@@ -41,8 +41,9 @@ pub(crate) enum Authorization {
     SharedKey(SharedKey),
     /// A signature already computed, carried in the query.
     Sas(String),
-    /// A bearer token, obtained once and refreshed before it lapses.
-    Bearer(TokenCache),
+    /// A bearer token, obtained once and refreshed before it lapses - boxed,
+    /// the lease behind it being many times the other variants' size.
+    Bearer(Box<TokenCache>),
     /// Nothing, which a public container allows.
     Anonymous,
 }
@@ -69,7 +70,7 @@ impl Authorization {
             return Ok(Self::Anonymous);
         }
         if let Some(token) = options.bearer_token() {
-            return Ok(Self::Bearer(TokenCache::fixed(token)));
+            return Ok(Self::Bearer(Box::new(TokenCache::fixed(token))));
         }
         if let Some(token) = options.sas_token() {
             return Ok(Self::Sas(token.to_owned()));
@@ -90,27 +91,29 @@ impl Authorization {
             options.client_id(),
             options.client_secret(),
         ) {
-            return Ok(Self::Bearer(TokenCache::client_secret(
+            return Ok(Self::Bearer(Box::new(TokenCache::client_secret(
                 options.authority_host(),
                 tenant,
                 client,
                 secret,
-            )));
+            ))));
         }
         if let (Some(tenant), Some(client), Some(path)) = (
             options.tenant_id(),
             options.client_id(),
             options.federated_token_file(),
         ) {
-            return Ok(Self::Bearer(TokenCache::federated(
+            return Ok(Self::Bearer(Box::new(TokenCache::federated(
                 options.authority_host(),
                 tenant,
                 client,
                 path,
-            )));
+            ))));
         }
         if options.managed_identity() {
-            return Ok(Self::Bearer(TokenCache::managed(options.client_id())));
+            return Ok(Self::Bearer(Box::new(TokenCache::managed(
+                options.client_id(),
+            ))));
         }
         Ok(Self::Anonymous)
     }
@@ -215,9 +218,12 @@ impl TokenCache {
     fn of(source: Source) -> Self {
         Self {
             source,
+            // No mandatory window: a token is used until it lapses, as the
+            // service that issued it allows.
             held: Lease::new(
                 "Azure bearer token",
                 REFRESH_MARGIN,
+                Duration::ZERO,
                 RETRY_PAUSE,
                 RETRY_PAUSE,
             ),

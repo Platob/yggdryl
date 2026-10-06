@@ -6,9 +6,9 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 94 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the seventeen [codes](codes/index.md), the five [enums](enum/index.md) |
+| Owns | 97 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the seventeen [codes](codes/index.md), the six [enums](enum/index.md) |
 | Parses | Arrow, SQL, Hive, Spark, Iceberg, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
-| Identity | `id()`, `kind()`: 90 ids, 13 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
+| Identity | `id()`, `kind()`: 97 ids, 13 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
@@ -422,12 +422,12 @@ A datatype Arrow cannot state alone rides an extension name, one per datatype id
 (`DataTypeId::arrow_extension_name`): `arrow.uuid`, `arrow.parquet.variant`, `geoarrow.wkb`,
 `yggdryl.string` for every string leaf but plain `utf8`, `large_utf8` and `utf8_view`,
 `yggdryl.bytes` for `sized_binary` and `large_binary_view`, and `yggdryl.<name>` for the fixed
-decimals, the version, URL, URN, timezone, MIME and media types, the five enum leaves and the
-seventeen codes - thirty-five names in all, `DataTypeId::arrow_extension_names()`. The name over the
+decimals, the version, URL, URN, timezone, MIME and media types, the six enum leaves and the
+seventeen codes - thirty-six names in all, `DataTypeId::arrow_extension_names()`. The name over the
 storage its datatype lays out reads back as that datatype, a dictionary of it included; over any
 other storage it is a foreign field wearing the name and reads as its storage.
 
-- Rust: each parameter-free datatype marker - `CcyType`, `StateType`, `UuidType` and the twenty-five
+- Rust: each parameter-free datatype marker - `CcyType`, `StateType`, `UuidType` and the twenty-six
   beside them - and the `StringType` and `BytesType` leaves that ride a document implement
   arrow-rs's `ExtensionType`, every method answering as the field import does. The fixed decimals,
   the URL and the URN have no marker of their own; `Field::from_arrow_field` reads them.

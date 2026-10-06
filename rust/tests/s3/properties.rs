@@ -143,8 +143,11 @@ fn a_role_is_assembled_from_the_properties_that_describe_it() {
     assert_eq!(role.endpoint(), Some("https://sts.eu-west-1.amazonaws.com"));
 
     // A duration outside what STS issues is clamped rather than refused.
-    let options = S3Options::from_properties([("role_arn", "arn:x"), ("role_duration", "60")])
-        .expect("readable properties");
+    let options = S3Options::from_properties([
+        ("role_arn", "arn:aws:iam::123456789012:role/x"),
+        ("role_duration", "60"),
+    ])
+    .expect("readable properties");
     assert_eq!(
         options.session().assumed_role().map(AssumedRole::duration),
         Some(Duration::from_secs(900))
@@ -265,10 +268,13 @@ fn an_identity_center_sign_in_is_four_properties_or_none_of_them() {
         message.contains("needs sso_account_id, sso_role_name"),
         "{message}"
     );
+    // A session named alone takes its start URL and region from its
+    // `[sso-session]` section at walk time, so what it still needs is the
+    // account and the role.
     let refused = S3Options::from_properties([("sso_session", "trading")]).expect_err("a refusal");
     let message = refused.to_string();
     assert!(
-        message.contains("needs sso_start_url, sso_region, sso_account_id, sso_role_name"),
+        message.contains("needs sso_account_id, sso_role_name"),
         "{message}"
     );
 
@@ -340,7 +346,7 @@ fn the_aws_files_and_endpoint_switches_reach_the_session() {
         .expect("readable properties")
         .session()
         .with_environment(false);
-    assert!(!legacy.sts_regional_endpoints());
+    assert!(!legacy.sts_regional_endpoints().expect("a mode"));
     assert_eq!(
         legacy.sts_endpoint("eu-west-1").expect("an STS endpoint"),
         "https://sts.amazonaws.com"
@@ -354,7 +360,10 @@ fn the_aws_files_and_endpoint_switches_reach_the_session() {
             .expect("readable properties")
             .session()
             .with_environment(false);
-        assert!(session.sts_regional_endpoints(), "{regional}");
+        assert!(
+            session.sts_regional_endpoints().expect("a mode"),
+            "{regional}"
+        );
         assert_eq!(
             session.sts_endpoint("eu-west-1").expect("an STS endpoint"),
             "https://sts.eu-west-1.amazonaws.com",
@@ -993,6 +1002,233 @@ fn a_pair_the_environment_answered_never_names_an_azure_account() {
 }
 
 #[test]
+fn half_a_credential_set_is_refused_by_the_store_reader_as_by_the_session() {
+    use yggdryl::aws::Session;
+    use yggdryl::internals::s3_properties::swept;
+
+    // A caller who stated one set and mistyped half of it meant that set:
+    // dropping the half would sign as whoever the chain answers instead.
+    for (properties, stating, missing) in [
+        (
+            vec![("s3.access-key-id", "AKIAHALF")],
+            "s3.access-key-id",
+            "the secret_access_key is missing",
+        ),
+        (
+            vec![("aws_secret_access_key", "secret")],
+            "aws_secret_access_key",
+            "the access_key_id is missing",
+        ),
+        (
+            vec![("s3.session-token", "token")],
+            "s3.session-token",
+            "the access_key_id and the secret_access_key are missing",
+        ),
+        // A misspelt secret is no secret, so the key stands alone.
+        (
+            vec![
+                ("s3.access-key-id", "AKIAHALF"),
+                ("s3.secret-key-id", "secret"),
+            ],
+            "s3.access-key-id",
+            "the secret_access_key is missing",
+        ),
+        (
+            vec![("gcs.hmac-secret", "secret")],
+            "gcs.hmac-secret",
+            "the access_key_id is missing",
+        ),
+    ] {
+        let refused = S3Options::from_properties(properties.clone()).expect_err("half a set");
+        let yggdryl::Error::Io(cause) = &refused else {
+            panic!("{properties:?}: expected an input refusal, got {refused:?}");
+        };
+        assert_eq!(cause.kind(), std::io::ErrorKind::InvalidInput, "{refused}");
+        let message = refused.to_string();
+        assert!(message.contains(missing), "{properties:?}: {message}");
+        assert!(message.contains(stating), "{properties:?}: {message}");
+    }
+
+    // The session's own reader refuses the same halves in the same words.
+    for (name, missing) in [
+        ("client.access-key-id", "the secret_access_key is missing"),
+        ("client.secret-access-key", "the access_key_id is missing"),
+        (
+            "client.session-token",
+            "the access_key_id and the secret_access_key are missing",
+        ),
+    ] {
+        let refused = Session::new()
+            .with_environment(false)
+            .with_properties([(name, "half")])
+            .expect_err("half a set");
+        assert!(refused.to_string().contains(missing), "{name}: {refused}");
+    }
+
+    // `AWS_S3_ACCESS_KEY_ID` is a name the sweep leaves alone - it is no
+    // store knob and the session reads it as nothing - so half of such a
+    // pair in the environment reaches no door and signs nothing, rather
+    // than becoming an explicit set.
+    let found = swept(
+        &S3Options::default(),
+        vec![("AWS_S3_ACCESS_KEY_ID".to_owned(), "AKIAHALF".to_owned())],
+    );
+    assert!(found.is_empty(), "{found:?}");
+    let options = S3Options::default()
+        .with_properties(found)
+        .expect("nothing stated");
+    let message = format!("{options:?}");
+    assert!(
+        options.credentials().is_none() && !message.contains("AKIAHALF"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_pair_swept_under_another_store_s_name_never_signs_for_amazon_s3() {
+    use yggdryl::aws::Session;
+    use yggdryl::internals::s3_properties::swept;
+
+    let directory =
+        std::env::temp_dir().join(format!("yggdryl-s3-swept-pair-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).expect("a scratch directory");
+    // A session walled off from this process: no variable, no `~/.aws`, no
+    // instance - only the credentials text it is handed.
+    let walled = |credentials: &str| {
+        Session::new()
+            .with_variables(Vec::<(String, String)>::new())
+            .with_directory(&directory)
+            .with_credentials_text(credentials)
+            .with_metadata_disabled(true)
+    };
+    let url = Url::from_str("s3://trades/lake/part.parquet").expect("a location");
+    let signer = |options: S3Options| {
+        Client::new(
+            &url,
+            options
+                .with_environment_prefixes(std::iter::empty::<String>())
+                .with_region("eu-west-1"),
+        )
+        .expect("a client")
+        .signer_access_key_id(SystemTime::now())
+        .expect("a walk")
+    };
+    let sweep = |variables: &[(&str, &str)]| {
+        S3Options::default()
+            .with_properties(swept(
+                &S3Options::default(),
+                variables
+                    .iter()
+                    .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                    .collect(),
+            ))
+            .expect("readable properties")
+    };
+
+    // An Azure account and its shared key - the spelling arrow-rs, Polars and
+    // delta-rs read - stay Azure's: no AWS set, so the file's keys sign.
+    let ambient = sweep(&[
+        ("AZURE_STORAGE_ACCOUNT_NAME", "devacct"),
+        ("AZURE_STORAGE_ACCOUNT_KEY", "a2V5"),
+    ]);
+    assert!(ambient.credentials().is_none(), "Azure's key is no AWS set");
+    assert_eq!(ambient.azure().account(), Some("devacct"));
+    assert!(ambient.azure().has_account_key());
+    let options = S3Options::default()
+        .with_session(walled(
+            "[default]\naws_access_key_id = AKIAFILE\naws_secret_access_key = file-secret\n",
+        ))
+        .under(&ambient);
+    assert!(options.credentials().is_none());
+    assert_eq!(options.azure().account(), Some("devacct"), "still Azure's");
+    assert_eq!(signer(options).as_deref(), Some("AKIAFILE"));
+
+    // A pair swept under this crate's own names is an ambient set: it fills
+    // options whose session states nobody...
+    let ambient = sweep(&[
+        ("YGGDRYL_ACCESS_KEY_ID", "AKIASWEPT"),
+        ("YGGDRYL_SECRET_ACCESS_KEY", "swept-secret"),
+    ]);
+    assert_eq!(
+        ambient.credentials().map(Credentials::access_key_id),
+        Some("AKIASWEPT")
+    );
+    let options = S3Options::default()
+        .with_session(walled(""))
+        .under(&ambient);
+    assert_eq!(signer(options).as_deref(), Some("AKIASWEPT"));
+
+    // ...and never one whose session states who signs: a set, or a profile.
+    let options = S3Options::default()
+        .with_session(walled("").with_credentials(Credentials::new("AKIASTATED", "stated")))
+        .under(&ambient);
+    assert!(options.credentials().is_none());
+    assert_eq!(signer(options).as_deref(), Some("AKIASTATED"));
+    let options = S3Options::default()
+        .with_session(
+            walled("[desk]\naws_access_key_id = AKIADESK\naws_secret_access_key = desk-secret\n")
+                .with_profile("desk"),
+        )
+        .under(&ambient);
+    assert!(
+        options.credentials().is_none(),
+        "a profile the caller stated is who signs"
+    );
+    assert_eq!(signer(options).as_deref(), Some("AKIADESK"));
+
+    // Nor does an ambient `anonymous` silence a stated profile.
+    let ambient = sweep(&[("YGGDRYL_ANONYMOUS", "true")]);
+    assert!(ambient.anonymous());
+    let options = S3Options::default()
+        .with_session(walled("").with_profile("desk"))
+        .under(&ambient);
+    assert!(!options.anonymous());
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn a_session_s_given_environment_is_what_the_sweep_reads() {
+    use yggdryl::aws::Session;
+
+    // The process holds `PATH`, which a prefix of `PAT` reaches (see the
+    // sweep test above); a session handed an environment of its own closes
+    // the process's to the sweep as to the session.
+    let closed = S3Options::default()
+        .with_environment_prefixes(["PAT"])
+        .with_session(Session::new().with_variables([("AWS_S3_FORCE_PATH_STYLE", "true")]));
+    assert!(closed.environment_properties().is_empty());
+
+    let given = S3Options::default().with_session(Session::new().with_variables([
+        ("AWS_S3_FORCE_PATH_STYLE", "true"),
+        ("YGGDRYL_SSE_TYPE", "AES256"),
+        // The session's own names stay the session's, given or not.
+        ("AWS_ACCESS_KEY_ID", "AKIAGIVEN"),
+        ("AWS_PROFILE", "given"),
+    ]));
+    assert_eq!(
+        given.environment_properties(),
+        [
+            ("S3_FORCE_PATH_STYLE".to_owned(), "true".to_owned()),
+            ("SSE_TYPE".to_owned(), "AES256".to_owned()),
+        ]
+    );
+    let ambient = given.from_environment().expect("readable variables");
+    assert_eq!(ambient.path_style(), Some(true));
+    assert!(matches!(ambient.encryption(), Encryption::Managed));
+    assert!(ambient.credentials().is_none());
+
+    // And nothing when the options read no environment, whatever the session
+    // was handed.
+    assert!(
+        given
+            .with_environment(false)
+            .environment_properties()
+            .is_empty()
+    );
+}
+
+#[test]
 fn the_service_specific_endpoint_and_region_names_win() {
     let options = S3Options::from_properties([
         ("AWS_ENDPOINT_URL", "https://generic.example.io"),
@@ -1036,10 +1272,10 @@ fn a_catalogs_google_and_azure_properties_reach_the_store_they_name() {
         Some("00000000-0000-0000-0000-000000000000")
     );
     assert_eq!(options.azure().client_id(), Some("a-client"));
-    // An Azure account name and key are a credential pair like any other, and
-    // the pair is what a shared-key signature is built from.
-    let credentials = options.credentials().expect("a credential pair");
-    assert_eq!(credentials.access_key_id(), "trades");
+    // An Azure account name and key are Azure's shared key, read off the
+    // Azure options by Azure's signature alone: never a credential set that
+    // would sign for Amazon S3.
+    assert!(options.credentials().is_none());
 }
 
 #[test]

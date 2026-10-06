@@ -365,19 +365,36 @@ fn the_fips_and_dual_stack_hosts_are_the_rules_own_and_a_region_chooses_no_other
         Ok("https://signin-fips.us-iso-east-1.c2s.ic.gov"),
         "every partition states a FIPS suffix"
     );
+    // The one region rule every AWS host is built under, naming the session
+    // as where the region came from: digits alone and a label past 63 bytes
+    // are refused here as everywhere else.
+    let long = "a".repeat(64);
     for region in [
         "x@evil.example#",
         "eu-west-3.evil.example",
         "",
+        "  ",
         "-eu",
+        "eu-",
         "a/b",
+        "123",
+        long.as_str(),
     ] {
         let refused = endpoint(region, false, false).expect_err("no host label");
         assert!(
-            refused.contains("not one host label"),
-            "{region}: {refused}"
+            refused.contains("no Sign-In service")
+                && refused.contains("one host label")
+                && refused.contains("the session"),
+            "{region:?}: {refused}"
         );
     }
+    // 63 bytes is one label still.
+    let longest = format!("a{}", "-b".repeat(31));
+    assert_eq!(longest.len(), 63);
+    assert_eq!(
+        endpoint(&longest, false, false).as_deref(),
+        Ok(format!("https://{longest}.signin.aws.amazon.com").as_str())
+    );
 }
 
 #[test]

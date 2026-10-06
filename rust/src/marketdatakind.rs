@@ -9,7 +9,7 @@ use crate::typed::define_field_types;
 enum_leaf! {
     /// The business category of a market data element: the FIX MsgCat code
     /// set, one member per category the standard files its message types
-    /// under, and `UNKN` for a type it files under none.
+    /// under, and `UKNW` for a type it files under none.
     ///
     /// This is the one owner of that set. A FIX dictionary's `FIX:msgcat`
     /// resolves to a member through [`Self::from_name`], the crate's
@@ -25,7 +25,7 @@ enum_leaf! {
     /// quote, a match report - which a parse splits into one message of the
     /// single category per entry ([`Self::is_batch`]).
     ///
-    /// The code is the set's own value, `UNKN` at zero, `TRAD` at twenty-one
+    /// The code is the set's own value, `UKNW` at zero, `TRAD` at twenty-one
     /// and the batches after it, and what a column stores; the four-letter
     /// code is the stored name.
     ///
@@ -45,7 +45,7 @@ enum_leaf! {
     #[non_exhaustive]
     pub enum MarketDataKind: u8, kind = "marketdatakind", extension = MARKETDATAKIND_EXTENSION_NAME, aliases = marketdatakind_aliases {
         #[default]
-        Unknown = 0 as "UNKN": "No published category: a message type the dictionary does not file.",
+        Unknown = 0 as "UKNW": "No published category: a message type the dictionary does not file.",
         Account = 1 as "ACCT": "Account reporting.",
         Allocation = 2 as "ALLO": "Allocation instructions, reports and acknowledgements.",
         Book = 3 as "BOOK": "Market data: books, their snapshots, increments and requests.",

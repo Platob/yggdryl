@@ -2035,7 +2035,7 @@ fn a_quotes_bid_and_offer_name_no_side_and_no_price() {
             b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q1|55=AAPL|15=USD|132=101.5|134=200|10=0|",
         )
         .unwrap();
-    assert_eq!(bid.get_side().as_str(), "UNKN");
+    assert_eq!(bid.get_side().as_str(), "UKNW");
     assert_eq!((bid.get_price(), bid.get_quantity()), (None, None));
     assert_eq!(bid.get_currency().as_str(), "USD");
     let wire = bid.into_bytes(b'|');
@@ -2062,7 +2062,7 @@ fn a_quotes_bid_and_offer_name_no_side_and_no_price() {
             b"8=FIX.4.4|35=8|52=20240102-10:15:30|37=O|17=E|150=F|39=2|31=100|32=10|132=99|10=0|",
         )
         .unwrap();
-    assert_eq!(fill.get_side().as_str(), "UNKN");
+    assert_eq!(fill.get_side().as_str(), "UKNW");
     // What a filled order has left open - nothing - is its quantity.
     assert_eq!(fill.get_leavesqty(), Some(Decimal::from_int(0)));
     assert_eq!(
@@ -2080,7 +2080,7 @@ fn a_quotes_bid_and_offer_name_no_side_and_no_price() {
         .unwrap();
     assert_eq!(order.get_side().as_str(), "BUYS");
     order.remove(54).unwrap();
-    assert_eq!(order.get_side().as_str(), "UNKN");
+    assert_eq!(order.get_side().as_str(), "UKNW");
 }
 
 /// The market facts an element completes, by name: what the twin property
@@ -3152,7 +3152,7 @@ mod settled_market {
     /// An order is typed by its `OrdType(40)`, a quote by its
     /// `QuoteType(537)`, a trade capture by its `TrdType(828)`; a value no
     /// member names reads as its set's catch-all, and nothing stated is
-    /// `UNKN`.
+    /// `UKNW`.
     #[test]
     fn a_message_is_typed_by_the_field_its_kind_names() {
         use yggdryl::MarketDataType;

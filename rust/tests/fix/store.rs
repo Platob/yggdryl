@@ -44,12 +44,14 @@ fn definition_at(document: &Scalar, category: &str, name: &str) -> usize {
 const DUMP_WRITE: &str = "YGGDRYL_FIX_DUMP_WRITE";
 
 /// The documents a store dump states that the generator does not: the
-/// crate's field shard, the fixed row, its one Map group and its code set.
-const CRATE_DOCUMENTS: [&str; 4] = [
+/// crate's field shard, the fixed row, its one Map group and the two code
+/// sets it renders into a store.
+const CRATE_DOCUMENTS: [&str; 5] = [
     "fields/000000650.json",
     "components/fixmsg.json",
     "groups/metadata.json",
     "codesets/marketdatakindcodeset.json",
+    "codesets/msgpluginsidecodeset.json",
 ];
 
 #[test]
@@ -515,11 +517,11 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
     let mut venue = tagged("VenueTrade", 5001, DataType::utf8());
     venue
         .as_fix_mut()
-        .set_branches(["CME", "merc", "cme"])
+        .set_sources(["CME", "merc", "cme"])
         .unwrap();
     registry.insert(venue).unwrap();
     let mut pending = registry.field_by_name("NewOrderSingle").unwrap().clone();
-    pending.as_fix_mut().set_branches(["pending"]).unwrap();
+    pending.as_fix_mut().set_sources(["pending"]).unwrap();
     registry.update(pending).unwrap();
 
     let json = registry.into_json().unwrap();
@@ -529,7 +531,9 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
     // a folder of vocabularies rather than a fourth category.
     assert_eq!(record.len(), FixCategory::ALL.len() + 1);
     assert!(record["codesets"].as_sequence().is_some());
-    assert!(record.get("branches").is_none());
+    // The sources catalog stands beside them only where there is one: a
+    // field's ids alone put no entry in it.
+    assert!(record.get("sources").is_none());
     for category in FixCategory::ALL {
         assert!(record[category.as_str()].as_sequence().is_some());
     }
@@ -547,20 +551,20 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
     // Membership is stamped on the field and the definition it was declared
     // on, folded once, deduplicated and sorted, and read back as written.
     let venue = loaded.field(5001).unwrap().as_fix();
-    assert_eq!(venue.branches().collect::<Vec<_>>(), ["cme", "merc"]);
-    assert!(venue.has_branch("Cme"));
-    assert!(!venue.has_branch("pending"));
+    assert_eq!(venue.sources().collect::<Vec<_>>(), ["cme", "merc"]);
+    assert!(venue.has_source("Cme"));
+    assert!(!venue.has_source("pending"));
     assert!(
         loaded
             .field(448)
             .unwrap()
             .as_fix()
-            .branches()
+            .sources()
             .next()
             .is_none()
     );
     let message = loaded.msgtype("D").unwrap();
-    assert!(message.as_field().as_fix().has_branch("pending"));
+    assert!(message.as_field().as_fix().has_source("pending"));
     assert_eq!(loaded.dialects(), ["cme", "merc", "pending"]);
     assert_eq!(loaded.field(453).unwrap().dtype(), &DataType::Int32);
     assert_eq!(
@@ -717,19 +721,19 @@ fn registry_hashes_include_named_definitions_and_membership() {
     // registry hashes; its order is not, since the store sorts it.
     let mut declared = original.clone();
     let mut member = declared.field(448).unwrap().clone();
-    member.as_fix_mut().set_branches(["pending"]).unwrap();
+    member.as_fix_mut().set_sources(["pending"]).unwrap();
     declared.update(member).unwrap();
     let before = declared.stable_hash();
     assert_ne!(before, original.stable_hash());
     let mut member = declared.field(448).unwrap().clone();
-    member.as_fix_mut().add_branch("venue").unwrap();
+    member.as_fix_mut().add_source("venue").unwrap();
     declared.update(member).unwrap();
     assert_ne!(declared.stable_hash(), before);
     let mut reversed = original.clone();
     let mut member = reversed.field(448).unwrap().clone();
     member
         .as_fix_mut()
-        .set_branches(["Venue", "pending"])
+        .set_sources(["Venue", "pending"])
         .unwrap();
     reversed.update(member).unwrap();
     assert_eq!(reversed, declared);
@@ -741,6 +745,8 @@ fn registry_snapshots_reject_missing_categories_and_unresolved_references() {
     for json in [
         "[]",
         r#"{"fields":[],"components":[]}"#,
+        // A snapshot written under the retired `branches` key is refused by
+        // that key's name, never read as the catalog `sources` holds.
         r#"{"fields":[],"components":[],"groups":[],"branches":[],"codesets":[]}"#,
         // A message is a component: a snapshot written with a
         // fourth category is refused by that key's name.
@@ -879,8 +885,8 @@ fn code_sets_round_trip_through_their_own_folder_and_are_pruned_when_they_go() {
     let loaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(loaded, registry);
     // The persisted party and venue sets sit beside the built-in MsgCat,
-    // state and market data type sets.
-    assert_eq!(loaded.codesets().len(), 5);
+    // state, market data type and plugin side sets.
+    assert_eq!(loaded.codesets().len(), 6);
     assert_eq!(
         loaded.codeset("venuecodeset").unwrap().code_name("V"),
         Some("Venue")
@@ -1079,7 +1085,7 @@ fn enum_codes_belong_to_each_field() {
     // A venue's field on the standard tag, under its own name: a second
     // field beside the holder, each reading by the set it named.
     let mut field = tagged("VenuePartyID", 448, DataType::utf8());
-    field.as_fix_mut().set_branches(["venue"]).unwrap();
+    field.as_fix_mut().set_sources(["venue"]).unwrap();
     registry
         .set_codeset("venuepartyidcodeset", &[FixCode::new("VenueBroker", "V")])
         .unwrap();
@@ -1094,18 +1100,18 @@ fn enum_codes_belong_to_each_field() {
     let venue = registry.codeset_of(held).unwrap();
     assert_eq!(venue.code_value("VenueBroker"), Some("V"));
     assert_eq!(venue.code_value("Broker"), None);
-    assert!(held.as_fix().has_branch("venue"));
+    assert!(held.as_fix().has_source("venue"));
     assert_eq!(registry.field(448).unwrap().name(), "PartyID");
     let holder = registry
         .codeset_of(registry.field(448).unwrap())
         .expect("the holder's own set");
     assert_eq!(holder.code_value("VenueBroker"), None);
     assert_eq!(holder.code_value("Broker"), Some("B"));
-    // The two test vocabularies and the built-in MsgCat, state and market
-    // data type sets are held once each under their names. Categories hold
-    // Field documents and resolve references, which is why `codesets` is
-    // written beside the three folders rather than as a fourth.
-    assert_eq!(registry.codesets().len(), 5);
+    // The two test vocabularies and the built-in MsgCat, state, market
+    // data type and plugin side sets are held once each under their names.
+    // Categories hold Field documents and resolve references, which is why
+    // `codesets` is written beside the three folders rather than as a fourth.
+    assert_eq!(registry.codesets().len(), 6);
     assert_eq!(FixCategory::ALL.len(), 3);
     assert!(FixCategory::from_str("codesets").is_err());
 }
@@ -1118,7 +1124,7 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
     // reads.
     let mut registry = catalog();
     let mut venue = tagged("VenuePartyID", 448, DataType::utf8());
-    venue.as_fix_mut().set_branches(["venue"]).unwrap();
+    venue.as_fix_mut().set_sources(["venue"]).unwrap();
     registry.insert(venue).unwrap();
     let holder = FixId::of(448, "PartyID").unwrap();
     let newcomer = FixId::of(448, "VenuePartyID").unwrap();
@@ -1137,7 +1143,7 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
                 .field(newcomer)
                 .unwrap()
                 .as_fix()
-                .has_branch("venue")
+                .has_source("venue")
         );
         for id in [holder, newcomer] {
             assert!(
@@ -1156,7 +1162,7 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
                 .field(448)
                 .unwrap()
                 .as_fix()
-                .branches()
+                .sources()
                 .next()
                 .is_none()
         );
@@ -1594,7 +1600,7 @@ fn merging_catalogs_resolves_imported_references_against_the_code_set_union() {
 fn merging_catalogs_extends_referenced_definitions_and_passes_over_a_changed_member() {
     let mut target = catalog();
     let mut coded = target.field(448).unwrap().clone();
-    coded.as_fix_mut().set_branches(["incoming"]).unwrap();
+    coded.as_fix_mut().set_sources(["incoming"]).unwrap();
     // The source states the set its field reads by before the field
     // arrives, and states one member of it: the fold unions the two.
     let mut source = FixRegistry::new();
@@ -1640,13 +1646,13 @@ fn merging_catalogs_extends_referenced_definitions_and_passes_over_a_changed_mem
     );
     // The membership the source stamped unions onto the standard field the
     // target already held, and reaches its occurrences the same way.
-    assert!(target.field(448).unwrap().as_fix().has_branch("incoming"));
+    assert!(target.field(448).unwrap().as_fix().has_source("incoming"));
     assert!(
         target
             .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
             .unwrap()
             .as_fix()
-            .has_branch("incoming")
+            .has_source("incoming")
     );
     assert_eq!(target.dialects(), ["incoming"]);
     assert_eq!(source, before_source);
@@ -1906,25 +1912,25 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
         .unwrap()
         .required_field("new_order_single");
     restated.as_fix_mut().set_msgtype("D").unwrap();
-    restated.as_fix_mut().set_branches(["venue"]).unwrap();
+    restated.as_fix_mut().set_sources(["venue"]).unwrap();
     assert!(!registry.add_field(restated).unwrap());
     assert_eq!(super::msgtypes(&registry).count(), 1);
     let folded = registry.msgtype("D").unwrap();
     assert_eq!(folded.name(), "NewOrderSingle");
-    assert!(folded.as_field().as_fix().has_branch("venue"));
+    assert!(folded.as_field().as_fix().has_source("venue"));
     assert_eq!(folded.get_group_by_tag(453).unwrap().name(), "Parties");
     let mut message = StructType::from_fields([])
         .map(DataType::from)
         .unwrap()
         .required_field("VenueOrder");
     message.as_fix_mut().set_msgtype("D").unwrap();
-    message.as_fix_mut().set_branches(["venue"]).unwrap();
+    message.as_fix_mut().set_sources(["venue"]).unwrap();
     registry.insert(message).unwrap();
     assert_eq!(super::msgtypes(&registry).count(), 2);
     assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
     let venue = registry.msgtype("VenueOrder").unwrap();
     assert_eq!(venue.as_str(), "D");
-    assert!(venue.as_field().as_fix().has_branch("venue"));
+    assert!(venue.as_field().as_fix().has_source("venue"));
     assert_eq!(registry.dialects(), ["venue"]);
     let loaded = FixRegistry::from_json(&registry.into_json().unwrap()).unwrap();
     assert_eq!(loaded, registry);
@@ -2350,7 +2356,7 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
     // What one dictionary wrote is what another reads: a snapshot states its
     // own memberships, so no dialect is named at this door.
     let mut venue = tagged("VenueRef", 9001, DataType::utf8());
-    venue.as_fix_mut().set_branches(["venue"]).unwrap();
+    venue.as_fix_mut().set_sources(["venue"]).unwrap();
     let source = FixRegistry::from_fields([venue]).unwrap();
     std::fs::write(&path, source.into_json().unwrap()).unwrap();
 
@@ -2364,7 +2370,7 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
             .field_by_tag(9001)
             .unwrap()
             .as_fix()
-            .has_branch("venue")
+            .has_source("venue")
     );
     // Windows will not replace a file while this local backend still owns
     // its mapped view. The registry has consumed the document by this point.
@@ -2499,13 +2505,13 @@ mod committed {
     #[test]
     fn the_committed_dictionary_is_no_dialects_member_and_a_field_is_its_tag_and_its_name() {
         let registry = seed();
-        // The shipped dictionary never declared a branch, so nothing it holds
+        // The shipped dictionary never declared a source, so nothing it holds
         // carries a membership and it lists no dialect.
         assert!(registry.dialects().is_empty(), "{:?}", registry.dialects());
         for category in FixCategory::ALL {
             for field in definitions(&registry, category) {
                 assert_eq!(
-                    field.as_fix().branches().count(),
+                    field.as_fix().sources().count(),
                     0,
                     "{category}/{} carries a membership",
                     field.name()
@@ -3384,10 +3390,16 @@ mod committed {
     /// `msgcatcodeset` became `marketdatakindcodeset`, the one document
     /// renamed and `marketdatakind` (65016) reading by it. No count of the
     /// census below moved.
+    /// It next moved when four-letter zero members were spelled `UKNW`,
+    /// the registry began hashing its sources count, and the crate gained
+    /// `msgpluginside` (65042) immediately after `msgpluginid` (65041): the plugin's
+    /// code set, field shard and fixed row changed, and the following
+    /// crate tags moved up once more, ending at `sourceurl` 65051 and
+    /// `fixmsg` 65052. Those regenerated documents pin the combined hash.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 10_062_313_328_246_971_917);
+        assert_eq!(registry.stable_hash(), 14_590_816_604_712_223_535);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();
@@ -3610,4 +3622,222 @@ fn write_into_is_the_commit_a_caller_reads_nothing_from() {
     );
     assert!(after.skipped > 0, "the store is there to skip");
     std::fs::remove_dir_all(&scratch).ok();
+}
+
+#[test]
+fn the_sources_catalog_round_trips_through_sources_json_and_goes_with_its_last_entry() {
+    let root = scratch("sources");
+    let mut folder = LocalFolder::new(&root).unwrap();
+    let mut registry = catalog();
+    // Absent is a dictionary built from no named source - the tracked seed:
+    // nothing is written and nothing is read.
+    registry.commit(&mut folder).unwrap();
+    assert!(!root.join("sources.json").exists());
+    assert_eq!(
+        FixRegistry::from_handle(&folder).unwrap().sources().len(),
+        0
+    );
+
+    assert!(
+        registry.add_source(
+            yggdryl::FixSource::new("Venue")
+                .unwrap()
+                .with_file("Venue.cfb")
+                .with_pluginside(yggdryl::PluginSide::SellSide)
+        )
+    );
+    assert!(registry.add_source(yggdryl::FixSource::new("desk").unwrap()));
+    let report = registry.commit(&mut folder).unwrap();
+    assert!(
+        report.written.iter().any(|path| path == "sources.json"),
+        "{report:?}"
+    );
+    // One document at the root, the entries sorted by id, the file stated
+    // only where one is known and the plugin side always, ending in a
+    // newline like every document.
+    let stored = std::fs::read_to_string(root.join("sources.json")).unwrap();
+    assert!(stored.ends_with('\n'), "{stored:?}");
+    assert_eq!(
+        yggdryl::into_json_scalar(&yggdryl::from_json_scalar(&stored).unwrap()).unwrap(),
+        r#"[{"id":"desk","pluginside":"UKNW"},{"file":"Venue.cfb","id":"venue","pluginside":"SELL"}]"#
+    );
+    let loaded = FixRegistry::from_handle(&folder).unwrap();
+    assert_eq!(loaded, registry);
+    assert_eq!(loaded.stable_hash(), registry.stable_hash());
+    assert_eq!(
+        loaded
+            .sources()
+            .map(|source| (source.id(), source.file(), source.pluginside()))
+            .collect::<Vec<_>>(),
+        [
+            ("desk", None, yggdryl::PluginSide::Unknown),
+            ("venue", Some("Venue.cfb"), yggdryl::PluginSide::SellSide)
+        ]
+    );
+    // A second commit of an unchanged registry moves nothing.
+    assert!(registry.commit(&mut folder).unwrap().is_clean());
+
+    // The last entry gone takes the document with it, named in the report,
+    // and a store with none to remove reports none.
+    assert!(registry.remove_source("venue").unwrap().is_some());
+    assert!(registry.remove_source("DESK").unwrap().is_some());
+    let report = registry.commit(&mut folder).unwrap();
+    assert_eq!(
+        report
+            .removed
+            .iter()
+            .map(|path| path.as_str())
+            .collect::<Vec<_>>(),
+        ["sources.json"]
+    );
+    assert!(!root.join("sources.json").exists());
+    assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
+    assert!(registry.commit(&mut folder).unwrap().is_clean());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_sources_json_that_is_not_a_catalog_is_refused_naming_the_file() {
+    let root = scratch("sources-malformed");
+    let mut folder = LocalFolder::new(&root).unwrap();
+    catalog().commit(&mut folder).unwrap();
+    for (document, expected) in [
+        ("{}", "a JSON array of source entries"),
+        ("[7]", "a JSON source entry object"),
+        (r#"[{"id": 7}]"#, "stating its id as text"),
+        (r#"[{"id": ""}]"#, "non-empty source id"),
+        // Two spellings of one id are one entry stated twice, under the
+        // fold a field's own list is deduplicated by.
+        (
+            r#"[{"id": "venue"}, {"id": "VENUE", "file": "v.cfb"}]"#,
+            "duplicate source",
+        ),
+        (r#"[{"id": "venue"}, {"id": "ve_nue"}]"#, "duplicate source"),
+        ("nonsense", ""),
+    ] {
+        std::fs::write(root.join("sources.json"), document).unwrap();
+        let error = FixRegistry::from_handle(&folder)
+            .expect_err(document)
+            .to_string();
+        assert!(
+            error.contains(expected) && error.contains("sources.json"),
+            "{document}: {error}"
+        );
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_stored_sources_array_is_held_to_what_the_setter_writes_and_the_retired_key_is_refused() {
+    let root = scratch("sources-edited");
+    let folder = LocalFolder::new(&root).unwrap();
+    catalog()
+        .commit(&mut LocalFolder::new(&root).unwrap())
+        .unwrap();
+    // A shard edited by hand: the array crosses the store as the array it
+    // is, and what the setter never writes - a text that is no array, an
+    // id with a capital, two ids out of order, one id twice under the fold,
+    // the retired key - is refused naming the shard and the key.
+    for (metadata, expected) in [
+        (r#""FIX:sources": "venue""#, "expected the document itself"),
+        (
+            r#""FIX:sources": ["Venue"]"#,
+            "each source id ASCII lowercase",
+        ),
+        (r#""FIX:sources": ["b", "a"]"#, "the source ids sorted"),
+        (r#""FIX:sources": ["venue", "ve_nue"]"#, "each source once"),
+        (r#""FIX:branches": "venue""#, "retired"),
+    ] {
+        let document = format!(
+            r#"[{{"name": "VenueTrade", "dtype": {{"type": "string"}}, "nullable": true, "metadata": {{"FIX:tag": "5001", {metadata}}}}}]"#
+        );
+        folder
+            .child_by_path("fields/000000050.json")
+            .unwrap()
+            .write_all_bytes(document.as_bytes())
+            .unwrap();
+        let error = FixRegistry::from_handle(&folder)
+            .expect_err(&document)
+            .to_string();
+        assert!(
+            error.contains(expected) && error.contains("50.json"),
+            "{document}: {error}"
+        );
+    }
+    // What the setter writes loads, as the fold wrote it.
+    let document = r#"[{"name": "VenueTrade", "dtype": {"type": "string"}, "nullable": true, "metadata": {"FIX:tag": "5001", "FIX:sources": ["a", "b"]}}]"#;
+    folder
+        .child_by_path("fields/000000050.json")
+        .unwrap()
+        .write_all_bytes(document.as_bytes())
+        .unwrap();
+    let loaded = FixRegistry::from_handle(&folder).unwrap();
+    assert_eq!(
+        loaded
+            .field_by_tag(5001)
+            .unwrap()
+            .as_fix()
+            .sources()
+            .collect::<Vec<_>>(),
+        ["a", "b"]
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_snapshot_states_the_sources_catalog_where_there_is_one() {
+    let mut registry = catalog();
+    let bare = yggdryl::from_json_scalar(registry.into_json().unwrap()).unwrap();
+    assert!(bare.get_key_str("sources").is_none(), "no entry, no key");
+    registry.add_source(
+        yggdryl::FixSource::new("venue")
+            .unwrap()
+            .with_file("Venue.cfb"),
+    );
+    let json = registry.into_json().unwrap();
+    let document = yggdryl::from_json_scalar(&json).unwrap();
+    assert_eq!(
+        yggdryl::into_json_scalar(document.get_key_str("sources").unwrap()).unwrap(),
+        r#"[{"file":"Venue.cfb","id":"venue","pluginside":"UKNW"}]"#
+    );
+    let reloaded = FixRegistry::from_json(&json).unwrap();
+    assert_eq!(reloaded, registry);
+    assert_eq!(
+        reloaded.get_source("venue").unwrap().file(),
+        Some("Venue.cfb")
+    );
+    // The key is accepted beside the vocabularies and the categories, and
+    // what it holds is held to the catalog's shape, named by the key.
+    let stated = FixRegistry::from_json(
+        r#"{"codesets":[],"sources":[{"id":"X"}],"fields":[],"components":[],"groups":[]}"#,
+    )
+    .unwrap();
+    assert_eq!(stated.get_source("x").unwrap().file(), None);
+    let refused =
+        FixRegistry::from_json(r#"{"sources":{},"fields":[],"components":[],"groups":[]}"#)
+            .unwrap_err()
+            .to_string();
+    assert!(
+        refused.contains("a JSON array of source entries"),
+        "{refused}"
+    );
+    // Folding a snapshot file folds its catalog with its fields.
+    let root = scratch("sources-snapshot");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("snapshot.json");
+    std::fs::write(&path, &json).unwrap();
+    let mut other = catalog();
+    other.add_source(yggdryl::FixSource::new("desk").unwrap());
+    other
+        .add_json_file(&yggdryl::local::LocalFile::new(&path).unwrap())
+        .unwrap();
+    assert_eq!(
+        other
+            .sources()
+            .map(yggdryl::FixSource::id)
+            .collect::<Vec<_>>(),
+        ["desk", "venue"]
+    );
+    assert_eq!(other.get_source("venue").unwrap().file(), Some("Venue.cfb"));
+    std::fs::remove_dir_all(root).unwrap();
 }

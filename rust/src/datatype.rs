@@ -326,6 +326,8 @@ pub enum DataType {
     /// ISO 18774 financial instrument short name: an issuer and an
     /// instrument description, at most thirty-five ASCII bytes.
     Fisn,
+    /// The role of a FIX plugin: Buy-Side, Sell-Side or none stated.
+    PluginSide,
 }
 
 impl DataType {
@@ -449,6 +451,7 @@ impl DataType {
             Self::MarketDataKind => DataTypeId::MarketDataKind,
             Self::MarketDataType => DataTypeId::MarketDataType,
             Self::TimeInForce => DataTypeId::TimeInForce,
+            Self::PluginSide => DataTypeId::PluginSide,
             Self::Unit => DataTypeId::Unit,
             Self::Decimal => DataTypeId::Decimal,
             Self::BigDecimal => DataTypeId::BigDecimal,
@@ -833,6 +836,7 @@ enum Shape<'a> {
     Elf,
     Dti,
     Fisn,
+    PluginSide,
 }
 
 impl<'a> Shape<'a> {
@@ -893,6 +897,7 @@ impl<'a> Shape<'a> {
             D::Side => Self::Side,
             D::State => Self::State,
             D::TimeInForce => Self::TimeInForce,
+            D::PluginSide => Self::PluginSide,
             D::Uuid => Self::Uuid,
             D::Version => Self::Version,
             D::Url => Self::Url,
@@ -974,7 +979,10 @@ macro_rules! enum_dtypes {
 /// The enum leaves whose codes fit one byte, stored as Arrow `UInt8`.
 macro_rules! enum8_dtypes {
     () => {
-        $crate::DataType::MarketDataKind | $crate::DataType::Side | $crate::DataType::TimeInForce
+        $crate::DataType::MarketDataKind
+            | $crate::DataType::Side
+            | $crate::DataType::TimeInForce
+            | $crate::DataType::PluginSide
     };
 }
 
@@ -1083,6 +1091,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Elf => 77,
         DataType::Dti => 78,
         DataType::Fisn => 79,
+        DataType::PluginSide => 80,
     }
 }
 
@@ -1372,7 +1381,9 @@ mod arrow {
                 | R::Dti
                 | R::Fisn => code::code_arrow_storage(self)?,
                 // An enum member is the code of its leaf.
-                R::MarketDataKind | R::Side | R::TimeInForce => <u8 as crate::EnumRepr>::ARROW,
+                R::MarketDataKind | R::Side | R::TimeInForce | R::PluginSide => {
+                    <u8 as crate::EnumRepr>::ARROW
+                }
                 R::State | R::MarketDataType => <u16 as crate::EnumRepr>::ARROW,
                 R::Version => VersionType::arrow_storage(),
                 R::Url | R::Urn => UriType::arrow_storage(),

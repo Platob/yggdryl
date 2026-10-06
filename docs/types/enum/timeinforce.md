@@ -1,6 +1,6 @@
 # TimeInForce
 
-How long an order stands: FIX `TimeInForce(59)` as an enum of fifteen members - `UNKN`, one member per wire value of the code set in wire order, and `OTHER` for a venue's own value - stored as the `uint8` code of its member.
+How long an order stands: FIX `TimeInForce(59)` as an enum of fifteen members - `UKNW`, one member per wire value of the code set in wire order, and `OTHER` for a venue's own value - stored as the `uint8` code of its member.
 
 ## Contract
 
@@ -11,9 +11,9 @@ How long an order stands: FIX `TimeInForce(59)` as an enum of fifteen members - 
 | Lazy | Nothing - the member table is static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | An integer that is the code of no member, naming the code; a spelling that names no member, naming the spelling |
-| Stores | `uint8` under `yggdryl.timeinforce`: `UNKN` at `0`, `DAY` `1` to `GFM` `13` in FIX's wire order, `OTHER` at `99` |
+| Stores | `uint8` under `yggdryl.timeinforce`: `UKNW` at `0`, `DAY` `1` to `GFM` `13` in FIX's wire order, `OTHER` at `99` |
 | Reads FIX | `from_fix(wire)` reads one `TimeInForce(59)` value - the wire value, else any spelling `from_spelling` reads, else `OTHER` - and never refuses; `fix_code()` answers the wire value back. A [registry](#a-dictionary-maps-a-venues-values) maps any field's values onto members through `FIX:timeinforce`, read before the crate's table |
-| Default | `UNKN`, no time in force stated: a stated value, never an absence |
+| Default | `UKNW`, no time in force stated: a stated value, never an absence |
 
 What `as_str` answers and every text format writes is the member's stored name - `DAY`, `GTC`, `IOC` - never FIX's one-character wire value, which `fix_code` answers on its own; the long meaning is the member's `description`.
 
@@ -241,11 +241,11 @@ The value is the member, whichever spelling named it: `GTC` for `GTC`, `gtc`, FI
 
 ## The FIX vocabulary
 
-Three vocabularies name one member: the stored name, the specification's name and the wire value. Names fold the way every other name in this crate folds - ASCII case insensitive, with `_`, `-` and spaces ignored - so `GoodTillCancel`, `good_till_cancel` and `GOOD TILL CANCEL` are one spelling, and so are `GTC` and `gtc`. A wire value does **not** fold, because `A` and `a` are different values in FIX. `UNKN` and `OTHER` stand for no one wire value.
+Three vocabularies name one member: the stored name, the specification's name and the wire value. Names fold the way every other name in this crate folds - ASCII case insensitive, with `_`, `-` and spaces ignored - so `GoodTillCancel`, `good_till_cancel` and `GOOD TILL CANCEL` are one spelling, and so are `GTC` and `gtc`. A wire value does **not** fold, because `A` and `a` are different values in FIX. `UKNW` and `OTHER` stand for no one wire value.
 
 | Code | Wire value | Name | Specification's name | Description |
 | ---: | --- | --- | --- | --- |
-| `0` | - | `UNKN` | - | No time in force stated. |
+| `0` | - | `UKNW` | - | No time in force stated. |
 | `1` | `0` | `DAY` | `Day` | Good for the trading day. |
 | `2` | `1` | `GTC` | `GoodTillCancel` | Good till canceled. |
 | `3` | `2` | `OPG` | `AtTheOpening` | At the opening. |
@@ -261,7 +261,7 @@ Three vocabularies name one member: the stored name, the specification's name an
 | `13` | `C` | `GFM` | `GoodForMonth` | Good for the month. |
 | `99` | any other | `OTHER` | - | A time in force no member names. |
 
-`from_spelling` answers the member or nothing, and `read` is the same reading as a refusal - the value door. `from_fix` is the wire reading and never refuses: the wire value, else any spelling - a bridge writing `day` where the standard writes `0` - else `OTHER`, because a venue's own value is still a time in force. `fix_code` answers the wire value, `None` for `UNKN` and `OTHER`. `StringEnum::TIMESINFORCE` is the thirteen wire values, sorted, the listing the logical name `timeinforce` prebuilds for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("timeinforce")` is this enum.
+`from_spelling` answers the member or nothing, and `read` is the same reading as a refusal - the value door. `from_fix` is the wire reading and never refuses: the wire value, else any spelling - a bridge writing `day` where the standard writes `0` - else `OTHER`, because a venue's own value is still a time in force. `fix_code` answers the wire value, `None` for `UKNW` and `OTHER`. `StringEnum::TIMESINFORCE` is the thirteen wire values, sorted, the listing the logical name `timeinforce` prebuilds for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("timeinforce")` is this enum.
 
 === "Rust"
 
@@ -431,7 +431,8 @@ A venue that states how long an order stands in a field of its own, or spells `T
 - A spelling that names no member, or an integer that is the code of none -> refused naming `timeinforce`, never stored; a column typed `timeinforce` therefore holds members only, and a value that names none leaves a nullable column null under `safe`. Only the wire reading, `from_fix`, turns an unknown value into `OTHER`.
 - Text is a spelling and an integer a code: `"1"` is the wire value of `GTC`, `1` is the code of `DAY`; `"10"` is no spelling at all.
 - A wire value never folds: `A` is `GFT` and `a` names nothing, because a folded lookup would answer the wrong member for a dialect whose values differ by case.
-- The default value is `UNKN`, code `0`: a stated value, not an absence. An empty text cell entering the column is null ([Cast](../cast.md#empty-text)), and a required column refuses it. A [FIX capture](../../fix/capture.md) under the shipped dictionary reads an absent `TimeInForce(59)` as `0`, a day order, from the field's own definition rather than from this datatype.
+- The default value is `UKNW`, code `0`: a stated value, not an absence. An empty text cell entering the column is null ([Cast](../cast.md#empty-text)), and a required column refuses it. A [FIX capture](../../fix/capture.md) under the shipped dictionary reads an absent `TimeInForce(59)` as `0`, a day order, from the field's own definition rather than from this datatype.
+- `UKNW` is the zero member's spelling as of this release; `UNKN`, the retired spelling, names no time in force. A `timeinforce` column stores the code, so a stored `0` reads as `UKNW` unchanged; a text column or a document that spells `UNKN` is rebuilt by its writer, never reinterpreted. An [operation](../../graph/operation.md)'s digest feeds the stored name of the time in force it states, so an order or an execution stating `UKNW` digests under the new name: its `currhashcode` and `curruuid` move, its `crossuuid` where it states no cross code, and its followers' identities with them. A `marketdata` table written before this release is rebuilt from its capture, never merged into by `curruuid`; the UKNW spelling alone does not move FIX hashes; the separate FIX digest-label rename from `msgcat` to `marketdatakind` changes each FIX message's `currhashcode` and `curruuid`, and an anonymous split execution's `crosshashcode`.
 - JSON, TOML, YAML and XML write a time in force as its stored name; the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under its own identifier, so a time in force, a [side](side.md) and an integer of one code are three values.
 - An [operation](../../graph/operation.md)'s `timeinforce` is a member of this enum, a `timeinforce` column in the [`marketdata` row](../../graph/schemas.md#the-marketdata-row). The [FIX row](../../graph/schemas.md#the-fix-row)'s `timeinforce` column is `TimeInForce(59)` itself, the wire text the dictionary types it as, which the message reads its member from; the crate adds no FIX field of its own for it.
 - `utf8` under `yggdryl.timeinforce` is a foreign field wearing the name and imports as the text it is.

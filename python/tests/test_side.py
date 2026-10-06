@@ -17,11 +17,11 @@ from yggdryl import DataType, Field, Scalar, Side
 def test_the_members_are_the_cores_in_code_order() -> None:
     codes = [int(side) for side in Side]
     assert codes == [*range(18), 99]
-    assert Side.UNKN == 0 and Side.BUYS == 1 and Side.SELL == 2
+    assert Side.UKNW == 0 and Side.BUYS == 1 and Side.SELL == 2
     assert Side.SELU == 17
     # Both sides at once - a book's, a two-sided quote's - stands last.
     assert Side.BOTH == 99
-    assert [side.name for side in Side][:6] == ["UNKN", "BUYS", "SELL", "BUYM", "SELP", "SSHT"]
+    assert [side.name for side in Side][:6] == ["UKNW", "BUYS", "SELL", "BUYM", "SELP", "SSHT"]
     for side in Side:
         assert str(side) == side.name
         assert f"{side}" == side.name
@@ -37,14 +37,14 @@ def test_the_stub_lists_the_native_table() -> None:
 
 
 def test_the_wire_code_and_the_two_lanes_are_the_cores() -> None:
-    assert Side.UNKN.fix_code is None
+    assert Side.UKNW.fix_code is None
     assert Side.BUYS.fix_code == "1"
     assert Side.CRSX.fix_code == "A"
     assert Side.SELU.fix_code == "H"
     assert Side.BUYS.is_bid() and not Side.BUYS.is_ask()
     assert Side.SSEX.is_ask() and not Side.SSEX.is_bid()
     assert not Side.CROS.is_bid() and not Side.CROS.is_ask()
-    assert not Side.UNKN.is_bid() and not Side.UNKN.is_ask()
+    assert not Side.UKNW.is_bid() and not Side.UKNW.is_ask()
     # Both sides at once takes neither leg, and no message carries it.
     assert Side.BOTH.fix_code is None
     assert not Side.BOTH.is_bid() and not Side.BOTH.is_ask()
@@ -58,7 +58,7 @@ def test_a_spelling_reads_to_one_member() -> None:
     # The names stored before the four-letter codes are still read, never written.
     assert Side.from_spelling("sshort") is Side.SSHT
     assert Side.from_spelling("BUY") is Side.BUYS
-    assert Side.from_spelling("UNKNOWN") is Side.UNKN
+    assert Side.from_spelling("UNKNOWN") is Side.UKNW
     assert Side.SSHT.name == "SSHT"
     assert Side.from_spelling("H") is Side.SELU
     assert Side.from_spelling("both") is Side.BOTH

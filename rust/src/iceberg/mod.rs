@@ -253,6 +253,12 @@ impl Located {
         let Some(url) = handle.url() else {
             return Ok(None);
         };
+        // A pattern names leaves, never a table's folder: nothing is asked
+        // of a store for one, where the climb would read a hint under the
+        // pattern and list everything beneath its fixed prefix.
+        if url.is_glob() {
+            return Ok(None);
+        }
         let segments: Vec<&str> = url.path_segments().collect();
         let mut filters: Vec<(String, String)> = Vec::new();
         let mut climbed = 0_usize;

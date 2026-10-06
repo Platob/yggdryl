@@ -184,6 +184,7 @@ nav:
       - MarketDataType: types/enum/marketdatatype.md
       - Side: types/enum/side.md
       - TimeInForce: types/enum/timeinforce.md
+      - PluginSide: types/enum/pluginside.md
     - Nested:
       - types/nested/index.md
       - Struct: types/nested/struct.md

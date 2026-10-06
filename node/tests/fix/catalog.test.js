@@ -148,25 +148,29 @@ test('the complete native catalog survives a snapshot and a store', (t) => {
   assert.equal(reached.get('FIX:codeset'), 'partyrolecodeset')
   assert.equal(registry.codeValue('partyrolecodeset', 'broker'), 'B')
   const vendor = tagged('Vendor', 9001)
-  vendor.fix.branches = ['venue']
+  vendor.fix.sources = ['venue']
   registry.insert(vendor)
+  registry.addSource('venue', { file: 'venue.cfb' })
 
-  // Three categories and the vocabularies they read by, and nothing else: a
-  // dictionary's membership is metadata on the field it contributed to, so it
-  // travels inside `fields`, while a code set is named and held once.
+  // Three categories, the vocabularies they read by and the sources catalog,
+  // and nothing else: a dictionary's membership is metadata on the field it
+  // contributed to, so it travels inside `fields`, while a code set and the
+  // entry a source id names are each held once.
   const document = registry.toJSON()
-  assert.deepEqual(Object.keys(document).sort(), ['codesets', 'components', 'fields', 'groups'])
+  assert.deepEqual(Object.keys(document).sort(), ['codesets', 'components', 'fields', 'groups', 'sources'])
+  assert.deepEqual(document.sources, [{ file: 'venue.cfb', id: 'venue', pluginside: 'UKNW' }])
   assert.deepEqual(
     document.codesets.map((set) => set.name),
-    ['marketdatakindcodeset', 'marketdatatypecodeset', 'partyrolecodeset', 'statecodeset'],
+    ['marketdatakindcodeset', 'marketdatatypecodeset', 'msgpluginsidecodeset', 'partyrolecodeset', 'statecodeset'],
   )
-  assert.equal(document.fields.find((value) => value.name === 'Vendor').metadata['FIX:branches'], 'venue')
+  assert.deepEqual(document.fields.find((value) => value.name === 'Vendor').metadata['FIX:sources'], ['venue'])
   assert.ok(document.components.some((value) => value.name === 'Party'))
   assert.ok(document.groups.some((value) => value.name === 'Parties'))
 
   const declared = fix.FixRegistry.fromJson(JSON.stringify(document))
-  assert.deepEqual(declared.fieldByTag(9001).fix.branches, ['venue'])
+  assert.deepEqual(declared.fieldByTag(9001).fix.sources, ['venue'])
   assert.deepEqual(declared.dialects(), ['venue'])
+  assert.deepEqual(declared.sources(), [{ id: 'venue', file: 'venue.cfb', pluginside: 'UKNW' }])
   for (const copy of [declared.clone(), fix.FixRegistry.fromJson(declared.intoJson())]) {
     assert.ok(copy.equals(declared))
     assert.equal(copy.stableHash(), declared.stableHash())
@@ -178,7 +182,8 @@ test('the complete native catalog survives a snapshot and a store', (t) => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-node-catalog-'))
   t.after(() => fs.rmSync(folder, { recursive: true, force: true }))
   registry.writeInto(folder)
-  assert.deepEqual(fs.readdirSync(folder).sort(), ['codesets', 'components', 'fields', 'groups'])
+  // The sources catalog is one document at the root, beside the categories.
+  assert.deepEqual(fs.readdirSync(folder).sort(), ['codesets', 'components', 'fields', 'groups', 'sources.json'])
   // A definition is one document under its category, and the crate's own
   // are written like every other: the fixed row is `components/fixmsg.json`
   // and its Map group is one document.
@@ -192,7 +197,14 @@ test('the complete native catalog survives a snapshot and a store', (t) => {
   assert.ok(documents('fields').every((name) => /^\d{9}\.json$/.test(name)))
   // A code set is one document under its own name, which is how it is
   // addressed and what a field states.
-  assert.deepEqual(documents('codesets'), ['marketdatakindcodeset.json', 'marketdatatypecodeset.json', 'partyrolecodeset.json', 'statecodeset.json'])
+  assert.deepEqual(documents('codesets'), [
+    // The renamed kind set precedes type in the catalog's sorted file list.
+    'marketdatakindcodeset.json',
+    'marketdatatypecodeset.json',
+    'msgpluginsidecodeset.json',
+    'partyrolecodeset.json',
+    'statecodeset.json',
+  ])
   assert.ok(fix.FixRegistry.fromHandle(folder).equals(registry))
 
   // A change to any category changes the value.

@@ -225,10 +225,10 @@ impl MarketColumn {
     pub const fn description(self) -> &'static str {
         match self {
             Self::MarketDataKind => {
-                "The category the element is filed under: an order, a quote, an execution, a trade, a book or another market data kind; UNKN where none is stated."
+                "The category the element is filed under: an order, a quote, an execution, a trade, a book or another market data kind; UKNW where none is stated."
             }
             Self::MarketDataType => {
-                "The type of its kind the element is: its order, quote, trade or book entry type; UNKN where none is stated."
+                "The type of its kind the element is: its order, quote, trade or book entry type; UKNW where none is stated."
             }
             Self::Price => "The price the element is about.",
             Self::StopPx => "The price a stop order triggers at.",
@@ -239,7 +239,7 @@ impl MarketColumn {
                 "The part of the quantity kept from the market: an iceberg's reserve."
             }
             Self::Unit => "The unit the quantity is counted in; empty where it states none.",
-            Self::Side => "The side the element takes; UNKN where it states none.",
+            Self::Side => "The side the element takes; UKNW where it states none.",
             Self::SecurityIds => {
                 "The security identifiers the element names, one per type, sorted by key: the type to its value, the type's answer; what each source stated of a type is side information in metadata under securityids.src:type."
             }
@@ -329,8 +329,8 @@ impl MarketColumn {
 
     /// Whether a row may leave the column null: never for the category,
     /// the type, the currency, the unit and the side, which every market
-    /// element states, if only as nothing - `UNKN`, `UNKN`, `XXX`, the empty
-    /// unit, `UNKN`.
+    /// element states, if only as nothing - `UKNW`, `UKNW`, `XXX`, the empty
+    /// unit, `UKNW`.
     #[must_use]
     pub const fn nullable(self) -> bool {
         !matches!(

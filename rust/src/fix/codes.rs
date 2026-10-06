@@ -84,10 +84,11 @@ use crate::{Error, Field, Result, Scalar};
 /// What the document is called for every refusal it raises.
 const TARGET: &str = "fix codes";
 
-/// Leaves ordinary dictionary vocabularies mutable while pinning the three
+/// Leaves ordinary dictionary vocabularies mutable while pinning the four
 /// code sets the crate fixes: `marketdatakind`'s generic graph identifiers, the state
 /// codes a `state` column stores and the market data type codes a
-/// `marketdatatype` column stores.
+/// `marketdatatype` column stores and the plugin side codes a
+/// `msgpluginside` column stores.
 fn validate_intrinsic_codeset(key: &str, document: Option<&str>) -> Result<()> {
     let (canonical, expected, changed) =
         if folds_equal(key, super::crated::MARKETDATAKIND_CODESET_NAME) {
@@ -108,6 +109,12 @@ fn validate_intrinsic_codeset(key: &str, document: Option<&str>) -> Result<()> {
                 "the fixed market data type codes",
                 "a changed or removed market data type code set",
             )
+        } else if folds_equal(key, super::crated::MSGPLUGINSIDE_CODESET_NAME) {
+            (
+                super::crated::msgpluginside_codeset(),
+                "the fixed plugin side codes",
+                "a changed or removed plugin side code set",
+            )
         } else {
             return Ok(());
         };
@@ -122,6 +129,25 @@ fn validate_intrinsic_codeset(key: &str, document: Option<&str>) -> Result<()> {
 /// category even when the ordinary vocabulary merge would discard that
 /// conflicting spelling and leave the stored document unchanged.
 fn validate_intrinsic_merge(key: &str, codes: &[FixCode]) -> Result<()> {
+    if folds_equal(key, super::crated::MSGPLUGINSIDE_CODESET_NAME) {
+        let canonical = codes.iter().all(|code| {
+            crate::PluginSide::from_name(code.name()).is_some_and(|side| {
+                code.value() == side.code().to_string()
+                    && code.aliases().is_empty()
+                    && code.description() == Some(side.description())
+                    && code.group().is_none()
+            })
+        });
+        return if canonical {
+            Ok(())
+        } else {
+            Err(Error::conflict(
+                "the fixed plugin side codes",
+                "a changed or removed plugin side code set",
+                key,
+            ))
+        };
+    }
     if folds_equal(key, super::crated::MARKETDATATYPE_CODESET_NAME) {
         let canonical = codes.iter().all(|code| {
             crate::MarketDataType::from_name(code.name()).is_some_and(|mdtype| {

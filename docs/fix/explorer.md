@@ -18,11 +18,11 @@ A Serie group and its scalar count have separate definitions: `NoPartyIDs` is th
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,271 |
+| Scalar fields | 6,241 | 6,272 |
 | Groups | 580 | 581 |
 | Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
-| Code sets, read by 2,027 fields | 735 | 738 |
+| Code sets, read by 2,027 fields | 735 | 739 |
 
 The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketdatakind`, `isincode`, `forexcode`, `figicode`, `execunix`, `recdunix`, the session-event key `msgsesseventid`, a bridge's originating plugin and conversation among them - and its `metadata` Map group. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `marketdatakindcodeset`, `marketdatatypecodeset` and `statecodeset` make the live code-set count 738. The native fixed capture schema has 150 columns.
 
@@ -36,9 +36,9 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
     // Every category is in the one length: the fields, the components and
     // the groups.
-    assert_eq!(registry.len(), 7_780);
+    assert_eq!(registry.len(), 7_781);
     // The walk is the same listing: the fields, then the definitions.
-    assert_eq!(registry.iter().count(), 7_780);
+    assert_eq!(registry.iter().count(), 7_781);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.field_by_name("parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
@@ -67,8 +67,8 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     # Every category is in the one length: the fields, the components and the
     # groups; iterating a Python registry walks the fields alone.
-    assert len(registry) == 7_780
-    assert sum(1 for _ in registry) == 6_271
+    assert len(registry) == 7_781
+    assert sum(1 for _ in registry) == 6_272
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.field_by_name("parties")
     assert parties.fix.counter == 453
@@ -96,7 +96,7 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     // Every category is in the one size: the fields, the components and the
     // groups, which is what a Node registry iterates too.
-    assert.equal(registry.size, 7780)
+    assert.equal(registry.size, 7781)
     assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.fieldByName('parties')

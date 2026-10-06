@@ -752,7 +752,7 @@ impl EntryKey {
 
 /// The entry type an entry's `MDEntryID` is scoped by: `BUYS` for a bid,
 /// `SELL` for an ask, the side an order takes or a quote tags, and
-/// `UNKN` for a quote tagging none or both.
+/// `UKNW` for a quote tagging none or both.
 fn entry_side(operation: &MarketData) -> Side {
     let side = operation.get_side();
     if side.is_bid() {

@@ -2362,7 +2362,7 @@ impl StringEnum {
 
     /// Every side of the market a text column may hold, sorted: the stored
     /// four-letter codes of [`Side`](crate::Side)'s members, one per side
-    /// FIX's `Side(54)` code set names across every version, `UNKN` for a
+    /// FIX's `Side(54)` code set names across every version, `UKNW` for a
     /// side stated as none and `BOTH` for both sides at once.
     ///
     /// A `side` column stores its member's `int32` code; this listing is the
@@ -2374,7 +2374,7 @@ impl StringEnum {
     /// [`Side::from_spelling`](crate::Side::from_spelling).
     pub const SIDES: &'static [&'static str] = &[
         "ASDF", "BORR", "BOTH", "BUYM", "BUYS", "CROS", "CRSH", "CRSX", "LEND", "OPPO", "REDM",
-        "SELL", "SELP", "SELU", "SSEX", "SSHT", "SUBS", "UNDI", "UNKN",
+        "SELL", "SELP", "SELU", "SSEX", "SSHT", "SUBS", "UKNW", "UNDI",
     ];
 
     /// Which way a captured line moved.

@@ -442,6 +442,9 @@ mod aliases;
 mod anomaly;
 #[path = "fix/batch.rs"]
 mod batch;
+#[cfg(feature = "internals")]
+#[path = "fix/catalog.rs"]
+mod catalog;
 #[path = "fix/cfb.rs"]
 mod cfb;
 #[path = "fix/cfi.rs"]
@@ -501,6 +504,8 @@ mod retired;
 mod schema;
 #[path = "fix/securityids.rs"]
 mod securityids;
+#[path = "fix/source.rs"]
+mod source;
 #[path = "fix/store.rs"]
 mod store;
 #[path = "fix/ulbridge.rs"]

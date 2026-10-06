@@ -179,7 +179,7 @@ from yggdryl import Side, State, graph
 T = 1_700_000_000_000_000_000
 SECOND = 1_000_000_000
 
-def event(second: int, order: str, state: str, side: str = "UNKN") -> graph.OrderEvent:
+def event(second: int, order: str, state: str, side: str = "UKNW") -> graph.OrderEvent:
     return graph.OrderEvent(T + second * SECOND, crosscode=order, state=state, side=side)
 
 def walk(items: list[graph.OrderEvent], sorted: bool = True) -> list[graph.OrderEvent]:
@@ -644,12 +644,12 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
   instants with integer arithmetic, never `datetime.timestamp() * 1e9` (a float
   loses the last digits).
 - `crosscode` answers the stored code `{kind}:{side}:{base}`: `"10:1:O-1001"`
-  for a buy order (kind 10, side 1), `"10:0:O-1001"` for `Side.UNKN`, and a
+  for a buy order (kind 10, side 1), `"10:0:O-1001"` for `Side.UKNW`, and a
   quote, a trade, a book or a snapshot control carries side `0` whatever side
   it states. The lifecycle view's `crosscode=` names the stored one.
 - `side`, `state` and `marketdatakind` are `IntEnum` members: compare with
   `is Side.BUYS`, never `== "BUYS"`; a column stores `int(member)`. A side is
-  never `None` - `Side.UNKN` is unstated.
+  never `None` - `Side.UKNW` is unstated.
 - `graph.BookIterator(items, snapshot_millis=0, filter=None)` - `filter` a
   `Filter`, a `Term`, an `Expression` or a predicate's text over the
   `marketdata` row, refused where it names a column the row does not carry;

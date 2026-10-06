@@ -54,7 +54,7 @@ mod categories {
             ),
             (
                 b"8=FIX.4.4|35=D|11=B|22=A|48=AAPL US Equity|10=0|".as_slice(),
-                65_048,
+                65_049,
                 "AAPL US Equity",
             ),
             (

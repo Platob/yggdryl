@@ -15,7 +15,7 @@ from yggdryl import DataType, Field, Scalar, Serie, TimeInForce
 
 
 def test_the_members_follow_the_wire_order() -> None:
-    assert TimeInForce.UNKN == 0
+    assert TimeInForce.UKNW == 0
     assert TimeInForce.DAY == 1 and TimeInForce.GTC == 2 and TimeInForce.IOC == 4
     assert TimeInForce.GFM == 13 and TimeInForce.OTHER == 99
     assert len(TimeInForce) == 15
@@ -53,7 +53,7 @@ def test_a_fix_wire_value_reads_and_answers_back() -> None:
     # A venue's own value reads as the catch-all, which answers no one value.
     assert TimeInForce.from_fix("Z") is TimeInForce.OTHER
     assert TimeInForce.OTHER.fix_code is None
-    assert TimeInForce.UNKN.fix_code is None
+    assert TimeInForce.UKNW.fix_code is None
     for member in TimeInForce:
         wire = member.fix_code
         if wire is not None:

@@ -604,7 +604,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
     trade.as_fix_mut().set_tag(5_001).expect("a static tag");
     trade
         .as_fix_mut()
-        .set_branches([VENUE])
+        .set_sources([VENUE])
         .expect("a static membership");
     trade
         .as_fix_mut()
@@ -761,7 +761,7 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
     trade.as_fix_mut().set_tag(5_001).expect("a static tag");
     trade
         .as_fix_mut()
-        .set_branches([VENUE])
+        .set_sources([VENUE])
         .expect("a static membership");
     let root = StructType::from_fields([symbol, trade, DataType::utf8().nullable_field("9999")])
         .map(DataType::from)
@@ -5932,7 +5932,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 58] = [
+    let seeds: [(DataTypeId, Scalar); 59] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -5992,6 +5992,7 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::State, Scalar::from("NEW")),
         (DataTypeId::MarketDataKind, Scalar::from("ORDR")),
         (DataTypeId::TimeInForce, Scalar::from("DAY")),
+        (DataTypeId::PluginSide, Scalar::from("BUYS")),
         (DataTypeId::MarketDataType, Scalar::from("ORDLIMIT")),
         (DataTypeId::Unit, Scalar::from("Shares")),
         (
@@ -7737,7 +7738,7 @@ struct StageCosts {
 /// no longer pays a table of names: a frame's walk stands at 7; and a bridge
 /// row's fell from 35 to 8 when redating a message a parse built settled
 /// what its clock moved alone. A trade side stating no `Side(54)` came to
-/// split off an execution of side `UNKN` where it noted an anomaly: the
+/// split off an execution of side `UKNW` where it noted an anomaly: the
 /// packed frame's parse 1029 to 1132, that execution's 106 less the
 /// anomaly's 3. Reading the accounts off the parties at every settle took
 /// the bridge row to 641 and the packed frame to 1145, thirteen each for
@@ -8026,6 +8027,9 @@ struct StageCosts {
 /// out - its values, its validity and the array around them - to 1507, 1487
 /// and 1525, and each batch by the one array it gathers more, to 211; no
 /// other stage moved.
+/// Main also adds the required `msgpluginside` column (65042), whose
+/// five landing allocations combine with strike's seven: 1512, 1492 and
+/// 1530. Both added arrays make each batch 212; no per-row stage moved.
 ///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
@@ -8035,8 +8039,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 543,
             into_row: 88,
-            landing: 1507,
-            batch: 211,
+            landing: 1512,
+            batch: 212,
             digest: 1,
             lifecycle: 10,
         },
@@ -8047,8 +8051,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 212,
             into_row: 64,
-            landing: 1487,
-            batch: 211,
+            landing: 1492,
+            batch: 212,
             digest: 1,
             lifecycle: 10,
         },
@@ -8059,8 +8063,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 1016,
             into_row: 250,
-            landing: 1525,
-            batch: 211,
+            landing: 1530,
+            batch: 212,
             digest: 1,
             lifecycle: 10,
         },

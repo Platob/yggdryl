@@ -242,14 +242,15 @@ test('Version field defaults and hints expose the native value with Arrow string
 })
 
 test('the datatype identifiers are laid out by family', () => {
-  // Ninety-six, laid out by family: every identifier sits in its family's
+  // Ninety-seven, laid out by family: every identifier sits in its family's
   // range and the list states them in that order, so `url` and `urn` follow
   // `version` in the text family, `sized_utf8` follows `fixed_utf8`, `ric`
   // follows `unit` and `forex` closes the code family, the geospatial pair
   // follows, and the enum family - `state`, `marketdatakind`, `side`,
-  // `marketdatatype`, `timeinforce` - closes the list. An identifier is a wire contract laid out by family, so a leaf
-  // added later lands beside its family and nothing ever moves.
-  assert.equal(enums.dataTypeIds.length, 96)
+  // `marketdatatype`, `timeinforce`, `pluginside` - closes the list. An
+  // identifier is a wire contract laid out by family, so a leaf added later
+  // lands beside its family and nothing ever moves.
+  assert.equal(enums.dataTypeIds.length, 97)
   assert.equal(enums.dataTypeIds.includes('figi'), true)
   assert.equal(enums.dataTypeIds.includes('bbg'), true)
   const ids = [...enums.dataTypeIds]
@@ -261,6 +262,15 @@ test('the datatype identifiers are laid out by family', () => {
   // The five reference-data codes took the text family's unused tail, so
   // they open the code family's range, after `mediatype` and before `country`.
   assert.deepEqual(ids.slice(ids.indexOf('mediatype') + 1, ids.indexOf('country')), ['lei', 'bic', 'elf', 'dti', 'fisn'])
-  assert.deepEqual(ids.slice(-7), ['geometry', 'geography', 'state', 'marketdatakind', 'side', 'marketdatatype', 'timeinforce'])
+  assert.deepEqual(ids.slice(-8), [
+    'geometry',
+    'geography',
+    'state',
+    'marketdatakind',
+    'side',
+    'marketdatatype',
+    'timeinforce',
+    'pluginside',
+  ])
   assert.deepEqual(ids.slice(0, 2), ['null', 'boolean'])
 })

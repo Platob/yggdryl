@@ -46,6 +46,51 @@ fn a_typed_key_is_a_tag_by_the_dictionary_tag_reader_and_a_name_otherwise() {
     }
 }
 
+/// A field-level merge refuses a `FIX:sources` text the setter never writes
+/// (a text the read walks as nothing would merge as nothing and drop what
+/// the other side said), naming the key, whichever side states it, and the
+/// retired `FIX:branches` key by its own name; the held field stands.
+#[test]
+fn merge_with_refuses_a_sources_text_the_setter_never_writes_on_either_side() {
+    use yggdryl::{DataType, Error, Field};
+
+    fn tagged(name: &str, tag: i32) -> Field {
+        let mut field = DataType::utf8().nullable_field(name);
+        field.as_fix_mut().set_tag(tag).unwrap();
+        field
+    }
+
+    let mut sound = tagged("TradeID", 5001);
+    sound.as_fix_mut().set_sources(["venue"]).unwrap();
+    for (key, stored, expected) in [
+        ("FIX:sources", "venue", "a JSON array of source ids"),
+        ("FIX:sources", r#"["b","a"]"#, "the source ids sorted"),
+        ("FIX:sources", r#"["ve_nue","venue"]"#, "each source once"),
+        ("FIX:branches", "venue", "retired"),
+    ] {
+        let mut edited = tagged("TradeID", 5001);
+        edited.insert_metadata(key, stored).unwrap();
+        let mut held = sound.clone();
+        let error = held.as_fix_mut().merge_with(&edited.as_fix()).unwrap_err();
+        assert!(
+            matches!(&error, Error::InvalidMetadataValue { key: named, .. } if named == key),
+            "{key} {stored}: {error}"
+        );
+        assert!(
+            error.to_string().contains(expected),
+            "{key} {stored}: {error}"
+        );
+        assert_eq!(held, sound, "{key} {stored}");
+        let mut held = edited.clone();
+        let error = held.as_fix_mut().merge_with(&sound.as_fix()).unwrap_err();
+        assert!(
+            matches!(&error, Error::InvalidMetadataValue { key: named, .. } if named == key),
+            "{key} {stored}: {error}"
+        );
+        assert_eq!(held, edited, "{key} {stored}");
+    }
+}
+
 #[cfg(feature = "internals")]
 mod internal {
     use std::collections::HashSet;
@@ -92,7 +137,7 @@ mod internal {
     /// membership that says whose it is.
     fn member(name: &str, dialect: &str, tag: i32) -> Field {
         let mut field = tagged(name, tag);
-        field.as_fix_mut().set_branches([dialect]).unwrap();
+        field.as_fix_mut().set_sources([dialect]).unwrap();
         field
     }
 
@@ -250,8 +295,8 @@ mod internal {
         // One namespace: a venue's field is reached by its name exactly as the
         // specification's is, and what the membership says is who spoke it.
         assert_eq!(registry.get_field_by_name("venuesym"), Some(&vendor));
-        assert!(vendor.as_fix().has_branch("cme"));
-        assert!(!standard.as_fix().has_branch("cme"));
+        assert!(vendor.as_fix().has_source("cme"));
+        assert!(!standard.as_fix().has_source("cme"));
         assert!(registry.get_field_by_name("cme").is_none());
         assert_eq!(registry.dialects(), ["cme"]);
     }
@@ -558,46 +603,67 @@ mod internal {
         // registries built from the same dictionaries in any order hash alike.
         field
             .as_fix_mut()
-            .set_branches(["Globex", "CME", "cme", "globex"])
+            .set_sources(["Globex", "CME", "cme", "globex"])
             .unwrap();
-        assert_eq!(field.get_metadata("FIX:branches"), Some("cme,globex"));
         assert_eq!(
-            field.as_fix().branches().collect::<Vec<_>>(),
+            field.get_metadata("FIX:sources"),
+            Some(r#"["cme","globex"]"#)
+        );
+        assert_eq!(
+            field.as_fix().sources().collect::<Vec<_>>(),
             ["cme", "globex"]
         );
-        assert!(field.as_fix().has_branch("CME") && field.as_fix().has_branch("globex"));
-        assert!(!field.as_fix().has_branch("cm"));
+        assert!(field.as_fix().has_source("CME") && field.as_fix().has_source("globex"));
+        assert!(!field.as_fix().has_source("cm"));
 
         // Adding is idempotent under the fold, and keeps the list sorted.
-        field.as_fix_mut().add_branch("GLOBEX").unwrap();
-        assert_eq!(field.get_metadata("FIX:branches"), Some("cme,globex"));
-        field.as_fix_mut().add_branch("Blp").unwrap();
-        assert_eq!(field.get_metadata("FIX:branches"), Some("blp,cme,globex"));
+        field.as_fix_mut().add_source("GLOBEX").unwrap();
+        assert_eq!(
+            field.get_metadata("FIX:sources"),
+            Some(r#"["cme","globex"]"#)
+        );
+        field.as_fix_mut().add_source("Blp").unwrap();
+        assert_eq!(
+            field.get_metadata("FIX:sources"),
+            Some(r#"["blp","cme","globex"]"#)
+        );
 
-        // Held to the membership grammar: non-empty, no separator. A refusal
-        // leaves the field exactly as it was.
+        // Held to the id grammar: a non-empty word holding no quote, no
+        // backslash and no control character. A refusal leaves the field
+        // exactly as it was.
         let before = field.clone();
-        for refused in [vec!["cme", ""], vec!["cm,e"]] {
-            let error = field
-                .as_fix_mut()
-                .set_branches(refused.clone())
-                .unwrap_err();
+        for refused in [
+            vec!["cme", ""],
+            vec!["cm\"e"],
+            vec!["cm\\e"],
+            vec!["cm\u{1}e"],
+        ] {
+            let error = field.as_fix_mut().set_sources(refused.clone()).unwrap_err();
             assert!(
-                matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:branches"),
+                matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:sources"),
                 "{refused:?}: {error}"
             );
             assert_eq!(field, before, "{refused:?}");
         }
-        assert!(field.as_fix_mut().add_branch("").is_err());
+        assert!(field.as_fix_mut().add_source("").is_err());
         assert_eq!(field, before);
+
+        // A comma is an ordinary character of an id: the array is what
+        // separates the ids, so nothing an id holds has to be kept out.
+        field.as_fix_mut().add_source("ms,bloomberg").unwrap();
+        assert_eq!(
+            field.get_metadata("FIX:sources"),
+            Some(r#"["blp","cme","globex","ms,bloomberg"]"#)
+        );
+        assert!(field.as_fix().has_source("MS,Bloomberg"));
 
         // Empty input removes the property rather than storing "".
         field
             .as_fix_mut()
-            .set_branches::<[&str; 0], &str>([])
+            .set_sources::<[&str; 0], &str>([])
             .unwrap();
-        assert!(!field.has_metadata("FIX:branches"));
-        assert_eq!(field.as_fix().branches().count(), 0);
+        assert!(!field.has_metadata("FIX:sources"));
+        assert_eq!(field.as_fix().sources().count(), 0);
     }
 
     #[test]
@@ -628,7 +694,7 @@ mod internal {
                 .field_by_tag(55)
                 .unwrap()
                 .as_fix()
-                .branches()
+                .sources()
                 .collect::<Vec<_>>(),
             ["globex"]
         );
@@ -637,14 +703,14 @@ mod internal {
                 .field_by_tag(5_055)
                 .unwrap()
                 .as_fix()
-                .has_branch("cme")
+                .has_source("cme")
         );
         assert!(
             dictionary
                 .field_by_tag(5_060)
                 .unwrap()
                 .as_fix()
-                .has_branch("globex")
+                .has_source("globex")
         );
         assert_eq!(dictionary.dialects(), ["cme", "globex"]);
 
@@ -690,7 +756,7 @@ mod internal {
                 .field_by_tag(5_070)
                 .unwrap()
                 .as_fix()
-                .has_branch("blp")
+                .has_source("blp")
         );
         assert_eq!(dictionary.dialects(), ["blp", "cme", "globex"]);
     }
@@ -855,13 +921,13 @@ mod internal {
         let mut field = DataType::utf8().nullable_field("TradeID");
 
         // Absent means the specification alone, and no identity without a tag.
-        assert_eq!(field.as_fix().branches().count(), 0);
+        assert_eq!(field.as_fix().sources().count(), 0);
         assert_eq!(field.as_fix().id().unwrap(), None);
-        assert!(!field.has_metadata("FIX:branches"));
+        assert!(!field.has_metadata("FIX:sources"));
 
-        field.as_fix_mut().set_branches(["CME"]).unwrap();
-        assert_eq!(field.as_fix().branches().collect::<Vec<_>>(), ["cme"]);
-        assert_eq!(field.get_metadata("FIX:branches"), Some("cme"));
+        field.as_fix_mut().set_sources(["CME"]).unwrap();
+        assert_eq!(field.as_fix().sources().collect::<Vec<_>>(), ["cme"]);
+        assert_eq!(field.get_metadata("FIX:sources"), Some(r#"["cme"]"#));
         assert_eq!(field.as_fix().id().unwrap(), None, "still no tag");
 
         field.as_fix_mut().set_tag(5001).unwrap();
@@ -879,9 +945,9 @@ mod internal {
         );
         field
             .as_fix_mut()
-            .set_branches::<[&str; 0], &str>([])
+            .set_sources::<[&str; 0], &str>([])
             .unwrap();
-        assert!(!field.has_metadata("FIX:branches"));
+        assert!(!field.has_metadata("FIX:sources"));
         assert_eq!(field.as_fix().id().unwrap(), Some(id));
 
         // The name is the other half: a rename is a new identity, derived on
@@ -1020,7 +1086,7 @@ mod internal {
         // Membership means "this dictionary speaks it", the specification's own
         // tags included: a venue file naming tag 35 stamps itself on tag 35.
         let spoken = member("MsgType", "cme", 35);
-        assert!(spoken.as_fix().has_branch("cme"));
+        assert!(spoken.as_fix().has_source("cme"));
         assert_eq!(spoken.as_fix().id().unwrap(), Some(id_of(35, "MsgType")));
 
         // Metadata takes any positive tag, whatever the
@@ -1034,7 +1100,7 @@ mod internal {
             .unwrap();
         assert_eq!(vendor.as_fix().tag().unwrap(), Some(35));
         assert_eq!(vendor.as_fix().tags().unwrap(), [5002, 40_000, 40_001]);
-        assert!(vendor.as_fix().has_branch("cme"));
+        assert!(vendor.as_fix().has_source("cme"));
         for tag in [1, 35, 4_999, 5_000, 39_999, 40_000, i32::MAX] {
             assert!(FixId::of(tag, "TradeID").is_ok(), "{tag}");
         }
@@ -1050,7 +1116,7 @@ mod internal {
                 .field_by_tag(35)
                 .unwrap()
                 .as_fix()
-                .has_branch("cme")
+                .has_source("cme")
         );
     }
 
@@ -1151,7 +1217,7 @@ mod internal {
         assert_eq!(held, &spec);
         assert_eq!(held.as_fix().names().collect::<Vec<_>>(), ["Ticker"]);
         assert_eq!(held.as_fix().tags().unwrap(), [9055]);
-        assert_eq!(held.as_fix().branches().count(), 0);
+        assert_eq!(held.as_fix().sources().count(), 0);
         assert_eq!(registry.field_by_id(venue_id).unwrap(), &venue);
         assert!(
             registry.get_field_by_id(id_of(9055, "Symbol")).is_none(),
@@ -1252,7 +1318,7 @@ mod internal {
             "{verb}"
         );
         assert_eq!(
-            symbol.as_fix().branches().collect::<Vec<_>>(),
+            symbol.as_fix().sources().collect::<Vec<_>>(),
             ["cme"],
             "{verb}"
         );
@@ -1274,12 +1340,12 @@ mod internal {
             ["Sym", "Ticker"],
             "{verb}"
         );
-        assert!(!symbol.as_fix().has_branch("xnas"), "{verb}");
+        assert!(!symbol.as_fix().has_source("xnas"), "{verb}");
         let newcomer = registry.field_by_id(id_of(55, "VenueSymbol")).unwrap();
         assert_eq!(newcomer.name(), "VenueSymbol", "{verb}");
         assert!(newcomer.as_fix().names().next().is_none(), "{verb}");
         assert_eq!(
-            newcomer.as_fix().branches().collect::<Vec<_>>(),
+            newcomer.as_fix().sources().collect::<Vec<_>>(),
             ["xnas"],
             "{verb}"
         );
@@ -1319,7 +1385,7 @@ mod internal {
             "{verb}"
         );
         assert_eq!(
-            symbol.as_fix().branches().collect::<Vec<_>>(),
+            symbol.as_fix().sources().collect::<Vec<_>>(),
             ["blp", "cme"],
             "{verb}"
         );
@@ -1896,7 +1962,7 @@ mod internal {
             symbol.as_fix().names().collect::<Vec<_>>(),
             ["Sym", "Ticker"]
         );
-        assert_eq!(symbol.as_fix().branches().collect::<Vec<_>>(), ["cme"]);
+        assert_eq!(symbol.as_fix().sources().collect::<Vec<_>>(), ["cme"]);
         assert_eq!(registry.field_by_tag(5_055).unwrap().name(), "Symbol");
         assert!(registry.get_field_by_id(id_of(5_055, "Symbol")).is_none());
         // Incoming metadata folds into the stored canonical spelling.
@@ -3045,7 +3111,7 @@ mod internal {
         ])
         .unwrap();
         let msg = FixMsg::with_registry(Arc::clone(&registry), root, value).unwrap();
-        assert_eq!(msg.as_field().as_fix().branches().count(), 0);
+        assert_eq!(msg.as_field().as_fix().sources().count(), 0);
 
         // The bare tag: its first holder, which is the child this root carries.
         assert_eq!(msg.by_tag(5001).unwrap(), Scalar::from("T-1"));
@@ -3094,7 +3160,7 @@ mod internal {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(plain.as_field().as_fix().branches().count(), 0);
+        assert_eq!(plain.as_field().as_fix().sources().count(), 0);
         assert_eq!(plain.by_tag(5001).unwrap(), Scalar::from("S-1"));
         assert_eq!(plain.by_name("stid").unwrap(), Scalar::from("S-1"));
         assert_eq!(plain.by_id(spec_id).unwrap(), Scalar::from("S-1"));
@@ -3111,8 +3177,9 @@ mod internal {
             .map(DataType::from)
             .unwrap()
             .required_field("row");
-        root.as_fix_mut().set_branches(["cme"]).unwrap();
-        root.insert_metadata("FIX:branches", "2cme,c me").unwrap();
+        root.as_fix_mut().set_sources(["cme"]).unwrap();
+        root.insert_metadata("FIX:sources", r#"["2cme","c me"]"#)
+            .unwrap();
         let message = FixMsg::with_registry(
             Arc::new(FixRegistry::new()),
             root,
@@ -3121,7 +3188,7 @@ mod internal {
         .unwrap();
         assert_eq!(message.by_tag(35).unwrap(), Scalar::from("8"));
         assert_eq!(
-            message.as_field().as_fix().branches().collect::<Vec<_>>(),
+            message.as_field().as_fix().sources().collect::<Vec<_>>(),
             ["2cme", "c me"],
             "read back as stored"
         );
@@ -3780,8 +3847,8 @@ mod internal {
         assert!(cleared.get_codeset("sidecodeset").is_none());
         assert_eq!(
             cleared.codesets().count(),
-            3,
-            "the crate's market data type, MsgCat and state sets remain"
+            4,
+            "the crate's market data type, MsgCat, state and plugin side sets remain"
         );
     }
 
@@ -3931,14 +3998,14 @@ mod internal {
         let mut mine = DataType::utf8().nullable_field("Symbol");
         mine.as_fix_mut().set_tag(5055).unwrap();
         mine.as_fix_mut().merge_with(&vendor.as_fix()).unwrap();
-        assert_eq!(mine.as_fix().branches().collect::<Vec<_>>(), ["cme"]);
+        assert_eq!(mine.as_fix().sources().collect::<Vec<_>>(), ["cme"]);
         assert_eq!(mine.as_fix().tag().unwrap(), Some(5055));
         // And the union is a union: two dictionaries each stamping itself leave
         // both names, sorted, whichever side held which.
         let mut theirs = member("Symbol", "xnas", 5055);
         theirs.as_fix_mut().merge_with(&mine.as_fix()).unwrap();
         assert_eq!(
-            theirs.as_fix().branches().collect::<Vec<_>>(),
+            theirs.as_fix().sources().collect::<Vec<_>>(),
             ["cme", "xnas"]
         );
     }
@@ -4237,10 +4304,10 @@ mod internal {
                 set.name()
             );
         }
-        // The crate adds MsgCat's 26 categories, the 62 states and the 118
-        // market data types to the 735 published sets.
-        assert_eq!(sets, 738, "code sets held");
-        assert_eq!(codes, 7_935, "code records");
+        // The crate adds MarketDataKind's 26 categories, the 62 states, the 118
+        // market data types and the 3 plugin sides to the 735 published sets.
+        assert_eq!(sets, 739, "code sets held");
+        assert_eq!(codes, 7_938, "code records");
     }
 
     #[test]

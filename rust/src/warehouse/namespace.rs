@@ -27,6 +27,19 @@ pub trait NamespaceValue: ObjectValue {
     /// own listing failure.
     fn get(&self, name: &str) -> Result<Object>;
 
+    /// The child called `name` as the step of a path that goes on below
+    /// it: `get` by default, and for a store whose child proves itself -
+    /// an Amazon S3 Tables namespace, which the table under it names by its
+    /// own request - a description costing no request, the absence
+    /// surfacing at the step below.
+    ///
+    /// # Errors
+    ///
+    /// As `get`, where the store is asked.
+    fn descend(&self, name: &str) -> Result<Object> {
+        self.get(name)
+    }
+
     /// Create the namespace `name` under it. The default refuses by name.
     ///
     /// # Errors
@@ -143,20 +156,29 @@ impl Namespace {
     }
 }
 
-/// Descend from `parent` through `path`, one `get` per part.
+/// Descend from `parent` through `path`: `descend` for every part another
+/// follows and `get` for the last, so what the path names is proven where it
+/// stands and a level above it is asked for only where its store must.
 pub(crate) fn resolve_under(parent: &dyn NamespaceValue, path: Vec<SmolStr>) -> Result<Object> {
-    let mut parts = path.into_iter();
+    let mut parts = path.into_iter().peekable();
     let Some(first) = parts.next() else {
         return Err(Error::InvalidRecord {
             path: format_smolstr!("$.{}", path_text(parent.path())),
             reason: SmolStr::new_static("expected at least one part below the namespace, got none"),
         });
     };
-    let mut current = parent.get(&first)?;
-    for part in parts {
+    let mut current = if parts.peek().is_some() {
+        parent.descend(&first)?
+    } else {
+        parent.get(&first)?
+    };
+    while let Some(part) = parts.next() {
+        let last = parts.peek().is_none();
         current = match current {
-            Object::Catalog(catalog) => catalog.get(&part)?,
-            Object::Namespace(namespace) => namespace.get(&part)?,
+            Object::Catalog(catalog) if last => catalog.get(&part)?,
+            Object::Catalog(catalog) => catalog.descend(&part)?,
+            Object::Namespace(namespace) if last => namespace.get(&part)?,
+            Object::Namespace(namespace) => namespace.descend(&part)?,
             Object::Table(table) => {
                 return Err(Error::absent("namespace", path_text(table.path())));
             }
@@ -206,6 +228,10 @@ impl NamespaceValue for Namespace {
 
     fn get(&self, name: &str) -> Result<Object> {
         self.as_namespace().get(name)
+    }
+
+    fn descend(&self, name: &str) -> Result<Object> {
+        self.as_namespace().descend(name)
     }
 
     fn create_namespace(&self, name: &str, properties: &Properties) -> Result<Self> {

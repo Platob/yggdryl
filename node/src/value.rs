@@ -98,6 +98,9 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::MarketDataKind
         | D::MarketDataType
         | D::TimeInForce
+        | D::PluginSide
+        | D::Unit
+        | D::Ric
         | D::Uuid
         | D::Url
         | D::Urn
@@ -354,7 +357,24 @@ fn text_or_binary_to_js<'env>(
             .ok_or_else(|| napi_error("invalid native string record value"))?
             .to_owned()
             .into_unknown(env)?,
-        D::Side | D::State | D::MarketDataKind | D::MarketDataType | D::TimeInForce => value
+        D::Country
+        | D::Ccy
+        | D::Mic
+        | D::Cfi
+        | D::Isin
+        | D::Cusip
+        | D::Sedol
+        | D::Bbg
+        | D::Figi
+        | D::Forex
+        | D::Side
+        | D::State
+        | D::MarketDataKind
+        | D::MarketDataType
+        | D::TimeInForce
+        | D::PluginSide
+        | D::Unit
+        | D::Ric => value
             .as_str()
             .ok_or_else(|| napi_error("invalid native string record value"))?
             .to_owned()

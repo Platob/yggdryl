@@ -1287,8 +1287,10 @@ class TestPyCapsule:
         polars = pytest.importorskip("polars")
         frame = polars.DataFrame(SerieReader.from_(table))
         assert frame["value"].to_list() == column.to_pylist()
-        address, offset, length = frame["value"]._get_buffer_info()
-        assert (address, offset, length) == (column.buffers()[1].address, 0, 1_024)
+        assert frame["value"].n_chunks() == 1
+        polars_array = frame["value"].to_arrow()
+        assert polars_array.offset == 0 and len(polars_array) == 1_024
+        assert buffer_locations(polars_array) == buffer_locations(column)
 
     def test_a_requested_schema_is_applied_by_the_one_cast(self) -> None:
         column = Serie.from_(pa.array([1, 2, 300], pa.int64()))

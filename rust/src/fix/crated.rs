@@ -108,7 +108,8 @@
 //! The tags run contiguously from `65001` in the order [the fixed
 //! row](super::fix_schema_tags) states its crate columns - the element's,
 //! the event's, the market's and the operation's facts, then the message's
-//! own: which message and session, which instrument - and then the
+//! own: which message and session - the role of the plugin that spoke it
+//! among them - which instrument - and then the
 //! definitions no column of that row is: the capture's `sourceurl` and the
 //! `fixmsg` document.
 //! A retired definition leaves no gap, and a number never names two
@@ -139,11 +140,22 @@ pub const CURRUNIX_TAG_NAME: (i32, &str) = (65_007, "currunix");
 
 /// The tag and name carrying the message context a bridge handled the
 /// message in.
-pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_043, "msgctxid");
+pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_044, "msgctxid");
 
 /// The tag and name carrying the plugin that logged the line, as a bridge
 /// names it.
 pub const MSGPLUGINID_TAG_NAME: (i32, &str) = (65_041, "msgpluginid");
+
+/// The tag and name carrying the role of the FIX plugin whose session
+/// produced the message, as the member of [`crate::PluginSide`] its code
+/// stores: `BUYS` for a Buy-Side plugin, `SELL` for a Sell-Side one,
+/// `UKNW` where the dialect states none. A session fact read off the
+/// dialect's source entry ([`FixSource::pluginside`](super::FixSource::pluginside))
+/// by the codec that reads under it ([`FixCodec::with_source`](super::FixCodec::with_source)),
+/// never off a FIX tag, and independent of `Side(54)`; every row states
+/// it, and a row stating one is the row's word. The intrinsic
+/// `msgpluginsidecodeset` names what each code stands for.
+pub const MSGPLUGINSIDE_TAG_NAME: (i32, &str) = (65_042, "msgpluginside");
 
 /// The tag and name carrying the code the message's content digests to:
 /// the XXH3-64 of what the event states and the named FIX content behind it.
@@ -184,7 +196,7 @@ pub const SNAPUNIX_TAG_NAME: (i32, &str) = (65_012, "snapunix");
 /// message's about itself, so it travels beside the row as one of the
 /// capture's own columns, with the body the line was cut from and its place
 /// in the object, and no column of the message restates it.
-pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_050, "sourceurl");
+pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_051, "sourceurl");
 
 /// The tag and name carrying the session instance a bridge handled a line on.
 ///
@@ -193,7 +205,7 @@ pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_050, "sourceurl");
 /// the bridge's own connection instance, and the two are separate facts -
 /// one message states its session once, while two connections to one
 /// counterparty are two instances.
-pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_044, "msgsessionid");
+pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_045, "msgsessionid");
 
 /// The tag and name carrying the message's identity: UUIDv7 ordered by its
 /// millisecond and sequence, with a content payload seeded by its cross hash.
@@ -227,7 +239,7 @@ pub const SEQNUM_TAG_NAME: (i32, &str) = (65_014, "seqnum");
 /// the message files under and of the side an order or an execution takes,
 /// `10:1:ORD-1` and `10:2:ORD-1`, so each category, and each side of one
 /// order or execution identifier, is a chain of its own; one of side
-/// `UNKN`, and every other kind - a quote, whose side is a tag, among them -
+/// `UKNW`, and every other kind - a quote, whose side is a tag, among them -
 /// states side `0`: `14:0:Q-1`, `21:0:T-1`. A followed message carries its
 /// chain's.
 pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_003, "crosscode");
@@ -246,7 +258,7 @@ pub const METADATA_TAG_NAME: (i32, &str) = (65_036, "metadata");
 /// reader passes the document over, as it passes the crate's own fields -
 /// so the dump is what a consumer reads the row's shape from without
 /// running this crate, and nothing this crate reads back.
-pub const FIXMSG_TAG_NAME: (i32, &str) = (65_051, "fixmsg");
+pub const FIXMSG_TAG_NAME: (i32, &str) = (65_052, "fixmsg");
 
 /// The tag and name carrying the identities of the elements the message
 /// was read from: its provenance, never its lineage.
@@ -378,14 +390,41 @@ static MARKETDATATYPE_CODESET: LazyLock<Option<Arc<str>>> = LazyLock::new(|| {
 pub(super) fn marketdatatype_codeset() -> Option<Arc<str>> {
     MARKETDATATYPE_CODESET.as_ref().map(Arc::clone)
 }
+
+/// The crate-owned vocabulary the `msgpluginside` column reads by: every
+/// member of [`crate::PluginSide`], its stored name, the code it stores
+/// and what it stands for. Intrinsic and immutable in a registry.
+pub(super) const MSGPLUGINSIDE_CODESET_NAME: &str = "msgpluginsidecodeset";
+
+/// The canonical plugin side document every registry shares.
+static MSGPLUGINSIDE_CODESET: LazyLock<Option<Arc<str>>> = LazyLock::new(|| {
+    let codes = crate::PluginSide::ALL
+        .iter()
+        .map(|side| {
+            super::FixCode::new(side.as_str(), side.code().to_string())
+                .with_description(side.description())
+        })
+        .collect::<Vec<_>>();
+    match super::FixCodes::render(&codes) {
+        Ok(document) => Some(Arc::from(document)),
+        Err(error) => {
+            log::warn!("building FIX plugin side code set: {error}");
+            None
+        }
+    }
+});
+
+pub(super) fn msgpluginside_codeset() -> Option<Arc<str>> {
+    MSGPLUGINSIDE_CODESET.as_ref().map(Arc::clone)
+}
 /// The tag and name carrying the normalized ISIN the message identifies.
 pub const ISINCODE_TAG_NAME: (i32, &str) = (65_021, "isincode");
 /// The tag and name carrying the normalized Bloomberg identifier the message identifies.
-pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_048, "bloombergcode");
+pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_049, "bloombergcode");
 /// The tag and name carrying the normalized market MIC the message identifies.
 pub const MICCODE_TAG_NAME: (i32, &str) = (65_022, "miccode");
 /// The tag and name carrying the normalized FIGI the message identifies.
-pub const FIGICODE_TAG_NAME: (i32, &str) = (65_049, "figicode");
+pub const FIGICODE_TAG_NAME: (i32, &str) = (65_050, "figicode");
 /// The tag and name carrying when the message last executed, where one of
 /// its FIX facts states it - a `TransactTime(60)` stating a day alone
 /// states none - else - on a message reporting an execution that states
@@ -401,16 +440,16 @@ pub const RECDUNIX_TAG_NAME: (i32, &str) = (65_009, "recdunix");
 /// The tag and name carrying the session event a bridge delivered the
 /// message as: its `MsgType(35)`, session instance, message context and
 /// `MsgSeqNum(34)` joined by `:`, where all four are stated.
-pub const MSGSESSEVENTID_TAG_NAME: (i32, &str) = (65_045, "msgsesseventid");
+pub const MSGSESSEVENTID_TAG_NAME: (i32, &str) = (65_046, "msgsesseventid");
 
 /// The tag and name carrying the plugin a message came into a bridge
 /// through, as the bridge's own log line names it: provenance the capture
 /// holds, never content and never a digest input.
-pub const MSGORIGINATOR_TAG_NAME: (i32, &str) = (65_042, "msgoriginator");
+pub const MSGORIGINATOR_TAG_NAME: (i32, &str) = (65_043, "msgoriginator");
 
 /// The tag and name carrying the conversation a bridge filed the message
 /// under, as it stated it: provenance the capture holds, never content.
-pub const CONVERSATIONID_TAG_NAME: (i32, &str) = (65_046, "conversationid");
+pub const CONVERSATIONID_TAG_NAME: (i32, &str) = (65_047, "conversationid");
 
 /// The tag and name carrying the currency pair the message is about,
 /// canonical `CCY1/CCY2`: the `FOREX` entry of the message's security
@@ -420,7 +459,7 @@ pub const CONVERSATIONID_TAG_NAME: (i32, &str) = (65_046, "conversationid");
 /// `securityids` column, a pair the message's reading answers states
 /// nothing, the pair its symbol names where nothing else names one is that
 /// detection, and any other replaces its type's answer, the base key.
-pub const FOREXCODE_TAG_NAME: (i32, &str) = (65_047, "forexcode");
+pub const FOREXCODE_TAG_NAME: (i32, &str) = (65_048, "forexcode");
 
 /// The tag and name carrying the part of the quantity an iceberg keeps from
 /// the market, which the row derives: the quantity past `DisplayQty(1138)`,
@@ -675,7 +714,9 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 38] = [
 /// `UNKNOWN` where nothing states one - but the column admits a null,
 /// because a state has no neutral member for an empty cell to read as, and
 /// a column no default can fill is not one a row can be required to state.
-const ALWAYS_STATED: [i32; 8] = [
+/// The plugin's role is stated on every row too, and the column is
+/// required: `UKNW` is the member a session stating no role reads as.
+const ALWAYS_STATED: [i32; 9] = [
     CURRUNIX_TAG_NAME.0,
     CREAUNIX_TAG_NAME.0,
     CURRHASHCODE_TAG_NAME.0,
@@ -684,6 +725,7 @@ const ALWAYS_STATED: [i32; 8] = [
     CURRUUID_TAG_NAME.0,
     CROSSUUID_TAG_NAME.0,
     SEQNUM_TAG_NAME.0,
+    MSGPLUGINSIDE_TAG_NAME.0,
 ];
 
 /// Whether `tag` is one of the crate's own columns every message states,
@@ -890,7 +932,7 @@ impl Crated {
 /// and [`fix_crate_fields`] all walk them in - and the tags are numbered in
 /// the fixed row's band order, so this is that order too. A row that only names a tag
 /// and a column is a column this crate adds nothing to but the tag.
-const CRATED: [Crated; 50] = [
+const CRATED: [Crated; 51] = [
     Crated::element(CURRUUID_TAG_NAME, ElementColumn::CurrUuid),
     Crated::element(CROSSUUID_TAG_NAME, ElementColumn::CrossUuid),
     Crated::element(CROSSCODE_TAG_NAME, ElementColumn::CrossCode).saying(
@@ -901,7 +943,7 @@ const CRATED: [Crated; 50] = [
          digest, one split off a trade its side's order and the side's first \
          stated identifier, a batch entry the order or entry it names - \
          stored after the codes of its category and of the side an order or \
-         an execution takes, 10:1:ORD-1, side 0 on one of side UNKN and on \
+         an execution takes, 10:1:ORD-1, side 0 on one of side UKNW and on \
          every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its \
          chain's once followed.",
     ),
@@ -965,7 +1007,7 @@ const CRATED: [Crated; 50] = [
         MARKETDATAKIND_TAG_NAME,
         MarketColumn::MarketDataKind,
         "The business category of the message type, as the member of the \
-         marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN \
+         marketdatakind enum: the dictionary's FIX:msgcat for the type, UKNW \
          where it files none; an execution report its order's ORDR, or its \
          quote's QUOT where it names a QuoteID, where it reports no fill or \
          once the parse split its fill off as an EXEC, and a batch entry the \
@@ -980,7 +1022,7 @@ const CRATED: [Crated; 50] = [
          from QuoteType, its trade type from TrdType, its book entry type \
          from MDEntryType - the field its kind names first, each value read \
          through the dictionary's FIX:marketdatatype where it maps one - \
-         UNKN where none is stated; a row stating one is the row's word.",
+         UKNW where none is stated; a row stating one is the row's word.",
     )
     .reading(MARKETDATATYPE_CODESET_NAME),
     Crated::derived_market(
@@ -1126,6 +1168,16 @@ const CRATED: [Crated; 50] = [
          names it: the row's own msgpluginid column, never derived.",
     ),
     Crated::own(
+        MSGPLUGINSIDE_TAG_NAME,
+        || Ok(DataType::pluginside()),
+        "Message Plugin Side",
+        "The role of the FIX plugin whose session produced the message: BUYS \
+         for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the \
+         dialect states none; a session fact read off the dialect's source \
+         entry, never off a FIX tag, and independent of Side(54).",
+    )
+    .reading(MSGPLUGINSIDE_CODESET_NAME),
+    Crated::own(
         MSGORIGINATOR_TAG_NAME,
         || Ok(DataType::utf8()),
         "Message Originator",
@@ -1234,7 +1286,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 50);
+/// assert_eq!(held.len(), 51);
 /// assert_eq!(held[0].name(), "curruuid");
 /// assert_eq!(held[0].display(), Some("Current UUID"));
 /// assert_eq!(held[6].name(), "currunix");

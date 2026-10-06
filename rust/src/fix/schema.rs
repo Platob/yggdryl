@@ -189,7 +189,8 @@ pub fn fix_schema_tags() -> Vec<i32> {
         FIGICODE_TAG_NAME as FIGICODE, FOREXCODE_TAG_NAME as FOREXCODE,
         MSGCTXID_TAG_NAME as MSGCTXID, MSGDIRECTION_TAG_NAME as MSGDIRECTION,
         MSGORIGINATOR_TAG_NAME as MSGORIGINATOR, MSGPLUGINID_TAG_NAME as MSGPLUGINID,
-        MSGSESSEVENTID_TAG_NAME as MSGSESSEVENTID, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
+        MSGPLUGINSIDE_TAG_NAME as MSGPLUGINSIDE, MSGSESSEVENTID_TAG_NAME as MSGSESSEVENTID,
+        MSGSESSIONID_TAG_NAME as MSGSESSIONID,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let mut tags: Vec<i32> = Vec::with_capacity(
@@ -210,7 +211,8 @@ pub fn fix_schema_tags() -> Vec<i32> {
     band(&mut tags, &[52, 122, 60, 64, 75, 126, 62, 432]);
     // Which message, over which session: what the frame says it is, who sent
     // it to whom, which bridge handled it and which of its plugins it came
-    // from, the session event it delivered the message as and the
+    // from - and the role that plugin's dialect states - the session event
+    // it delivered the message as and the
     // conversation that exchange belongs to. Not where this capture read
     // it: that is the reader's statement about the line and not the
     // message's about itself, so it travels as one of the capture's own
@@ -227,6 +229,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
             43,
             MSGDIRECTION.0,
             MSGPLUGINID.0,
+            MSGPLUGINSIDE.0,
             MSGORIGINATOR.0,
             MSGCTXID.0,
             MSGSESSIONID.0,
@@ -2528,7 +2531,7 @@ impl super::FixMsg {
         row: &crate::Scalar,
     ) -> Result<Self> {
         let value = schema.canonicalize_value(row.clone())?;
-        Self::rebuilt(registry, schema, &value)
+        Self::rebuilt(registry, schema, &value, crate::PluginSide::Unknown)
     }
 
     /// [`Self::from_row`] for a row of a record column landed under
@@ -2536,17 +2539,27 @@ impl super::FixMsg {
     /// where the schema requires a value, a text past the bound a column
     /// states, a code no registry holds - and the column answers it in the
     /// schema's own canonical form, so it is rebuilt as it stands, neither
-    /// validated nor canonicalized a second time.
+    /// validated nor canonicalized a second time. `pluginside` is the role
+    /// of the source the codec reads under, the message's `msgpluginside`
+    /// where the schema holds no such column; a row carrying the cell is the
+    /// row's word over it.
     pub(super) fn from_landed_row(
         registry: Arc<FixRegistry>,
         schema: &Field,
         row: &crate::Scalar,
+        pluginside: crate::PluginSide,
     ) -> Result<Self> {
-        Self::rebuilt(registry, schema, row)
+        Self::rebuilt(registry, schema, row, pluginside)
     }
 
-    /// The message a canonical row of `schema` holds.
-    fn rebuilt(registry: Arc<FixRegistry>, schema: &Field, value: &crate::Scalar) -> Result<Self> {
+    /// The message a canonical row of `schema` holds, `pluginside` the
+    /// stamp a row stating none takes.
+    fn rebuilt(
+        registry: Arc<FixRegistry>,
+        schema: &Field,
+        value: &crate::Scalar,
+        pluginside: crate::PluginSide,
+    ) -> Result<Self> {
         let plan = column_plan_of(schema, &registry)?;
         let mut members: Vec<Field> = Vec::with_capacity(schema.fields().len());
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(schema.fields().len());
@@ -2734,6 +2747,7 @@ impl super::FixMsg {
             root,
             crate::Scalar::from_sequence(values),
             retains_identity,
+            pluginside,
         )?;
         message.set_carried(carried);
         Ok(message)

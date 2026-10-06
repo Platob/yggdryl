@@ -87,7 +87,9 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     // `parties` state what they name, and a message stating them keeps them
     // among its entries.
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 150);
+    // The capture now states the plugin role beside its plugin id: one
+    // new tagged column over the strike-bearing row.
+    assert_eq!(tags.len(), 151);
     for tag in [22, 48, 453, 454] {
         assert!(!tags.contains(&tag), "{tag} is no column");
     }
@@ -159,7 +161,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "then the clocks FIX states"
     );
     assert_eq!(
-        &tags[shared + 8..shared + 21],
+        &tags[shared + 8..shared + 22],
         [
             8,
             35,
@@ -169,6 +171,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             43,
             yggdryl::MSGDIRECTION_TAG_NAME.0,
             yggdryl::MSGPLUGINID_TAG_NAME.0,
+            yggdryl::MSGPLUGINSIDE_TAG_NAME.0,
             yggdryl::MSGORIGINATOR_TAG_NAME.0,
             yggdryl::MSGCTXID_TAG_NAME.0,
             yggdryl::MSGSESSIONID_TAG_NAME.0,
@@ -176,8 +179,9 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             yggdryl::CONVERSATIONID_TAG_NAME.0,
         ],
         "which message, over which session - the plugin it came from right \
-         after the bridge's own, the session event it was delivered as right \
-         after the session that delivered it, then the conversation"
+         after the bridge's own and the role of that plugin's dialect right \
+         after it, the session event it was delivered as right after the \
+         session that delivered it, then the conversation"
     );
     // And not where the capture read it: the object a line came out of is
     // the reader's word about the line, carried beside the row with the body
@@ -209,7 +213,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     let schema = fix_schema(&registry, "fix").unwrap();
     // The two identifier fields and the two groups - each its list alone,
     // its length the count - are four columns no row holds.
-    assert_eq!(schema.fields().len(), 151);
+    assert_eq!(schema.fields().len(), 152);
     assert!(
         schema
             .fields()
@@ -347,6 +351,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::CURRUNIX_TAG_NAME.0, "Current Time"),
         (yggdryl::MSGCTXID_TAG_NAME.0, "Message Context ID"),
         (yggdryl::MSGPLUGINID_TAG_NAME.0, "Message Plugin ID"),
+        (yggdryl::MSGPLUGINSIDE_TAG_NAME.0, "Message Plugin Side"),
         (yggdryl::MSGSESSIONID_TAG_NAME.0, "Message Session ID"),
         (
             yggdryl::MSGSESSEVENTID_TAG_NAME.0,
@@ -365,7 +370,8 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     }
 
     // The replay bundle, the place at the instant - zero for the first, so
-    // never absent - and BeginString are required, and nothing else:
+    // never absent - BeginString and the plugin's role - `UKNW` where none
+    // is stated - are required, and nothing else:
     // `snapunix` is only what a snapshot stamps, and the state a message
     // reached, stated on every row a message writes, has no neutral member
     // to fill an empty cell with, so both are nullable like every other
@@ -387,6 +393,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
             "creaunix",
             "seqnum",
             "beginstring",
+            "msgpluginside",
         ]
     );
 }

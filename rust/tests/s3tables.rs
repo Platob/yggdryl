@@ -17,13 +17,18 @@
 //! [`fake`] is not a suite: it is the in-process fake of the service every
 //! suite over a socket shares, which checks each request it is sent on its
 //! own. [`server`] is not one either: it is the fake object store the `s3`
-//! suites run on, which [`catalog`] keeps each table's warehouse in. [`live`] is not a mirror either: it is the one ignored test that
+//! suites run on, which [`catalog`] keeps each table's warehouse in;
+//! [`identity`] the fake of the identity services, which [`catalog`] counts
+//! the credential walks of a bucket's stores against. [`live`] is not a mirror either: it is the one ignored test that
 //! runs the whole of a table's life against the real service, for an
 //! operator who names a signed-in profile.
 
 #[cfg(feature = "s3tables")]
 #[path = "support/s3tables.rs"]
 mod fake;
+#[cfg(feature = "s3tables")]
+#[path = "support/identity.rs"]
+mod identity;
 #[cfg(feature = "s3tables")]
 #[path = "support/server.rs"]
 mod server;

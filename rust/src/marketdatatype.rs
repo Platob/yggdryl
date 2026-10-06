@@ -46,7 +46,7 @@ enum_leaf! {
     #[non_exhaustive]
     pub enum MarketDataType: u16, kind = "marketdatatype", extension = MARKETDATATYPE_EXTENSION_NAME, aliases = marketdatatype_aliases {
         #[default]
-        Unknown = 0 as "UNKN": "No type stated.",
+        Unknown = 0 as "UKNW": "No type stated.",
         OrdMarket = 101 as "ORDMKT": "Market order.",
         OrdLimit = 102 as "ORDLIMIT": "Limit order.",
         OrdStop = 103 as "ORDSTOP": "Stop, or stop loss, order.",
@@ -218,7 +218,7 @@ impl MarketDataType {
     }
 
     /// The FIX field and wire value this member stands for - `(40, "2")`
-    /// for `ORDLIMIT` - or `None` for `UNKN` and a catch-all, which stand
+    /// for `ORDLIMIT` - or `None` for `UKNW` and a catch-all, which stand
     /// for no one value.
     #[must_use]
     pub fn fix_code(self) -> Option<(i32, &'static str)> {
