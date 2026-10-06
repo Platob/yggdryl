@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Iterable, Mapping
+from typing import TYPE_CHECKING
 
 from ._native import (
     Client,
@@ -31,8 +32,12 @@ from ._native import (
     Session,
     Stream,
     Url,
+    http_process_stats as _http_process_stats,
     http_session as _http_session,
 )
+
+if TYPE_CHECKING:
+    from ._native import HostStats
 
 Pairs = Mapping[str, object] | Iterable[tuple[str, object]]
 HeadersInput = Headers | Mapping[str, str] | Iterable[tuple[str, str]]
@@ -55,6 +60,7 @@ __all__ = [
     "patch",
     "post",
     "put",
+    "process_stats",
     "session",
 ]
 
@@ -62,6 +68,17 @@ __all__ = [
 def session() -> Session:
     """The process-wide default session: shared options, one cookie jar."""
     return _http_session()
+
+
+def process_stats() -> dict[str, HostStats]:
+    """Every request this process sent, by host and port, as of now.
+
+    One ledger whatever client sent them - this module's, the object
+    stores', a catalog service's - so a pipeline's cost is read before and
+    after a stage and subtracted; each host's counts are ``requests``,
+    ``gets``, ``heads``, ``puts``, ``posts``, ``deletes`` and ``others``.
+    """
+    return _http_process_stats()
 
 
 def get(

@@ -3,20 +3,21 @@
 `bronze` and `silver` are two catalogs - two Amazon S3 Tables table buckets
 live, two local Iceberg warehouse folders in the suite - and
 `record_keeping` the namespace in each. One function per stage, each taking
-a UTC window, half-open on `currunix`; every read is `read_serie` with the
-window pushed into it, so the scan prunes by the quarter hour each table is
-partitioned by, every stage runs through the codec's serie doors, and every
-write is `overwrite_serie`, which replaces the partitions its rows fall in
-and no other: running a stage again over a window rewrites that window.
+the :class:`Lake` the run writes through and a UTC window, half-open on
+`currunix`; every read is `read_serie` with the window pushed into it, so
+the scan prunes by the quarter hour each table is partitioned by, every
+stage runs through the codec's serie doors, and every write is
+`overwrite_serie`, which replaces the partitions its rows fall in and no
+other: running a stage again over a window rewrites that window.
 
 ```text
 capture                              -> parse_log_messages         -> bronze.record_keeping.log_messages
 bronze.record_keeping.log_messages   -> parse_fix_messages_raw     -> bronze.record_keeping.fix_messages
 bronze.record_keeping.fix_messages   -> parse_fix_messages_refined -> silver.record_keeping.fix_messages
 silver.record_keeping.fix_messages   -> parse_books                -> silver.record_keeping.books
-silver.record_keeping.books          -> parse_orders               -> silver.record_keeping.orders
-                                     -> parse_quotes               -> silver.record_keeping.quotes
-                                     -> parse_executions           -> silver.record_keeping.executions
+silver.record_keeping.books          -> parse_events               -> silver.record_keeping.orders
+                                                                   -> silver.record_keeping.quotes
+                                                                   -> silver.record_keeping.executions
 ```
 
 The window rule: a row is windowed by `currunix`, and a stage reads the
@@ -26,6 +27,17 @@ began earlier follows no predecessor inside the window, and a book's first
 instant in the window rebuilds over the empty book. A window therefore
 opens on a quarter-hour boundary, where the book stage's snapshot grid
 makes every book whole.
+
+The cost rule: a request to a store is a round trip, so a run asks each
+store the fewest. The lake opens each catalog's namespace once and keeps
+every table a stage opened or created, so the next stage reads what the
+one before wrote through the handle that wrote it - the document it
+published, under the token it holds - rather than asking the catalog where
+the table is again; and the books are read once for the three event tables,
+the window's books held under the process spill bound and each table's kind
+folded out of the held books. A write's `where` is not what splits them: it
+names the rows the overwrite replaces across the whole table, where the
+pipeline replaces the window's partitions alone.
 """
 
 from __future__ import annotations
@@ -38,11 +50,12 @@ import pathlib
 import sys
 import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 import yggdryl
-from yggdryl import Catalog, Field, IOBase, IOResult, Table, TextOptions
+from yggdryl import Catalog, ChunkedSerie, Field, IOBase, IOResult, Namespace, SerieReader, Table, TextOptions
+from yggdryl.http import process_stats
 from yggdryl.fix import ULBRIDGE_ROWHEADER, FixCodec, FixRegistry
 from yggdryl.graph import MarketData
 from yggdryl.iceberg import IcebergCatalog
@@ -69,6 +82,10 @@ QUARTER_MILLIS = 900_000
 
 # What a table of the pipeline is created with.
 TABLE_PROPERTIES = {"format-version": "3"}
+
+# The event tables the books' deltas are laid out in, each the deltas of one
+# kind: the orders, the quotes, the executions.
+EVENTS = (("orders", "ORDR"), ("quotes", "QUOT"), ("executions", "EXEC"))
 
 
 def window_filter(start: dt.datetime, end: dt.datetime) -> str:
@@ -127,23 +144,69 @@ def declared(row: Field, partition_by: Iterable[str] = (PARTUNIX,)) -> Field:
     return schema
 
 
-def table_of(
-    catalog: Catalog, name: str, row: Field, partition_by: Iterable[str] = (PARTUNIX,)
-) -> Table:
-    """The table `name` of the catalog's `record_keeping` namespace, opened
-    as it is or created from `row` laid out as `declared` lays it out - the
-    namespace made on the way."""
-    namespace = catalog.namespaces.open_or_create(NAMESPACE)
-    return namespace.tables.open_or_create(name, declared(row, partition_by), **TABLE_PROPERTIES)
+class Lake:
+    """The two catalogs a run writes through, the codec and the capture, and
+    what the run opened on the way.
+
+    Each catalog's `record_keeping` namespace is opened once, and every
+    table a stage opened or created is kept: a stage reads its source through
+    the handle the stage before wrote it with - the document that handle
+    published, under the token it holds - and a rerun writes each table
+    through the handle that wrote it last. A table the lake holds is
+    therefore read as of the last run that touched it; a writer outside the
+    pipeline is seen when a commit under the held token is refused and read
+    again where the pointer moved.
+    """
+
+    def __init__(
+        self,
+        bronze: Catalog,
+        silver: Catalog,
+        codec: FixCodec,
+        logs: IOBase | str,
+        namespace: str = NAMESPACE,
+    ) -> None:
+        self.catalogs = {"bronze": bronze, "silver": silver}
+        self.codec = codec
+        self.logs = logs if isinstance(logs, IOBase) else IOBase(logs)
+        self.namespace_name = namespace
+        self.namespaces: dict[str, Namespace] = {}
+        self.tables: dict[tuple[str, str], Table] = {}
+
+    def namespace(self, catalog: str) -> Namespace:
+        """The catalog's `record_keeping` namespace, opened or created once."""
+        held = self.namespaces.get(catalog)
+        if held is None:
+            held = self.catalogs[catalog].namespaces.open_or_create(self.namespace_name)
+            self.namespaces[catalog] = held
+        return held
+
+    def table_of(
+        self, catalog: str, name: str, row: Field, partition_by: Iterable[str] = (PARTUNIX,)
+    ) -> Table:
+        """The table `name` of the catalog's namespace, as the lake holds it,
+        else opened as it is or created from `row` laid out as `declared`
+        lays it out, and kept."""
+        held = self.tables.get((catalog, name))
+        if held is None:
+            held = self.namespace(catalog).tables.open_or_create(
+                name, declared(row, partition_by), **TABLE_PROPERTIES
+            )
+            self.tables[catalog, name] = held
+        return held
+
+    def source_of(self, catalog: str, name: str) -> Table:
+        """The table `name` of the catalog's namespace, which a stage reads
+        from: as the lake holds it, else resolved through the catalog and
+        kept."""
+        held = self.tables.get((catalog, name))
+        if held is None:
+            held = self.catalogs[catalog].table(f"{self.namespace_name}.{name}")
+            self.tables[catalog, name] = held
+        return held
 
 
-def source_of(catalog: Catalog, name: str) -> Table:
-    """The table `name` of the catalog's `record_keeping` namespace, which
-    the stage reads from."""
-    return catalog.table(f"{NAMESPACE}.{name}")
-
-
-def stored_rows(table: Table, start: dt.datetime, end: dt.datetime) -> yggdryl.SerieReader:
+def stored_rows(table: Table, start: dt.datetime, end: dt.datetime) -> SerieReader:
     """The rows `table` holds inside the window, in the table's own order,
     as the row the stage wrote: the partition column the table computed
     taken off, the window pushed into the read."""
@@ -151,123 +214,105 @@ def stored_rows(table: Table, start: dt.datetime, end: dt.datetime) -> yggdryl.S
 
 
 def parse_log_messages(
-    bronze: Catalog,
-    logs: IOBase | str,
+    lake: Lake,
     start: dt.datetime,
     end: dt.datetime,
     *,
     rowheader: str = ULBRIDGE_ROWHEADER,
 ) -> IOResult:
     """The capture - log objects under a glob, read through the native backend
-    their location selects - to `bronze.record_keeping.log_messages`: one
-    stream of text rows, the row header lifting each line's captures."""
+    their location selects, one request per object - to
+    `bronze.record_keeping.log_messages`: one stream of text rows, the row
+    header lifting each line's captures."""
     options = TextOptions()
     options.rowheader = rowheader
     options.timezone = "UTC"
     options.start_rownum = 1
-    source = logs if isinstance(logs, IOBase) else IOBase(logs)
-    lines = source.read_serie(options=options, filter=window_filter(start, end))
-    return table_of(bronze, "log_messages", lines.field).overwrite_serie(lines)
+    lines = lake.logs.read_serie(options=options, filter=window_filter(start, end))
+    return lake.table_of("bronze", "log_messages", lines.field).overwrite_serie(lines)
 
 
-def parse_fix_messages_raw(
-    bronze: Catalog, codec: FixCodec, start: dt.datetime, end: dt.datetime
-) -> IOResult:
+def parse_fix_messages_raw(lake: Lake, start: dt.datetime, end: dt.datetime) -> IOResult:
     """`bronze.record_keeping.log_messages` to `bronze.record_keeping.fix_messages`
     by the parallel text-serie parse alone: no lifecycle."""
-    parsed = codec.parse_text_serie(stored_rows(source_of(bronze, "log_messages"), start, end))
-    return table_of(bronze, "fix_messages", parsed.field).overwrite_serie(parsed)
+    parsed = lake.codec.parse_text_serie(stored_rows(lake.source_of("bronze", "log_messages"), start, end))
+    return lake.table_of("bronze", "fix_messages", parsed.field).overwrite_serie(parsed)
 
 
-def parse_fix_messages_refined(
-    bronze: Catalog, silver: Catalog, codec: FixCodec, start: dt.datetime, end: dt.datetime
-) -> IOResult:
+def parse_fix_messages_refined(lake: Lake, start: dt.datetime, end: dt.datetime) -> IOResult:
     """`bronze.record_keeping.fix_messages`, read in its order, walked by the
     lifecycle over sorted input, to `silver.record_keeping.fix_messages`."""
-    walked = codec.lifecycle_serie(stored_rows(source_of(bronze, "fix_messages"), start, end))
-    return table_of(silver, "fix_messages", walked.field).overwrite_serie(walked)
+    walked = lake.codec.lifecycle_serie(stored_rows(lake.source_of("bronze", "fix_messages"), start, end))
+    return lake.table_of("silver", "fix_messages", walked.field).overwrite_serie(walked)
 
 
-def parse_books(
-    silver: Catalog, codec: FixCodec, start: dt.datetime, end: dt.datetime
-) -> IOResult:
+def parse_books(lake: Lake, start: dt.datetime, end: dt.datetime) -> IOResult:
     """`silver.record_keeping.fix_messages`, read in its order, folded into
     books every quarter of an hour, to `silver.record_keeping.books` -
-    partitioned by `partunix` and `cficode`, each book keyed by its
+    partitioned by `partunix` like every other table, each book keyed by its
     instrument's ISIN where it holds one, and holding every event of its
-    tick among its `deltas`."""
-    messages = codec.messages_serie(stored_rows(source_of(silver, "fix_messages"), start, end))
-    books = codec.book_serie(messages, QUARTER_MILLIS)
-    table = table_of(silver, "books", books.field, (PARTUNIX, "cficode"))
-    return table.overwrite_serie(books)
+    tick among its `deltas`.
+
+    The quarter hour alone is the partition: a window opens on a quarter
+    hour, so a rerun replaces whole partitions, and nothing reads the books
+    by their instrument class, which once partitioned them beside it. A day
+    of ticks is one file per quarter hour that holds a book - 84 for this
+    capture - each a request to write and one to read, however many books a
+    tick holds."""
+    messages = lake.codec.messages_serie(stored_rows(lake.source_of("silver", "fix_messages"), start, end))
+    books = lake.codec.book_serie(messages, QUARTER_MILLIS)
+    return lake.table_of("silver", "books", books.field).overwrite_serie(books)
 
 
-def _events_of_kind(
-    silver: Catalog, name: str, kind: str, start: dt.datetime, end: dt.datetime
-) -> IOResult:
-    books = stored_rows(source_of(silver, "books"), start, end)
-    rows = MarketData.deltas_serie(books, kind)
-    return table_of(silver, name, rows.field).overwrite_serie(rows)
+def parse_events(lake: Lake, start: dt.datetime, end: dt.datetime) -> dict[str, IOResult]:
+    """`silver.record_keeping.books`, read once, to the three event tables.
+
+    The window's books are held under the process spill bound, and each
+    table is written the deltas of its kind - the orders, the quotes, the
+    executions - folded out of the held books, so the books' files are read
+    once rather than once per kind. Each write replaces the partitions its
+    rows fall in, as every stage's does; a write's `where` would instead
+    name the rows the overwrite replaces across the whole table.
+    """
+    books = ChunkedSerie.from_(stored_rows(lake.source_of("silver", "books"), start, end))
+    written: dict[str, IOResult] = {}
+    for name, kind in EVENTS:
+        rows = MarketData.deltas_serie(SerieReader.from_chunked(books), kind)
+        written[f"silver.{name}"] = lake.table_of("silver", name, rows.field).overwrite_serie(rows)
+    return written
 
 
-def parse_orders(silver: Catalog, start: dt.datetime, end: dt.datetime) -> IOResult:
-    """The orders out of the books' deltas, laid flat, to
-    `silver.record_keeping.orders`."""
-    return _events_of_kind(silver, "orders", "ORDR", start, end)
+Stage = Callable[[Lake, dt.datetime, dt.datetime], dict[str, IOResult]]
 
+# Every stage in the diagram's order, each answering what it wrote keyed by
+# the table it wrote under its catalog.
+STAGES_OF: dict[str, Stage] = {
+    "bronze.log_messages": lambda lake, start, end: {"bronze.log_messages": parse_log_messages(lake, start, end)},
+    "bronze.fix_messages": lambda lake, start, end: {"bronze.fix_messages": parse_fix_messages_raw(lake, start, end)},
+    "silver.fix_messages": lambda lake, start, end: {"silver.fix_messages": parse_fix_messages_refined(lake, start, end)},
+    "silver.books": lambda lake, start, end: {"silver.books": parse_books(lake, start, end)},
+    "silver.events": parse_events,
+}
 
-def parse_quotes(silver: Catalog, start: dt.datetime, end: dt.datetime) -> IOResult:
-    """The quotes out of the books' deltas, laid flat, to
-    `silver.record_keeping.quotes`."""
-    return _events_of_kind(silver, "quotes", "QUOT", start, end)
-
-
-def parse_executions(silver: Catalog, start: dt.datetime, end: dt.datetime) -> IOResult:
-    """The executions out of the books' deltas, laid flat, to
-    `silver.record_keeping.executions`."""
-    return _events_of_kind(silver, "executions", "EXEC", start, end)
-
-
-STAGES = (
-    "log_messages",
-    "fix_messages",
-    "books",
-    "orders",
-    "quotes",
-    "executions",
+# Every table of the pipeline, in the order the stages write them.
+TABLES = (
+    "bronze.log_messages",
+    "bronze.fix_messages",
+    "silver.fix_messages",
+    "silver.books",
+    "silver.orders",
+    "silver.quotes",
+    "silver.executions",
 )
 
 
-def run(
-    bronze: Catalog,
-    silver: Catalog,
-    codec: FixCodec,
-    logs: IOBase | str,
-    start: dt.datetime,
-    end: dt.datetime,
-) -> dict[str, IOResult]:
+def run(lake: Lake, start: dt.datetime, end: dt.datetime) -> dict[str, IOResult]:
     """Every stage over one window, in the diagram's order: what each wrote,
-    keyed by the stage's target table under its catalog."""
-    return {
-        "bronze.log_messages": parse_log_messages(bronze, logs, start, end),
-        "bronze.fix_messages": parse_fix_messages_raw(bronze, codec, start, end),
-        "silver.fix_messages": parse_fix_messages_refined(bronze, silver, codec, start, end),
-        "silver.books": parse_books(silver, codec, start, end),
-        "silver.orders": parse_orders(silver, start, end),
-        "silver.quotes": parse_quotes(silver, start, end),
-        "silver.executions": parse_executions(silver, start, end),
-    }
-
-
-STAGES_OF = {
-    "bronze.log_messages": lambda bronze, silver, codec, logs, start, end: parse_log_messages(bronze, logs, start, end),
-    "bronze.fix_messages": lambda bronze, silver, codec, logs, start, end: parse_fix_messages_raw(bronze, codec, start, end),
-    "silver.fix_messages": lambda bronze, silver, codec, logs, start, end: parse_fix_messages_refined(bronze, silver, codec, start, end),
-    "silver.books": lambda bronze, silver, codec, logs, start, end: parse_books(silver, codec, start, end),
-    "silver.orders": lambda bronze, silver, codec, logs, start, end: parse_orders(silver, start, end),
-    "silver.quotes": lambda bronze, silver, codec, logs, start, end: parse_quotes(silver, start, end),
-    "silver.executions": lambda bronze, silver, codec, logs, start, end: parse_executions(silver, start, end),
-}
+    keyed by the table it wrote under its catalog."""
+    written: dict[str, IOResult] = {}
+    for stage in STAGES_OF.values():
+        written.update(stage(lake, start, end))
+    return written
 
 
 def resident_bytes() -> int:
@@ -306,6 +351,27 @@ def resident_bytes() -> int:
     return 0
 
 
+def requests_since(before: dict[str, Any]) -> dict[str, dict[str, int]]:
+    """What the process asked each host since `before`, a reading of
+    `process_stats`, host by host: the cost of a stage in round trips, the
+    control plane's apart from the store's."""
+    since: dict[str, dict[str, int]] = {}
+    for host, counts in process_stats().items():
+        earlier = before.get(host, {})
+        delta = {name: count - earlier.get(name, 0) for name, count in counts.items()}
+        if delta["requests"]:
+            since[host] = delta
+    return since
+
+
+def print_requests(indent: str, since: dict[str, dict[str, int]]) -> None:
+    for host, counts in since.items():
+        print(
+            f"{indent}{host:<52} {counts['requests']:>5}  GET {counts['gets']:>4}  PUT {counts['puts']:>4}"
+            f"  HEAD {counts['heads']:>3}  POST {counts['posts']:>3}  DELETE {counts['deletes']:>3}"
+        )
+
+
 class Sampler:
     """The peak resident set over a stretch, sampled every `period` seconds
     on a thread of its own, so a stage that holds a window in memory is
@@ -334,10 +400,11 @@ class Sampler:
 
 
 def catalog_of(location: str, name: str) -> Catalog:
-    """The catalog `location` names: a URL - `s3tables://<bucket>` - through
-    `Catalog.from_url`, a local path an Iceberg warehouse folder opened or
-    created under `name`."""
-    if "://" in location:
+    """The catalog `location` names: a URL - `s3tables://<bucket>`, or the
+    table bucket's ARN, which spares the one listing a bare location pays to
+    find its bucket - through `Catalog.from_url`, a local path an Iceberg
+    warehouse folder opened or created under `name`."""
+    if "://" in location or location.startswith("arn:"):
         return Catalog.from_url(location, name=name)
     return IcebergCatalog.open_or_create(name, pathlib.Path(location))
 
@@ -350,25 +417,25 @@ def instant(text: str) -> dt.datetime:
     return parsed.astimezone(dt.timezone.utc)
 
 
-def report(catalogs: dict[str, Catalog]) -> None:
-    """Every table of the pipeline: its rows, snapshots and files."""
-    for stage in STAGES_OF:
-        catalog_name, table_name = stage.split(".", 1)
-        try:
-            table = catalogs[catalog_name].table(f"{NAMESPACE}.{table_name}")
-        except Exception as absent:  # noqa: BLE001 - a stage that wrote nothing created no table
-            print(f"  {stage:<22} absent ({type(absent).__name__})")
+def report(lake: Lake) -> None:
+    """Every table of the pipeline: its rows and snapshots, read off the
+    handles the run holds."""
+    for name in TABLES:
+        catalog_name, table_name = name.split(".", 1)
+        table = lake.tables.get((catalog_name, table_name))
+        if table is None:
+            print(f"  {name:<22} absent")
             continue
         snapshots = len(getattr(table, "snapshots", ()))
-        print(f"  {stage:<22} rows {table.row_size():>8}  snapshots {snapshots}")
+        print(f"  {name:<22} rows {table.row_size():>8}  snapshots {snapshots}")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="The capture pipeline over two catalogs: every stage over one UTC window, streamed."
     )
-    parser.add_argument("--bronze", required=True, help="the bronze catalog: s3tables://<bucket> or a warehouse folder")
-    parser.add_argument("--silver", required=True, help="the silver catalog: s3tables://<bucket> or a warehouse folder")
+    parser.add_argument("--bronze", required=True, help="the bronze catalog: s3tables://<bucket>, its ARN, or a warehouse folder")
+    parser.add_argument("--silver", required=True, help="the silver catalog: s3tables://<bucket>, its ARN, or a warehouse folder")
     parser.add_argument("--logs", required=True, help="the capture: a URL or path, a glob over log objects")
     parser.add_argument("--start", required=True, type=instant, help="the window's first instant, UTC, on a quarter hour")
     parser.add_argument("--end", required=True, type=instant, help="the window's end, UTC, excluded")
@@ -376,28 +443,44 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rowheader", default=ULBRIDGE_ROWHEADER)
     parser.add_argument("--threads", type=int, default=None, help="the codec's threads; the host's by default")
     parser.add_argument("--runs", type=int, default=1, help="how many times to run the window: a second run rewrites it")
+    parser.add_argument("--namespace", default=NAMESPACE, help="the namespace of every table in both catalogs")
     args = parser.parse_args(argv)
     # The crate logs through Python's `logging`: `YGGDRYL_LOG_LEVEL=INFO`
     # shows the identity walk (`yggdryl.aws.session`, key ids masked) and
     # every store's requests beside the stages.
     logging.basicConfig(level=os.environ.get("YGGDRYL_LOG_LEVEL", "WARNING").upper(), format="%(levelname)s %(name)s: %(message)s")
 
-    catalogs = {"bronze": catalog_of(args.bronze, "bronze"), "silver": catalog_of(args.silver, "silver")}
     codec = FixCodec(FixRegistry.from_handle(args.dictionary), exclude_msgtypes=[], threads=args.threads)
-    logs = IOBase(args.logs)
+    lake = Lake(
+        catalog_of(args.bronze, "bronze"),
+        catalog_of(args.silver, "silver"),
+        codec,
+        IOBase(args.logs),
+        namespace=args.namespace,
+    )
     print(f"window {args.start.isoformat()} -> {args.end.isoformat()}  resident at start {resident_bytes() >> 20} MiB")
     for run_at in range(1, args.runs + 1):
         print(f"run {run_at}")
+        run_before = process_stats()
         for stage, step in STAGES_OF.items():
+            before = process_stats()
             started = time.perf_counter()
             with Sampler() as sampler:
-                result = step(catalogs["bronze"], catalogs["silver"], codec, logs, args.start, args.end)
+                results = step(lake, args.start, args.end)
             seconds = time.perf_counter() - started
-            print(
-                f"  {stage:<22} read {result.read_rows:>8}  wrote {result.written_rows:>8}"
-                f"  skipped {result.skipped_rows:>6}  {seconds:7.2f}s  peak resident {sampler.peak >> 20:>6} MiB"
-            )
-        report(catalogs)
+            for name, result in results.items():
+                print(
+                    f"  {name:<22} read {result.read_rows:>8}  wrote {result.written_rows:>8}"
+                    f"  skipped {result.skipped_rows:>6}"
+                )
+            print(f"  {stage:<22} {seconds:7.2f}s  peak resident {sampler.peak >> 20:>6} MiB")
+            print_requests("      ", requests_since(before))
+        before = process_stats()
+        report(lake)
+        print("  report")
+        print_requests("      ", requests_since(before))
+        print(f"  run {run_at} requests")
+        print_requests("      ", requests_since(run_before))
     return 0
 
 

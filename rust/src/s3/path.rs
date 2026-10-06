@@ -6,6 +6,7 @@ use super::client::Client;
 use super::file::S3File;
 use super::folder::S3Folder;
 use crate::holder::Holder;
+use crate::logging::warning::warned;
 use crate::{Error, IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Uri, Url};
 
 /// An S3 location that resolves to the implementation it turns out to need.
@@ -213,6 +214,24 @@ impl S3Path {
         Ok(kind)
     }
 
+    /// What an infallible verb answers when asking the store failed: `absent`,
+    /// after a warning naming this location and the refusal - logged once per
+    /// location, later ones counted - so a refused key or a region the store
+    /// answers `400` for is never a silent empty read. A store saying nothing
+    /// is there is an answer, and warns nothing.
+    fn heard<T>(&self, outcome: Result<T>, absent: T) -> T {
+        outcome.unwrap_or_else(|error| {
+            if !error.is_absent() {
+                warned!(
+                    "an S3 location could not be read and answers as empty",
+                    &self.url.to_string(),
+                    "{error}"
+                );
+            }
+            absent
+        })
+    }
+
     /// Forget what the store said, because something changed it.
     fn forget(&self) -> Result<()> {
         *self.probed.lock().map_err(|_| poisoned())? = None;
@@ -281,6 +300,27 @@ impl IOBase for S3Path {
         self.with_resolved(Ok(0), |handle| handle.pread(offset, buffer))?
     }
 
+    /// The stream the object at this location owns: the resolved handle's
+    /// where the location resolved already - a staged value included - else
+    /// the key's own, opened on its first read with no kind probe before it,
+    /// since a `GET` of a prefix or of nothing reads as empty.
+    fn owned_stream_bytes(
+        &self,
+        position: u64,
+    ) -> Result<Option<Box<dyn std::io::Read + Send + 'static>>> {
+        let slot = self.resolved.lock().map_err(|_| poisoned())?;
+        if let Some(resolved) = slot.as_ref() {
+            return resolved.as_io().owned_stream_bytes(position);
+        }
+        drop(slot);
+        Ok(Some(super::file::lazy_object_stream(
+            Arc::clone(&self.client),
+            self.bucket.clone(),
+            self.key.clone(),
+            position,
+        )))
+    }
+
     fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
         // A stream borrows the handle it reads from, and the resolved one
         // lives behind a lock, so each role answers the stream that owns what
@@ -329,13 +369,15 @@ impl IOBase for S3Path {
         self.with_resolved_mut(|handle| handle.append_bytes(bytes))?
     }
 
+    /// The resolved handle's size; `0` where nothing is, and `0` with a
+    /// warning where the store refused to say what is (`heard`).
     fn size(&self) -> u64 {
-        self.with_resolved(0, |handle| handle.size()).unwrap_or(0)
+        self.heard(self.with_resolved(0, |handle| handle.size()), 0)
     }
 
+    /// The resolved handle's capacity, on the terms of [`Self::size`].
     fn capacity(&self) -> u64 {
-        self.with_resolved(0, |handle| handle.capacity())
-            .unwrap_or(0)
+        self.heard(self.with_resolved(0, |handle| handle.capacity()), 0)
     }
 
     fn reserve(&mut self, capacity: u64) -> Result<()> {
@@ -385,8 +427,11 @@ impl IOBase for S3Path {
         self.declared = Some(media_type);
     }
 
+    /// The role this location has; `Unknown` where nothing is, and
+    /// `Unknown` with a warning where the store refused to say what is
+    /// (`heard`).
     fn kind(&self) -> IOKind {
-        self.current_kind().unwrap_or(IOKind::Unknown)
+        self.heard(self.current_kind(), IOKind::Unknown)
     }
 
     fn is_atomic(&self) -> bool {

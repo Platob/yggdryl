@@ -43,7 +43,8 @@ const ROTATED_TOKEN: &str = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJwb2QtOCJ9.cm90YXRlZ
 type Prompt = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
 /// The one request the fake handled, which must be the STS exchange
-/// `action`, sent as the query API sends one.
+/// `action`, sent as botocore sends a query-API call: a `POST` to the root
+/// whose form body carries every parameter, the URL none.
 fn only_exchange(identity: &Identity, action: &str) -> Recorded {
     let requests = identity.requests();
     let actions: Vec<Option<&str>> = requests
@@ -61,9 +62,44 @@ fn only_exchange(identity: &Identity, action: &str) -> Recorded {
         "expected {action}, got {:?}",
         exchange.query
     );
-    assert_eq!(exchange.method, "GET", "the exchange is one query-API GET");
+    assert_eq!(
+        exchange.method, "POST",
+        "the exchange is one query-API POST"
+    );
     assert_eq!(exchange.path, "/", "the query API answers at the root");
+    assert!(
+        exchange.query.is_empty(),
+        "the URL carries no parameter, so nothing presented can reach a log through it: {:?}",
+        exchange.query
+    );
+    assert_eq!(
+        exchange.header("content-type"),
+        Some("application/x-www-form-urlencoded; charset=utf-8"),
+        "the parameters are a form"
+    );
+    assert!(
+        exchange.body.contains(&format!("Action={action}")),
+        "the form names the action: {}",
+        exchange.body
+    );
     exchange
+}
+
+/// The `AssumeRole` exchanges the fake handled.
+fn assume_role_exchanges(identity: &Identity) -> usize {
+    identity
+        .requests()
+        .iter()
+        .filter(|request| request.is_sts("AssumeRole"))
+        .count()
+}
+
+/// A loopback endpoint nothing listens on.
+fn unreachable_endpoint() -> String {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a loopback port");
+    let address = listener.local_addr().expect("a bound address");
+    drop(listener);
+    format!("http://{address}")
 }
 
 /// The directory `session` shares the AWS CLI's role cache under.
@@ -596,6 +632,121 @@ fn a_role_sts_refuses_is_a_refusal_naming_the_code_held_for_the_pause_and_asked_
 }
 
 #[test]
+fn each_sts_refusal_surfaces_by_code_naming_the_endpoint_and_the_region_and_what_it_does_to_the_base_key()
+ {
+    // (code, whether the base key signs an exchange again once the pause is
+    // over): a lapsed base set never does, an unrecognized key is read again
+    // after the pause, and a refusal of the role or the region is no news
+    // about the key.
+    let cases = [
+        ("ExpiredToken", false),
+        ("InvalidClientTokenId", true),
+        ("RegionDisabledException", true),
+        ("AccessDenied", true),
+    ];
+    for (code, asked_again) in cases {
+        let identity = Identity::start();
+        // No instance role, so nothing but the environment's keys could sign.
+        identity.set_imds_role(None);
+        identity.refuse_sts(code, 1);
+        let session = sealed(&identity, &format!("sts-refusal-{code}"))
+            .with_variables(BASE_KEYS)
+            .with_assumed_role(AssumedRole::new(ROLE));
+        let now = SystemTime::now();
+
+        let message = session
+            .credentials(now)
+            .expect_err("a refused exchange is a refusal")
+            .to_string();
+        let endpoint = identity.endpoint();
+        for fact in [
+            "AssumeRole",
+            "403",
+            code,
+            ROLE,
+            endpoint.as_str(),
+            "(region eu-west-3)",
+        ] {
+            assert!(
+                message.contains(fact),
+                "{code}: the refusal names {fact}: {message}"
+            );
+        }
+        assert!(
+            !message.contains("opt-in"),
+            "{code}: eu-west-3 is enabled by default, so nothing blames it: {message}"
+        );
+        assert_eq!(assume_role_exchanges(&identity), 1, "{code}: one exchange");
+
+        let after = session.credentials(now + Duration::from_secs(31));
+        if asked_again {
+            let traded = after
+                .unwrap_or_else(|error| panic!("{code}: STS answers after the pause: {error}"))
+                .expect("a credential set");
+            assert_eq!(
+                traded.access_key_id(),
+                "ASIAlake-reader",
+                "{code}: the role's session"
+            );
+            assert_eq!(
+                assume_role_exchanges(&identity),
+                2,
+                "{code}: the base key signs one exchange more after the pause"
+            );
+        } else {
+            assert!(
+                after.is_err(),
+                "{code}: a lapsed base set signs nothing again"
+            );
+            assert_eq!(
+                assume_role_exchanges(&identity),
+                1,
+                "{code}: no second exchange is signed with a lapsed set"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_key_sts_does_not_recognize_in_an_opt_in_region_is_said_to_be_refused_by_the_region() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    identity.refuse_sts("InvalidClientTokenId", 1);
+    // eu-central-2 is an opt-in region: AWS answers every key there with
+    // InvalidClientTokenId until the account enables it.
+    let session = sealed(&identity, "sts-opt-in-region")
+        .with_region("eu-central-2")
+        .with_variables(BASE_KEYS)
+        .with_assumed_role(AssumedRole::new(ROLE));
+
+    let message = session
+        .credentials(SystemTime::now())
+        .expect_err("the region refuses the key")
+        .to_string();
+    let endpoint = identity.endpoint();
+    for fact in [
+        "InvalidClientTokenId",
+        endpoint.as_str(),
+        "(region eu-central-2)",
+        "eu-central-2 is an opt-in region",
+        "until the account enables the region",
+    ] {
+        assert!(
+            message.contains(fact),
+            "the refusal names {fact}: {message}"
+        );
+    }
+    let authorization = only_exchange(&identity, "AssumeRole")
+        .header("authorization")
+        .unwrap_or_default()
+        .to_owned();
+    assert!(
+        authorization.contains("/eu-central-2/sts/aws4_request"),
+        "signed for the region the refusal names: {authorization}"
+    );
+}
+
+#[test]
 fn a_role_behind_an_mfa_device_asks_the_prompt_once_and_presents_its_code() {
     let identity = Identity::start();
     identity.require_token_code(Some("123456"));
@@ -860,17 +1011,82 @@ fn a_role_named_with_a_web_identity_token_file_is_traded_unsigned_with_no_keys_b
     );
 }
 
+#[test]
+fn a_web_identity_exchange_that_cannot_reach_sts_never_names_the_token() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    let token_file = scratch("sts-web-identity-unreachable").join("token");
+    std::fs::write(&token_file, WEB_TOKEN).expect("the token file");
+    let endpoint = unreachable_endpoint();
+    let session = sealed(&identity, "sts-web-identity-unreachable").with_assumed_role(
+        AssumedRole::new(ROLE)
+            .with_web_identity_token_file(token_file)
+            .with_endpoint(endpoint.as_str()),
+    );
+
+    let message = session
+        .credentials(SystemTime::now())
+        .expect_err("STS cannot be reached")
+        .to_string();
+    assert!(
+        message.contains(&format!("could not reach STS at {endpoint}")),
+        "the refusal names the endpoint it could not reach: {message}"
+    );
+    assert!(
+        !message.contains(WEB_TOKEN) && !message.contains("WebIdentityToken"),
+        "a bearer token is never repeated in an error: {message}"
+    );
+}
+
+#[test]
+fn a_web_identity_token_travels_in_the_form_body_and_nowhere_else() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    identity.require_web_identity_token(Some(WEB_TOKEN));
+    let token_file = scratch("sts-web-identity-form").join("token");
+    std::fs::write(&token_file, WEB_TOKEN).expect("the token file");
+    let session = sealed(&identity, "sts-web-identity-form")
+        .with_assumed_role(AssumedRole::new(ROLE).with_web_identity_token_file(token_file));
+
+    session
+        .credentials(SystemTime::now())
+        .expect("the token is traded")
+        .expect("a credential set");
+    let exchange = only_exchange(&identity, "AssumeRoleWithWebIdentity");
+    assert!(
+        exchange
+            .body
+            .contains(&format!("WebIdentityToken={WEB_TOKEN}")),
+        "the token is a field of the form: {}",
+        exchange.body
+    );
+    assert!(
+        !exchange.path.contains(WEB_TOKEN),
+        "nor part of the path: {}",
+        exchange.path
+    );
+    for (name, value) in &exchange.headers {
+        assert!(
+            !value.contains(WEB_TOKEN),
+            "nor of a header: {name}: {value}"
+        );
+    }
+}
+
 #[cfg(feature = "internals")]
 mod internal {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    use yggdryl::aws::{AssumedRole, CredentialSource, Credentials};
+    use yggdryl::aws::{AssumedRole, CredentialSource, Credentials, Session};
+    use yggdryl::internals::aws_session::sts_target;
+    use yggdryl::internals::aws_sigv4::sha256_hex;
     use yggdryl::internals::aws_sts::{
         cache_key, parse, parse_error, read_cache, session_name_at, split_endpoint, write_cache,
     };
 
-    use super::{MFA, NAMED_ROLE_CACHE_KEY, ROLE, ROLE_CACHE_KEY, file_cli_session};
-    use crate::mod_::scratch;
+    use super::{MFA, NAMED_ROLE_CACHE_KEY, ROLE, ROLE_CACHE_KEY, file_cli_session, only_exchange};
+    use crate::identity::Identity;
+    use crate::mod_::{scratch, sealed};
 
     /// The instant every reading here is made at: 2027-01-15T08:00:00Z.
     const NOW: u64 = 1_800_000_000;
@@ -1417,5 +1633,65 @@ mod internal {
             );
             assert!(refused.contains(endpoint), "{endpoint:?}: {refused}");
         }
+    }
+
+    #[test]
+    fn an_assume_role_exchange_signs_the_form_body_it_sends_and_its_media_type() {
+        let identity = Identity::start();
+        let session = sealed(&identity, "sts-signed-body")
+            .with_credentials(Credentials::new("AKIAEXPLICIT", "explicit-secret"))
+            .with_assumed_role(AssumedRole::new(ROLE));
+        session
+            .credentials(SystemTime::now())
+            .expect("the exchange answers")
+            .expect("a credential set");
+
+        let exchange = only_exchange(&identity, "AssumeRole");
+        assert_eq!(
+            exchange.header("x-amz-content-sha256"),
+            Some(sha256_hex(exchange.body.as_bytes()).as_str()),
+            "the payload hash is the form body's, byte for byte"
+        );
+        let authorization = exchange.header("authorization").unwrap_or_default();
+        assert!(
+            authorization
+                .contains("SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date,"),
+            "the media type the body is read as is signed: {authorization}"
+        );
+    }
+
+    #[test]
+    fn a_legacy_mode_exchange_for_a_legacy_region_is_signed_for_us_east_1() {
+        let legacy = Session::new()
+            .with_variables([("AWS_STS_REGIONAL_ENDPOINTS", "legacy")])
+            .with_directory(scratch("sts-target-legacy"));
+        assert_eq!(
+            sts_target(&legacy, "eu-west-3").expect("a target"),
+            (
+                "https://sts.amazonaws.com".to_owned(),
+                "us-east-1".to_owned()
+            ),
+            "a legacy region in legacy mode reaches the global endpoint, which signs for              us-east-1 whatever region the caller is in"
+        );
+        assert_eq!(
+            sts_target(&legacy, "af-south-1").expect("a target"),
+            (
+                "https://sts.af-south-1.amazonaws.com".to_owned(),
+                "af-south-1".to_owned()
+            ),
+            "a region the global endpoint never served stays regional, signed for itself"
+        );
+
+        let regional = Session::new()
+            .with_variables::<&str, &str>([])
+            .with_directory(scratch("sts-target-regional"));
+        assert_eq!(
+            sts_target(&regional, "eu-west-3").expect("a target"),
+            (
+                "https://sts.eu-west-3.amazonaws.com".to_owned(),
+                "eu-west-3".to_owned()
+            ),
+            "the regional default signs for the caller's region at its own endpoint"
+        );
     }
 }

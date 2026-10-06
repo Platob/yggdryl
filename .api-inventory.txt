@@ -2163,6 +2163,8 @@ pub struct ZipPath
   pub fn with_properties(mut self, properties: Properties) -> Self  (what every table's storage below it opens with: the store's own `s3.` names among them)
   pub fn client(&self) -> &S3Tables
   pub fn bucket_arn(&self) -> Result<&Arn>  (as stated, else built from `account_id` and the region, else one `ListTableBuckets` on first use, kept)
+  pub const PROPERTY_NAMES: [&'static str; 5]  (the names a table bucket's catalog reads beside the session's and the store's: `account_id`, `warehouse`, `name`, `s3tables.region`, `s3tables.endpoint`)
+  pub fn is_property(name: &str) -> bool  (one of `PROPERTY_NAMES`, or any name under the `s3tables.` prefix the session reads, case and `-`/`_` folded; what a location door keeps for the catalog)
   pub struct S3TablesNamespace  [rust/src/s3tables/catalog.rs]  (one namespace of a table bucket; Clone, Debug, Eq, Hash over the description; ObjectValue - `properties` the catalog's then the stated; NamespaceValue - `children` 1 `ListTables` per page and 1 `GetTableMetadataLocation` per table, `get` 1 `GetTableMetadataLocation`, `create_table` `CreateTable` with no schema, `GetTableMetadataLocation`, `IcebergTable::create_pointed` under `PartitionSpec::from_schema` at the `format-version` property else 3 for a nanosecond timestamp, a variant or an unknown column else 2, the registration removed under its token when the first document is not published; each table `Table::Iceberg` over a `Handle` on its warehouse location, pointed at `GetTableMetadataLocation`/`UpdateTableMetadataLocation`, a `ConflictException` the commit conflict, its `remove` 1 `DeleteTable` under no version token)
   pub fn with_properties(mut self, properties: Properties) -> Self
 
@@ -2205,6 +2207,14 @@ pub struct ZipPath
   pub fn with_options(options: &HttpOptions) -> Result<Self>
   pub fn stats(&self) -> StatsSnapshot
   pub fn session(&self) -> Session
+pub fn process_stats() -> ProcessStats  (every request this process sent so far, by host and port, whatever client sent it - the HTTP client's, the object stores', a catalog service's - read at any instant; a pipeline reads it before and after a stage and subtracts)
+pub struct ProcessStats  (Clone, Debug, Default, PartialEq, Eq; one reading of the process ledger)
+  pub fn hosts(&self) -> impl Iterator<Item = (&str, &HostStats)>
+  pub fn host(&self, host: &str) -> HostStats  (zero for a host never spoken to)
+  pub fn total(&self) -> HostStats
+  pub fn since(&self, earlier: &Self) -> Self  (the requests between two readings, host by host)
+pub struct HostStats { requests, gets, heads, puts, posts, deletes, others: u64 }  (#[non_exhaustive]; Copy, Default, PartialEq, Eq)
+  pub fn since(&self, earlier: &Self) -> Self
   pub struct StatsSnapshot { requests, gets, heads, posts, puts, patches, deletes, others, retries, resumes, redirects: u64, retry_tokens: i64 }  (#[non_exhaustive], Copy, Default)
 
 ### yggdryl::http::cookie  [rust/src/http/cookie.rs]
@@ -2723,6 +2733,7 @@ pub enum Catalog  (Memory(MemoryCatalog), Folder(Box<FolderCatalog>), Iceberg(Bo
 pub trait NamespaceValue: ObjectValue  (a container of namespaces and tables)
   fn children(&self) -> Objects
   fn get(&self, name: &str) -> Result<Object>
+  fn descend(&self, name: &str) -> Result<Object>  (the child as the step of a path that goes on below it: `get` by default; an `S3TablesCatalog` describes the namespace with no request, the table below proving it)
   fn create_namespace(&self, name: &str, properties: &Properties) -> Result<Namespace>  (the default refuses by name)
   fn create_table(&self, name: &str, field: &Field, properties: &Properties) -> Result<Table>  (the default refuses by name)
 pub enum Namespace  (Memory(MemoryNamespace), Folder(Box<FolderNamespace>), Iceberg(Box<IcebergNamespace>) under `iceberg`, S3Tables(Box<S3TablesNamespace>) under `s3tables`; non_exhaustive; ObjectValue and NamespaceValue by delegation; IOBase and IOMedia as a container of handles; Display the dotted path)
@@ -2852,6 +2863,7 @@ pub struct MediaTable  (a table over any location a record medium reads: a path,
 pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   pub trait IOBase: Send + IOMedia
   fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>>
+  fn owned_stream_bytes(&self, position: u64) -> Result<Option<Box<dyn std::io::Read + Send + 'static>>>  (the bytes from `position` as a reader that outlives the handle where the backend has one of its own - an object store's one resuming `GET` for the whole drain; the default `None`, which a text read answers by reopening the handle at its location and reading through a cursor over it)
   fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>>
   fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
   fn read_range_digest(&self, offset: u64, length: usize, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>

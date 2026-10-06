@@ -848,18 +848,34 @@ An Amazon S3 Tables table bucket is a catalog on the [warehouse](../warehouse/in
 | Operation | Requests |
 | --- | --- |
 | building the catalog, a namespace or a table description | none |
+| who signs a table's store requests | the catalog's session, stated in the bucket's region once per catalog and shared by every table's store client: one credential walk, one signer cache, one list of refused keys for the bucket |
 | the bucket's ARN, named by `s3tables://<bucket>` alone | 1 `ListTableBuckets` per page, once |
 | `children()` of the catalog | 1 `ListNamespaces` per page |
 | `get` of a namespace | 1 `GetNamespace` |
 | `create_namespace` | 1 `CreateNamespace` |
 | `children()` of a namespace | 1 `ListTables` per page, 1 `GetTableMetadataLocation` per table as its turn comes |
-| `get` of a table - `catalog.table("desk.quotes")` adds the namespace's `GetNamespace` | 1 `GetTableMetadataLocation` |
+| `get` of a table - `catalog.table("desk.quotes")` too, the namespace descended by description and proven by the table's own answer | 1 `GetTableMetadataLocation`, which primes the pointer |
 | `create_table` | `CreateTable`, `GetTableMetadataLocation`, 1 `PutObject` and `UpdateTableMetadataLocation` |
 | a table's `remove` | 1 `DeleteTable` |
-| a table's first read | 1 `GetTableMetadataLocation` and 1 `GetObject` |
+| a table's first read | 1 `GetObject` of the document the request that found the table named; a pointer asked again - after a publication, a refused one - 1 `GetTableMetadataLocation` first |
 | a commit | its files' `PutObject`s and 1 `UpdateTableMetadataLocation`; a refused one 1 `GetTableMetadataLocation` and 1 `GetObject` more |
 
 The counts are pinned in `rust/tests/s3tables/catalog.rs` against the fake control plane, each table's warehouse a bucket of the fake object store the `s3` suites run on, whose log shows no listing and no delete; the pointer's own suite, over a pointer in memory and a counting filesystem, is `rust/tests/iceberg/pointer.rs`.
+
+### The capture pipeline on Amazon S3 Tables
+
+`python/tests/medallion.py` is the capture pipeline on two table buckets - the capture under a glob to `bronze.log_messages`, the parse to `bronze.fix_messages`, the lifecycle to `silver.fix_messages`, the books every quarter of an hour to `silver.books`, and the books read once into the three event tables - and it prints, per stage, every request the process sent by host, through `yggdryl.http.process_stats`. Measured live on 2026-10-06 against Amazon S3 Tables in `eu-central-1` under an IAM user, over one day of a capture of two 124 KB log objects, the second of two runs in one process - every namespace and table there, every table rewritten:
+
+| per run | before (main `671d2df32`) | after |
+| --- | ---: | ---: |
+| control plane (`s3tables.eu-central-1.amazonaws.com`) | 66: a `GetNamespace` and a `GetTableMetadataLocation` per table opened, a second `GetTableMetadataLocation` on its first use, 21 for the report | 6: one `UpdateTableMetadataLocation` per table written |
+| the capture's bucket, two objects under a glob | 9: a table-format probe, a kind probe per object, a windowed read and a read past the end | 3: one listing, one `GET` per object |
+| the books' warehouse | 353: 84 files read three times, once per event table | 175: 84 files written and read once |
+| the other six warehouses | 93 | 69 |
+| the report of every table | 28 | 0 |
+| credential walks | 21 | 5 per process |
+
+The books stay 84 files because the capture holds a book in 84 of the day's quarter hours and the quarter hour is the partition a window reruns whole; a tick holding a thousand books is still one file. The pipeline holds what it opened in a `Lake` - each namespace once, every table across stages, the books read once - and the rest is the crate's: the pointer primed by the request that located the table, a dotted path descended by description, one store session per bucket, and a text read of a listed object streamed through the one `GET` it owns.
 
 === "Rust"
 
@@ -954,7 +970,7 @@ The properties are read as `Catalog::from_url` reads them - who signs, `s3tables
 | an identifier used as a handle | what its location costs above, on the first operation that needs it: kept for the value's life when the table is there, and paid again by every operation and every accessor while it is absent, a failed resolution being kept nowhere |
 | Python `IOBase(location)`, JavaScript `new IOBase(location)` | what its location costs above, once, at construction - a location alone lists the buckets, since the constructor states no ARN and no account |
 | `remove` | 1 `DeleteTable` |
-| the first read after an open | 1 `GetTableMetadataLocation` and 1 `GetObject`: the request that located the table primes nothing, since an object may be read long after it is built |
+| the first read after an open | 1 `GetObject`: the request that located the table primed its pointer, so the first verb reads the document that request named - the version current when the table was located, as PyIceberg's `load_table` reads - and the service is asked again only after a publication or a refused one |
 
 The counts are pinned in `rust/tests/s3tables/catalog.rs` against the two fakes, and an identifier used as a handle - under the environment it resolves by - in `rust/tests/s3tables_handle.rs`. A folder door costs what `open`, `create` and `open_or_create` cost on the handle `Holder::from_url` opens: `from_url` the open's five reads - the version hint, the current document in both its spellings and the next version's two spellings, which find nothing - which `rust/tests/iceberg/table.rs` (`mod located`) pins against the fake object store beside the doors' behaviour.
 
@@ -1132,7 +1148,7 @@ Every verb is one request and a listing is one per page of 250, asked for when t
 | `get_table_metadata_location` | `GET /tables/{arn}/{namespace}/{name}/metadata-location` |
 | `update_table_metadata_location` | `PUT /tables/{arn}/{namespace}/{name}/metadata-location` |
 
-A table bucket is addressed by its ARN, which also names the region a request is signed for and sent to. Refused before any request: a name the service's model refuses - a table bucket is 3 to 63 of `0-9`, `a-z` and `-`, a namespace and a table 1 to 255 of `0-9`, `a-z` and `_` - an ARN that names no table bucket - or, for `get_table_by_arn`, no table of one - an empty version token, a rename that names no new namespace and no new name, a region that is no host label (it names the host the signed request goes to), and what the session refuses of a configured endpoint - a value naming none, a `[services]` section nobody wrote. An endpoint carrying user information, a query or a fragment is refused where it is read, and no refusal and no `Debug` repeats the user information. `create_table` sends what the schema declares beside its columns: its `PARTITION:by` as the table's `partitionSpec` and its `SORT:by` as its `writeOrder`. The service's `NotFoundException` is `Error::Absent` from a `get_*` verb and success from a `remove_*` verb; its `ConflictException` is `Error::Conflict` from a `create_*` verb; every other refusal is `Error::Remote` with the service's own status, error type and message, a commit under a version token the table has moved past (`409 ConflictException`) among them.
+A table bucket is addressed by its ARN, which also names the region a request is signed for and sent to. Refused before any request: a name the service's model refuses - a table bucket is 3 to 63 of `0-9`, `a-z` and `-`, a namespace and a table 1 to 255 of `0-9`, `a-z` and `_` - an ARN that names no table bucket - or, for `get_table_by_arn`, no table of one - an empty version token, a rename that names no new namespace and no new name, a region that is no host label (it names the host the signed request goes to), and what the session refuses of a configured endpoint - a value naming none, a `[services]` section nobody wrote. An endpoint carrying user information, a query or a fragment is refused where it is read, and no refusal and no `Debug` repeats the user information. `create_table` sends what the schema declares beside its columns: its `PARTITION:by` as the table's `partitionSpec` and its `SORT:by` as its `writeOrder`. The service's `NotFoundException` is `Error::Absent` from a `get_*` verb and success from a `remove_*` verb; its `ConflictException` is `Error::Conflict` from a `create_*` verb; every other refusal is `Error::Remote` with the service's own status, error type and message, located at the endpoint, the region and where that region came from (the client, the bucket's ARN or the session), a commit under a version token the table has moved past (`409 ConflictException`) among them.
 
 === "Rust"
 

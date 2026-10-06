@@ -254,6 +254,10 @@ impl NamespaceValue for Catalog {
         self.as_catalog().get(name)
     }
 
+    fn descend(&self, name: &str) -> Result<Object> {
+        self.as_catalog().descend(name)
+    }
+
     fn create_namespace(&self, name: &str, properties: &Properties) -> Result<Namespace> {
         self.as_catalog().create_namespace(name, properties)
     }

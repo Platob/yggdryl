@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::credentials::Credentials;
+use super::credentials::{Credentials, Refusal};
 use super::sigv4::{self, Signer};
 use crate::auth::{instant, iso8601, write_private};
 use crate::xml::scanner::{parse_document, parse_root};
@@ -32,6 +32,10 @@ const SESSION_NAME_PREFIX: &str = "yggdryl-session";
 const CACHE_WINDOW: Duration = Duration::from_secs(15 * 60);
 /// The bound on one exchange.
 const TIMEOUT: Duration = Duration::from_secs(30);
+/// The media type of an exchange's body: the query API's parameters as a
+/// form, so nothing an exchange presents - a web identity token, an MFA code -
+/// is ever part of a URL a transport failure, a log or a proxy repeats.
+const FORM: &str = "application/x-www-form-urlencoded; charset=utf-8";
 /// Attempts at one exchange before its failure is the answer: a throttle or
 /// a server-side failure is tried again, after a short pause.
 const ATTEMPTS: u32 = 3;
@@ -318,12 +322,16 @@ fn json_string(text: &str) -> String {
     serde_json::to_string(text).unwrap_or_else(|_| format!("{text:?}"))
 }
 
-/// Trade `base` for the credentials of `role`, with one signed request.
+/// Trade `base` for the credentials of `role`, with one signed `POST` to
+/// `endpoint` whose form body carries every parameter, signed for `region`.
 ///
 /// # Errors
 ///
-/// Returns STS's refusal, the transport's failure, or an answer that does not
-/// carry a credential set.
+/// Returns STS's refusal - `Error::Remote` with its code and message, located
+/// at the role, the endpoint and the signing region, and, for a key STS does
+/// not recognize in an opt-in region, saying that region may be what refuses
+/// it - the transport's failure naming the endpoint alone, or an answer that
+/// does not carry a credential set.
 // The argument list is the exchange's parts, each decided by a different
 // owner - the role, the session, the prompt, the endpoint rule; a struct
 // would only rename them.
@@ -338,7 +346,7 @@ pub(crate) fn assume(
     region: &str,
     now: SystemTime,
 ) -> Result<Credentials> {
-    let mut query = vec![
+    let mut form = vec![
         ("Action".to_owned(), "AssumeRole".to_owned()),
         ("Version".to_owned(), VERSION.to_owned()),
         ("RoleArn".to_owned(), role.role_arn.clone()),
@@ -349,13 +357,15 @@ pub(crate) fn assume(
         ),
     ];
     if let Some(external_id) = &role.external_id {
-        query.push(("ExternalId".to_owned(), external_id.clone()));
+        form.push(("ExternalId".to_owned(), external_id.clone()));
     }
     if let (Some(serial), Some(code)) = (&role.mfa_serial, token_code) {
-        query.push(("SerialNumber".to_owned(), serial.clone()));
-        query.push(("TokenCode".to_owned(), code.to_owned()));
+        form.push(("SerialNumber".to_owned(), serial.clone()));
+        form.push(("TokenCode".to_owned(), code.to_owned()));
     }
     let (scheme, host, path) = split_endpoint(endpoint)?;
+    let body = sigv4::canonical_query(&form);
+    let content_type = [("content-type".to_owned(), FORM.to_owned())];
     let signer = Signer::for_service(
         "sts",
         base.access_key_id(),
@@ -363,33 +373,39 @@ pub(crate) fn assume(
         base.session_token().map(str::to_owned),
         region,
     );
-    // The exchange carries no body, so the empty payload hash is the request's.
-    let signed = signer.sign(
-        "GET",
+    // The signature covers the body that is sent, byte for byte, and the
+    // media type it is read as, as botocore signs a query-API POST.
+    let mut headers = signer.sign(
+        "POST",
         &host,
         &path,
-        &query,
         &[],
-        sigv4::EMPTY_PAYLOAD_SHA256,
+        &content_type,
+        &sigv4::sha256_hex(body.as_bytes()),
         now,
     );
+    headers.extend(content_type);
     exchange(
         http,
-        &format!("{scheme}://{host}{path}?{}", sigv4::canonical_query(&query)),
-        &signed,
+        &format!("{scheme}://{host}{path}"),
+        body,
+        &headers,
         "AssumeRole",
         endpoint,
         &role.role_arn,
+        Some(region),
         now,
     )
 }
 
 /// Trade the web identity `token` for the credentials of `role`, with one
-/// unsigned request.
+/// unsigned `POST` to `endpoint` whose form body carries the token beside
+/// every other parameter - never the URL, so no transport failure, report
+/// or log line can repeat the token.
 ///
 /// # Errors
 ///
-/// As [`assume`].
+/// As [`assume`], the refusal located at the role and the endpoint.
 pub(crate) fn assume_with_web_identity(
     http: &crate::http::Session,
     role: &AssumedRole,
@@ -398,7 +414,7 @@ pub(crate) fn assume_with_web_identity(
     endpoint: &str,
     now: SystemTime,
 ) -> Result<Credentials> {
-    let query = vec![
+    let form = vec![
         ("Action".to_owned(), "AssumeRoleWithWebIdentity".to_owned()),
         ("Version".to_owned(), VERSION.to_owned()),
         ("RoleArn".to_owned(), role.role_arn.clone()),
@@ -412,32 +428,50 @@ pub(crate) fn assume_with_web_identity(
     let (scheme, host, path) = split_endpoint(endpoint)?;
     exchange(
         http,
-        &format!("{scheme}://{host}{path}?{}", sigv4::canonical_query(&query)),
-        &[],
+        &format!("{scheme}://{host}{path}"),
+        sigv4::canonical_query(&form),
+        &[("content-type".to_owned(), FORM.to_owned())],
         "AssumeRoleWithWebIdentity",
         endpoint,
         &role.role_arn,
+        None,
         now,
     )
 }
 
-/// Send one exchange and read the credential set it answers.
+/// Send one exchange - `body` posted to `url` - and read the credential set
+/// it answers.
 ///
 /// A throttle STS states in its body - a `400` naming `Throttling` - or an
 /// identity provider it could not reach is tried again under the HTTP
-/// client's rules, beside the statuses it retries of its own accord.
+/// client's rules, beside the statuses it retries of its own accord: an
+/// exchange changes nothing at STS, so it is idempotent whatever its method.
+///
+/// A refusal is `Error::Remote` with STS's code and message, located at
+/// `{role_arn} at {endpoint}` and, where the exchange was signed, the
+/// `(region {region})` it was signed for; a key STS does not recognize
+/// (`Refusal::Unrecognized`) in an opt-in region
+/// (`ArnPartition::is_opt_in`) says beside STS's message that
+/// such a region refuses every key until the account enables it. A transport
+/// failure names `endpoint` alone.
+// The argument list is the request's parts and the refusal's location, each
+// decided by the exchange that calls it; a struct would only rename them.
+#[allow(clippy::too_many_arguments)]
 fn exchange(
     http: &crate::http::Session,
     url: &str,
+    body: String,
     headers: &[(String, String)],
     action: &'static str,
     endpoint: &str,
     role_arn: &str,
+    region: Option<&str>,
     now: SystemTime,
 ) -> Result<Credentials> {
     let mut request = http
-        .get(url)?
+        .post(url, body)?
         .with_header("accept", "application/xml")?
+        .with_idempotent(true)
         .with_timeout(TIMEOUT)
         .with_max_attempts(ATTEMPTS)
         .with_retry_on(|_, _, body| {
@@ -457,11 +491,28 @@ fn exchange(
     let answer =
         super::Answer::of(&request).map_err(|error| transport_failure(endpoint, &error))?;
     let (status, body) = (answer.status, answer.body);
+    let location = match region {
+        Some(region) => format!("{role_arn} at {endpoint} (region {region})"),
+        None => format!("{role_arn} at {endpoint}"),
+    };
     if status >= 300 {
-        let (code, message) =
+        let (code, mut message) =
             parse_error(&body).unwrap_or_else(|| (format!("{action}Failed"), String::new()));
+        if let Some(region) = region
+            && Refusal::from_code(&code) == Some(Refusal::Unrecognized)
+            && crate::uri::ArnPartition::is_opt_in(region)
+        {
+            // `Error::remote` keeps one line of the message, so the hint is
+            // appended on it rather than below it.
+            message = format!(
+                "{} ({region} is an opt-in region: AWS refuses every key there with {code} until \
+                 the account enables the region, so a valid key is refused this way by a region \
+                 the account has not enabled)",
+                message.lines().next().unwrap_or_default()
+            );
+        }
         return Err(Error::remote(
-            "sts", action, status, code, message, role_arn,
+            "sts", action, status, code, message, location,
         ));
     }
     parse(&body, action, now).ok_or_else(|| {
@@ -471,7 +522,7 @@ fn exchange(
             status,
             "MalformedAnswer",
             "the answer carried no credential set",
-            role_arn,
+            location,
         )
     })
 }
@@ -558,11 +609,18 @@ fn split_endpoint(endpoint: &str) -> Result<(String, String, String)> {
     ))
 }
 
-/// Report a failure to reach STS at all.
-fn transport_failure(endpoint: &str, error: &impl std::fmt::Display) -> Error {
+/// Report a failure to reach STS at all, naming the endpoint and the kind
+/// of failure the transport met - a refused connection, a timeout - and
+/// nothing of the request: the transport's own text names the URL it was
+/// sending, which is no part of what this error may repeat.
+fn transport_failure(endpoint: &str, error: &Error) -> Error {
+    let kind = match error {
+        Error::Io(error) => error.kind(),
+        _ => std::io::ErrorKind::Other,
+    };
     Error::Io(std::io::Error::new(
         std::io::ErrorKind::ConnectionAborted,
-        format!("could not reach STS at {endpoint}: {error}"),
+        format!("could not reach STS at {endpoint}: {kind}"),
     ))
 }
 

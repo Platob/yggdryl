@@ -21,6 +21,7 @@ use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::http::HttpOptions;
 use yggdryl::media::{IORecordOptions as _, RecordOptions};
 use yggdryl::s3::S3Options;
+use yggdryl::s3tables::S3TablesCatalog;
 use yggdryl::{Codec, IOMode, Level};
 use yggdryl::{IOBase as _, IOMedia as _};
 
@@ -860,6 +861,7 @@ fn is_location_property(name: &str) -> bool {
         "media_type" | "mime_type" | "content_type" | "codec" | "content_encoding"
     ) || S3Options::is_property(name)
         || HttpOptions::is_property(name)
+        || S3TablesCatalog::is_property(name)
 }
 
 /// What a mistyped location keyword is suggested against.
@@ -867,6 +869,7 @@ fn location_property_names() -> Vec<&'static str> {
     let mut names = vec!["media_type", "codec"];
     names.extend(S3Options::PROPERTY_NAMES);
     names.extend(HttpOptions::PROPERTY_NAMES);
+    names.extend(S3TablesCatalog::PROPERTY_NAMES);
     names
 }
 

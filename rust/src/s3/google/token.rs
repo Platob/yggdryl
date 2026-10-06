@@ -107,9 +107,12 @@ impl TokenCache {
         Ok(Self {
             source,
             scope,
+            // No mandatory window: a token is used until it lapses, as the
+            // service that issued it allows.
             held: Lease::new(
                 "Google bearer token",
                 REFRESH_MARGIN,
+                Duration::ZERO,
                 RETRY_PAUSE,
                 RETRY_PAUSE,
             ),

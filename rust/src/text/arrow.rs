@@ -26,8 +26,8 @@ use super::line::LineSource;
 use super::options::TextOptions;
 use super::reader::Lines;
 use super::transport::{
-    borrowed_decoded, encoded_terminator, ends_with, fetched, owned_decoded, transports,
-    update_suffix,
+    Refused, borrowed_decoded, decoded_over, encoded_terminator, ends_with, fetched, owned_decoded,
+    transports, update_suffix,
 };
 use super::{TextBytes, TextLine};
 
@@ -42,11 +42,15 @@ pub(crate) fn read_arrow_reader(
     // is that identifier narrowed - asking it for both would be two calls
     // over one answer, and the narrowing is the read's, once, not each row's.
     let source = handle.uri().map(LineSource::narrowed);
-    // Read from the handle the caller gave, before `owned_handle` may answer
+    // Read from the handle the caller gave, before the transport may answer
     // with a copy: a buffered copy of the bytes is not the object whose
     // modification time this is.
     let mtime = handle_mtime(handle, options);
-    read_owned_arrow_reader_at(crate::iobase::owned_handle(handle)?, source, mtime, options)
+    // The plan's refusals - a rename naming no column, a lifted path with no
+    // name - before a byte is asked for.
+    options.line_plan()?;
+    let lines = text_lines(decoded_over(handle)?, source, mtime, options);
+    super::batch::into_arrow_reader(lines, options)
 }
 
 /// The handle's own modification time, asked for only when a column wants it.
@@ -77,13 +81,14 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
     options: &TextOptions,
 ) -> Result<BatchReader> {
     options.require_framing_rowheader()?;
-    let bytes = owned_decoded(handle);
-
-    let lines = text_lines(bytes, source, mtime, options)?;
+    options.line_plan()?;
+    let bytes = owned_decoded(handle)?;
+    let lines = text_lines(bytes, source, mtime, options);
     super::batch::into_arrow_reader(lines, options)
 }
 
-/// Build the one decode iterator over an already-opened stream.
+/// Build the one decode iterator over an already-opened stream, under
+/// options the caller has already asked the plan's refusals of.
 ///
 /// The options are shared once, with the splitter and with every line it
 /// cuts: a line resolves its readings under them on its first ask, so
@@ -93,16 +98,8 @@ fn text_lines(
     source: Option<LineSource>,
     mtime: Option<i64>,
     options: &TextOptions,
-) -> Result<TextLines> {
-    // The plan's refusals - a rename naming no column, a lifted path with no
-    // name - before a byte is read.
-    options.line_plan()?;
-    Ok(object_lines(
-        bytes,
-        source,
-        mtime,
-        Arc::new(options.clone()),
-    ))
+) -> TextLines {
+    object_lines(bytes, source, mtime, Arc::new(options.clone()))
 }
 
 /// The decode of one object under options already shared: a fresh splitter
@@ -138,7 +135,9 @@ fn object_lines(
 fn leaf_lines(leaf: crate::holder::Holder, options: Arc<TextOptions>) -> TextLines {
     let source = leaf.uri().map(LineSource::narrowed);
     let mtime = handle_mtime(&leaf, &options);
-    object_lines(owned_decoded(leaf), source, mtime, options)
+    // A leaf whose stream is refused is the refusal, as its first line.
+    let bytes = owned_decoded(leaf).unwrap_or_else(|error| Box::new(Refused::new(error)));
+    object_lines(bytes, source, mtime, options)
 }
 
 /// Decode one borrowed handle into typed lines.
@@ -189,23 +188,13 @@ pub fn read_text_lines(
     // is that identifier narrowed - asking it for both would be two calls
     // over one answer, and the narrowing is the read's, once, not each row's.
     let source = handle.uri().map(LineSource::narrowed);
-    // Read from the handle the caller gave, before `owned_handle` may answer
+    // Read from the handle the caller gave, before the transport may answer
     // with a copy: a buffered copy of the bytes is not the object whose
     // modification time this is.
     let mtime = handle_mtime(handle, options);
-    read_owned_text_lines_at(crate::iobase::owned_handle(handle)?, source, mtime, options)
-}
-
-/// The same decode over a handle the iterator owns.
-fn read_owned_text_lines_at<H: IOBase + 'static>(
-    handle: H,
-    source: Option<LineSource>,
-    mtime: Option<i64>,
-    options: &TextOptions,
-) -> Result<TextLines> {
-    options.require_framing_rowheader()?;
-    let bytes = owned_decoded(handle);
-    text_lines(bytes, source, mtime, options)
+    // The plan's refusals before a byte is asked for.
+    options.line_plan()?;
+    Ok(text_lines(decoded_over(handle)?, source, mtime, options))
 }
 
 /// Count emitted records without materializing rows or Arrow arrays.

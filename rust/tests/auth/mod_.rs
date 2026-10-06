@@ -21,6 +21,7 @@ fn the_shared_pieces_are_one_vocabulary() {
     let lease: Lease<Token> = Lease::new(
         "token",
         std::time::Duration::from_secs(60),
+        std::time::Duration::from_secs(10),
         std::time::Duration::from_secs(1),
         std::time::Duration::from_secs(1),
     );

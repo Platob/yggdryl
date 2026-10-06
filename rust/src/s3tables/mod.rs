@@ -97,7 +97,8 @@
 //! `create_*` verb it answers `ConflictException` is
 //! [`Error::Conflict`](crate::Error::Conflict). Every other refusal is
 //! [`Error::Remote`](crate::Error::Remote) with the service's own status,
-//! error type and message - a `NotFoundException` from a verb that creates,
+//! error type and message, located at the endpoint, the region and where
+//! that region came from - a `NotFoundException` from a verb that creates,
 //! renames, commits or lists included, because there the missing thing may
 //! be the table bucket or the namespace above what was addressed, and only
 //! the service's message says which. The error type decides, never the

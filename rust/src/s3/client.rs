@@ -131,13 +131,57 @@ impl Stats {
     }
 }
 
-/// Where the store is and how containers are addressed on it.
+/// Which host requests go to and which region they are signed for, read and
+/// moved together: a redirect naming the bucket's region moves both under
+/// one lock, so no request is addressed to one region's host and signed for
+/// another's.
 #[derive(Clone, Debug)]
+struct Place {
+    /// The signing region.
+    region: String,
+    /// The endpoint host, without a container and without a port.
+    host: String,
+}
+
+/// The switches an Amazon S3 published host was chosen by, kept so that a
+/// redirect to another region rebuilds the host that region publishes.
+#[derive(Clone, Copy, Debug)]
+struct Published {
+    accelerate: bool,
+    fips: bool,
+    dualstack: bool,
+}
+
+impl Published {
+    /// The host Amazon S3 publishes for `region` under these switches, on the
+    /// partition `region` belongs to; acceleration has one host for every
+    /// region.
+    fn host(self, region: &str) -> String {
+        let suffix = crate::ArnPartition::from_region(region).dns_suffix();
+        match (self.accelerate, self.fips, self.dualstack) {
+            (true, _, true) => "s3-accelerate.dualstack.amazonaws.com".to_owned(),
+            (true, _, false) => "s3-accelerate.amazonaws.com".to_owned(),
+            (false, true, true) => format!("s3-fips.dualstack.{region}.{suffix}"),
+            (false, true, false) => format!("s3-fips.{region}.{suffix}"),
+            (false, false, true) => format!("s3.dualstack.{region}.{suffix}"),
+            (false, false, false) => format!("s3.{region}.{suffix}"),
+        }
+    }
+}
+
+/// Where the store is and how containers are addressed on it.
+#[derive(Debug)]
 struct Endpoint {
     /// `https` unless the endpoint said otherwise.
     scheme: String,
-    /// The endpoint host, without a container and without a port.
-    host: String,
+    /// The host and the signing region, which a redirect can correct once
+    /// per request.
+    place: RwLock<Place>,
+    /// How the host was chosen when it is Amazon S3's published one; `None`
+    /// when an endpoint was stated - by the options, the location, the
+    /// environment or a profile - which a redirect never moves, or when the
+    /// store is not Amazon S3.
+    published: Option<Published>,
     /// The explicit port, when the endpoint named one.
     port: Option<u16>,
     /// Whether the container goes in the path rather than in the hostname.
@@ -156,12 +200,30 @@ struct Endpoint {
 }
 
 impl Endpoint {
-    /// The `Host` header for a request against `container`.
+    /// The host and the signing region as they stand now.
+    fn place(&self) -> Place {
+        self.place
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// The `Host` header for a request against `container`, on the host as it
+    /// stands now.
     fn host_header(&self, container: &str) -> String {
+        let place = self
+            .place
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.address(&place.host, container)
+    }
+
+    /// The `Host` header for a request against `container` on `host`.
+    fn address(&self, host: &str, container: &str) -> String {
         let host = if self.path_style {
-            self.host.clone()
+            host.to_owned()
         } else {
-            format!("{container}.{}", self.host)
+            format!("{container}.{host}")
         };
         match self.port {
             Some(port) => format!("{host}:{port}"),
@@ -234,8 +296,6 @@ pub(super) struct Client {
     /// refusal names the location the handle reports rather than a canonical
     /// one the caller never wrote.
     scheme: crate::Scheme,
-    /// The signing region, which a redirect can correct once.
-    region: RwLock<String>,
     /// Who the AWS requests sign as: the caller's session, narrowed by what
     /// the options said explicitly.
     session: Session,
@@ -263,7 +323,10 @@ impl Client {
     /// # Errors
     ///
     /// Returns a refusal when the URL's scheme names no store, when it names no
-    /// container, or when an endpoint cannot be read as a location.
+    /// container, when an endpoint cannot be read as a location, or when the
+    /// region Amazon S3's published host would be built from is no host label
+    /// ([`crate::ArnPartition::check_region`]), naming where that region came
+    /// from.
     pub(super) fn new(url: &Url, options: S3Options) -> Result<Self> {
         let provider = Provider::from_scheme(url.scheme()).ok_or_else(|| {
             Error::Io(std::io::Error::new(
@@ -296,17 +359,17 @@ impl Client {
         let session = Self::session_of(provider, url, &options);
         let tls = session.tls_config()?;
         let options = Self::under_profile(options, &session);
-        let endpoint = Self::endpoint_of(provider, url, &options, &session, handed.as_ref())?;
+        let region = Self::region_of(url, &options, &session);
+        let endpoint =
+            Self::endpoint_of(provider, url, &options, &session, handed.as_ref(), region)?;
         // The account the endpoint settled on is what a shared-key signature
         // names, so it is read back rather than resolved a second time.
         let endpoint_account = endpoint.account.clone();
-        let region = Self::region_of(url, &options, &session);
         Ok(Self {
             agent: Self::agent(&options, tls)?,
             provider,
             endpoint,
             scheme: url.scheme().clone(),
-            region: RwLock::new(region),
             session,
             tokens: super::google::token::TokenCache::new(
                 options.google(),
@@ -460,12 +523,18 @@ impl Client {
     /// asked only when neither of the first two answers, so a refusal it
     /// holds - a profile naming a `[services]` section nobody wrote - is no
     /// refusal of a client that named its endpoint.
+    ///
+    /// `region` is the signing region and where it was read from
+    /// ([`Self::region_of`]); the endpoint holds it beside the host, and
+    /// Amazon S3's published host is built from it once it is proven a host
+    /// label.
     fn endpoint_of(
         provider: Provider,
         url: &Url,
         options: &S3Options,
         session: &Session,
         handed: Option<&Credentials>,
+        region: (String, &'static str),
     ) -> Result<Endpoint> {
         // An explicitly configured endpoint wins: it is a deliberate choice
         // about where the store is, where a URL only says which object. The
@@ -478,12 +547,22 @@ impl Client {
             Some(named) => Some(named),
             None => Self::ambient_endpoint(provider, options, session)?,
         };
-        let (scheme, host, port, path) = match named {
-            Some(endpoint) => Self::split_endpoint(&endpoint)?,
+        let (region, source) = region;
+        let (scheme, host, port, path, published) = match named {
+            Some(endpoint) => {
+                let (scheme, host, port, path) = Self::split_endpoint(&endpoint)?;
+                (scheme, host, port, path, None)
+            }
             None => {
-                let (scheme, host, port) =
-                    Self::published_host(provider, url, options, session, account.as_deref())?;
-                (scheme, host, port, String::new())
+                let (host, published) = Self::published_host(
+                    provider,
+                    options,
+                    session,
+                    account.as_deref(),
+                    &region,
+                    source,
+                )?;
+                ("https".to_owned(), host, None, String::new(), published)
             }
         };
         let prefix = match provider {
@@ -537,7 +616,8 @@ impl Client {
             ));
         Ok(Endpoint {
             scheme,
-            host,
+            place: RwLock::new(Place { region, host }),
+            published,
             port,
             path_style,
             account,
@@ -587,20 +667,29 @@ impl Client {
         Ok(from_environment.or_else(|| options.azure().endpoint().map(str::to_owned)))
     }
 
-    /// The host the store publishes, when nothing named another.
+    /// The host the store publishes, when nothing named another, reached over
+    /// `https`, beside the switches it was chosen by when it is Amazon S3's.
+    ///
+    /// # Errors
+    ///
+    /// For Amazon S3, a `region` that is no host label, naming `source`
+    /// ([`crate::ArnPartition::check_region`]): a region is spliced into the
+    /// host a signed request is sent to, so `eu-west-3/` must never address
+    /// `s3.eu-west-3/.amazonaws.com`. For Azure, no storage account.
     fn published_host(
         provider: Provider,
-        url: &Url,
         options: &S3Options,
         session: &Session,
         account: Option<&str>,
-    ) -> Result<(String, String, Option<u16>)> {
+        region: &str,
+        source: &'static str,
+    ) -> Result<(String, Option<Published>)> {
         let host = match provider {
             // The regional host, or the FIPS, dual-stack or accelerate one
             // the session's configuration asks for, on the partition the
             // region belongs to.
             Provider::Aws => {
-                let region = Self::region_of(url, options, session);
+                crate::ArnPartition::check_region(region, source)?;
                 let profile = session.profile();
                 let table = |key: &str| {
                     profile
@@ -608,17 +697,12 @@ impl Client {
                         .and_then(|profile| profile.s3(key).and_then(bool_from_text))
                         .unwrap_or(false)
                 };
-                let fips = session.use_fips_endpoint();
-                let dualstack = session.use_dualstack_endpoint() || table("use_dualstack_endpoint");
-                let suffix = crate::ArnPartition::from_region(&region).dns_suffix();
-                match (table("use_accelerate_endpoint"), fips, dualstack) {
-                    (true, _, true) => "s3-accelerate.dualstack.amazonaws.com".to_owned(),
-                    (true, _, false) => "s3-accelerate.amazonaws.com".to_owned(),
-                    (false, true, true) => format!("s3-fips.dualstack.{region}.{suffix}"),
-                    (false, true, false) => format!("s3-fips.{region}.{suffix}"),
-                    (false, false, true) => format!("s3.dualstack.{region}.{suffix}"),
-                    (false, false, false) => format!("s3.{region}.{suffix}"),
-                }
+                let published = Published {
+                    accelerate: table("use_accelerate_endpoint"),
+                    fips: session.use_fips_endpoint(),
+                    dualstack: session.use_dualstack_endpoint() || table("use_dualstack_endpoint"),
+                };
+                return Ok((published.host(region), Some(published)));
             }
             Provider::Google => "storage.googleapis.com".to_owned(),
             Provider::Azure => {
@@ -637,7 +721,7 @@ impl Client {
                 format!("{account}.{service}.core.windows.net")
             }
         };
-        Ok(("https".to_owned(), host, None))
+        Ok((host, None))
     }
 
     /// Split `https://host:port/path` into its parts, defaulting the scheme.
@@ -684,16 +768,24 @@ impl Client {
         ))
     }
 
-    /// The signing region the URL, the options and the session name.
-    fn region_of(url: &Url, options: &S3Options, session: &Session) -> String {
-        options
-            .region()
-            .map(str::to_owned)
-            .or_else(|| url.region().map(str::to_owned))
-            // `AWS_REGION`, `AWS_DEFAULT_REGION`, then the profile's own,
-            // and none of them when the options consult no environment.
-            .or_else(|| session.region())
-            .unwrap_or_else(|| DEFAULT_REGION.to_owned())
+    /// The signing region the options, the URL and the session name, in that
+    /// order, beside where it was read from - what a refusal of it names.
+    fn region_of(url: &Url, options: &S3Options, session: &Session) -> (String, &'static str) {
+        if let Some(region) = options.region() {
+            return (region.to_owned(), "the S3 options");
+        }
+        if let Some(region) = url.region() {
+            return (region.to_owned(), "the location's host");
+        }
+        // `AWS_REGION`, `AWS_DEFAULT_REGION`, then the profile's own, and
+        // none of them when the options consult no environment.
+        match session.region() {
+            Some(region) => (
+                region,
+                "the session (AWS_REGION, AWS_DEFAULT_REGION or the profile)",
+            ),
+            None => (DEFAULT_REGION.to_owned(), "the S3 client's default"),
+        }
     }
 
     /// The credentials a URL spells in its user information, if any.
@@ -734,19 +826,21 @@ impl Client {
 
     /// The region requests are currently signed for.
     pub(super) fn region(&self) -> String {
-        self.region
+        self.endpoint
+            .place
             .read()
-            .map(|region| region.clone())
-            .unwrap_or_else(|_| DEFAULT_REGION.to_owned())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .region
+            .clone()
     }
 
-    /// The signer for the current credentials and region: the session's,
+    /// The signer for the current credentials in `region`: the session's,
     /// which keeps one per credential set, region and service.
     ///
     /// `None` when the client is anonymous, which is a valid way to reach a
     /// public bucket rather than a failure.
-    fn signer(&self, now: SystemTime) -> Result<Option<Arc<Signer>>> {
-        self.session.signer("s3", &self.region(), now)
+    fn signer(&self, region: &str, now: SystemTime) -> Result<Option<Arc<Signer>>> {
+        self.session.signer("s3", region, now)
     }
 
     /// Wait before the next attempt: what the store asked for, else a draw
@@ -787,8 +881,11 @@ impl Client {
     ///
     /// One attempt is the rule; a retry happens only for a transport failure,
     /// a throttle, a server-side error, or the one region redirect that
-    /// corrects the signing region. Every attempt is counted, so a test reads
-    /// the true number of round trips rather than the intended one.
+    /// corrects the signing region and, on Amazon S3's published host, the
+    /// host ([`Self::redirect_region`]) - one more request, plus one `HEAD`
+    /// on the bucket where the redirect names no region. Every attempt is
+    /// counted, so a test reads the true number of round trips rather than
+    /// the intended one.
     ///
     /// An exclusive create goes again only after an attempt the store cannot
     /// have acted on: a transport failure that left it unsent, a throttle
@@ -810,7 +907,9 @@ impl Client {
             // Who signs is settled before the attempt, so a credential
             // refusal is its own typed failure rather than a transport
             // failure retried with backoff.
-            let (target, headers) = self.prepare(request, Some(request.body), SystemTime::now())?;
+            let place = self.endpoint.place();
+            let (target, headers) =
+                self.prepare(request, Some(request.body), &place, SystemTime::now())?;
             let outcome = self.attempt(request, &target, &headers);
             let answer = match outcome {
                 Ok(answer) => answer,
@@ -833,14 +932,14 @@ impl Client {
                 }
             };
             // A bucket in another region answers with the region it is in, so
-            // the correction costs one redirect rather than a lookup per client.
-            if !redirected
-                && let Some(region) = bucket_region_of(&answer)
-                && region != self.region()
-            {
+            // the correction costs one redirect rather than a lookup per client;
+            // the bucket is asked at most once a request, whatever it answers.
+            if !redirected && let Some(region) = self.redirect_region(request, &answer) {
                 redirected = true;
-                self.adopt_region(region)?;
-                continue;
+                if region != place.region {
+                    self.adopt_region(&region)?;
+                    continue;
+                }
             }
             if self.refresh_on_expiry(request, &headers, &answer, &mut refreshed)? {
                 continue;
@@ -898,9 +997,13 @@ impl Client {
         if code.is_none() && !bodyless {
             return Ok(false);
         }
-        let another = self
-            .session
-            .answers_another(signed, code.as_deref(), SystemTime::now())?;
+        let another = self.session.answers_another(
+            signed,
+            code.as_deref(),
+            &self.endpoint.host_header(&request.bucket),
+            &self.region(),
+            SystemTime::now(),
+        )?;
         // A refusal that is not sent again ends the request, so the one
         // chance is spent only when it is taken.
         *refreshed = another;
@@ -913,10 +1016,15 @@ impl Client {
     /// reaches the wire: a Signature Version 4 header, a bearer token, an Azure
     /// shared-key signature, or a token already in the query. The dialect's own
     /// headers are set first, so authorization can never be shadowed by one.
+    ///
+    /// The attempt is addressed to `place`'s host and signed for its region,
+    /// one snapshot of both, so a redirect another request adopts meanwhile
+    /// never splits them.
     fn prepare(
         &self,
         request: &Request<'_>,
         payload: Option<&[u8]>,
+        place: &Place,
         now: SystemTime,
     ) -> Result<(String, Vec<(String, String)>)> {
         // A store that handed a whole location back owns it entirely, so it is
@@ -924,10 +1032,10 @@ impl Client {
         if let Some(url) = &request.url {
             let (host, path) = split_url(url);
             let mut headers = request.headers.clone();
-            headers.extend(self.authorize(request, &host, &path, payload, now)?);
+            headers.extend(self.authorize(request, &host, &path, payload, &place.region, now)?);
             return Ok((url.clone(), headers));
         }
-        let host = self.endpoint.host_header(&request.bucket);
+        let host = self.endpoint.address(&place.host, &request.bucket);
         let path = request
             .target
             .clone()
@@ -949,22 +1057,24 @@ impl Client {
             format!("{}://{host}{path}?{query}", self.endpoint.scheme)
         };
         let mut headers = request.headers.clone();
-        headers.extend(self.authorize(request, &host, &path, payload, now)?);
+        headers.extend(self.authorize(request, &host, &path, payload, &place.region, now)?);
         Ok((target, headers))
     }
 
-    /// The headers that say who is asking, in this store's own terms.
+    /// The headers that say who is asking, in this store's own terms; an
+    /// Amazon S3 request is signed for `region`.
     fn authorize(
         &self,
         request: &Request<'_>,
         host: &str,
         path: &str,
         payload: Option<&[u8]>,
+        region: &str,
         now: SystemTime,
     ) -> Result<Vec<(String, String)>> {
         match self.provider {
             Provider::Aws => {
-                let Some(signer) = self.signer(now)? else {
+                let Some(signer) = self.signer(region, now)? else {
                     return Ok(Vec::new());
                 };
                 // Hashing a large body costs more than the rest of the request
@@ -1014,6 +1124,7 @@ impl Client {
         headers: &[(String, String)],
     ) -> std::result::Result<Answer, ureq::Error> {
         self.stats.record(request.method);
+        crate::http::record_process(&self.endpoint.host_header(&request.bucket), request.method);
         let mut wire = ureq::http::Request::builder()
             .method(request.method)
             .uri(target);
@@ -1064,7 +1175,8 @@ impl Client {
             if attempt > 1 {
                 self.stats.retries.fetch_add(1, Ordering::Relaxed);
             }
-            let (target, sent) = self.prepare(request, None, SystemTime::now())?;
+            let place = self.endpoint.place();
+            let (target, sent) = self.prepare(request, None, &place, SystemTime::now())?;
             let opened = self.open_stream(request, &target, &sent);
             let (status, headers, mut reader) = match opened {
                 Ok(opened) => opened,
@@ -1095,13 +1207,12 @@ impl Client {
                     headers,
                     body,
                 };
-                if !redirected
-                    && let Some(region) = bucket_region_of(&answer)
-                    && region != self.region()
-                {
+                if !redirected && let Some(region) = self.redirect_region(request, &answer) {
                     redirected = true;
-                    self.adopt_region(region)?;
-                    continue;
+                    if region != place.region {
+                        self.adopt_region(&region)?;
+                        continue;
+                    }
                 }
                 if self.refresh_on_expiry(request, &sent, &answer, &mut refreshed)? {
                     continue;
@@ -1129,6 +1240,7 @@ impl Client {
         headers: &[(String, String)],
     ) -> std::result::Result<Streamed, ureq::Error> {
         self.stats.record(request.method);
+        crate::http::record_process(&self.endpoint.host_header(&request.bucket), request.method);
         let mut wire = ureq::http::Request::builder()
             .method(request.method)
             .uri(target);
@@ -1156,12 +1268,80 @@ impl Client {
         Ok((status, headers, Box::new(reader)))
     }
 
-    /// Sign for `region` from here on: the session's signers are kept by
-    /// region, so the next request takes that region's.
-    fn adopt_region(&self, region: String) -> Result<()> {
-        let mut current = self.region.write().map_err(|_| poisoned())?;
-        *current = region;
+    /// Sign for `region` from here on, and address Amazon S3's published
+    /// host for it when that is where requests go: the session's signers are
+    /// kept by region, so the next request takes that region's, and the host
+    /// and the region move under the one lock both are read under. A stated
+    /// endpoint is where the store is whatever region signs, so it stays.
+    ///
+    /// # Errors
+    ///
+    /// A `region` a store's answer named that is no host label, where it
+    /// would be built into the published host
+    /// ([`crate::ArnPartition::check_region`]); nothing moves then.
+    fn adopt_region(&self, region: &str) -> Result<()> {
+        let host = match self.endpoint.published {
+            Some(published) => {
+                crate::ArnPartition::check_region(region, "a store's redirect")?;
+                Some(published.host(region))
+            }
+            None => None,
+        };
+        let mut place = self.endpoint.place.write().map_err(|_| poisoned())?;
+        region.clone_into(&mut place.region);
+        if let Some(host) = host {
+            place.host = host;
+        }
         Ok(())
+    }
+
+    /// The region `answer` says the bucket `request` addresses is in, when it
+    /// is a redirect - botocore's `S3RegionRedirectorv2` - asking the bucket
+    /// itself where the answer is one and names no region.
+    ///
+    /// The region comes from the `x-amz-bucket-region` header, else the
+    /// error document's `<Region>`, else the region an
+    /// `AuthorizationHeaderMalformed` message says it expects
+    /// ([`bucket_region_of`]). An Amazon S3 redirect that names none - a `301`
+    /// or `302`, a `PermanentRedirect`, an `IllegalLocationConstraintException`
+    /// from a bucket in an opt-in region reached through another region's
+    /// host - costs one `HEAD` on the bucket, whose `x-amz-bucket-region` is
+    /// read whatever its status ([`Self::ask_bucket_region`]). A
+    /// `CreateBucket` is never redirected that way: its location constraint
+    /// is the caller's statement of where the bucket is to be, not a
+    /// misdirected request.
+    fn redirect_region(&self, request: &Request<'_>, answer: &Answer) -> Option<String> {
+        match bucket_region_of(answer)? {
+            Redirect::Named(region) => Some(region),
+            Redirect::Unnamed
+                if matches!(self.provider, Provider::Aws)
+                    && request.operation != "CreateBucket"
+                    && request.url.is_none()
+                    && !request.bucket.is_empty() =>
+            {
+                self.ask_bucket_region(&request.bucket)
+            }
+            Redirect::Unnamed => None,
+        }
+    }
+
+    /// The region one `HEAD` on `bucket` states in `x-amz-bucket-region`,
+    /// read whatever the answer's status - Amazon S3 states it on the `301`
+    /// or `400` a bucket in another region answers too - signed for the
+    /// region the client signs for now. One attempt, never retried: a
+    /// failure leaves the answer that asked for it standing.
+    fn ask_bucket_region(&self, bucket: &str) -> Option<String> {
+        let request = self.common(Request::new("HEAD", "HeadBucket", bucket, ""));
+        let place = self.endpoint.place();
+        let (target, headers) = self
+            .prepare(&request, None, &place, SystemTime::now())
+            .ok()?;
+        let answer = self.attempt(&request, &target, &headers).ok()?;
+        answer
+            .header("x-amz-bucket-region")
+            .map(str::trim)
+            .filter(|region| !region.is_empty())
+            .map(str::to_owned)
     }
 
     /// The canonical location a request addresses, for its error.
@@ -2677,26 +2857,66 @@ impl Read for Resuming {
     }
 }
 
-/// The region a redirect names, when it names one.
-fn bucket_region_of(answer: &Answer) -> Option<String> {
-    if !matches!(answer.status, 301 | 307 | 400 | 403) {
+/// What an answer says about the region its bucket is in.
+#[derive(Debug, PartialEq, Eq)]
+enum Redirect {
+    /// The answer names the bucket's region.
+    Named(String),
+    /// The answer is a redirect that names no region, so the bucket is asked.
+    Unnamed,
+}
+
+/// Whether `answer` is a region redirect, and the region it names - read as
+/// botocore's `S3RegionRedirectorv2.get_bucket_region` reads one: the
+/// `x-amz-bucket-region` header, else the error document's `<Region>`, else
+/// the region an `AuthorizationHeaderMalformed` message expects - the last
+/// one it quotes (`the region 'us-east-1' is wrong; expecting 'eu-west-3'`),
+/// never the first, which is the region the request was signed for.
+///
+/// A redirect is a `301`, `302` or `307`, a `400` or `403` that names a
+/// region, or a `PermanentRedirect`, `AuthorizationHeaderMalformed` or
+/// `IllegalLocationConstraintException` refusal; one that names no region is
+/// [`Redirect::Unnamed`]. Anything else is `None`.
+fn bucket_region_of(answer: &Answer) -> Option<Redirect> {
+    if !matches!(answer.status, 301 | 302 | 307 | 400 | 403) {
         return None;
     }
-    answer
-        .header("x-amz-bucket-region")
-        .map(str::to_owned)
-        .or_else(|| {
-            super::xml::parse_error(&answer.body)
-                .filter(|error| error.code == "AuthorizationHeaderMalformed")
-                .and_then(|error| {
-                    // The message names the region when the header does not.
-                    let start = error.message.find("'")? + 1;
-                    let rest = error.message.get(start..)?;
-                    let end = rest.find('\'')?;
-                    Some(rest[..end].to_owned())
-                })
-        })
-        .filter(|region| !region.is_empty())
+    let named = |region: &str| {
+        let region = region.trim();
+        (!region.is_empty()).then(|| Redirect::Named(region.to_owned()))
+    };
+    if let Some(region) = answer.header("x-amz-bucket-region").and_then(named) {
+        return Some(region);
+    }
+    let refusal = super::xml::parse_error_region(&answer.body);
+    if let Some((_, Some(region))) = &refusal {
+        return Some(Redirect::Named(region.clone()));
+    }
+    let code = refusal.as_ref().map(|(error, _)| error.code.as_str());
+    if code == Some("AuthorizationHeaderMalformed")
+        && let Some((error, _)) = &refusal
+        && let Some(region) = expected_region(&error.message).and_then(named)
+    {
+        return Some(region);
+    }
+    let redirects = matches!(answer.status, 301 | 302 | 307)
+        || matches!(
+            code,
+            Some(
+                "PermanentRedirect"
+                    | "AuthorizationHeaderMalformed"
+                    | "IllegalLocationConstraintException"
+            )
+        );
+    redirects.then_some(Redirect::Unnamed)
+}
+
+/// The region an `AuthorizationHeaderMalformed` message says it expects: the
+/// last single-quoted text, which follows `expecting`.
+fn expected_region(message: &str) -> Option<&str> {
+    let end = message.rfind('\'')?;
+    let start = message[..end].rfind('\'')? + 1;
+    Some(&message[start..end])
 }
 
 /// The total object length a `Content-Range` states.
@@ -2823,15 +3043,23 @@ pub mod internals {
         crate::http::retry::backoff(attempt)
     }
 
-    /// The region a redirect names, for an answer of `status` and `headers`.
-    ///
-    /// The body plays no part, so this builds the answer the reader reads
-    /// rather than handing one out.
-    pub fn bucket_region_of(status: u16, headers: &[(String, String)]) -> Option<String> {
-        super::bucket_region_of(&super::Answer {
+    /// Whether an answer of `status`, `headers` and `body` is a region
+    /// redirect: `None` when it is not, `Some(None)` when it is one naming no
+    /// region - the bucket is then asked - and `Some(Some(region))` naming
+    /// the region it states.
+    pub fn bucket_region_of(
+        status: u16,
+        headers: &[(String, String)],
+        body: &[u8],
+    ) -> Option<Option<String>> {
+        let answer = super::Answer {
             status,
             headers: headers.to_vec(),
-            body: Vec::new(),
+            body: body.to_vec(),
+        };
+        super::bucket_region_of(&answer).map(|redirect| match redirect {
+            super::Redirect::Named(region) => Some(region),
+            super::Redirect::Unnamed => None,
         })
     }
 
@@ -2855,7 +3083,11 @@ pub mod internals {
         ) -> Self {
             Self(super::Endpoint {
                 scheme: scheme.to_owned(),
-                host: host.to_owned(),
+                place: std::sync::RwLock::new(super::Place {
+                    region: super::DEFAULT_REGION.to_owned(),
+                    host: host.to_owned(),
+                }),
+                published: None,
                 port,
                 path_style,
                 account: account.map(str::to_owned),
@@ -2892,6 +3124,18 @@ pub mod internals {
         /// The region requests are currently signed for.
         pub fn region(&self) -> String {
             self.0.region()
+        }
+
+        /// Sign for `region` from here on, as a redirect naming it does, and
+        /// address Amazon S3's published host for it unless an endpoint was
+        /// stated.
+        ///
+        /// # Errors
+        ///
+        /// A `region` that is no host label where the published host would be
+        /// built from it.
+        pub fn adopt_region(&self, region: &str) -> Result<()> {
+            self.0.adopt_region(region)
         }
 
         /// The scheme the endpoint is reached over.
@@ -2950,7 +3194,7 @@ pub mod internals {
         pub fn signer_access_key_id(&self, now: SystemTime) -> Result<Option<String>> {
             Ok(self
                 .0
-                .signer(now)?
+                .signer(&self.0.region(), now)?
                 .map(|signer| signer.access_key_id().to_owned()))
         }
     }

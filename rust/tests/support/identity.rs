@@ -54,14 +54,19 @@ pub struct Recorded {
     pub headers: Vec<(String, String)>,
     /// The body as text.
     pub body: String,
+    /// The pairs of a form body - an STS exchange's parameters -
+    /// percent-decoded, in wire order; empty where the body is no form.
+    pub form: Vec<(String, String)>,
     pub status: u16,
 }
 
 impl Recorded {
-    /// One query parameter.
+    /// One parameter: of the URL's query, else of the form body the
+    /// exchange carried it in.
     pub fn query(&self, name: &str) -> Option<&str> {
         self.query
             .iter()
+            .chain(self.form.iter())
             .find(|(held, _)| held == name)
             .map(|(_, value)| value.as_str())
     }
@@ -74,10 +79,35 @@ impl Recorded {
             .map(|(_, value)| value.as_str())
     }
 
-    /// Whether this is an STS exchange for `action`.
+    /// Whether this is an STS exchange for `action`: the action in the
+    /// query, or in the form body the exchange carries it in.
     pub fn is_sts(&self, action: &str) -> bool {
         self.query("Action") == Some(action)
+            || form_param(&self.body, self.header("content-type"), "Action").as_deref()
+                == Some(action)
     }
+}
+
+/// One parameter of a form body - `application/x-www-form-urlencoded`, as
+/// an STS exchange carries its parameters - percent-decoded; `None` where
+/// the body is no form or holds no such name.
+fn form_param(body: &str, content_type: Option<&str>, name: &str) -> Option<String> {
+    form_pairs(body, content_type)
+        .into_iter()
+        .find(|(held, _)| held == name)
+        .map(|(_, value)| value)
+}
+
+/// The pairs of a form body, percent-decoded, in wire order; empty where
+/// the body is no form.
+fn form_pairs(body: &str, content_type: Option<&str>) -> Vec<(String, String)> {
+    if !content_type.is_some_and(|value| value.starts_with("application/x-www-form-urlencoded")) {
+        return Vec::new();
+    }
+    body.split('&')
+        .filter_map(|pair| pair.split_once('='))
+        .map(|(name, value)| (percent_decode(name), percent_decode(value)))
+        .collect()
 }
 
 /// What the scripted answers say.
@@ -117,6 +147,12 @@ struct Script {
     imds_v2_only: bool,
     /// The region the identity document states.
     imds_region: String,
+    /// The expiry the instance role's credential document states, when
+    /// pinned; else six hours from the answer.
+    imds_expiry: Option<String>,
+    /// Whether the portal's refusal names its error type in the
+    /// `x-amzn-ErrorType` header alone, with no `error` in the body.
+    portal_error_in_header: bool,
     /// The next requests, whichever endpoint, answer this status.
     failures: Option<(u16, usize)>,
     recorded: Vec<Recorded>,
@@ -141,6 +177,8 @@ impl Default for Script {
             imds_role: Some("instance-role".to_owned()),
             imds_v2_only: false,
             imds_region: "eu-west-3".to_owned(),
+            imds_expiry: None,
+            portal_error_in_header: false,
             failures: None,
             recorded: Vec::new(),
         }
@@ -298,6 +336,19 @@ impl Identity {
         self.inner.script().imds_region = region.to_owned();
     }
 
+    /// The `Expiration` the instance role's credential document states
+    /// from now on, ISO 8601 text, in place of six hours from each answer.
+    pub fn set_imds_expiry(&self, expiry: &str) {
+        self.inner.script().imds_expiry = Some(expiry.to_owned());
+    }
+
+    /// Have the portal refuse with its error type in `x-amzn-ErrorType`
+    /// alone - `UnauthorizedException:http://internal.amazon.com/` - and a
+    /// body holding the message and no `error`, as the real portal answers.
+    pub fn portal_error_in_header(&self, in_header: bool) {
+        self.inner.script().portal_error_in_header = in_header;
+    }
+
     /// Answer the next `times` requests, whichever endpoint, with `status`
     /// and an empty body.
     pub fn fail_next(&self, status: u16, times: usize) {
@@ -333,6 +384,13 @@ impl Request {
             .map(|(_, value)| value.as_str())
     }
 
+    /// One parameter of the request: in the query, else in its form body.
+    fn param(&self, name: &str) -> Option<String> {
+        self.query(name)
+            .map(str::to_owned)
+            .or_else(|| form_param(&self.body, self.header("content-type"), name))
+    }
+
     fn header(&self, name: &str) -> Option<&str> {
         self.headers
             .iter()
@@ -355,6 +413,8 @@ struct Response {
     status: u16,
     content_type: &'static str,
     body: String,
+    /// Headers beside the content type and length, as sent.
+    headers: Vec<(&'static str, String)>,
 }
 
 impl Response {
@@ -363,6 +423,7 @@ impl Response {
             status,
             content_type: "application/json",
             body: body.to_string(),
+            headers: Vec::new(),
         }
     }
 
@@ -371,6 +432,7 @@ impl Response {
             status,
             content_type: "text/xml",
             body,
+            headers: Vec::new(),
         }
     }
 
@@ -379,7 +441,14 @@ impl Response {
             status,
             content_type: "text/plain",
             body: body.to_owned(),
+            headers: Vec::new(),
         }
+    }
+
+    /// The same answer carrying one more header.
+    fn with_header(mut self, name: &'static str, value: &str) -> Self {
+        self.headers.push((name, value.to_owned()));
+        self
     }
 
     fn sts_error(status: u16, code: &str, message: &str) -> Self {
@@ -406,11 +475,17 @@ fn serve(inner: &Inner, mut stream: TcpStream) {
         query: request.query.clone(),
         headers: request.headers.clone(),
         body: request.body.clone(),
+        form: form_pairs(&request.body, request.header("content-type")),
         status: response.status,
     });
     drop(script);
+    let extra: String = response
+        .headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect();
     let head = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n",
         response.status,
         reason(response.status),
         response.content_type,
@@ -511,8 +586,8 @@ fn answer(inner: &Inner, request: &Request) -> Response {
         script.failures = (times > 1).then_some((status, times - 1));
         return Response::text(status, "");
     }
-    if let Some(action) = request.query("Action") {
-        return sts(&mut script, request, action);
+    if let Some(action) = request.param("Action") {
+        return sts(&mut script, request, &action);
     }
     match (request.method.as_str(), request.path.as_str()) {
         ("POST", "/client/register") => Response::json(
@@ -549,18 +624,18 @@ fn sts(script: &mut Script, request: &Request, action: &str) -> Response {
         script.sts_refusals = (times > 1).then(|| (code.clone(), times - 1));
         return Response::sts_error(403, &code, "refused as scripted");
     }
-    let Some(role) = request.query("RoleArn").filter(|arn| !arn.is_empty()) else {
+    let Some(role) = request.param("RoleArn").filter(|arn| !arn.is_empty()) else {
         return Response::sts_error(400, "ValidationError", "RoleArn must not be null");
     };
-    let session = request.query("RoleSessionName").unwrap_or_default();
-    let short = role.rsplit('/').next().unwrap_or(role);
+    let session = request.param("RoleSessionName").unwrap_or_default();
+    let short = role.rsplit('/').next().unwrap_or(&role);
     match action {
         "AssumeRole" => {
             if request.header("authorization").is_none() {
                 return Response::sts_error(403, "MissingAuthenticationToken", "unsigned");
             }
             if let Some(code) = &script.token_code
-                && request.query("TokenCode") != Some(code)
+                && request.param("TokenCode").as_deref() != Some(code.as_str())
             {
                 return Response::sts_error(
                     403,
@@ -574,7 +649,7 @@ fn sts(script: &mut Script, request: &Request, action: &str) -> Response {
                 return Response::sts_error(400, "InvalidAction", "a signed web identity exchange");
             }
             if let Some(token) = &script.web_identity_token
-                && request.query("WebIdentityToken") != Some(token)
+                && request.param("WebIdentityToken").as_deref() != Some(token.as_str())
             {
                 return Response::sts_error(
                     400,
@@ -783,6 +858,16 @@ fn is_uuid_v4(text: &str) -> bool {
 
 fn portal(script: &Script, request: &Request) -> Response {
     if request.header("x-amz-sso_bearer_token") != Some(script.sso_token.as_str()) {
+        if script.portal_error_in_header {
+            return Response::json(
+                401,
+                serde_json::json!({"message": "Session token not found or invalid"}),
+            )
+            .with_header(
+                "x-amzn-ErrorType",
+                "UnauthorizedException:http://internal.amazon.com/",
+            );
+        }
         return Response::json(
             401,
             serde_json::json!({"error": "UnauthorizedException", "message": "Session token not found or invalid"}),
@@ -851,7 +936,10 @@ fn imds(script: &Script, request: &Request) -> Response {
                     "AccessKeyId": format!("ASIA{}", role.to_ascii_uppercase().replace('-', "")),
                     "SecretAccessKey": format!("secret-of-{role}"),
                     "Token": format!("token-of-{role}"),
-                    "Expiration": iso8601(now_seconds() + 6 * 3600),
+                    "Expiration": script
+                        .imds_expiry
+                        .clone()
+                        .unwrap_or_else(|| iso8601(now_seconds() + 6 * 3600)),
                 }),
             )
         }

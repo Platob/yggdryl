@@ -461,7 +461,7 @@ fn a_token_file_that_is_not_a_token_is_no_sign_in_rather_than_a_failure_of_its_o
 }
 
 #[test]
-fn a_token_the_portal_no_longer_accepts_is_a_recorded_failure_and_the_chain_walks_on_past_it() {
+fn a_token_the_portal_no_longer_accepts_is_refused_naming_the_way_out_and_ends_the_walk() {
     let identity = Identity::start();
     identity.set_imds_role(None);
     let session = sealed(&identity, "sso-portal-refused").with_sso(trading());
@@ -478,6 +478,10 @@ fn a_token_the_portal_no_longer_accepts_is_a_recorded_failure_and_the_chain_walk
         message.contains("UnauthorizedException"),
         "the portal's own code: {message}"
     );
+    assert!(
+        message.contains("no longer accepted: run `aws sso login --sso-session trading`"),
+        "the refusal names the way out, for the sign-in's own session: {message}"
+    );
     let portal: Vec<Recorded> = identity
         .requests()
         .into_iter()
@@ -487,11 +491,52 @@ fn a_token_the_portal_no_longer_accepts_is_a_recorded_failure_and_the_chain_walk
     assert_eq!(portal[0].status, 401);
     assert!(!cli_cache(&session).exists(), "a refusal files nothing");
 
-    // With a role on the instance, the refused sign-in is passed over.
+    // A stated sign-in is a configured source: with a role on the instance
+    // too, its refusal is the answer and the instance is never asked.
     identity.set_imds_role(Some("instance-role"));
+    identity.clear_requests();
     let walked = session.with_region("eu-west-3");
-    assert_eq!(found(&walked).access_key_id(), "ASIAINSTANCEROLE");
-    assert_eq!(walked.credential_source(), Some("instance metadata"));
+    let message = refused(&walked);
+    assert!(message.contains("`aws sso login"), "{message}");
+    assert!(
+        shape(&identity)
+            .iter()
+            .all(|request| !request.contains("/latest/")),
+        "the walk ended at the sign-in: {:?}",
+        shape(&identity)
+    );
+}
+
+#[test]
+fn a_portal_refusal_stating_its_code_in_the_error_type_header_is_read_and_names_the_way_out() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    // The portal's own protocol: `x-amzn-ErrorType` carries the code, the
+    // body only a `message`.
+    identity.portal_error_in_header(true);
+    let session = sealed(&identity, "sso-portal-header")
+        .with_sso(Sso::new(START_URL, SSO_REGION, ACCOUNT, ROLE));
+    file_token(&session, START_URL_TOKEN_KEY, &signed_in(SSO_TOKEN, 3600));
+    identity.set_sso_token("other");
+
+    let message = refused(&session);
+    assert!(
+        message.contains("401 UnauthorizedException"),
+        "the header's code, read before its documentation URL: {message}"
+    );
+    assert!(
+        !message.contains("GetRoleCredentialsFailed") && !message.contains("internal.amazon.com"),
+        "{message}"
+    );
+    assert!(
+        message.contains("Session token not found or invalid"),
+        "the body's message: {message}"
+    );
+    assert!(
+        message.contains("no longer accepted: run `aws sso login`"),
+        "a sign-in with no session names the bare command: {message}"
+    );
+    assert!(!message.contains("--sso-session"), "{message}");
 }
 
 // --- the device sign-in -----------------------------------------------------

@@ -198,6 +198,24 @@ def session(origin: str) -> Session:
     return Session(origin)
 
 
+def test_every_request_the_process_sends_is_in_the_ledger_under_its_host(
+    origin: str, session: Session
+) -> None:
+    from yggdryl import http
+
+    host = origin.removeprefix("http://")
+    before = http.process_stats()
+    session.get("/text")
+    session.get("/text")
+    session.head("/big")
+    after = http.process_stats()
+    # The three requests under this server's host and port alone; what came
+    # before is subtracted away.
+    mine = {name: after[host][name] - before.get(host, {}).get(name, 0) for name in after[host]}
+    assert (mine["requests"], mine["gets"], mine["heads"]) == (3, 2, 1), mine
+    assert set(mine) == {"requests", "gets", "heads", "puts", "posts", "deletes", "others"}
+
+
 class TestRefusals:
     """Each refusal is met before a byte is sent."""
 

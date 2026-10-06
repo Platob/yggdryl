@@ -399,16 +399,51 @@ fn where_both_files_name_one_profile_the_credentials_file_wins_key_by_key() {
 }
 
 #[test]
-fn a_profile_nobody_wrote_is_passed_over_rather_than_failing_the_walk() {
+fn a_profile_somebody_named_and_nobody_wrote_is_a_refusal_before_any_request() {
     let identity = Identity::start();
-    let (session, _) = walled(&identity, "ghost-profile", &[("AWS_PROFILE", "ghost")]);
+    let environment_keys = [
+        ("AWS_ACCESS_KEY_ID", "AKIAENV"),
+        ("AWS_SECRET_ACCESS_KEY", "env-secret"),
+    ];
 
-    assert_eq!(
-        found(&session).access_key_id(),
-        INSTANCE_KEY,
-        "a profile that is not in either file is one absent source, not a refusal"
+    for (namer, pairs) in [
+        ("AWS_PROFILE", vec![("AWS_PROFILE", "ghost")]),
+        (
+            "AWS_DEFAULT_PROFILE",
+            vec![("AWS_DEFAULT_PROFILE", "ghost")],
+        ),
+        (
+            "AWS_PROFILE",
+            [vec![("AWS_PROFILE", "ghost")], environment_keys.to_vec()].concat(),
+        ),
+    ] {
+        let (session, _) = walled(&identity, "ghost-profile", &pairs);
+        let message = refused(&session);
+        assert!(
+            message.contains("profile ghost") && message.contains("not in"),
+            "the refusal names the profile and the files looked in: {message}"
+        );
+        assert!(message.contains(namer), "and who named it: {message}");
+        assert!(!message.contains("env-secret"), "{message}");
+    }
+
+    let (stated, _) = walled(&identity, "ghost-stated", &environment_keys);
+    let message = refused(&stated.with_profile("ghost"));
+    assert!(
+        message.contains("profile ghost") && message.contains("Session::with_profile"),
+        "{message}"
     );
-    assert_eq!(session.credential_source(), Some("instance metadata"));
+    assert_eq!(
+        identity.request_count(),
+        0,
+        "neither the instance nor any service is asked in a misspelt profile's place: {:?}",
+        shape(&identity)
+    );
+
+    // The default nobody named and nobody wrote is absent, not an error.
+    let (unnamed, _) = walled(&identity, "ghost-default", &[]);
+    assert_eq!(found(&unnamed).access_key_id(), INSTANCE_KEY);
+    assert_eq!(unnamed.credential_source(), Some("instance metadata"));
 }
 
 // --- a profile's role -------------------------------------------------------
@@ -452,7 +487,7 @@ fn a_profile_role_chained_to_a_profile_with_keys_is_one_signed_exchange_filed_in
     assert_eq!(requests.len(), 1, "one exchange: {:?}", shape(&identity));
     let exchange = &requests[0];
     assert!(exchange.is_sts("AssumeRole"), "{exchange:?}");
-    assert_eq!(exchange.method, "GET");
+    assert_eq!(exchange.method, "POST");
     assert_eq!(exchange.query("Version"), Some("2011-06-15"));
     assert_eq!(
         exchange.query("RoleArn"),
@@ -544,6 +579,49 @@ fn a_profile_that_names_itself_as_source_profile_signs_the_exchange_with_its_own
         "the profile's own keys sign its role: {}",
         header(&exchange[0], "authorization")
     );
+}
+
+#[test]
+fn a_source_profile_holding_keys_lends_its_keys_even_when_it_names_a_role() {
+    let identity = Identity::start();
+    let (session, _) = walled(&identity, "source-keys-over-role", &[]);
+    let session = session
+        .with_config_text(
+            "[profile base]\nrole_arn = arn:aws:iam::111111111111:role/admin\nsource_profile = base\n\n\
+             [profile target]\nrole_arn = arn:aws:iam::123456789012:role/lake-reader\nsource_profile = base\n",
+        )
+        .with_credentials_text(BASE_CREDENTIALS)
+        .with_profile("target");
+
+    assert_eq!(found(&session).access_key_id(), "ASIAlake-reader");
+    let exchange = exchanges(&identity, "AssumeRole");
+    assert_eq!(
+        exchange.len(),
+        1,
+        "the source's keys sign the one exchange; its own role is not traded for first: {:?}",
+        shape(&identity)
+    );
+    assert_eq!(
+        exchange[0].query("RoleArn"),
+        Some("arn:aws:iam::123456789012:role/lake-reader")
+    );
+    assert!(
+        header(&exchange[0], "authorization").contains("Credential=AKIABASE/"),
+        "{}",
+        header(&exchange[0], "authorization")
+    );
+
+    // The profile the session reads still trades its own role first.
+    identity.clear_requests();
+    let (top, _) = walled(&identity, "source-keys-top-level", &[]);
+    let top = top
+        .with_config_text(
+            "[profile base]\nrole_arn = arn:aws:iam::111111111111:role/admin\nsource_profile = base\n",
+        )
+        .with_credentials_text(BASE_CREDENTIALS)
+        .with_profile("base");
+    assert_eq!(found(&top).access_key_id(), "ASIAadmin");
+    assert_eq!(top.credential_source(), Some("assumed role"));
 }
 
 #[test]
@@ -661,7 +739,11 @@ fn a_profile_s_web_identity_token_file_is_traded_unsigned_under_a_generated_sess
         .with_profile("pod");
 
     assert_eq!(found(&session).access_key_id(), "ASIApod-reader");
-    assert_eq!(session.credential_source(), Some("assumed role"));
+    assert_eq!(
+        session.credential_source(),
+        Some("web identity"),
+        "a profile naming a token file is a web identity, not a role to source"
+    );
     let exchange = exchanges(&identity, "AssumeRoleWithWebIdentity");
     assert_eq!(exchange.len(), 1, "{:?}", shape(&identity));
     assert_eq!(exchange[0].query("WebIdentityToken"), Some("pod-token"));
@@ -672,6 +754,124 @@ fn a_profile_s_web_identity_token_file_is_traded_unsigned_under_a_generated_sess
         "a session name nobody chose is generated: {name}"
     );
     assert!(exchanges(&identity, "AssumeRole").is_empty());
+}
+
+#[test]
+fn web_identity_reads_each_key_from_the_environment_then_the_profile() {
+    let identity = Identity::start();
+    identity.require_web_identity_token(Some("pod-token"));
+    let token_directory = scratch("web-identity-merged-token");
+    let token_file = token_directory.join("token");
+    write(&token_file, "pod-token");
+    let token_location = token_file.display().to_string();
+
+    // The token file from the profile, the role from the environment.
+    let (session, _) = walled(
+        &identity,
+        "web-identity-merged",
+        &[("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/env-reader")],
+    );
+    let session = session.with_config_text(format!(
+        "[default]\nweb_identity_token_file = {token_location}\n"
+    ));
+    assert_eq!(found(&session).access_key_id(), "ASIAenv-reader");
+    assert_eq!(session.credential_source(), Some("web identity"));
+    let exchange = exchanges(&identity, "AssumeRoleWithWebIdentity");
+    assert_eq!(exchange.len(), 1, "{:?}", shape(&identity));
+    assert_eq!(
+        exchange[0].query("RoleArn"),
+        Some("arn:aws:iam::123456789012:role/env-reader")
+    );
+
+    // Each key the environment states wins over the profile's.
+    identity.clear_requests();
+    let (session, _) = walled(
+        &identity,
+        "web-identity-env-wins",
+        &[
+            ("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/env-reader"),
+            ("AWS_ROLE_SESSION_NAME", "pod-7"),
+        ],
+    );
+    let session = session.with_config_text(format!(
+        "[default]\nrole_arn = arn:aws:iam::123456789012:role/pod-reader\n\
+         role_session_name = cfg\nweb_identity_token_file = {token_location}\n"
+    ));
+    assert_eq!(found(&session).access_key_id(), "ASIAenv-reader");
+    let exchange = exchanges(&identity, "AssumeRoleWithWebIdentity");
+    assert_eq!(exchange.len(), 1, "{:?}", shape(&identity));
+    assert_eq!(
+        exchange[0].query("RoleArn"),
+        Some("arn:aws:iam::123456789012:role/env-reader")
+    );
+    assert_eq!(exchange[0].query("RoleSessionName"), Some("pod-7"));
+
+    // A token file nothing names a role for ends the walk by name.
+    identity.clear_requests();
+    let (session, _) = walled(
+        &identity,
+        "web-identity-no-role",
+        &[("AWS_WEB_IDENTITY_TOKEN_FILE", token_location.as_str())],
+    );
+    let message = refused(&session);
+    assert!(
+        message.contains("web identity")
+            && message.contains("AWS_ROLE_ARN")
+            && message.contains("role_arn"),
+        "{message}"
+    );
+    assert_eq!(
+        identity.request_count(),
+        0,
+        "no exchange, and the instance's role is never asked instead: {:?}",
+        shape(&identity)
+    );
+}
+
+#[test]
+fn a_profile_stated_on_the_session_skips_the_environment_s_web_identity_and_aws_profile_does_not() {
+    let identity = Identity::start();
+    identity.require_web_identity_token(Some("pod-token"));
+    let token_directory = scratch("web-identity-under-profile-token");
+    let token_file = token_directory.join("token");
+    write(&token_file, "pod-token");
+    let token_location = token_file.display().to_string();
+    let pairs = [
+        ("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/pod-role"),
+        ("AWS_WEB_IDENTITY_TOKEN_FILE", token_location.as_str()),
+    ];
+    let credentials = "[desk]\naws_access_key_id = AKIADESK\naws_secret_access_key = desk-secret\n";
+
+    let (stated, directory) = walled(&identity, "web-identity-under-profile", &pairs);
+    let stated = stated
+        .with_credentials_text(credentials)
+        .with_profile("desk");
+    assert_eq!(
+        found(&stated).access_key_id(),
+        "AKIADESK",
+        "the profile the caller named, not the pod's role"
+    );
+    assert_eq!(stated.credential_source(), Some("shared credentials file"));
+    assert!(
+        exchanges(&identity, "AssumeRoleWithWebIdentity").is_empty(),
+        "{:?}",
+        shape(&identity)
+    );
+
+    let by_variable = again(
+        &identity,
+        &directory,
+        &[pairs.as_slice(), &[("AWS_PROFILE", "desk")]].concat(),
+    )
+    .with_credentials_text(credentials);
+    assert_eq!(found(&by_variable).access_key_id(), "ASIApod-role");
+    assert_eq!(
+        by_variable.credential_source(),
+        Some("web identity"),
+        "a profile the environment names leaves the environment's web identity first, as \
+         botocore does"
+    );
+    assert_eq!(exchanges(&identity, "AssumeRoleWithWebIdentity").len(), 1);
 }
 
 // --- MFA --------------------------------------------------------------------
@@ -718,7 +918,7 @@ fn an_mfa_role_asks_the_prompt_for_the_serial_s_code_and_presents_it_to_sts() {
 }
 
 #[test]
-fn an_mfa_role_without_a_prompt_is_a_failed_source_and_the_chain_walks_on() {
+fn an_mfa_role_without_a_prompt_is_a_refusal_never_the_instance_s_role() {
     let identity = Identity::start();
     let (session, directory) = walled(&identity, "mfa-no-prompt", &[]);
     let session = session
@@ -726,24 +926,14 @@ fn an_mfa_role_without_a_prompt_is_a_failed_source_and_the_chain_walks_on() {
         .with_credentials_text(BASE_CREDENTIALS)
         .with_profile("guarded");
 
+    let message = refused(&session);
     assert_eq!(
-        found(&session).access_key_id(),
-        INSTANCE_KEY,
-        "the role could not be assumed, and the instance's role still answers"
-    );
-    assert_eq!(session.credential_source(), Some("instance metadata"));
-    assert!(
-        exchanges(&identity, "AssumeRole").is_empty(),
-        "no exchange is sent without the code it needs: {:?}",
+        identity.request_count(),
+        0,
+        "no exchange is sent without the code it needs, and the instance's role - though it \
+         would answer - is never asked in the role's place: {:?}",
         shape(&identity)
     );
-
-    identity.set_imds_role(None);
-    let alone = again(&identity, &directory, &[])
-        .with_config_text(MFA_CONFIG)
-        .with_credentials_text(BASE_CREDENTIALS)
-        .with_profile("guarded");
-    let message = refused(&alone);
     assert!(message.contains("assumed role"), "{message}");
     assert!(
         message.contains("arn:aws:iam::123456789012:mfa/trader"),
@@ -764,7 +954,7 @@ fn an_mfa_role_without_a_prompt_is_a_failed_source_and_the_chain_walks_on() {
         message.contains("no code was given"),
         "a person who declined is a refusal of its own: {message}"
     );
-    assert!(exchanges(&identity, "AssumeRole").is_empty());
+    assert_eq!(identity.request_count(), 0, "{:?}", shape(&identity));
 }
 
 // --- IAM Identity Center ----------------------------------------------------
@@ -919,8 +1109,7 @@ fn the_legacy_sso_profile_shape_files_its_token_under_the_start_url() {
 }
 
 #[test]
-fn a_lapsed_sign_in_that_cannot_refresh_is_a_failed_source_naming_aws_sso_login_and_the_chain_walks_on()
- {
+fn a_profile_s_lapsed_sign_in_is_its_identity_and_never_falls_back_to_the_instance() {
     let identity = Identity::start();
     let (session, directory) = walled(&identity, "sso-lapsed", &[]);
     write_token(
@@ -938,30 +1127,41 @@ fn a_lapsed_sign_in_that_cannot_refresh_is_a_failed_source_naming_aws_sso_login_
         .with_profile("desk")
         .with_sso_login(SsoLogin::Never);
 
-    assert_eq!(
-        found(&session).access_key_id(),
-        INSTANCE_KEY,
-        "a lapsed sign-in is passed over, and the instance's role answers"
-    );
-    assert_eq!(session.credential_source(), Some("instance metadata"));
-    assert_eq!(
-        shape(&identity),
-        IMDS_WALK,
-        "no refresh without a client, no sign-in under SsoLogin::Never, no portal request"
-    );
-
-    identity.set_imds_role(None);
-    let alone = again(&identity, &directory, &[])
-        .with_config_text(SSO_CONFIG)
-        .with_profile("desk");
-    let message = refused(&alone);
+    // The instance carries a role that would answer; the sign-in the profile
+    // names is who the caller meant, so its lapse is the answer.
+    let message = refused(&session);
     assert!(message.contains("sso"), "{message}");
     assert!(
         message.contains("`aws sso login`"),
         "the refusal names the way out: {message}"
     );
-    assert!(message.contains("nothing configured in"), "{message}");
-    assert!(message.contains("instance metadata"), "{message}");
+    assert_eq!(
+        identity.request_count(),
+        0,
+        "no refresh without a client, no sign-in under SsoLogin::Never, no portal request, \
+         and no instance metadata: {:?}",
+        shape(&identity)
+    );
+
+    // A sign-in stated on the session is the same.
+    let stated = again(&identity, &directory, &[]).with_sso(corp_sso());
+    let message = refused(&stated);
+    assert!(message.contains("`aws sso login`"), "{message}");
+    assert_eq!(identity.request_count(), 0, "{:?}", shape(&identity));
+
+    // So is a console sign-in the service ended.
+    identity.refuse_login(400, "TOKEN_EXPIRED", 1);
+    let (console, _) = signed_in_console(&identity, "console-lapsed-identity", -60);
+    let message = refused(&console);
+    assert!(
+        message.contains("login") && message.contains("aws login --profile console"),
+        "{message}"
+    );
+    assert_eq!(
+        shape(&identity),
+        ["POST /v1/token"],
+        "one refused refresh, and the instance's role is never asked"
+    );
 }
 
 #[test]
@@ -1360,60 +1560,78 @@ fn the_instance_region_is_the_identity_document_s_asked_when_asked() {
 // --- best effort, then a named refusal --------------------------------------
 
 #[test]
-fn a_broken_profile_role_is_recorded_and_passed_over_when_the_instance_answers() {
+fn a_profile_role_that_cannot_be_assumed_is_a_refusal_never_the_instance_s_role() {
     let identity = Identity::start();
-    let (session, _) = walled(&identity, "broken-best-effort", &[]);
+    let (session, directory) = walled(&identity, "broken-role", &[]);
     let session = session
         .with_config_text("[profile broken]\nrole_arn = arn:aws:iam::123456789012:role/orphan\n")
         .with_profile("broken");
 
-    assert_eq!(found(&session).access_key_id(), INSTANCE_KEY);
-    assert_eq!(session.credential_source(), Some("instance metadata"));
+    let message = refused(&session);
+    assert!(
+        message.contains("assumed role")
+            && message.contains("the profile broken names role_arn without"),
+        "the failure says what is wrong with which profile: {message}"
+    );
     assert_eq!(
-        shape(&identity),
-        IMDS_WALK,
-        "a role with no source asks STS nothing"
+        identity.request_count(),
+        0,
+        "a role with no source asks STS nothing, and the instance's role is not its stand-in: {:?}",
+        shape(&identity)
+    );
+
+    // A role STS refuses to hand over is the same.
+    identity.refuse_sts("AccessDenied", 1);
+    let denied = again(&identity, &directory, &[])
+        .with_config_text(ROLE_CONFIG)
+        .with_credentials_text(BASE_CREDENTIALS)
+        .with_profile("trader");
+    let message = refused(&denied);
+    assert!(
+        message.contains("assumed role") && message.contains("AccessDenied"),
+        "{message}"
+    );
+    assert!(!message.contains("base-secret"), "{message}");
+    assert_eq!(exchanges(&identity, "AssumeRole").len(), 1);
+    assert_eq!(
+        identity.request_count(),
+        1,
+        "one refused exchange and nothing after it: {:?}",
+        shape(&identity)
     );
 }
 
 #[test]
-fn nothing_answering_is_a_refusal_naming_each_failure_and_each_absent_source_held_for_thirty_seconds()
- {
+fn a_refusal_names_the_failure_and_each_absent_source_and_is_held_for_thirty_seconds() {
     let identity = Identity::start();
-    identity.set_imds_role(None);
-    let (session, _) = walled(&identity, "broken-refusal", &[]);
+    identity.refuse_sts("AccessDenied", 2);
+    let (session, _) = walled(&identity, "refusal-held", &[]);
     let session = session
-        .with_config_text("[profile broken]\nrole_arn = arn:aws:iam::123456789012:role/orphan\n")
-        .with_profile("broken");
+        .with_config_text(ROLE_CONFIG)
+        .with_credentials_text(BASE_CREDENTIALS)
+        .with_profile("trader");
 
     let now = SystemTime::now();
     let first = session
         .credentials(now)
-        .expect_err("a configured source failed and nothing answered")
+        .expect_err("a configured source failed")
         .to_string();
     assert!(
         first.contains("no AWS credentials could be obtained"),
         "{first}"
     );
-    assert!(first.contains("assumed role"), "{first}");
     assert!(
-        first.contains("the profile broken names role_arn without"),
-        "the failure says what is wrong with which profile: {first}"
+        first.contains("assumed role") && first.contains("AccessDenied"),
+        "{first}"
     );
-    assert!(first.contains("nothing configured in"), "{first}");
-    assert!(first.contains("container"), "{first}");
-    assert!(first.contains("instance metadata"), "{first}");
     let walked = identity.request_count();
-    assert_eq!(
-        walked, 2,
-        "one walk asked the metadata service for a token and a role"
-    );
+    assert_eq!(walked, 1, "one walk sent one exchange");
 
     let second = session
         .credentials(now + Duration::from_secs(10))
         .expect_err("the failure is answered again")
         .to_string();
-    assert!(second.contains("names role_arn without"), "{second}");
+    assert!(second.contains("AccessDenied"), "{second}");
     assert_eq!(
         identity.request_count(),
         walked,
@@ -1422,34 +1640,69 @@ fn nothing_answering_is_a_refusal_naming_each_failure_and_each_absent_source_hel
 
     let third = session
         .credentials(now + Duration::from_secs(31))
-        .expect_err("still nothing answers")
+        .expect_err("STS still refuses")
         .to_string();
-    assert!(third.contains("names role_arn without"), "{third}");
+    assert!(third.contains("AccessDenied"), "{third}");
     assert_eq!(
         identity.request_count(),
-        walked + 2,
+        walked + 1,
         "after the pause the chain is walked again"
     );
 }
 
 #[test]
-fn malformed_environment_keys_are_a_failed_source_and_the_chain_walks_on() {
+fn a_refusal_names_the_profile_it_read_and_found_no_keys_in() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    let container = identity.container_uri();
+    let (session, _) = walled(
+        &identity,
+        "refusal-absent",
+        &[
+            ("AWS_PROFILE", "desk"),
+            ("AWS_CONTAINER_CREDENTIALS_FULL_URI", container.as_str()),
+        ],
+    );
+    let session = session.with_config_text("[profile desk]\nregion = eu-west-1\n");
+    identity.fail_next(500, 50);
+
+    let message = refused(&session);
+    assert!(message.contains("container"), "{message}");
+    assert!(message.contains("nothing configured in"), "{message}");
+    assert!(
+        message.contains("profile desk (no keys, role, sign-in or process)"),
+        "the profile read and found empty is named: {message}"
+    );
+    assert!(message.contains("web identity"), "{message}");
+    assert!(message.contains("environment"), "{message}");
+    assert!(
+        identity
+            .requests()
+            .iter()
+            .all(|request| !request.path.starts_with("/latest/")),
+        "a container that fails ends the walk before the instance: {:?}",
+        shape(&identity)
+    );
+}
+
+#[test]
+fn a_half_environment_pair_ends_the_walk_before_the_files() {
     let identity = Identity::start();
     let (half, directory) = walled(&identity, "half-keys", &[("AWS_ACCESS_KEY_ID", "AKIAHALF")]);
-    assert_eq!(
-        found(&half).access_key_id(),
-        INSTANCE_KEY,
-        "a key without its secret is passed over"
+    let half = half.with_credentials_text(
+        "[default]\naws_access_key_id = AKIAFILE\naws_secret_access_key = file-secret\n",
     );
-
-    identity.set_imds_role(None);
-    let alone = again(&identity, &directory, &[("AWS_ACCESS_KEY_ID", "AKIAHALF")]);
-    let message = refused(&alone);
+    let message = refused(&half);
     assert!(message.contains("environment"), "{message}");
     assert!(
         message.contains("AWS_ACCESS_KEY_ID is set without AWS_SECRET_ACCESS_KEY"),
         "{message}"
     );
+    assert!(
+        !message.contains("AKIAFILE"),
+        "the file's keys are never reached: {message}"
+    );
+    assert_eq!(identity.request_count(), 0, "{:?}", shape(&identity));
 
     let lapsing = again(
         &identity,
@@ -1469,6 +1722,53 @@ fn malformed_environment_keys_are_a_failed_source_and_the_chain_walks_on() {
         !message.contains("env-secret"),
         "a refusal never renders a secret: {message}"
     );
+    assert_eq!(identity.request_count(), 0, "{:?}", shape(&identity));
+}
+
+#[test]
+fn a_half_pair_in_the_credentials_file_ends_the_walk_naming_the_missing_key() {
+    let identity = Identity::start();
+    let (session, directory) = walled(&identity, "half-file", &[]);
+    let session = session.with_credentials_text("[default]\naws_access_key_id = AKIAHALF\n");
+    let message = refused(&session);
+    assert!(
+        message.contains("shared credentials file")
+            && message.contains("aws_access_key_id without aws_secret_access_key"),
+        "{message}"
+    );
+    assert!(!message.contains("AKIAHALF"), "{message}");
+    assert_eq!(
+        identity.request_count(),
+        0,
+        "the instance's role is never asked in the half set's place: {:?}",
+        shape(&identity)
+    );
+
+    // A whole pair the configuration file holds for the same profile is no
+    // stand-in either.
+    let both = again(&identity, &directory, &[])
+        .with_credentials_text("[default]\naws_access_key_id = AKIAHALF\n")
+        .with_config_text(
+            "[default]\naws_access_key_id = AKIACONFIG\naws_secret_access_key = config-secret\n",
+        );
+    let message = refused(&both);
+    assert!(
+        message.contains("aws_access_key_id without aws_secret_access_key"),
+        "{message}"
+    );
+    assert!(!message.contains("AKIACONFIG"), "{message}");
+
+    // Half a pair in the configuration file ends the walk the same way.
+    let config = again(&identity, &directory, &[])
+        .with_config_text("[default]\naws_secret_access_key = config-secret\n");
+    let message = refused(&config);
+    assert!(
+        message.contains("config file")
+            && message.contains("aws_secret_access_key without aws_access_key_id"),
+        "{message}"
+    );
+    assert!(!message.contains("config-secret"), "{message}");
+    assert_eq!(identity.request_count(), 0, "{:?}", shape(&identity));
 }
 
 // --- refresh and invalidation -----------------------------------------------
@@ -2304,7 +2604,7 @@ fn a_profile_naming_a_services_section_nobody_wrote_is_refused_where_the_lookup_
 #[test]
 fn the_sts_endpoint_is_regional_by_default_and_global_only_for_the_legacy_regions_in_legacy_mode() {
     let regional = offline("sts-regional", &[]);
-    assert!(regional.sts_regional_endpoints());
+    assert!(regional.sts_regional_endpoints().expect("a mode"));
     assert_eq!(
         regional.sts_endpoint("eu-west-3").expect("an STS endpoint"),
         "https://sts.eu-west-3.amazonaws.com"
@@ -2315,7 +2615,7 @@ fn the_sts_endpoint_is_regional_by_default_and_global_only_for_the_legacy_region
     );
 
     let legacy = regional.with_sts_regional_endpoints(false);
-    assert!(!legacy.sts_regional_endpoints());
+    assert!(!legacy.sts_regional_endpoints().expect("a mode"));
     assert_eq!(
         legacy.sts_endpoint("us-east-1").expect("an STS endpoint"),
         "https://sts.amazonaws.com"
@@ -2398,10 +2698,12 @@ fn the_sts_endpoint_mode_is_read_from_the_variable_then_the_profile() {
             &[("AWS_STS_REGIONAL_ENDPOINTS", "legacy")]
         )
         .sts_regional_endpoints()
+        .expect("a mode")
     );
     assert!(
         !offline("sts-mode-case", &[("AWS_STS_REGIONAL_ENDPOINTS", "LEGACY")])
             .sts_regional_endpoints()
+            .expect("a mode")
     );
     assert!(
         offline(
@@ -2409,10 +2711,11 @@ fn the_sts_endpoint_mode_is_read_from_the_variable_then_the_profile() {
             &[("AWS_STS_REGIONAL_ENDPOINTS", "regional")]
         )
         .sts_regional_endpoints()
+        .expect("a mode")
     );
     let profile = offline("sts-mode-profile", &[])
         .with_config_text("[default]\nsts_regional_endpoints = legacy\n");
-    assert!(!profile.sts_regional_endpoints());
+    assert!(!profile.sts_regional_endpoints().expect("a mode"));
     assert_eq!(
         profile.sts_endpoint("us-east-1").expect("an STS endpoint"),
         "https://sts.amazonaws.com"
@@ -2423,7 +2726,8 @@ fn the_sts_endpoint_mode_is_read_from_the_variable_then_the_profile() {
             &[("AWS_STS_REGIONAL_ENDPOINTS", "regional")]
         )
         .with_config_text("[default]\nsts_regional_endpoints = legacy\n")
-        .sts_regional_endpoints(),
+        .sts_regional_endpoints()
+        .expect("a mode"),
         "the variable beats the profile"
     );
     assert!(
@@ -2432,8 +2736,75 @@ fn the_sts_endpoint_mode_is_read_from_the_variable_then_the_profile() {
             &[("AWS_STS_REGIONAL_ENDPOINTS", "legacy")]
         )
         .with_sts_regional_endpoints(true)
-        .sts_regional_endpoints(),
+        .sts_regional_endpoints()
+        .expect("a mode"),
         "what the caller states beats both"
+    );
+}
+
+#[test]
+fn an_sts_endpoint_mode_that_is_neither_legacy_nor_regional_is_refused_by_name() {
+    let variable = offline("sts-mode-typo", &[("AWS_STS_REGIONAL_ENDPOINTS", "legasy")]);
+    let message = variable
+        .sts_endpoint("us-east-1")
+        .expect_err("a typo is no mode")
+        .to_string();
+    assert!(
+        message.contains("AWS_STS_REGIONAL_ENDPOINTS") && message.contains("legasy"),
+        "{message}"
+    );
+    assert!(variable.sts_regional_endpoints().is_err());
+
+    let profile = offline("sts-mode-typo-profile", &[])
+        .with_config_text("[default]\nsts_regional_endpoints = regionall\n");
+    let message = profile
+        .sts_regional_endpoints()
+        .expect_err("a typo is no mode")
+        .to_string();
+    assert!(
+        message.contains("sts_regional_endpoints") && message.contains("regionall"),
+        "{message}"
+    );
+    assert!(profile.sts_endpoint("eu-west-3").is_err());
+
+    assert!(
+        offline(
+            "sts-mode-typo-stated",
+            &[("AWS_STS_REGIONAL_ENDPOINTS", "legasy")]
+        )
+        .with_sts_regional_endpoints(true)
+        .sts_endpoint("us-east-1")
+        .is_ok(),
+        "a mode the caller states is never read from the variable"
+    );
+}
+
+#[test]
+fn a_region_that_is_no_host_label_is_refused_naming_where_it_came_from_before_any_request() {
+    let identity = Identity::start();
+    let directory = scratch("region-no-label");
+    let session = Session::new()
+        .with_directory(&directory)
+        .with_variables(variables(&directory, &[("AWS_REGION", "eu-west-3/")]))
+        .with_metadata_endpoint(identity.endpoint())
+        .with_config_text(ROLE_CONFIG)
+        .with_credentials_text(BASE_CREDENTIALS)
+        .with_profile("trader");
+    let message = refused(&session);
+    assert!(
+        message.contains("AWS_REGION") && message.contains("host label"),
+        "{message}"
+    );
+    assert_eq!(identity.request_count(), 0, "{:?}", shape(&identity));
+
+    let stated = offline("region-no-label-stated", &[]);
+    assert!(stated.service_endpoint("s3tables", "eu west 3").is_err());
+    assert!(stated.sts_endpoint("eu-west-3.example.org#").is_err());
+    assert_eq!(
+        stated
+            .service_endpoint("sts", "eu-wset-3")
+            .expect("a label is a host whatever it is spelled"),
+        "https://sts.eu-wset-3.amazonaws.com"
     );
 }
 
@@ -2571,6 +2942,133 @@ fn the_shared_files_are_stated_then_named_by_the_environment_then_under_the_dire
     assert_eq!(
         stated.credentials_file(),
         Some(PathBuf::from("/etc/aws/credentials"))
+    );
+}
+
+#[test]
+fn aws_config_file_expands_variables_and_the_home_as_botocore_does() {
+    let directory = scratch("file-expansion");
+    let home = directory.join("home");
+    write(
+        &home.join("aws").join("config"),
+        "[default]\nregion = eu-west-3\n",
+    );
+    let home_text = home.display().to_string();
+    let aws_dir = home.join("aws").display().to_string();
+
+    let by_variable = Session::new()
+        .with_variables([
+            ("AWSDIR", aws_dir.as_str()),
+            ("AWS_CONFIG_FILE", "$AWSDIR/config"),
+        ])
+        .with_directory(&directory);
+    assert_eq!(
+        by_variable.config_file(),
+        Some(home.join("aws").join("config")),
+        "a variable inside AWS_CONFIG_FILE is expanded"
+    );
+    assert_eq!(by_variable.region().as_deref(), Some("eu-west-3"));
+
+    let braced = Session::new()
+        .with_variables([
+            ("AWSDIR", aws_dir.as_str()),
+            ("AWS_SHARED_CREDENTIALS_FILE", "${AWSDIR}/credentials"),
+        ])
+        .with_directory(&directory);
+    assert_eq!(
+        braced.credentials_file(),
+        Some(home.join("aws").join("credentials"))
+    );
+
+    for name in ["HOME", "USERPROFILE"] {
+        let tilde = Session::new().with_variables([
+            (name, home_text.as_str()),
+            ("AWS_CONFIG_FILE", "~/aws/config"),
+        ]);
+        assert_eq!(
+            tilde.config_file(),
+            Some(home.join("aws").join("config")),
+            "a leading ~ is the home {name} names"
+        );
+        assert_eq!(tilde.region().as_deref(), Some("eu-west-3"), "{name}");
+    }
+
+    let stated = Session::new()
+        .with_variables([("AWSDIR", aws_dir.as_str())])
+        .with_config_file("$AWSDIR/config");
+    assert_eq!(
+        stated.config_file(),
+        Some(home.join("aws").join("config")),
+        "a stated path is expanded as a configured one is"
+    );
+}
+
+#[test]
+fn the_shared_files_live_under_the_home_the_aws_tools_read() {
+    let both =
+        Session::new().with_variables([("HOME", "/h/posix"), ("USERPROFILE", r"C:\Users\win")]);
+    #[cfg(windows)]
+    assert_eq!(
+        both.directory(),
+        Some(PathBuf::from(r"C:\Users\win").join(".aws")),
+        "on Windows USERPROFILE is the home the AWS tools read, whatever HOME says"
+    );
+    #[cfg(not(windows))]
+    assert_eq!(
+        both.directory(),
+        Some(PathBuf::from("/h/posix").join(".aws")),
+        "elsewhere HOME is"
+    );
+
+    let profile_only = Session::new().with_variables([("USERPROFILE", r"C:\Users\win")]);
+    assert_eq!(
+        profile_only.directory(),
+        Some(PathBuf::from(r"C:\Users\win").join(".aws"))
+    );
+    let home_only = Session::new().with_variables([("HOME", "/h/posix")]);
+    assert_eq!(
+        home_only.directory(),
+        Some(PathBuf::from("/h/posix").join(".aws"))
+    );
+    assert_eq!(
+        Session::new().with_variables::<&str, &str>([]).directory(),
+        None,
+        "no home, no directory"
+    );
+}
+
+#[test]
+fn an_empty_aws_config_file_reads_no_configuration_file() {
+    let directory = scratch("empty-config-variable");
+    write(&directory.join("config"), "[default]\nregion = eu-west-3\n");
+    write(
+        &directory.join("credentials"),
+        "[default]\naws_access_key_id = AKIAFILE\naws_secret_access_key = file-secret\n",
+    );
+    let control = offline("empty-config-control", &[]).with_directory(&directory);
+    assert_eq!(control.region().as_deref(), Some("eu-west-3"));
+
+    let emptied = offline(
+        "empty-config",
+        &[
+            ("AWS_CONFIG_FILE", ""),
+            ("AWS_SHARED_CREDENTIALS_FILE", "  "),
+        ],
+    )
+    .with_directory(&directory);
+    assert_eq!(emptied.config_file(), None);
+    assert_eq!(emptied.credentials_file(), None);
+    assert_eq!(
+        emptied.region(),
+        None,
+        "an empty AWS_CONFIG_FILE names no file, not the one under ~/.aws"
+    );
+    assert!(emptied.available_profiles().is_empty());
+    assert_eq!(
+        emptied
+            .credentials(SystemTime::now())
+            .expect("nothing configured"),
+        None
     );
 }
 
@@ -3325,12 +3823,124 @@ fn the_services_section_s_signin_entry_is_where_a_console_sign_in_is_refreshed()
 
 #[cfg(feature = "internals")]
 mod internal {
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime};
 
-    use yggdryl::aws::Session;
-    use yggdryl::internals::aws_session::{imds_endpoint, imds_timeout};
+    use yggdryl::aws::{AssumedRole, Session};
+    use yggdryl::internals::aws_session::{imds_endpoint, imds_timeout, refused_by, sts_target};
 
+    use super::{exchanges, offline, refused, walled};
+    use crate::identity::Identity;
     use crate::mod_::scratch;
+
+    #[test]
+    fn a_legacy_mode_exchange_for_a_legacy_region_is_signed_for_us_east_1() {
+        let legacy = offline(
+            "sts-target-legacy",
+            &[("AWS_STS_REGIONAL_ENDPOINTS", "legacy")],
+        );
+        assert_eq!(
+            sts_target(&legacy, "eu-west-3").expect("a target"),
+            (
+                "https://sts.amazonaws.com".to_owned(),
+                "us-east-1".to_owned()
+            ),
+            "the global endpoint signs for us-east-1 whatever region the caller is in"
+        );
+        assert_eq!(
+            sts_target(&legacy, "af-south-1").expect("a target"),
+            (
+                "https://sts.af-south-1.amazonaws.com".to_owned(),
+                "af-south-1".to_owned()
+            ),
+            "a region outside the legacy list is regional and signed for itself"
+        );
+        assert_eq!(
+            sts_target(&offline("sts-target-regional", &[]), "eu-west-3").expect("a target"),
+            (
+                "https://sts.eu-west-3.amazonaws.com".to_owned(),
+                "eu-west-3".to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn an_opt_in_region_refusing_a_valid_key_names_the_region_and_the_endpoint_and_holds_nothing_against_the_key()
+     {
+        let identity = Identity::start();
+        identity.refuse_sts("InvalidClientTokenId", 1);
+        let pairs = [
+            ("AWS_ACCESS_KEY_ID", "AKIAOPTINBASE"),
+            ("AWS_SECRET_ACCESS_KEY", "base-secret"),
+        ];
+        let role = AssumedRole::new("arn:aws:iam::123456789012:role/x");
+        let (session, _) = walled(&identity, "opt-in-refusal", &pairs);
+        let session = session
+            .with_region("eu-central-2")
+            .with_assumed_role(role.clone());
+
+        let now = SystemTime::now();
+        let message = session
+            .credentials(now)
+            .expect_err("STS refused the key in the region")
+            .to_string();
+        assert!(
+            message.contains("InvalidClientTokenId")
+                && message.contains("eu-central-2")
+                && message.contains(&identity.endpoint()),
+            "the refusal names the code, the region and the endpoint: {message}"
+        );
+        assert!(
+            !message.contains("expired, revoked or unknown"),
+            "a valid key is not blamed: {message}"
+        );
+        assert_eq!(
+            refused_by(&session, "AKIAOPTINBASE", None, now),
+            None,
+            "nothing is held against the key outside the region that refused it"
+        );
+        let (by, region) = refused_by(&session, "AKIAOPTINBASE", Some("eu-central-2"), now)
+            .expect("held in the region that refused it");
+        assert!(
+            by.contains("eu-central-2") && by.contains(&identity.endpoint()),
+            "{by}"
+        );
+        assert_eq!(region.as_deref(), Some("eu-central-2"));
+
+        // Inside the hold the region is not asked again, and the refusal says
+        // why without blaming the key.
+        session.invalidate();
+        let message = session
+            .credentials(now + Duration::from_secs(1))
+            .expect_err("held in the region")
+            .to_string();
+        assert!(
+            message.contains("eu-central-2") && message.contains("may not have enabled"),
+            "{message}"
+        );
+        assert_eq!(exchanges(&identity, "AssumeRole").len(), 1);
+
+        // Once the pause has passed the exchange is sent again.
+        session.invalidate();
+        let keys = session
+            .credentials(now + Duration::from_secs(31))
+            .expect("STS relents")
+            .expect("a set");
+        assert_eq!(keys.access_key_id(), "ASIAx");
+        assert_eq!(exchanges(&identity, "AssumeRole").len(), 2);
+
+        // A region enabled by default refusing the key holds it everywhere.
+        identity.refuse_sts("InvalidClientTokenId", 1);
+        let (enabled, _) = walled(&identity, "enabled-region-refusal", &pairs);
+        let enabled = enabled.with_region("eu-west-3").with_assumed_role(role);
+        let message = refused(&enabled);
+        assert!(
+            message.contains("eu-west-3") && !message.contains("may not have enabled"),
+            "{message}"
+        );
+        let (_, region) = refused_by(&enabled, "AKIAOPTINBASE", None, SystemTime::now())
+            .expect("held in every region");
+        assert_eq!(region, None);
+    }
 
     /// A session reading `pairs` as its whole environment and `config` as its
     /// configuration file, the metadata service left enabled.
@@ -3443,4 +4053,26 @@ mod internal {
             );
         }
     }
+}
+
+#[test]
+fn environment_keys_take_the_region_from_the_default_profile() {
+    // The laptop mix: a key pair in the environment and nothing else there,
+    // the region in the configuration file alone - the keys sign and the
+    // file's region names the host, each read where it was stated.
+    let session = offline(
+        "keys-env-region-file",
+        &[
+            ("AWS_ACCESS_KEY_ID", "AKIAENV"),
+            ("AWS_SECRET_ACCESS_KEY", "s"),
+        ],
+    )
+    .with_config_text(
+        "[default]
+region = eu-west-3
+",
+    );
+    assert_eq!(found(&session).access_key_id(), "AKIAENV");
+    assert_eq!(session.credential_source(), Some("environment"));
+    assert_eq!(session.region().as_deref(), Some("eu-west-3"));
 }

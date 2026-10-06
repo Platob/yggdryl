@@ -210,9 +210,11 @@ impl Place {
 /// `s3tables://<bucket>/<namespace>/<table>` is the table, at one
 /// `GetTableMetadataLocation`; a table's ARN is the table that identifier
 /// is, at one `GetTable`, whose answer names its namespace, its name and its
-/// warehouse location. Neither answer primes the table's pointer: an object
-/// may be read long after it is built, so its first read asks where its
-/// document is again.
+/// warehouse location. Either answer primes the table's pointer: the first
+/// verb reads the document that answer named - the version current when
+/// the table was located, as PyIceberg's `load_table` reads - and the
+/// pointer asks the service again only after a publication or a refused
+/// one.
 ///
 /// The properties are read as [`S3TablesCatalog::from_location`] reads them,
 /// and the catalog is called what the `name` property says, else what the
@@ -386,6 +388,12 @@ struct Bucket {
     /// not - where the store is, how it is addressed, a key pair stated for
     /// it - handed to each table's [`Site::Store`] and printed by nothing.
     store: Properties,
+    /// The session every table's warehouse store signs with: the catalog's,
+    /// stating the bucket's region, built once - so every store client of
+    /// the bucket shares one credential lease, one signer cache and one
+    /// list of refused keys, where a session forked per table would walk
+    /// the credential chain per table.
+    store_session: OnceLock<Session>,
 }
 
 impl std::fmt::Debug for Bucket {
@@ -441,6 +449,22 @@ impl Bucket {
     /// and account.
     fn identity(&self) -> (&Url, Option<&Arn>, Option<&str>) {
         (&self.url, self.stated.as_ref(), self.account.as_deref())
+    }
+
+    /// The session every table's store signs with, in `region`: the
+    /// client's own where it states that region, else the client's stating
+    /// it - built on the first table and shared by every one after, so the
+    /// store's client forks nothing (`S3Client::session_of` keeps a session
+    /// whose stated region is the options').
+    fn store_session(&self, region: &str) -> &Session {
+        self.store_session.get_or_init(|| {
+            let session = self.client.session();
+            if session.stated_region() == Some(region) {
+                session.clone()
+            } else {
+                session.with_region(region)
+            }
+        })
     }
 }
 
@@ -623,6 +647,7 @@ impl S3TablesCatalog {
                 stated,
                 account,
                 resolved: OnceLock::new(),
+                store_session: OnceLock::new(),
                 store,
             }),
             description: None,
@@ -662,6 +687,33 @@ impl S3TablesCatalog {
         self.bucket.arn()
     }
 
+    /// The property names a table bucket's catalog reads beside the
+    /// session's and the store's: the bucket's ARN or account, the catalog's
+    /// name, and the client's region and endpoint under PyIceberg's
+    /// `s3tables.` prefix - what a location door keeps for the catalog
+    /// rather than refusing as a name nothing reads.
+    pub const PROPERTY_NAMES: [&'static str; 5] = [
+        ACCOUNT_PROPERTY,
+        "warehouse",
+        NAME_PROPERTY,
+        "s3tables.region",
+        "s3tables.endpoint",
+    ];
+
+    /// Whether `name` is a property the catalog or its client reads: one of
+    /// [`Self::PROPERTY_NAMES`], or any name under the `s3tables.` prefix
+    /// (`s3tables.profile-name`, `s3tables.access-key-id`, ...), which the
+    /// session reads; case and `-`/`_` are folded as every property door
+    /// folds them.
+    pub fn is_property(name: &str) -> bool {
+        let folded = name.to_ascii_lowercase().replace('-', "_");
+        matches!(
+            folded.as_str(),
+            ACCOUNT_PROPERTY | "warehouse" | NAME_PROPERTY
+        ) || folded.starts_with("s3tables.")
+            || folded.starts_with("s3tables_")
+    }
+
     /// The namespace `name` of the bucket, described: no request.
     fn namespace(&self, name: &str) -> S3TablesNamespace {
         namespace_of(&self.bucket, extended(&self.path, name), &self.stated)
@@ -669,12 +721,17 @@ impl S3TablesCatalog {
 
     /// The table the ARN `table` identifies, described: one `GetTable`,
     /// whose answer names its namespace, its name and its warehouse
-    /// location - and primes nothing, the table's pointer being asked where
-    /// its document is on its first use.
+    /// location, and primes the pointer with the document it names.
     fn identified(&self, table: &Arn) -> Result<IcebergTable<Handle>> {
         let described = self.bucket.client.get_table_by_arn(table)?;
-        self.namespace(described.namespace())
-            .described(described.name(), described.warehouse_location())
+        self.namespace(described.namespace()).described(
+            described.name(),
+            described.warehouse_location(),
+            PointerState::new(
+                described.metadata_location().cloned(),
+                described.version_token(),
+            ),
+        )
     }
 }
 
@@ -757,6 +814,15 @@ impl NamespaceValue for S3TablesCatalog {
         }
     }
 
+    /// The namespace `name` as the step of a path: described, no request -
+    /// the table below it is asked by name, and a namespace the bucket does
+    /// not hold is that table's absence.
+    fn descend(&self, name: &str) -> Result<Object> {
+        Ok(Object::Namespace(Namespace::S3Tables(Box::new(
+            self.namespace(name),
+        ))))
+    }
+
     /// Create the namespace `name`, one `CreateNamespace`. The service keeps
     /// no properties for it: `properties` are stated on the namespace
     /// answered, and every table's storage below it opens with them.
@@ -829,7 +895,8 @@ impl S3TablesNamespace {
     }
 
     /// The table `name` as `GetTableMetadataLocation` describes it: one
-    /// request, the table's document read on its first use.
+    /// request, whose answer primes the pointer, so the first use reads the
+    /// document it named and asks nothing.
     fn opened(&self, name: &str) -> Result<IcebergTable<Handle>> {
         let location = match self.bucket.client.get_table_metadata_location(
             self.bucket.arn()?,
@@ -845,19 +912,33 @@ impl S3TablesNamespace {
             }
             Err(error) => return Err(error),
         };
-        self.described(name, location.warehouse_location())
+        self.described(
+            name,
+            location.warehouse_location(),
+            PointerState::new(
+                location.metadata_location().cloned(),
+                location.version_token(),
+            ),
+        )
     }
 
     /// The table `name` whose files are under `warehouse`, described: no
-    /// request, its pointer asked where its document is on its first use.
-    fn described(&self, name: &str, warehouse: &Url) -> Result<IcebergTable<Handle>> {
+    /// request, its pointer primed with `state` - the document and token
+    /// the request that found the table answered - so its first use reads
+    /// that document.
+    fn described(
+        &self,
+        name: &str,
+        warehouse: &Url,
+        state: PointerState,
+    ) -> Result<IcebergTable<Handle>> {
         let below = extended(&self.path, name);
         let pointer = TablePointer::shared(
             &self.bucket,
             self.bucket.arn()?,
             self.namespace(),
             name,
-            None,
+            state,
         );
         let root = self.root(warehouse, &below, &Properties::new())?;
         Ok(IcebergTable::at(below, root)
@@ -941,7 +1022,7 @@ impl S3TablesNamespace {
             location.metadata_location().cloned(),
             location.version_token(),
         );
-        let pointer = TablePointer::shared(&self.bucket, arn, self.namespace(), name, Some(state));
+        let pointer = TablePointer::shared(&self.bucket, arn, self.namespace(), name, state);
         let root = self.root(location.warehouse_location(), &below, properties)?;
         match IcebergTable::create_pointed(root, version, schema, spec, pointer) {
             Ok(table) => Ok(table
@@ -968,7 +1049,7 @@ impl S3TablesNamespace {
         Ok(Handle::at(
             Site::Store {
                 url: warehouse.clone(),
-                session: self.bucket.client.session().clone(),
+                session: self.bucket.store_session(&region).clone(),
                 region,
                 store: self.bucket.store.clone(),
             },
@@ -1084,33 +1165,38 @@ struct TablePointer {
     bucket: Arn,
     namespace: String,
     name: String,
-    /// The answer a creation already read, taken by the first `current`
-    /// instead of a second request: the creation publishes under it at
-    /// once, so it cannot have gone stale.
+    /// The answer the request that found or created the table read, taken
+    /// by the first `current` instead of a second request. A creation
+    /// publishes under it at once; an open's first verb reads the document
+    /// current when the table was located, and a commit under a token the
+    /// table has since moved past is the conflict the service answers,
+    /// which rebases or fails as any conflict does.
     primed: Mutex<Option<PointerState>>,
 }
 
 impl TablePointer {
-    /// The pointer of the table `name`, shared by every clone of it.
+    /// The pointer of the table `name`, shared by every clone of it, primed
+    /// with `state`.
     fn shared(
         bucket: &Bucket,
         arn: &Arn,
         namespace: &str,
         name: &str,
-        primed: Option<PointerState>,
+        state: PointerState,
     ) -> Arc<dyn MetadataPointer> {
         Arc::new(Self {
             client: bucket.client.clone(),
             bucket: arn.clone(),
             namespace: namespace.to_owned(),
             name: name.to_owned(),
-            primed: Mutex::new(primed),
+            primed: Mutex::new(Some(state)),
         })
     }
 }
 
 impl MetadataPointer for TablePointer {
-    /// One `GetTableMetadataLocation`, or the answer a creation primed.
+    /// The answer that found or created the table, once; after it, one
+    /// `GetTableMetadataLocation`.
     fn current(&self) -> Result<PointerState> {
         if let Some(state) = self.primed.lock().ok().and_then(|mut primed| primed.take()) {
             return Ok(state);

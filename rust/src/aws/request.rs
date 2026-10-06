@@ -166,8 +166,12 @@ impl Signing {
         else {
             return Ok(false);
         };
+        let endpoint = host_header(sent.url());
         match super::error_code(headers, body) {
-            Some(code) => self.session.answers_another(signed, Some(&code), now),
+            Some(code) => {
+                self.session
+                    .answers_another(signed, Some(&code), &endpoint, &self.region, now)
+            }
             // A `HEAD` is refused with no body to name a code in: a
             // temporary set refused that way is read again, with nothing
             // held against its key.
@@ -175,7 +179,8 @@ impl Signing {
                 && body.is_empty()
                 && sent.headers().get("x-amz-security-token").is_some() =>
             {
-                self.session.answers_another(signed, None, now)
+                self.session
+                    .answers_another(signed, None, &endpoint, &self.region, now)
             }
             None => Ok(false),
         }

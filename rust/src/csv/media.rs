@@ -17,7 +17,7 @@ use smol_str::SmolStr;
 use crate::arrow::{BatchReader, arrow_schema_from_field};
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::text::transport::{
-    borrowed_decoded, encoded_terminator, ends_with, fetched, owned_decoded, update_suffix,
+    borrowed_decoded, decoded_over, encoded_terminator, ends_with, fetched, update_suffix,
 };
 use crate::{Charset, Codec, Error, Field, IOBase, IOMedia, Result};
 
@@ -184,7 +184,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
 ) -> crate::arrow::Result<BatchReader> {
     let declared = field.cloned().or_else(|| options.field());
     let url = handle.url().cloned();
-    let bytes = owned_decoded(crate::iobase::owned_handle(handle)?);
+    let bytes = decoded_over(handle)?;
     match reader::open(bytes, options, declared.as_ref(), url)? {
         Some(opened) => {
             // The record surface applies a total row limit after projection

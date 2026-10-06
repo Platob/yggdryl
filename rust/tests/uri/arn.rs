@@ -503,4 +503,162 @@ mod partition {
             "sts.cn-north-1.api.amazonwebservices.com.cn"
         );
     }
+
+    /// The standard form holds in GovCloud too: `fips` writes the service
+    /// `{service}-fips` there as everywhere. Whether a service's own rules
+    /// answer another host under FIPS in GovCloud - STS's regular host is
+    /// already FIPS-validated there - is that service's client's to decide
+    /// over this form; this pins what the form is.
+    #[test]
+    fn a_fips_host_in_govcloud_is_the_standard_form() {
+        let gov = ArnPartition::from_region("us-gov-west-1");
+        assert_eq!(gov, ArnPartition::AwsUsGov);
+        for (region, fips, dualstack, expected) in [
+            (
+                "us-gov-west-1",
+                true,
+                false,
+                "sts-fips.us-gov-west-1.amazonaws.com",
+            ),
+            (
+                "us-gov-east-1",
+                true,
+                false,
+                "sts-fips.us-gov-east-1.amazonaws.com",
+            ),
+            (
+                "us-gov-west-1",
+                false,
+                false,
+                "sts.us-gov-west-1.amazonaws.com",
+            ),
+            (
+                "us-gov-west-1",
+                true,
+                true,
+                "sts-fips.us-gov-west-1.api.aws",
+            ),
+            ("us-gov-west-1", false, true, "sts.us-gov-west-1.api.aws"),
+        ] {
+            assert_eq!(
+                gov.service_host("sts", region, fips, dualstack),
+                expected,
+                "{region} fips={fips} dualstack={dualstack}"
+            );
+        }
+    }
+}
+
+/// The region rules every AWS client builds a host through, reached through
+/// `yggdryl::internals::uri_arn`.
+#[cfg(all(feature = "internals", feature = "aws"))]
+mod internal {
+
+    use yggdryl::Error;
+    use yggdryl::internals::uri_arn::{check_region, is_opt_in};
+
+    #[test]
+    fn a_region_that_is_no_host_label_is_refused_where_it_breaks_naming_its_source() {
+        let long = "a".repeat(64);
+        // Each would be spelled into the host a signed request is sent to:
+        // `eu-west-3/` sends it to `sts.eu-west-3`, outside every partition.
+        for (region, position) in [
+            ("eu-west-3/", 9),
+            ("x.evil.test", 1),
+            ("user@host", 4),
+            ("eu west 3", 2),
+            (" eu-west-3", 0),
+            ("eu-west-3 ", 9),
+            ("", 0),
+            ("-east-1", 0),
+            ("east-1-", 6),
+            ("123", 0),
+            ("eu-wést-3", 4),
+            (long.as_str(), 63),
+        ] {
+            match check_region(region, "AWS_REGION") {
+                Err(Error::Parse {
+                    target,
+                    position: at,
+                    reason,
+                }) => {
+                    assert_eq!(target, "region", "{region:?}");
+                    assert_eq!(at, position, "{region:?}");
+                    assert!(
+                        reason.contains("the region AWS_REGION states")
+                            && reason.contains("one host label"),
+                        "{reason}"
+                    );
+                }
+                other => panic!("expected {region:?} refused, got {other:?}"),
+            }
+        }
+        // A refusal repeats at most 64 bytes of what it was given.
+        let flood = format!("{}/", "a".repeat(4096));
+        let refused = check_region(&flood, "the profile desk")
+            .expect_err("no host label")
+            .to_string();
+        assert!(refused.contains("the profile desk"), "{refused}");
+        assert!(refused.len() < 512, "{} bytes", refused.len());
+    }
+
+    #[test]
+    fn a_host_label_passes_whether_or_not_aws_runs_that_region() {
+        let longest = format!("a{}", "-b".repeat(31));
+        for region in [
+            "eu-west-3",
+            "us-gov-west-1",
+            "cn-north-1",
+            "EU-WEST-3",
+            "eu-wset-3",
+            "local",
+            "1a",
+            longest.as_str(),
+        ] {
+            check_region(region, "S3Tables::with_region").expect(region);
+        }
+    }
+
+    #[test]
+    fn the_opt_in_regions_are_the_seventeen_aws_disables_by_default() {
+        for region in [
+            "af-south-1",
+            "ap-east-1",
+            "ap-east-2",
+            "ap-south-2",
+            "ap-southeast-3",
+            "ap-southeast-4",
+            "ap-southeast-5",
+            "ap-southeast-6",
+            "ap-southeast-7",
+            "ca-west-1",
+            "eu-central-2",
+            "eu-south-1",
+            "eu-south-2",
+            "il-central-1",
+            "me-central-1",
+            "me-south-1",
+            "mx-central-1",
+        ] {
+            assert!(is_opt_in(region), "{region}");
+        }
+        assert!(is_opt_in(" EU-CENTRAL-2 "), "folded and trimmed");
+        // Enabled by default, another partition, or no region at all.
+        for region in [
+            "us-east-1",
+            "eu-west-3",
+            "eu-central-1",
+            "ap-south-1",
+            "ap-southeast-1",
+            "ca-central-1",
+            "sa-east-1",
+            "us-gov-west-1",
+            "cn-north-1",
+            "eusc-de-east-1",
+            "eu-central-2x",
+            "",
+        ] {
+            assert!(!is_opt_in(region), "{region:?}");
+        }
+    }
 }

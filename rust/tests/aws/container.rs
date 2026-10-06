@@ -2,16 +2,19 @@
 //! serves, and the hosts a task's token is ever presented to.
 //!
 //! The host rule is pinned by spelling through `yggdryl::internals`, because
-//! it is the whole of what keeps a token off a stranger's host. The fetch is
-//! driven over the identity fake through a sealed session whose environment
-//! names the endpoint, and every request it makes is counted: a refusal that
-//! is meant to come before the wire is proven by a count of zero.
+//! it is the whole of what keeps a token off a stranger's host, and so is
+//! which variable names the endpoint, because the relative URI's agent is a
+//! link-local address no test serves. The fetch is driven over the identity
+//! fake through a sealed session whose environment names the endpoint, and
+//! every request it makes is counted: a refusal that is meant to come before
+//! the wire is proven by a count of zero, and a configured endpoint that
+//! fails ends the walk, the instance's role never asked.
 
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use yggdryl::aws::{Credentials, Session};
-use yggdryl::internals::aws_container::is_allowed_full_uri;
+use yggdryl::internals::aws_container::{is_allowed_full_uri, uri};
 
 use crate::identity::{CONTAINER_PATH, Identity};
 use crate::mod_::{scratch, sealed};
@@ -19,16 +22,6 @@ use crate::mod_::{scratch, sealed};
 /// An expiry no test outlives, and the instant it names.
 const FAR: &str = "2099-01-01T00:00:00Z";
 const FAR_SECONDS: u64 = 4_070_908_800;
-
-/// What a walk that ends at the instance metadata service asks it, in order.
-const IMDS_WALK: [&str; 3] = [
-    "PUT /latest/api/token",
-    "GET /latest/meta-data/iam/security-credentials/",
-    "GET /latest/meta-data/iam/security-credentials/instance-role",
-];
-
-/// The keys the fake's instance role answers.
-const INSTANCE_KEY: &str = "ASIAINSTANCEROLE";
 
 /// A sealed session reading exactly `pairs` as its environment.
 fn walled(identity: &Identity, name: &str, pairs: &[(&str, &str)]) -> Session {
@@ -207,6 +200,70 @@ fn a_scheme_other_than_http_or_https_or_none_at_all_is_refused() {
     }
 }
 
+// --- which variable names the endpoint ------------------------------------------
+
+#[test]
+fn a_relative_uri_that_is_no_path_is_refused_naming_the_variable() {
+    for relative in ["v2/credentials/abc", "http://127.0.0.1/creds", "?query"] {
+        let message = uri(&[("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", relative)])
+            .expect_err("a relative URI that does not start with / names nothing")
+            .to_string();
+        assert!(
+            message.contains("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"),
+            "{message}"
+        );
+        assert!(message.contains(relative), "the value is named: {message}");
+        assert!(
+            message.contains("not a path on the container agent"),
+            "{message}"
+        );
+    }
+}
+
+#[test]
+fn the_relative_uri_is_a_path_on_the_agent_and_wins_over_the_full_uri() {
+    let relative = (
+        "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+        "/v2/credentials/abc",
+    );
+    let agent = Some("http://169.254.170.2/v2/credentials/abc".to_owned());
+
+    assert_eq!(
+        uri(&[relative]).expect("a path on the agent"),
+        agent,
+        "the path is joined onto the agent's link-local address"
+    );
+    assert_eq!(
+        uri(&[
+            relative,
+            ("AWS_CONTAINER_CREDENTIALS_FULL_URI", "http://127.0.0.1:9/x")
+        ])
+        .expect("the relative URI wins"),
+        agent,
+        "the relative URI wins over an allowed full URI"
+    );
+    assert_eq!(
+        uri(&[
+            relative,
+            ("AWS_CONTAINER_CREDENTIALS_FULL_URI", "http://evil.example/")
+        ])
+        .expect("a full URI beside the relative one is never judged"),
+        agent,
+        "the relative URI wins over a full URI the host rule refuses"
+    );
+    assert_eq!(
+        uri(&[("AWS_CONTAINER_CREDENTIALS_FULL_URI", "http://127.0.0.1:9/x")])
+            .expect("an allowed full URI"),
+        Some("http://127.0.0.1:9/x".to_owned()),
+        "without a relative URI, the full URI is the endpoint"
+    );
+    assert_eq!(
+        uri(&[]).expect("nothing configured is not a refusal"),
+        None,
+        "no variable names no endpoint"
+    );
+}
+
 // --- the fetch, over the fake ---------------------------------------------------
 
 #[test]
@@ -369,7 +426,7 @@ fn a_token_file_that_cannot_be_read_is_refused_by_name_before_any_request() {
 }
 
 #[test]
-fn a_full_uri_on_a_refused_host_is_a_recorded_failure_that_sends_nothing() {
+fn a_full_uri_on_a_refused_host_is_refused_sending_nothing_and_ends_the_walk() {
     let identity = Identity::start();
     // The fake's own port under the unspecified address: were the rule to
     // let it through, the request would land on the fake and be counted
@@ -396,14 +453,18 @@ fn a_full_uri_on_a_refused_host_is_a_recorded_failure_that_sends_nothing() {
     );
     assert_eq!(identity.request_count(), 0, "the token went nowhere");
 
-    // With the instance answering, the refusal is one source passed over.
-    let walking = walled(&identity, "container-refused-host-walks-on", &pairs);
-    assert_eq!(found(&walking).access_key_id(), INSTANCE_KEY);
-    assert_eq!(walking.credential_source(), Some("instance metadata"));
+    // The variable is a configured source: with the instance answering too,
+    // its refusal is the answer and the instance is never asked.
+    let walking = walled(&identity, "container-refused-host-ends-the-walk", &pairs);
+    let message = refused(&walking);
+    assert!(
+        message.contains("AWS_CONTAINER_CREDENTIALS_FULL_URI"),
+        "{message}"
+    );
     assert_eq!(
-        shape(&identity),
-        IMDS_WALK,
-        "the container endpoint is never asked"
+        identity.request_count(),
+        0,
+        "neither the container endpoint nor the instance is asked"
     );
 }
 
@@ -434,7 +495,7 @@ fn an_endpoint_that_fails_with_a_5xx_is_asked_again_up_to_three_times() {
 }
 
 #[test]
-fn an_endpoint_that_fails_every_attempt_is_passed_over_for_the_instance() {
+fn an_endpoint_that_fails_every_attempt_ends_the_walk_with_its_refusal() {
     let identity = Identity::start();
     identity.fail_next(500, 3);
     let uri = identity.container_uri();
@@ -444,14 +505,15 @@ fn an_endpoint_that_fails_every_attempt_is_passed_over_for_the_instance() {
         &[("AWS_CONTAINER_CREDENTIALS_FULL_URI", uri.as_str())],
     );
 
-    assert_eq!(found(&session).access_key_id(), INSTANCE_KEY);
-    assert_eq!(session.credential_source(), Some("instance metadata"));
-    let mut expected = vec![format!("GET {CONTAINER_PATH}"); 3];
-    expected.extend(IMDS_WALK.map(str::to_owned));
+    let message = refused(&session);
+    assert!(
+        message.contains("container credential endpoint"),
+        "the source is named: {message}"
+    );
     assert_eq!(
         shape(&identity),
-        expected,
-        "three attempts at the container, then the instance's walk"
+        vec![format!("GET {CONTAINER_PATH}"); 3],
+        "three attempts at the container, and the instance, which has a role, is never asked"
     );
 }
 
@@ -459,7 +521,6 @@ fn an_endpoint_that_fails_every_attempt_is_passed_over_for_the_instance() {
 fn a_4xx_is_a_failure_naming_the_status_and_is_not_asked_again() {
     let identity = Identity::start();
     identity.require_container_authorization(Some("task-token-right"));
-    identity.set_imds_role(None);
     let uri = identity.container_uri();
     let session = walled(
         &identity,
@@ -482,12 +543,8 @@ fn a_4xx_is_a_failure_naming_the_status_and_is_not_asked_again() {
     );
     assert_eq!(
         shape(&identity),
-        [
-            format!("GET {CONTAINER_PATH}"),
-            "PUT /latest/api/token".to_owned(),
-            "GET /latest/meta-data/iam/security-credentials/".to_owned(),
-        ],
-        "one refused request, then the instance, which has no role"
+        [format!("GET {CONTAINER_PATH}")],
+        "one refused request, and the instance, which has a role, is never asked"
     );
     assert_eq!(identity.requests()[0].status, 401);
 }

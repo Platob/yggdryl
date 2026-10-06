@@ -186,6 +186,50 @@ mod accounting {
         }
     }
 
+    /// A text read of the objects under a glob: one listing of the prefix,
+    /// then one `GET` per object - the listed leaf streamed through the
+    /// resuming reader it owns, nothing reopened, no probe listing and no
+    /// read past the end.
+    #[test]
+    fn a_text_read_of_a_glob_is_one_listing_and_one_get_per_object() {
+        use yggdryl::IOMedia;
+        use yggdryl::media::RecordOptions;
+        use yggdryl::text::TextOptions;
+
+        let store = store();
+        store.put(crate::mod_::BUCKET, "logs/a.log", b"alpha\nbeta\n");
+        store.put(crate::mod_::BUCKET, "logs/b.log", b"gamma\n");
+        let logs = path(&store, "logs/*.log");
+        let options = RecordOptions::from(TextOptions::new());
+        store.clear_requests();
+        let rows: usize = logs
+            .read_serie(Some(&options))
+            .expect("the lines")
+            .map(|record| record.expect("a record").len())
+            .sum();
+        assert_eq!(rows, 3);
+        let shapes: Vec<String> = store
+            .requests()
+            .iter()
+            .map(|request| {
+                let listing = request
+                    .query
+                    .iter()
+                    .any(|(name, value)| name == "list-type" && value == "2");
+                format!(
+                    "{} {}",
+                    if listing {
+                        "LIST"
+                    } else {
+                        request.method.as_str()
+                    },
+                    request.key.clone().unwrap_or_default()
+                )
+            })
+            .collect();
+        assert_eq!(shapes, ["LIST ", "GET logs/a.log", "GET logs/b.log"]);
+    }
+
     #[test]
     fn building_a_handle_costs_nothing() {
         let store = store();

@@ -53,7 +53,9 @@ pub struct Recorded {
     /// The request path exactly as sent (percent escapes retained), without
     /// the query; `key` holds the decoded spelling.
     pub path: String,
-    /// The query, percent-decoded, in wire order.
+    /// The query, percent-decoded, in wire order, followed by the pairs of
+    /// a form body - an STS exchange's parameters - so a test reads
+    /// `Action` wherever the exchange carried it.
     pub query: Vec<(String, String)>,
     /// The request headers with lowercase names, in wire order.
     pub headers: Vec<(String, String)>,
@@ -123,6 +125,21 @@ impl FakeS3 {
     /// accepts every key.
     pub fn require_access_key(&self, access_key: Option<&str>) {
         self.inner.store().required_access_key = access_key.map(str::to_owned);
+    }
+
+    /// Carry `x-amz-bucket-region` on no answer but a `HEAD` on the bucket
+    /// itself (`true`), or on every answer about a pinned bucket (`false`).
+    pub fn omit_bucket_region_header(&self, omit: bool) {
+        self.inner.store().omit_bucket_region_header = omit;
+    }
+
+    /// Answer a request signed for another region than the bucket's pinned
+    /// one with `400 IllegalLocationConstraintException` - no `<Region>`,
+    /// no `x-amz-bucket-region` - as a listing sent to the wrong regional
+    /// endpoint is; a `HEAD` on the bucket keeps its usual answer carrying
+    /// the region.
+    pub fn answer_location_constraint(&self, constraint: bool) {
+        self.inner.store().answer_location_constraint = constraint;
     }
 
     /// Pin the region of `bucket`: a credential scope naming another region
@@ -392,11 +409,18 @@ impl Inner {
             Dialect::Aws => self.resolve(request),
             _ => self.resolve_dialect(dialect, request),
         };
+        let head_on_bucket = request.method == "HEAD" && key.is_none();
         let mut response = self.answer(request, bucket.as_deref(), key.as_deref());
         let region = bucket
             .as_deref()
             .and_then(|bucket| self.store().regions.get(bucket).cloned());
-        if let Some(region) = region {
+        // A location-constraint refusal names no region, as S3's does.
+        let constraint_refusal =
+            self.store().answer_location_constraint && !head_on_bucket && response.status == 400;
+        if let Some(region) = region
+            && (!self.store().omit_bucket_region_header || head_on_bucket)
+            && !constraint_refusal
+        {
             response
                 .headers
                 .push(("x-amz-bucket-region".to_owned(), region));
@@ -422,7 +446,7 @@ impl Inner {
         }
         match Dialect::of(request) {
             Dialect::Aws => {
-                if let Some(refusal) = self.refusal(request, bucket) {
+                if let Some(refusal) = self.refusal(request, bucket, key) {
                     return refusal;
                 }
                 self.store().dispatch(request, bucket, key)
@@ -506,7 +530,12 @@ impl Inner {
     /// date and payload-hash headers and of every signed header, the required
     /// access key, and the bucket's pinned region. Signatures are never
     /// verified - the server holds no secret. `Some` is the refusal.
-    fn refusal(&self, request: &Request, bucket: Option<&str>) -> Option<Response> {
+    fn refusal(
+        &self,
+        request: &Request,
+        bucket: Option<&str>,
+        key: Option<&str>,
+    ) -> Option<Response> {
         if self.anonymous.load(Ordering::SeqCst) {
             return None;
         }
@@ -545,19 +574,32 @@ impl Inner {
         if expected == &credential.region {
             return None;
         }
+        let head_on_bucket = request.method == "HEAD" && key.is_none();
+        if store.answer_location_constraint && !head_on_bucket {
+            return Some(Response::error(
+                400,
+                "IllegalLocationConstraintException",
+                &format!(
+                    "The {expected} location constraint is incompatible for the region specific                      endpoint this request was sent to."
+                ),
+                &[],
+            ));
+        }
         let message = format!(
             "The authorization header is malformed; the region '{}' is wrong; expecting '{expected}'",
             credential.region
         );
-        Some(
-            Response::error(
-                400,
-                "AuthorizationHeaderMalformed",
-                &message,
-                &[("Region", expected)],
-            )
-            .with_header("x-amz-bucket-region", expected),
-        )
+        let refused = Response::error(
+            400,
+            "AuthorizationHeaderMalformed",
+            &message,
+            &[("Region", expected)],
+        );
+        Some(if store.omit_bucket_region_header && !head_on_bucket {
+            refused
+        } else {
+            refused.with_header("x-amz-bucket-region", expected)
+        })
     }
 
     fn record(
@@ -572,12 +614,14 @@ impl Inner {
         if !self.recording.load(Ordering::SeqCst) {
             return;
         }
+        let mut query = request.query.clone();
+        query.extend(request.form_pairs());
         self.log().push(Recorded {
             method: request.method.clone(),
             bucket,
             key,
             path: request.path.clone(),
-            query: request.query.clone(),
+            query,
             headers: request.headers.clone(),
             body_len,
             status,
@@ -639,6 +683,13 @@ struct Store {
     regions: HashMap<String, String>,
     /// The only access key accepted, when set.
     required_access_key: Option<String>,
+    /// Whether no answer but a `HEAD` on a bucket carries
+    /// `x-amz-bucket-region`.
+    omit_bucket_region_header: bool,
+    /// Whether a request signed for another region than the bucket's is
+    /// answered `400 IllegalLocationConstraintException` naming no region,
+    /// as a listing is, rather than `AuthorizationHeaderMalformed`.
+    answer_location_constraint: bool,
     /// The failure injected by `fail_next`, while requests remain.
     failure: Option<Injected>,
     /// The expiry every assumed-role session is answered with.
@@ -680,6 +731,8 @@ impl Default for Store {
             uploads: HashMap::new(),
             regions: HashMap::new(),
             required_access_key: None,
+            omit_bucket_region_header: false,
+            answer_location_constraint: false,
             failure: None,
             role_expiry: DEFAULT_ROLE_EXPIRY.to_owned(),
             cut: None,
@@ -912,7 +965,7 @@ impl Store {
     ) -> Response {
         // STS shares the endpoint here so a test needs one server rather than
         // two; on AWS it is a host of its own.
-        if request.query("Action") == Some("AssumeRole") {
+        if request.param("Action").as_deref() == Some("AssumeRole") {
             return self.assume_role(request);
         }
         let Some(bucket) = bucket else {
@@ -1218,7 +1271,7 @@ impl Store {
     /// request was signed as, and the expiry is whatever `expire_roles` said -
     /// which is how the refresh path is exercised without waiting an hour.
     fn assume_role(&self, request: &Request) -> Response {
-        let Some(role) = request.query("RoleArn").filter(|arn| !arn.is_empty()) else {
+        let Some(role) = request.param("RoleArn").filter(|arn| !arn.is_empty()) else {
             return Response::error(
                 400,
                 "ValidationError",
@@ -1227,8 +1280,8 @@ impl Store {
                 &[],
             );
         };
-        let session = request.query("RoleSessionName").unwrap_or_default();
-        let short = role.rsplit('/').next().unwrap_or(role);
+        let session = request.param("RoleSessionName").unwrap_or_default();
+        let short = role.rsplit('/').next().unwrap_or(&role);
         let mut xml = document("AssumeRoleResponse");
         xml.push_str("<AssumeRoleResult><Credentials>");
         element(&mut xml, "AccessKeyId", &format!("ASIA{short}"));
@@ -1601,6 +1654,34 @@ impl Request {
 
     fn has_query(&self, name: &str) -> bool {
         self.query(name).is_some()
+    }
+
+    /// The pairs of a form body - `application/x-www-form-urlencoded`, as an
+    /// STS exchange carries its parameters - percent-decoded; empty where
+    /// the body is no form.
+    fn form_pairs(&self) -> Vec<(String, String)> {
+        let form = self
+            .header("content-type")
+            .is_some_and(|value| value.starts_with("application/x-www-form-urlencoded"));
+        if !form {
+            return Vec::new();
+        }
+        std::str::from_utf8(&self.body)
+            .unwrap_or_default()
+            .split('&')
+            .filter_map(|pair| pair.split_once('='))
+            .map(|(name, value)| (percent_decode(name), percent_decode(value)))
+            .collect()
+    }
+
+    /// One parameter of the request: in the query, else in its form body.
+    fn param(&self, name: &str) -> Option<String> {
+        self.query(name).map(str::to_owned).or_else(|| {
+            self.form_pairs()
+                .into_iter()
+                .find(|(held, _)| held == name)
+                .map(|(_, value)| value)
+        })
     }
 }
 

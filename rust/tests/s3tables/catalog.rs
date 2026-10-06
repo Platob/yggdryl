@@ -16,12 +16,14 @@ use std::sync::Arc;
 use arrow_array::{Array, FixedSizeBinaryArray, RecordBatch, TimestampNanosecondArray};
 
 use crate::fake::{ACCESS_KEY, REGION, S3TablesFake, SECRET_KEY};
+use crate::identity::Identity;
 use crate::mod_::{LAKE_LABEL, client, lake, scratch};
 use crate::server::FakeS3;
+use yggdryl::aws::Session;
 use yggdryl::holder::Holder;
 use yggdryl::iceberg::FormatVersion;
 use yggdryl::iceberg::{IcebergTable, PartitionSpec};
-use yggdryl::s3tables::S3TablesCatalog;
+use yggdryl::s3tables::{S3Tables, S3TablesCatalog};
 use yggdryl::{
     Arn, ArrowCastOptions, Catalog, CatalogValue, DataType, Field, IOBase, IOKind, IOMedia,
     NamespaceValue, ObjectValue, Properties, Serie, StructType, Table, TableValue, TimeUnit,
@@ -250,13 +252,15 @@ fn a_table_bucket_is_a_catalog_whose_tables_commit_through_the_control_plane() {
         [(0, 2, 1), (0, 5, 2), (QUARTER, QUARTER + 9, 9)]
     );
 
-    // Reopened through the catalog: one request a level - the namespace,
-    // then where the table's document is - and the same rows read through
-    // the document the service names.
+    // Reopened through the catalog: one request - where the table's
+    // document is, the namespace descended by description - and the same
+    // rows read through the document that request named, asking nothing
+    // more.
     fake.clear_requests();
     let reopened = catalog.table("desk.quotes").expect("the table");
-    assert_eq!(fake.request_count(), 2, "{:?}", fake.lines());
+    assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
     assert_eq!(read(&reopened), read(&table));
+    assert_eq!(fake.request_count(), 1, "{:?}", fake.lines());
     assert_eq!(
         reopened
             .field()
@@ -700,6 +704,11 @@ fn metadata_location_line(name: &str) -> String {
     format!("GET /tables/{LAKE_LABEL}/desk/{name}/metadata-location")
 }
 
+/// The line `GetNamespace` of `<name>` leaves in the log.
+fn get_namespace_line(name: &str) -> String {
+    format!("GET /namespaces/{LAKE_LABEL}/{name}")
+}
+
 /// Every `GET` of an object the store answered, by key.
 fn fetched(store: &FakeS3) -> Vec<String> {
     store
@@ -754,13 +763,14 @@ fn a_location_names_the_catalog_the_namespace_or_the_table() {
     assert_eq!(table.to_string(), "lake.desk.quotes");
     assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
 
-    // Its first read asks the pointer once and reads the one document it
-    // names; what was read is kept.
+    // Its first read asks the pointer nothing - the request that located
+    // the table primed it - and reads the one document that request named;
+    // what was read is kept.
     fake.clear_requests();
     store.clear_requests();
     let schema = table.field().expect("its schema");
     assert_eq!(schema.get_metadata("PARTITION:by"), Some(r#"["part"]"#));
-    assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
+    assert_eq!(fake.request_count(), 0, "{:?}", fake.lines());
     let documents = fetched(&store);
     assert!(
         documents.len() == 1 && documents[0].ends_with(".metadata.json"),
@@ -770,7 +780,7 @@ fn a_location_names_the_catalog_the_namespace_or_the_table() {
     // `HEAD`, no listing beside it.
     assert_eq!(store.request_count(), 1, "{:?}", store.requests());
     table.field().expect("its schema");
-    assert_eq!(fake.request_count(), 1);
+    assert_eq!(fake.request_count(), 0);
     assert_eq!(store.request_count(), 1, "{:?}", store.requests());
     assert_eq!(read(table), [(0, 2, 1)]);
 
@@ -1178,12 +1188,12 @@ fn a_table_opens_by_its_location_or_by_its_arn() {
     assert_eq!(ObjectValue::path(&table), ["lake", "desk", "quotes"]);
     assert_eq!(fake.lines(), [get_table_line(&arn)]);
 
-    // That answer primes nothing: the first read asks where the document is
-    // and reads it, once each.
+    // That answer primed the pointer: the first read asks the service
+    // nothing and reads the document it named, once.
     fake.clear_requests();
     store.clear_requests();
     assert_eq!(table.metadata_version().expect("its version"), 1);
-    assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
+    assert_eq!(fake.request_count(), 0, "{:?}", fake.lines());
     assert_eq!(fetched(&store).len(), 1, "{:?}", fetched(&store));
     assert_eq!(store.request_count(), 1, "{:?}", store.requests());
     assert_eq!(read(&Table::from(table)), [(0, 2, 1)]);
@@ -1200,6 +1210,7 @@ fn a_table_opens_by_its_location_or_by_its_arn() {
     .expect("the table");
     assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
     assert_eq!(read(&Table::from(located.clone())), [(0, 2, 1)]);
+    assert_eq!(fake.request_count(), 1, "the read asked nothing more");
 
     // Who signs is the session's: the table keeps no identity property, so
     // it lists and prints no secret.
@@ -1642,4 +1653,122 @@ fn live_a_table_bucket_commits_through_the_control_plane() {
     namespace.expect("the namespace removed");
     located.expect("the located table removed, or already dropped");
     by_location.expect("the namespace made on the way removed");
+}
+
+#[test]
+fn a_dotted_path_descends_by_description_and_a_namespace_asked_for_is_one_request() {
+    let fake = S3TablesFake::start();
+    let store = store();
+    let catalog = catalog(&fake, &store);
+    let desk = catalog
+        .create_namespace("desk", &Properties::new())
+        .expect("a namespace");
+    desk.create_table("quotes", &declared(), &Properties::new())
+        .expect("a table");
+
+    // The table by its dotted path: the namespace descended by description,
+    // the table the one request - and its first read none, that answer
+    // having primed the pointer.
+    fake.clear_requests();
+    let table = catalog.table("desk.quotes").expect("the table");
+    assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
+    table.field().expect("its schema");
+    assert_eq!(fake.request_count(), 1, "{:?}", fake.lines());
+
+    // A namespace asked for by name is the existence question it always
+    // was: one `GetNamespace`, and absent where the bucket holds none.
+    fake.clear_requests();
+    catalog.namespaces().get("desk").expect("the namespace");
+    assert_eq!(fake.lines(), [get_namespace_line("desk")]);
+    fake.clear_requests();
+    assert!(!catalog.namespaces().contains("ghost").expect("an answer"));
+    assert_eq!(fake.lines(), [get_namespace_line("ghost")]);
+
+    // A table under a namespace the bucket does not hold is absent by its
+    // path, at the table's one request and no `GetNamespace` before it.
+    fake.clear_requests();
+    let error = catalog
+        .table("ghost.quotes")
+        .expect_err("no such namespace");
+    assert!(error.is_absent(), "{error}");
+    assert!(error.to_string().contains("lake.ghost.quotes"), "{error}");
+    assert_eq!(
+        fake.lines(),
+        [format!(
+            "GET /tables/{LAKE_LABEL}/ghost/quotes/metadata-location"
+        )]
+    );
+}
+
+#[test]
+fn every_store_of_a_bucket_signs_under_the_one_session_the_catalog_walked() {
+    let fake = S3TablesFake::start();
+    let store = store();
+    let identity = Identity::start();
+    identity.set_imds_role(Some("instance-role"));
+    fake.accept_key(
+        "ASIAINSTANCEROLE",
+        "secret-of-instance-role",
+        Some("token-of-instance-role"),
+    );
+    store.require_access_key(None);
+    // A session that answers only through the instance metadata fake, so
+    // every walk of the chain is a request the fake counts - and states no
+    // region, as a session built from a profile or the environment states
+    // none: the client's region is the bucket's, and the stores take it
+    // from the catalog.
+    let session = Session::new()
+        .with_variables::<&str, &str>([])
+        .with_directory(scratch("shared-store-session"))
+        .with_metadata_endpoint(identity.endpoint());
+    let catalog = Catalog::from(
+        S3TablesCatalog::new(
+            "lake",
+            S3Tables::new(session)
+                .with_region(REGION)
+                .try_with_endpoint_url(fake.endpoint())
+                .expect("the fake's endpoint"),
+            lake(&fake),
+        )
+        .expect("a table bucket's ARN")
+        .with_properties(store_properties(&store)),
+    );
+    let desk = catalog
+        .create_namespace("desk", &Properties::new())
+        .expect("a namespace");
+    assert!(
+        identity.request_count() > 0,
+        "the control plane signed under the walked set"
+    );
+
+    // Three tables, each created through the control plane and written to
+    // its own warehouse on the store, then read back. The first table's
+    // store walks the chain once, for the session the bucket keeps in its
+    // region; every table after it signs under that same session and the
+    // fake hears nothing more - where a session forked per table would walk
+    // the chain again for each.
+    let mut walked = 0;
+    for (count, name) in ["quotes", "orders", "fills"].into_iter().enumerate() {
+        let mut table = desk
+            .create_table(name, &declared(), &Properties::new())
+            .expect("a table");
+        table
+            .append_serie(rows(&[(2, 1)]).into(), None)
+            .expect("an append");
+        assert_eq!(read(&table), [(0, 2, 1)]);
+        let reopened = catalog
+            .table(format!("desk.{name}").as_str())
+            .expect("the table");
+        assert_eq!(read(&reopened), [(0, 2, 1)]);
+        if count == 0 {
+            walked = identity.request_count();
+        } else {
+            assert_eq!(
+                identity.request_count(),
+                walked,
+                "table {name}: {:?}",
+                identity.requests()
+            );
+        }
+    }
 }

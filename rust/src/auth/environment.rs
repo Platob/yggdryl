@@ -5,7 +5,9 @@
 //! test's - and so every reading trims and treats a blank variable as unset
 //! the same way. That is how botocore reads an endpoint variable; a blank
 //! *flag* it reads as set and false, where here it is unset and the profile
-//! is read next.
+//! is read next. A variable whose being set is itself the statement - a
+//! shared file's path, where `AWS_CONFIG_FILE=` means no file - is read
+//! through [`Environment::raw`], which keeps a blank value as the empty text.
 
 #[cfg(feature = "aws")]
 use std::collections::BTreeMap;
@@ -15,8 +17,17 @@ use crate::boolean::bool_from_text;
 
 /// A non-empty value, trimmed; an empty one is unset.
 fn present(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+    Some(trimmed(value)).filter(|value| !value.is_empty())
+}
+
+/// The value with its surrounding whitespace taken off, reusing its buffer
+/// when there is none.
+fn trimmed(value: String) -> String {
+    if value.trim().len() == value.len() {
+        value
+    } else {
+        value.trim().to_owned()
+    }
 }
 
 /// Where variables are read from.
@@ -31,13 +42,27 @@ pub enum Environment {
 
 #[cfg(feature = "aws")]
 impl Environment {
-    /// A non-empty variable, trimmed.
+    /// A non-empty variable, trimmed: `None` for one that is unset, empty
+    /// or blank.
     pub fn get(&self, name: &str) -> Option<String> {
+        self.raw(name).filter(|value| !value.is_empty())
+    }
+
+    /// A variable as set, trimmed: `Some("")` for one set to the empty or a
+    /// blank text, `None` only for one not set at all - or, in the process
+    /// environment, set to text that is not Unicode, which [`Self::get`]
+    /// reads as unset too.
+    ///
+    /// What botocore's `EnvironmentProvider` answers, which filters nothing:
+    /// a path variable set empty names a file that is not there, so
+    /// `AWS_CONFIG_FILE=` read through it is no configuration file, where
+    /// read through `get` it is unset and `~/.aws/config` is read instead.
+    pub fn raw(&self, name: &str) -> Option<String> {
         let value = match self {
             Self::Process => std::env::var(name).ok()?,
             Self::Given(pairs) => pairs.get(name)?.clone(),
         };
-        present(value)
+        Some(trimmed(value))
     }
 
     /// A boolean variable, read through `bool_from_text`: the one table
