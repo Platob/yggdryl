@@ -52,12 +52,14 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | a registered enum (`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`) | `DataType::Side.scalar("BUYS")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()`, `TimeInForce::from_fix("0")` | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")`, `TimeInForce.from_fix("0")` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object), `timeInForceFromFix('0')` |
 | a free enum spelling (`order fill`, `Part-Filled`, `pending cxl`) | `State::from_spelling("order fill")` - read by its words once the exact vocabularies miss, cached | `State.from_spelling("order fill")`, `DataType("state").scalar(...)` | `new DataType('state').scalar('order fill')` |
 | a registered code's validity (`isin`, `cusip`, `sedol`, `figi`, `lei`, `dti`, `bic`, `country`, `ccy`, `mic`, `cfi`) | `code.rank()`, `code.is_real()` (`CodeValue`), `IdType::Isin.rank(text)`, `Isin::rank_of(text)`, `Isin::is_closed`, `Lei::is_closed`, `Dti::is_closed`, `Isin::is_listed_prefix`, `Isin::NONE`, `Country::is_listed`, `Ccy::is_none`, `Mic::is_none` | Rust only: a value of the right shape is accepted whatever its rank | Rust only |
+| a structured product's EUSIPA/SSPA category (a value, not a datatype) | `Eusipa::new(2300)?`, `"2300".parse::<Eusipa>()?`; `code()`, `group()`, `level()`, `name()`, `sspa_name()`, `is_listed()` | `Eusipa(2300)`, `Eusipa("2300")`; `.code`, `.group`, `.level`, `.name`, `.sspa_name`, `.is_listed`, `int(c)` | no `Eusipa`: a registry row's `eusipacode` is a number |
 | an enumerated column (`FIELD:enum`) | `StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?` + `Field::new("side", DataType::fixed_ascii(4)?, false).try_with_string_enum(&side)?`; `string_enum()?`; `StringEnum::from_logical_name("ccy")?` | `StringEnum("Side", {"BUY": "B", "SELL": "S"})` + `field.set_string_enum(side)`; `field.string_enum`; `StringEnum.from_logical_name("ccy")`; `yggdryl.enums.Ccy` / `Country` bases | `new StringEnum('Side', { BUY: 'B', SELL: 'S' })` + `field.setStringEnum(side)`; `field.stringEnum`; `StringEnum.fromLogicalName('ccy')` |
 | compare, diff | `equals(&o, true)`, `show_diffs(&o, true, false)` | `equals(o, with_metadata=False)`, `show_diffs(o)` | `equals(o, false)`, `showDiffs(o)` |
 | merge two schemas | `a.merge_with(&b, true)?` | `a.merge_with(b)` | `a.mergeWith(b)` |
 | stable value hash | `stable_hash()` | `stable_hash()` | `stableHash()` (a `bigint`) |
 | schema as a document | `into_json()?` / `Field::from_json`, YAML, TOML | `into_json()` / `from_json`, `into_dict`, YAML, TOML | `toJSON()` / `Field.fromJSON` (JSON only) |
 | one value as bytes | `into_value_bytes()`, `Scalar::decode_value_bytes(&b)?` | `into_value_bytes()`, `Scalar.from_value_bytes(b)`, `pickle` | `intoValueBytes()`, `Scalar.fromValueBytes(b)` |
+| cast a batch or a stream onto a root, `RecordBatch` in and out | `root.apply_arrow_batch(&b, options)?`, `apply_arrow_schema(s, options)?`, `apply_arrow_reader(r, options)?` - the transport face of the one `ArrowCastPlan` (`yggdryl-arrow`) | `root.apply_arrow_batch(b)`, `apply_arrow_schema(s)`, `apply_arrow_reader(r)` | not bound: `Serie.fromArrowBatch(b, root)`, `serie.cast(root)` |
 | Arrow schema in and out | `Field::from_arrow_field(&f)?`, `into_arrow_field()?` | `Field.from_arrow(f)`, `Field.from_arrow_schema(s, name=)`, `into_arrow()`, `into_arrow_schema()` | schemas cross with batches (`yggdryl-arrow`): `Serie.fromArrowBatch(batch).field`; `Field.fromArrow(f)` and `field.intoArrow()` cross an Arrow JS field through a real IPC round trip, keeping `nullable: false` and its extension; `DataType.fromArrow(t)` takes only a bare type, which carries neither in Arrow JS - import the **field** instead to keep them |
 | Arrow extension type of a datatype | `DataTypeId::Ccy.arrow_extension_name()`, `DataTypeId::arrow_extension_names()`; `arrow_field.try_extension_type::<CcyType>()?`, `.with_extension_type(CcyType)` (every marker, `StringType`, `BytesType`) | registered on `import yggdryl`: `DataType("ccy").into_arrow()` is a `yggdryl.extension.YggdrylType`, `.datatype` reads it back; `DataType.ARROW_EXTENSION_NAMES` | metadata only: `field.intoArrow().metadata.get('ARROW:extension:name')` |
 | canonical default | `default_value()?` | `default_scalar()` | `defaultJSValue()` |
@@ -217,7 +219,21 @@ string and byte leaves, the legacy `list` words - is in
   `fisn` have no default value
   (`default_scalar()` raises), so a record that omits such a required child is
   refused rather than defaulted - make the child nullable or always supply
-  it.
+  it. Two codes are also identifier types holding the code's shape: `fisn`
+  (`fisncode`, `financialinstrumentshortname`) a security's, `elf`
+  (`entitylegalform`) neither a security's nor a party's; and under the
+  `bic` and `legalentityidentifier` sources an identifier of any type holds
+  a BIC's or an LEI's shape, refused on its key otherwise
+  (`yggdryl-market-data`, Identifiers).
+- `Eusipa` is a value, not a datatype: there is no `eusipa` column type, and
+  a column of categories is an integer (the registry's `eusipacode` is
+  `int32`). A code is held by its shape alone - four digits, `1` an
+  investment product and `2` a leverage product (`1000` to `2999`) - so a
+  code no map lists is accepted with `name()`/`sspa_name()` none and
+  `is_listed()` false; `3100` and `"23x0"` are refused. The European map
+  (February 2024) and the Swiss map (2023 and 2026) name `1260` apart -
+  Express Certificates against a Conditional Coupon Barrier Reverse
+  Convertible - so keep the code, never a name.
 - A Python `uuid.UUID` passed to `Scalar.from_` infers as text: declare the
   column `uuid` and read through it. A JavaScript `Date` is
   `datetime64(ms,"UTC")` and a `date32` column refuses it.
@@ -241,6 +257,9 @@ string and byte leaves, the legacy `list` words - is in
   `FxSymbol::from_symbol`, Rust-only.
 - JavaScript `asJs()` on a decimal (and on values with no JS spelling) answers
   the `Scalar` itself: read `unscaled`/`scale`, or `toString()`.
+- `Field.apply_arrow_batch` compiles its cast per call: in a loop hold
+  `apply_arrow_reader` (one plan per stream) or a `SerieReader`. It is the
+  cast alone - no `TRANSFORM:` or `DIGEST:` column is filled.
 - Rust `DataType::from_arrow_datatype` loses the extension name (an arrow-rs
   datatype carries no metadata): import the **field** to keep `ccy`, `uuid`,
   `decimal`, `version` identity. Python's `DataType.from_arrow` and

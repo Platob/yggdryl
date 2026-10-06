@@ -204,12 +204,13 @@ impl Located {
             .commit_overwrite_cadence(&pairs, batches, replaced, threads)
     }
 
-    /// Publish one already-shaped append cadence.
+    /// Publish one already-shaped append cadence: the rows it left out, a
+    /// key the table already held (see [`IcebergTable::commit_append`]).
     pub(crate) fn append_prepared(
         &mut self,
         batches: crate::arrow::BatchReader,
         threads: Option<usize>,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         self.table.commit_append_on(batches, threads)
     }
 

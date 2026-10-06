@@ -16,8 +16,8 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as thre
 | Identifiers | `FIX:identifiers` stays on its component; canonical member names and order resolve through the same owner after references load |
 | Membership | `FIX:branches` metadata inside each field and named definition document: the sorted, lowercase, comma-separated names of the dictionaries that contributed it; that document is the only place a dictionary is recorded |
 | Identity | Derived on every read from `FIX:tag` and the field's name; no document holds an id |
-| Builtins | The crate listing has 49 definitions: 48 scalar fields - 18 of them [derived](capture.md#a-derived-column-restates-a-fix-field), which a registry does not hold - and the `metadata(65035)` Map group. Every registry constructs them, and a write states them too - `fields/000000650.json`, `groups/metadata.json` - so a store is the whole row rather than the half it declared itself; a stored document never overrides them, because a reader takes the constructed definition over the one it finds |
-| The fixed row | `commit` also writes `components/fixmsg.json`: the [row every message answers as](capture.md#the-columns-are-the-folded-names) under the name and tag of `FIXMSG_TAG_NAME` (65050), each column a `FIX:field` or `FIX:group` reference carrying its own `FIX:tag`. It is the crate's rather than the store's, so a read passes it over as it passes the crate's own fields; it is there for a consumer that reads the row's shape without running this crate |
+| Builtins | The crate listing has 50 definitions: 49 scalar fields - 19 of them [derived](capture.md#a-derived-column-restates-a-fix-field), which a registry does not hold - and the `metadata(65036)` Map group. Every registry constructs them, and a write states them too - `fields/000000650.json`, `groups/metadata.json` - so a store is the whole row rather than the half it declared itself; a stored document never overrides them, because a reader takes the constructed definition over the one it finds |
+| The fixed row | `commit` also writes `components/fixmsg.json`: the [row every message answers as](capture.md#the-columns-are-the-folded-names) under the name and tag of `FIXMSG_TAG_NAME` (65051), each column a `FIX:field` or `FIX:group` reference carrying its own `FIX:tag`. It is the crate's rather than the store's, so a read passes it over as it passes the crate's own fields; it is there for a consumer that reads the row's shape without running this crate |
 | Standard clocks | `SendingTime(52)` and `TransactTime(60)` are ordinary fields: a stored document defining either is loaded first and keeps its metadata, and only a clock the store does not define is seeded afterwards; a registry writes them like any other field in `fields/000000000.json` |
 | Validation | Category shape, shard arithmetic, tag and name identity, references, identifiers, code set names, cycles, and depth are checked before exposing the registry; a set's stem must equal the name its document states, the way a definition's does |
 | Missing folder | Loads only the builtins and the seeded standard clocks, and creates nothing |
@@ -92,7 +92,7 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     assert!(reloaded.field(448)?.as_fix().has_branch("venue"));
     assert_eq!(reloaded.dialects(), ["venue"]);
     assert_eq!(reloaded.field_by_name("Party")?.as_fix().identifiers().collect::<Vec<_>>(), ["PartyID"]);
-    assert_eq!(reloaded.field_by_counter(65035)?.name(), "metadata");
+    assert_eq!(reloaded.field_by_counter(65036)?.name(), "metadata");
     root.remove(true)?;
     ```
 
@@ -172,7 +172,7 @@ The counter is a scalar field; a reusable component defines one occurrence and t
         assert reloaded.field(448).fix.branches == ["venue"]
         assert reloaded.dialects() == ["venue"]
         assert reloaded.field_by_name("Party").fix.identifiers == ["PartyID"]
-        assert reloaded.field_by_counter(65_035).name == "metadata"
+        assert reloaded.field_by_counter(65_036).name == "metadata"
     ```
 
 === "JavaScript"
@@ -238,7 +238,7 @@ The counter is a scalar field; a reusable component defines one occurrence and t
       assert.deepEqual(reloaded.field(448).fix.branches, ['venue'])
       assert.deepEqual(reloaded.dialects(), ['venue'])
       assert.deepEqual(reloaded.fieldByName('Party').fix.identifiers, ['PartyID'])
-      assert.equal(reloaded.fieldByCounter(65035).name, 'metadata')
+      assert.equal(reloaded.fieldByCounter(65036).name, 'metadata')
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }
@@ -308,7 +308,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 messages carrying `FIX:msgtype` and `FIX:msgcat` - and 580 groups. Loading adds the crate's 30 held scalar definitions, including the `srcuuids` serie, the category `marketdatakind`, five normalized instrument codes, the execution and recording clocks, the session-event key `msgsesseventid`, and a bridge's originating plugin and conversation, plus one Map group: 6,271 scalar fields, 581 groups, 928 components and 181 message types in the live registry, 7,780 definitions total. The generated catalog holds 735 shared code sets in `codesets/`; the builtin `msgcatcodeset`, `marketdatatypecodeset` and `statecodeset` make 738 live sets.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 messages carrying `FIX:msgtype` and `FIX:msgcat` - and 580 groups. Loading adds the crate's 30 held scalar definitions, including the `srcuuids` serie, the category `marketdatakind`, five normalized instrument codes, the execution and recording clocks, the session-event key `msgsesseventid`, and a bridge's originating plugin and conversation, plus one Map group: 6,271 scalar fields, 581 groups, 928 components and 181 message types in the live registry, 7,780 definitions total. The generated catalog holds 735 shared code sets in `codesets/`; the builtin `marketdatakindcodeset`, `marketdatatypecodeset` and `statecodeset` make 738 live sets.
 
 Beside those 2,308 the tracked tree carries the crate's own dump, which `commit` writes and a read passes over: `fields/000000650.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json`. The generator neither writes nor removes them, and its `--check` ignores them.
 
@@ -344,11 +344,11 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert!(registry.dialects().is_empty());
     assert!(registry.iter().all(|field| field.as_fix().branches().next().is_none()));
     // The crate's own definitions are in the store and in the registry alike:
-    // 48 scalar fields, including the `srcuuids` serie, and one Map group.
-    assert_eq!(fix_crate_fields()?.len(), 49);
+    // 49 scalar fields, including the `srcuuids` serie, and one Map group.
+    assert_eq!(fix_crate_fields()?.len(), 50);
     assert_eq!(registry.iter().count(), 7_780, "the fields and the definitions");
     assert_eq!(registry.len(), 7_780, "the fields, the components and the groups");
-    assert_eq!(registry.field_by_counter(65_035)?.name(), "metadata");
+    assert_eq!(registry.field_by_counter(65_036)?.name(), "metadata");
     assert_eq!(registry.msgtype("D")?.name(), "newordersingle");
     // The vocabularies are held beside them, one per name, and a field
     // reaches its own through the name it states.
@@ -384,11 +384,11 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert registry.dialects() == []
     assert all(field.fix.branches == [] for field in registry)
     # The crate's own definitions are in the store and in the registry alike:
-    # 48 scalar fields, including the `srcuuids` serie, and one Map group.
-    assert len(fix_crate_fields()) == 49
+    # 49 scalar fields, including the `srcuuids` serie, and one Map group.
+    assert len(fix_crate_fields()) == 50
     assert sum(1 for _ in registry) == 6_271
     assert len(registry) == 7_780
-    assert registry.field_by_counter(65_035).name == "metadata"
+    assert registry.field_by_counter(65_036).name == "metadata"
     assert registry.msgtype("D").name == "newordersingle"
     # The vocabularies are held beside them, one per name, and a field reaches
     # its own through the name it states.
@@ -423,13 +423,13 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert.deepEqual(registry.dialects(), [])
     assert.ok([...registry].every((field) => field.fix.branches.length === 0))
     // The crate's own definitions are in the store and in the registry alike:
-    // 48 scalar fields, including the `srcuuids` serie, and one Map group. A
+    // 49 scalar fields, including the `srcuuids` serie, and one Map group. A
     // Node registry sizes and iterates every field, the components and the
     // groups among them.
-    assert.equal(fix.crateFields().length, 49)
+    assert.equal(fix.crateFields().length, 50)
     assert.equal(registry.size, 7780)
     assert.equal([...registry].length, registry.size)
-    assert.equal(registry.fieldByCounter(65035).name, 'metadata')
+    assert.equal(registry.fieldByCounter(65036).name, 'metadata')
     assert.equal(registry.msgtype('D').name, 'newordersingle')
     // The vocabularies are held beside them, one per name, and a field
     // reaches its own through the name it states.

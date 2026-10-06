@@ -58,7 +58,7 @@ fn a_stated_class_that_is_not_foreign_exchange_blocks_every_fill() {
         let message = reader.sole_line(line).expect("an order");
         let spelled = String::from_utf8_lossy(line);
         assert_eq!(forex(&message), None, "{spelled}");
-        assert_eq!(cell(&message, 65_046), None, "{spelled}");
+        assert_eq!(cell(&message, 65_047), None, "{spelled}");
         assert_ne!(cell(&message, 461).as_deref(), Some("IFXXXP"), "{spelled}");
         assert_eq!(cell(&message, 15), None, "{spelled}");
         assert_eq!(cell(&message, 120), None, "{spelled}");
@@ -107,7 +107,7 @@ fn a_spot_pair_states_its_class_its_currencies_and_no_market() {
         "detected is derived, not stated"
     );
     assert_eq!(
-        message.get_by_tag(65_046),
+        message.get_by_tag(65_047),
         Some(Scalar::Forex(yggdryl::Forex::new("EUR/USD").unwrap()))
     );
     assert_eq!(cell(&message, 167).as_deref(), Some("FXSPOT"));
@@ -219,7 +219,7 @@ fn a_changed_symbol_derives_again_and_keeps_what_a_caller_set() {
     message.set(55, Scalar::from("GBP/USD")).unwrap();
     assert_eq!(forex(&message).as_deref(), Some("GBP/USD"));
     assert_eq!(
-        cell(&message, 65_046).as_deref(),
+        cell(&message, 65_047).as_deref(),
         Some("GBP/USD"),
         "the cell follows the pair"
     );
@@ -238,7 +238,7 @@ fn a_changed_symbol_derives_again_and_keeps_what_a_caller_set() {
     // A symbol naming no pair takes back everything detection derived.
     message.set(55, Scalar::from("AAPL")).unwrap();
     assert_eq!(forex(&message), None);
-    assert_eq!(cell(&message, 65_046), None);
+    assert_eq!(cell(&message, 65_047), None);
     assert_eq!(cell(&message, 15), None);
     assert_eq!(cell(&message, 120), None);
     assert_eq!(cell(&message, 460), None);
@@ -290,7 +290,7 @@ fn a_stated_pair_is_its_column_and_never_an_alternate_identifier() {
     let before = alternates(&message);
     assert!(message.insert_securityid(pair("EUR/USD")).unwrap());
     assert_eq!(alternates(&message), before, "no forex occurrence");
-    assert_eq!(cell(&message, 65_046).as_deref(), Some("EUR/USD"));
+    assert_eq!(cell(&message, 65_047).as_deref(), Some("EUR/USD"));
     assert!(!derives_its_pair(&message));
 
     // A successor inherits its predecessor's pair the same way.

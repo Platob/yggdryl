@@ -17,10 +17,10 @@ function read(key, value) {
 }
 
 test('an identifier reads its key exactly and trims its value', () => {
-  const held = new Identifier('bic:executing_trader', ' T-1 ')
-  assert.deepEqual([held.src, held.type, held.value], ['bic', 'executingtrader', 'T-1'])
+  const held = new Identifier('bic:executing_trader', ' DEUTDEFF ')
+  assert.deepEqual([held.src, held.type, held.value], ['bic', 'executingtrader', 'DEUTDEFF'])
   assert.equal(held.key, 'bic:executingtrader')
-  assert.equal(held.toString(), 'bic:executingtrader=T-1')
+  assert.equal(held.toString(), 'bic:executingtrader=DEUTDEFF')
   for (const spelled of ['clordid', 'ClOrdID', 'base:clordid', 'BASE:CLORDID', 'fix:clordid', 'FIX:ClOrdID']) {
     const bare = new Identifier(spelled, 'C-2')
     assert.deepEqual([bare.src, bare.type, bare.key], ['base', 'clordid', 'clordid'], spelled)
@@ -148,10 +148,10 @@ test('identifiers cross the scalar boundary as an identifier column holds them',
 test('an array of identifiers states the map it makes, one value under a key', () => {
   const order = new graph.OrderEvent(1n, {
     crosscode: 'O-1',
-    partyids: [new Identifier('bic:account', 'ACC-1'), new Identifier('BIC:ACCOUNT', 'ACC-1')],
+    partyids: [new Identifier('bic:account', 'DEUTDEFF'), new Identifier('BIC:ACCOUNT', 'DEUTDEFF')],
     identifiers: [],
   })
-  assert.deepEqual(order.partyids.toArray().map(String), ['account=ACC-1', 'bic:account=ACC-1'])
+  assert.deepEqual(order.partyids.toArray().map(String), ['account=DEUTDEFF', 'bic:account=DEUTDEFF'])
   assert.equal(order.identifiers.length, 0)
   // Two values under one key are two readings, refused at the second.
   assert.throws(

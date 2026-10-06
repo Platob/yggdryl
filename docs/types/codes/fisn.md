@@ -12,7 +12,7 @@ ISO 18774's Financial Instrument Short Name: at most thirty-five characters, an 
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | A thirty-sixth byte, a byte past `0x7F` - a Latin-1 letter included - a control character, no `/`, nothing before or after the first `/`; the empty text, so there is no default value |
 
-A FISN is a name a person reads, not a key: two instruments may share one, and nothing about it closes. It sits beside the [ISIN](isin.md) and the [CFI](cfi.md) in an instrument's reference data.
+A FISN is a name a person reads, not a key: two instruments may share one, and nothing about it closes. It sits beside the [ISIN](isin.md) and the [CFI](cfi.md) in an instrument's reference data. An [identifier](../../graph/identifier.md#per-type-value-checks) of type `fisn` - also spelled `fisncode` and `financialinstrumentshortname` - is a security identifier held to this code's shape: FIX gives it no `SecurityIDSource(22)` code, and a [FIX message](../../fix/message.md#typed-tags) states its `FinancialInstrumentShortName(2737)` in `securityids` under the base `fisn` key.
 
 ## DataType
 

@@ -1095,21 +1095,23 @@ fn a_service_rebuild_allocates_per_delta_not_per_level() {
     );
 }
 
-/// A book's readings by kind - its resting orders, and the orders, quotes
-/// and executions among its deltas - borrow the entries the book holds:
-/// nothing is allocated, at 8 entries or 1,024, the resting orders walking
-/// every live quote to find none.
+/// A book's readings by kind - its resting orders, and the orders, quotes,
+/// executions and every other delta among its deltas - borrow the entries
+/// the book holds: nothing is allocated, at 8 entries or 1,024, the resting
+/// orders walking every live quote to find none.
 #[test]
 fn a_book_s_readings_by_kind_allocate_nothing() {
     for entries in [8, 1_024] {
         let book = allocation_book(entries);
         assert_eq!(book.quotes().count(), entries);
         assert_eq!(book.ordlive().count(), 0);
+        assert_eq!(book.events().count(), 0);
         free("reading a book's entries by kind", || {
             black_box(book.ordlive().map(black_box).count());
             black_box(book.orddelta().map(black_box).count());
             black_box(book.quotes().map(black_box).count());
             black_box(book.executions().map(black_box).count());
+            black_box(book.events().map(black_box).count());
         });
     }
 }
@@ -5115,6 +5117,9 @@ fn a_chunked_cast_compiles_one_plan_and_applies_it_per_chunk() {
     // hands a chunked serie under its own field back as the two vectors of
     // a clone, and a held chunked column crosses into a stream without a
     // row read: the same count at ninety-six rows as at sixteen thousand.
+    // Resolve the process default before measuring application costs: its
+    // one-time environment read is not part of every additional chunk.
+    black_box(yggdryl::SpillOptions::from_env().expect("spill options"));
     let wide = Field::new("count", DataType::Float64, true);
     let options = ArrowCastOptions::new();
     let mut streamed = Vec::new();
@@ -8015,6 +8020,13 @@ struct StageCosts {
 /// for the refusal it then dropped - so a datetime field costs a parse
 /// nothing, and no other stage moved.
 ///
+/// The strike then came to be a market fact, `strikepx`, a column of the
+/// fixed row's shared prefix none of these messages states: each landing
+/// rose by the seven a nullable decimal column holding a null costs to lay
+/// out - its values, its validity and the array around them - to 1507, 1487
+/// and 1525, and each batch by the one array it gathers more, to 211; no
+/// other stage moved.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
@@ -8023,8 +8035,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 543,
             into_row: 88,
-            landing: 1500,
-            batch: 210,
+            landing: 1507,
+            batch: 211,
             digest: 1,
             lifecycle: 10,
         },
@@ -8035,8 +8047,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 212,
             into_row: 64,
-            landing: 1480,
-            batch: 210,
+            landing: 1487,
+            batch: 211,
             digest: 1,
             lifecycle: 10,
         },
@@ -8047,8 +8059,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 1016,
             into_row: 250,
-            landing: 1518,
-            batch: 210,
+            landing: 1525,
+            batch: 211,
             digest: 1,
             lifecycle: 10,
         },
@@ -8394,7 +8406,10 @@ fn identifier_reads_and_inline_inserts_allocate_nothing() {
         assert!(
             ids.insert(
                 Identifier::new(
-                    IdKey::new(black_box(IdSource::Bic), black_box(IdType::ExecutingTrader)),
+                    IdKey::new(
+                        black_box(IdSource::Proprietary),
+                        black_box(IdType::ExecutingTrader)
+                    ),
                     black_box("ABCDEFGHIJKLMNOPQRSTUVW")
                 )
                 .unwrap()
@@ -8403,6 +8418,37 @@ fn identifier_reads_and_inline_inserts_allocate_nothing() {
         assert_eq!(ids.len(), 3);
         black_box(&ids);
     });
+    // A value under the bic or the legalentityidentifier source is held as
+    // the code and ranked by it in place: an eleven-byte BIC and a
+    // twenty-byte LEI stay inline, and a closing LEI replacing a typo under
+    // its key moves no slot.
+    let lei = |value: &str| {
+        Identifier::new(
+            IdKey::new(IdSource::LegalEntityIdentifier, IdType::ClientId),
+            value,
+        )
+    };
+    let mut coded: Identifiers = [lei("HWUPKR0MPOU8FGXBT395").unwrap()].into_iter().collect();
+    free(
+        "a BIC and an LEI held and ranked under their sources",
+        || {
+            let firm = Identifier::new(
+                IdKey::new(black_box(IdSource::Bic), black_box(IdType::ExecutingFirm)),
+                black_box("deutdeff500"),
+            )
+            .unwrap();
+            assert_eq!(firm.value(), "DEUTDEFF500");
+            black_box(coded.insert(lei(black_box("hwupkr0mpou8fgxbt394")).unwrap()));
+            black_box((&firm, &coded));
+        },
+    );
+    assert_eq!(
+        coded.get_from(&IdKey::new(
+            IdSource::LegalEntityIdentifier,
+            IdType::ClientId
+        )),
+        Some("HWUPKR0MPOU8FGXBT394")
+    );
 }
 
 /// An ISIN registry learns a statement of a known instrument that says
@@ -8648,10 +8694,11 @@ fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
 /// A snapshot stream shares the table rather than copying it: opening one
 /// costs the same five allocations at 64 instruments as at 4,096 - the
 /// reader, its schema and its field - and draining it lays each row out
-/// once, eight allocations a row - the named row, a B-tree of its forty-one
+/// once, eight allocations a row - the named row, a B-tree of its forty-two
 /// cells inserted in column order, which takes six leaf nodes behind one
-/// `Arc` where the thirty-seven cells of the row before `countrycode`,
-/// `forexcode` and `currency` were added took five, and its canonical run -
+/// `Arc` as the forty-one before `eusipacode` did, where the thirty-seven
+/// cells of the row before `countrycode`, `forexcode` and `currency` were
+/// added took five, and its canonical run -
 /// plus one doubling of the batch's row vector each time the rows double.
 #[test]
 fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
@@ -8682,10 +8729,11 @@ fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
 /// Reloading rows the registry already holds - a golden file read again -
 /// costs each batch the same whatever its rows: one cast plan for the
 /// stream, the landing per batch - one narrowing per column of the
-/// forty-one, one more than the forty before `underlyingisin` was added,
-/// three more than the thirty-seven before `countrycode`, `forexcode` and
-/// `currency` were - and a code cell adopted as the landing proved it, so a
-/// row that moves nothing allocates nothing.
+/// forty-two, one more than the forty-one before `eusipacode` was added and
+/// two more than the forty before `underlyingisin` was, four more than the
+/// thirty-seven before `countrycode`, `forexcode` and `currency` were - and
+/// a code cell adopted as the landing proved it, so a row that moves
+/// nothing allocates nothing.
 #[test]
 fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     let mut each_at = Vec::new();
@@ -8716,7 +8764,7 @@ fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     }
     assert_eq!(
         each_at,
-        [51, 51],
+        [52, 52],
         "a batch of 64 and of 512 known rows: a cost per row"
     );
 }
@@ -9442,9 +9490,12 @@ fn spill_costs(column: &Serie, options: &yggdryl::SpillOptions) -> Vec<usize> {
 #[test]
 fn spilling_a_column_costs_a_constant_whatever_its_row_count() {
     // A flat column spills whole for one allocation per buffer it maps -
-    // the values, then the validity where there is one - one for the
-    // platform temporary folder resolved where no folder is stated (a
-    // stated one is cloned for nothing), and fourteen that follow nothing:
+    // the values, then the validity where there is one - and twelve that
+    // follow nothing. The native folder is resolved once: a default spill
+    // no longer builds a URL only to decode its path, and the joined path
+    // reserves its final size rather than growing for separator and name.
+    // Windows adds two native path conversions for open and unlink.
+    // The remaining allocations hold
     // the array handle and its data, the file's path, name and joined path,
     // the one write buffer, the skeleton the process keeps, the mapping, the
     // rebuilt data and array, and the leaf it lands as. The bytes go to the
@@ -9453,10 +9504,12 @@ fn spilling_a_column_costs_a_constant_whatever_its_row_count() {
     //
     // A record of two required children - `venue: utf8`, `count: int64` -
     // holds no buffer of its own, so it spills child by child at each
-    // child's flat cost (seventeen for the text's offsets and bytes, sixteen
-    // for the counts), beside the children ordered by weight, each child's
+    // child's flat cost (fourteen for the text's offsets and bytes, thirteen
+    // for the counts, plus the native calls on Windows), beside the children
+    // ordered by weight, each child's
     // name, and the record's leaf and child list copied once off the clone
-    // it shares them with: thirty-eight.
+    // it shares them with: thirty-two, or thirty-six on Windows.
+    let two_buffers = 14 + 2 * usize::from(cfg!(windows));
     let everything = yggdryl::SpillOptions::new().with_byte_size(0);
     let stated = everything
         .clone()
@@ -9467,21 +9520,26 @@ fn spilling_a_column_costs_a_constant_whatever_its_row_count() {
                 "int64 with a validity",
                 spill_corpus(rows, true),
                 &everything,
-                17,
+                two_buffers,
             ),
             (
                 "int64 with no validity",
                 spill_corpus(rows, false),
                 &everything,
-                16,
+                two_buffers - 1,
             ),
             (
                 "int64 with a validity, a folder stated",
                 spill_corpus(rows, true),
                 &stated,
-                16,
+                two_buffers,
             ),
-            ("record<utf8, int64>", quote_records(rows), &everything, 38),
+            (
+                "record<utf8, int64>",
+                quote_records(rows),
+                &everything,
+                2 * two_buffers + 4,
+            ),
         ] {
             assert!(!column.is_spilled(), "{what}");
             assert_eq!(

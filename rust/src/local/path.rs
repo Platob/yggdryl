@@ -53,7 +53,9 @@ pub struct LocalPath {
 /// This is deliberately not [`Holder`]: a `Holder` can hold a `LocalPath`,
 /// and a `LocalPath` that could hold a `Holder` would be a type of unbounded
 /// size.
+// The native file is larger on Windows; boxing it adds a path-resolution allocation.
 #[derive(Debug)]
+#[cfg_attr(windows, allow(clippy::large_enum_variant))]
 enum Resolved {
     Directory(LocalFolder),
     File(LocalFile),

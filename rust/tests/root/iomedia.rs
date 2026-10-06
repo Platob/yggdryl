@@ -2095,7 +2095,10 @@ mod write {
             )
             .unwrap();
         merge.finish(&mut handle).unwrap();
-        assert_eq!(handle.publications.load(Ordering::SeqCst), 2);
+        // The first cadence replays row 2 exactly as it is stored, which a
+        // merge leaves unwritten - an append would have published it twice
+        // over - and the second merges in the new key 5.
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 1);
         assert_eq!(rows(&handle, &plain), 5);
     }
 

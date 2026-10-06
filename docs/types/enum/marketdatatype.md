@@ -402,7 +402,7 @@ A message type may name its own fields before its kind's: `fix_tags_of(msgtype, 
 | `q` order mass cancel request, `r` its report | `MassCancelRequestType(530)` |
 | `V` market data request | `SubscriptionRequestType(263)` |
 
-A [FIX message](../../fix/message.md) states its type as it is parsed, reading the first of its `fix_tags_of(msgtype, kind)` it states through its registry's [`marketdatatype_of`](../../fix/registry.md#a-field-maps-its-values-onto-a-market-data-type): a field's own `FIX:marketdatatype` mapping first, then `from_fix`. The registry's intrinsic `marketdatatypecodeset` renders the members beside `msgcatcodeset` and `statecodeset`.
+A [FIX message](../../fix/message.md) states its type as it is parsed, reading the first of its `fix_tags_of(msgtype, kind)` it states through its registry's [`marketdatatype_of`](../../fix/registry.md#a-field-maps-its-values-onto-a-market-data-type): a field's own `FIX:marketdatatype` mapping first, then `from_fix`. The registry's intrinsic `marketdatatypecodeset` renders the members beside `marketdatakindcodeset` and `statecodeset`.
 
 === "Rust"
 

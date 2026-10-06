@@ -169,7 +169,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
 
 ## Shape and rank { #rank }
 
-A code's `new` and its value door admit the code's shape and refuse only that. What the shape leaves open - whether a number closes on its check digit, whether a registry lists the code, whether the text is the one that states no value - is a rank: `CodeValue::rank` answers it from zero to the code's `MAX_RANK`, and `is_real` whether it is at `MAX_RANK`. A masked line's `XX0000000001`, a typo and an unlisted country are values of a lower rank rather than refusals, every [merge](#the-code-family-value) reads the rank, so a real value replaces a placeholder whichever was stated first, and a derivation that needs a real value asks the reading first. An identifier carried as text is ranked by its type: `IdType::rank(value)`, `max_rank()` and `is_real(value)` answer the registered code's rank for `isin`, `cusip`, `sedol`, `figi`, `lei`, `dti`, `cfi`, `isoccy` and `isoctry`, a lower-case spelling ranking as the upper case the type stores it under, zero for a value the type refuses, and one for every other type - which is what a [graph element's identifiers](../../graph/identifier.md) decide a restated key by. `is_canonical` (ISIN, CUSIP, SEDOL, FIGI, Bbg, RIC, Forex, LEI, BIC, ELF, DTI, FISN) is the strict question a column's bytes are held to: upper case where the code folds it, and the shape. Rust only.
+A code's `new` and its value door admit the code's shape and refuse only that. What the shape leaves open - whether a number closes on its check digit, whether a registry lists the code, whether the text is the one that states no value - is a rank: `CodeValue::rank` answers it from zero to the code's `MAX_RANK`, and `is_real` whether it is at `MAX_RANK`. A masked line's `XX0000000001`, a typo and an unlisted country are values of a lower rank rather than refusals, every [merge](#the-code-family-value) reads the rank, so a real value replaces a placeholder whichever was stated first, and a derivation that needs a real value asks the reading first. An identifier carried as text is ranked by its type: `IdType::rank(value)`, `max_rank()` and `is_real(value)` answer the registered code's rank for `isin`, `cusip`, `sedol`, `figi`, `lei`, `dti`, `cfi`, `isoccy` and `isoctry`, a lower-case spelling ranking as the upper case the type stores it under, zero for a value the type refuses, and one for every other type - which is what a [graph element's identifiers](../../graph/identifier.md) decide a restated key by, beside the code a source gives: under the `bic` and `legalentityidentifier` sources a value is held to a BIC's or an LEI's shape whatever its type, and ranks by the lower of its type's rank and that code's ([Under a source](../../graph/identifier.md#under-a-source)). `is_canonical` (ISIN, CUSIP, SEDOL, FIGI, Bbg, RIC, Forex, LEI, BIC, ELF, DTI, FISN) is the strict question a column's bytes are held to: upper case where the code folds it, and the shape. Rust only.
 
 | Code | Shape: what `new` admits | Rank | `MAX_RANK` |
 | --- | --- | --- | ---: |
@@ -543,15 +543,17 @@ an optional four-character `FIX:msgcat`, which `MsgType::marketdatakind` reads a
 stays intact; message definitions have no generic datatype or code field
 helper. A fixed row carries that member in its `marketdatakind`
 column at crate tag 65016, and five normalized identifier columns:
-`isincode(65021)`, `forexcode(65046)`, `bloombergcode(65047)`,
-`figicode(65048)` and `miccode(65022)` ([the crate's own
+`isincode(65021)`, `forexcode(65047)`, `bloombergcode(65048)`,
+`figicode(65049)` and `miccode(65022)` ([the crate's own
 columns](../../fix/capture.md#the-crates-own-columns)). A CUSIP or a SEDOL is
 one more security identifier of its own type, with no column of its own, and
 `CFICode(461)` is the standard classification field, so no crate column
 carries one. `SecurityIDSource(22)=S` and `SecurityAltIDSource(456)=S` lift a
 valid FIGI; source `A` remains Bloomberg, and source `5` is a [RIC](ric.md),
 held to that code's own rule. Source `T` is an [LEI](lei.md) and source `Y` a [DTI](dti.md), each held to that code's shape. A currency pair has no FIX source: it is the
-crate's own [`forex`](forex.md#the-forex-security-identifier) key.
+crate's own [`forex`](forex.md#the-forex-security-identifier) key. Nor has a short name:
+`FinancialInstrumentShortName(2737)` is a [FISN](fisn.md), read into `securityids`
+under the base `fisn` key.
 
 ## Edges
 

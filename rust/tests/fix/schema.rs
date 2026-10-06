@@ -87,7 +87,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     // `parties` state what they name, and a message stating them keeps them
     // among its entries.
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 149);
+    assert_eq!(tags.len(), 150);
     for tag in [22, 48, 453, 454] {
         assert!(!tags.contains(&tag), "{tag} is no column");
     }
@@ -95,7 +95,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     // event's, the market's and the operation's facts, the crate's own tag
     // or - for a market or an operation column FIX already names alike -
     // that field's.
-    let shared = 6 + 9 + 34 + 5;
+    let shared = 6 + 9 + 35 + 5;
     assert_eq!(
         &tags[..15],
         [
@@ -134,7 +134,16 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "the market's category and type, prices and quantities, FIX's own fields where FIX names them alike"
     );
     assert_eq!(
-        &tags[49..shared],
+        &tags[47..50],
+        [
+            yggdryl::TICKER_TAG_NAME.0,
+            yggdryl::STRIKEPX_TAG_NAME.0,
+            yggdryl::METADATA_TAG_NAME.0,
+        ],
+        "the ticker, the strike FIX states as StrikePrice(202), then the metadata"
+    );
+    assert_eq!(
+        &tags[50..shared],
         [
             yggdryl::ORDQTY_TAG_NAME.0,
             59,
@@ -200,7 +209,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     let schema = fix_schema(&registry, "fix").unwrap();
     // The two identifier fields and the two groups - each its list alone,
     // its length the count - are four columns no row holds.
-    assert_eq!(schema.fields().len(), 150);
+    assert_eq!(schema.fields().len(), 151);
     assert!(
         schema
             .fields()

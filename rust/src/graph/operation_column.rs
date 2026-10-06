@@ -1,5 +1,5 @@
 //! The five columns every operation on the market is stated in, beside the
-//! market's thirty-four.
+//! market's thirty-five.
 //!
 //! One column per fact [`Operation`] adds, under one name and one
 //! datatype each: what it ordered, how long it stands, whether it can

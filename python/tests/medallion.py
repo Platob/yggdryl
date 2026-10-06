@@ -49,13 +49,14 @@ from yggdryl.iceberg import IcebergCatalog
 
 NAMESPACE = "record_keeping"
 
-# The primary key every table of the pipeline declares: when a row happened
-# and the hash of what it states.
-PRIMARY_KEY = ("currunix", "currhashcode")
+# The primary key every table of the pipeline declares: when a row happened,
+# which object it came from, its place there and the hash of what it states -
+# the instant and the content alone repeat wherever two lines are one text.
+PRIMARY_KEY = ("currunix", "crosshashcode", "seqnum", "currhashcode")
 
-# What every table of the pipeline requires of each row: its key, its place
-# among the rows of its instant, and the code and hash of its chain.
-REQUIRED = (*PRIMARY_KEY, "seqnum", "crosscode", "crosshashcode")
+# What every table of the pipeline requires of each row: its key and the code
+# of its chain.
+REQUIRED = (*PRIMARY_KEY, "crosscode")
 
 # The partition every table computes for each row it is written: the quarter
 # of an hour the row's instant falls in.
@@ -107,7 +108,8 @@ def declared(row: Field, partition_by: Iterable[str] = (PARTUNIX,)) -> Field:
     Partitioned by `partunix` - the quarter hour the table computes for every
     row written to it - and whatever else `partition_by` names, sorted by it,
     the instant, the place within the instant and the content hash, with the
-    instant and the hash its primary key, every required column non-null,
+    instant, the object, the place and the hash its primary key, every
+    required column non-null,
     numbered by this table alone.
     """
     schema = unnumbered(row.into_scheme_compat("iceberg")).with_partition_by(list(partition_by))

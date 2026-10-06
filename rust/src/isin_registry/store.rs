@@ -6,6 +6,7 @@
 use smol_str::format_smolstr;
 
 use crate::holder::Holder;
+use crate::logging::warning::warned;
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::{Error, IOBase, IOMedia, IOMode, IOResult, MimeType, Result, Url};
 
@@ -20,6 +21,17 @@ pub(crate) struct Store {
     options: RecordOptions,
     /// Whether the holder is a container, read once at the binding.
     container: bool,
+    /// Whether a commit replaces the rows under the row the store already
+    /// holds - a leaf's, an Iceberg table's schema - rather than laying the
+    /// store out afresh as a plain folder's parts are; read once at the
+    /// binding.
+    keeps_row: bool,
+    /// The registry columns, by their place in [`IsinEntry::field`], the
+    /// row a store that keeps its row was laid out with has none of - a
+    /// store written before the column was the registry's - read off the
+    /// load at the binding; emptied where a commit lays the store out
+    /// afresh.
+    lacking: Vec<usize>,
 }
 
 impl Store {
@@ -33,20 +45,20 @@ impl Store {
     /// is replaced whole.
     fn bind(holder: Holder) -> Result<Self> {
         let container = holder.is_container();
+        #[cfg_attr(not(feature = "iceberg"), allow(unused_mut))]
+        let mut keeps_row = !container;
         #[cfg(feature = "iceberg")]
-        if container
-            && let Some(located) = crate::iceberg::located(&holder)?
-            && !located.is_whole()
-        {
-            return Err(Error::InvalidRecord {
-                path: smol_str::SmolStr::new_static("$.holder"),
-                reason: format_smolstr!(
-                    "expected an Iceberg table whole for the instrument registry, got a partition of one at {}",
-                    holder
-                        .url()
-                        .map_or_else(|| "an unlocated handle".to_owned(), |url| url.to_string())
-                ),
-            });
+        if container && let Some(located) = crate::iceberg::located(&holder)? {
+            if !located.is_whole() {
+                return Err(Error::InvalidRecord {
+                    path: smol_str::SmolStr::new_static("$.holder"),
+                    reason: format_smolstr!(
+                        "expected an Iceberg table whole for the instrument registry, got a partition of one at {}",
+                        location(&holder)
+                    ),
+                });
+            }
+            keeps_row = true;
         }
         let options = match holder.record_options() {
             Ok(RecordOptions::Text(_)) | Err(_) if container => {
@@ -58,6 +70,8 @@ impl Store {
             holder,
             options,
             container,
+            keeps_row,
+            lacking: Vec::new(),
         })
     }
 
@@ -66,6 +80,59 @@ impl Store {
     fn write_options(&self) -> RecordOptions {
         self.options.clone().with_field(IsinEntry::field())
     }
+
+    /// Reads off the row `stored` - what the load read - the registry
+    /// columns it has none of, where the store keeps its row: a column it
+    /// names under any spelling the load reads is one it has. A store
+    /// holding no row yet is laid out by the first commit and lacks none.
+    fn read_lacking(&mut self, stored: &arrow_schema::Schema) {
+        self.lacking.clear();
+        if !self.keeps_row || stored.fields().is_empty() {
+            return;
+        }
+        let held: Vec<usize> = stored
+            .fields()
+            .iter()
+            .filter_map(|column| super::registry_column(column.name()))
+            .collect();
+        let columns = IsinEntry::field().fields().len();
+        self.lacking
+            .extend((0..columns).filter(|at| !held.contains(at)));
+    }
+
+    /// Warns, once per commit and column, where `table` holds a value in a
+    /// column the store's row has none of: a commit replaces the rows under
+    /// the row the store holds, so the value stays the registry's and not
+    /// the store's - no migration rewrites the store - until the store is
+    /// laid out afresh. The column and the store are the warning's key.
+    fn warn_lacking(&self, table: &IsinTable) {
+        for &at in &self.lacking {
+            let held = table
+                .rows
+                .values()
+                .filter(|row| row.states_column(at))
+                .count();
+            if held == 0 {
+                continue;
+            }
+            let column = super::column_name(at);
+            let store = location(&self.holder);
+            warned!(
+                "instrument registry column not stored: the store's row lacks it",
+                &format!("{column} at {store}"),
+                "the {column} of {held} of the registry's rows is not stored: the store, laid \
+                 out before the column, has its rows replaced under its own row, so the registry \
+                 alone holds the value until the store is laid out afresh"
+            );
+        }
+    }
+}
+
+/// Where `holder` is, as a warning or a refusal names it.
+fn location(holder: &Holder) -> String {
+    holder
+        .url()
+        .map_or_else(|| "an unlocated handle".to_owned(), |url| url.to_string())
 }
 
 impl IsinRegistry {
@@ -110,11 +177,12 @@ impl IsinRegistry {
     /// fold of a held row refuses; the registry then stands as it was,
     /// bound to the store it was.
     pub fn set_holder(&mut self, holder: impl Into<Holder>) -> Result<usize> {
-        let store = Store::bind(holder.into())?;
+        let mut store = Store::bind(holder.into())?;
         let held = std::mem::take(&mut self.table);
         let was_dirty = self.dirty;
         let loaded = (|| -> Result<usize> {
             let reader = store.holder.read_arrow_reader(&store.options)?;
+            store.read_lacking(&reader.schema());
             let read = self.extend_from_arrow_reader(reader)?;
             self.dirty = false;
             for row in held.rows.values() {
@@ -164,6 +232,13 @@ impl IsinRegistry {
     /// registry is empty. A clean registry touches the store with no call
     /// and answers no rows. Clean after.
     ///
+    /// A leaf or an Iceberg table keeps the row it was laid out with, so a
+    /// store written before a column the registry now has - `eusipacode` -
+    /// is written without it, and the commit warns, naming the column and
+    /// the store, wherever the registry holds a value there; the store is
+    /// never migrated - an emptied leaf, or a new store, is laid out with
+    /// the row as it is now.
+    ///
     /// # Errors
     ///
     /// A registry bound to no holder, and what the holder's write refuses,
@@ -182,6 +257,7 @@ impl IsinRegistry {
                 located.clear()?;
             } else {
                 located.overwrite_whole(Self::snapshot_reader(&self.table)?)?;
+                store.warn_lacking(&self.table);
             }
             self.dirty = false;
             let rows = self.table.len() as u64;
@@ -194,14 +270,20 @@ impl IsinRegistry {
             }
         } else if self.table.is_empty() {
             store.holder.clear()?;
+            // An emptied leaf is laid out afresh by the next commit.
+            store.lacking.clear();
         }
         let result = if self.table.is_empty() {
             IOResult::default()
         } else {
             let snapshot = Self::snapshot_reader(&self.table)?;
-            store
-                .holder
-                .write_arrow_reader(snapshot, IOMode::Overwrite, &store.write_options())?
+            let written = store.holder.write_arrow_reader(
+                snapshot,
+                IOMode::Overwrite,
+                &store.write_options(),
+            )?;
+            store.warn_lacking(&self.table);
+            written
         };
         self.dirty = false;
         Ok(result)

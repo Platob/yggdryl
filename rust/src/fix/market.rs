@@ -1679,7 +1679,22 @@ fn book_entries(message: &FixMsg) -> Vec<BookEntry> {
         );
         let mut accounts = Identifiers::new();
         if let Some(typed) = typed.as_ref() {
-            typed.accounts.read(roles, members, &mut accounts);
+            // A party the entry's key refuses - a `B` source that is no
+            // BIC, an `N` one no LEI - is no account, with a warning.
+            let mut refused = Vec::new();
+            typed
+                .accounts
+                .read(roles, members, &mut accounts, &mut refused);
+            for anomaly in refused {
+                warned!(
+                    "FIX book entry party refused",
+                    anomaly.field(),
+                    "{} at {}: {}",
+                    anomaly.field(),
+                    place(),
+                    anomaly.reason()
+                );
+            }
         }
         answer.push(BookEntry {
             facts,

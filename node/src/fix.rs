@@ -897,7 +897,7 @@ impl JsFixRegistry {
     /// The set is filed under the folded name, which is the stem a store
     /// writes it as. An empty array removes the set, and one a held field
     /// still reads by is refused: a field may not be left naming a
-    /// vocabulary nothing states. `msgcatcodeset` is intrinsic: its stable
+    /// vocabulary nothing states. `marketdatakindcodeset` is intrinsic: its stable
     /// integer market operation IDs cannot be replaced or removed.
     #[napi]
     pub fn set_codeset(&mut self, name: String, codes: Vec<FixCode>) -> Result<()> {
@@ -912,7 +912,7 @@ impl JsFixRegistry {
     /// Keyed by wire value: a placeholder name yields to a real one, every
     /// surviving spelling is kept as an alias, and a set the dictionary did
     /// not hold arrives whole. So a venue's statement of a vocabulary
-    /// enriches the one held rather than replacing it. `msgcatcodeset` is
+    /// enriches the one held rather than replacing it. `marketdatakindcodeset` is
     /// intrinsic and refuses any merge that would change its stable integer
     /// IDs.
     #[napi]
@@ -927,7 +927,7 @@ impl JsFixRegistry {
     ///
     /// A set no field reads by leaves; one a held field still names is
     /// refused, naming the field. A name nothing is filed under answers
-    /// `null`. `msgcatcodeset` is intrinsic and cannot be removed.
+    /// `null`. `marketdatakindcodeset` is intrinsic and cannot be removed.
     #[napi]
     pub fn remove_codeset(&mut self, name: String) -> Result<Option<Vec<FixCode>>> {
         Ok(self
@@ -1256,17 +1256,17 @@ pub struct FixCaptureView {
     /// The session event the message was delivered as - `MsgType`,
     /// `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
     /// `8:e7256476:9effef3e6a:1094` - where all four are stated; also
-    /// `byTag(65043)`.
+    /// `byTag(65044)`.
     #[napi(ts_type = "string | null")]
     pub msgsesseventid: Either<String, Null>,
     /// The plugin the message came into a bridge through, as the bridge's
     /// log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-    /// (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65040)`.
+    /// (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65041)`.
     #[napi(ts_type = "string | null")]
     pub msgoriginator: Either<String, Null>,
     /// The conversation a bridge filed the message under - a
     /// `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
-    /// of its log line; also `byTag(65044)`.
+    /// of its log line; also `byTag(65045)`.
     #[napi(ts_type = "string | null")]
     pub conversationid: Either<String, Null>,
 }
@@ -1473,11 +1473,12 @@ impl JsFixMsg {
         self.inner.marketdatakind().as_str()
     }
 
-    /// The option strike price the message identifies - `StrikePrice(202)`
-    /// read off the dictionary field - as decimal text, or `null`.
+    /// The strike price of the option the message identifies - its market
+    /// fact `strikepx`, derived from `StrikePrice(202)` - as decimal text, or
+    /// `null`.
     #[napi(getter)]
     pub fn strikepx(&self) -> Option<String> {
-        self.inner.strikepx().map(|held| held.to_string())
+        self.inner.get_strikepx().map(|held| held.to_string())
     }
 
     /// This message's own `UUIDv7` identity, ordered by millisecond and
@@ -2068,7 +2069,7 @@ impl JsFixMsg {
     ///
     /// A key reaching no field and no child, or a value the field refuses,
     /// throws the core's refusal and leaves the message as it was. So does a
-    /// key reaching the capture's own column - `sourceurl` (65049), by tag
+    /// key reaching the capture's own column - `sourceurl` (65050), by tag
     /// or by name: a message holds no fact for it, and a row child would put
     /// it on the wire.
     #[napi(ts_args_type = "key: number | string, value: unknown")]
@@ -3386,8 +3387,8 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// instrument codes (`isincode`, `bloombergcode`, `figicode`, `forexcode`,
 /// `miccode`) and the market and operation facts a message names - each a
 /// fact no FIX dictionary publishes, at the datatype its graph column names,
-/// numbered contiguously from `65001` through `fixmsg` (`65050`). The strike
-/// price is the dictionary's `StrikePrice(202)`, no crate field, and a
+/// numbered contiguously from `65001` through `fixmsg` (`65051`). The strike
+/// price is the derived market fact `strikepx` over `StrikePrice(202)`, and a
 /// bridge's own identifier keys are no crate field either: they arrive as
 /// unmapped entries and are read for the identifier name they end with.
 ///

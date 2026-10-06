@@ -222,6 +222,77 @@ fn following_carries_the_identifiers_only_of_the_same_instrument() {
     );
 }
 
+/// The strike of the option an element is about is an instrument fact: a
+/// follower of the same instrument stating none takes its chain's, one
+/// naming another ISIN takes none and a stated strike stands; a merge takes
+/// the strike either statement states; and the digest feeds it only where
+/// it is stated, so an element stating none digests as it did before.
+#[test]
+fn the_strike_follows_its_instrument_merges_and_digests_only_where_stated() {
+    let isin = |code: &str| securityids(&[("ISIN", code)]);
+    let mut previous = order(1);
+    previous
+        .set_securityids(isin("US0378331005"), true)
+        .unwrap();
+    previous.set_strikepx(Some(dec("4600.5")), true);
+    previous.finalize();
+
+    let silent = order(2)
+        .following_market(&previous)
+        .expect("a later event follows");
+    assert_eq!(silent.get_strikepx(), Some(dec("4600.5")));
+
+    let mut stated = order(2);
+    stated.set_strikepx(Some(dec("4700")), true);
+    stated.finalize();
+    let stated = stated
+        .following_market(&previous)
+        .expect("a later event follows");
+    assert_eq!(
+        stated.get_strikepx(),
+        Some(dec("4700")),
+        "a stated strike stands"
+    );
+
+    let mut other = order(2);
+    other.set_securityids(isin("GB0002634946"), true).unwrap();
+    other.finalize();
+    let other = other
+        .following_market(&previous)
+        .expect("a later event follows");
+    assert_eq!(other.get_strikepx(), None, "another instrument's strike");
+
+    // Two statements of one event, each stating what the other does not:
+    // the merge takes the strike either one states.
+    let plain = order(1);
+    let mut sized = plain.clone();
+    sized.set_quantity(Some(dec("5")), true);
+    sized.finalize();
+    let mut struck = plain.clone();
+    struck.set_strikepx(Some(dec("4600.5")), true);
+    struck.set_recdunix(Some(2));
+    struck.finalize();
+    struck.set_curruuid(sized.get_curruuid());
+    for (this, other) in [(sized.clone(), &struck), (struck.clone(), &sized)] {
+        let merged = this.merge_with(other).expect("one event stated twice");
+        assert_eq!(merged.get_strikepx(), Some(dec("4600.5")));
+        assert_eq!(merged.get_quantity(), Some(dec("5")));
+    }
+
+    // Fed only where stated.
+    let mut cleared = plain.clone();
+    cleared.set_strikepx(Some(dec("4600.5")), true);
+    assert_ne!(
+        cleared.digest_market_event().as_u64(),
+        plain.digest_market_event().as_u64()
+    );
+    cleared.set_strikepx(None, true);
+    assert_eq!(
+        cleared.digest_market_event().as_u64(),
+        plain.digest_market_event().as_u64()
+    );
+}
+
 /// A follower that derived its instrument's real number - a registry's
 /// fill - keeps it over the masked number its chain stated before it,
 /// under the base key or under a named source, which it carries as

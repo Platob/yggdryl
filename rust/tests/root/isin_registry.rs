@@ -6,15 +6,15 @@
 
 use std::sync::Arc;
 
-use arrow_array::{Int64Array, RecordBatch, StringArray};
+use arrow_array::{Int32Array, Int64Array, RecordBatch, StringArray, UInt16Array};
 use arrow_schema::{DataType as ArrowType, Field as ArrowField, Schema};
 use smol_str::SmolStr;
 use yggdryl::graph::{Market, OrderEvent};
 use yggdryl::holder::{Buffer, Holder};
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{
-    Ccy, Cfi, Country, Forex, IOBase, IOMedia, IOMode, IdKey, IdType, Identifier, Isin, IsinEntry,
-    IsinRegistry, Mic,
+    Ccy, Cfi, Country, Eusipa, Forex, IOBase, IOMedia, IOMode, IdKey, IdType, Identifier, Isin,
+    IsinEntry, IsinRegistry, Mic,
 };
 
 const HOLCIM: &str = "CH0012214059";
@@ -876,9 +876,11 @@ fn an_entry_reads_back_from_its_scalar() {
         .iter()
         .map(|field| field.name().to_string())
         .collect();
-    assert_eq!(columns.len(), 41);
+    // The ten facts, the product category among the instrument's, then the
+    // thirty-two equivalents.
+    assert_eq!(columns.len(), 42);
     assert_eq!(
-        &columns[..10],
+        &columns[..11],
         [
             "isin",
             "updunix",
@@ -886,6 +888,7 @@ fn an_entry_reads_back_from_its_scalar() {
             "countrycode",
             "forexcode",
             "underlyingisin",
+            "eusipacode",
             "miccode",
             "ticker",
             "currency",
@@ -897,7 +900,7 @@ fn an_entry_reads_back_from_its_scalar() {
         .as_fields()
         .unwrap()
         .iter()
-        .take(9)
+        .take(10)
         .map(|field| field.dtype().to_string())
         .collect();
     assert_eq!(
@@ -909,6 +912,7 @@ fn an_entry_reads_back_from_its_scalar() {
             "country",
             "forex",
             "isin",
+            "int32",
             "mic",
             "utf8",
             "ccy"
@@ -1020,6 +1024,186 @@ fn the_underlying_is_an_instrument_fact_merged_by_the_update_rule() {
     ])
     .unwrap();
     assert_eq!(IsinEntry::from_scalar(&named).unwrap(), entry);
+}
+
+/// The EUSIPA product category is an instrument fact: a category of its
+/// shape fills and replaces on any market whatever either map lists, no
+/// listing switch clears it, `learn` never states one, and it crosses the
+/// row's scalar as its number - a number of no category's shape read as
+/// none.
+#[test]
+fn the_product_category_is_an_instrument_fact_merged_by_the_update_rule() {
+    let holcim = || IsinEntry::new(isin(HOLCIM));
+    let category = |code: u16| Some(Eusipa::new(code).unwrap());
+    let mut registry = IsinRegistry::new();
+    assert!(
+        registry
+            .merge(
+                holcim()
+                    .with_miccode(mic("XSWX"))
+                    .with_ticker(Some(SmolStr::new("HOLN")))
+            )
+            .unwrap()
+    );
+    let held = |registry: &IsinRegistry| registry.get(HOLCIM).and_then(IsinEntry::eusipacode);
+    assert_eq!(held(&registry), None);
+    assert!(
+        registry
+            .merge(holcim().with_eusipacode(category(2300)))
+            .unwrap(),
+        "a category fills"
+    );
+    assert_eq!(held(&registry), category(2300));
+    assert!(
+        !registry
+            .merge(holcim().with_eusipacode(category(2300)))
+            .unwrap(),
+        "the same category moves nothing"
+    );
+    assert!(
+        !registry.merge(holcim()).unwrap(),
+        "a statement of none moves nothing"
+    );
+    // A category neither map lists is a category: the maps move on.
+    assert!(
+        registry
+            .merge(holcim().with_eusipacode(category(2301)))
+            .unwrap()
+    );
+    assert_eq!(held(&registry), category(2301));
+    assert!(
+        registry
+            .merge(
+                holcim()
+                    .with_updunix(Some(1))
+                    .with_eusipacode(category(1260))
+            )
+            .unwrap(),
+        "a different category replaces whatever the time"
+    );
+    // A listing switch on another market keeps it.
+    assert!(
+        registry
+            .merge(
+                holcim()
+                    .with_miccode(mic("XLON"))
+                    .with_ticker(Some(SmolStr::new("HOLNL")))
+            )
+            .unwrap()
+    );
+    let row = registry.get(HOLCIM).unwrap();
+    assert_eq!(row.miccode().map(Mic::as_str), Some("XLON"));
+    assert_eq!(row.eusipacode(), category(1260));
+    // `learn` never states one.
+    let mut fresh = IsinRegistry::new();
+    assert!(fresh.learn(&order(
+        5,
+        &[(IdType::Isin, APPLE), (IdType::Cusip, "037833100")]
+    )));
+    assert_eq!(fresh.get(APPLE).unwrap().eusipacode(), None);
+    // The scalar carries the number, the named struct and the ordered row
+    // read it back, and a number of no category's shape reads as none.
+    let entry = holcim().with_eusipacode(category(2300));
+    let scalar = entry.into_scalar();
+    assert_eq!(
+        scalar.as_struct().and_then(|cells| cells.get("eusipacode")),
+        Some(&yggdryl::Scalar::from(2300_i32))
+    );
+    assert_eq!(IsinEntry::from_scalar(&scalar).unwrap(), entry);
+    let named = |code: yggdryl::Scalar| {
+        yggdryl::Scalar::from_struct([
+            (SmolStr::new_static("isin"), yggdryl::Scalar::from(HOLCIM)),
+            (SmolStr::new_static("eusipacode"), code),
+        ])
+        .unwrap()
+    };
+    assert_eq!(
+        IsinEntry::from_scalar(&named(yggdryl::Scalar::from(2300_i64))).unwrap(),
+        entry
+    );
+    for unshaped in [3100_i64, -2300, 70_000] {
+        assert_eq!(
+            IsinEntry::from_scalar(&named(yggdryl::Scalar::from(unshaped)))
+                .unwrap()
+                .eusipacode(),
+            None,
+            "{unshaped}"
+        );
+    }
+    assert!(
+        IsinEntry::from_scalar(&named(yggdryl::Scalar::from(i64::MAX))).is_err(),
+        "a number no int32 holds is the column's refusal"
+    );
+}
+
+/// A golden file states the product category under EUSIPA's or the SSPA's
+/// name - Euronext's `EUSIPA_Code`, a bare `SSPA` - as a number or as text
+/// of one; a cell of no category's shape lands as none, and a column naming
+/// the category's name is passed over.
+#[test]
+fn a_golden_file_states_the_product_category_by_either_maps_name() {
+    let load = |name: &str, cells: Arc<dyn arrow_array::Array>| {
+        let schema = Arc::new(Schema::new(vec![
+            ArrowField::new("ISIN", ArrowType::Utf8, false),
+            ArrowField::new(name, cells.data_type().clone(), true),
+            ArrowField::new("EUSIPA_Name", ArrowType::Utf8, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(StringArray::from(vec![HOLCIM, APPLE, NOVARTIS])),
+                cells,
+                Arc::new(StringArray::from(vec![
+                    Some("Constant Leverage Certificate"),
+                    None,
+                    None,
+                ])),
+            ],
+        )
+        .unwrap();
+        IsinRegistry::from_arrow_reader(yggdryl::arrow::batch_reader(schema, [batch])).unwrap()
+    };
+    let categories = |registry: &IsinRegistry| {
+        [HOLCIM, APPLE, NOVARTIS].map(|key| {
+            registry
+                .get(key)
+                .and_then(IsinEntry::eusipacode)
+                .map(|code| code.code())
+        })
+    };
+    for name in [
+        "EUSIPA_Code",
+        "eusipa",
+        "EUSIPACategory",
+        "SSPA",
+        "sspa_code",
+        "SSPACategory",
+    ] {
+        let numbers = load(
+            name,
+            Arc::new(Int32Array::from(vec![Some(2300), Some(3100), None])),
+        );
+        assert_eq!(categories(&numbers), [Some(2300), None, None], "{name}");
+        let text = load(
+            name,
+            Arc::new(StringArray::from(vec![
+                Some("2300"),
+                Some("1260"),
+                Some(""),
+            ])),
+        );
+        assert_eq!(categories(&text), [Some(2300), Some(1260), None], "{name}");
+    }
+    let unsigned = load(
+        "eusipacode",
+        Arc::new(UInt16Array::from(vec![Some(2205), None, Some(999)])),
+    );
+    assert_eq!(categories(&unsigned), [Some(2205), None, None]);
+    let wide = load(
+        "EUSIPA",
+        Arc::new(Int64Array::from(vec![Some(2300), Some(-1), Some(i64::MAX)])),
+    );
+    assert_eq!(categories(&wide), [Some(2300), None, None]);
 }
 
 #[test]

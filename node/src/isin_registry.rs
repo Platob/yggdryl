@@ -102,8 +102,8 @@ impl JsIsinRegistry {
 
     /// The registry's row: the required struct `isinregistry` every row is
     /// laid out as - `isin`, `updunix`, `cficode`, `countrycode`,
-    /// `forexcode`, `underlyingisin`, `miccode`, `ticker`, `currency`, then
-    /// one column per `SecurityIDSource(22)` type but the ISIN: forty-one
+    /// `forexcode`, `underlyingisin`, `eusipacode`, `miccode`, `ticker`, `currency`, then
+    /// one column per `SecurityIDSource(22)` type but the ISIN: forty-two
     /// columns - what a table holding the registry is created from.
     #[napi]
     pub fn field() -> JsField {

@@ -3,7 +3,8 @@
 //!
 //! [`Market`] is the slim reading a book level or any plain struct gives
 //! cheaply: the instrument it is about - its security identifiers, its
-//! classification, the market it trades on and the ticker it goes by - the
+//! classification, the market it trades on, the ticker it goes by and an
+//! option's strike - the
 //! side it takes, what it is priced and counted in, the price and quantity
 //! it is about, its last executed price and quantity and its average, how far it has got, the
 //! step before it, the two FX parts of a price, the FX rates to other
@@ -99,6 +100,7 @@ pub fn empty_fxrates() -> &'static FxRates {
 /// | `bidpx`/`bidqty`, `askpx`/`askqty` | | the price and quantity of an element taking that side |
 /// | a predecessor's `hiddenqty`, followed | a follower stating none: what it kept back less what traded since - the rise in `cumqty`, else `lastqty` | |
 /// | a predecessor's side, followed | a sided follower stating none takes it: the side is part of its identity | |
+/// | a predecessor's `strikepx`, followed | a follower of the same instrument stating none takes it: the strike is the option's | |
 /// | a predecessor's bid or ask, followed | an unsided follower tagging no side and stating neither the price nor the quantity of that leg: the leg whole, its currency with it | |
 /// | a predecessor's `ordqty`, `cumqty`, `avgpx`, followed | an operation's follower stating none of them: what its chain ordered, traded and at what average - never a last fill, which no rise in `cumqty` invents | |
 /// | `lastpx`, `spotrate`, `forwardpoints` | | the third, where two are stated: `lastpx` is spot plus points |
@@ -150,6 +152,12 @@ pub trait Market {
     fn get_stoppx(&self) -> Option<Decimal>;
     /// Sets [`Self::get_stoppx`].
     fn set_stoppx(&mut self, px: Option<Decimal>, overwrite: bool);
+    /// The strike price of the option the element is about, where it states
+    /// one: an instrument fact, which a follower of the same instrument
+    /// stating none takes along its chain.
+    fn get_strikepx(&self) -> Option<Decimal>;
+    /// Sets [`Self::get_strikepx`].
+    fn set_strikepx(&mut self, px: Option<Decimal>, overwrite: bool);
     /// The currency the element is priced in, [`Ccy::none`] where unstated.
     fn get_currency(&self) -> &Ccy;
     /// Sets [`Self::get_currency`].
@@ -1068,6 +1076,7 @@ pub(crate) fn feed_market<E: Market + ?Sized>(state: &mut Xxh3, this: &E) {
     // it did before they were facts.
     for (name, held) in [
         ("stoppx", this.get_stoppx()),
+        ("strikepx", this.get_strikepx()),
         ("displayqty", this.get_displayqty()),
         ("hiddenqty", this.get_hiddenqty()),
         ("cxlqty", this.get_cxlqty()),
@@ -1229,6 +1238,12 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
         if ids.carry(previous.get_securityids(), |_| true) {
             changed |= this.set_securityids(ids, true).is_ok();
         }
+        // And the option's strike, an instrument fact like its codes.
+        changed |= moved(
+            this.get_strikepx(),
+            stated(this.get_strikepx(), previous.get_strikepx(), false),
+            |px| this.set_strikepx(px, true),
+        );
     }
     changed |= moved(
         this.get_cficode().cloned(),
@@ -1452,6 +1467,7 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
     optional!(get_price, set_price);
     optional!(get_quantity, set_quantity);
     optional!(get_stoppx, set_stoppx);
+    optional!(get_strikepx, set_strikepx);
     optional!(get_displayqty, set_displayqty);
     optional!(get_hiddenqty, set_hiddenqty);
     optional!(get_lastpx, set_lastpx);

@@ -12,7 +12,7 @@ One abstraction for every place that answers "which tables are there, and how do
 | JavaScript | the frozen `warehouse` namespace: one class per kind - `Catalog`, `Namespace`, `Table` - with a static constructor per implementation (`Catalog.memory`, `Catalog.folder`, `Catalog.fromUrl`, `Namespace.memory`, `Namespace.folder`, `Table.media`) and `implementation` naming it; `MemoryCatalog`, `FolderCatalog`, `MemoryNamespace`, `FolderNamespace`, `MediaTable` as constructors over those statics, `iceberg.IcebergCatalog`, `iceberg.IcebergNamespace` and `iceberg.IcebergTable` the Iceberg ones, each with `from(object)` and `intoCatalog`/`intoNamespace`/`intoTable` to cross; `Namespaces`, `Tables` are Map-like; `Warehouse`, `SystemWarehouse`; `IOBase.from(object)` holds an object as the handle it is |
 | Validated | a path at its intake, through the plan's [location grammar](../expression/plans.md#locations-and-targets); a namespace path of at least two parts and a table path of at least one; a registration exactly one level below its parent, under a name free at that level; a `type` property of `memory`, `folder` or, under `iceberg`, `hadoop`; under `s3tables`, an `s3tables://<bucket>` location naming a table bucket, and a `warehouse` property naming its ARN - the one the location was given as, where it was |
 | Lazy | construction touches nothing; an object's handle is opened on the first verb that needs it; a folder is listed when it is asked, so a table written a moment ago is found on the next ask; `children`, `Names`, `Namespaces` and `Tables` walk as they are drained |
-| Cached | nothing but the resolved handle, kept for the object's life; a clone starts unresolved and rebuilds from its location |
+| Cached | only the resolved handle; a successful leaf `MediaTable` record write closes its located holder's session, releasing mappings and wrapper caches while retaining its media and backend options; a bound handle without a site is retained as the data itself; folder/format writes and direct byte operations keep their held session; a clone starts unresolved and rebuilds from its location |
 | Refused | a URL or a `with (...)` clause where a path is expected, at `$.path`; creating under a memory or a folder object, by implementation name - an Iceberg catalog creates; registering under an object that lists its own store; the byte verbs of a catalog or a namespace (`NotAtomic`) and its record verbs (name a table under it); a `type` this build has no catalog for |
 | Build | default; a table laid out as a table format needs `iceberg` to read its rows, and is `Table::Iceberg` there |
 
@@ -311,6 +311,7 @@ An object displays as its dotted path, quoted only where the grammar needs it; e
     written = tables.append("ticks", pa.table({"id": [1, 2]}))
     assert str(written) == "lake.ticks"
     assert written.row_size() == 2
+    del written  # Release its mapped read handle before the next write.
     tables.append("ticks", [{"id": 3}])
     assert tables["ticks"].row_size() == 3
     assert tables.overwrite("ticks", pa.table({"id": [7]})).row_size() == 1
@@ -354,7 +355,9 @@ An object displays as its dotted path, quoted only where the grammar needs it; e
     const rows = new arrow.Table({ id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()) })
     const written = tables.append('ticks', rows)
     assert.equal(String(written), 'lake.ticks')
-    assert.equal(IOBase.from(written).rowSize(), 2)
+    const read = IOBase.from(written)
+    assert.equal(read.rowSize(), 2)
+    read.close()
     assert.equal(IOBase.from(tables.overwrite('ticks', rows)).rowSize(), 2)
 
     // Absence names the path; a memory level creates nothing.

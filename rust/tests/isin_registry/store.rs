@@ -406,3 +406,279 @@ fn an_iceberg_table_store_is_replaced_in_one_snapshot_and_emptied_as_one() {
     assert_eq!(IsinRegistry::from_holder(local("table")).unwrap().len(), 0);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// The rows `registry` holds as a store written before the product
+/// category was a column: its snapshot less `eusipacode`, forty-one
+/// columns.
+fn without_category(registry: &IsinRegistry) -> yggdryl::arrow::BatchReader {
+    let reader = registry.into_arrow_reader().unwrap();
+    let schema = reader.schema();
+    let kept: Vec<usize> = (0..schema.fields().len())
+        .filter(|at| schema.field(*at).name() != "eusipacode")
+        .collect();
+    let projected = std::sync::Arc::new(schema.project(&kept).unwrap());
+    let batches: Vec<_> = reader.map(|batch| batch.unwrap().project(&kept)).collect();
+    Box::new(arrow_array::RecordBatchIterator::new(batches, projected))
+}
+
+/// A leaf written before the product category was a column loads with the
+/// column null; a commit replaces the rows under the leaf's stored row, as
+/// every overwrite of a leaf does, so the category is kept by the registry
+/// and not by such a store until the store is laid out afresh - an emptied
+/// leaf, or a new one - when a commit writes the row as it is now,
+/// forty-two columns.
+#[test]
+fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row() {
+    let (_, folder) = counted_folder("isin");
+    let leaf = || folder.child_by_path("instruments.arrows").unwrap();
+    let mut older = IsinRegistry::new();
+    older
+        .merge(entry(HOLCIM, &[(IdType::Ric, "HOLN.S")]))
+        .unwrap();
+    let mut handle = leaf();
+    let options = handle.record_options().unwrap();
+    handle
+        .write_arrow_reader(without_category(&older), IOMode::Overwrite, &options)
+        .unwrap();
+    let columns = |handle: &dyn IOBase| {
+        handle
+            .read_arrow_field(&handle.record_options().unwrap())
+            .unwrap()
+            .fields()
+            .len()
+    };
+    assert_eq!(columns(&leaf()), 41);
+
+    let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
+    let row = registry.get(HOLCIM).unwrap();
+    assert_eq!(row.get(&IdType::Ric), Some("HOLN.S"));
+    assert_eq!(row.eusipacode(), None);
+    assert!(!registry.is_dirty());
+    let category = Some(yggdryl::Eusipa::new(2300).unwrap());
+    registry
+        .merge(entry(HOLCIM, &[]).with_eusipacode(category))
+        .unwrap();
+    assert_eq!(registry.commit().unwrap().written_rows, 1);
+    assert_eq!(columns(&leaf()), 41, "the leaf's own row");
+    let back = IsinRegistry::from_holder(leaf()).unwrap();
+    let row = back.get(HOLCIM).unwrap();
+    assert_eq!(row.get(&IdType::Ric), Some("HOLN.S"));
+    assert_eq!(row.eusipacode(), None);
+    assert_eq!(registry.get(HOLCIM).unwrap().eusipacode(), category);
+
+    // A store laid out afresh holds the row as it is now.
+    let fresh = || folder.child_by_path("fresh.arrows").unwrap();
+    let mut moved = IsinRegistry::from_holder(fresh()).unwrap();
+    moved.merge(registry.get(HOLCIM).unwrap().clone()).unwrap();
+    moved.commit().unwrap();
+    assert_eq!(columns(&fresh()), 42);
+    let back = IsinRegistry::from_holder(fresh()).unwrap();
+    assert_eq!(back.get(HOLCIM).unwrap().eusipacode(), category);
+}
+
+/// An Iceberg table created before the product category was a column loads
+/// it null, and a commit replaces the rows under the table's own schema.
+#[cfg(feature = "iceberg")]
+#[test]
+fn an_iceberg_store_without_the_product_category_loads_it_null_and_keeps_its_schema() {
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec};
+
+    let (filesystem, _) = counted_folder("table");
+    let table = || folder_on(&filesystem, "older");
+    let older_row = {
+        let mut older = IsinRegistry::new();
+        older.merge(entry(HOLCIM, &[])).unwrap();
+        without_category(&older).schema()
+    };
+    let field = yggdryl::Field::from_arrow_schema("isinregistry", &older_row).unwrap();
+    IcebergTable::create(
+        table(),
+        FormatVersion::V3,
+        field,
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    let mut registry = IsinRegistry::from_holder(table()).unwrap();
+    let category = Some(yggdryl::Eusipa::new(2300).unwrap());
+    registry
+        .merge(entry(HOLCIM, &[(IdType::Ric, "HOLN.S")]).with_eusipacode(category))
+        .unwrap();
+    assert_eq!(registry.commit().unwrap().written_rows, 1);
+    let back = IsinRegistry::from_holder(table()).unwrap();
+    let row = back.get(HOLCIM).unwrap();
+    assert_eq!(row.get(&IdType::Ric), Some("HOLN.S"));
+    assert_eq!(row.eusipacode(), None, "the table's own schema");
+    assert_eq!(
+        IcebergTable::open(table())
+            .unwrap()
+            .schema()
+            .unwrap()
+            .fields()
+            .len(),
+        41
+    );
+}
+
+/// A plain folder written before the product category was a column is laid
+/// out afresh by a commit - its record parts removed, the snapshot written
+/// as one part of the row as it is now - so the category is stored.
+#[test]
+fn a_folder_store_without_the_product_category_is_laid_out_afresh_with_it() {
+    let root = crate::scratch("unstored-folder").join("isin");
+    std::fs::create_dir_all(&root).unwrap();
+    let url = Url::from_location(&format!("{}/", root.display())).unwrap();
+    let mut older = IsinRegistry::new();
+    older
+        .merge(entry(HOLCIM, &[(IdType::Ric, "HOLN.S")]))
+        .unwrap();
+    let mut part = yggdryl::holder::Holder::from_url(
+        Url::from_location(&root.join("part-0.arrows").display().to_string()).unwrap(),
+        [("", ""); 0],
+    )
+    .unwrap();
+    let options = part.record_options().unwrap();
+    part.write_arrow_reader(without_category(&older), IOMode::Overwrite, &options)
+        .unwrap();
+    let none: [(&str, &str); 0] = [];
+    let mut registry = IsinRegistry::from_url(&url, none).unwrap();
+    assert_eq!(registry.get(HOLCIM).unwrap().eusipacode(), None);
+    let category = Some(yggdryl::Eusipa::new(2300).unwrap());
+    registry
+        .merge(entry(HOLCIM, &[]).with_eusipacode(category))
+        .unwrap();
+    assert_eq!(registry.commit().unwrap().written_rows, 1);
+    let back = IsinRegistry::from_url(&url, none).unwrap();
+    assert_eq!(back.get(HOLCIM).unwrap().eusipacode(), category);
+    assert_eq!(back.get(HOLCIM).unwrap().get(&IdType::Ric), Some("HOLN.S"));
+    let _ = std::fs::remove_dir_all(root.parent().unwrap());
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    use yggdryl::internals::logging_warning::count;
+    use yggdryl::{IOBase, IOMedia, IOMode, IdType, IsinRegistry};
+
+    use super::{HOLCIM, entry, without_category};
+    use crate::counting_filesystem::counted_folder;
+
+    const SITE: &str = "yggdryl::isin_registry::store";
+    const WHAT: &str = "instrument registry column not stored: the store's row lacks it";
+
+    /// The subject the warning about `column` on `registry`'s store is
+    /// counted under: the column and the store.
+    fn subject(registry: &IsinRegistry, column: &str) -> String {
+        let store = registry.holder().unwrap().url().unwrap();
+        format!("{column} at {store}")
+    }
+
+    /// A commit to a store whose row was laid out before a column the
+    /// registry holds a value for warns, once per commit, naming the column
+    /// and the store: the rows are replaced under the store's own row, so
+    /// the value stays the registry's. A commit holding no such value, a
+    /// clean one, and one to the store laid out afresh say nothing.
+    #[test]
+    fn a_commit_a_store_keeps_no_column_for_warns_naming_the_column_and_the_store() {
+        let (_, folder) = counted_folder("isin-unstored");
+        let leaf = || folder.child_by_path("instruments.arrows").unwrap();
+        let mut older = IsinRegistry::new();
+        older
+            .merge(entry(HOLCIM, &[(IdType::Ric, "HOLN.S")]))
+            .unwrap();
+        let mut handle = leaf();
+        let options = handle.record_options().unwrap();
+        handle
+            .write_arrow_reader(without_category(&older), IOMode::Overwrite, &options)
+            .unwrap();
+
+        let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
+        let subject = subject(&registry, "eusipacode");
+        let seen = || count(SITE, WHAT, &subject);
+        assert_eq!(seen(), 0);
+        registry
+            .merge(entry(HOLCIM, &[(IdType::Common, "C-1")]))
+            .unwrap();
+        registry.commit().unwrap();
+        assert_eq!(seen(), 0, "no value the store keeps no column for");
+
+        let category = Some(yggdryl::Eusipa::new(2300).unwrap());
+        registry
+            .merge(entry(HOLCIM, &[]).with_eusipacode(category))
+            .unwrap();
+        assert_eq!(registry.commit().unwrap().written_rows, 1);
+        assert_eq!(seen(), 1, "once per commit");
+        registry
+            .merge(entry(HOLCIM, &[(IdType::Common, "C-2")]))
+            .unwrap();
+        registry.commit().unwrap();
+        assert_eq!(seen(), 2);
+        registry.commit().unwrap();
+        assert_eq!(seen(), 2, "a clean commit writes nothing");
+        // The store keeps its own row all the same: no migration.
+        let back = IsinRegistry::from_holder(leaf()).unwrap();
+        assert_eq!(back.get(HOLCIM).unwrap().eusipacode(), None);
+        assert_eq!(back.get(HOLCIM).unwrap().get(&IdType::Common), Some("C-2"));
+
+        // Emptied, the leaf is laid out afresh by the next commit, which
+        // stores the column and says nothing.
+        registry.clear();
+        registry.commit().unwrap();
+        registry
+            .merge(entry(HOLCIM, &[]).with_eusipacode(category))
+            .unwrap();
+        registry.commit().unwrap();
+        assert_eq!(seen(), 2);
+        let back = IsinRegistry::from_holder(leaf()).unwrap();
+        assert_eq!(back.get(HOLCIM).unwrap().eusipacode(), category);
+
+        // A store laid out by the registry from the first says nothing.
+        let fresh = || folder.child_by_path("fresh.arrows").unwrap();
+        let mut moved = IsinRegistry::from_holder(fresh()).unwrap();
+        moved
+            .merge(entry(HOLCIM, &[]).with_eusipacode(category))
+            .unwrap();
+        moved.commit().unwrap();
+        moved
+            .merge(entry(HOLCIM, &[(IdType::Common, "C-3")]))
+            .unwrap();
+        moved.commit().unwrap();
+        assert_eq!(count(SITE, WHAT, &self::subject(&moved, "eusipacode")), 0);
+    }
+
+    /// An Iceberg table created before the product category was a column
+    /// warns the same, its own schema kept.
+    #[cfg(feature = "iceberg")]
+    #[test]
+    fn a_commit_an_iceberg_store_keeps_no_column_for_warns_the_same() {
+        use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec};
+
+        let (filesystem, _) = counted_folder("table-unstored");
+        let table = || super::folder_on(&filesystem, "older-unstored");
+        let older_row = {
+            let mut older = IsinRegistry::new();
+            older.merge(entry(HOLCIM, &[])).unwrap();
+            without_category(&older).schema()
+        };
+        let field = yggdryl::Field::from_arrow_schema("isinregistry", &older_row).unwrap();
+        IcebergTable::create(
+            table(),
+            FormatVersion::V3,
+            field,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let mut registry = IsinRegistry::from_holder(table()).unwrap();
+        let subject = subject(&registry, "eusipacode");
+        let category = Some(yggdryl::Eusipa::new(2300).unwrap());
+        registry
+            .merge(entry(HOLCIM, &[]).with_eusipacode(category))
+            .unwrap();
+        assert_eq!(registry.commit().unwrap().written_rows, 1);
+        assert_eq!(count(SITE, WHAT, &subject), 1);
+        let back = IsinRegistry::from_holder(table()).unwrap();
+        assert_eq!(
+            back.get(HOLCIM).unwrap().eusipacode(),
+            None,
+            "the table's own schema"
+        );
+    }
+}

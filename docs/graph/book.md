@@ -37,7 +37,8 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 | `orddelta()` | the orders among `deltas()`, in the order applied, as `&OrderEvent`: placed, changed, ended, expired or withdrawn at the book's instant - an order placed then is also in `ordlive()`, the one entry both borrow, an order ended then in `orddelta()` alone. Python `book.orddelta`, JavaScript `book.orddelta()` |
 | `quotes()` | the quotes among `deltas()`, in the order applied, as `&QuoteEvent`; a quote resting since an earlier instant is `alive()`'s and not here. Python `book.quotes`, JavaScript `book.quotes()` |
 | `executions()` | the executions among `deltas()`, in the order applied, as `&ExecutionEvent`: recorded at the book's instant, resting on no side. Python `book.executions`, JavaScript `book.executions()` |
-| By kind | `orddelta()`, `quotes()` and `executions()` partition `deltas()`, which hold nothing else - a row stating another kind among them is refused at `$.deltas[i]` - and `alive()` holds orders and quotes alone; each reading borrows and allocates nothing, and is no storage of its own: the row keeps one `deltas` list in the order applied, and [`MarketData::deltas_serie`](market-data.md#arrow) is the same split over a table of books |
+| `events()` | every delta that is no order, quote or execution, in the order applied, as `&MarketData`: the typed home of whatever else a book comes to record. Empty today, by construction: the fold [prunes](#book-fold) a trade, a batch and a session message before it reads one, refuses an undated order, quote or execution and a nested book by kind, and folds a snapshot control into the sides' membership, never among the deltas; a row stating another kind among the deltas is refused at `$.deltas[i]`. Python `book.events` (`list[MarketData]`); JavaScript binds no `events` |
+| By kind | `orddelta()`, `quotes()`, `executions()` and `events()` partition `deltas()` - `ordlive()` reads `alive()` and is outside the partition - and `alive()` holds orders and quotes alone; each reading borrows and allocates nothing, and is no storage of its own: the row keeps one `deltas` list in the order applied, and [`MarketData::deltas_serie`](market-data.md#arrow) is the same split over a table of books |
 | Legs | an entry rests on every side it states a leg for, as one entry: an order - [sided](market.md#sides-and-cross-codes) - its price, quantity and currency on the side its [`Side`](../types/enum/side.md) takes, the bid for `Side::is_bid` (`BUYS`, `BUYM`), the ask for `Side::is_ask` (`SELL`, `SELP`, `SSHT`, `SSEX`, `SELU`); a quote - which holds a bid and an ask and tags a side - each leg it states a price or a quantity of, in that leg's currency, else its own. A leg sized zero rests nowhere: a feed withdraws a level by sizing it zero |
 | Every input a delta | every order and quote but a repeat is a delta of its book, whether or not it rests anywhere: one resting on no side and continuing no live entry - an order of side `UNKN`, a quote stating no leg - warned of where it is live, one first seen ended, and one ending an entry the book no longer holds place nothing, are never refused, and still advance the book as its deltas |
 | Repeats | a statement repeating the live entry it continues - every fact the same but its identity, its digests and its place in its chain, under the same book control - records no delta and leaves the entry as it stood; a group of repeats changes nothing. A full snapshot restating an entry its scope held keeps that entry, identity and all |
@@ -77,7 +78,7 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 | As a market | `price`: `bbo_midpoint()` - the overflow-safe `(bid + offer) / 2` of a two-sided BBO, per [SEC](https://www.sec.gov/files/rules/sro/btnl/2026/34-106421-ex4.pdf) - else the one best price, `None` if crossed; `quantity`: `median_quantity()` - [NIST](https://www.itl.nist.gov/div898/handbook/eda/section3/eda351.htm) mean of the two best quantities, one-sided its own; currency the best legs agree on and unit the best entries agree on (one-sided: its own; else none); `bidpx`/`bidqty` and `askpx`/`askqty` the best tradable levels, `bidccy`/`askccy` the book's currency beside a best - nothing where no level of a side can trade |
 | Following | `with_previous`, [above](#complete-books-and-delta-books): a delta book rebuilt over the book it follows, a complete one linked to it |
 | Merging | only one book code at one instant, the reference chosen by its recording clock - the later `recdunix`, then `currunix`: two complete books join their sides - the reference's entries, then each of the other's identities it holds on neither side, unless the reference states a `snapunix`, which is authoritative - and union their deltas; a complete book is authoritative over a delta book whichever records later; two delta books keep the reference's facts over the deltas of both, the reference's first; self-merge changes nothing |
-| Bindings | Python `graph.BookEvent(currunix, symbol)`, `graph.BookEvent.keyed(currunix, key)`, `with_operations(items)` (a new book), `with_previous(previous)`, the properties `alive`, `deltas`, `ordlive`, `orddelta`, `quotes`, `executions` and `is_complete`, the method `alive_on(side)`; JavaScript `new graph.BookEvent(currunix, symbol)`, `graph.BookEvent.keyed(currunix, key)`, `withOperations(items)`, `withPrevious(previous)`, the methods `alive()`, `deltas()`, `ordlive()`, `orddelta()`, `quotes()`, `executions()`, `aliveOn(side)` and the property `isComplete` |
+| Bindings | Python `graph.BookEvent(currunix, symbol)`, `graph.BookEvent.keyed(currunix, key)`, `with_operations(items)` (a new book), `with_previous(previous)`, the properties `alive`, `deltas`, `ordlive`, `orddelta`, `quotes`, `executions`, `events` and `is_complete`, the method `alive_on(side)`; JavaScript `new graph.BookEvent(currunix, symbol)`, `graph.BookEvent.keyed(currunix, key)`, `withOperations(items)`, `withPrevious(previous)`, the methods `alive()`, `deltas()`, `ordlive()`, `orddelta()`, `quotes()`, `executions()`, `aliveOn(side)` and the property `isComplete` |
 
 ## Snapshot controls
 
@@ -461,8 +462,12 @@ Two bids and an offer on Apple; a second later the first bid is cancelled, a fil
     assert_eq!(book.quotes().map(Element::get_crosscode).collect::<Vec<_>>(), ["14:0:Q-2"]);
     assert_eq!(book.executions().map(Element::get_crosscode).collect::<Vec<_>>(), ["8:1:E-1"]);
     assert_eq!(book.alive().count(), 3);
-    // The three partition the deltas.
-    assert_eq!(book.orddelta().count() + book.quotes().count() + book.executions().count(), book.deltas().len());
+    // The four partition the deltas; nothing else is recorded, so `events` is empty.
+    assert_eq!(book.events().count(), 0);
+    assert_eq!(
+        book.orddelta().count() + book.quotes().count() + book.executions().count() + book.events().count(),
+        book.deltas().len()
+    );
     ```
 
 === "Python"
@@ -496,8 +501,9 @@ Two bids and an offer on Apple; a second later the first bid is cancelled, a fil
     assert [entry.crosscode for entry in book.quotes] == ["14:0:Q-2"]
     assert [entry.crosscode for entry in book.executions] == ["8:1:E-1"]
     assert len(book.alive) == 3
-    # The three partition the deltas.
-    assert len(book.orddelta) + len(book.quotes) + len(book.executions) == len(book.deltas)
+    # The four partition the deltas; nothing else is recorded, so `events` is empty.
+    assert book.events == []
+    assert len(book.orddelta) + len(book.quotes) + len(book.executions) + len(book.events) == len(book.deltas)
     ```
 
 === "JavaScript"
@@ -528,7 +534,7 @@ Two bids and an offer on Apple; a second later the first bid is cancelled, a fil
     assert.deepEqual(codes(book.quotes()), ['14:0:Q-2'])
     assert.deepEqual(codes(book.executions()), ['8:1:E-1'])
     assert.equal(book.alive().length, 3)
-    // The three partition the deltas.
+    // The three partition the deltas, which hold nothing else today; JavaScript binds no `events`.
     assert.equal(book.orddelta().length + book.quotes().length + book.executions().length, book.deltas().length)
     ```
 

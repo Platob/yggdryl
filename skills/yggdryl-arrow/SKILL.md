@@ -27,8 +27,15 @@ the target field's nullability; `safe` only decides whether a present value
 that fails to convert becomes null.
 
 `RecordBatch`, `ArrayRef`, `BatchReader` and their pyarrow / Arrow JS
-counterparts are transport, never a second collection API. Install and
-cross-language conventions: see the `yggdryl` entry skill.
+counterparts are transport, never a second collection API. `Field`'s
+`apply_arrow_batch`, `apply_arrow_schema` and `apply_arrow_reader`, and the
+record options' `apply_arrow_batch` and `apply_arrow_reader`, take and answer
+those types because their callers exchange them: they are the transport face
+of the same `ArrowCastPlan` - `Field::apply_arrow_reader` is a `SerieReader`
+over the stream, and the options run the cast onto the declared field, the
+`where` and `select`, then the cast onto the stored field - never a second
+cast and nothing to migrate away from (Rust and Python; JavaScript binds
+none). Install and cross-language conventions: see the `yggdryl` entry skill.
 
 ## Choose the door
 
@@ -235,6 +242,9 @@ the record `row`.
   `serie.cast(...)` per batch). **Right:** `for s in
   SerieReader.from_arrow_reader(reader, root)`, or compile
   `ArrowCastPlan(schema, root)` once and `plan.apply(batch)`.
+- **Wrong:** `for batch in reader: root.apply_arrow_batch(batch)` - each
+  call compiles the plan again. **Right:** `root.apply_arrow_reader(reader)`,
+  one plan for the stream.
 - **Wrong:** `Serie.from_arrow_reader(huge_reader)` to process a large file.
   **Right:** `SerieReader` (one batch held), or
   `ChunkedSerie.from_arrow_reader` when you need random access without a join.

@@ -830,7 +830,7 @@ impl PyFixRegistry {
     /// An empty list removes the set, exactly as an empty tag or alias list
     /// removes its own property; removing one a held field still reads by is
     /// a `ValueError`, because a field may not be left naming a vocabulary
-    /// nothing states. `msgcatcodeset` is intrinsic: its stable integer market
+    /// nothing states. `marketdatakindcodeset` is intrinsic: its stable integer market
     /// operation IDs cannot be replaced or removed. One mutation: a refusal
     /// leaves the dictionary exactly as it was.
     fn set_codeset(&mut self, name: &str, codes: &Bound<'_, PyAny>) -> PyResult<()> {
@@ -846,7 +846,7 @@ impl PyFixRegistry {
     /// every surviving spelling is kept as an alias, and a description or a
     /// group either side stated stays. So a venue's statement of a set
     /// enriches the one the dictionary holds rather than replacing it, and a
-    /// set no dictionary held yet arrives whole. `msgcatcodeset` is intrinsic
+    /// set no dictionary held yet arrives whole. `marketdatakindcodeset` is intrinsic
     /// and refuses any merge that would change its stable integer IDs.
     fn merge_codeset(&mut self, name: &str, codes: &Bound<'_, PyAny>) -> PyResult<()> {
         let codes = codes_from_py(codes)?;
@@ -859,7 +859,7 @@ impl PyFixRegistry {
     ///
     /// A set nothing holds answers `None`. A set a held field still reads by
     /// is a `ValueError` naming that field: the field is moved to another set
-    /// first, or removed with it. `msgcatcodeset` is intrinsic and cannot be
+    /// first, or removed with it. `marketdatakindcodeset` is intrinsic and cannot be
     /// removed.
     fn remove_codeset<'py>(
         &mut self,
@@ -2038,12 +2038,12 @@ impl PyFixMsg {
         member(py, self.inner.marketdatakind())
     }
 
-    /// The option strike price the message identifies - `StrikePrice(202)`
-    /// read off the dictionary field - as a decimal; `None` where it states
-    /// none.
+    /// The strike price of the option the message identifies - its market
+    /// fact `strikepx`, derived from `StrikePrice(202)` - as a decimal;
+    /// `None` where it states none.
     #[getter]
     fn strikepx(&self) -> Option<PyScalar> {
-        self.inner.strikepx().map(decimal_scalar)
+        self.inner.get_strikepx().map(decimal_scalar)
     }
 
     /// What the line said about the capture it was written for, typed and
@@ -3738,8 +3738,8 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// `bloombergcode`, `figicode`, `forexcode`, `miccode`), the `sourceurl` a
 /// line was read from, the Map group `metadata` and the `fixmsg` row's own
 /// definition. Each a fact no FIX dictionary publishes, at the datatype its
-/// graph column names; the strike price is the dictionary's `StrikePrice(202)`,
-/// no crate field.
+/// graph column names; `strikepx` is the strike price derived from the
+/// dictionary's `StrikePrice(202)`, a column no registry holds.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {

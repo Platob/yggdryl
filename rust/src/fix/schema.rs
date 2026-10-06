@@ -151,7 +151,7 @@ pub const FIXENTRIES_COLUMN: &str = "fixentries";
 /// Opened by the columns every generated schema of the crate opens with, in
 /// the order of the traits that answer them - the six
 /// [`ElementColumn`](crate::graph::ElementColumn)s, the nine
-/// [`EventColumn`](crate::graph::EventColumn)s, the thirty-four
+/// [`EventColumn`](crate::graph::EventColumn)s, the thirty-five
 /// [`MarketColumn`](crate::graph::MarketColumn)s and the five
 /// [`OperationColumn`](crate::graph::OperationColumn)s - under the names
 /// those columns have, so a FIX row, a text line's batch and a `marketdata`
@@ -164,7 +164,8 @@ pub const FIXENTRIES_COLUMN: &str = "fixentries";
 /// holding what the message states there; every other one is the crate's
 /// own, and the ones FIX states under a name of its own are derived from
 /// those fields and stated again - `ticker` beside `Symbol(55)`, `askpx`
-/// beside `OfferPx(133)`, `ordqty` beside `OrderQty(38)`.
+/// beside `OfferPx(133)`, `strikepx` beside `StrikePrice(202)`, `ordqty`
+/// beside `OrderQty(38)`.
 ///
 /// Then the message's own, in seven bands: the **clocks** FIX states,
 /// **which message** carried it and over which session, **which

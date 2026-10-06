@@ -186,7 +186,7 @@ let message = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|11=A1|5
 assert_eq!((message.header().beginstring(), message.header().msgtype()), ("FIX.4.4", "D"));
 // The category its type files under, and the option strike it identifies.
 assert_eq!(message.marketdatakind(), MarketDataKind::Order);
-assert_eq!(message.strikepx(), Some(Decimal::from_int(105)));
+assert_eq!(message.get_strikepx(), Some(Decimal::from_int(105)));
 // A coded value reads as its name; the wire keeps its code.
 assert_eq!(message.by_tag(54)?.as_str(), Some("BUYS"));
 assert_eq!(message.get_side().as_str(), "BUYS");
@@ -486,13 +486,16 @@ through the same codec fills derived identifiers from the table its door
 fixed. A codec without one learns into a registry of each walk's own;
 `with_isin_registry` shares one across walks run one after another, bound to
 a store with `from_url` and written back with `commit` only where it moved.
+A structured product's EUSIPA category is learned off a bridge's own key
+(`EUSIPACode`, `OMS_SSPACategory`, ...) as the row's `eusipacode`, an
+`Eusipa`; the key is lifted into no identifier map.
 
 ```rust
 use std::sync::{Arc, Mutex};
 
 use yggdryl::graph::Market;
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, IsinRegistry};
+use yggdryl::{Eusipa, FixCodec, FixMsg, FixRegistry, IsinEntry, IsinRegistry};
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
@@ -504,6 +507,14 @@ let stated = ["8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|4
 let parsed: Vec<FixMsg> = codec.parse_lines(stated).collect::<yggdryl::Result<_>>()?;
 codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
 assert_eq!(instruments.lock().unwrap().get("CH0012214059").and_then(|row| row.get(&yggdryl::IdType::Ric)), Some("HOLN.S"));
+
+// A bridge key states a structured product's category beside its ISIN.
+let product = ["8=FIX.4.4|35=D|11=C|22=4|48=CH0123456789|55=ACMEL|207=XSWX|OMS_SSPACategory=2300|10=0|"];
+let parsed: Vec<FixMsg> = codec.parse_lines(product).collect::<yggdryl::Result<_>>()?;
+codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
+let category = instruments.lock().unwrap().get("CH0123456789").and_then(IsinEntry::eusipacode);
+assert_eq!(category, Some(Eusipa::new(2300)?));
+assert_eq!(category.and_then(|code| code.name()), Some("Constant Leverage Certificate"));
 
 // A later parse naming only the ticker on the market takes the ISIN from
 // the table, derived; the walk fills the CFI code as a market fact.

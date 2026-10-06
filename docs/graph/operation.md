@@ -73,13 +73,13 @@
 
 ## Identifiers
 
-`identifiers` is an [`Identifiers`](identifier.md) map: the names the operation goes by - `orderid`, `clordid`, `execid`, `mdentryid`, ... - one value per key `src:type`, the base key spelled as its type alone and holding the type's answer - what a FIX field states, a named source filling it where it is empty ([The base key](identifier.md#the-base-key)) - with the [parents](identifier.md#parentage) a chain gave it: a replacement's `clordid` names the one it replaced as its `origclordid`, and an `orderid` that changed names the value before it as `parentorderid` and its chain's first as `origorderid`.
+`identifiers` is an [`Identifiers`](identifier.md) map: the names the operation goes by - `orderid`, `clordid`, `execid`, `mdentryid`, ... - one value per key `src:type`, the base key spelled as its type alone and holding the type's answer - what a FIX field states, a named source filling or replacing it where it is empty or ranks below it ([The base key](identifier.md#the-base-key)) - with the [parents](identifier.md#parentage) a chain gave it: a replacement's `clordid` names the one it replaced as its `origclordid`, and an `orderid` that changed names the value before it as `parentorderid` and its chain's first as `origorderid`.
 
 | Verb | Rule |
 | --- | --- |
 | `get_identifiers` | the map, in key order; `get(&IdType::ClOrdId)` the base key's value - the type's answer ([Lookups](identifier.md#contract)) - `get_from(&IdKey::new(src, IdType::OrderId))` one source's |
-| `set_identifiers(ids, overwrite)` | with `overwrite`, replaces the map whole, `Identifiers::new()` unsaying it; without, fills the keys it lacks |
-| `insert_identifier(id)` | `Identifiers::insert`: fills an absent key only, a named source filling its type's base key where it is empty; `false` for a held one - another source of one type is another identifier |
+| `set_identifiers(ids, overwrite)` | with `overwrite`, replaces the map whole, `Identifiers::new()` unsaying it; without, `Identifiers::merge(..., false)` replaces lower-ranked values, keeps equal-ranked held values, and retains other keys |
+| `insert_identifier(id)` | `Identifiers::insert`: fills an absent key or replaces a lower-ranked value; a named source fills or replaces its type's base key where it is empty or ranks below it; `false` when a value of equal or higher rank stands - another source of one type is another identifier |
 | `remove_identifier(&key)` | removes what an `IdKey` holds - a named source's key that identifier alone, the base key every key of its type; returns whether one was held |
 | A FIX message | its sets are logical facts read off its fields, the wire kept as sent: a caller's write is the message's word, held as stated - no field moves and no settle restates it ([FIX](../fix/message.md#the-identifier-maps)); a plain holder always answers `Ok` |
 | In a walk | a name a live element goes by - and a parent identifier's value, under the parent's own type - is how an element arriving under no live identity finds its chain, on its own side and within its own market data kind ([walk](event.md#lifecycle-walk)); a book resolves `mdentryid`/`mdentryrefid` the [same way](book.md#entries) |
@@ -91,8 +91,8 @@
 | Verb | Rule |
 | --- | --- |
 | `get_partyids` | the map; `get(&IdType::ExecutingTrader)`, `get(&IdType::Account)` |
-| `set_partyids(partyids, overwrite)` | with `overwrite`, replaces the map whole; without, fills the keys it lacks |
-| `insert_partyid(partyid)` | fills an absent key only; `false` for a held one |
+| `set_partyids(partyids, overwrite)` | with `overwrite`, replaces the map whole; without, `Identifiers::merge(..., false)` replaces lower-ranked values, keeps equal-ranked held values, and retains other keys |
+| `insert_partyid(partyid)` | inserts through `Identifiers::insert`: fills an absent key or replaces a lower-ranked value; `false` when an equal- or higher-ranked value stands |
 | `remove_partyid(&key)` | removes what an `IdKey` holds, the base key every key of its role; returns whether one was held |
 | A FIX message | each `Parties(453)` or `RootParties(1116)` occurrence typed by its role's name from its source's name, `Account(1)` an `account` from its `AcctIDSource(660)`'s - the [naming rule](identifier.md#where-identifiers-come-from); the groups and `Account(1)` stay on the wire as sent, and a caller's write is the message's word |
 | Column | `partyids`: a sorted `map<utf8, utf8>` from the key's text to the value, null where empty ([Market data](market-data.md#columns)); the five operation columns - `ordqty`, `timeinforce`, `tradable`, `identifiers`, `partyids` - close every generated row's shared columns ([Row schemas](schemas.md#the-marketdata-row)) |
@@ -130,7 +130,7 @@ A replacement order following the one it replaces, then an acknowledgment that s
     placed.set_timeinforce(TimeInForce::from_spelling("day"), true);
     placed.set_tradable(Some(true), true);
     placed.finalize();
-    // An insert fills an absent source and type only.
+    // An equal-ranked statement under the same key leaves the held value.
     assert_eq!(placed.get_identifiers().get(&IdType::ClOrdId), Some("C-1"));
     assert_eq!(placed.get_partyids().to_string(), "[clientid=ACC-1, proprietary:clientid=ACC-1]");
     assert!(!placed.insert_identifier(fix(IdType::OrderId, "O-9999")?)?);

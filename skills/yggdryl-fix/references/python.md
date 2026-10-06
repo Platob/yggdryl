@@ -451,11 +451,14 @@ fixed. A codec without one learns into a registry of each walk's own;
 `isin_registry=` shares one across walks run one after another, bound to a
 store with `from_url` and written back with `commit()` only where it moved,
 and `FixCodec.from_env()` shares the process's own, `IsinRegistry.from_env()`.
+A structured product's EUSIPA category is learned off a bridge's own key
+(`EUSIPACode`, `OMS_SSPACategory`, ...) as the row's `eusipacode`, an `int`
+that `yggdryl.Eusipa` names; the key is lifted into no identifier map.
 
 ```python
 from pathlib import Path
 
-from yggdryl import IsinRegistry
+from yggdryl import Eusipa, IsinRegistry
 from yggdryl.fix import FixCodec, FixRegistry
 
 instruments = IsinRegistry()
@@ -465,6 +468,12 @@ codec = FixCodec(FixRegistry.from_handle(Path("config/fix")), isin_registry=inst
 stated = [b"8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|"]
 list(codec.lifecycle(codec.parse_lines(stated)))
 assert instruments.get("CH0012214059")["ric"] == "HOLN.S"
+
+# A bridge key states a structured product's category beside its ISIN.
+product = [b"8=FIX.4.4|35=D|11=C|22=4|48=CH0123456789|55=ACMEL|207=XSWX|OMS_SSPACategory=2300|10=0|"]
+list(codec.lifecycle(codec.parse_lines(product)))
+category = Eusipa(instruments.get("CH0123456789")["eusipacode"])
+assert (category.code, category.name) == (2300, "Constant Leverage Certificate")
 
 # A later parse naming only the ticker on the market takes the ISIN from the
 # table, derived; the walk fills the CFI code as a market fact.

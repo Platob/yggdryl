@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
+use yggdryl::fs::{FileSystem, FsFile, FsFolder, MemoryFileSystem};
 use yggdryl::holder::{Buffer, Holder};
 use yggdryl::local::LocalFolder;
 use yggdryl::media::RecordOptions;
@@ -67,6 +68,35 @@ fn trades_batch() -> RecordBatch {
 /// The leaf at the file-system path `path` under `root`.
 fn leaf(root: &Path, path: &str) -> Holder {
     Holder::file(root.join(path)).expect("the leaf holds")
+}
+
+/// A case-sensitive in-memory catalog root and its filesystem.
+fn memory_catalog_root() -> (Arc<MemoryFileSystem>, Holder) {
+    let filesystem = Arc::new(MemoryFileSystem::new());
+    filesystem
+        .create_dir("market", true)
+        .expect("the catalog root exists");
+    let folder = FsFolder::from_path(
+        Arc::clone(&filesystem) as Arc<dyn FileSystem>,
+        "market",
+        None,
+    )
+    .expect("the catalog root is a folder");
+    (filesystem, Holder::from(folder))
+}
+
+/// A leaf under the in-memory catalog, creating its parent tree recursively.
+fn memory_leaf(filesystem: &Arc<MemoryFileSystem>, path: &str) -> Holder {
+    let path = format!("market/{path}");
+    if let Some((parent, _)) = path.rsplit_once('/') {
+        filesystem
+            .create_dir(parent, true)
+            .expect("the leaf parent tree exists");
+    }
+    Holder::from(
+        FsFile::from_path(Arc::clone(filesystem) as Arc<dyn FileSystem>, path, None)
+            .expect("the leaf has a location"),
+    )
 }
 
 /// Write the trades rows into `holder`, in the encoding its name declares.
@@ -323,10 +353,10 @@ fn a_name_and_a_schema_are_matched_exactly() {
 
 #[test]
 fn schemas_differing_only_in_case_are_two_schemas() {
-    let root = catalog_root("schema-case");
-    write_rows(&root, "EU/fills.arrows");
-    write_rows(&root, "eu/orders.arrows");
-    let catalog = over("market", &root);
+    let (filesystem, root) = memory_catalog_root();
+    write_rows_into(memory_leaf(&filesystem, "EU/fills.arrows"));
+    write_rows_into(memory_leaf(&filesystem, "eu/orders.arrows"));
+    let catalog = Catalog::from(FolderCatalog::bound("market", root));
     assert_eq!(schemas(&catalog).expect("a listing"), ["EU", "eu"]);
     assert_eq!(
         catalog
@@ -1655,18 +1685,33 @@ fn a_table_format_folder_under_a_schema_is_described_as_a_table() {
 
 #[test]
 fn a_metadata_folder_with_no_hint_and_no_metadata_document_leaves_a_schema() {
-    let root = catalog_root("iceberg-lookalikes");
+    let (filesystem, root) = memory_catalog_root();
     // Neither marker: a document of another name, a hint of another suffix,
     // the right name one level too deep, a private one, another case, and a
     // `metadata` that is a leaf rather than a folder.
-    write_bytes(&root, "notes/metadata/v1.json", b"{}");
-    write_bytes(&root, "hint/metadata/version-hint.txt", b"1");
-    write_bytes(&root, "deep/metadata/old/v1.metadata.json", b"{}");
-    write_bytes(&root, "private/metadata/.metadata.json", b"{}");
-    write_bytes(&root, "upper/Metadata/version-hint.text", b"1");
-    write_bytes(&root, "flat/metadata", b"version-hint.text");
-    write_bytes(&root, "sibling/version-hint.text", b"1");
-    let catalog = over("market", &root);
+    write_bytes_into(memory_leaf(&filesystem, "notes/metadata/v1.json"), b"{}");
+    write_bytes_into(
+        memory_leaf(&filesystem, "hint/metadata/version-hint.txt"),
+        b"1",
+    );
+    write_bytes_into(
+        memory_leaf(&filesystem, "deep/metadata/old/v1.metadata.json"),
+        b"{}",
+    );
+    write_bytes_into(
+        memory_leaf(&filesystem, "private/metadata/.metadata.json"),
+        b"{}",
+    );
+    write_bytes_into(
+        memory_leaf(&filesystem, "upper/Metadata/version-hint.text"),
+        b"1",
+    );
+    write_bytes_into(
+        memory_leaf(&filesystem, "flat/metadata"),
+        b"version-hint.text",
+    );
+    write_bytes_into(memory_leaf(&filesystem, "sibling/version-hint.text"), b"1");
+    let catalog = Catalog::from(FolderCatalog::bound("market", root));
     assert_eq!(
         schemas(&catalog).expect("a listing"),
         [

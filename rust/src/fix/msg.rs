@@ -64,6 +64,11 @@ pub(super) type Viewed = [Option<Scalar>; SECURITY_VIEWS.len()];
 /// country of issue in.
 const COUNTRYOFISSUE_TAG: i32 = 470;
 
+/// `FinancialInstrumentShortName(2737)`: the instrument's ISO 18774 short
+/// name, a security identifier FIX gives no `SecurityIDSource(22)` code,
+/// read into `securityids` under the base `fisn` key.
+const FINANCIAL_INSTRUMENT_SHORT_NAME_TAG: i32 = 2737;
+
 /// `UnderlyingSecurityIDSource(305)`, `UnderlyingSecurityID(309)` and
 /// `UnderlyingSymbol(311)` of `UnderlyingInstrument`, at the root or in a
 /// `NoUnderlyings(711)` occurrence.
@@ -112,8 +117,9 @@ mod fact {
     pub(super) const ORDQTY: u32 = 1 << 24;
     pub(super) const IDENTIFIERS: u32 = 1 << 25;
     pub(super) const PARTYIDS: u32 = 1 << 26;
+    pub(super) const STRIKEPX: u32 = 1 << 27;
     /// Every fact.
-    pub(super) const ALL: u32 = (1 << 27) - 1;
+    pub(super) const ALL: u32 = (1 << 28) - 1;
     /// An order's quantities - what it ordered, what traded, what is left,
     /// what was canceled - which fill one another against its state and are
     /// stated again together.
@@ -147,6 +153,7 @@ fn facts_of_tag(registry: &FixRegistry, tag: i32) -> u32 {
     match tag {
         44 => fact::PRICE | fact::BIDASK,
         99 => fact::STOPPX,
+        STRIKEPRICE_TAG => fact::STRIKEPX,
         38 => fact::ORDERED | fact::QUANTITY,
         53 => fact::QUANTITY | fact::HIDDENQTY | fact::BIDASK,
         1138 | 111 => fact::DISPLAYQTY | fact::HIDDENQTY,
@@ -167,6 +174,7 @@ fn facts_of_tag(registry: &FixRegistry, tag: i32) -> u32 {
         30 | 100 | 207 => fact::MIC,
         461 | 201 => fact::CFI,
         22 | 48 | 454 | 455 | 456 => fact::SECURITYIDS | fact::MIC | fact::CURRENCY,
+        FINANCIAL_INSTRUMENT_SHORT_NAME_TAG => fact::SECURITYIDS,
         2749 | 60 | 768 | 769 | 770 | 1750..=1770 => fact::EXECUTION,
         35 | 117 => fact::STATUS,
         tag if State::FIX_STATUS_TAGS.contains(&tag) || tag == 150 => fact::STATUS,
@@ -207,6 +215,7 @@ fn fact_of_crate_tag(tag: i32) -> u32 {
         t if t == c::IDENTIFIERS_TAG_NAME.0 => fact::IDENTIFIERS,
         t if t == c::PARTYIDS_TAG_NAME.0 => fact::PARTYIDS,
         t if t == c::PREVPX_TAG_NAME.0 => fact::PREVPX,
+        t if t == c::STRIKEPX_TAG_NAME.0 => fact::STRIKEPX,
         t if t == c::TICKER_TAG_NAME.0 => fact::TICKER,
         t if t == c::ORDQTY_TAG_NAME.0 => fact::ORDQTY,
         t if t == c::TRADABLE_TAG_NAME.0 => fact::TRADABLE,
@@ -232,7 +241,8 @@ fn stated_text(value: Option<Scalar>) -> Option<SmolStr> {
     value.as_ref().and_then(scalar_text)
 }
 
-/// FIX's own `StrikePrice(202)`: what [`FixMsg::strikepx`] reads.
+/// FIX's own `StrikePrice(202)`: what [`FixMsg::state_market`] reads the
+/// message's `strikepx` off.
 const STRIKEPRICE_TAG: i32 = 202;
 
 /// The group an identifier map reads its role sources out of, and the two
@@ -257,6 +267,11 @@ const PARTY_GROUPS: [(i32, i32, i32, i32); 2] = [
     (453, 448, PARTY_ROLE, PARTY_ID_SOURCE),
     (1116, 1117, 1119, 1118),
 ];
+/// The dictionary's names of the identifier field of each of
+/// [`PARTY_GROUPS`] - `PartyID(448)` and `RootPartyID(1117)` - and of
+/// `Account(1)`: the field an anomaly of a refused party names.
+const PARTY_ID_FIELDS: [&str; 2] = ["partyid", "rootpartyid"];
+const ACCOUNT_FIELD: &str = "account";
 /// `Account(1)`: the account an order is booked to, one of a message's
 /// parties typed [`IdType::Account`].
 const ACCOUNT: i32 = 1;
@@ -390,10 +405,27 @@ impl Underlying<'_> {
 /// Whether `key` spells `underlying` in any case: the cheap test before a
 /// key is folded.
 fn mentions_underlying(key: &str) -> bool {
-    key.as_bytes()
-        .windows(b"underlying".len())
-        .any(|window| window.eq_ignore_ascii_case(b"underlying"))
+    mentions(key, b"underlying")
 }
+
+/// Whether `key` spells `word` in any case.
+fn mentions(key: &str, word: &[u8]) -> bool {
+    key.as_bytes()
+        .windows(word.len())
+        .any(|window| window.eq_ignore_ascii_case(word))
+}
+
+/// The folded names a bridge's key ends with to state an instrument's
+/// EUSIPA product category, which no FIX field names: EUSIPA's own and the
+/// SSPA's, whose Swiss map numbers it the same way.
+const PRODUCT_CATEGORY_KEYS: [&str; 6] = [
+    "eusipa",
+    "eusipacode",
+    "eusipacategory",
+    "sspa",
+    "sspacode",
+    "sspacategory",
+];
 
 /// Where the fields of one level - a root, a component, an occurrence -
 /// hold the child stating `wanted`: as the group it counts when `counts`,
@@ -441,26 +473,31 @@ impl<'registry> PartyCodes<'registry> {
     /// The party one occurrence states: its `PartyID` typed by its role's
     /// name - `ExecutingTrader` is `executingtrader` - and sourced by its
     /// source's, each read through [`code_word`]; [`IdType::Party`] for no
-    /// role and [`IdSource::Base`] for no source.
+    /// role and [`IdSource::Base`] for no source. `None` where the role or
+    /// the source reads as no word, and the refusal where the value is not
+    /// one the key holds - a `PartyID` under `PartyIDSource(447)` `B` that
+    /// is no BIC, under `N` no LEI.
     pub(super) fn party(
         &self,
         value: &str,
         role: Option<&str>,
         source: Option<&str>,
-    ) -> Option<Identifier> {
+    ) -> Option<crate::Result<Identifier>> {
         let kind = match role {
             Some(role) => self.role(role)?,
             None => IdType::Party,
         };
         let src = self.source(PartySlot::PartySource, self.sources, source)?;
-        Identifier::new(IdKey::new(src, kind), value).ok()
+        Some(Identifier::new(IdKey::new(src, kind), value))
     }
 
     /// The party `Account(1)` states: an [`IdType::Account`] sourced by its
-    /// `AcctIDSource(660)`'s name, read through [`code_word`], where stated.
-    fn account(&self, value: &str, source: Option<&str>) -> Option<Identifier> {
+    /// `AcctIDSource(660)`'s name, read through [`code_word`], where stated;
+    /// the refusal where the value is not one the key holds - an account
+    /// under `AcctIDSource(660)` `1` that is no BIC.
+    fn account(&self, value: &str, source: Option<&str>) -> Option<crate::Result<Identifier>> {
         let src = self.source(PartySlot::AccountSource, self.accounts, source)?;
-        Identifier::new(IdKey::new(src, IdType::Account), value).ok()
+        Some(Identifier::new(IdKey::new(src, IdType::Account), value))
     }
 
     /// The type a party's role `text` reads as through [`code_word`],
@@ -555,29 +592,44 @@ where
 /// party of its `Parties(453)` and `RootParties(1116)` groups, then its
 /// `Account(1)`. The first value of a role and source stands; a second
 /// party of one is ordinary - two contra firms - and stays where the wire
-/// states it, an anomaly of nothing.
+/// states it, an anomaly of nothing. A value its key refuses - a party
+/// sourced `B` that is no BIC, `N` no LEI - stays on the wire and is
+/// recorded in `refused` as an anomaly of its identifier field, `partyid`,
+/// `rootpartyid` or `account`.
 fn read_parties(
     codes: PartyCodes<'_>,
     groups: [PartyGroup<'_>; 2],
     account: [Option<&Scalar>; 2],
     into: &mut Identifiers,
+    refused: &mut Vec<super::FixAnomaly>,
 ) {
-    for (value, positions) in groups.into_iter().flatten() {
+    let mut admit = |field: &str, value: &str, party: crate::Result<Identifier>| match party {
+        Ok(party) => {
+            into.insert(party);
+        }
+        Err(error) => refused.push(super::FixAnomaly::new(
+            field,
+            format!("states {value:?}, which no identifier holds: {error}"),
+        )),
+    };
+    for (group, field) in groups.into_iter().zip(PARTY_ID_FIELDS) {
+        let Some((value, positions)) = group else {
+            continue;
+        };
         let mut occurrences = SmallVec::<[Occurrence<3>; 8]>::new();
         read_occurrences(value, flat_paths(positions), &mut occurrences);
         for [value, role, source] in occurrences {
-            if let Some(party) =
-                value.and_then(|value| codes.party(&value, role.as_deref(), source.as_deref()))
+            if let Some(value) = value
+                && let Some(party) = codes.party(&value, role.as_deref(), source.as_deref())
             {
-                into.insert(party);
+                admit(field, &value, party);
             }
         }
     }
-    if let Some(party) = account[0]
-        .and_then(scalar_text)
-        .and_then(|value| codes.account(&value, account[1].and_then(scalar_text).as_deref()))
+    if let Some(value) = account[0].and_then(scalar_text)
+        && let Some(party) = codes.account(&value, account[1].and_then(scalar_text).as_deref())
     {
-        into.insert(party);
+        admit(ACCOUNT_FIELD, &value, party);
     }
 }
 
@@ -622,8 +674,14 @@ impl AccountsAt {
     }
 
     /// Reads the parties one occurrence's `cells` state into `into`, as
-    /// [`read_parties`] does.
-    pub(super) fn read(&self, codes: PartyCodes<'_>, cells: &[Scalar], into: &mut Identifiers) {
+    /// [`read_parties`] does, a value its key refuses into `refused`.
+    pub(super) fn read(
+        &self,
+        codes: PartyCodes<'_>,
+        cells: &[Scalar],
+        into: &mut Identifiers,
+        refused: &mut Vec<super::FixAnomaly>,
+    ) {
         if self.is_empty() {
             return;
         }
@@ -631,7 +689,7 @@ impl AccountsAt {
             .parties
             .map(|group| group.and_then(|(at, positions)| Some((cells.get(at)?, positions))));
         let account = self.account.map(|at| at.and_then(|at| cells.get(at)));
-        read_parties(codes, groups, account, into);
+        read_parties(codes, groups, account, into, refused);
     }
 }
 
@@ -2443,6 +2501,10 @@ impl FixMsg {
             let stoppx = self.stated_number(99);
             self.event.set_stoppx(stoppx, over(fact::STOPPX));
         }
+        if reached(fact::STRIKEPX) {
+            let strikepx = self.stated_number(STRIKEPRICE_TAG);
+            self.event.set_strikepx(strikepx, over(fact::STRIKEPX));
+        }
         if reached(fact::QUANTITY) {
             // `Quantity(53)`; what an order still has open fills it from
             // `LeavesQty(151)` ([`Market`]), never what it ordered.
@@ -2569,6 +2631,9 @@ impl FixMsg {
         }
         if reached(fact::STOPPX) {
             event.set_stoppx(None, true);
+        }
+        if reached(fact::STRIKEPX) {
+            event.set_strikepx(None, true);
         }
         if reached(fact::QUANTITY) {
             event.set_quantity(None, true);
@@ -3105,7 +3170,10 @@ impl FixMsg {
     /// primary `SecurityID(48)` under its `SecurityIDSource(22)`, then each
     /// `secaltids` occurrence, each source read through
     /// [`IdType::from_security_source`] - a source it cannot read an
-    /// anomaly, the field kept on the wire - then each unmapped field whose
+    /// anomaly, the field kept on the wire - then the short name
+    /// `FinancialInstrumentShortName(2737)` states under the base `fisn`
+    /// key, upper-cased - one that is no ISO 18774 short name an anomaly,
+    /// the field kept on the wire - then each unmapped field whose
     /// name names a source ([`Self::keyed_securityids`]), and last the ISIN
     /// a bridge's instrument key names where none is stated. Each code is
     /// held to its shape; the first stated code under a key is kept unless
@@ -3142,6 +3210,16 @@ impl FixMsg {
         for [source, code] in self.group_rows("secaltids", ["securityaltidsource", "securityaltid"])
         {
             state(&mut ids, "secaltids", source, code);
+        }
+        if let Some(name) = self
+            .stated_word(FINANCIAL_INSTRUMENT_SHORT_NAME_TAG)
+            .filter(|name| !is_null_like(name))
+        {
+            insert(
+                &mut ids,
+                "financialinstrumentshortname",
+                Identifier::new(IdKey::base(IdType::Fisn), &name),
+            );
         }
         for (key, made) in self.keyed_securityids() {
             insert(&mut ids, &key, made);
@@ -3215,7 +3293,7 @@ impl FixMsg {
             return false;
         };
         let mut buffer = [0_u8; crate::identifier::IDENTIFIER_VALUE_WIDTH];
-        let Ok(value) = id.kind().value_into(text, &mut buffer) else {
+        let Ok(value) = id.value_into(text, &mut buffer) else {
             return false;
         };
         self.identifier_set(id.kind()).held_at(&id, value).is_some()
@@ -3409,7 +3487,7 @@ impl FixMsg {
         let mut partyids = Identifiers::new();
         let codes = PartyCodes::new(&registry);
         self.for_each_side(|fields, cells| {
-            AccountsAt::new(&registry, fields).read(codes, cells, &mut partyids);
+            AccountsAt::new(&registry, fields).read(codes, cells, &mut partyids, &mut dropped);
         });
         let groups = PARTY_GROUPS.map(|(counter, ..)| {
             let (field, value) = self.root_group(counter)?;
@@ -3419,7 +3497,7 @@ impl FixMsg {
             self.unique_index_of_tag(tag)
                 .and_then(|at| self.value.as_sequence()?.get(at))
         });
-        read_parties(codes, groups, account, &mut partyids);
+        read_parties(codes, groups, account, &mut partyids, &mut dropped);
         // An entry no dictionary maps whose key names an operation's or a
         // party's identifier - a bridge's `firm.x.ParentOrderID`,
         // `OMS_UserID` - states one after the fields' own; a value its type
@@ -3658,8 +3736,10 @@ impl FixMsg {
             .map(|occurrence| {
                 let mut own = (Metadata::new(), Lifted::new());
                 if let Some(cells) = occurrence.as_sequence() {
+                    // A party the occurrence's key refuses is held by no
+                    // map, so it stays among the members rendered.
                     let mut accounts = Identifiers::new();
-                    accounts_at.read(holds.codes, cells, &mut accounts);
+                    accounts_at.read(holds.codes, cells, &mut accounts, &mut Vec::new());
                     let level = Level {
                         holds,
                         own: &accounts,
@@ -3698,13 +3778,13 @@ impl FixMsg {
     ///
     /// The market is not here either, except for its operation ID: other
     /// market facts derive from FIX fields the content already digests, while
-    /// MsgCat is also a generic fact callers may state or mutate directly.
+    /// `marketdatakind` is also a generic fact callers may state or mutate directly.
     /// Feeding that ID once makes the derived and serialized readings agree
     /// and makes a category mutation move the generic event identity.
     fn currhashcode(&self) -> u64 {
         let mut state = crate::xxhash::Xxh3::new();
         crate::graph::element::feed_event_facts(&mut state, &*self.event);
-        // Inline: text, msgtype, msgcat and the lifted facts are 26 cells,
+        // Inline: text, msgtype, marketdatakind and the lifted facts are 26 cells,
         // leaving six metadata keys before a message spills to the heap.
         let mut cells: SmallVec<[(SmolStr, Scalar); 32]> = SmallVec::new();
         if let Some(text) = self.text.as_deref() {
@@ -3727,10 +3807,10 @@ impl FixMsg {
             };
             cells.push((name.clone(), fact));
         }
-        // The code, the `int32` it always fed: typing the column moved no
-        // message's identity.
+        // The code, the `int32` it always fed, under the column's own name:
+        // renaming the label from `msgcat` moved every message's identity.
         cells.push((
-            SmolStr::new_static("msgcat"),
+            SmolStr::new_static("marketdatakind"),
             Scalar::from(self.marketdatakind().code()),
         ));
         cells.sort_by(|left, right| left.0.cmp(&right.0));
@@ -3878,6 +3958,54 @@ impl FixMsg {
         (!underlying.basket).then_some(underlying.found).flatten()
     }
 
+    /// The EUSIPA product category of this message's instrument, where an
+    /// unmapped entry a bridge keys states one - a key whose folded name
+    /// ends with `eusipa`, `eusipacode`, `eusipacategory`, `sspa`,
+    /// `sspacode` or `sspacategory`, a namespace before it passed over, so
+    /// `EUSIPACode`, `OMS_SSPACategory` and `X-SWX-SSPA` each do - whose
+    /// text is a category's four digits ([`crate::Eusipa::from_text`]); a
+    /// key naming its name (`EUSIPA_Name`) is none, since the maps name one
+    /// code apart, and so is a key naming another instrument's category -
+    /// `UnderlyingEUSIPA`, `LegSSPACategory`, `OMS_ContraEUSIPA` - by the
+    /// rule a security type is refused by
+    /// ([`crate::idtype::names_another_instrument`]). FIX names no field
+    /// for it. Two different categories name none, and text of no
+    /// category's shape is none. Nothing is lifted: the entry stays where
+    /// it arrived. What the lifecycle learns beside the message.
+    pub(super) fn stated_eusipa(&self) -> Option<crate::Eusipa> {
+        let mut found = None;
+        let mut disagree = false;
+        self.for_each_unmapped(|key, text| {
+            if !mentions(key, b"eusipa") && !mentions(key, b"sspa") {
+                return;
+            }
+            let mut buffer = [0_u8; crate::identifier::WORD_PAIR_WIDTH];
+            let Ok(folded) = crate::identifier::fold_into(key, &mut buffer) else {
+                return;
+            };
+            let Some(name) = PRODUCT_CATEGORY_KEYS
+                .iter()
+                .filter(|name| folded.ends_with(*name))
+                .map(|name| name.len())
+                .max()
+            else {
+                return;
+            };
+            if crate::idtype::names_another_instrument(folded, folded.len() - name) {
+                return;
+            }
+            let Ok(category) = crate::Eusipa::from_text(text) else {
+                return;
+            };
+            match found {
+                None => found = Some(category),
+                Some(held) if held == category => {}
+                Some(_) => disagree = true,
+            }
+        });
+        found.filter(|_| !disagree)
+    }
+
     /// The security identifiers derived of another instrument taken back
     /// and what `table` holds of this one derived: what a batch entry does
     /// once it has restated its own instrument over the batch's, whose
@@ -3973,19 +4101,6 @@ impl FixMsg {
     #[must_use]
     pub const fn header(&self) -> &FixHeader {
         &self.header
-    }
-
-    /// The option strike price the message identifies: `StrikePrice(202)`
-    /// as the decimal leaf, `None` where it states none or states no
-    /// decimal. Spelled as the market vocabulary spells a price: the
-    /// `px`/`price` words make `by_name("strikepx")` reach the same field,
-    /// and the fixed row's column keeps the dictionary's name `strikeprice`.
-    #[must_use]
-    pub fn strikepx(&self) -> Option<Decimal> {
-        self.get_by_tag(STRIKEPRICE_TAG)
-            .filter(|held| !held.is_null())
-            .as_ref()
-            .and_then(Decimal::from_scalar)
     }
 
     /// The FIX fields the message lifted out of its row, exactly as it
@@ -5603,6 +5718,7 @@ impl Holds<'_> {
             return self
                 .codes
                 .party(&id, other, None)
+                .and_then(crate::Result::ok)
                 .is_some_and(|party| self.holds_party(own, party.kind(), party.value()))
                 || self.registry.idmap_sources().iter().any(|(_, source)| {
                     source.role().is_some()
@@ -6341,6 +6457,15 @@ impl Market for FixMsg {
     fn set_stoppx(&mut self, value: Option<Decimal>, overwrite: bool) {
         self.stated |= fact::STOPPX;
         self.event.set_stoppx(value, overwrite);
+    }
+
+    fn get_strikepx(&self) -> Option<Decimal> {
+        self.event.get_strikepx()
+    }
+
+    fn set_strikepx(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::STRIKEPX;
+        self.event.set_strikepx(value, overwrite);
     }
 
     fn get_currency(&self) -> &Ccy {

@@ -118,7 +118,7 @@ A folder, a location ending in `/` and a glob read as the one table their leaves
 
 ## Write
 
-Every write states its intent: `overwrite_*` replaces the stored rows, `append_*` keeps them and adds its own after them, and `merge_*` updates the rows whose key matches - the options' `merge_by`, else the destination's own ([an Iceberg table's](iceberg.md#the-merge-key)) - and appends the rest. `overwrite_records`, `append_records` and `merge_records` write native rows; the `*_arrow_reader` and `*_arrow_batch` twins - and `*_arrow_table` in the bindings - write Arrow batches, streamed and never collected; and `overwrite_serie`, `append_serie` and `merge_serie` - `write_serie` with the mode named - write a held `Serie`, a `ChunkedSerie` or a `SerieReader` as the batches it already is ([Writing a serie to a handle](../types/serie.md#writing-a-serie-to-a-handle)), absent options being the handle's own. Every one of them answers an `IOResult` - the rows it read, wrote and skipped ([Write results](../holder/index.md#write-results)).
+Every write states its intent: `overwrite_*` replaces the stored rows, `append_*` keeps them and adds its own after them - into an Iceberg table stating its own key, only the rows whose key it lacks ([Appending to a keyed table](iceberg.md#appending-to-a-keyed-table)) - and `merge_*` updates the rows whose key matches - the options' `merge_by`, else the destination's own ([an Iceberg table's](iceberg.md#the-merge-key)) - and appends the rest, rewriting nothing where no row changes ([Append and merge](../holder/index.md#append-and-merge)). `overwrite_records`, `append_records` and `merge_records` write native rows; the `*_arrow_reader` and `*_arrow_batch` twins - and `*_arrow_table` in the bindings - write Arrow batches, streamed and never collected; and `overwrite_serie`, `append_serie` and `merge_serie` - `write_serie` with the mode named - write a held `Serie`, a `ChunkedSerie` or a `SerieReader` as the batches it already is ([Writing a serie to a handle](../types/serie.md#writing-a-serie-to-a-handle)), absent options being the handle's own. Every one of them answers an `IOResult` - the rows it read, wrote and skipped ([Write results](../holder/index.md#write-results)).
 
 === "Rust"
 
@@ -228,19 +228,19 @@ Every write states its intent: `overwrite_*` replaces the stored rows, `append_*
 
 ## Options
 
-One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`, `batch_row_size`, `merge_by`, `safe`, `level`, the row bounds `row_offset`, `max_row_size` and `max_byte_size` ([Limits](../holder/index.md#limits)), the publication cadence `commit_batch_num` ([Commit cadence](../holder/index.md#commit-cadence)) and the write's `num_threads`, plus the settings one encoding owns. A JSON, YAML, TOML or XML document is one value rather than a stream of batches, so it has no `RecordOptions` of its own: it reads through `read_serie` or `read_scalar` and writes, whole, through `overwrite_serie` or `write_scalar`, taking of a record encoding's options only the declared `field`. The declared `field` and the field a write completes onto are both declarations and cast by [one rule](../types/cast.md#required-columns): a nullable column takes a value it cannot convert as null while `safe` (the default) holds, and a not-null column refuses that value, a null and a missing column by name rather than storing its canonical default. A `TRANSFORM:`, `PARTITION:` or `DIGEST:` declaration on either field is metadata the cast carries, never a column a read or write fills: a derived or holder column the rows do not carry lands null where nullable and is refused by path where required, and the caller fills it first through the field's `transform` or `digest` view ([Applying a schema](../types/field.md#applying-a-schema)).
+One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`, `batch_row_size`, `merge_by`, `safe`, `level`, the row bounds `row_offset`, `max_row_size` and `max_byte_size` ([Limits](../holder/index.md#limits)), the publication cadence `commit_batch_num` ([Commit cadence](../holder/index.md#commit-cadence)) and the write's `num_threads`, plus the settings one encoding owns. A JSON, YAML, TOML or XML document is one value rather than a stream of batches, so it has no `RecordOptions` of its own: it reads through `read_serie` or `read_scalar` and writes, whole, through `overwrite_serie` or `write_scalar`, taking of a record encoding's options only the declared `field`. The declared `field` and the field a write completes onto are both declarations and cast by [one rule](../types/cast.md#required-columns): a nullable column takes a value it cannot convert as null while `safe` (the default) holds, and a not-null column refuses that value, a null and a missing column by name rather than storing its canonical default. A `TRANSFORM:`, `PARTITION:` or `DIGEST:` declaration on either field is metadata the cast carries, never a column a read or write fills: a derived or holder column the rows do not carry lands null where nullable and is refused by path where required, and the caller fills it first through the field's `transform` or `digest` view ([Applying a schema](../types/field.md#applying-a-schema)). The options' `apply_arrow_batch` and `apply_arrow_reader` are this shaping at its `RecordBatch` and `BatchReader` face - the declared field's cast, the `where` and `select` sections, then the cast onto `existing`, the stored field - each cast the [`ArrowCastPlan`](../types/cast.md#eager-and-lazy) `Serie` runs, compiled once per call, so a stream is shaped by `apply_arrow_reader`; `limit_arrow_reader` applies the row bounds last. Rust and Python bind the three; JavaScript binds none.
 
 | Write setting | Unset | Set |
 | --- | --- | --- |
 | `commit_batch_num` | the destination's own cadence: a leaf, a plain folder and an Iceberg table publish once, when the source ends - the table holding every partition's rows under the process [spill bound](../types/serie.md#spilling-to-disk) until then, so an overwrite of any length is one atomic snapshot | a publication every `N` whole batches, then the remainder; `0` is refused before the source is pulled ([Commit cadence](../holder/index.md#commit-cadence)) |
-| `merge_by` | on a merge, the destination's own key: an Iceberg table's identity partition columns, then its identifier columns; a leaf, a folder or a table stating none refuses a merge naming `$.merge_by` before the source is pulled | the match key, a stored column or a computed term per projection; overwrite and append refuse it |
+| `merge_by` | on a merge, the destination's own key: an Iceberg table's identity partition columns, then its identifier columns; a leaf, a folder or a table stating none refuses a merge naming `$.merge_by` before the source is pulled. `True` in Python - a boolean `true` through `IORecordOptions::set_merge_by_scalar` in Rust - spells this state outright: it stores the empty key `None` stores, so options set with it equal fresh ones and an overwrite or append under them is not refused; `False` is refused naming `$.merge_by`, the key the options held kept. JavaScript takes no boolean: `mergeBy` left out or `null` | the match key, a stored column or a computed term per projection; overwrite and append refuse it |
 | `num_threads` | the destination's own answer: an Iceberg table's `write.parallelism`, else its `read.parallelism`, else every thread the host offers | the most parts a write of several parts runs at once - an Iceberg commit's [partition groups](iceberg.md#write) - while a leaf of one file is written on the thread that writes it and reads nothing from it; `0` is refused naming `$.num_threads` before the source is pulled |
 
 === "Rust"
 
     ```rust
     use yggdryl::media::{IORecordOptions, RecordOptions};
-    use yggdryl::{DataType, MimeType, StructType, Url};
+    use yggdryl::{DataType, MimeType, Scalar, StructType, Url};
 
     let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
 
@@ -257,6 +257,11 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     assert_eq!(options.batch_row_size(), Some(1024));
     assert_eq!(options.num_threads(), Some(4));
     assert_eq!(options.stable_hash(), options.clone().stable_hash());
+
+    // `true` is the destination's own key: the empty key the options start with.
+    let keyed = options.clone().with_merge_by("id")?;
+    assert_eq!(keyed.with_merge_by_scalar(&Scalar::from(true))?, options);
+    assert!(options.clone().with_merge_by_scalar(&Scalar::from(false)).is_err());
     ```
 
 === "Python"
@@ -293,6 +298,15 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     # `level` is shared, and applies where the handle declares a content coding.
     stream.level = 9
     assert stream.level == 9
+
+    # `merge_by=True` is the destination's own key: the empty key options start with.
+    assert RecordOptions("trades.parquet", merge_by=True) == RecordOptions("trades.parquet")
+    try:
+        RecordOptions("trades.parquet", merge_by=False)
+    except ValueError as refusal:
+        assert "$.merge_by" in str(refusal)
+    else:
+        raise AssertionError("False names no key")
     ```
 
 === "JavaScript"

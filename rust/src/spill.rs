@@ -49,7 +49,7 @@ use std::ffi::OsString;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write as _};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -439,29 +439,40 @@ fn rebuild(node: &Node, mapping: &Arc<Mapping>) -> ArrayData {
     unsafe { builder.build_unchecked() }
 }
 
-/// Name a spill failure by the folder it happened under.
-fn under(folder: &LocalFolder, error: std::io::Error) -> Error {
+/// Name a spill failure by the folder it happened under. The temporary
+/// path only needs its canonical URL when an error is reported.
+fn under(root: &Path, folder: Option<&LocalFolder>, error: std::io::Error) -> Error {
+    let location = match folder {
+        Some(folder) => folder.url().to_string(),
+        None => LocalFolder::new(root).map_or_else(
+            |_| root.display().to_string(),
+            |folder| folder.url().to_string(),
+        ),
+    };
     Error::Io(std::io::Error::new(
         error.kind(),
-        format!("spill under {}: {error}", folder.url()),
+        format!("spill under {location}: {error}"),
     ))
 }
 
-/// Create the next spill file under `folder`: new, private to this process,
+/// Create the next spill file under `root`: new, private to this process,
 /// and already gone from the folder's listing.
-fn create_file(folder: &LocalFolder) -> Result<File> {
-    let root = folder.path()?;
+fn create_file(root: &Path, folder: Option<&LocalFolder>) -> Result<File> {
     let pid = std::process::id();
     for _ in 0..NAME_ATTEMPTS {
         let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
-        let path = root.join(format!("yggdryl-spill-{pid}-{sequence}"));
+        let name = format!("yggdryl-spill-{pid}-{sequence}");
+        let mut path = PathBuf::with_capacity(root.as_os_str().len() + name.len() + 1);
+        path.push(root);
+        path.push(name);
         match open_private(&path) {
             Ok(file) => return Ok(file),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(under(folder, error)),
+            Err(error) => return Err(under(root, folder, error)),
         }
     }
     Err(under(
+        root,
         folder,
         std::io::Error::new(
             std::io::ErrorKind::AlreadyExists,
@@ -517,18 +528,36 @@ pub(crate) fn spill_array(
     if tree_bytes(&data) == 0 {
         return Ok(None);
     }
-    let folder = match folder {
-        Some(folder) => folder.clone(),
-        None => LocalFolder::temporary()?,
+    let root = match folder {
+        Some(folder) => folder.path()?,
+        None => {
+            let root = LocalFolder::temporary_path();
+            if root.is_absolute()
+                && root.to_str().is_some_and(|text| {
+                    !text
+                        .chars()
+                        .any(|character| character.is_control() && character != '\t')
+                })
+            {
+                root
+            } else {
+                LocalFolder::new(&root)?.path()?
+            }
+        }
     };
-    let file = create_file(&folder)?;
+    let file = create_file(&root, folder)?;
     let node = {
         let mut writer = Writer {
             sink: BufWriter::with_capacity(DEFAULT_STREAM_BATCH_SIZE, &file),
             position: 0,
         };
-        let node = writer.walk(&data).map_err(|error| under(&folder, error))?;
-        writer.sink.flush().map_err(|error| under(&folder, error))?;
+        let node = writer
+            .walk(&data)
+            .map_err(|error| under(&root, folder, error))?;
+        writer
+            .sink
+            .flush()
+            .map_err(|error| under(&root, folder, error))?;
         node
     };
     // SAFETY: the file is private to this process and already unlinked, so
@@ -537,7 +566,7 @@ pub(crate) fn spill_array(
     // mapping holds the pages on Unix and its own handle on Windows - so the
     // descriptor is dropped here rather than held per live spilled unit,
     // which would cap the spilled units at the process's descriptor limit.
-    let map = unsafe { Mmap::map(&file) }.map_err(|error| under(&folder, error))?;
+    let map = unsafe { Mmap::map(&file) }.map_err(|error| under(&root, folder, error))?;
     drop(file);
     let mapping = Arc::new(Mapping { map });
     let rebuilt = make_array(rebuild(&node, &mapping));

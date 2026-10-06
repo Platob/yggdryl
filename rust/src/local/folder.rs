@@ -96,7 +96,12 @@ impl LocalFolder {
     /// # }
     /// ```
     pub fn temporary() -> Result<Self> {
-        Self::new(std::env::temp_dir())
+        Self::new(Self::temporary_path())
+    }
+
+    /// The native temporary path, shared with spill's direct file creation.
+    pub(crate) fn temporary_path() -> PathBuf {
+        std::env::temp_dir()
     }
 
     /// The current user's home directory.

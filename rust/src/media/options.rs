@@ -621,14 +621,36 @@ pub trait IORecordOptions: Sized {
     }
 
     /// Set the merge key from the scalar that spells it, as
-    /// [`Selector::from_scalar`] reads one.
+    /// [`Selector::from_scalar`] reads one, or from a boolean.
+    ///
+    /// `true` is the destination's own key: it stores the empty key, the
+    /// state in which a merge is keyed by the destination's own
+    /// [`IOMedia::merge_by`](crate::IOMedia::merge_by), so it spells
+    /// exactly what a null does and keeps no flag - a later overwrite
+    /// or append under these options is not refused for it. `false` has no
+    /// reading a merge could take, since a merge always matches on a key,
+    /// and is refused.
     ///
     /// # Errors
     ///
-    /// Returns the error [`Selector::from_scalar`] does, or the error
-    /// [`require_merge_by`](Self::require_merge_by) does.
+    /// Returns an error at `$.merge_by` for `false`, the error
+    /// [`Selector::from_scalar`] does, or the error
+    /// [`require_merge_by`](Self::require_merge_by) does; a refused key
+    /// leaves the one these options held.
     fn set_merge_by_scalar(&mut self, merge_by: &Scalar) -> Result<()> {
-        let merge_by = Selector::from_scalar(merge_by)?;
+        let merge_by = match merge_by.as_bool() {
+            Some(true) => Selector::all(),
+            Some(false) => {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$.merge_by"),
+                    reason: crate::text::expected_got(
+                        "a column list, a selector text, null, or true (the destination's own key)",
+                        "false",
+                    ),
+                });
+            }
+            None => Selector::from_scalar(merge_by)?,
+        };
         // Validated before it is stored, so a refused key leaves the old one.
         distinct_merge_key(&merge_by)?;
         self.set_merge_by(merge_by);

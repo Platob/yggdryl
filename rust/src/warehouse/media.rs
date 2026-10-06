@@ -22,7 +22,11 @@ use crate::{DataType, Error, Field, IOBase, IOKind, IOMedia, MediaType, Result, 
 /// verb delegates to that handle, [`record_options`](IOMedia::record_options)
 /// applying the declared field and the table name first and
 /// [`read_arrow_field`](IOMedia::read_arrow_field) answering the declared
-/// field before anything is read.
+/// field before anything is read. A successful leaf record write closes its
+/// located holder's session, releasing mappings and wrapper caches while
+/// retaining its media and backend options. A bound handle with no site is
+/// retained as the data itself. Folder and format writes and direct byte
+/// operations keep their held session.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MediaTable {
     path: Vec<SmolStr>,
@@ -190,6 +194,15 @@ impl MediaTable {
     /// The handle, mutably, opened on the first call.
     fn handle_mut(&mut self) -> Result<&mut Holder> {
         self.handle.get_mut()
+    }
+
+    /// A completed leaf write no longer owns a read snapshot or a writer
+    /// mapping. Close its located session before returning the descriptor.
+    fn finish_write<T>(&mut self, result: Result<T>) -> Result<T> {
+        if result.is_ok() && self.layout == FolderLayout::Leaf {
+            self.handle.release_after_write()?;
+        }
+        result
     }
 
     /// Whether anything is at the table's location now.
@@ -416,10 +429,12 @@ impl IOBase for MediaTable {
     }
 
     fn close(&mut self) -> Result<()> {
-        match self.handle.held().map(IOBase::opened) {
-            Some(true) => self.handle_mut()?.close(),
-            // Nothing was resolved or opened, so there is nothing to close.
-            _ => Ok(()),
+        if self.handle.held().is_some() {
+            // A media wrapper can hold mapped bytes without an explicit open.
+            self.handle_mut()?.close()
+        } else {
+            // Closing an unresolved descriptor never opens its storage.
+            Ok(())
         }
     }
 
@@ -540,7 +555,8 @@ impl IOMedia for MediaTable {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<crate::IOResult> {
-        IOMedia::overwrite_arrow_reader(self.handle_mut()?, batches, options)
+        let result = IOMedia::overwrite_arrow_reader(self.handle_mut()?, batches, options);
+        self.finish_write(result)
     }
 
     fn overwrite_prepared_arrow_reader(
@@ -548,7 +564,8 @@ impl IOMedia for MediaTable {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
-        IOMedia::overwrite_prepared_arrow_reader(self.handle_mut()?, batches, options)
+        let result = IOMedia::overwrite_prepared_arrow_reader(self.handle_mut()?, batches, options);
+        self.finish_write(result)
     }
 
     fn overwrite_arrow_batch(
@@ -556,7 +573,8 @@ impl IOMedia for MediaTable {
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
     ) -> Result<crate::IOResult> {
-        IOMedia::overwrite_arrow_batch(self.handle_mut()?, batch, options)
+        let result = IOMedia::overwrite_arrow_batch(self.handle_mut()?, batch, options);
+        self.finish_write(result)
     }
 
     fn append_arrow_reader(
@@ -564,7 +582,8 @@ impl IOMedia for MediaTable {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<crate::IOResult> {
-        IOMedia::append_arrow_reader(self.handle_mut()?, batches, options)
+        let result = IOMedia::append_arrow_reader(self.handle_mut()?, batches, options);
+        self.finish_write(result)
     }
 
     fn append_arrow_batch(
@@ -572,7 +591,8 @@ impl IOMedia for MediaTable {
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
     ) -> Result<crate::IOResult> {
-        IOMedia::append_arrow_batch(self.handle_mut()?, batch, options)
+        let result = IOMedia::append_arrow_batch(self.handle_mut()?, batch, options);
+        self.finish_write(result)
     }
 
     fn merge_arrow_reader(
@@ -580,7 +600,8 @@ impl IOMedia for MediaTable {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<crate::IOResult> {
-        IOMedia::merge_arrow_reader(self.handle_mut()?, batches, options)
+        let result = IOMedia::merge_arrow_reader(self.handle_mut()?, batches, options);
+        self.finish_write(result)
     }
 
     fn merge_arrow_batch(
@@ -588,6 +609,7 @@ impl IOMedia for MediaTable {
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
     ) -> Result<crate::IOResult> {
-        IOMedia::merge_arrow_batch(self.handle_mut()?, batch, options)
+        let result = IOMedia::merge_arrow_batch(self.handle_mut()?, batch, options);
+        self.finish_write(result)
     }
 }

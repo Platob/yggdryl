@@ -47,6 +47,15 @@ assert.equal(order.lastpx, null, 'a price is never a last execution')
 assert.equal(order.bidpx, order.price, "a buy's price is its bid")
 assert.deepEqual(order.fxrates, {}, 'nothing fills the rates')
 assert.deepEqual([order.side, order.state, order.marketdatakind], ['BUYS', 'UNKNOWN', 'ORDR'])
+
+// Under the `bic` source a value is a BIC whatever its type, and under
+// `legalentityidentifier` an LEI: upper-cased, or refused on its key.
+assert.equal(new Identifier('bic:executingfirm', 'deutdeff').toString(), 'bic:executingfirm=DEUTDEFF')
+assert.throws(() => new Identifier('bic:executingfirm', 'T-1'), /bic:executingfirm.*is a BIC/)
+assert.equal(new Identifier('proprietary:executingfirm', 'T-1').value, 'T-1') // any other source: the type's rule
+// A short name (FISN) is a security identifier; a legal form (ELF) neither a security's nor a party's.
+assert.equal(new Identifier('FinancialInstrumentShortName', 'Apple Inc/Sh').toString(), 'fisn=APPLE INC/SH')
+assert.equal(new Identifier('entitylegalform', '2hbr').toString(), 'elf=2HBR')
 ```
 
 ## Build undated leaves, quotes and book entries
@@ -114,6 +123,12 @@ assert.equal(filled.crossuuid, placed.crossuuid, 'one chain')
 assert.equal(filled.prevpx, '189.5')
 // Never itself, never one that happened after it.
 assert.equal(placed.withPrevious(filled), null)
+
+// An instrument fact travels along the chain: a follower naming no other
+// ISIN takes the option's strike it does not state.
+const option = new graph.OrderEvent(T, { crosscode: 'O-1001', side: 'BUYS', strikepx: '190' })
+const follower = new graph.OrderEvent(T + 1_000_000_000n, { crosscode: 'O-1001', side: 'BUYS' }).withPrevious(option)
+assert.equal(follower.strikepx, '190')
 
 // One report recorded by two hops: recording clocks and sources are not content.
 const LINE_1 = '018bcfe5-6800-7000-8000-000000000001'
@@ -248,10 +263,10 @@ const { BatchReader, MarketDataKind, graph } = require('yggdryl')
 const order = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001' })
 const values = [new graph.Order(), order, new graph.BookEvent(1_700_000_001_000_000_000n, 'AAPL')]
 
-// 62 columns: 6 element, 9 event, 34 market (marketdatakind first), 5 operation,
+// 63 columns: 6 element, 9 event, 35 market (marketdatakind first), 5 operation,
 // the book controls bookscope, bookaction and bookposition, 5 nested.
 const field = graph.MarketData.field()
-assert.equal(field.fieldLen, 62)
+assert.equal(field.fieldLen, 63)
 assert.equal(field.fieldAt(15).name, 'marketdatakind')
 const table = graph.MarketData.arrowReader(values, 1_000).intoTable()
 // The column stores each member's code.
@@ -358,7 +373,9 @@ the orders resting as `ordlive()`; every book answers the readings of the
 first level that can trade: `bestPrice`, `bestQuantity`, the `bidpx`/`askpx`
 it states, `spread`; a complete one `depth` and `imbalance` too - all as
 exact decimal text. Its deltas read by kind as `orddelta()`, `quotes()` and
-`executions()`, which partition them. A book built by hand is complete. A
+`executions()`, which partition them - a book records no other kind; the
+`events` catch-all Rust and Python read is not bound in JavaScript. A book
+built by hand is complete. A
 side is its stored name, any spelling `Side` reads, or its code.
 
 ```javascript

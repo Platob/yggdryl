@@ -304,6 +304,7 @@ from .url import UrlField, url
 from .version import Version, VersionField, version
 from .identifier import Identifier, Identifiers
 from .isin_registry import IsinRegistry
+from .eusipa import Eusipa
 
 __all__ = [
     "AVRO_MAX_SCHEMA_DEPTH",
@@ -347,6 +348,7 @@ __all__ = [
     "Duration64Field",
     "DtiField",
     "ElfField",
+    "Eusipa",
     "Expression",
     "FigiField",
     "FisnField",

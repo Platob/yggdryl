@@ -17,8 +17,10 @@
 //! Iceberg states it, partitioned by `partunix` - `currunix` floored to the
 //! quarter hour, a column the table computes for every row it is written -
 //! and sorted by `partunix, currunix, seqnum, currhashcode`, with
-//! `currunix, currhashcode` - the instant and the content hash - declared
-//! its primary key, Iceberg's identifier fields. A read yields
+//! `currunix, crosshashcode, seqnum, currhashcode` - when, which object,
+//! which line of it, what content - declared its primary key, Iceberg's
+//! identifier fields, so an append of a row the table holds leaves it out.
+//! A read yields
 //! partition after partition in that order, so the lifecycle and the books
 //! take rows in the order they happened whatever order they were written
 //! in, and an overwrite replaces the partitions its rows fall in and no
@@ -123,8 +125,11 @@ const DEFAULT_SCALE_BYTES: u64 = 20 << 30;
 const SMOKE_COPIES: u64 = 3;
 
 /// The primary key every table of the pipeline declares: when a row
-/// happened and the hash of what it states.
-const PRIMARY_KEY: [&str; 2] = ["currunix", "currhashcode"];
+/// happened, the object it was read from, its place among the rows of its
+/// instant and the hash of what it states. A capture repeats a line's bytes
+/// at one instant, so the instant and the content alone are no key, and an
+/// append to a keyed table leaves out a row whose key it holds.
+const PRIMARY_KEY: [&str; 4] = ["currunix", "crosshashcode", "seqnum", "currhashcode"];
 
 /// What the partition column every table of the pipeline computes holds,
 /// as the table states it: a derived column is described by whoever
@@ -1268,7 +1273,7 @@ fn verify(name: &str, table: &IcebergTable<LocalFolder>, expected: &Stored) {
             .identifier_field_ids()
             .expect("the identifier fields"),
         primary_key(stated),
-        "{name}: currunix and currhashcode are the table's primary key"
+        "{name}: currunix, crosshashcode, seqnum and currhashcode are the table's primary key"
     );
 }
 

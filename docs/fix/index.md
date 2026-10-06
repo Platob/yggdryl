@@ -24,14 +24,14 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 [`MarketDataKind`](../types/enum/marketdatakind.md) member the dictionary
 files the type under, stored as its `uint8` code. Each committed message
 component carries its four-character `FIX:msgcat` metadata, and the builtin
-`msgcatcodeset` names every member the row may store (`UNKN=0`, `BOOK=3`,
+`marketdatakindcodeset` names every member the row may store (`UNKN=0`, `BOOK=3`,
 `EXEC=8`, `ORDR=10`, `QUOT=14`, `TRAD=21`, `ORDB=22`, and so on); the
 [filing](#a-message-type-is-filed-under-one-category) says which types each
 holds. The normalized
-instrument columns are `isincode(65021)`, `forexcode(65046)`,
-`bloombergcode(65047)`, `figicode(65048)` and `miccode(65022)` - the first
+instrument columns are `isincode(65021)`, `forexcode(65047)`,
+`bloombergcode(65048)`, `figicode(65049)` and `miccode(65022)` - the first
 four views of the message's security identifiers, the last its market -
-beside the strike, the dictionary's own `StrikePrice(202)` (the column keeps that name; the accessor is Rust `FixMsg::strikepx`, Python `msg.strikepx`, JavaScript `msg.strikepx`, the spelling the `px`/`price` words reach `StrikePrice(202)` by); CFI remains standard `CFICode(461)`,
+beside the strike, the [derived](capture.md#a-derived-column-restates-a-fix-field) market column `strikepx(65035)` read off the dictionary's own `StrikePrice(202)`, which keeps its column (Rust `Market::get_strikepx`, Python and JavaScript `msg.strikepx`); CFI remains standard `CFICode(461)`,
 and a CUSIP or a SEDOL is one more security identifier of its own type,
 in the message's `securityids`.
 
@@ -217,7 +217,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `field_ref` / `fieldRef` | `FIX:field` | name | scalar field reference in a definition |
 | `group` | `FIX:group` | name | group reference in a definition |
 | `msgtype` | `FIX:msgtype` | text | complete case-sensitive wire code on a message Struct |
-| `msgcat` | `FIX:msgcat` | four-character symbolic code | business-category metadata on a message definition; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat`. The crate row projects it through `msgcatcodeset` into the separate `marketdatakind(65016)` field, a `MarketDataKind` member |
+| `msgcat` | `FIX:msgcat` | four-character symbolic code | business-category metadata on a message definition; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat`. The crate row projects it through `marketdatakindcodeset` into the separate `marketdatakind(65016)` field, a `MarketDataKind` member |
 | `directions` | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults; see [Registry](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) |
 
 ## A message type is filed under one category
@@ -474,7 +474,7 @@ the group: the group's length is its count. Fields, components and groups are
 the three registry categories, a message being a component that carries
 `FIX:msgtype`.
 
-The crate's `metadata(65035)` is also a group: a nullable, sorted-key
+The crate's `metadata(65036)` is also a group: a nullable, sorted-key
 `map<utf8, utf8>` whose occurrence is its non-null entries Struct, with no
 separate scalar counter and no invented numeric tags for its key or value. A
 parse fills it from the
@@ -506,10 +506,10 @@ names are folded; `display` keeps the specification's spelling.
     assert!(!registry.field_by_name("Party")?.fields().is_empty());
     assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("PartyID")?.as_fix().tag()?, Some(448));
-    let metadata = registry.field_by_counter(65_035)?;
+    let metadata = registry.field_by_counter(65_036)?;
     assert_eq!(metadata.name(), "metadata");
-    assert_eq!(metadata.as_fix().counter()?, Some(65_035));
-    assert!(registry.get_field_by_tag(65_035).is_none(), "a Map group is no scalar");
+    assert_eq!(metadata.as_fix().counter()?, Some(65_036));
+    assert!(registry.get_field_by_tag(65_036).is_none(), "a Map group is no scalar");
     ```
 
 === "Python"
@@ -528,10 +528,10 @@ names are folded; `display` keeps the specification's spelling.
     assert registry.field_by_name("Party").is_struct
     assert registry.field_by_path("Parties.PartyID").fix.tag == 448
     assert registry.field_by_name("PartyID").fix.tag == 448
-    metadata = registry.field_by_counter(65_035)
+    metadata = registry.field_by_counter(65_036)
     assert metadata.name == "metadata"
-    assert metadata.fix.counter == 65_035
-    assert registry.get_field_by_tag(65_035) is None, "a Map group is no scalar"
+    assert metadata.fix.counter == 65_036
+    assert registry.get_field_by_tag(65_036) is None, "a Map group is no scalar"
     ```
 
 === "JavaScript"
@@ -551,10 +551,10 @@ names are folded; `display` keeps the specification's spelling.
     assert.ok(registry.fieldByName('Party').fieldLen > 0)
     assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
     assert.equal(registry.fieldByName('PartyID').fix.tag, 448)
-    const metadata = registry.fieldByCounter(65035)
+    const metadata = registry.fieldByCounter(65036)
     assert.equal(metadata.name, 'metadata')
-    assert.equal(metadata.fix.counter, 65035)
-    assert.equal(registry.getFieldByTag(65035), null, 'a Map group is no scalar')
+    assert.equal(metadata.fix.counter, 65036)
+    assert.equal(registry.getFieldByTag(65036), null, 'a Map group is no scalar')
     ```
 
 ## Edges

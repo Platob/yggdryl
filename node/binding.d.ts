@@ -3924,13 +3924,13 @@ export declare const enums: {
    */
   readonly eventColumns: readonly string[]
   /**
-   * The thirty-four market column names, in schema order:
+   * The thirty-five market column names, in schema order:
    * `marketdatakind`, `marketdatatype`, `price`, `stoppx`, `currency`, `quantity`,
    * `displayqty`, `hiddenqty`, `unit`, `side`, `securityids`, `isincode`,
    * `cficode`, `miccode`, `execunix`, `lastpx`, `lastqty`, `avgpx`,
    * `cumqty`, `leavesqty`, `cxlqty`, `prevpx`, `prevqty`, `spotrate`,
    * `forwardpoints`, `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`,
-   * `askccy`, `fxrates`, `ticker`, `metadata`.
+   * `askccy`, `fxrates`, `ticker`, `strikepx`, `metadata`.
    */
   readonly marketColumns: readonly string[]
   /**

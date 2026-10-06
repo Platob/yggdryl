@@ -225,7 +225,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codeset": "msgcatcodeset",
+      "FIX:codeset": "marketdatakindcodeset",
       "FIX:tag": "65016",
       "description": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word.",
       "display": "Market Data Kind"
@@ -294,7 +294,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65040",
+      "FIX:tag": "65041",
       "description": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived.",
       "display": "Message Plugin ID"
     }
@@ -306,7 +306,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65041",
+      "FIX:tag": "65042",
       "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
       "display": "Message Originator"
     }
@@ -318,7 +318,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65042",
+      "FIX:tag": "65043",
       "description": "The message context a bridge handled the message in, as its own log names it.",
       "display": "Message Context ID"
     }
@@ -330,7 +330,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65043",
+      "FIX:tag": "65044",
       "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
       "display": "Message Session ID"
     }
@@ -342,7 +342,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65044",
+      "FIX:tag": "65045",
       "FIX:transient": "false",
       "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
       "display": "Message Session Event ID"
@@ -355,7 +355,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65045",
+      "FIX:tag": "65046",
       "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
       "display": "Conversation ID"
     }
@@ -367,7 +367,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65046",
+      "FIX:tag": "65047",
       "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other replaces its type's answer, the base key.",
       "display": "Forex Code"
     }
@@ -379,7 +379,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65047",
+      "FIX:tag": "65048",
       "description": "The normalized Bloomberg identifier the message identifies.",
       "display": "Bloomberg Code"
     }
@@ -391,7 +391,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65048",
+      "FIX:tag": "65049",
       "description": "The normalized FIGI the message identifies.",
       "display": "FIGI Code"
     }
@@ -403,7 +403,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65049",
+      "FIX:tag": "65050",
       "FIX:transient": "false",
       "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
       "display": "Source URL"

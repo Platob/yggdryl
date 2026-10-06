@@ -2531,6 +2531,128 @@ fn a_walk_learns_the_underlying_a_message_names_and_lifts_it_nowhere() {
     assert_eq!(instruments.lock().expect("the registry").len(), 1);
 }
 
+/// A walk learns the EUSIPA product category a bridge's key states beside
+/// the message's ISIN - `EUSIPACode`, `OMS_SSPACategory`, SIX's
+/// `X-SWX-SSPA` - and lifts it nowhere: the key stays among the message's
+/// entries and its leaf's metadata, no identifier holds it, and a later
+/// message of the instrument is filled with nothing of it. Two categories,
+/// text of no category's shape, a key naming the category's name, a key
+/// naming another instrument's category - an underlying's, a leg's, a
+/// contra's, a related or a benchmark instrument's, by the words a security
+/// type is refused by - and a message stating no real ISIN of its own each
+/// learn none.
+#[test]
+fn a_walk_learns_the_product_category_a_bridge_key_states_and_lifts_it_nowhere() {
+    use std::sync::{Arc, Mutex};
+    use yggdryl::IsinRegistry;
+    use yggdryl::graph::{Market, Operation};
+
+    let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
+    let codec = super::fixed_codec(super::committed_registry())
+        .with_isin_registry(Arc::clone(&instruments));
+    let line = |seq: i32, body: &str| {
+        format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|{body}|10=0|"
+        )
+    };
+    let walk = |body: &str, seq: i32| -> Vec<FixMsg> {
+        let parsed: Vec<FixMsg> = codec
+            .parse_lines([line(seq, body)])
+            .collect::<yggdryl::Result<_>>()
+            .expect("a message");
+        codec
+            .lifecycle(parsed)
+            .collect::<yggdryl::Result<_>>()
+            .expect("a walk")
+    };
+    let mini = {
+        let body = "CH000000000";
+        format!("{body}{}", Isin::closing_digit(body).unwrap())
+    };
+    let category = || {
+        instruments
+            .lock()
+            .expect("the registry")
+            .get(&mini)
+            .and_then(|row| row.eusipacode())
+            .map(|code| code.code())
+    };
+    let walked = walk(&format!("22=4|48={mini}|EUSIPACode=2300"), 1);
+    assert_eq!(category(), Some(2300));
+    let message = &walked[0];
+    assert!(
+        message
+            .get_securityids()
+            .iter()
+            .chain(message.get_identifiers().iter())
+            .all(|id| id.value() != "2300"),
+        "lifted nowhere"
+    );
+    let wire = String::from_utf8(message.clone().into_bytes(b'|')).expect("a text wire");
+    assert!(
+        wire.to_ascii_lowercase().contains("|eusipacode=2300|"),
+        "the entry stays on the wire: {wire}"
+    );
+    // Either map's name, a namespace before it, replaces it.
+    walk(&format!("22=4|48={mini}|OMS_SSPACategory=1260"), 2);
+    assert_eq!(category(), Some(1260));
+    walk(&format!("22=4|48={mini}|X-SWX-SSPA= 2205 "), 3);
+    assert_eq!(category(), Some(2205));
+    // A category neither map lists is a category.
+    walk(&format!("22=4|48={mini}|firm.x.EUSIPA=2301"), 4);
+    assert_eq!(category(), Some(2301));
+    let unlearned = [
+        "EUSIPACode=2300|SSPACategory=1260",
+        "EUSIPACode=3100",
+        "EUSIPACode=Mini-Future",
+        "EUSIPA_Name=2300",
+    ];
+    for (at, body) in unlearned.iter().enumerate() {
+        walk(&format!("22=4|48={mini}|{body}"), 5 + at as i32);
+        assert_eq!(category(), Some(2301), "{body}");
+    }
+    // Another instrument's category - opening the key or spelled just
+    // before the category word, after any namespace - is never this one's.
+    let another = [
+        "UnderlyingEUSIPA=2300",
+        "LegSSPACategory=2300",
+        "ContraEUSIPA=2300",
+        "RelatedSSPA=2300",
+        "BenchmarkEUSIPACode=2300",
+        "OMS_UnderlyingEUSIPACode=2300",
+        "firm.x.LegSSPA=2300",
+    ];
+    for (at, body) in another.iter().enumerate() {
+        walk(&format!("22=4|48={mini}|{body}"), 20 + at as i32);
+        assert_eq!(category(), Some(2301), "{body}");
+    }
+    // Beside them, this instrument's own still learns.
+    walk(
+        &format!("22=4|48={mini}|UnderlyingEUSIPA=2300|OMS_EUSIPACode=1260"),
+        30,
+    );
+    assert_eq!(category(), Some(1260));
+    walk(&format!("22=4|48={mini}|firm.x.EUSIPA=2301"), 31);
+    assert_eq!(category(), Some(2301));
+    // The same category twice is one statement.
+    walk(&format!("22=4|48={mini}|EUSIPACode=2300|SSPA=2300"), 9);
+    assert_eq!(category(), Some(2300));
+    // A message stating no real ISIN of its own learns nothing.
+    walk("55=HOLN|EUSIPACode=2300", 10);
+    assert_eq!(instruments.lock().expect("the registry").len(), 1);
+    // `learn` alone states none: the reading is the lifecycle's.
+    let mut fresh = IsinRegistry::new();
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines([line(
+            11,
+            &format!("22=4|48={mini}|55=MINI|207=XSWX|EUSIPACode=2300"),
+        )])
+        .collect::<yggdryl::Result<_>>()
+        .expect("a message");
+    assert!(fresh.learn(&parsed[0]), "the ticker and the market");
+    assert_eq!(fresh.get(&mini).and_then(|row| row.eusipacode()), None);
+}
+
 /// A walk learns a message's country of issue - where it states one its
 /// ISIN does not already say - and its trading currency beside the ticker
 /// and the market, and fills them into a later message of the instrument

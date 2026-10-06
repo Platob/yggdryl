@@ -736,6 +736,9 @@ fn a_local_csv_file_is_written_read_appended_and_reopened() {
         four_rows()
     );
 
+    // An append resizes the file: finish the reader's mapping first.
+    drop(reopened);
+
     // Through the holder's own record surface: the name picks the encoding.
     let mut holder = Holder::file(&path).expect("a file");
     let options = holder.record_options().expect("options");

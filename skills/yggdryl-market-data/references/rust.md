@@ -44,6 +44,17 @@ assert_eq!(order.get_bidpx(), order.get_price(), "a buy's price is its bid");
 assert!(order.get_fxrates().is_empty(), "nothing fills the rates");
 assert_eq!(*order.get_state(), State::Unknown);
 assert_eq!(order.kind().marketdatakind(), MarketDataKind::Order);
+
+// Under the `bic` source a value is a BIC whatever its type, and under
+// `legalentityidentifier` an LEI: upper-cased, or refused on its key.
+let desk = Identifier::new("bic:executingfirm".parse()?, "deutdeff")?;
+assert_eq!(desk.to_string(), "bic:executingfirm=DEUTDEFF");
+let refused = Identifier::new("bic:executingfirm".parse()?, "T-1").unwrap_err().to_string();
+assert!(refused.contains("bic:executingfirm") && refused.contains("is a BIC"), "{refused}");
+assert_eq!(Identifier::new("proprietary:executingfirm".parse()?, "T-1")?.value(), "T-1"); // any other source: the type's rule
+// A short name (FISN) is a security identifier; a legal form (ELF) neither a security's nor a party's.
+assert!(IdType::Fisn.is_security() && !IdType::Elf.is_security() && !IdType::Elf.is_party());
+assert_eq!(Identifier::new(IdKey::base("FinancialInstrumentShortName".parse()?), "Apple Inc/Sh")?.to_string(), "fisn=APPLE INC/SH");
 ```
 
 ## Build undated leaves, quotes and book entries
@@ -135,6 +146,14 @@ assert_eq!(filled.get_crossuuid(), placed.get_crossuuid(), "one chain");
 assert_eq!(filled.get_prevpx(), Some("189.50".parse()?));
 // Never itself, never one that happened after it.
 assert!(placed.clone().with_previous(&filled).is_none());
+
+// An instrument fact travels along the chain: a follower naming no other
+// ISIN takes the option's strike it does not state.
+let mut option = event(T, "New")?;
+option.set_strikepx(Some(Decimal::from_int(190)), true);
+option.finalize();
+let next = event(T + 1_000_000_000, "PartiallyFilled")?.with_previous(&option).expect("a later event follows");
+assert_eq!(next.get_strikepx(), Some(Decimal::from_int(190)));
 
 // One report recorded by two hops: recording clocks and sources are not content.
 let hop = |recorded: i64, line: u128| -> yggdryl::Result<OrderEvent> {
@@ -331,10 +350,10 @@ let values = vec![
     MarketData::from(BookEvent::new(1_700_000_001_000_000_000, "AAPL")),
 ];
 
-// 62 columns: 6 element, 9 event, 34 market (marketdatakind first), 5 operation,
+// 63 columns: 6 element, 9 event, 35 market (marketdatakind first), 5 operation,
 // the book controls bookscope, bookaction and bookposition, 5 nested.
 let field = MarketData::field()?;
-assert_eq!(field.field_len(), 62);
+assert_eq!(field.field_len(), 63);
 assert_eq!(field.fields()[15].name(), "marketdatakind");
 let batches: Vec<RecordBatch> = MarketData::arrow_reader(values.clone(), Some(1_000), None)?.collect::<Result<_, _>>()?;
 let read: Vec<MarketData> = MarketData::from_arrow_reader(batch_reader(batches[0].schema(), batches))?
@@ -468,8 +487,9 @@ first, the unpriced market level last) and its entries as `alive_on(side)`,
 the orders resting as `ordlive`; every book answers the readings of the first
 level that can trade: `best_price`, `best_quantity`, the `bidpx`/`askpx` it
 states, `spread`; a complete one `depth` and `imbalance` too. Its deltas read
-by kind as `orddelta`, `quotes` and `executions`, which partition them. A
-book built by hand is complete.
+by kind as `orddelta`, `quotes`, `executions` and `events` - every delta that
+is none of the three, empty because a book records nothing else - which
+partition them. A book built by hand is complete.
 
 ```rust
 use yggdryl::graph::{BookEvent, Element, Market, MarketData, Operation, OrderEvent};
@@ -521,6 +541,8 @@ assert_eq!(book.deltas().map(Element::get_crosscode).collect::<Vec<_>>(), ["10:1
 // market order last, then the offer - and every delta an order.
 assert_eq!(book.ordlive().map(Element::get_crosscode).collect::<Vec<_>>(), ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:1:MKT", "10:2:A-1"]);
 assert_eq!((book.orddelta().count(), book.quotes().count(), book.executions().count()), (book.deltas().len(), 0, 0));
+// The four kinds partition the deltas; a book records no other kind.
+assert_eq!(book.events().count(), 0);
 ```
 
 ## Replace a scope with a snapshot

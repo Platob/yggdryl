@@ -213,7 +213,9 @@ pub trait IOMedia: Send {
 
     /// Return the match key this resource states for its own rows: what a
     /// merge whose options name no
-    /// [`merge_by`](crate::media::IORecordOptions::merge_by) matches on.
+    /// [`merge_by`](crate::media::IORecordOptions::merge_by) matches on -
+    /// the key left out, null, or `true` through
+    /// [`set_merge_by_scalar`](crate::media::IORecordOptions::set_merge_by_scalar).
     ///
     /// Empty - the default - where the resource states none, as a leaf, a
     /// folder and a buffer do, so a merge naming no key is refused there

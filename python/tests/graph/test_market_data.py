@@ -41,7 +41,7 @@ def leaves() -> list[Any]:
     )
     book = graph.BookEvent(CLOCK, "ACME").with_operations([order, quote])
     return [
-        graph.Order(crosscode="O-1", price=D("101")),
+        graph.Order(crosscode="O-1", price=D("101"), strikepx=D("4600.5")),
         graph.Quote(crosscode="Q-1"),
         graph.Execution(crosscode="E-1", lastqty=2),
         order,
@@ -200,6 +200,11 @@ def test_the_field_is_the_lifted_marketdata_struct() -> None:
     ]
     assert names.index("marketdatakind") == 15
     assert names[16] == "marketdatatype"
+    # The strike is the market fact after the ticker, before the metadata.
+    assert len(names) == 63
+    assert names.index("strikepx") == names.index("ticker") + 1 == 48
+    assert names[49] == "metadata"
+    assert str(field["strikepx"].dtype) == "decimal"
     for name in (
         "currunix",
         "price",
@@ -245,6 +250,7 @@ def test_arrow_reader_round_trips_every_variant() -> None:
     table = reader.read_all()
     assert table.num_rows == 9
     assert table.column("marketdatakind").to_pylist() == [int(kind) for kind in KINDS]
+    assert table.column("strikepx").to_pylist() == [D("4600.5")] + [None] * 8
     back = list(graph.MarketData.from_arrow_reader(table))
     assert back == [graph.MarketData(item) for item in items]
     assert [data.into_leaf() for data in back] == items

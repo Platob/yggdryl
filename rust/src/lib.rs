@@ -56,6 +56,7 @@ pub mod duration;
 pub mod elf;
 mod enumeration;
 pub mod enums;
+mod eusipa;
 pub mod excel;
 pub mod expression;
 mod field;
@@ -206,10 +207,10 @@ pub use fix::{
     MSGSESSIONID_TAG_NAME, ORDQTY_TAG_NAME, PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME,
     PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME,
     SNAPUNIX_TAG_NAME, SOH, SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME,
-    STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG_NAME, TICKER_TAG_NAME,
-    TRADABLE_TAG_NAME, ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, Words, fix_column_of, fix_column_tags,
-    fix_crate_fields, fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document,
-    into_fix_document, is_crate_tag, is_derived_tag,
+    STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG_NAME, STRIKEPX_TAG_NAME,
+    TICKER_TAG_NAME, TRADABLE_TAG_NAME, ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, Words, fix_column_of,
+    fix_column_tags, fix_crate_fields, fix_schema, fix_schema_carrying, fix_schema_tags,
+    from_fix_document, into_fix_document, is_crate_tag, is_derived_tag,
 };
 pub use hostname::HOSTNAME;
 pub use int256::{i256, u256};
@@ -293,6 +294,7 @@ pub use duration::*;
 pub use elf::*;
 pub use enumeration::Vocabulary;
 pub use enums::*;
+pub use eusipa::Eusipa;
 pub use field::*;
 pub use figi::*;
 pub use fisn::*;

@@ -12,7 +12,7 @@ ISO 17442's Legal Entity Identifier: twenty characters, eighteen letters or digi
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | A length other than twenty, punctuation among the eighteen leading characters, a letter in the check digits; the empty text, so there is no default value |
 
-An LEI names a legal entity, not an instrument. `SecurityIDSource(22)=T` is its FIX security source, and an [identifier](../../graph/identifier.md#per-type-value-checks) of type `lei` is held to this code's shape and ranked by its check.
+An LEI names a legal entity, not an instrument. `SecurityIDSource(22)=T` is its FIX security source, and an [identifier](../../graph/identifier.md#per-type-value-checks) of type `lei` is held to this code's shape and ranked by its check. So is any identifier under the `legalentityidentifier` source - a party id stated under `PartyIDSource(447)` `N` - whatever its role: a value of another shape is refused on its key, and the identifier ranks by the lower of its role's rank and the check's, so an LEI whose digits close replaces a typo under the same key and as the role's answer, whichever was stated first ([Under a source](../../graph/identifier.md#under-a-source)).
 
 ## DataType
 

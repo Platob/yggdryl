@@ -347,7 +347,10 @@ Random access reads and edits any cell by its `A1` reference, lays a sheet's row
         handle.overwrite_arrow_table(pa.table({"note": ["a"]}), sheet="Notes")
 
         # The random-access path: any cell of any sheet, and a sheet as a Serie.
-        workbook = Workbook.open(path)
+        # Keep the package in memory and release the file before replacing it.
+        source = handle.read_bytes()
+        handle.close()
+        workbook = Workbook.from_bytes(source)
         assert workbook.sheet_names == ["Sheet1", "Notes"]
         sheet = workbook["Sheet1"]
         assert sheet["B2"].as_py() == "AAPL"
@@ -388,7 +391,10 @@ Random access reads and edits any cell by its `A1` reference, lays a sheet's row
     handle.overwriteArrowTable(new arrow.Table({ note: arrow.vectorFromArray(['a'], new arrow.Utf8()) }), handle.recordOptions().withSheet('Notes'))
 
     // The random-access path: any cell of any sheet, and a sheet as a Serie.
-    const workbook = Workbook.open(file)
+    // Keep the package in memory and release the file before replacing it.
+    const source = handle.readBytes()
+    handle.close()
+    const workbook = Workbook.fromBytes(source)
     assert.deepEqual(workbook.sheetNames, ['Sheet1', 'Notes'])
     const sheet = workbook.sheet('Sheet1')
     assert.equal(sheet.cell('B2').value.asJs(), 'AAPL')
@@ -400,7 +406,7 @@ Random access reads and edits any cell by its `A1` reference, lays a sheet's row
     workbook.insertSheet(Sheet.fromSerie('Copy', table))
     workbook.writeInto(file)
     assert.equal(Workbook.open(file).sheet('Sheet1').cell('D1').value.asJs(), 'note')
-    assert.equal(new IOBase(file).readArrowReader(handle.recordOptions().withSheet('Copy')).intoTable().numRows, 2)
+    assert.equal(new IOBase(file).readArrowReader({ sheet: 'Copy' }).intoTable().numRows, 2)
     fs.rmSync(root, { recursive: true, force: true })
     ```
 

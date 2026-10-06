@@ -95,7 +95,7 @@ test('the enum listings name the column vocabulary and the market kinds', () => 
   assert.ok(enums.mdUpdateActions.includes('snapshot'))
   assert.equal(enums.elementColumns.length, 6)
   assert.equal(enums.eventColumns.length, 9)
-  assert.equal(enums.marketColumns.length, 34)
+  assert.equal(enums.marketColumns.length, 35)
   assert.equal(enums.operationColumns.length, 5)
   assert.deepEqual(enums.operationColumns, ['ordqty', 'timeinforce', 'tradable', 'identifiers', 'partyids'])
   // When an element last executed is a market fact, never an event's.

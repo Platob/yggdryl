@@ -14,7 +14,7 @@ Search the native FIX catalog and inspect the fields, components and groups it s
 
 ## Use
 
-A Serie group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `metadata` Map group instead owns tag and counter together - 65035 - with no scalar counter column.
+A Serie group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `metadata` Map group instead owns tag and counter together - 65036 - with no scalar counter column.
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
@@ -24,7 +24,7 @@ A Serie group and its scalar count have separate definitions: `NoPartyIDs` is th
 | Messages, a subset of components | 181 | 181 |
 | Code sets, read by 2,027 fields | 735 | 738 |
 
-The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketdatakind`, `isincode`, `forexcode`, `figicode`, `execunix`, `recdunix`, the session-event key `msgsesseventid`, a bridge's originating plugin and conversation among them - and its `metadata` Map group. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `msgcatcodeset`, `marketdatatypecodeset` and `statecodeset` make the live code-set count 738. The native fixed capture schema has 150 columns.
+The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketdatakind`, `isincode`, `forexcode`, `figicode`, `execunix`, `recdunix`, the session-event key `msgsesseventid`, a bridge's originating plugin and conversation among them - and its `metadata` Map group. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `marketdatakindcodeset`, `marketdatatypecodeset` and `statecodeset` make the live code-set count 738. The native fixed capture schema has 150 columns.
 
 === "Rust"
 
@@ -43,11 +43,11 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     let parties = registry.field_by_name("parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
     assert_eq!(parties.as_fix().component(), Some("party"));
-    let metadata = registry.field_by_counter(65_035)?;
+    let metadata = registry.field_by_counter(65_036)?;
     assert_eq!(metadata.name(), "metadata");
-    assert_eq!(metadata.as_fix().tag()?, Some(65_035));
+    assert_eq!(metadata.as_fix().tag()?, Some(65_036));
     assert!(metadata.dtype().as_mapping().is_some_and(|mapping| mapping.keys_sorted()));
-    assert!(registry.get_field_by_tag(65_035).is_none());
+    assert!(registry.get_field_by_tag(65_036).is_none());
     assert_eq!(registry.msgtype("D")?.as_str(), "D");
     // The crate's own columns are fields from tag 65007, held by every registry;
     // an identity is the tag and the name together.
@@ -73,10 +73,10 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     parties = registry.field_by_name("parties")
     assert parties.fix.counter == 453
     assert parties.fix.component == "party"
-    metadata = registry.field_by_counter(65_035)
-    assert metadata.name == "metadata" and metadata.fix.tag == 65_035
+    metadata = registry.field_by_counter(65_036)
+    assert metadata.name == "metadata" and metadata.fix.tag == 65_036
     assert metadata.into_arrow().type.keys_sorted
-    assert registry.get_field_by_tag(65_035) is None
+    assert registry.get_field_by_tag(65_036) is None
     assert registry.msgtype("D").value == "D"
     # The crate's own columns are fields from tag 65007, held by every registry;
     # an identity is the tag and the name together, an int derived on every read.
@@ -102,11 +102,11 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     const parties = registry.fieldByName('parties')
     assert.equal(parties.fix.counter, 453)
     assert.equal(parties.fix.component, 'party')
-    const metadata = registry.fieldByCounter(65035)
+    const metadata = registry.fieldByCounter(65036)
     assert.equal(metadata.name, 'metadata')
-    assert.equal(metadata.fix.tag, 65035)
+    assert.equal(metadata.fix.tag, 65036)
     assert.match(metadata.dtype.toString(), /keys_sorted=true/)
-    assert.equal(registry.getFieldByTag(65035), null)
+    assert.equal(registry.getFieldByTag(65036), null)
     assert.equal(registry.msgtype('D').asStr(), 'D')
     // The crate's own columns are fields from tag 65007, held by every registry;
     // an identity is the tag and the name together, a number derived on every read.

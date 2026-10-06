@@ -168,7 +168,7 @@ assert.deepEqual(trades.map((trade) => trade.venue), ['XNYS', 'XLON'])
 
 ## Append, and upsert by key
 
-Overwrite replaces, append keeps the stored rows, merge updates rows whose `mergeBy` key matches and appends the rest. Merge without a key throws.
+Overwrite replaces, append keeps the stored rows, merge updates rows whose `mergeBy` key matches and appends the rest, replacing a stored row only where the last arrival for its key differs from it - a merge changing nothing leaves the file unwritten. Merge without a key throws; `mergeBy` takes no boolean.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -508,7 +508,7 @@ assert.deepEqual([...filled.getChild('year')], [2024, 2025])
 
 ## Iceberg: create, append, upsert, scan
 
-A table is a folder; no catalog is required. Scans are `BatchReader`s planned from metadata; `merge` keys are the identity partition columns plus `mergeBy`, else - `mergeBy` left out or `null` - the columns the schema's `identifier-field-ids` names.
+A table is a folder; no catalog is required. Scans are `BatchReader`s planned from metadata; `merge` keys are the identity partition columns plus `mergeBy`, else - `mergeBy` left out or `null`, JavaScript taking no boolean - the columns the schema's `identifier-field-ids` names. On a table stating `identifier-field-ids`, `append` writes only the rows whose key neither the table nor an earlier row of the write holds, and a merge or an append that changes nothing commits no snapshot.
 
 ```javascript
 const assert = require('node:assert/strict')

@@ -1666,8 +1666,8 @@ mod own_key {
     use yggdryl::local::LocalFolder;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{
-        ArrowCastOptions, ArrowWriteSession, DataType, Field, Handle, IOMedia, IOMode, Properties,
-        Scalar, Selector, Serie, SerieReader, SerieSource, StructType, Table, Url,
+        ArrowCastOptions, ArrowWriteSession, DataType, Field, Handle, IOMedia, IOMode, IOResult,
+        Properties, Scalar, Selector, Serie, SerieReader, SerieSource, StructType, Table, Url,
     };
 
     /// A location nothing occupies, unique to this test and this process.
@@ -2066,6 +2066,606 @@ mod own_key {
             [trade(1, "A", "XNAS"), trade(2, "B", "XLON")]
         );
         let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_true_merge_key_merges_on_the_tables_own_key() {
+        let (path, mut table) = seeded("true-key", FormatVersion::V2, &[1], false);
+        let options = IOMedia::record_options(&table)
+            .unwrap()
+            .with_merge_by("symbol")
+            .unwrap()
+            .with_merge_by_scalar(&Scalar::from(true))
+            .unwrap();
+        assert!(options.merge_by().is_empty());
+        table
+            .merge_serie(
+                trades(&[(2, "B2", "XLON"), (3, "C", "XNAS")]).into(),
+                Some(&options),
+            )
+            .unwrap();
+        assert_eq!(
+            stored(&reopened(&path)),
+            [
+                trade(1, "A", "XNAS"),
+                trade(2, "B2", "XLON"),
+                trade(3, "C", "XNAS")
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_merge_that_changes_no_row_commits_nothing() {
+        for partitioned in [false, true] {
+            let label = format!("unchanged-{partitioned}");
+            let (path, mut table) = seeded(&label, FormatVersion::V2, &[1], partitioned);
+            // A replay, and a first arrival that differs then a last that
+            // does not: no row changes, so no snapshot is committed.
+            table
+                .merge_serie(trades(&[(1, "A", "XNAS"), (2, "B", "XLON")]).into(), None)
+                .unwrap();
+            table
+                .merge_serie(
+                    trades(&[(2, "STALE", "XLON"), (2, "B", "XLON")]).into(),
+                    None,
+                )
+                .unwrap();
+            table
+                .commit_merge(reader(&[(1, "A", "XNAS")]), &Selector::all(), true)
+                .unwrap();
+            let held = reopened(&path);
+            assert_eq!(held.metadata().unwrap().snapshots().len(), 1, "{label}");
+            assert_eq!(
+                stored(&held),
+                [trade(1, "A", "XNAS"), trade(2, "B", "XLON")],
+                "{label}"
+            );
+
+            // One changed row is a commit; on a partitioned table the
+            // partition it did not change keeps its files as they were.
+            let before: Vec<String> = held
+                .data_files()
+                .unwrap()
+                .iter()
+                .map(|(file, _)| file.file_path.to_string())
+                .collect();
+            table
+                .merge_serie(trades(&[(1, "A", "XNAS"), (2, "B2", "XLON")]).into(), None)
+                .unwrap();
+            let held = reopened(&path);
+            assert_eq!(held.metadata().unwrap().snapshots().len(), 2, "{label}");
+            assert_eq!(
+                stored(&held),
+                [trade(1, "A", "XNAS"), trade(2, "B2", "XLON")],
+                "{label}"
+            );
+            let after: Vec<String> = held
+                .data_files()
+                .unwrap()
+                .iter()
+                .map(|(file, _)| file.file_path.to_string())
+                .collect();
+            let kept = before.iter().filter(|file| after.contains(file)).count();
+            assert_eq!(
+                kept,
+                usize::from(partitioned),
+                "{label}: {before:?} {after:?}"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    #[test]
+    fn a_merge_whose_key_returns_to_its_stored_row_in_a_later_batch_commits_nothing() {
+        for partitioned in [false, true] {
+            let label = format!("unchanged-across-batches-{partitioned}");
+            let (path, mut table) = seeded(&label, FormatVersion::V2, &[1], partitioned);
+            // One stream of two batches: the first restates 1 with another
+            // symbol, the second with the stored one. The last arrival is
+            // what the table holds, so nothing changed across the merge.
+            let batch = |rows: &[(i64, &str, &str)]| -> RecordBatch {
+                trades(rows).into_arrow_batch().unwrap()
+            };
+            let first = batch(&[(1, "STALE", "XNAS"), (2, "B", "XLON")]);
+            let options = IOMedia::record_options(&table).unwrap();
+            table
+                .merge_arrow_reader(
+                    yggdryl::arrow::batch_reader(
+                        first.schema(),
+                        [first, batch(&[(1, "A", "XNAS")])],
+                    ),
+                    &options,
+                )
+                .unwrap();
+            let held = reopened(&path);
+            assert_eq!(held.metadata().unwrap().snapshots().len(), 1, "{label}");
+            assert_eq!(
+                stored(&held),
+                [trade(1, "A", "XNAS"), trade(2, "B", "XLON")],
+                "{label}"
+            );
+
+            // A key appended in a later batch is a change whatever the
+            // batches before it did.
+            let first = batch(&[(1, "STALE", "XNAS")]);
+            table
+                .merge_arrow_reader(
+                    yggdryl::arrow::batch_reader(
+                        first.schema(),
+                        [first, batch(&[(1, "A", "XNAS"), (3, "C", "XNAS")])],
+                    ),
+                    &options,
+                )
+                .unwrap();
+            let held = reopened(&path);
+            assert_eq!(held.metadata().unwrap().snapshots().len(), 2, "{label}");
+            assert_eq!(
+                stored(&held),
+                [
+                    trade(1, "A", "XNAS"),
+                    trade(2, "B", "XLON"),
+                    trade(3, "C", "XNAS")
+                ],
+                "{label}"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    #[test]
+    fn a_merge_keyed_by_the_partition_alone_replaces_it_even_with_its_own_rows() {
+        // The partition is the key, and a partition is replaced, never
+        // compared: the same rows again are a new snapshot.
+        let (path, mut table) = seeded("partition-replay", FormatVersion::V2, &[], true);
+        table
+            .merge_serie(trades(&[(1, "A", "XNAS")]).into(), None)
+            .unwrap();
+        let held = reopened(&path);
+        assert_eq!(held.metadata().unwrap().snapshots().len(), 2);
+        assert_eq!(
+            stored(&held),
+            [trade(1, "A", "XNAS"), trade(2, "B", "XLON")]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn an_overwrite_of_no_row_still_replaces_what_it_addresses() {
+        // The exit a merge that changed nothing takes is not an overwrite's:
+        // a stated scope with no incoming row is emptied.
+        let (path, mut table) = seeded("overwrite-empty", FormatVersion::V2, &[1], false);
+        table.commit_overwrite_where(&[], reader(&[])).unwrap();
+        let held = reopened(&path);
+        assert_eq!(held.metadata().unwrap().snapshots().len(), 2);
+        assert!(stored(&held).is_empty());
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn an_append_to_a_keyed_table_leaves_out_a_key_it_holds_through_every_door() {
+        // 2 is held; 3 arrives twice and its first arrival is kept.
+        let incoming: &[(i64, &str, &str)] =
+            &[(2, "B2", "XLON"), (3, "C", "XNAS"), (3, "C2", "XNAS")];
+        for door in [
+            "serie", "reader", "generic", "records", "commit", "holder", "session",
+        ] {
+            let (path, mut table) =
+                seeded(&format!("absent-{door}"), FormatVersion::V2, &[1], false);
+            let options: RecordOptions = IOMedia::record_options(&table).unwrap();
+            let result = match door {
+                "serie" => Some(table.append_serie(trades(incoming).into(), None).unwrap()),
+                "reader" => Some(
+                    table
+                        .append_arrow_reader(reader(incoming), &options)
+                        .unwrap(),
+                ),
+                "generic" => Some(
+                    table
+                        .write_arrow_reader(reader(incoming), IOMode::Append, &options)
+                        .unwrap(),
+                ),
+                "records" => {
+                    let records: Vec<Scalar> = incoming
+                        .iter()
+                        .map(|(id, symbol, venue)| trade(*id, symbol, venue))
+                        .collect();
+                    Some(
+                        table
+                            .append_records(records, &options.clone().with_field(row()))
+                            .unwrap(),
+                    )
+                }
+                "commit" => {
+                    table.commit_append(reader(incoming)).unwrap();
+                    None
+                }
+                "holder" => {
+                    let mut holder = Holder::from(Table::from(table));
+                    Some(holder.append_serie(trades(incoming).into(), None).unwrap())
+                }
+                _ => {
+                    let mut holder = Holder::from(Table::from(table));
+                    let mut session = ArrowWriteSession::append(&options).unwrap();
+                    assert!(session.push(&mut holder, reader(incoming)).unwrap());
+                    Some(session.finish(&mut holder).unwrap())
+                }
+            };
+            if let Some(result) = result {
+                assert_eq!(result, IOResult::new(3, 1), "{door}");
+                assert_eq!(result.skipped_rows, 2, "{door}");
+            }
+            let table = reopened(&path);
+            assert_eq!(
+                stored(&table),
+                [
+                    trade(1, "A", "XNAS"),
+                    trade(2, "B", "XLON"),
+                    trade(3, "C", "XNAS")
+                ],
+                "{door}"
+            );
+            assert_eq!(table.metadata().unwrap().snapshots().len(), 2, "{door}");
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    #[test]
+    fn an_append_whose_every_key_is_held_commits_nothing_on_every_version() {
+        for version in [FormatVersion::V2, FormatVersion::V3] {
+            let label = format!("absent-replay-{version:?}");
+            let (path, mut table) = seeded(&label, version, &[1], false);
+            let replay = table
+                .append_serie(trades(&[(1, "A9", "XNAS"), (2, "B", "XLON")]).into(), None)
+                .unwrap();
+            assert_eq!(replay, IOResult::new(2, 0), "{label}");
+            let held = reopened(&path);
+            assert_eq!(held.metadata().unwrap().snapshots().len(), 1, "{label}");
+            // The first arrival is what the table holds: a correction sent
+            // as an append is left out.
+            assert_eq!(
+                stored(&held),
+                [trade(1, "A", "XNAS"), trade(2, "B", "XLON")],
+                "{label}"
+            );
+            let added = table
+                .append_serie(trades(&[(2, "B", "XLON"), (4, "D", "XNAS")]).into(), None)
+                .unwrap();
+            assert_eq!(added, IOResult::new(2, 1), "{label}");
+            let held = reopened(&path);
+            assert_eq!(held.metadata().unwrap().snapshots().len(), 2, "{label}");
+            assert_eq!(
+                stored(&held),
+                [
+                    trade(1, "A", "XNAS"),
+                    trade(2, "B", "XLON"),
+                    trade(4, "D", "XNAS")
+                ],
+                "{label}"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    #[test]
+    fn a_cadenced_keyed_append_sees_its_earlier_commits_as_stored() {
+        let (path, mut table) = seeded("absent-cadence", FormatVersion::V2, &[1], false);
+        let options = IOMedia::record_options(&table)
+            .unwrap()
+            .with_commit_batch_num(1);
+        let batch = |rows: &[(i64, &str, &str)]| trades(rows).into_arrow_batch().unwrap();
+        let first = batch(&[(4, "D", "XNAS")]);
+        let batches = vec![
+            first.clone(),
+            batch(&[(4, "D2", "XNAS"), (1, "A2", "XNAS")]),
+            batch(&[(5, "E", "XLON")]),
+        ];
+        let result = table
+            .append_arrow_reader(
+                yggdryl::arrow::batch_reader(first.schema(), batches),
+                &options,
+            )
+            .unwrap();
+        assert_eq!(result, IOResult::new(4, 2));
+        let held = reopened(&path);
+        // The middle cadence left every row out and committed nothing.
+        assert_eq!(held.metadata().unwrap().snapshots().len(), 3);
+        assert_eq!(
+            stored(&held),
+            [
+                trade(1, "A", "XNAS"),
+                trade(2, "B", "XLON"),
+                trade(4, "D", "XNAS"),
+                trade(5, "E", "XLON")
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_partitioned_keyed_table_holds_one_key_per_partition() {
+        // The key is (venue, id): 2 under XNAS is not 2 under XLON.
+        let (path, mut table) = seeded("absent-partitioned", FormatVersion::V2, &[1], true);
+        let result = table
+            .append_serie(
+                trades(&[(2, "B9", "XNAS"), (2, "B2", "XLON"), (1, "A2", "XNAS")]).into(),
+                None,
+            )
+            .unwrap();
+        assert_eq!(result, IOResult::new(3, 1));
+        assert_eq!(
+            stored(&reopened(&path)),
+            [
+                trade(1, "A", "XNAS"),
+                trade(2, "B", "XLON"),
+                trade(2, "B9", "XNAS")
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_keyed_append_reads_the_keys_of_a_file_written_under_another_spec() {
+        // Written unpartitioned, then partitioned by venue: the first file
+        // belongs to no partition of the current spec, and the key is now
+        // (venue, id).
+        let (path, mut table) = seeded("absent-foreign", FormatVersion::V2, &[1], false);
+        table
+            .commit_metadata_changes(|metadata| {
+                let spec = PartitionSpec::identity(1, metadata.current_schema()?, &["venue"])?;
+                let id = metadata.add_spec(spec)?;
+                metadata.set_default_spec(id)
+            })
+            .unwrap();
+        let result = table
+            .append_serie(
+                trades(&[(1, "A2", "XNAS"), (2, "B9", "XNAS"), (3, "C", "XLON")]).into(),
+                None,
+            )
+            .unwrap();
+        assert_eq!(result, IOResult::new(3, 2));
+        assert_eq!(
+            stored(&reopened(&path)),
+            [
+                trade(1, "A", "XNAS"),
+                trade(2, "B", "XLON"),
+                trade(2, "B9", "XNAS"),
+                trade(3, "C", "XLON")
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_partition_only_key_reads_a_foreign_file_spanning_partitions_for_their_presence() {
+        // The identifier is the partition column, so the key is `venue`
+        // alone. The file written before the spec holds rows of two venues
+        // the incoming rows reach: each of them is held, and only the venue
+        // no file holds is appended - its first arrival.
+        let (path, mut table) = seeded(
+            "absent-foreign-partition-key",
+            FormatVersion::V2,
+            &[3],
+            false,
+        );
+        table
+            .commit_metadata_changes(|metadata| {
+                let spec = PartitionSpec::identity(1, metadata.current_schema()?, &["venue"])?;
+                let id = metadata.add_spec(spec)?;
+                metadata.set_default_spec(id)
+            })
+            .unwrap();
+        assert_eq!(names(&IOMedia::merge_by(&table).unwrap()), ["venue"]);
+        let result = table
+            .append_serie(
+                trades(&[
+                    (10, "X", "XNAS"),
+                    (11, "Y", "XLON"),
+                    (12, "Z", "XPAR"),
+                    (13, "W", "XPAR"),
+                ])
+                .into(),
+                None,
+            )
+            .unwrap();
+        assert_eq!(result, IOResult::new(4, 1));
+        assert_eq!(
+            stored(&reopened(&path)),
+            [
+                trade(1, "A", "XNAS"),
+                trade(2, "B", "XLON"),
+                trade(12, "Z", "XPAR")
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_table_stating_no_key_appends_every_row() {
+        let (path, mut table) = seeded("absent-unkeyed", FormatVersion::V2, &[], false);
+        let result = table
+            .append_serie(trades(&[(1, "A", "XNAS"), (1, "A", "XNAS")]).into(), None)
+            .unwrap();
+        assert_eq!(result, IOResult::new(2, 2));
+        assert_eq!(stored(&reopened(&path)).len(), 4);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn the_later_commits_of_an_overwrite_append_every_row_whatever_the_key() {
+        let (path, mut table) = seeded("absent-overwrite", FormatVersion::V2, &[1], false);
+        let options = IOMedia::record_options(&table)
+            .unwrap()
+            .with_commit_batch_num(1);
+        let batch = |rows: &[(i64, &str, &str)]| trades(rows).into_arrow_batch().unwrap();
+        let first = batch(&[(7, "G", "XNAS")]);
+        let result = table
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(
+                    first.schema(),
+                    [first.clone(), batch(&[(7, "G2", "XNAS")])],
+                ),
+                &options,
+            )
+            .unwrap();
+        assert_eq!(result, IOResult::new(2, 2));
+        assert_eq!(
+            stored(&reopened(&path)),
+            [trade(7, "G", "XNAS"), trade(7, "G2", "XNAS")]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_keyed_append_beaten_by_a_concurrent_commit_conflicts_where_a_blind_one_rebases() {
+        for (ids, conflicts) in [(&[1][..], true), (&[][..], false)] {
+            let label = format!("absent-beaten-{conflicts}");
+            let (path, _) = seeded(&label, FormatVersion::V2, ids, false);
+            let mut late = reopened(&path);
+            late.set_options(
+                yggdryl::iceberg::IcebergOptions::new()
+                    .with_commit_retries(1)
+                    .with_commit_min_backoff_ms(1)
+                    .with_commit_max_backoff_ms(2),
+            );
+            // Read now: what the late append decides is absent is decided
+            // against this snapshot.
+            assert_eq!(late.metadata().unwrap().snapshots().len(), 1);
+            reopened(&path)
+                .commit_append(reader(&[(8, "H", "XNAS")]))
+                .unwrap();
+            let outcome = late.commit_append(reader(&[(9, "I", "XNAS")]));
+            let mut expected = vec![
+                trade(1, "A", "XNAS"),
+                trade(2, "B", "XLON"),
+                trade(8, "H", "XNAS"),
+            ];
+            if conflicts {
+                let error = outcome.expect_err("a keyed append cannot rebase");
+                assert!(error.is_conflict(), "{error}");
+            } else {
+                outcome.unwrap();
+                expected.push(trade(9, "I", "XNAS"));
+            }
+            assert_eq!(stored(&reopened(&path)), expected, "{label}");
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    #[test]
+    fn a_replay_merge_opens_nothing_for_writing_and_a_keyed_append_only_the_files_its_keys_may_be_in()
+     {
+        use crate::counting_filesystem::counted_folder;
+
+        let (filesystem, folder) = counted_folder("own-key-costs");
+        let mut table = IcebergTable::create(
+            folder,
+            FormatVersion::V2,
+            schema(&[1]),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        // Two data files, ids 1 to 2 and 10 to 11.
+        table
+            .commit_append(reader(&[(1, "A", "XNAS"), (2, "B", "XLON")]))
+            .unwrap();
+        table
+            .commit_append(reader(&[(10, "J", "XNAS"), (11, "K", "XLON")]))
+            .unwrap();
+        assert_eq!(table.data_files().unwrap().len(), 2);
+
+        // A replay merge reads the file its key may be in and writes
+        // nothing: no data file, no manifest, no list, no document.
+        let replay = filesystem.costs(|| {
+            table
+                .commit_merge(reader(&[(10, "J", "XNAS")]), &Selector::all(), true)
+                .unwrap();
+        });
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 2);
+        // A keyed append of a key outside both files' bounds opens no data
+        // file to read, and writes its one file, manifest, list and
+        // document; one inside the second file's bounds reads that file
+        // alone and, its key held, writes nothing; one spanning both reads
+        // both.
+        let outside = filesystem.costs(|| {
+            table.commit_append(reader(&[(50, "X", "XNAS")])).unwrap();
+        });
+        let inside = filesystem.costs(|| {
+            table.commit_append(reader(&[(11, "K2", "XLON")])).unwrap();
+        });
+        let spanning = filesystem.costs(|| {
+            table
+                .commit_append(reader(&[(2, "B2", "XLON"), (10, "J2", "XNAS")]))
+                .unwrap();
+        });
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 3);
+
+        // The same append to the same files on a table stating no key.
+        let (blind_filesystem, blind_folder) = counted_folder("own-key-costs-blind");
+        let mut blind = IcebergTable::create(
+            blind_folder,
+            FormatVersion::V2,
+            schema(&[]),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        blind
+            .commit_append(reader(&[(1, "A", "XNAS"), (2, "B", "XLON")]))
+            .unwrap();
+        blind
+            .commit_append(reader(&[(10, "J", "XNAS"), (11, "K", "XLON")]))
+            .unwrap();
+        let unkeyed = blind_filesystem.costs(|| {
+            blind.commit_append(reader(&[(50, "X", "XNAS")])).unwrap();
+        });
+        // The replay: the manifest list, both manifests and the one data
+        // file whose bounds hold 10, sized five times on its way to a
+        // reader - and nothing created or opened for writing. The keyed
+        // append outside every bound costs the blind one's commit - its
+        // data file, manifest, list and hint written, its document created
+        // - plus the two manifests its plan opens, and no data file read.
+        // Inside the second file's bounds it reads the list, the three
+        // manifests and that one file; spanning both, both files.
+        assert_eq!(
+            [
+                replay.as_str(),
+                outside.as_str(),
+                unkeyed.as_str(),
+                inside.as_str(),
+                spanning.as_str()
+            ],
+            [
+                "file_info=5 open_input_stream=4",
+                "create_file=1 file_info=1 open_input_stream=5 open_output_stream=4",
+                "create_file=1 file_info=1 open_input_stream=3 open_output_stream=4",
+                "file_info=5 open_input_stream=5",
+                "file_info=10 open_input_stream=6"
+            ]
+        );
+    }
+
+    #[cfg(feature = "internals")]
+    #[test]
+    fn a_keyed_append_reads_a_stored_file_for_its_key_columns_alone() {
+        use yggdryl::internals::iceberg_table::append_key_root;
+
+        let columns = |root: &Field| -> Vec<String> {
+            root.fields()
+                .iter()
+                .map(|field| field.name().to_string())
+                .collect()
+        };
+        let keyed = schema(&[1]);
+        let flat = append_key_root(&keyed, &PartitionSpec::unpartitioned()).unwrap();
+        assert_eq!(columns(&flat), ["id"]);
+        // The identity partition column is constant in a group: not read.
+        let venues = PartitionSpec::identity(1, &keyed, &["venue"]).unwrap();
+        assert_eq!(columns(&append_key_root(&keyed, &venues).unwrap()), ["id"]);
+        let wider = schema(&[1, 3]);
+        assert_eq!(
+            columns(&append_key_root(&wider, &PartitionSpec::unpartitioned()).unwrap()),
+            ["id", "venue"]
+        );
     }
 
     #[test]

@@ -53,6 +53,7 @@ class TestBookEvent:
         assert book.alive_on(Side.BOTH) == []
         assert book.alive == [] and book.deltas == []
         assert book.ordlive == [] and book.orddelta == [] and book.quotes == [] and book.executions == []
+        assert book.events == []
         assert book.alive_on(Side.BUYS) == [] and book.alive_on("SELL") == []
         # A book a caller builds holds its sides, empty or not.
         assert book.is_complete
@@ -214,8 +215,10 @@ class TestBookEvent:
         assert [entry.crosscode for entry in later.executions] == ["8:1:E-1"]
         # Q-1 still rests: it is alive, not a delta of this instant.
         assert "14:0:Q-1" in [entry.crosscode for entry in later.alive]
-        # The three partition the deltas, which hold nothing else.
-        assert len(later.orddelta) + len(later.quotes) + len(later.executions) == len(later.deltas)
+        # The four partition the deltas; `events`, every other delta, is empty
+        # by construction: a fold records no other kind among them.
+        assert later.events == []
+        assert len(later.orddelta) + len(later.quotes) + len(later.executions) + len(later.events) == len(later.deltas)
         # A delta book states its changed orders and no resting one.
         books = list(graph.BookIterator([order(), order(CLOCK + 1, "100", "B-2")]))
         assert books[1].ordlive == [] and [entry.crosscode for entry in books[1].orddelta] == ["10:1:B-2"]
@@ -223,6 +226,28 @@ class TestBookEvent:
         assert first is not None
         rebuilt = books[1].with_previous(first)
         assert rebuilt is not None and [entry.crosscode for entry in rebuilt.ordlive] == ["10:1:O-1", "10:1:B-2"]
+        for held in (*books, rebuilt):
+            assert held.events == []
+            assert len(held.orddelta) + len(held.quotes) + len(held.executions) == len(held.deltas)
+
+    def test_no_delta_lands_among_the_events(self) -> None:
+        # Refused first: a nested book and an undated order are refused by
+        # kind, the book untouched; a trade is pruned before the fold.
+        book = graph.BookEvent(CLOCK, "IBM").with_operations([order()])
+        with pytest.raises(ValueError, match=r"\$\.operations\[0\]\.kind"):
+            book.with_operations([graph.BookEvent(CLOCK, "IBM")])
+        with pytest.raises(ValueError, match=r"\$\.operations\[0\]\.kind"):
+            book.with_operations([graph.Order()])
+        assert book.events == [] and len(book.orddelta) == len(book.deltas) == 1
+        root = graph.ExecutionEvent(CLOCK + 1, crosscode="T-1", ticker="IBM", lastpx=D("101"), lastqty=1)
+        fill = graph.ExecutionEvent(CLOCK + 1, crosscode="F-1", side="BUYS", ticker="IBM", lastpx=D("101"), lastqty=1)
+        trade = graph.TradeEvent.from_parts(root, [fill])
+        books = list(graph.BookIterator([order(), trade, quote(CLOCK + 1)]))
+        assert all(held.events == [] for held in books)
+        assert [delta.marketdatakind for held in books for delta in held.deltas] == [
+            MarketDataKind.ORDR,
+            MarketDataKind.QUOT,
+        ]
 
     def test_alive_on_reads_one_side_best_first(self) -> None:
         unpriced = graph.OrderEvent(CLOCK, crosscode="B-M", side="BUYS", quantity=3, ticker="IBM")

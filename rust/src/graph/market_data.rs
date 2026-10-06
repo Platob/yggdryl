@@ -306,6 +306,14 @@ impl Market for MarketData {
     fn set_stoppx(&mut self, value: Option<crate::Decimal>, overwrite: bool) {
         delegate_by_variant!(self, set_stoppx, value, overwrite);
     }
+
+    fn get_strikepx(&self) -> Option<crate::Decimal> {
+        delegate_by_variant!(self, get_strikepx)
+    }
+
+    fn set_strikepx(&mut self, value: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_strikepx, value, overwrite);
+    }
     fn get_currency(&self) -> &crate::Ccy {
         delegate_by_variant!(self, get_currency)
     }

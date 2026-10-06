@@ -12,7 +12,7 @@ What kind of market data an element is: FIX's MsgCat code set as an enum of twen
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | An integer that is the code of no member, naming the code; a spelling that names no kind, naming the spelling |
 | Stores | `uint8` under `yggdryl.marketdatakind`: the MsgCat value itself |
-| Owner | The one owner of the MsgCat set: a FIX dictionary's `FIX:msgcat` resolves to a member by its four-letter code, the crate's `msgcatcodeset` renders from `MarketDataKind::ALL`, and a [FIX message](../../fix/message.md)'s `marketdatakind` and a market data row's `marketdatakind` both state a member; and of the [sided rule](#sided-kinds-and-batches) - which kinds state their side in their stored cross code, `{kind}:{side}:{base}`, whose first number is the kind's `code` |
+| Owner | The one owner of the MsgCat set: a FIX dictionary's `FIX:msgcat` resolves to a member by its four-letter code, the crate's `marketdatakindcodeset` renders from `MarketDataKind::ALL`, and a [FIX message](../../fix/message.md)'s `marketdatakind` and a market data row's `marketdatakind` both state a member; and of the [sided rule](#sided-kinds-and-batches) - which kinds state their side in their stored cross code, `{kind}:{side}:{base}`, whose first number is the kind's `code` |
 
 A reader tells the leaves of market data apart by one column every FIX engine already speaks: an order is `ORDR`, a quote `QUOT`, an execution `EXEC`, a trade `TRAD` and a book `BOOK`.
 

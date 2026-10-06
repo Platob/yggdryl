@@ -1,4 +1,4 @@
-"""``MarketDataKind``, FIX's MsgCat code set as an ``int32`` enum:
+"""``MarketDataKind``, FIX's MsgCat code set as a ``uint8`` enum:
 `python/yggdryl/marketdatakind.py` and `python/src/marketdatakind.rs`."""
 
 from __future__ import annotations

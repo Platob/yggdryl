@@ -19,7 +19,7 @@ use crate::bbg::BBG_WIDTH;
 use crate::identifier::{IDENTIFIER_VALUE_WIDTH, IDENTIFIER_WORD_WIDTH, id_vocabulary};
 use crate::ric::RIC_WIDTH;
 use crate::{Ccy, Cfi, Country, Cusip, DataType, Error, Figi, Forex, Isin, Result, Ric, Sedol};
-use crate::{DTI_WIDTH, Dti, LEI_WIDTH, Lei};
+use crate::{DTI_WIDTH, Dti, ELF_WIDTH, Elf, FISN_WIDTH, Fisn, LEI_WIDTH, Lei};
 
 id_vocabulary! {
     /// The type of name an identifier is: `isin`, `clordid`,
@@ -120,8 +120,17 @@ id_vocabulary! {
         Forex => "forex" | "forexcode" | "ccypair" | "currencypair",
         /// An ISO 10962 classification.
         Cfi => "cfi" | "cficode",
+        /// An ISO 18774 financial instrument short name - the issuer and the
+        /// instrument's description either side of a `/` - which FIX states
+        /// in `FinancialInstrumentShortName(2737)` and gives no
+        /// `SecurityIDSource(22)` code.
+        Fisn => "fisn" | "fisncode" | "financialinstrumentshortname",
         /// A venue's or a bridge's own instrument key.
         InstrumentId => "instrumentid" | "instrumentcode",
+        /// An ISO 20275 entity legal form: what kind of entity a party is -
+        /// `2HBR` a German GmbH - which describes an entity rather than
+        /// naming a security or a party.
+        Elf => "elf" | "elfcode" | "entitylegalform" | "entitylegalformcode",
         /// `OrderID(37)`.
         OrderId => "orderid",
         /// `ClOrdID(11)`.
@@ -273,6 +282,21 @@ pub(crate) static FIX_SECURITY_SOURCES: [(IdType, char); 33] = [
 /// before a security type ([`IdType::from_key_end`]).
 const REFUSED_FIELD_PREFIXES: [&str; 5] = ["leg", "underlying", "contra", "related", "benchmark"];
 
+/// Whether a folded key naming an instrument's fact - a security type, a
+/// product category - that starts at `at` names another instrument's: one
+/// of the words naming another instrument - `leg`, `underlying`, `contra`,
+/// `related`, `benchmark` - opens the key or ends what it spells before the
+/// fact, after any namespace (`omsunderlyingisin`, `fix.legisin`,
+/// `firm.x.contracusip`, `underlyingeusipa`). The one rule both the
+/// identifiers a key names ([`IdType::from_key_end`]) and the product
+/// category a FIX message's bridge key states read.
+pub(crate) fn names_another_instrument(folded: &str, at: usize) -> bool {
+    let before = folded[..at].trim_end_matches('.');
+    REFUSED_FIELD_PREFIXES
+        .iter()
+        .any(|word| folded.starts_with(word) || before.ends_with(word))
+}
+
 /// The field names that are a ticker, never a security type.
 const REFUSED_FIELD_NAMES: [&str; 3] = ["ticker", "symbol", "symbolticker"];
 
@@ -403,20 +427,24 @@ impl IdType {
 
     /// Whether this type names a security: a type FIX's
     /// `SecurityIDSource(22)` code set names, a currency pair, a
-    /// classification or an instrument key - what a market's `securityids`
-    /// hold.
+    /// classification, a financial instrument short name or an instrument
+    /// key - what a market's `securityids` hold.
     ///
     /// ```
     /// use yggdryl::IdType;
     ///
     /// assert!(IdType::Isin.is_security());
     /// assert!(IdType::InstrumentId.is_security());
+    /// assert!(IdType::Fisn.is_security());
+    /// assert!(!IdType::Elf.is_security(), "a legal form names no security");
     /// assert!(!IdType::ClOrdId.is_security());
     /// ```
     #[must_use]
     pub fn is_security(&self) -> bool {
-        matches!(self, Self::Forex | Self::Cfi | Self::InstrumentId)
-            || self.fix_security_source().is_some()
+        matches!(
+            self,
+            Self::Forex | Self::Cfi | Self::Fisn | Self::InstrumentId
+        ) || self.fix_security_source().is_some()
     }
 
     /// Whether this type names a party: the account, a party of no role, a
@@ -495,14 +523,15 @@ impl IdType {
 
     /// The datatype a column of this type's values declares: the registered
     /// code a type is checked as - `isin`, `cusip`, `sedol`, `figi`, `ric`,
-    /// `bbg`, `ccy`, `country`, `cfi`, `forex`, `lei`, `dti` - and `utf8`
-    /// for every other type.
+    /// `bbg`, `ccy`, `country`, `cfi`, `forex`, `lei`, `dti`, `fisn`,
+    /// `elf` - and `utf8` for every other type.
     ///
     /// ```
     /// use yggdryl::{DataType, IdType};
     ///
     /// assert_eq!(IdType::Isin.value_dtype(), DataType::isin());
     /// assert_eq!(IdType::Bloomberg.value_dtype(), DataType::bbg());
+    /// assert_eq!(IdType::Fisn.value_dtype(), DataType::fisn());
     /// assert_eq!(IdType::Valor.value_dtype(), DataType::utf8());
     /// ```
     #[must_use]
@@ -520,6 +549,8 @@ impl IdType {
             Self::Forex => DataType::forex(),
             Self::Lei => DataType::lei(),
             Self::Dti => DataType::dti(),
+            Self::Fisn => DataType::fisn(),
+            Self::Elf => DataType::elf(),
             _ => DataType::utf8(),
         }
     }
@@ -578,11 +609,7 @@ impl IdType {
         let kind = folded[at..].parse::<Self>().ok()?;
         let security =
             kind.is_security() || kind.parent_of().is_some_and(|(base, _)| base.is_security());
-        let before = folded[..at].trim_end_matches('.');
-        let other_instrument = REFUSED_FIELD_PREFIXES
-            .iter()
-            .any(|word| folded.starts_with(word) || before.ends_with(word));
-        (!(security && other_instrument)).then_some((at, kind))
+        (!(security && names_another_instrument(folded, at))).then_some((at, kind))
     }
 
     /// The security type a folded key names an underlying's code by: the
@@ -784,9 +811,10 @@ impl IdType {
     }
 
     /// The most bytes a value of this type may be: the fixed width of a
-    /// checked code - an LEI's twenty and a DTI's nine read from their own
-    /// code files - the code's 32-byte bound for a Bloomberg symbol and a
-    /// RIC, and [`IDENTIFIER_VALUE_WIDTH`] for every
+    /// checked code - an LEI's twenty, a DTI's nine and an entity legal
+    /// form's four read from their own code files - the code's bound for a
+    /// Bloomberg symbol and a RIC (32) and a financial instrument short name
+    /// (35), and [`IDENTIFIER_VALUE_WIDTH`] for every
     /// other type - an FpML product URL, an index name and a private
     /// source's code among them.
     #[must_use]
@@ -802,6 +830,8 @@ impl IdType {
             Self::Ric => RIC_WIDTH,
             Self::Dti => DTI_WIDTH,
             Self::Lei => LEI_WIDTH,
+            Self::Fisn => FISN_WIDTH,
+            Self::Elf => ELF_WIDTH,
             _ => IDENTIFIER_VALUE_WIDTH,
         }
     }
@@ -820,6 +850,8 @@ impl IdType {
                 | Self::IsoCtry
                 | Self::Lei
                 | Self::Dti
+                | Self::Fisn
+                | Self::Elf
         )
     }
 
@@ -874,6 +906,8 @@ impl IdType {
             Self::IsoCtry => Country::new(value).map_or(0, |code| code.rank()),
             Self::Lei => Lei::new(value).map_or(0, |code| code.rank()),
             Self::Dti => Dti::new(value).map_or(0, |code| code.rank()),
+            Self::Fisn => Fisn::new(value).map_or(0, |code| code.rank()),
+            Self::Elf => Elf::new(value).map_or(0, |code| code.rank()),
             _ => 1,
         }
     }
@@ -902,7 +936,10 @@ impl IdType {
     /// it, written into `buffer` where it moves: an ISIN, a CUSIP, a SEDOL,
     /// a FIGI, an LEI and a DTI are held by their shape - the check digit or
     /// character as stated, its closing being [`Self::rank`]'s reading - a CFI, an ISO currency and
-    /// an ISO country code by their width, each upper-cased first; a RIC is
+    /// an ISO country code by their width, a financial instrument short name
+    /// as an issuer and a description either side of a `/` in at most 35
+    /// printable bytes and an entity legal form as four letters or digits,
+    /// each upper-cased first; a RIC is
     /// one token of printable ASCII, its case kept; a WKN is six of
     /// `[0-9A-HJ-NP-Z]`, a Valor number one to nine digits without a
     /// leading zero; a pair is stored as its one canonical spelling -
@@ -941,6 +978,11 @@ impl IdType {
             Self::IsoCtry => drop(Country::new(value)?),
             Self::Lei => drop(Lei::new(value)?),
             Self::Dti => drop(Dti::new(value)?),
+            Self::Elf => drop(Elf::new(value)?),
+            // A short name past the compact string's inline width would
+            // spill: the stored spelling is checked in place, and only a
+            // refusal builds one.
+            Self::Fisn if !Fisn::is_canonical(value) => drop(Fisn::new(value)?),
             Self::Wkn => {
                 if value.len() != 6
                     || !value.bytes().all(|byte| {

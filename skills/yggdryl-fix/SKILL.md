@@ -63,7 +63,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | decode text-reader lines | `codec.parse_text_lines(lines)` | `codec.parse_text_lines(lines)` | `codec.parseTextLines(lines)` |
 | a capture's batches to FIX rows | `codec.parse_text_arrow_reader(reader)?` | `codec.parse_text_arrow_reader(reader)` | `codec.parseTextArrowReader(reader)` |
 | read a fact | `msg.by_tag(55)?`, `by_name`, `by_path`, `header()`, `get_side()` | `msg.by_tag(55)`, `by_path(...)`, `header()`, `msg.side` | `msg.byTag(55)`, `byPath(...)`, `header()`, `msg.side` |
-| the category, the strike | `msg.marketdatakind()` (`Market`), `msg.strikepx()` | `msg.marketdatakind`, `msg.strikepx` | `msg.marketdatakind`, `msg.strikepx` |
+| the category, the strike | `msg.marketdatakind()`, `msg.get_strikepx()` (`Market`) | `msg.marketdatakind`, `msg.strikepx` | `msg.marketdatakind`, `msg.strikepx` |
 | the type, how long it stands | `msg.get_marketdatatype()`, `msg.get_timeinforce()` (`Operation`) | `msg.marketdatatype`, `msg.timeinforce` (the `IntEnum` members) | `msg.marketdatatype`, `msg.timeinforce` (the member names) |
 | the parents of an identifier | `registry.parents_of(&IdType::ClOrdId)`, `parent_of(&kind)`, `parent_sources()`; `field.as_fix_mut().set_parents(..)?` | `registry.parents_of("clordid")`, `parent_of("origclordid")`, `field.fix.parents` | `registry.parentsOf('clordid')`, `parentOf('origclordid')`, `field.fix.parents` |
 | a venue's own values onto members | `field.as_fix_mut().set_marketdatatypes(..)?`, `set_timeinforces(&[("D", TimeInForce::Day)])?`; `registry.marketdatatype_of(tag, wire)`, `timeinforce_of(tag, wire)` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [("D", "DAY")]`; `registry.marketdatatype_of`, `timeinforce_of` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [{ wire: 'D', timeinforce: 'DAY' }]`; `registry.marketdatatypeOf`, `timeinforceOf` |
@@ -326,7 +326,10 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   `SecurityIDSource(22)`'s type and each `SecAltIDGrp(454)` occurrence - a
   `{NAMESPACE}INSTRUMENTID` source an `instrumentid` from that namespace,
   `ULLINK.INSTRUMENTID` `ullink`, a reserved `base`, `derived` or `fix`
-  namespace none, so the base `instrumentid`; an ISIN's embedded codes and a
+  namespace none, so the base `instrumentid`;
+  `FinancialInstrumentShortName(2737)` under the base `fisn` key,
+  upper-cased, a value of no FISN's shape an anomaly named
+  `financialinstrumentshortname`; an ISIN's embedded codes and a
   symbol's FX pair from `derived`; `get(type)` answers the base key, which a
   named source fills where nothing states it), `identifiers` (each
   `FIX:idmap` field its type's base key; regulatory trade ids under
@@ -337,7 +340,11 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   `generalidentifier`; an unnamed word itself, an unnamed bare code
   `partyidsource{code}`; none the base source), the first of a source and
   role standing, a named source filling the role's base key, and `Account(1)` an `account` from its `AcctIDSource(660)` by the
-  same rule (`acctidsource{code}`). An entry no dictionary resolves - a
+  same rule (`acctidsource{code}`). Two sources hold a party to a code's
+  shape whatever its role: under `bic` (`447=B`, `660=1`) a BIC's, under
+  `legalentityidentifier` (`447=N`) an LEI's, upper-cased; a party the rule
+  refuses stays on the wire as an anomaly of `partyid`, `rootpartyid` or
+  `account` and in no map. An entry no dictionary resolves - a
   bridge's `FIRM.X.PARENTORDERID=`, `OMS_InstrumentID=` - names the identifier
   it ends with and the source before it (`firm.x:parentorderid`,
   `oms:instrumentid`), a reserved `base`, `derived` or `fix` namespace naming
@@ -361,7 +368,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   and one naming no `orderid` carries the chain's with both. A caller's
   `insert_*`/`set_*` is the message's word and writes no field: to change the
   wire, write the field. `SecurityID(48)`, `SecurityIDSource(22)`,
-  `Parties(453)` and `SecAltIDGrp(454)` are no columns of the fixed row (150
+  `Parties(453)` and `SecAltIDGrp(454)` are no columns of the fixed row (151
   columns): `fixentries` keeps them as sent (`453:parties`, the group's own name).
 - A graph leaf (`market_data`) carries in its `metadata` what its message
   states that no typed column reads and none of the leaf's identifier maps
@@ -391,7 +398,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 - Instrument learning is the lifecycle's, never the parse's: each walk learns
   every message's ISIN - the one key - CFI code, country of issue, the
   underlying it is written on (`UnderlyingSecurityID(309)`, a bridge's
-  `UnderlyingISIN`; lifted into no `securityids`), market, ticker, currency,
+  `UnderlyingISIN`; lifted into no `securityids`), a structured product's
+  EUSIPA category (`eusipacode`, off a bridge key whose folded name ends
+  `eusipa`, `eusipacode`, `eusipacategory`, `sspa`, `sspacode` or
+  `sspacategory` - `EUSIPACode=2300`, `OMS_SSPACategory=1260` - four digits
+  once trimmed, two different ones stating none; lifted into no map, the
+  entry kept as it came), market, ticker, currency,
   pair and security codes into an `IsinRegistry`, a valid
   stated value filling and replacing whatever the time, and fills what later
   messages of that instrument leave unsaid - `derived` identifiers, the
@@ -404,6 +416,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   `commit()` only where it moved, or the process's own `from_env()`, which
   `FixCodec.from_env()` attaches - to share it across walks run one after
   another. A RIC or a Bloomberg symbol is an equivalent, never a key.
+- `StrikePrice(202)` is read into the market fact `strikepx` (`Market`), the
+  fixed row's `strikepx` column right after `ticker` (crate tag `65035`), so
+  a graph leaf carries no `strikeprice` metadata key; `msg.set(202, v)`
+  restates it, a row stating `strikepx` is the row's word, and an unreadable
+  202 is an anomaly named `strikeprice`. A follower of the same instrument
+  carries the strike along its chain.
 - `DETAILEDCFICODE`, the bridge's detailed classification, is a name of
   `CFICode(461)`: one message stating both folds them into the one 461 value
   through `Cfi::refined` - the leading code's letters kept, its `X` positions

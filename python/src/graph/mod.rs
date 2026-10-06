@@ -388,6 +388,13 @@ macro_rules! market_getters {
                 ::yggdryl::graph::Market::get_ticker(&self.inner)
             }
 
+            /// The strike price of the option the element is about, as a
+            /// decimal; `None` where none.
+            #[getter]
+            fn strikepx(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Market::get_strikepx(&self.inner).map($crate::graph::decimal_scalar)
+            }
+
             /// Free-form facts beside the typed ones, in key order; empty
             /// where none.
             #[getter]

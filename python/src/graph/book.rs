@@ -173,6 +173,22 @@ graph_methods!(PyBookEvent, "BookEvent"; [
             .collect()
     }
 
+    /// Every other delta - none an order, a quote or an execution - each a
+    /// `MarketData`, in the order applied: `orddelta`, `quotes`,
+    /// `executions` and these partition `deltas`. Empty today, by
+    /// construction: a fold prunes a trade, a batch and a session message,
+    /// refuses an undated order, quote or execution and a nested book by
+    /// kind, and folds a snapshot control into the sides, never among the
+    /// deltas.
+    #[getter]
+    fn events(&self) -> Vec<PyMarketData> {
+        self.inner
+            .events()
+            .cloned()
+            .map(PyMarketData::from_core)
+            .collect()
+    }
+
     /// One limit per level of the side `side` takes - a bid side reads the
     /// bid, an ask side the ask - best first and the unpriced limit last:
     /// each the struct `Scalar` of its `price` (`None` on the unpriced

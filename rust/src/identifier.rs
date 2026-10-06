@@ -298,7 +298,9 @@ fn refusal(what: &'static str, actual: &str, expected: impl fmt::Display) -> Err
 /// identifier - held as its type stores it: an ISIN is of the number's
 /// shape and upper-cased, its check digit a rank ([`IdType::rank`]) rather
 /// than a refusal, a pair is canonical ([`IdType::max_value_width`] bounds
-/// every type).
+/// every type). A source whose every value is a registered code holds its
+/// values to that code's shape too, whatever their type: a BIC under `bic`,
+/// an LEI under `legalentityidentifier`, each upper-cased.
 ///
 /// Identifiers order by their key as it is spelled, then by value, which is
 /// the order [`Identifiers`] holds them in, lays them out in and digests them
@@ -339,11 +341,25 @@ impl Ord for Identifier {
 
 impl Identifier {
     /// Validates and builds one identifier, its value held as its type
-    /// stores it.
+    /// stores it - and, under a source whose every value is a registered
+    /// code, as that code: a BIC under `bic`, an LEI under
+    /// `legalentityidentifier`, whatever type of name it is, upper-cased.
+    ///
+    /// ```
+    /// use yggdryl::{IdKey, IdSource, IdType, Identifier};
+    ///
+    /// let firm = IdKey::new(IdSource::Bic, IdType::ExecutingFirm);
+    /// assert_eq!(Identifier::new(firm.clone(), "deutdeff500").unwrap().value(), "DEUTDEFF500");
+    /// let refused = Identifier::new(firm, "T-1").unwrap_err();
+    /// assert!(refused.to_string().contains("bic:executingfirm"), "located on the key");
+    /// let house = IdKey::new(IdSource::Proprietary, IdType::ExecutingFirm);
+    /// assert_eq!(Identifier::new(house, "T-1").unwrap().value(), "T-1");
+    /// ```
     ///
     /// # Errors
     ///
-    /// A value that states nothing, or one its type refuses.
+    /// A value that states nothing, one its type refuses, and one its
+    /// source refuses, located on the key.
     pub fn new(key: IdKey, value: &str) -> Result<Self> {
         let value = value.trim();
         if value.is_empty() || is_null_like(value) {
@@ -354,12 +370,13 @@ impl Identifier {
             ));
         }
         let mut buffer = [0_u8; IDENTIFIER_VALUE_WIDTH];
-        let value = SmolStr::new(key.kind().value_into(value, &mut buffer)?);
+        let value = SmolStr::new(key.value_into(value, &mut buffer)?);
         Ok(Self { key, value })
     }
 
     /// This identifier's value under another type of the same source - a
-    /// parent's type, a type's parent - held as that type stores it.
+    /// parent's type, a type's parent - held as that type stores it, its
+    /// source's code checked again.
     ///
     /// # Errors
     ///
@@ -387,13 +404,13 @@ impl Identifier {
     /// account, an ISIN, a CUSIP, a SEDOL or a FIGI; the longest one the name
     /// ends with answers, and a parentage word spelled before it - `parent`,
     /// `orig`, `origin`, `original` - stays part of the type. A whole name a
-    /// security type is spelled by - `ISINCode`, `security_cusip` - is that
-    /// type from the base source, and a security type is never read off a
-    /// name that names another instrument's - `leg`, `underlying`, `contra`,
-    /// `related` or `benchmark` opening the name or spelled just before the
-    /// type, after any namespace: `underlyingisin`, `OMS_UnderlyingISIN`,
-    /// `FIX.LegISIN`. `None` where the name names no identifier, the value
-    /// states nothing or the type refuses it.
+    /// security type is spelled by - `ISINCode`, `security_cusip`, `FISN`,
+    /// `CFI` - is that type from the base source, and a security type is
+    /// never read off a name that names another instrument's - `leg`,
+    /// `underlying`, `contra`, `related` or `benchmark` opening the name or
+    /// spelled just before the type, after any namespace: `underlyingisin`,
+    /// `OMS_UnderlyingISIN`, `FIX.LegISIN`. `None` where the name names no
+    /// identifier, the value states nothing or the type refuses it.
     ///
     /// A key's own spelling is read exactly by [`IdKey`]'s
     /// [`FromStr`](std::str::FromStr); this reading is for the names a source gives
@@ -409,6 +426,7 @@ impl Identifier {
     /// assert_eq!(Identifier::from_key("fix:clordid", "C-1").unwrap().to_string(), "clordid=C-1");
     /// assert_eq!(Identifier::from_key("Derived_ISIN", "US0378331005").unwrap().to_string(), "isin=US0378331005");
     /// assert_eq!(Identifier::from_key("ISINCode", "US0378331005").unwrap().to_string(), "isin=US0378331005");
+    /// assert_eq!(Identifier::from_key("FISN", "acme corp/sh").unwrap().to_string(), "fisn=ACME CORP/SH");
     /// assert!(Identifier::from_key("underlyingisin", "US0378331005").is_none());
     /// assert!(Identifier::from_key("OMS_UnderlyingISIN", "US0378331005").is_none());
     /// assert!(Identifier::from_key("transversalkey", "K-1").is_none());
@@ -449,6 +467,18 @@ impl Identifier {
         &self.value
     }
 
+    /// How real the value is, from zero up: its type's
+    /// [`IdType::rank`], and under a source whose every value is a
+    /// registered code the lower of that and the code's own rank - a BIC
+    /// whose country ISO 3166 lists one, an LEI whose check digits close
+    /// one. Allocation-free.
+    fn rank(&self) -> u8 {
+        let kind = self.kind().rank(self.value());
+        self.src()
+            .code()
+            .map_or(kind, |code| kind.min(code.rank(self.value())))
+    }
+
     /// The same value under the base key of its type.
     fn into_base(self) -> Self {
         Self {
@@ -487,11 +517,19 @@ impl fmt::Display for Identifier {
 ///
 /// A value's rank ([`IdType::rank`]) is how real it is - a number its
 /// check digit closes over a masked one, a listed country over an
-/// unlisted one - and a higher rank replaces a lower one under a key held,
-/// through [`Self::insert`] and [`Self::merge`], whatever the order they
-/// were stated in; two values of one rank fold by that order, and
-/// [`Self::set`] is the explicit statement. [`Self::carry`] and a read
-/// map's close fill only what is not held, deciding by the same rank. So wherever a type is held, its base key is, and replacing
+/// unlisted one; under the `bic` and `legalentityidentifier` sources the
+/// lower of that and the code's own, a BIC's listed country, an LEI's
+/// closing check digits - and a base key, which no source states a code
+/// for, ranks as the statements holding its value: the highest rank among
+/// the keys of its type that state it, its type's alone where none does,
+/// so a base key a mistyped BIC or LEI filled ranks as that typo, and a
+/// real code replaces it as the answer as it replaces it under its own key.
+/// A higher rank replaces a lower one under a key held, the base key
+/// included, through [`Self::insert`] and [`Self::merge`], whatever the
+/// order they were stated in; two values of one rank fold by that order,
+/// and [`Self::set`] is the explicit statement. [`Self::carry`] and a read
+/// map's close fill only what is not held, deciding by the same rank. So
+/// wherever a type is held, its base key is, and replacing
 /// or removing a named source of one rank leaves the base key as it was:
 /// a bridge restating the wire's code under its own name never overwrites
 /// or erases the wire's. A map read back from its scalar is closed by the
@@ -520,9 +558,11 @@ impl fmt::Display for Identifier {
 pub struct Identifiers(Vec<Identifier>);
 
 /// Whether `id` outranks `held`, a value of the same type: the one reading
-/// of [`IdType::rank`] the map decides a restated key by.
+/// of an identifier's rank - its type's, and its source's code's where it
+/// has one - the map decides a restated key by. A base key's rank is the
+/// map's to read ([`Identifiers::rank_at`]).
 fn ranks_above(id: &Identifier, held: &Identifier) -> bool {
-    id.kind().rank(id.value()) > held.kind().rank(held.value())
+    id.rank() > held.rank()
 }
 
 impl Identifiers {
@@ -587,12 +627,43 @@ impl Identifiers {
         }
     }
 
+    /// How real the identifier at `at` is as this map holds it: its own
+    /// rank ([`Identifier::rank`]), and for a base key - whose source names
+    /// no code - the rank of the statements holding its value: the highest
+    /// among the keys of its type stating it, its type's alone where none
+    /// does. Only a code source ranks a value below its type, so a base key
+    /// ranks below its type exactly where every key stating its value is a
+    /// code source ranking it lower - a base key a mistyped BIC filled ranks
+    /// as the typo, and one another source states too as that source does.
+    /// One walk of the map; allocation-free.
+    fn rank_at(&self, at: usize) -> u8 {
+        let held = &self.0[at];
+        let rank = held.rank();
+        if !held.key.is_base() {
+            return rank;
+        }
+        let mut coded: Option<u8> = None;
+        for other in self.of_kind(held.kind()) {
+            if other.key.is_base() || other.value != held.value {
+                continue;
+            }
+            match other.src().code() {
+                None => return rank,
+                Some(code) => {
+                    let stated = rank.min(code.rank(&held.value));
+                    coded = Some(coded.map_or(stated, |best| best.max(stated)));
+                }
+            }
+        }
+        coded.unwrap_or(rank)
+    }
+
     /// Holds `id`, and its value under the base key of its type where that
     /// is empty or ranks below it.
     fn put_filling(&mut self, id: Identifier) {
         let fill = match self.position_of(&IdSource::Base, id.kind()) {
             Err(_) => true,
-            Ok(at) => ranks_above(&id, &self.0[at]),
+            Ok(at) => id.rank() > self.rank_at(at),
         }
         .then(|| id.clone().into_base());
         self.put(id);
@@ -720,10 +791,19 @@ impl Identifiers {
     /// # }
     /// ```
     pub fn insert(&mut self, id: Identifier) -> bool {
+        let rank = id.rank();
+        self.insert_ranked(id, rank)
+    }
+
+    /// [`Self::insert`], `id` ranking `rank`: its own rank, or, for a base
+    /// key another map holds, the rank that map reads it at
+    /// ([`Self::rank_at`]) - which a merge and a carry pass, so a base key
+    /// a typo filled there ranks as the typo here too.
+    fn insert_ranked(&mut self, id: Identifier, rank: u8) -> bool {
         match id.src() {
             IdSource::Derived => {
                 if let Ok(at) = self.position_of(&IdSource::Base, id.kind())
-                    && !ranks_above(&id, &self.0[at])
+                    && rank <= self.rank_at(at)
                 {
                     return false;
                 }
@@ -731,13 +811,14 @@ impl Identifiers {
             }
             IdSource::Base => {
                 if let Ok(at) = self.position(&id.key) {
-                    let held = &self.0[at];
+                    let held = self.rank_at(at);
                     // A derivation's echo yields to a statement it does not
-                    // outrank; a statement only to one that outranks it.
+                    // outrank; a statement only to one that outranks it,
+                    // never to its own value restated.
                     let stands = if self.is_derived(id.kind()) {
-                        ranks_above(held, &id)
+                        held > rank
                     } else {
-                        !ranks_above(&id, held)
+                        self.0[at].value == id.value || rank <= held
                     };
                     if stands {
                         return false;
@@ -748,7 +829,7 @@ impl Identifiers {
             }
             _ => {
                 if let Ok(at) = self.position(&id.key)
-                    && !ranks_above(&id, &self.0[at])
+                    && rank <= self.rank_at(at)
                 {
                     return false;
                 }
@@ -839,17 +920,21 @@ impl Identifiers {
     /// below it ([`Self::insert`]). Whether anything moved.
     pub fn merge(&mut self, other: &Self, later: bool) -> bool {
         let mut moved = false;
-        for id in other.iter().filter(|id| !other.is_echo(id)) {
+        for (index, id) in other.iter().enumerate() {
+            if other.is_echo(id) {
+                continue;
+            }
+            // A base key ranks as each map holds it ([`Self::rank_at`]).
+            let rank = other.rank_at(index);
             let replaced = *id.src() != IdSource::Derived
                 && self.position(&id.key).ok().is_some_and(|at| {
-                    let held = &self.0[at];
-                    held.value() != id.value()
-                        && (ranks_above(id, held) || (later && !ranks_above(held, id)))
+                    let held = self.rank_at(at);
+                    self.0[at].value() != id.value() && (rank > held || (later && held <= rank))
                 });
             moved |= if replaced {
                 self.set(id.clone())
             } else {
-                self.insert(id.clone())
+                self.insert_ranked(id.clone(), rank)
             };
         }
         moved
@@ -869,12 +954,12 @@ impl Identifiers {
     /// derivation. Whether any was.
     pub fn carry(&mut self, previous: &Self, carried: impl Fn(&Identifier) -> bool) -> bool {
         let mut moved = false;
-        for id in previous.iter() {
+        for (index, id) in previous.iter().enumerate() {
             if !previous.is_echo(id)
                 && carried(id)
                 && (self.position(&id.key).is_err() || self.is_echo(id))
             {
-                moved |= self.insert(id.clone());
+                moved |= self.insert_ranked(id.clone(), previous.rank_at(index));
             }
         }
         moved

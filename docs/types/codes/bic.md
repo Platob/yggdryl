@@ -229,7 +229,7 @@ for refused in ["DEUTDEFF5", "DEUT1EFF", "DEU-DEFF"] {
 - Serde reads a BIC through the same door: a document holding a spelling that is not the shape is refused rather than deserialized, and lower case is folded.
 - No default value: the empty text names no party, so an empty text cell entering the column is null ([Cast](../cast.md#empty-text)).
 - [`merge_with`](index.md#the-code-family-value) takes a code whose country is listed over one whose country is not, whichever leads; two of one rank keep this one.
-- A party id stated under a BIC source is held as the [identifier](../../graph/identifier.md) it is, its value not checked as a BIC: an identifier's value rule is its type's, and a party role is no code.
+- A party id stated under the `bic` source - `PartyIDSource(447)` `B`, `AcctIDSource(660)` `1` - is held to a BIC's shape, upper-cased, whatever its role: a value of another shape is no [identifier](../../graph/identifier.md), refused on its key (`a value under the bic source is a BIC: ...`), and a FIX party it refuses stays on the wire as an anomaly of its `partyid`, `rootpartyid` or `account`; its rank is the lower of its role's and the BIC's own, so a BIC of a listed country replaces one of an unlisted country under the same key and as the role's answer, whichever was stated first ([Under a source](../../graph/identifier.md#under-a-source)).
 
 ## Commands
 

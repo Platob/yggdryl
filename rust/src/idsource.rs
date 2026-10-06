@@ -6,8 +6,16 @@
 //! `AcctIDSource(660)` code sets commonly name - each a static word, and any
 //! other word, a venue's or a bridge's own prefix included, as
 //! [`IdSource::Other`].
+//!
+//! Two sources are standards whose values are a registered code: a value
+//! under `bic` is a BIC and one under `legalentityidentifier` an LEI,
+//! whatever type of name it is, so such a source answers for its values'
+//! shape and rank beside their type.
+
+use smol_str::{SmolStr, format_smolstr};
 
 use crate::identifier::id_vocabulary;
+use crate::{Bic, CodeValue, Error, IdKey, Lei, Result};
 
 id_vocabulary! {
     /// Who gave an identifier: `base`, `proprietary`, `firm.x`.
@@ -37,7 +45,8 @@ id_vocabulary! {
         /// a stated source before it.
         Derived => "derived",
         /// A Bank Identifier Code, `PartyIDSource(447)` `B` and
-        /// `AcctIDSource(660)` `1`.
+        /// `AcctIDSource(660)` `1`: every value it gives is an ISO 9362 BIC
+        /// ([`Bic`](crate::Bic)), held by its shape.
         Bic => "bic",
         /// A generally accepted market participant identifier,
         /// `PartyIDSource(447)` `C`.
@@ -55,7 +64,9 @@ id_vocabulary! {
         CsdParticipant => "csdparticipant",
         /// A tax identifier, `PartyIDSource(447)` `J`.
         TaxId => "taxid",
-        /// A legal entity identifier, `PartyIDSource(447)` `N`.
+        /// A legal entity identifier, `PartyIDSource(447)` `N`: every value
+        /// it gives is an ISO 17442 LEI ([`Lei`](crate::Lei)), held by its
+        /// shape.
         LegalEntityIdentifier => "legalentityidentifier",
         /// A short code, `PartyIDSource(447)` `P`.
         ShortCodeIdentifier => "shortcodeidentifier",
@@ -95,5 +106,71 @@ impl IdSource {
             Self::Base | Self::Derived => None,
             named => Some(named),
         })
+    }
+
+    /// The registered code every value this source gives is: a BIC under
+    /// [`Self::Bic`] and an LEI under [`Self::LegalEntityIdentifier`],
+    /// whatever type of name the value is - a party's role, the account, a
+    /// word no member names - and `None` under every other source, whose
+    /// values follow their type's rule alone. The one owner of the rule
+    /// [`Identifier::new`](crate::Identifier::new) holds a value to beside
+    /// its type's, and of the rank it reads beside the type's.
+    pub(crate) const fn code(&self) -> Option<SourceCode> {
+        match self {
+            Self::Bic => Some(SourceCode::Bic),
+            Self::LegalEntityIdentifier => Some(SourceCode::Lei),
+            _ => None,
+        }
+    }
+}
+
+/// A registered code every value of one source is ([`IdSource::code`]).
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum SourceCode {
+    /// An ISO 9362 business identifier code.
+    Bic,
+    /// An ISO 17442 legal entity identifier.
+    Lei,
+}
+
+impl SourceCode {
+    /// `value`, stated under `key`, held by the code's shape and
+    /// upper-cased. Allocation-free where it is held: both codes are inline.
+    ///
+    /// # Errors
+    ///
+    /// A value that is not of the code's shape, located on `key` and naming
+    /// the source and the code it expected.
+    pub(crate) fn hold(self, key: &IdKey, value: &str) -> Result<SmolStr> {
+        let (held, code) = match self {
+            Self::Bic => (Bic::new(value).map(|code| code.storage().clone()), "a BIC"),
+            Self::Lei => (Lei::new(value).map(|code| code.storage().clone()), "an LEI"),
+        };
+        held.map_err(|error| {
+            let reason = match error {
+                Error::InvalidDataType { reason, .. } | Error::InvalidRecord { reason, .. } => {
+                    reason
+                }
+                other => format_smolstr!("{other}"),
+            };
+            Error::InvalidRecord {
+                path: format_smolstr!("{key}"),
+                reason: format_smolstr!(
+                    "a value under the {} source is {code}: {reason}",
+                    key.src()
+                ),
+            }
+        })
+    }
+
+    /// How real `value` is as the code: the code's own
+    /// [`CodeValue::rank`] - a BIC whose country ISO 3166 lists one, an LEI
+    /// whose check digits close one - and zero for a value of neither
+    /// shape. Allocation-free.
+    pub(crate) fn rank(self, value: &str) -> u8 {
+        match self {
+            Self::Bic => Bic::new(value).map_or(0, |code| code.rank()),
+            Self::Lei => Lei::new(value).map_or(0, |code| code.rank()),
+        }
     }
 }

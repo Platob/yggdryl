@@ -1144,8 +1144,11 @@ test('every write that takes a per-call data MIME type actually writes it', (t) 
 
   const mergedWhere = iceberg.IcebergTable.create(path.join(root, 'mw'), schema(), ['venue'])
   mergedWhere.append(rows([1n, 2n], ['XNAS', 'XNYS']))
-  mergedWhere.mergeWhere({ venue: 'XNAS' }, rows([1n], ['XNAS']), ['id'], true, avro())
-  assert.deepEqual(dataMimeTypes(mergedWhere), [MimeType.AVRO.toString(), MimeType.PARQUET.toString()])
+  // A merge replaces only the rows that differ, so the stored XNAS row keeps
+  // its PARQUET file and the key the merge adds is the one AVRO file written.
+  mergedWhere.mergeWhere({ venue: 'XNAS' }, rows([3n], ['XNAS']), ['id'], true, avro())
+  assert.deepEqual(dataMimeTypes(mergedWhere), [MimeType.AVRO.toString(), MimeType.PARQUET.toString(), MimeType.PARQUET.toString()])
+  assert.equal(mergedWhere.scan().intoTable().numRows, 3)
 
   const replaced = iceberg.IcebergTable.create(path.join(root, 'ov'), schema())
   replaced.append(rows([1n], ['XNAS']))

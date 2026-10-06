@@ -7,7 +7,7 @@ The [field](field.md) is the cast target: an Arrow array, a record batch, a stre
 | Key | Value |
 | --- | --- |
 | Owns | `ArrowCastPlan`, `ArrowCastOptions`, `Representation`; `validate_value` and `canonicalize_value` for rows |
-| Ways in | `Serie::cast` for a column in hand; `ChunkedSerie::cast` for chunked columns, one plan over every chunk, and `ArrowCastPlan::apply_chunked` for a held one; `Serie::from_arrow_array`, `from_arrow_batch`, `from_arrow_reader` for Arrow buffers; `SerieReader::from_arrow_reader` for a stream; an `ArrowCastPlan` held and applied wherever one cast repeats |
+| Ways in | `Serie::cast` for a column in hand; `ChunkedSerie::cast` for chunked columns, one plan over every chunk, and `ArrowCastPlan::apply_chunked` for a held one; `Serie::from_arrow_array`, `from_arrow_batch`, `from_arrow_reader` for Arrow buffers; `SerieReader::from_arrow_reader` for a stream; an `ArrowCastPlan` held and applied wherever one cast repeats; `Field::apply_arrow_batch`, `apply_arrow_schema`, `apply_arrow_reader` and the record options' `apply_arrow_batch`, `apply_arrow_reader`, this same plan at its `RecordBatch` and `BatchReader` face ([Eager and lazy](#eager-and-lazy)) |
 | Target | The field, never the source. A `DataType` target is its required `value` field (`dtype.required_field("value")`), so a refusal names `$.value` |
 | Returns | A `Serie` under the target field - a `ChunkedSerie` of as many chunks from `ChunkedSerie::cast` and `apply_chunked`. A typed read is a narrowing of it: `as_int64().values()`, `as_utf8()`, `as_date32()`, `as_fixed_bytes()` |
 | Exact input | The identity plan: the same buffers, and a column already under the target is itself - where the source states every nullability the target requires; a nullable source under a required target is read for its nulls |
@@ -1187,6 +1187,18 @@ dropped at that point, which releases a C stream behind it.
 `into_arrow_reader` is the stream's transport face: its batches reconciled to the root as they
 are pulled and never landed, so no row is read beyond what the cast itself reads. Over an
 identity plan it is the inner reader, handed back untouched.
+
+The schema doors are this plan at the same face, never a second cast.
+[`Field::apply_arrow_batch`](field.md#applying-a-schema) compiles the plan from the batch's schema
+and reconciles the batch through it, once per call; `apply_arrow_schema` answers the plan's target
+schema with no row read; and `Field::apply_arrow_reader` is
+`SerieReader::from_arrow_reader(Some(root), reader, options).into_arrow_reader()`, one plan for
+the stream. The record options' `apply_arrow_batch` and `apply_arrow_reader` run the same cast
+twice - onto the declared field, then onto the stored field a write completes onto - with the
+`where` and `select` sections between them ([Options](../media/index.md#options)). They take and
+answer `RecordBatch` and `BatchReader` because that is what their callers exchange; a loop holds
+the reader form, since `apply_arrow_batch` called per batch compiles per batch. Python binds them
+under the same names; JavaScript binds none of them.
 
 === "Rust"
 

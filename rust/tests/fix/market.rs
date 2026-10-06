@@ -1173,11 +1173,13 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
 }
 
 #[test]
-fn msgcat_registry_values_are_stable_int32_operation_ids() {
+fn marketdatakind_registry_values_are_stable_int32_operation_ids() {
     let registry = committed_registry();
     let field = registry.field(yggdryl::MARKETDATAKIND_TAG_NAME.0).unwrap();
     assert_eq!(field.dtype(), &DataType::MarketDataKind);
-    let codes = registry.codeset_of(field).expect("the MsgCat vocabulary");
+    let codes = registry
+        .codeset_of(field)
+        .expect("the marketdatakind vocabulary");
     for (name, value) in [
         ("UNKN", "0"),
         ("ACCT", "1"),
@@ -1210,27 +1212,41 @@ fn msgcat_registry_values_are_stable_int32_operation_ids() {
 }
 
 #[test]
-fn msgcat_operation_ids_are_intrinsic_while_custom_msgtypes_choose_a_category() {
+fn marketdatakind_operation_ids_are_intrinsic_while_custom_msgtypes_choose_a_category() {
     let mut registry = FixRegistry::new();
+    // The intrinsic set goes by the column's own name alone; the name it
+    // had before is no set of the registry's.
+    assert!(registry.get_codeset("msgcatcodeset").is_none());
+    assert_eq!(
+        registry
+            .codesets()
+            .map(|set| set.name())
+            .collect::<Vec<_>>(),
+        [
+            "marketdatakindcodeset",
+            "marketdatatypecodeset",
+            "statecodeset"
+        ],
+    );
     let refused = registry
-        .set_codeset("msgcatcodeset", &[FixCode::new("ORDR", "99")])
+        .set_codeset("marketdatakindcodeset", &[FixCode::new("ORDR", "99")])
         .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
     let refused = registry
-        .merge_codeset("msgcatcodeset", &[FixCode::new("VENUE", "99")])
+        .merge_codeset("marketdatakindcodeset", &[FixCode::new("VENUE", "99")])
         .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
     let refused = registry
-        .merge_codeset("msgcatcodeset", &[FixCode::new("ORDR", "99")])
+        .merge_codeset("marketdatakindcodeset", &[FixCode::new("ORDR", "99")])
         .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
     let refused = registry
-        .merge_codeset("msgcatcodeset", &[FixCode::new("ORDR", "010")])
+        .merge_codeset("marketdatakindcodeset", &[FixCode::new("ORDR", "010")])
         .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
     let refused = registry
         .merge_codeset(
-            "msgcatcodeset",
+            "marketdatakindcodeset",
             &[FixCode::new("ORDR", "10").with_aliases(["QUOT"])],
         )
         .unwrap_err();
@@ -1240,22 +1256,24 @@ fn msgcat_operation_ids_are_intrinsic_while_custom_msgtypes_choose_a_category() 
     // of its own name, is a second spelling the enum does not own.
     let refused = registry
         .merge_codeset(
-            "msgcatcodeset",
+            "marketdatakindcodeset",
             &[FixCode::new("ORDR", "10").with_aliases(["ordr"])],
         )
         .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
     registry
         .merge_codeset(
-            "msgcatcodeset",
+            "marketdatakindcodeset",
             &[FixCode::new("ORDR", "10").with_description(MarketDataKind::Order.description())],
         )
         .expect("an exact named subset changes no intrinsic identifier");
-    let refused = registry.remove_codeset("msgcatcodeset").unwrap_err();
+    let refused = registry
+        .remove_codeset("marketdatakindcodeset")
+        .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
     assert_eq!(
         registry
-            .codeset("msgcatcodeset")
+            .codeset("marketdatakindcodeset")
             .unwrap()
             .code_by_name("ORDR")
             .map(|code| code.value()),
@@ -3286,6 +3304,38 @@ fn a_book_entrys_parties_are_its_leafs_accounts_leading_the_messages() {
     );
 }
 
+/// An entry's party sourced `B` that is no BIC is no account of its leaf:
+/// the message's party answers in its place, and the entry's stays among
+/// the leaf's metadata, since no map holds it.
+#[test]
+fn a_book_entrys_party_its_bic_source_refuses_is_no_account_and_stays_in_its_metadata() {
+    let leaves = message(
+        b"8=FIX.4.4|35=X|52=20260921-10:00:00|55=AAPL|453=1|448=ROOT|452=1|268=2|\
+          279=0|269=0|278=B1|270=100|271=10|453=1|448=MM1|447=B|452=1|\
+          279=0|269=1|278=A1|270=101|271=11|453=1|448=deutdeff|447=B|452=1|10=0|",
+    )
+    .into_market_data()
+    .expect("a book");
+    let [bid, ask] = leaves.as_slice() else {
+        panic!("two entries")
+    };
+    assert_eq!(
+        operation_of(bid).get_partyids().get(&IdType::ExecutingFirm),
+        Some("ROOT")
+    );
+    assert!(keys(bid).contains(&"parties".to_owned()), "{:?}", keys(bid));
+    assert_eq!(
+        operation_of(ask).get_partyids().get(&IdType::ExecutingFirm),
+        Some("DEUTDEFF")
+    );
+    assert_eq!(
+        operation_of(ask)
+            .get_partyids()
+            .get_from(&IdKey::new(IdSource::Bic, IdType::ExecutingFirm)),
+        Some("DEUTDEFF")
+    );
+}
+
 #[test]
 fn an_empty_snapshot_holds_no_account_and_keeps_its_parties() {
     let leaves = message(
@@ -3542,8 +3592,8 @@ fn a_lifecycle_merge_keeps_the_union_with_the_reference_leading() {
     let capture = messages(
         &codec,
         &[
-            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:00|65043=SESSION|65042=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=1|18=G|10=0|",
-            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:01|65043=SESSION|65042=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=2|111=3|10=0|",
+            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:00|65044=SESSION|65043=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=1|18=G|10=0|",
+            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:01|65044=SESSION|65043=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=2|111=3|10=0|",
         ],
     );
     let walked = codec

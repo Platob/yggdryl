@@ -65,7 +65,7 @@ header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
 ``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``); the
 business category ``marketdatakind``, the :class:`yggdryl.MarketDataKind` member the
 message type is filed under (``MsgType.marketdatakind`` answers the same member for
-the definition); the option ``strikepx`` the message identifies (``StrikePrice(202)``);
+the definition); the ``strikepx`` of the option the message identifies, its market fact derived from ``StrikePrice(202)``;
 :meth:`FixMsg.capture`, what the line's own bridge row header said about
 the capture it was written for (``msgpluginid``, ``msgctxid``,
 ``msgsessionid``, and the ``msgsesseventid`` the message type, session,

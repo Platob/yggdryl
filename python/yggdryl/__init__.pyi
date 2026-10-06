@@ -370,5 +370,8 @@ from .identifier import (
 from .isin_registry import (
     IsinRegistry as IsinRegistry,
 )
+from .eusipa import (
+    Eusipa as Eusipa,
+)
 
 __all__: list[str]

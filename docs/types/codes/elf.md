@@ -12,7 +12,7 @@ ISO 20275's Entity Legal Form code: four letters or digits naming one legal form
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | A length other than four, punctuation; the empty text, so there is no default value |
 
-An ELF code names the legal form an entity is registered under, so it sits beside an [LEI](lei.md) in reference data rather than identifying anything itself.
+An ELF code names the legal form an entity is registered under, so it sits beside an [LEI](lei.md) in reference data rather than identifying anything itself. An [identifier](../../graph/identifier.md#per-type-value-checks) of type `elf` - also spelled `elfcode`, `entitylegalform` and `entitylegalformcode` - is held to this code's shape; it names neither a security nor a party, so an operation's `identifiers` hold it.
 
 ## DataType
 

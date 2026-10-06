@@ -1738,7 +1738,8 @@ impl SidesJournal {
 /// reading borrows from it: [`Self::alive`], [`Self::alive_on`],
 /// [`Self::deltas`], and the same entries by kind - [`Self::ordlive`] the
 /// orders resting, [`Self::orddelta`], [`Self::quotes`] and
-/// [`Self::executions`] the deltas, which hold nothing else. A complete
+/// [`Self::executions`] the deltas, and [`Self::events`] every other delta,
+/// of which the fold admits none today. A complete
 /// book answers each side as the [`Limit`]s its row states under
 /// `bidlimits` and `asklimits` - [`Self::limits`], best first - and its
 /// depth, [`Self::depth`] and [`Self::imbalance`]; a book holding only its
@@ -2251,9 +2252,9 @@ impl BookEvent {
     /// The executions among [`Self::deltas`], in the order applied: each
     /// one the book recorded at its instant, resting on no side and moving
     /// none - its fill moved the book through its order's or quote's own
-    /// report. [`Self::orddelta`], [`Self::quotes`] and these partition the
-    /// deltas, which hold nothing else; laid out as rows, the same split is
-    /// [`MarketData::deltas_serie`]'s `kind`.
+    /// report. [`Self::orddelta`], [`Self::quotes`], these and
+    /// [`Self::events`] partition the deltas; laid out as rows, the same
+    /// split is [`MarketData::deltas_serie`]'s `kind`.
     ///
     /// ```
     /// use yggdryl::graph::{BookEvent, Element, ExecutionEvent, Market, MarketData, OrderEvent, QuoteEvent};
@@ -2282,7 +2283,10 @@ impl BookEvent {
     /// assert_eq!(book.executions().map(Element::get_crosscode).collect::<Vec<_>>(), ["8:1:E-1"]);
     /// assert_eq!(book.quotes().map(Element::get_crosscode).collect::<Vec<_>>(), ["14:0:Q-1"]);
     /// assert_eq!(
-    ///     book.orddelta().count() + book.quotes().count() + book.executions().count(),
+    ///     book.orddelta().count()
+    ///         + book.quotes().count()
+    ///         + book.executions().count()
+    ///         + book.events().count(),
     ///     book.deltas().len()
     /// );
     /// # Ok(())
@@ -2290,6 +2294,49 @@ impl BookEvent {
     /// ```
     pub fn executions(&self) -> impl Iterator<Item = &ExecutionEvent> {
         self.deltas().filter_map(MarketData::as_execution_event)
+    }
+
+    /// Every delta that is no order, quote or execution, in the order
+    /// applied - the typed home of whatever else a book comes to record, so
+    /// [`Self::orddelta`], [`Self::quotes`], [`Self::executions`] and these
+    /// partition [`Self::deltas`] whatever it holds. Empty today, by
+    /// construction: a fold prunes every input `MarketDataKind::is_recorded`
+    /// refuses before it reads one - a trade, whose fills are executions
+    /// already, a batch, a session message - refuses every other recorded
+    /// one by kind - an undated order, quote or execution, a nested book -
+    /// and folds a snapshot control into the sides' membership, never among
+    /// the deltas; a book read back from its row refuses a delta of any
+    /// other kind at `$.deltas[i]`.
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookEvent, Element, Market, MarketData, OrderEvent};
+    /// use yggdryl::{Decimal, Side};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut order = OrderEvent::at(1);
+    /// order.set_crosscode("B-1".to_owned());
+    /// order.set_side(Side::Buy, true);
+    /// order.set_price(Some(Decimal::from_int(100)), true);
+    /// order.set_quantity(Some(Decimal::ONE), true);
+    /// order.finalize();
+    /// let mut book = BookEvent::new(1, "ACME");
+    /// book.add_operations([MarketData::from(order)])?;
+    /// assert_eq!(book.events().count(), 0);
+    /// // A nested book is refused by kind, the book untouched.
+    /// assert!(book.add_operations([MarketData::from(BookEvent::new(1, "ACME"))]).is_err());
+    /// assert_eq!(book.orddelta().count() + book.events().count(), book.deltas().len());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn events(&self) -> impl Iterator<Item = &MarketData> {
+        self.deltas().filter(|delta| {
+            !matches!(
+                delta,
+                MarketData::OrderEvent(_)
+                    | MarketData::QuoteEvent(_)
+                    | MarketData::ExecutionEvent(_)
+            )
+        })
     }
 
     /// Whether the book holds no entry alive - a book stating its deltas

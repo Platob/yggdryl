@@ -331,6 +331,13 @@ macro_rules! market_getters {
                 $crate::graph::decimal_text(::yggdryl::graph::Market::get_prevpx(&self.inner))
             }
 
+            /// The strike price of the option the element is about, as
+            /// decimal text; `null` where none is stated.
+            #[napi(getter)]
+            pub fn strikepx(&self) -> Option<String> {
+                $crate::graph::decimal_text(::yggdryl::graph::Market::get_strikepx(&self.inner))
+            }
+
             /// The quantity the step before this one settled on; `null`
             /// where none.
             #[napi(getter)]

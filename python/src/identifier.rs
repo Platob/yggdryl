@@ -41,7 +41,9 @@ pub(crate) struct PyIdentifier {
 impl PyIdentifier {
     /// `key` is read exactly - `src:type`, or a type alone for the base
     /// source, each word folded - and `value` is trimmed text that states
-    /// something, held as the key's type stores it.
+    /// something, held as the key's type stores it: under the `bic` source a
+    /// BIC and under `legalentityidentifier` an LEI by shape, whatever the
+    /// type, a value either rule refuses a `ValueError` located on the key.
     #[new]
     #[pyo3(signature = (key, value))]
     fn new(key: &str, value: &str) -> PyResult<Self> {

@@ -10,7 +10,8 @@ use yggdryl::IdKey;
 use yggdryl::graph::book::{ENTRY_ID, ENTRY_REF_ID};
 use yggdryl::graph::{
     BookEvent, BookIterator, BookRef, Element, Event, ExecutionEvent, Market, MarketData,
-    MarketKind, MdUpdateAction, Operation, OrderEvent, QuoteEvent, SnapshotEvent, TradeEvent,
+    MarketKind, MdUpdateAction, Operation, Order, OrderEvent, QuoteEvent, SnapshotEvent,
+    TradeEvent,
 };
 use yggdryl::{
     Ccy, Decimal, IdSource, IdType, Identifier, Identifiers, Limit, Side, State, Unit, Uuid,
@@ -1602,8 +1603,8 @@ fn an_execution_is_recorded_among_the_deltas_and_a_trade_is_pruned() {
 
 /// A book reads what it holds by kind, borrowing every entry: the orders
 /// resting on it, and the orders, quotes and executions among its deltas -
-/// three readings partitioning the deltas, which hold nothing else - an
-/// order placed at the instant being the one entry its resting and its
+/// with `events`, every other delta, four readings partitioning the deltas -
+/// an order placed at the instant being the one entry its resting and its
 /// delta reading both borrow.
 #[test]
 fn a_book_reads_its_resting_orders_and_its_deltas_by_kind() {
@@ -1640,14 +1641,108 @@ fn a_book_reads_its_resting_orders_and_its_deltas_by_kind() {
     assert_eq!(executions, ["8:2:E-1"]);
     // A quote resting since the instant before is alive, not a delta.
     assert!(codes(book.alive()).contains(&"14:0:Q-1"));
-    // The three readings partition the deltas, which hold nothing else.
+    // The four readings partition the deltas, `events` answering none.
+    assert_eq!(book.events().count(), 0);
     assert_eq!(
-        book.orddelta().count() + book.quotes().count() + book.executions().count(),
+        book.orddelta().count()
+            + book.quotes().count()
+            + book.executions().count()
+            + book.events().count(),
         book.deltas().len()
     );
     // An order placed at the instant is the one entry both readings borrow.
     let placed = book.orddelta().last().expect("O-3 is among the deltas");
     assert!(book.ordlive().any(|order| std::ptr::eq(order, placed)));
+}
+
+/// The orders, quotes and executions are the only deltas a book holds, so
+/// `events` - every other delta - answers none on a complete book, on a
+/// book a walk emits as its deltas alone and on that book rebuilt: a trade
+/// is pruned before the fold, and an undated order or a nested book is
+/// refused by kind at its place in the group, the book untouched.
+#[test]
+fn a_book_holds_no_delta_but_its_orders_quotes_and_executions() {
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New")])
+        .unwrap();
+    let before = book.clone();
+    let mut undated = Order::new();
+    undated.set_crosscode("O-2".to_owned());
+    undated.set_ticker(Some(SmolStr::new("IBM")), true);
+    undated.set_side(Side::Buy, true);
+    undated.finalize();
+    for refused in [
+        MarketData::from(undated),
+        MarketData::from(BookEvent::new(2, "IBM")),
+    ] {
+        let kind = refused.kind();
+        let error = book
+            .add_operations([
+                operation("quote", "IBM", "Q-1", 2, "Sell", "101", 1, "New"),
+                refused,
+            ])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("$.operations[1].kind")
+                && error.contains(
+                    "expected order_event, quote_event, execution_event or snapshot_event"
+                ),
+            "{kind:?}: {error}"
+        );
+        assert_eq!(book, before);
+    }
+
+    let execution = operation("execution", "IBM", "E-1", 2, "Sell", "101", 1, "Filled");
+    let mut root = ExecutionEvent::at(2);
+    root.set_crosscode("T-1".to_owned());
+    root.set_ticker(Some(SmolStr::new("IBM")), true);
+    root.set_state(State::read("Filled").unwrap());
+    root.finalize();
+    let trade = TradeEvent::from_parts(
+        &root,
+        vec![ExecutionEvent::try_from(execution.clone()).unwrap()],
+    )
+    .unwrap();
+    book.add_operations([
+        MarketData::from(trade),
+        operation("quote", "IBM", "Q-1", 2, "Sell", "101", 1, "New"),
+        execution,
+        operation("order", "IBM", "O-1", 2, "Buy", "100", 2, "Canceled"),
+    ])
+    .unwrap();
+    // The trade was pruned: its fill stands as the one execution.
+    assert_eq!(codes(book.deltas()), ["14:0:Q-1", "8:2:E-1", "10:1:O-1"]);
+    let partitioned = |book: &BookEvent| {
+        assert_eq!(book.events().count(), 0);
+        assert_eq!(
+            book.orddelta().count()
+                + book.quotes().count()
+                + book.executions().count()
+                + book.events().count(),
+            book.deltas().len()
+        );
+    };
+    partitioned(&book);
+
+    let books = BookIterator::new(
+        vec![
+            operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
+            operation("quote", "IBM", "Q-1", 2, "Sell", "101", 1, "New"),
+            operation("execution", "IBM", "E-1", 2, "Sell", "101", 1, "Filled"),
+        ]
+        .into_iter(),
+        0,
+    )
+    .unwrap()
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
+    assert!(!books[1].is_complete());
+    assert_eq!(books[1].deltas().len(), 2);
+    partitioned(&books[1]);
+    let rebuilt = whole(&books);
+    assert!(rebuilt[1].is_complete());
+    partitioned(&rebuilt[1]);
 }
 
 /// A book a walk emits as its deltas alone states the orders its instant

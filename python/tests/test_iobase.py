@@ -1367,6 +1367,51 @@ class TestWriteResults:
         assert folder.append_serie(quote_table()) == IOResult(2, 2)
         assert len(rows_of(folder)) == 4
 
+    def test_a_merge_that_changes_no_row_leaves_the_leaf_unwritten(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        path = tmp_path / "quotes.parquet"
+        handle = IOBase(path)
+        handle.overwrite_serie(quote_table())
+        before = (path.read_bytes(), path.stat().st_mtime_ns)
+
+        # Every key's last incoming row equals the row it holds - the first
+        # AAPL differs, the last one is the stored row - so the merge answers
+        # the rows it pulled and leaves the leaf's bytes and time alone.
+        replay = pa.table({"symbol": ["AAPL", "AAPL", "MSFT"], "size": [1, 100, 250]})
+        assert handle.merge_arrow_table(replay, merge_by="symbol") == IOResult(3, 3)
+        assert (path.read_bytes(), path.stat().st_mtime_ns) == before
+
+        # One row that differs is a rewrite.
+        changed = pa.table({"symbol": ["AAPL"], "size": [101]})
+        assert handle.merge_arrow_table(changed, merge_by="symbol") == IOResult(1, 1)
+        assert path.read_bytes() != before[0]
+        assert rows_of(handle) == [
+            {"symbol": "AAPL", "size": 101},
+            {"symbol": "MSFT", "size": 250},
+        ]
+
+    def test_true_is_the_destination_key_and_false_is_refused(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "quotes.arrows")
+        handle.overwrite_serie(quote_table())
+
+        # A leaf states no key of its own, so `True` is refused as naming
+        # none is - before the source is read.
+        with pytest.raises(ValueError, match="requires at least one merge_by"):
+            handle.merge_serie(quote_table(), merge_by=True)
+        with pytest.raises(ValueError, match="requires at least one merge_by"):
+            handle.merge_arrow_table(quote_table(), merge_by=True)
+        with pytest.raises(ValueError, match=r"\$\.merge_by: .* or true .*got false"):
+            handle.merge_arrow_table(quote_table(), merge_by=False)
+        with pytest.raises(ValueError, match=r"\$\.merge_by: .* or true .*got false"):
+            handle.merge_serie(quote_table(), merge_by=False)
+        # `True` keeps no flag, so a write that takes no key is not refused
+        # for it.
+        assert handle.append_arrow_table(quote_table(), merge_by=True) == IOResult(2, 2)
+        assert len(rows_of(handle)) == 4
+
     def test_a_keyless_merge_on_a_leaf_is_refused_before_the_rows_are_read(
         self, tmp_path: pathlib.Path
     ) -> None:

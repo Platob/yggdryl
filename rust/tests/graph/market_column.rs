@@ -69,6 +69,7 @@ fn market_columns_round_trip_every_optional_band() {
         true,
     );
     source.set_ticker(Some(SmolStr::new("IBM")), true);
+    source.set_strikepx(Some(decimal("4600.5")), true);
     source.set_metadata(
         Some(BTreeMap::from([(
             SmolStr::new("Feed"),
@@ -128,6 +129,7 @@ fn market_columns_round_trip_every_optional_band() {
     assert_eq!(restored.get_spotrate(), source.get_spotrate());
     assert_eq!(restored.get_forwardpoints(), source.get_forwardpoints());
     assert_eq!(restored.get_ticker(), Some("IBM"));
+    assert_eq!(restored.get_strikepx(), Some(decimal("4600.5")));
     assert_eq!(restored.get_metadata(), source.get_metadata());
     assert_eq!(restored.get_metadata()["Feed"], "PRIMARY");
 }
@@ -210,7 +212,7 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
 #[test]
 fn market_column_schema_has_one_owner_and_order() {
     let fields = MarketColumn::fields().unwrap();
-    assert_eq!(fields.len(), 34);
+    assert_eq!(fields.len(), 35);
     assert_eq!(
         fields.iter().map(|field| field.name()).collect::<Vec<_>>(),
         [
@@ -247,6 +249,7 @@ fn market_column_schema_has_one_owner_and_order() {
             "askccy",
             "fxrates",
             "ticker",
+            "strikepx",
             "metadata",
         ]
     );
@@ -254,6 +257,7 @@ fn market_column_schema_has_one_owner_and_order() {
     // decimals and codes, null where none is stated.
     for column in [
         MarketColumn::StopPx,
+        MarketColumn::StrikePx,
         MarketColumn::DisplayQty,
         MarketColumn::HiddenQty,
         MarketColumn::CxlQty,

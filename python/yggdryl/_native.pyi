@@ -2284,8 +2284,10 @@ class Field:
     def arrow_scalar(
         self, value: object, *, safe: bool = True
     ) -> pyarrow.Scalar: ...
-    # The cast onto this root alone; `field.transform` and `field.digest` fill
-    # the columns a declaration derives or holds.
+    # The cast onto this root alone - the `RecordBatch` face of the one cast
+    # `Serie.cast` and `ArrowCastPlan` run, never a second engine;
+    # `field.transform` and `field.digest` fill the columns a declaration
+    # derives or holds.
     def apply_arrow_batch(
         self,
         value: pyarrow.RecordBatch,
@@ -3515,8 +3517,12 @@ class IOResult:
     Every record write of an ``IOBase`` answers one: ``read_rows`` is what
     the write pulled from its source, ``written_rows`` what reached the
     destination, and ``skipped_rows`` what was read and not written - the
-    rows a ``where`` kept out, the part of the last batch a bound cut off. A
-    write cut into several commits answers their sum. Immutable.
+    rows a ``where`` kept out, the part of the last batch a bound cut off,
+    and the rows an append to an Iceberg table stating
+    ``identifier-field-ids`` left out because their key was stored or met
+    earlier in the write. A merge counts every row it pulled as written,
+    changed or not. A write cut into several commits answers their sum.
+    Immutable.
     """
 
     # `skipped_rows` absent is the read rows less the written, never below
@@ -5001,7 +5007,7 @@ class TextProperties(TypedDict, total=False):
     row_offset: int | None | EllipsisType
     max_byte_size: int | None | EllipsisType
     level: int | EllipsisType
-    merge_by: SelectorLike | EllipsisType
+    merge_by: SelectorLike | Literal[True] | None | EllipsisType
     select: SelectorLike | EllipsisType
     filter: FilterLike | EllipsisType
     plan: PlanLike | EllipsisType
@@ -5103,9 +5109,14 @@ class RecordOptions:
     @level.setter
     def level(self, level: int) -> None: ...
     @property
-    def merge_by(self) -> Selector: ...
+    def merge_by(self) -> Selector:
+        """The key a merge matches on; empty, the destination's own key.
+
+        Set from a ``Selector``, its text or the key column names; ``None``
+        and ``True`` both set the empty key, and ``False`` is refused
+        naming ``$.merge_by``, the key held left as it was."""
     @merge_by.setter
-    def merge_by(self, merge_by: SelectorLike) -> None: ...
+    def merge_by(self, merge_by: SelectorLike | Literal[True] | None) -> None: ...
     @property
     def select(self) -> Selector: ...
     @select.setter
@@ -5205,6 +5216,9 @@ class RecordOptions:
         no field is declared; ``None`` for another encoding, zero refused."""
     @infer_row_size.setter
     def infer_row_size(self, infer_row_size: int) -> None: ...
+    # The `RecordBatch`/`RecordBatchReader` face of the one cast `Serie.cast`
+    # and `ArrowCastPlan` run: the declared field, the `where` and `select`
+    # sections, then `existing`, each a plan compiled once per call.
     def apply_arrow_batch(
         self, batch: pyarrow.RecordBatch, existing: FieldLike | None = None
     ) -> pyarrow.RecordBatch: ...
@@ -5278,9 +5292,14 @@ class TextOptions:
     @level.setter
     def level(self, level: int) -> None: ...
     @property
-    def merge_by(self) -> Selector: ...
+    def merge_by(self) -> Selector:
+        """The key a merge matches on; empty, the destination's own key.
+
+        Set from a ``Selector``, its text or the key column names; ``None``
+        and ``True`` both set the empty key, and ``False`` is refused
+        naming ``$.merge_by``, the key held left as it was."""
     @merge_by.setter
-    def merge_by(self, merge_by: SelectorLike) -> None: ...
+    def merge_by(self, merge_by: SelectorLike | Literal[True] | None) -> None: ...
     @property
     def select(self) -> Selector: ...
     @select.setter
@@ -5340,6 +5359,9 @@ class TextOptions:
     def timezone(self) -> Timezone | None: ...
     @timezone.setter
     def timezone(self, timezone: Timezone | str | Any | None) -> None: ...
+    # The `RecordBatch`/`RecordBatchReader` face of the one cast `Serie.cast`
+    # and `ArrowCastPlan` run: the declared field, the `where` and `select`
+    # sections, then `existing`, each a plan compiled once per call.
     def apply_arrow_batch(
         self, batch: pyarrow.RecordBatch, existing: FieldLike | None = None
     ) -> pyarrow.RecordBatch: ...
@@ -6185,7 +6207,17 @@ class IcebergTable(Table):
         *,
         options: IcebergOptions | None = None,
         **properties: Unpack[IcebergProperties],
-    ) -> None: ...
+    ) -> None:
+        """Append ``batches`` as a new snapshot, keeping everything stored.
+
+        A table whose schema states ``identifier-field-ids`` takes only the
+        rows whose key - the identity partition columns, then the identifier
+        columns - is neither stored in their partition nor met earlier in the
+        write: the first arrival is kept, no stored file is rewritten, an
+        append keeping no row commits no snapshot, and a concurrent commit
+        that beats it raises the commit conflict rather than rebasing. A
+        table stating no identifier appends every row. The rows left out are
+        counted in ``IOResult.skipped_rows`` by the doors answering one."""
     def overwrite(
         self,
         batches: IcebergRows,
@@ -6204,22 +6236,31 @@ class IcebergTable(Table):
     def merge(
         self,
         batches: IcebergRows,
-        merge_by: SelectorLike | None | EllipsisType = ...,
+        merge_by: SelectorLike | Literal[True] | None | EllipsisType = ...,
         *,
         safe: bool = True,
         options: IcebergOptions | None = None,
         **properties: Unpack[IcebergProperties],
-    ) -> None: ...
+    ) -> None:
+        """Upsert ``batches`` by ``merge_by``: a match replaces, a miss appends.
+
+        ``merge_by`` left out, ``None`` or ``True`` is the table's own key -
+        its identity partition columns, then its identifier columns -
+        ``False`` is refused naming ``$.merge_by``. A stored row is replaced
+        only where the last incoming row of its key differs from it, so a
+        partition the merge leaves as it was keeps its files and a merge that
+        changes no row and adds no key commits no snapshot."""
     def merge_where(
         self,
         filters: Mapping[str, str] | Iterable[tuple[str, str]] | None,
         batches: IcebergRows,
-        merge_by: SelectorLike | None | EllipsisType = ...,
+        merge_by: SelectorLike | Literal[True] | None | EllipsisType = ...,
         *,
         safe: bool = True,
         options: IcebergOptions | None = None,
         **properties: Unpack[IcebergProperties],
-    ) -> None: ...
+    ) -> None:
+        """``merge`` over the stored files ``filters`` keeps."""
     def set_options(self, options: IcebergOptions) -> None: ...
     def options(self) -> IcebergOptions: ...
     def evolve_schema(self, schema: FieldLike) -> int: ...
@@ -6965,9 +7006,13 @@ class Identifier:
     The key is read exactly: ``src:type`` with each word folded to lower case
     without its breaks, or a type alone for the base source, whose key is
     spelled as its type (``isin``); ``base:isin`` and ``fix:isin`` read as
-    ``isin`` too, and ``derived`` names a value the crate derived. It
-    displays ``key=value``; identifiers order by the key as spelled, then by
-    value.
+    ``isin`` too, and ``derived`` names a value the crate derived. The value
+    is held to its type's rule - an ``isin`` an ISIN, a ``fisn`` an ISO 18774
+    short name, an ``elf`` an ISO 20275 legal form - and, under the ``bic``
+    source, to a BIC's shape and under ``legalentityidentifier`` to an LEI's,
+    whatever its type; a value either refuses is a ``ValueError`` naming the
+    key. It displays ``key=value``; identifiers order by the key as spelled,
+    then by value.
     """
 
     def __init__(self, key: str, value: str) -> None: ...
@@ -7067,8 +7112,10 @@ class IsinRegistry:
     Each row holds the instrument's ``isin``, ``updunix`` (when the statement
     that last moved it happened, a stamp), detailed ``cficode``, its
     ``countrycode`` of issue, its ``forexcode`` pair, the ``underlyingisin``
-    it is written on, the ``miccode`` its listing facts belong to, its ``ticker`` and trading ``currency`` and one
-    code per ``SecurityIDSource(22)`` type but the ISIN. A lifecycle learns
+    it is written on, its ``eusipacode`` - the four-digit EUSIPA product
+    category ``Eusipa`` reads, an ``int`` - the ``miccode`` its listing facts
+    belong to, its ``ticker`` and trading ``currency`` and one code per
+    ``SecurityIDSource(22)`` type but the ISIN. A lifecycle learns
     into it - keyed by a stated real ISIN - and fills from it what a message
     leaves unsaid, a parse fills derived identifiers from it, and a valid
     stated value fills and replaces whatever the time. Bound to the store it
@@ -7083,7 +7130,7 @@ class IsinRegistry:
     @staticmethod
     def field() -> Field:
         """The registry's row: the required struct ``isinregistry`` of
-        forty-one columns every row is laid out as, what a table holding the
+        forty-two columns every row is laid out as, what a table holding the
         registry is created from."""
     @staticmethod
     def from_url(location: object, max_instruments: int = 16384, **properties: str) -> IsinRegistry:
@@ -7129,6 +7176,53 @@ class IsinRegistry:
     def __bool__(self) -> bool: ...
     def __eq__(self, other: object, /) -> bool: ...
     def __repr__(self) -> str: ...
+
+class Eusipa:
+    """One EUSIPA product category of a structured product, held by its shape.
+
+    Four digits opening with ``1``, an investment product, or ``2``, a
+    leverage product: the first two the group (``12`` yield enhancement,
+    ``23`` constant leverage), the last two the member, ``99`` a group's
+    miscellaneous one. EUSIPA's European Derivative Map and the SSPA's Swiss
+    Derivative Map number the same way; ``name`` is the European map's of
+    February 2024 and ``sspa_name`` the Swiss map's of 2023 and 2026, and the
+    two name ``1260`` apart (Express Certificates, Conditional Coupon Barrier
+    Reverse Convertible), so the code is the fact. Built from an ``int`` or a
+    ``str`` of four digits; immutable, hashed, ordered and pickled by its code.
+    """
+
+    def __init__(self, code: int | str) -> None: ...
+    @property
+    def code(self) -> int:
+        """The four-digit code."""
+    @property
+    def group(self) -> int:
+        """The first two digits."""
+    @property
+    def level(self) -> int:
+        """The first digit: ``1`` an investment product, ``2`` a leverage product."""
+    @property
+    def name(self) -> str | None:
+        """The European Derivative Map's English name; ``None`` where it lists no such member."""
+    @property
+    def sspa_name(self) -> str | None:
+        """The Swiss Derivative Map's English name; ``None`` where it lists no such member."""
+    @property
+    def is_listed(self) -> bool:
+        """Whether either map lists the code."""
+    def __int__(self) -> int: ...
+    def __str__(self) -> str: ...
+    def __repr__(self) -> str: ...
+    def __hash__(self) -> int: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __ne__(self, other: object, /) -> bool: ...
+    def __lt__(self, other: Eusipa, /) -> bool: ...
+    def __le__(self, other: Eusipa, /) -> bool: ...
+    def __gt__(self, other: Eusipa, /) -> bool: ...
+    def __ge__(self, other: Eusipa, /) -> bool: ...
+    def __copy__(self) -> Eusipa: ...
+    def __deepcopy__(self, memo: Any) -> Eusipa: ...
+    def __reduce__(self) -> tuple[object, tuple[int]]: ...
 
 class FixFieldIterator(Iterator[Field]):
     __hash__: ClassVar[None]  # type: ignore[assignment]
@@ -8114,6 +8208,8 @@ class Order:
     @property
     def ticker(self) -> str | None: ...
     @property
+    def strikepx(self) -> Scalar | None: ...
+    @property
     def metadata(self) -> dict[str, str]: ...
     @property
     def ordqty(self) -> Scalar | None: ...
@@ -8234,6 +8330,8 @@ class Quote:
     @property
     def ticker(self) -> str | None: ...
     @property
+    def strikepx(self) -> Scalar | None: ...
+    @property
     def metadata(self) -> dict[str, str]: ...
     @property
     def ordqty(self) -> Scalar | None: ...
@@ -8353,6 +8451,8 @@ class Execution:
     def forwardpoints(self) -> Scalar | None: ...
     @property
     def ticker(self) -> str | None: ...
+    @property
+    def strikepx(self) -> Scalar | None: ...
     @property
     def metadata(self) -> dict[str, str]: ...
     @property
@@ -8497,6 +8597,8 @@ class OrderEvent:
     def forwardpoints(self) -> Scalar | None: ...
     @property
     def ticker(self) -> str | None: ...
+    @property
+    def strikepx(self) -> Scalar | None: ...
     @property
     def metadata(self) -> dict[str, str]: ...
     @property
@@ -8652,6 +8754,8 @@ class QuoteEvent:
     @property
     def ticker(self) -> str | None: ...
     @property
+    def strikepx(self) -> Scalar | None: ...
+    @property
     def metadata(self) -> dict[str, str]: ...
     @property
     def ordqty(self) -> Scalar | None: ...
@@ -8806,6 +8910,8 @@ class ExecutionEvent:
     @property
     def ticker(self) -> str | None: ...
     @property
+    def strikepx(self) -> Scalar | None: ...
+    @property
     def metadata(self) -> dict[str, str]: ...
     @property
     def ordqty(self) -> Scalar | None: ...
@@ -8954,6 +9060,8 @@ class TradeEvent:
     @property
     def ticker(self) -> str | None: ...
     @property
+    def strikepx(self) -> Scalar | None: ...
+    @property
     def metadata(self) -> dict[str, str]: ...
     @property
     def ordqty(self) -> Scalar | None: ...
@@ -9101,6 +9209,8 @@ class BookEvent:
     @property
     def ticker(self) -> str | None: ...
     @property
+    def strikepx(self) -> Scalar | None: ...
+    @property
     def metadata(self) -> dict[str, str]: ...
     @property
     def is_complete(self) -> bool:
@@ -9143,6 +9253,15 @@ class BookEvent:
     def executions(self) -> list[ExecutionEvent]:
         """The executions among ``deltas``, in the order applied: recorded at
         the book's instant, resting on no side."""
+        ...
+    @property
+    def events(self) -> list[MarketData]:
+        """Every other delta - none an order, a quote or an execution - in the
+        order applied: ``orddelta``, ``quotes``, ``executions`` and these
+        partition ``deltas``. Empty today, by construction: a fold prunes a
+        trade, a batch and a session message, refuses an undated order, quote
+        or execution and a nested book by kind, and folds a snapshot control
+        into the sides, never among the deltas."""
         ...
     def limits(self, side: Side | int | str) -> list[Scalar]:
         """One limit struct per level of the side ``side`` takes, best first.
@@ -9305,6 +9424,8 @@ class SnapshotEvent:
     @property
     def ticker(self) -> str | None: ...
     @property
+    def strikepx(self) -> Scalar | None: ...
+    @property
     def metadata(self) -> dict[str, str]: ...
     @property
     def book(self) -> BookRef: ...
@@ -9415,6 +9536,8 @@ class MarketData:
     def forwardpoints(self) -> Scalar | None: ...
     @property
     def ticker(self) -> str | None: ...
+    @property
+    def strikepx(self) -> Scalar | None: ...
     @property
     def metadata(self) -> dict[str, str]: ...
     @property

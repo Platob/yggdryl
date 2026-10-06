@@ -158,7 +158,7 @@ test('the complete native catalog survives a snapshot and a store', (t) => {
   assert.deepEqual(Object.keys(document).sort(), ['codesets', 'components', 'fields', 'groups'])
   assert.deepEqual(
     document.codesets.map((set) => set.name),
-    ['marketdatatypecodeset', 'msgcatcodeset', 'partyrolecodeset', 'statecodeset'],
+    ['marketdatakindcodeset', 'marketdatatypecodeset', 'partyrolecodeset', 'statecodeset'],
   )
   assert.equal(document.fields.find((value) => value.name === 'Vendor').metadata['FIX:branches'], 'venue')
   assert.ok(document.components.some((value) => value.name === 'Party'))
@@ -192,7 +192,7 @@ test('the complete native catalog survives a snapshot and a store', (t) => {
   assert.ok(documents('fields').every((name) => /^\d{9}\.json$/.test(name)))
   // A code set is one document under its own name, which is how it is
   // addressed and what a field states.
-  assert.deepEqual(documents('codesets'), ['marketdatatypecodeset.json', 'msgcatcodeset.json', 'partyrolecodeset.json', 'statecodeset.json'])
+  assert.deepEqual(documents('codesets'), ['marketdatakindcodeset.json', 'marketdatatypecodeset.json', 'partyrolecodeset.json', 'statecodeset.json'])
   assert.ok(fix.FixRegistry.fromHandle(folder).equals(registry))
 
   // A change to any category changes the value.

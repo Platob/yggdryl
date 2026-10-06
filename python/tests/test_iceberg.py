@@ -24,6 +24,7 @@ from yggdryl import (
     DataType,
     Field,
     IOBase,
+    IOResult,
     MimeType,
     Namespace,
     Table,
@@ -1830,6 +1831,15 @@ def _row(key: int, venue: str | None) -> pa.RecordBatch:
     return pa.record_batch({"id": [key], "venue": [venue]}, schema=SCHEMA_planning)
 
 
+def _keyed_table(
+    tmp_path: pathlib.Path, partition_by: list[str] | None = None
+) -> IcebergTable:
+    """A table whose schema states `id` its identifier, empty."""
+    schema = assign_field_ids(SCHEMA_planning)
+    schema.iceberg.update({"identifier-field-ids": "1"})
+    return IcebergTable.create(IOBase(tmp_path / "keyed"), schema, partition_by)
+
+
 @pytest.fixture
 def numbered_planning() -> object:
     """The shared schema, with the field identifiers Iceberg resolves by."""
@@ -2173,7 +2183,18 @@ class TestMerging:
         assert table_planning.current_snapshot is not None
         assert table_planning.current_snapshot.operation == "overwrite"
 
-    @pytest.mark.parametrize("door", ["merge", "merge_none", "merge_serie", "merge_arrow_table"])
+    @pytest.mark.parametrize(
+        "door",
+        [
+            "merge",
+            "merge_none",
+            "merge_true",
+            "merge_where_true",
+            "merge_serie",
+            "merge_serie_true",
+            "merge_arrow_table",
+        ],
+    )
     def test_a_merge_naming_no_key_matches_on_the_identifier_columns(
         self, tmp_path: pathlib.Path, door: str
     ) -> None:
@@ -2188,6 +2209,13 @@ class TestMerging:
         elif door == "merge_none":
             # `None` is the table's key as much as leaving it out is.
             table.merge(incoming, None)
+        elif door == "merge_true":
+            # And so is `True`, the spelling that says so.
+            table.merge(incoming, True)
+        elif door == "merge_where_true":
+            table.merge_where({}, incoming, merge_by=True)
+        elif door == "merge_serie_true":
+            table.merge_serie(incoming, merge_by=True)
         elif door == "merge_serie":
             table.merge_serie(incoming)
         else:
@@ -2212,8 +2240,90 @@ class TestMerging:
             table.merge(_row(2, "XPAR"))
         with pytest.raises(ValueError, match="merge_by"):
             table.merge_serie(_row(2, "XPAR"))
+        with pytest.raises(ValueError, match="merge_by"):
+            table.merge(_row(2, "XPAR"), True)
+        with pytest.raises(ValueError, match="merge_by"):
+            table.merge_serie(_row(2, "XPAR"), merge_by=True)
 
         assert table.version == before
+
+    def test_false_is_refused_naming_the_key_before_anything_is_written(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        table = _keyed_table(tmp_path)
+        table.append(_rows_planning())
+        before = table.version
+        refusal = (
+            r"\$\.merge_by: expected a column list, a selector text, null, or true "
+            r"\(the destination's own key\), got false"
+        )
+
+        with pytest.raises(ValueError, match=refusal):
+            table.merge(_row(2, "XPAR"), False)
+        with pytest.raises(ValueError, match=refusal):
+            table.merge_where({}, _row(2, "XPAR"), merge_by=False)
+        with pytest.raises(ValueError, match=refusal):
+            table.merge_serie(_row(2, "XPAR"), merge_by=False)
+
+        assert table.version == before
+
+    def test_a_merge_that_changes_no_row_commits_no_snapshot(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        table = _keyed_table(tmp_path)
+        table.append(_rows_planning())
+        before = (table.version, len(table.snapshots))
+
+        # Every incoming row equals the row its key holds: nothing is
+        # rewritten and no snapshot is committed, while the merge still
+        # answers every row it pulled.
+        table.merge(_rows_planning())
+        replayed = table.merge_serie(_rows_planning())
+        assert (replayed.read_rows, replayed.written_rows, replayed.skipped_rows) == (3, 3, 0)
+        assert (table.version, len(table.snapshots)) == before
+
+        # One row that differs is one snapshot.
+        table.merge(_row(2, "XPAR"))
+        assert len(table.snapshots) == before[1] + 1
+        assert table.scan().read_all().sort_by("id").to_pydict() == {
+            "id": [1, 2, 3],
+            "venue": ["XNAS", "XPAR", None],
+        }
+
+    def test_a_partition_whose_rows_are_unchanged_keeps_its_files(
+        self, filled: IcebergTable
+    ) -> None:
+        files = {data_file.path for data_file, _ in filled.data_files()}
+        before = len(filled.snapshots)
+
+        filled.merge(_rows_planning(), ["id"])
+        assert len(filled.snapshots) == before
+
+        # `XNAS` holds 1 as it arrives, so its file is read and carried under
+        # its exact path; 7 is a key `XNYS` lacks, so the merge commits the
+        # one file that adds it and rewrites nothing.
+        filled.merge(
+            pa.record_batch({"id": [1, 7], "venue": ["XNAS", "XNYS"]}, schema=SCHEMA_planning),
+            ["id"],
+        )
+        assert len(filled.snapshots) == before + 1
+        kept = {data_file.path for data_file, _ in filled.data_files()}
+        assert files < kept
+        assert len(kept - files) == 1
+        assert filled.scan().read_all().num_rows == 7
+
+    def test_a_merge_keyed_by_the_partition_alone_always_commits(
+        self, table_planning: IcebergTable
+    ) -> None:
+        table_planning.append(_rows_planning())
+        before = len(table_planning.snapshots)
+
+        # The partition is the whole key, so the rows replace the partitions
+        # they fall in - an overwrite - whether or not a row changed.
+        table_planning.merge(_rows_planning(), [])
+
+        assert len(table_planning.snapshots) == before + 1
+        assert table_planning.scan().read_all().num_rows == 3
 
     def test_a_match_key_the_schema_does_not_declare_is_refused(
         self, filled: IcebergTable
@@ -2256,6 +2366,115 @@ class TestMerging:
     ) -> None:
         with pytest.raises(ValueError, match='got "market"'):
             filled.merge_where({"market": "XNAS"}, _row(100, "XNAS"), ["id"])
+
+
+class TestKeyedAppend:
+    """An append to a table stating its identifier writes the keys it lacks."""
+
+    @pytest.mark.parametrize(
+        "door", ["append_serie", "append_arrow_reader", "append_arrow_table", "write_serie"]
+    )
+    def test_a_key_stored_or_met_earlier_is_skipped_and_counted(
+        self, tmp_path: pathlib.Path, door: str
+    ) -> None:
+        table = _keyed_table(tmp_path)
+        table.append(_rows_planning())
+        incoming = pa.Table.from_batches(
+            [
+                pa.record_batch(
+                    {"id": [2, 4, 4], "venue": ["XPAR", "XLON", "XPAR"]},
+                    schema=SCHEMA_planning,
+                )
+            ]
+        )
+
+        if door == "append_arrow_reader":
+            result = table.append_arrow_reader(incoming.to_reader())
+        elif door == "write_serie":
+            result = table.write_serie(incoming, "append")
+        else:
+            result = getattr(table, door)(incoming)
+
+        # 2 is stored and 4 arrived twice: the first arrival is kept, and
+        # each row left out is counted skipped.
+        assert result == IOResult(3, 1, 2)
+        assert table.scan().read_all().sort_by("id").to_pydict() == {
+            "id": [1, 2, 3, 4],
+            "venue": ["XNAS", "XNYS", None, "XLON"],
+        }
+
+    def test_an_append_that_keeps_no_row_commits_no_snapshot(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        table = _keyed_table(tmp_path)
+        table.append(_rows_planning())
+        before = (table.version, len(table.snapshots))
+
+        replayed = table.append_serie(_rows_planning())
+        assert replayed == IOResult(3, 0, 3)
+        # `append` answers nothing, and keeps nothing it already holds.
+        assert table.append(_rows_planning()) is None
+
+        assert (table.version, len(table.snapshots)) == before
+        assert table.scan().read_all().num_rows == 3
+
+    def test_the_key_is_the_identity_partition_then_the_identifier(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        table = _keyed_table(tmp_path, ["venue"])
+        table.append(_rows_planning())
+
+        # 2 is stored under `XNYS`; under `XPAR` it is another key.
+        result = table.append_serie(
+            pa.record_batch({"id": [2, 2], "venue": ["XNYS", "XPAR"]}, schema=SCHEMA_planning)
+        )
+
+        assert result == IOResult(2, 1, 1)
+        rows = table.scan().read_all().to_pydict()
+        assert sorted(zip(rows["id"], rows["venue"], strict=True), key=str) == sorted(
+            [(1, "XNAS"), (2, "XNYS"), (2, "XPAR"), (3, None)], key=str
+        )
+
+    @pytest.mark.parametrize("keyed", [True, False])
+    def test_a_keyed_append_beaten_by_a_commit_it_did_not_see_raises_the_conflict(
+        self, tmp_path: pathlib.Path, keyed: bool
+    ) -> None:
+        schema = assign_field_ids(SCHEMA_planning)
+        if keyed:
+            schema.iceberg.update({"identifier-field-ids": "1"})
+        table = IcebergTable.create(IOBase(tmp_path / "raced"), schema, None)
+        table.append(_rows_planning())
+        stale = IcebergTable(IOBase(tmp_path / "raced"))
+        assert stale.version == table.version
+        table.append(_row(7, "XNAS"))
+        patient = IcebergOptions(
+            commit_retries=3, commit_min_backoff_ms=1, commit_max_backoff_ms=2
+        )
+
+        if keyed:
+            # What is absent was decided against the snapshot the winner
+            # replaced, so the append fails rather than rebasing, however
+            # many retries it is given.
+            with pytest.raises(ValueError, match="concurrent Iceberg metadata commit"):
+                stale.append(_row(8, "XNAS"), options=patient)
+            expected = [1, 2, 3, 7]
+        else:
+            # A blind append keeps nothing it read, so it rebases.
+            stale.append(_row(8, "XNAS"), options=patient)
+            expected = [1, 2, 3, 7, 8]
+
+        landed = IcebergTable(IOBase(tmp_path / "raced"))
+        assert sorted(landed.scan().read_all().column("id").to_pylist()) == expected
+
+    def test_a_table_stating_no_identifier_appends_every_row(
+        self, table_planning: IcebergTable
+    ) -> None:
+        table_planning.append(_rows_planning())
+
+        result = table_planning.append_serie(_rows_planning())
+
+        assert result == IOResult(3, 3, 0)
+        assert table_planning.scan().read_all().num_rows == 6
 
 
 class TestExpiringSnapshots:

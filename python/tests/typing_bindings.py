@@ -215,6 +215,14 @@ bound_hash: None = Bound.__hash__
 bound_selector_hash: None = BoundSelector.__hash__
 schema_update_hash: None = iceberg.SchemaUpdate.__hash__
 
+
+def merge_by_own_key(table: iceberg.IcebergTable, rows: pa.Table) -> None:
+    table.merge(rows, True)
+    table.merge_where(None, rows, merge_by=True)
+    table.merge(rows, False)  # type: ignore[arg-type]
+
+
+
 field.set_alias("payload")
 field.set_comment("the latest trade")
 field.set_display("Last trade")
@@ -885,6 +893,10 @@ record_handle.overwrite_serie(lit_serie, commit_batch_num=1)
 record_appended: IOResult = record_handle.append_serie(pa.table({"id": [1]}))
 record_handle.merge_serie(record_series, merge_by=["id"])
 record_handle.write_serie(record_series, mode=1)  # type: ignore[arg-type]
+record_handle.merge_serie(record_series, merge_by=True)
+record_options.merge_by = True
+record_options.merge_by = None
+record_options.merge_by = False  # type: ignore[assignment]
 record_options.merge_by = ["id"]
 avro_record_options = RecordOptions("trades.avro")
 avro_block_codec: str | None = avro_record_options.block_codec
@@ -982,6 +994,9 @@ record_handle.write_polars(polars_frames, "overwrite")
 record_options.merge_by = []
 record_handle.overwrite_polars_frame(polars_frame, options=record_options)
 record_handle.append_polars_frame(polars_frame)
+# None and True are the destination's own key, the empty selector.
+record_options.merge_by = True
+record_options.merge_by = None
 record_options.merge_by = ["id"]
 record_handle.merge_polars_frame(polars_frame, options=record_options)
 record_handle.write_polars_frame(polars_frame, "merge", options=record_options)
@@ -1195,9 +1210,11 @@ iceberg_table.overwrite_where(
 )
 iceberg_table.overwrite_where(None, pa.table({"id": [1]}))
 iceberg_table.merge(pa.table({"id": [1]}), ["id"])
-# A merge naming no key - left out or None - matches on the table's own.
+# A merge naming no key - left out, None or True - matches on the table's own.
 iceberg_table.merge(pa.table({"id": [1]}))
 iceberg_table.merge(pa.table({"id": [1]}), None)
+iceberg_table.merge(pa.table({"id": [1]}), True)
+iceberg_table.merge_where([("venue", "XNAS")], pa.table({"id": [1]}), True)
 iceberg_table.merge_where([("venue", "XNAS")], pa.table({"id": [1]}))
 iceberg_table.merge(
     pa.table({"id": [1]}),
@@ -2112,6 +2129,7 @@ graph_order_event_prevqty: Scalar | None = graph_order_event.prevqty
 graph_order_event_spotrate: Scalar | None = graph_order_event.spotrate
 graph_order_event_forwardpoints: Scalar | None = graph_order_event.forwardpoints
 graph_order_event_ticker: str | None = graph_order_event.ticker
+graph_order_event_strikepx: Scalar | None = graph_order_event.strikepx
 graph_order_event_metadata: dict[str, str] = graph_order_event.metadata
 graph_order_event_tif: TimeInForce | None = graph_order_event.timeinforce
 graph_order_event_tradable: bool | None = graph_order_event.tradable
@@ -2174,6 +2192,8 @@ graph_book_ordlive: list[graph.OrderEvent] = graph_book_with_operations.ordlive
 graph_book_orddelta: list[graph.OrderEvent] = graph_book_with_operations.orddelta
 graph_book_quotes: list[graph.QuoteEvent] = graph_book_with_operations.quotes
 graph_book_executions: list[graph.ExecutionEvent] = graph_book_with_operations.executions
+graph_book_events: list[graph.MarketData] = graph_book_with_operations.events
+assert graph_book_events == []
 graph_book_alive_on: list[graph.MarketData] = graph_book_with_operations.alive_on(Side.BUYS)
 graph_book_alive_on_text: list[graph.MarketData] = graph_book_with_operations.alive_on("SELL")
 graph_book_complete: bool = graph_book_with_operations.is_complete
@@ -2303,7 +2323,7 @@ assert graph_order_event_avgpx is None and graph_order_event_cumqty is None
 assert graph_order_event_leavesqty is None and graph_order_event_prevpx is None
 assert graph_order_event_prevqty is None and graph_order_event_spotrate is None
 assert graph_order_event_forwardpoints is None and graph_order_event_metadata == {}
-assert graph_order_event_tif is None
+assert graph_order_event_tif is None and graph_order_event_strikepx is None
 assert graph_order_event_tradable is None and not graph_order_event_identifiers and not graph_order_event_partyids
 assert graph_order_event_book is None and graph_order_event_action is None
 assert graph_order_event_scope == "" and not graph_order_event_is_full_snapshot
@@ -2768,3 +2788,14 @@ isin_registry_codec: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, isin_
 isin_registry_shared: yggdryl.IsinRegistry | None = isin_registry_codec.isin_registry
 assert isin_registry_merged and isin_registry_row is not None and isin_registry_bound == 8
 assert isin_registry_loaded == 1 and isin_registry_shared == isin_registry and len(isin_registry) == 1
+eusipa: yggdryl.Eusipa = yggdryl.Eusipa(2300)
+eusipa_text: yggdryl.Eusipa = yggdryl.Eusipa("1260")
+eusipa_code: int = eusipa.code
+eusipa_group: int = eusipa.group
+eusipa_level: int = eusipa.level
+eusipa_name: str | None = eusipa.name
+eusipa_sspa_name: str | None = eusipa_text.sspa_name
+eusipa_listed: bool = eusipa.is_listed
+eusipa_number: int = int(eusipa)
+assert eusipa_code == eusipa_number == 2300 and (eusipa_group, eusipa_level) == (23, 2) and eusipa_listed
+assert eusipa_name == "Constant Leverage Certificate" and eusipa_sspa_name is not None and eusipa_text < eusipa

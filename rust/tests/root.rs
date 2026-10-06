@@ -79,6 +79,8 @@ mod enumeration;
 mod enums;
 #[path = "root/error.rs"]
 mod error;
+#[path = "root/eusipa.rs"]
+mod eusipa;
 #[path = "root/field.rs"]
 mod field;
 #[path = "root/figi.rs"]

@@ -13,7 +13,7 @@ enum_leaf! {
     ///
     /// This is the one owner of that set. A FIX dictionary's `FIX:msgcat`
     /// resolves to a member through [`Self::from_name`], the crate's
-    /// `msgcatcodeset` renders from [`Self::ALL`], and a market data row
+    /// `marketdatakindcodeset` renders from [`Self::ALL`], and a market data row
     /// states its leaf's category as one of these - an order `ORDR`, a quote
     /// `QUOT`, an execution `EXEC`, a trade `TRAD`, a book `BOOK` - so a
     /// reader tells the leaves apart by one column every FIX engine already

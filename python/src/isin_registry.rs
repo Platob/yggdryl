@@ -30,7 +30,7 @@ use crate::value_error;
 
 /// A table of instruments keyed by ISIN - each row the instrument's CFI
 /// code, its country of issue, its currency pair, the instrument it is
-/// written on, its market, its ticker
+/// written on, its EUSIPA product category, its market, its ticker
 /// and trading currency and one code per `SecurityIDSource(22)` type - that
 /// a lifecycle learns into and fills from, and a parse fills from. Bound to
 /// the store it was loaded from, committed back only where it moved.
@@ -142,9 +142,10 @@ impl PyIsinRegistry {
 
     /// The registry's row: the required struct `isinregistry` every row is
     /// laid out as - `isin`, `updunix`, `cficode`, `countrycode`,
-    /// `forexcode`, `underlyingisin`, `miccode`, `ticker`, `currency`, then
-    /// one column per `SecurityIDSource(22)` type but the ISIN: forty-one
-    /// columns - what a table holding the registry is created from.
+    /// `forexcode`, `underlyingisin`, `eusipacode` (`int32`, the four-digit
+    /// code `Eusipa` reads), `miccode`, `ticker`, `currency`, then one column
+    /// per `SecurityIDSource(22)` type but the ISIN: forty-two columns - what
+    /// a table holding the registry is created from.
     #[staticmethod]
     fn field() -> PyField {
         PyField::from_inner(IsinEntry::field())

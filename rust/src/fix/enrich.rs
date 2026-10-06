@@ -708,8 +708,10 @@ enum Codes {
 impl Codes {
     /// Learns what `message` states about its instrument - its country of
     /// issue beside it, where it states one its ISIN does not already say
-    /// ([`FixMsg::stated_country`]), and the instrument it is written on
-    /// ([`FixMsg::stated_underlying_isin`]), lifted nowhere - then fills
+    /// ([`FixMsg::stated_country`]), the instrument it is written on
+    /// ([`FixMsg::stated_underlying_isin`]) and the EUSIPA product category
+    /// a bridge's key states ([`FixMsg::stated_eusipa`]), lifted nowhere -
+    /// then fills
     /// what it left unstated
     /// ([`FixMsg::fill_instrument`]): the identifiers, the ticker, the CFI
     /// code and the currency, settled no further than the market facts
@@ -721,17 +723,18 @@ impl Codes {
     fn learn_and_fill(&mut self, message: &mut FixMsg) {
         let country = message.stated_country();
         let underlying = message.stated_underlying_isin();
+        let product = message.stated_eusipa();
         let full = match self {
             Self::Walk(registry) => {
                 let learned =
-                    registry.learn_stating(message, country.as_ref(), underlying.as_ref());
+                    registry.learn_stating(message, country.as_ref(), underlying.as_ref(), product);
                 message.fill_instrument(registry.as_table());
                 learned.full
             }
             Self::Shared(registry) => {
                 let mut registry = registry.lock().unwrap_or_else(PoisonError::into_inner);
                 let learned =
-                    registry.learn_stating(message, country.as_ref(), underlying.as_ref());
+                    registry.learn_stating(message, country.as_ref(), underlying.as_ref(), product);
                 message.fill_instrument(registry.as_table());
                 learned.full
             }

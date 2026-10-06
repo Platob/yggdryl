@@ -33,10 +33,11 @@ medium does the work before a byte is decoded.
 | replace | `overwrite_arrow_reader(reader, &options)?`, `overwrite_arrow_batch` | `overwrite_arrow_reader`, `_table`, `_batch` | `overwriteArrowReader(BatchReader.from(x))`, `overwriteArrowTable`, `overwriteArrowBatch` |
 | append | `append_arrow_reader`, `append_arrow_batch` | `append_arrow_reader`, `_table`, `_batch` | `appendArrowReader`, `appendArrowTable`, `appendArrowBatch` |
 | upsert by key | `merge_arrow_reader(r, &options.with_merge_by(["id"])?)?` | `merge_arrow_table(t, merge_by=["id"])` | `mergeArrowTable(t, { mergeBy: ['id'] })` |
+| upsert by the destination's own key (an Iceberg table's) | `merge_serie(s.into(), None)?`, or `options.with_merge_by_scalar(&Scalar::from(true))?` to state it | `merge_serie(t)`, `merge_serie(t, merge_by=True)`, `table.merge(t, True)` | `table.merge(t)` - `mergeBy` left out or `null`; no boolean |
 | mode chosen at run time | `write_arrow_reader(r, IOMode::Append, &options)?`, `write_arrow_batch`, `write_records` | `write_arrow_table(t, "append")`, `write_arrow_reader`, `write_arrow_batch`, `write_records` | `writeArrowTable(t, 'append')`, `writeArrowReader`, `writeArrowBatch`, `writeRecords` |
 | native rows in | `overwrite_records(rows, &options)?` (rows `Into<Scalar>`) | `overwrite_records([dict or @scalar instance])` | `overwriteRecords([object], { field })` |
 | a `Serie`, `ChunkedSerie` or `SerieReader` in (also JSON/YAML/TOML/XML rows) | `overwrite_serie(s.into(), None)?`, `append_serie`, `merge_serie`, `write_serie(s.into(), IOMode::Append, None)?` (a document handle takes `Overwrite` only) | `overwrite_serie(value)`, `append_serie`, `merge_serie`, `write_serie(value, "append")` - any columnar value | `overwriteSerie(value)`, `appendSerie`, `mergeSerie`, `writeSerie(value, 'append')` - a reader is consumed |
-| what a write did, in rows | every write door answers `IOResult { read_rows, written_rows, skipped_rows }` - `let r = handle.append_serie(s.into(), None)?` | every write returns `IOResult`: `r.read_rows`, `r.written_rows`, `r.skipped_rows`, `r.is_empty()` | every write returns `IOResult`: `r.readRows`, `r.writtenRows`, `r.skippedRows`, `r.isEmpty()` |
+| what a write did, in rows (`skipped_rows`: kept out by `filter`, cut by a limit, or a key a keyed Iceberg append already held) | every write door answers `IOResult { read_rows, written_rows, skipped_rows }` - `let r = handle.append_serie(s.into(), None)?` | every write returns `IOResult`: `r.read_rows`, `r.written_rows`, `r.skipped_rows`, `r.is_empty()` | every write returns `IOResult`: `r.readRows`, `r.writtenRows`, `r.skippedRows`, `r.isEmpty()` |
 | refuse values the declared field cannot convert | `options.with_field(root).with_safe(false)` | `read_arrow_reader(field=f, safe=False)` | `readArrowReader({ field, safe: false })` |
 | one setting for one call | `options.clone().with_select(["id"])?.with_filter("id > 3")?` | `read_arrow_reader(select=["id"], filter="id > 3")` | `readArrowReader({ select: ['id'], filter: 'id > 3' })` |
 | sections as one plan | `options.with_plan("select id where x > 1 limit 5")?` | `options.plan = "select ..."` | `options.withPlan('select ...')` |
@@ -56,7 +57,8 @@ medium does the work before a byte is decoded.
 | Iceberg table | `IcebergTable::create(LocalFolder::new(p)?, FormatVersion::V2, schema, PartitionSpec::from_schema(1, &schema)?)?` | `IcebergTable.create(IOBase(p), schema, ["venue", "minutes(ts, 15)"])` | `iceberg.IcebergTable.create(p, schema, ['venue', 'minutes(ts, 15)'])` |
 | Iceberg table by its location alone - a folder any backend holds, or `s3tables://<bucket>/<namespace>/<table>` (a table's ARN to open one) | `IcebergTable::from_url(location, &props)?`, `::create_from_url(location, &props, None, schema, None)?`, `::open_or_create_from_url(..)?` - version and spec left out are the schema's own | `IcebergTable(location, **props)`, `IcebergTable.create(location, schema, ["venue"], **props)`, `.open_or_create(..)` | `iceberg.IcebergTable.open(location, props)`, `.create(location, schema, ['venue'], undefined, props)`, `.openOrCreate(..)` |
 | Iceberg catalog (a warehouse folder) | `IcebergCatalog::bound("lake", holder)`, `catalog.namespaces().create("nyc", &props)?`, `catalog.tables().create("nyc.taxis", &schema, &props)?` | `IcebergCatalog("lake", root)`, `catalog.namespaces.create("nyc")`, `catalog.tables.create("nyc.taxis", schema)` | `new iceberg.IcebergCatalog('lake', root)`, `catalog.namespaces().create('nyc')`, `catalog.tables().create('nyc.taxis', schema)` |
-| Iceberg write | `commit_append(r)?`, `commit_overwrite`, `commit_merge(r, &sel, safe)?` (`Selector::all()` the table's own key); through the record doors one commit when the source ends, `with_num_threads(n)` for the partition groups at once | `append(t)`, `overwrite`, `merge(t, ["id"])`, `merge(t)` keyed by the table's identifier columns | `append(t)`, `overwrite`, `merge(t, ['id'])`, `merge(t)` keyed by the table's identifier columns |
+| Iceberg write | `commit_append(r)?`, `commit_overwrite`, `commit_merge(r, &sel, safe)?` (`Selector::all()` the table's own key); through the record doors one commit when the source ends, `with_num_threads(n)` for the partition groups at once | `append(t)`, `overwrite`, `merge(t, ["id"])`, `merge(t)` or `merge(t, True)` keyed by the table's identifier columns | `append(t)`, `overwrite`, `merge(t, ['id'])`, `merge(t)` keyed by the table's identifier columns |
+| Iceberg append that skips present keys | automatic where the schema states `identifier-field-ids`: `append_serie(s.into(), None)?` answers the left-out rows in `skipped_rows` (`commit_append` answers `()`) | `append_serie(t)` -> `IOResult(read, written, skipped)` (`append(t)` answers `None`) | `append(t)`, answering nothing |
 | Iceberg filtered scan | `scan_matching("px > 1", None)?`, `plan_matching(..)?` | `scan_matching("px > 1")`, `plan_matching(..)` | `scanMatching('px > 1')`, `planMatching(..)` |
 | Iceberg time travel | `scan_at(snapshot_id, &[], None)?` | `scan_at(snapshot_id)` | `scanAt(snapshotId)` |
 | Iceberg schema change | `SchemaUpdate::from_metadata(..)?` + `update_schema(&update)?` | `update_schema().add_column("", f).commit()` | `updateSchema().addColumn('', f).commit()` |
@@ -90,10 +92,18 @@ medium does the work before a byte is decoded.
    own key.** An Iceberg table does - its identity partition columns, then the
    columns its schema's `identifier-field-ids` names (`IOMedia::merge_by`) -
    so a merge naming none matches on that, and with no identifier replaces
-   the partitions its rows fall in. A leaf, a folder, or a table stating
+   the partitions its rows fall in. `merge_by=True` (Python; Rust
+   `with_merge_by_scalar(&Scalar::from(true))`) states that own key outright:
+   it is the empty key `None` is, so options set with it equal fresh ones and
+   select no mode; `False` is refused at `$.merge_by`, and JavaScript takes
+   no boolean. A leaf, a folder, or a table stating
    neither refuses `merge_by` absent before the source is pulled - never an
    overwrite. Keys use Arrow's row format: null matches null and the last
-   arrival wins. Merge holds only the stored side in memory.
+   arrival wins. Merge holds only the stored side in memory. A stored row is
+   replaced only where the last arrival for its key differs from it, so a
+   merge that changes nothing writes nothing - a leaf keeps its bytes and
+   modification time, an Iceberg table commits no snapshot - while its
+   `IOResult` still counts every row it pulled as written.
 5. **Bound memory with `commit_batch_num`.** It counts whole batches, never
    cutting one: `N` publishes every `N` batches and the committed prefix
    survives a later failure; `0` is refused before any input is pulled. Unset
@@ -186,14 +196,22 @@ medium does the work before a byte is decoded.
     created exclusively (`IOBase::create_bytes`: `O_EXCL` on local storage,
     `If-None-Match: *` on S3 and Azure, `ifGenerationMatch=0` on Google), so
     of two writers publishing one version exactly one lands and the other is
-    told; `append` and metadata-only commits then rebase onto the winner,
-    `overwrite`, `merge` and `compact` report a conflict instead. Hammer a
+    told; an `append` to a table stating no key and metadata-only commits
+    then rebase onto the winner, `overwrite`, `merge`, `compact` and a keyed
+    append report a conflict (`CommitConflict`) instead. Hammer a
     table from as many threads as you like, one handle per thread; only a
     filesystem bridged from outside the crate, or an HTTP origin ignoring
     preconditions, is left to the best-effort check. A merge keys on the
     identity partition columns plus `merge_by` - else the table's identifier
     columns (`merge(t)` / `table.merge(rows)` with no key) - so a row only
-    ever updates its own partition. A table is
+    ever updates its own partition. An **append** to a table stating
+    `identifier-field-ids` writes only the rows whose key - that same key -
+    neither the table nor an earlier row of the write holds: the first
+    arrival is kept, the rest counted in `skipped_rows`, no stored file is
+    rewritten and an append keeping nothing commits nothing, so loading the
+    same rows twice is one load; a table stating no identifier appends every
+    row. The keys it decides by are held in memory per partition group, key
+    bytes only, as a merge's are. A table is
     created from the partitioning its schema declares (`PARTITION:by`: `venue`,
     `days(ts)`, `minutes(ts, 15)`, `truncate(name, 4) as prefix`) unless
     `partition_by` / `partitionBy` states entries, or `[]` / `null` states
@@ -216,9 +234,19 @@ medium does the work before a byte is decoded.
 - Reading then filtering in the host (`[r for r in rows if r["id"] > 3]`,
   `table.filter(...)`) - pass `filter="id > 3"` so the medium prunes.
 - `merge_*` with no `merge_by` on a leaf, a folder or a table stating no
-  key - it raises; pass `merge_by=["id"]` / `{ mergeBy: ['id'] }` /
+  key - it raises, and so does `merge_by=True`, which names the same absent
+  key; pass `merge_by=["id"]` / `{ mergeBy: ['id'] }` /
   `with_merge_by(["id"])?`, or state the table's `identifier-field-ids`.
   A table folder opened as a plain `IOBase` states no key; open it as a table.
+  `merge_by=False` is refused everywhere: it names no key.
+- Re-running an append into an Iceberg table that states
+  `identifier-field-ids` and expecting duplicates: it writes none and commits
+  nothing. Read `skipped_rows` off the `IOMedia` doors (`append_serie`,
+  `append_arrow_*`) - Python's `IcebergTable.append` and Rust's
+  `commit_append` answer nothing - and drop the identifier to append blind.
+- A keyed append beaten by a concurrent commit fails with `CommitConflict`
+  (Python `ValueError`) rather than rebasing, as a merge does: re-run it, and
+  it skips whatever the winner wrote.
 - Naming a file `trades.parquet.gz` - refused ("parquet compresses"); use
   `compression="zstd(3)"` on a plain `.parquet`.
 - Naming a workbook `trades.xlsx.gz` - refused ("expected an uncompressed xlsx
@@ -298,6 +326,7 @@ medium does the work before a byte is decoded.
 - Partitions (pruning, partition columns, derived columns): https://platob.github.io/yggdryl/holder/#partitions
 - Media overview and options: https://platob.github.io/yggdryl/media/
 - Per format: https://platob.github.io/yggdryl/media/ipc/, https://platob.github.io/yggdryl/media/parquet/, https://platob.github.io/yggdryl/media/avro/, https://platob.github.io/yggdryl/media/excel/, https://platob.github.io/yggdryl/media/csv/, https://platob.github.io/yggdryl/media/text/, https://platob.github.io/yggdryl/media/iceberg/
+- Iceberg keys - the merge key, the keyed append, the merge that changes nothing: https://platob.github.io/yggdryl/media/iceberg/#the-merge-key, https://platob.github.io/yggdryl/media/iceberg/#appending-to-a-keyed-table, https://platob.github.io/yggdryl/media/iceberg/#a-merge-that-changes-nothing
 - Required columns and the cast rule: https://platob.github.io/yggdryl/types/cast/
 - Plans and write verbs: https://platob.github.io/yggdryl/expression/plans/
 - Sibling skills: `yggdryl-storage` (handles, backends, codings), `yggdryl-arrow` (`Serie`, `SerieReader`, casts), `yggdryl-expressions` (filter/select grammar, `Plan`), `yggdryl-uri` (hive paths, globs), `yggdryl-types` (fields, dataclasses), `yggdryl-documents` (JSON/YAML/TOML/XML).

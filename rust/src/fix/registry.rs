@@ -791,9 +791,9 @@ impl FixRegistry {
             marketdatatypes: OnceLock::new(),
             timeinforces: OnceLock::new(),
         };
-        if let Some(document) = super::crated::msgcat_codeset() {
+        if let Some(document) = super::crated::marketdatakind_codeset() {
             registry.codesets.insert(
-                SmolStr::new_static(super::crated::MSGCAT_CODESET_NAME),
+                SmolStr::new_static(super::crated::MARKETDATAKIND_CODESET_NAME),
                 document,
             );
         }

@@ -14,9 +14,13 @@ use serde::{Deserialize, Serialize};
 /// reading the destination back. `read_rows` is what the write pulled from
 /// its source, `written_rows` what reached the destination, and
 /// `skipped_rows` what was read and not written: the rows the options'
-/// `where` kept out, and the part of the last batch a row or byte bound cut
-/// off. A bound stops pulling, so what lies past it was never read and is
-/// neither read nor skipped.
+/// `where` kept out, the part of the last batch a row or byte bound cut
+/// off, and the rows an append to an Iceberg table stating
+/// `identifier-field-ids` left out because the table held their key, or an
+/// earlier row of the write brought it. A bound stops pulling, so what lies
+/// past it was never read and is neither read nor skipped. A merge counts
+/// every row it pulled as written, whether or not it changed the row it
+/// matched.
 ///
 /// A write that maps one row to one row answers
 /// `read_rows == written_rows + skipped_rows`. A `select` that unnests

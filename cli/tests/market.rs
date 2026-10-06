@@ -412,6 +412,8 @@ fn serve_refuses_two_tables_of_one_name() {
         } else {
             "\"books.arrows\""
         };
+        let first_named = format!("{first:?}");
+        let second_named = format!("{second:?}");
         refused(
             &[
                 "--bind",
@@ -423,7 +425,7 @@ fn serve_refuses_two_tables_of_one_name() {
                 &tables[0],
                 &tables[1],
             ],
-            &["$.tables[1]", name, first, second],
+            &["$.tables[1]", name, &first_named, &second_named],
         );
     }
     assert_eq!(
@@ -536,13 +538,25 @@ fn serve_reads_a_read_timeout_in_every_spelling_the_core_reads_a_length_of_time(
 #[test]
 fn serve_reads_a_table_location_as_python_and_node_read_one() {
     let root = books_root();
-    // `file:/path` is one reading with `file:///path`, and a place nothing is
-    // at yet is still the folder a capture makes a table of.
+    // The canonical URL and Java's `file:/path` spelling are one location;
+    // a place nothing is at yet is still the folder a capture makes a table of.
+    let canonical = LocalFolder::new(&root)
+        .expect("the root has a canonical local URL")
+        .url()
+        .to_string();
+    let java = canonical.replacen("file:///", "file:/", 1);
     let absent = root.join("absent");
+    let absent_java = LocalFolder::new(&absent)
+        .expect("the absent path has a canonical local URL")
+        .url()
+        .to_string()
+        .replacen("file:///", "file:/", 1);
     for spelled in [
         format!("books=file:{}", root.display()),
-        format!("books=file://{}", root.display()),
+        format!("books={java}"),
+        format!("books={canonical}"),
         format!("books=file:{}", absent.display()),
+        format!("books={absent_java}"),
     ] {
         let mut serve = command();
         serve

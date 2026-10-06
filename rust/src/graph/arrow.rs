@@ -2,7 +2,7 @@
 //! [`MarketData`] leaf is written in and read back from.
 //!
 //! A row is the six [`ElementColumn`]s and the nine [`EventColumn`]s, the
-//! thirty-four [`MarketColumn`]s - opening with `marketdatakind`, the
+//! thirty-five [`MarketColumn`]s - opening with `marketdatakind`, the
 //! [`MarketDataKind`] its leaf stands under - the five
 //! [`OperationColumn`]s, the book controls a market-data entry states -
 //! `bookscope`, `bookaction` and `bookposition`, which a book's deltas
@@ -123,7 +123,7 @@ impl MarketData {
     /// assert!(field.fields()[6].is_nullable());
     /// assert_eq!(field.fields()[15].name(), "marketdatakind");
     /// assert!(!field.fields()[15].is_nullable());
-    /// assert_eq!(field.field_len(), 6 + 9 + 34 + 5 + 3 + 5);
+    /// assert_eq!(field.field_len(), 6 + 9 + 35 + 5 + 3 + 5);
     /// # Ok(())
     /// # }
     /// ```
@@ -507,6 +507,7 @@ impl Column {
                 MarketColumn::MarketDataType => Storage::MarketDataType,
                 MarketColumn::Price
                 | MarketColumn::StopPx
+                | MarketColumn::StrikePx
                 | MarketColumn::Quantity
                 | MarketColumn::DisplayQty
                 | MarketColumn::HiddenQty
@@ -604,6 +605,7 @@ const fn is_decimal(column: MarketColumn) -> bool {
         column,
         MarketColumn::Price
             | MarketColumn::StopPx
+            | MarketColumn::StrikePx
             | MarketColumn::Quantity
             | MarketColumn::DisplayQty
             | MarketColumn::HiddenQty
@@ -629,6 +631,7 @@ fn market_decimal<E: Market + ?Sized>(column: MarketColumn, market: &E) -> Optio
     match column {
         MarketColumn::Price => market.get_price(),
         MarketColumn::StopPx => market.get_stoppx(),
+        MarketColumn::StrikePx => market.get_strikepx(),
         MarketColumn::Quantity => market.get_quantity(),
         MarketColumn::DisplayQty => market.get_displayqty(),
         MarketColumn::HiddenQty => market.get_hiddenqty(),
@@ -659,6 +662,7 @@ fn set_market_decimal<E: Market + ?Sized>(
     match column {
         MarketColumn::Price => market.set_price(value, true),
         MarketColumn::StopPx => market.set_stoppx(value, true),
+        MarketColumn::StrikePx => market.set_strikepx(value, true),
         MarketColumn::Quantity => market.set_quantity(value, true),
         MarketColumn::DisplayQty => market.set_displayqty(value, true),
         MarketColumn::HiddenQty => market.set_hiddenqty(value, true),

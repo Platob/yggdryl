@@ -4015,6 +4015,14 @@ mod equivalence {
     /// no rule of its own, and a difference here means the reading moved. Where
     /// that was the point, the snapshot is regenerated in the commit that moved
     /// it; where it was not, it is a defect.
+    ///
+    /// It last moved when the digest's category label `msgcat` became
+    /// `marketdatakind`: every message's `currhashcode` and `curruuid`, a
+    /// `crossuuid` that is its own `curruuid`, the `srcuuids` and `prevuuid`
+    /// naming a moved message, and the `crosscode`, `crosshashcode` and
+    /// `crossuuid` of an execution split off a report naming no `ExecID` or
+    /// `TradeID` - its cross code derives from the report's `currhashcode` -
+    /// changed; no wire, entry or `seqnum` did.
     #[test]
     fn the_codec_answers_what_it_answered() {
         let pinned = read();
