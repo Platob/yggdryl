@@ -7,7 +7,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { BatchReader, Field, FieldPath, Identifier, MarketDataKind, Plan, enums, graph } = require('yggdryl')
+const { BatchReader, Field, FieldPath, Identifier, MarketDataKind, Plan, Serie, enums, graph } = require('yggdryl')
 
 /** The identifiers of a map by type, each value under its type. */
 const kinds = (ids) => Object.fromEntries(ids.toArray().map((id) => [id.type, id.value]))
@@ -147,13 +147,13 @@ test('the field is the lifted marketdata struct', () => {
   for (const name of ['currunix', 'price', 'isincode', 'fxrates', 'bidpx', 'askccy', 'identifiers', 'bookscope']) {
     assert.ok(names.includes(name), name)
   }
-  // A1/A10: six identity, nine event, thirty-five market and five
+  // A1/A10: six identity, nine event, thirty-six market and five
   // operation columns, the three book controls a book's delta replays by,
-  // and the six nested columns closing the row: 64 in all.
-  assert.equal(names.length, 6 + 9 + 35 + 5 + 3 + 6)
-  assert.deepEqual(names.slice(55, 58), ['bookscope', 'bookaction', 'bookposition'])
-  assert.equal(field.fieldAt(57).dtype.id, 'uint32')
-  assert.deepEqual(names.slice(58), NESTED)
+  // and the six nested columns closing the row: 65 in all.
+  assert.equal(names.length, 6 + 9 + 36 + 5 + 3 + 6)
+  assert.deepEqual(names.slice(56, 59), ['bookscope', 'bookaction', 'bookposition'])
+  assert.equal(field.fieldAt(58).dtype.id, 'uint32')
+  assert.deepEqual(names.slice(59), NESTED)
   // When an element last executed is a market fact, stated among the
   // market columns, and the party ids an operation names an operation one.
   assert.ok(names.indexOf('execunix') > names.indexOf('state'))
@@ -304,6 +304,44 @@ test('an undated row needs no clock', () => {
   assert.equal(data.kind, 'order')
   assert.equal(data.crosscode, '10:0:X')
   assert.ok(data.asOrder().equals(new graph.Order({ crosscode: 'X' })))
+})
+
+test('a book row states no sources while its delta and events rows do', () => {
+  const lines = [1, 2, 3].map((n) => `018bcfe5-6800-7000-8000-00000000000${n}`)
+  const facts = { price: '101', quantity: 1, ticker: 'ACME', state: 'NEW' }
+  const order = new graph.OrderEvent(CLOCK, { crosscode: 'B-1', side: 'BUYS', srcuuids: [lines[0]], ...facts })
+  const quote = new graph.QuoteEvent(CLOCK, { crosscode: 'Q-1', side: 'BUYS', srcuuids: [lines[1]], ...facts })
+  const fill = new graph.ExecutionEvent(CLOCK, {
+    crosscode: 'E-1', side: 'BUYS', lastqty: 1, ticker: 'ACME', srcuuids: [lines[2]],
+  })
+  const book = new graph.BookEvent(CLOCK, 'ACME').withOperations([order, quote, fill])
+  // A book states no sources; the events it holds keep theirs.
+  assert.deepEqual(book.srcuuids, [])
+  assert.deepEqual(book.delta().map((entry) => entry.srcuuids), [[lines[0]], [lines[1]]])
+
+  const table = graph.MarketData.arrowReader([book]).intoTable()
+  assert.equal(table.getChild('srcuuids').get(0), null)
+  const nested = (name) => [...table.getChild(name).get(0)].map((entry) => entry.toJSON().srcuuids)
+  // An alive entry writes none: the delta row that applied it does.
+  assert.deepEqual(nested('alive'), [null, null])
+  assert.ok([...nested('delta'), ...nested('events')].every((sources) => sources !== null))
+
+  // Read back, the book is the one written and states no source, nor do
+  // its alive entries.
+  const [read] = drain(graph.MarketData.fromArrowReader(graph.MarketData.arrowReader([book])))
+  const held = read.asBookEvent()
+  assert.ok(held)
+  assert.deepEqual(held.curruuid, book.curruuid)
+  assert.deepEqual(held.srcuuids, [])
+  assert.deepEqual(held.alive().map((entry) => entry.curruuid), book.alive().map((entry) => entry.curruuid))
+  assert.deepEqual(held.alive().map((entry) => entry.srcuuids), [[], []])
+
+  // The delta and the events laid out of the book rows carry every source.
+  const rows = () => Serie.fromArrowReader(graph.MarketData.arrowReader([book]))
+  const sources = (serie) =>
+    [...graph.MarketData.fromArrowReader(serie.intoArrowReader())].map((data) => data.srcuuids)
+  assert.deepEqual(sources(graph.MarketData.deltaSerie(rows())), [[lines[0]], [lines[1]]])
+  assert.deepEqual(sources(graph.MarketData.eventsSerie(rows())), [[lines[2]]])
 })
 
 // The named views over a `marketdata` stream: one plan each.

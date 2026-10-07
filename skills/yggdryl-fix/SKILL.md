@@ -82,7 +82,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | chain rows already in Arrow | `codec.lifecycle_arrow_reader(reader)?` | `codec.lifecycle_arrow_reader(reader)` | `codec.lifecycleArrowReader(reader)` |
 | share what lifecycles learn about instruments, and what parses fill from | `codec.with_isin_registry(Arc::new(Mutex::new(IsinRegistry::from_url(&url, props)?)))`, `FixCodec::from_env()?` for the process's own, `registry.lock()?.commit()?` to write it back | `FixCodec(registry, isin_registry=IsinRegistry.from_url(path))`, `FixCodec.from_env()`, `registry.commit()` | `new fix.FixCodec(registry, { isinRegistry: IsinRegistry.fromUrl(path) })`, `fix.FixCodec.fromEnv()`, `registry.commit()` |
 | the common instruments, before any store | `IsinRegistry::seeded()` - what `from_env` lays its store over; `IsinRegistry::seeded_from_url(&url, props)?` lays a store you name over it, its rows winning | `IsinRegistry.seeded()`, `IsinRegistry.seeded_from_url(path)` | `IsinRegistry.seeded()`, `IsinRegistry.seededFromUrl(path)` |
-| what a lifecycle learned about an instrument, per market | `registry.listings(isin)` (one row per market, MIC order), `get_listing(isin, &mic)`, `entry.lastunix()` - the latest message instant stating the ISIN, moved by every learn - beside `updunix()`, the last moved fact | `listings(isin)`, `get_listing(isin, "XSWX")`, `row["lastunix"]` | `listings(isin)`, `getListing(isin, 'XSWX')`, `row.lastunix` |
+| what a lifecycle learned about an instrument, per market | `registry.listings(isin)` (one row per market, MIC order), `get_listing(isin, &mic)`, `entry.firstunix()` and `entry.lastunix()` - the earliest and the latest message instants stating the ISIN, moved by every learn that passes either - beside `updunix()`, the last moved fact, and `entry.origccy()`, the issue currency a message stated in crate tag `65018` | `listings(isin)`, `get_listing(isin, "XSWX")`, `row["firstunix"]`, `row["lastunix"]`, `row["origccy"]` | `listings(isin)`, `getListing(isin, 'XSWX')`, `row.firstunix`, `row.lastunix`, `row.origccy` |
+| which instrument a message means | `registry.resolve(&msg)` (ISIN, then `LOOKUP_CODES`, then ticker on its market, then - scored, a fill taking it only under `set_economic_match(true)` - its `FinancialInstrumentShortName(2737)` in its currency) | `registry.resolve(msg)` -> `Resolution` | `registry.resolve(msg)` -> a plain object |
 | one message as graph leaves | `msg.market_data()?`, `msg.into_market_data()?` | `msg.market_data()` | `msg.marketData()` |
 | sorted market data | `codec.market_data(messages)` | `codec.market_data(messages)` | `codec.marketData(messages)` |
 | books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0, None)?`, `Some(&filter)` to narrow | `codec.book_arrow_reader(msgs, snapshot_millis=0, filter=None)` | `codec.bookArrowReader(msgs, 0, filter)` |
@@ -428,7 +429,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   registry - bound to a store with `from_url` and written back with
   `commit()` only where it moved, or the process's own `from_env()`, which
   `FixCodec.from_env()` attaches - to share it across walks run one after
-  another. A RIC or a Bloomberg symbol is an equivalent, never a key.
+  another. A code of `IsinRegistry::LOOKUP_CODES` - a CUSIP, a SEDOL, a RIC, a
+  Bloomberg symbol - leads back to its instrument like a ticker on its market,
+  one instrument per code; a parse fills from those exact keys alone, never
+  from a short name's score. A message's `origccy` (crate tag `65018`, no FIX
+  field) is learned as the instrument's issue currency and filled where a
+  later message states none; `origin_currency` reads the currency otherwise.
   `from_env()` starts from the embedded seed of common instruments
   (`IsinRegistry.seeded()`, the store's rows winning), and a row the
   registry folds carries the CUSIP, SEDOL, WKN or Valor its ISIN embeds and
@@ -437,7 +443,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   once, at the end of the refined FIX parsing stage, after its write has
   drained the lifecycle: one snapshot, nothing where clean.
 - `StrikePrice(202)` is read into the market fact `strikepx` (`Market`), the
-  fixed row's `strikepx` column right after `ticker` (crate tag `65035`), so
+  fixed row's `strikepx` column right after `ticker` (crate tag `65036`), so
   a graph leaf carries no `strikeprice` metadata key; `msg.set(202, v)`
   restates it, a row stating `strikepx` is the row's word, and an unreadable
   202 is an anomaly named `strikeprice`. A follower of the same instrument

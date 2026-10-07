@@ -5,7 +5,12 @@
 //! per market, as the registry holds it - each keyed as the registry's
 //! columns are - `isin`, `ticker`, `miccode` (absent for an index, which
 //! trades on no market), `currency`, `countrycode`, `cficode` and, where
-//! one is known, `fisn` - and nothing else. That file is the one maintained
+//! one is known, `fisn` - and, where the research names a share class's
+//! currency some listing of it trades apart from, `origccy`: the five Irish
+//! USD share classes, each named so in its fund's name and its FIRDS short
+//! name (`VANGUARD/SHS USD`, `ISHS VII/SHS CL-ACC USD`) and listed in GBP or
+//! EUR - and nothing else. No row's origin currency is derived: Tencent's
+//! `KY` prefix names its domicile and no currency, so its row states none. That file is the one maintained
 //! by hand; `seed.json` beside this module is its copy inside the crate's
 //! package, written byte for byte by
 //! `python scripts/check_isin_seed.py --sync`, so the published crate and a
@@ -42,6 +47,7 @@ static ROW: LazyLock<Field> = LazyLock::new(|| {
             Field::new("countrycode", DataType::country(), true),
             Field::new("cficode", DataType::cfi(), true),
             Field::new("fisn", DataType::fisn(), true),
+            Field::new("origccy", DataType::ccy(), true),
         ])),
         false,
     )

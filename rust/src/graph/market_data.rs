@@ -321,6 +321,12 @@ impl Market for MarketData {
     fn set_currency(&mut self, currency: crate::Ccy, overwrite: bool) {
         delegate_by_variant!(self, set_currency, currency, overwrite);
     }
+    fn get_origccy(&self) -> &crate::Ccy {
+        delegate_by_variant!(self, get_origccy)
+    }
+    fn set_origccy(&mut self, ccy: crate::Ccy, overwrite: bool) {
+        delegate_by_variant!(self, set_origccy, ccy, overwrite);
+    }
     fn get_quantity(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_quantity)
     }

@@ -33,8 +33,8 @@
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the vocabularies and the three categories - `{codesets, fields, components, groups}` and no other key, the sets leading so a reader holds them before it meets a field naming one - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 51 definitions, tags 65001 to 65051: 50 scalar fields and the sorted Map group `metadata(65036)`. Nineteen are derived (`is_derived_tag`) and never registered; `new()` registers the other 31 - 30 scalar fields and `metadata` - beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 32 scalar fields and one group: 33 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
-| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 32 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 52 definitions, tags 65001 to 65052: 51 scalar fields and the sorted Map group `metadata(65037)`. Nineteen are derived (`is_derived_tag`) and never registered; `new()` registers the other 32 - 31 scalar fields and `metadata` - beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 33 scalar fields and one group: 34 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
+| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 33 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
 
 ## Use
 
@@ -289,12 +289,12 @@ A field is its tag and its name, and a lookup asks for one of them: canonical be
 | `field_by_id(FixId)` | Exact: the one field whose tag and folded name digest to that id |
 | `field_by_name(name)` | The canonical fold, then an alias fold |
 | `field_by_path(path)` | Canonical Map name before a scalar alias; otherwise scalar lookup, then a named message/component/group head and nested members |
-| `field_by_counter(tag)` | The globally unique repeating group that counter tag opens - `453` the `Parties` Serie, `65036` the `metadata` Map - while the counter itself answers `field(453)` |
+| `field_by_counter(tag)` | The globally unique repeating group that counter tag opens - `453` the `Parties` Serie, `65037` the `metadata` Map - while the counter itself answers `field(453)` |
 | `MsgType::get_group_by_tag(tag)` | Unique group within that message's structure |
 
 The `get_` forms return absence; failing twins return a typed, located error. One spelling addresses a member on both sides: a schema states one item type for a serie, so `Parties[0].PartyID` answers the field every occurrence holds here and the value that occurrence carries in a message. A path through a group may still omit the occurrence - `Parties.PartyID` - because a schema has no positions to skip. A counter shared by multiple contexts is ambiguous globally, so parsing uses the selected message's compiled group index.
 
-A Map group is a native mapping, not a numeric repeating frame: its entries and key stay non-null and its sortedness survives projection and reload. `metadata` is reached by its canonical name or its counter, never by scalar `field_by_tag(65036)`; its key and value gain no wire delimiter or numeric tags, and a canonical scalar name cannot collide with a Map group's name.
+A Map group is a native mapping, not a numeric repeating frame: its entries and key stay non-null and its sortedness survives projection and reload. `metadata` is reached by its canonical name or its counter, never by scalar `field_by_tag(65037)`; its key and value gain no wire delimiter or numeric tags, and a canonical scalar name cannot collide with a Map group's name.
 
 Names and aliases use separate indexes; a stored name is rechecked after hashing, so a digest collision never selects an unrelated field. The id is the signed XXH32 of the tag's little-endian bytes followed by the folded name, so `MsgType`, `msgtype` and `Msg_Type` under tag 35 are one id; `FixId::of(tag, name)` refuses a tag that is not positive and displays as its decimal digest - the [fold and its halves](index.md#identity-is-a-tag-and-a-name) are the vocabulary's. An id crosses every boundary as that integer - `FixKey::Id` in Rust, `field_by_id(int)` and `get_by_id(int)` in Python and JavaScript - and a bare integer anywhere else is a tag.
 

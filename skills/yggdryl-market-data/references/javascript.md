@@ -263,10 +263,10 @@ const { BatchReader, MarketDataKind, graph } = require('yggdryl')
 const order = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001' })
 const values = [new graph.Order(), order, new graph.BookEvent(1_700_000_001_000_000_000n, 'AAPL')]
 
-// 64 columns: 6 element, 9 event, 35 market (marketdatakind first), 5 operation,
+// 65 columns: 6 element, 9 event, 36 market (marketdatakind first), 5 operation,
 // the book controls bookscope, bookaction and bookposition, 6 nested.
 const field = graph.MarketData.field()
-assert.equal(field.fieldLen, 64)
+assert.equal(field.fieldLen, 65)
 assert.equal(field.fieldAt(15).name, 'marketdatakind')
 const table = graph.MarketData.arrowReader(values, 1_000).intoTable()
 // The column stores each member's code.

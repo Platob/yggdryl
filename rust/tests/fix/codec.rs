@@ -4829,7 +4829,10 @@ mod threads {
         // No feedback: what a parse derived is learned back as nothing. A
         // fresh registry learns the same of a message parsed with the table
         // and without it, so the table's fill reaches nothing a learn reads;
-        // the registry the table came from learns nothing new either.
+        // the registry the table came from learns nothing new either, once
+        // it has met each message at the instant the parse dates it - the
+        // walk dates some by their transaction, later, and an instrument's
+        // `firstunix` moves back to the earliest instant a learn meets.
         let without: Vec<FixMsg> = bare.parse_lines(&bodies).filter_map(Result::ok).collect();
         let with: Vec<FixMsg> = filling
             .parse_lines(&bodies)
@@ -4838,6 +4841,11 @@ mod threads {
         assert_eq!(without.len(), with.len());
         let target = fix_schema(&registry, "fix").expect("the fixed schema");
         let mut held = instruments.lock().expect("the registry");
+        for without in &without {
+            held.learn(without);
+        }
+        held.commit().expect("committed");
+        assert!(!held.is_dirty());
         for (without, with) in without.iter().zip(&with) {
             let mut bare_learns = IsinRegistry::new();
             let mut filled_learns = IsinRegistry::new();
@@ -5035,7 +5043,7 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
     let spelled = super::fixed_codec(Arc::clone(&registry))
         .with_source("ms")
         .expect("a held source")
-        .parse_fix_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|65042=BUYS|10=0|")
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|65043=BUYS|10=0|")
         .expect("a message");
     assert_eq!(spelled.msgpluginside(), PluginSide::BuySide);
     assert!(

@@ -14,13 +14,16 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyDict};
+use pyo3::types::{PyAny, PyDict, PyTuple};
 use yggdryl::holder::Holder;
-use yggdryl::{DataType, IsinEntry, IsinRegistry, Mic, Scalar};
+use yggdryl::{
+    DataType, IdType, Isin, IsinEntry, IsinRegistry, MatchTier, Mic, Resolution, Scalar, Unmatched,
+};
 
 use crate::field::PyField;
 
 use crate::fix::PyFixMsg;
+use crate::graph::market_data::market_data_of;
 use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
 use crate::ioresult::PyIOResult;
@@ -31,12 +34,15 @@ use crate::value_error;
 /// A table of instruments keyed by ISIN, one row per listing - per ISIN and
 /// market. The instrument facts - the CFI code, the country of issue, the
 /// currency pair, the instrument it is written on, the EUSIPA product
-/// category, the ISO 18774 short name, `updunix`, `lastunix` and every code
-/// that is no listing code - are the ISIN's and every listing row of it
-/// carries them; the listing facts - the market, the ticker, the trading
-/// currency and the listing codes - are each row's own. A lifecycle learns
-/// into it and fills from it, and a parse fills from it. Bound to the store
-/// it was loaded from, committed back only where it moved.
+/// category, the ISO 18774 short name, the origin currency, `updunix`,
+/// `firstunix`, `lastunix` and every code that is no listing code - are the
+/// ISIN's and every listing row of it carries them; the listing facts - the
+/// market, the ticker, the trading currency and the listing codes - are
+/// each row's own. A lifecycle learns into it and fills from it, and a
+/// parse fills from it; `resolve` answers which row an element names and
+/// how - its ISIN, a code of `LOOKUP_CODES`, its ticker, or its short name
+/// in its currency. Bound to the store it was loaded from, committed back
+/// only where it moved.
 /// Mutable and shared: equal only to itself, never hashed or pickled; its
 /// rows cross out as an Arrow stream.
 #[pyclass(name = "IsinRegistry", module = "yggdryl._native", frozen)]
@@ -173,12 +179,14 @@ impl PyIsinRegistry {
     }
 
     /// The registry's row: the required struct `isinregistry` every listing
-    /// row is laid out as - `isin`, `updunix`, `lastunix` (the latest
+    /// row is laid out as - `isin`, `updunix`, `firstunix` (the earliest
     /// instant an event the registry learned from stated the ISIN),
-    /// `cficode`, `countrycode`, `forexcode`, `underlyingisin`, `eusipacode`
-    /// (`int32`, the four-digit code `Eusipa` reads), `miccode`, `ticker`,
-    /// `fisn` (the ISO 18774 short name), `currency`, then one column per
-    /// `SecurityIDSource(22)` type but the ISIN: forty-four columns - what a
+    /// `lastunix` (the latest), `cficode`, `countrycode`, `forexcode`,
+    /// `underlyingisin`, `eusipacode` (`int32`, the four-digit code `Eusipa`
+    /// reads), `miccode`, `ticker`, `fisn` (the ISO 18774 short name),
+    /// `currency`, `origccy` (the currency the instrument was issued in,
+    /// where stated), then one column per `SecurityIDSource(22)` type but
+    /// the ISIN: forty-six columns - what a
     /// table holding the registry is created from. Its root declares
     /// `PARTITION:by` `["truncate(isin, 2)"]` - an Iceberg table created
     /// from it partitions by the ISIN's country prefix, storing no column -
@@ -273,8 +281,9 @@ impl PyIsinRegistry {
 
     /// A registry read from any Arrow stream - a `pyarrow` reader, table or
     /// batch, or anything exporting `__arrow_c_stream__` - its columns
-    /// named as `from_url` reads them, `lastunix` also as `lastseen` or
-    /// `lastseenunix`, and several rows of one ISIN on several markets its
+    /// named as `from_url` reads them, `firstunix` also as `firstseen` or
+    /// `firstseenunix`, `lastunix` as `lastseen` or `lastseenunix`, `origccy`
+    /// as `origcurrency`, `originalcurrency` or `issuecurrency`, and several rows of one ISIN on several markets its
     /// several listings; bound to no store, and clean.
     #[staticmethod]
     #[pyo3(signature = (reader, max_instruments=IsinRegistry::DEFAULT_MAX_INSTRUMENTS))]
@@ -401,6 +410,88 @@ impl PyIsinRegistry {
         Self::entry_as_py(py, entry)
     }
 
+    /// The listing row the code `value` of type `kind` - one of
+    /// `LOOKUP_CODES`, by any spelling of its type - names, as a `dict` of
+    /// its columns, or `None`: the one instrument holding the code, then its
+    /// row on `market` - a MIC, checked by the `mic` datatype - else the one
+    /// row holding the code, else its single row, else its first. Two
+    /// instruments holding it is ambiguous and answers `None`, as does a
+    /// type that is no lookup code or a value its type refuses.
+    #[pyo3(signature = (kind, value, market=None))]
+    fn get_by_code(
+        &self,
+        py: Python<'_>,
+        kind: &str,
+        value: &str,
+        market: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Option<Py<PyAny>>> {
+        let kind: IdType = kind.parse().map_err(value_error)?;
+        let market = market.map(mic_of).transpose()?;
+        let entry = self.with(py, |registry| {
+            registry.get_by_code(&kind, value, market.as_ref()).cloned()
+        });
+        Self::entry_as_py(py, entry)
+    }
+
+    /// The listing row `element` names, and how - a `Resolution`: a real
+    /// ISIN it states decides alone, and one the registry lacks ends the
+    /// cascade (`UnknownIsin`); with none, each code of `LOOKUP_CODES` it
+    /// states, in that order, then its ticker on its market, the first
+    /// naming one instrument matching and the first naming two ending the
+    /// cascade (`Ambiguous`); only where all of those found nothing, the
+    /// instrument listed in its stated currency whose short name is the
+    /// most similar to the one it states, at least `economic_threshold`, an
+    /// instrument of another stated origin currency or CFI category dropped
+    /// and named. `element` is any market leaf, a `MarketData` or a
+    /// `FixMsg`; nothing is filled - `fill` takes an economic match only
+    /// where `is_economic_match` says so.
+    fn resolve(&self, py: Python<'_>, element: &Bound<'_, PyAny>) -> PyResult<PyResolution> {
+        let element = market_data_of(element)?;
+        let inner = self.with(py, move |registry| {
+            Resolved::from_core(registry.resolve(&element))
+        });
+        Ok(PyResolution { inner })
+    }
+
+    /// The codes a lookup reads, in cascade order, each its type's word.
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn LOOKUP_CODES(py: Python<'_>) -> PyResult<Py<PyTuple>> {
+        PyTuple::new(py, IsinRegistry::LOOKUP_CODES.iter().map(IdType::as_str)).map(Bound::unbind)
+    }
+
+    /// How similar two short names must be by default for an economic
+    /// match.
+    #[classattr]
+    const DEFAULT_ECONOMIC_THRESHOLD: f64 = IsinRegistry::DEFAULT_ECONOMIC_THRESHOLD;
+
+    /// How similar two short names must be, above `0` and at most `1`, for
+    /// an economic match: `DEFAULT_ECONOMIC_THRESHOLD` unless set.
+    #[getter]
+    fn economic_threshold(&self, py: Python<'_>) -> f64 {
+        self.with(py, |registry| registry.economic_threshold())
+    }
+
+    /// Sets `economic_threshold`; NaN and a value outside `(0, 1]` raise
+    /// `ValueError` naming it, the threshold unmoved.
+    fn set_economic_threshold(&self, py: Python<'_>, threshold: f64) -> PyResult<()> {
+        self.with(py, |registry| registry.set_economic_threshold(threshold))
+            .map_err(value_error)
+    }
+
+    /// Whether `fill` takes an economic match where nothing exact names the
+    /// element: `False` unless set, since a derived ISIN becomes the key an
+    /// element's book and chain live under. A parse never takes one.
+    #[getter]
+    fn is_economic_match(&self, py: Python<'_>) -> bool {
+        self.with(py, |registry| registry.is_economic_match())
+    }
+
+    /// Sets `is_economic_match`.
+    fn set_economic_match(&self, py: Python<'_>, enabled: bool) {
+        self.with(py, |registry| registry.set_economic_match(enabled));
+    }
+
     /// Folds one row - a mapping of column names to cells, `isin` required
     /// - into the listings of its ISIN by the update rule: a stated valid
     /// value fills a column a row lacks and replaces one it holds that
@@ -477,8 +568,9 @@ impl PyIsinRegistry {
     }
 
     /// Fills what a message leaves unsaid about its instrument from the
-    /// listing row its ISIN and market name, else its ticker on its
-    /// market - each equivalent and the pair as a `derived` identifier,
+    /// listing row `resolve` names - its ISIN, else a lookup code, else its
+    /// ticker on its market, else, where `is_economic_match`, its short
+    /// name - each equivalent and the pair as a `derived` identifier,
     /// the ticker on its own market,
     /// its CFI code where the row's refines it, the currency on the same
     /// stated market under the row's ticker - never its wire. Whether
@@ -517,5 +609,301 @@ impl PyIsinRegistry {
         });
         let dirty = if dirty { "True" } else { "False" };
         format!("IsinRegistry(len={len}, max_instruments={max}, dirty={dirty})")
+    }
+}
+
+/// What [`IsinRegistry::resolve`] answered, owned: the row a match names is
+/// a copy taken under the lock, boxed so a miss holds no row's room.
+#[derive(Clone, Debug, PartialEq)]
+enum Resolved {
+    Matched {
+        entry: Box<IsinEntry>,
+        tier: MatchTier,
+        derived: bool,
+        listing: bool,
+    },
+    Unmatched(Unmatched),
+}
+
+impl Resolved {
+    fn from_core(resolution: Resolution<'_>) -> Self {
+        match resolution {
+            Resolution::Matched {
+                entry,
+                tier,
+                derived,
+                listing,
+            } => Self::Matched {
+                entry: Box::new(entry.clone()),
+                tier,
+                derived,
+                listing,
+            },
+            Resolution::Unmatched(why) => Self::Unmatched(why),
+        }
+    }
+
+    /// The tier of a match, or of an ambiguity.
+    const fn tier(&self) -> Option<&MatchTier> {
+        match self {
+            Self::Matched { tier, .. } | Self::Unmatched(Unmatched::Ambiguous { tier, .. }) => {
+                Some(tier)
+            }
+            Self::Unmatched(_) => None,
+        }
+    }
+
+    /// Why none matched; `None` for a match.
+    const fn unmatched(&self) -> Option<&Unmatched> {
+        match self {
+            Self::Matched { .. } => None,
+            Self::Unmatched(why) => Some(why),
+        }
+    }
+}
+
+/// The word a tier is spelled by at the boundary.
+const fn tier_name(tier: &MatchTier) -> &'static str {
+    match tier {
+        MatchTier::Isin => "isin",
+        MatchTier::Code(_) => "code",
+        MatchTier::Symbology => "symbology",
+        MatchTier::Economic { .. } => "economic",
+    }
+}
+
+/// The name of the `Unmatched` variant, as the core spells it.
+const fn unmatched_name(why: &Unmatched) -> &'static str {
+    match why {
+        Unmatched::NoKey => "NoKey",
+        Unmatched::UnknownIsin { .. } => "UnknownIsin",
+        Unmatched::NoCandidate => "NoCandidate",
+        Unmatched::Ambiguous { .. } => "Ambiguous",
+        Unmatched::CfiConflict { .. } => "CfiConflict",
+        Unmatched::CurrencyConflict { .. } => "CurrencyConflict",
+        Unmatched::BelowThreshold { .. } => "BelowThreshold",
+    }
+}
+
+/// A tier as `repr` writes it, its field beside it.
+fn tier_repr(tier: &MatchTier) -> String {
+    match tier {
+        MatchTier::Code(kind) => format!("tier='code', kind='{}'", kind.as_str()),
+        MatchTier::Economic { similarity } => format!("tier='economic', similarity={similarity}"),
+        other => format!("tier='{}'", tier_name(other)),
+    }
+}
+
+/// What `IsinRegistry.resolve` answered for one element: the row it names
+/// and how, or why none - every field of the core answer an attribute, so a
+/// job acts on a `CfiConflict` without parsing text. `matched` and its
+/// truth say which; a match states `entry`, `tier` (`"isin"`, `"code"`,
+/// `"symbology"` or `"economic"`), `kind` (the type of a `"code"` tier),
+/// `similarity` (an `"economic"` one's), `derived` and `listing`; a miss
+/// states `unmatched` - `NoKey`, `UnknownIsin`, `NoCandidate`, `Ambiguous`,
+/// `CfiConflict`, `CurrencyConflict` or `BelowThreshold` - and the fields
+/// its variant carries: `isins` and the tier of an `Ambiguous`, `stated`,
+/// `held`, `best` and `isin`. Every other attribute is `None`. Immutable,
+/// equal by value, never hashed: the row is a copy taken when it resolved.
+#[pyclass(name = "Resolution", module = "yggdryl._native", frozen)]
+pub(crate) struct PyResolution {
+    inner: Resolved,
+}
+
+#[pymethods]
+impl PyResolution {
+    // Equal by value over a float similarity, so never hashed.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    /// Whether a row was matched.
+    #[getter]
+    const fn matched(&self) -> bool {
+        matches!(self.inner, Resolved::Matched { .. })
+    }
+
+    /// The listing row matched, as a `dict` of its columns; `None` where
+    /// none was.
+    #[getter]
+    fn entry(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        match &self.inner {
+            Resolved::Matched { entry, .. } => as_py(py, &entry.into_scalar()).map(Some),
+            Resolved::Unmatched(_) => Ok(None),
+        }
+    }
+
+    /// The tier that matched - or, for `Ambiguous`, that found the several
+    /// instruments: `"isin"`, `"code"`, `"symbology"` or `"economic"`;
+    /// `None` for any other miss.
+    #[getter]
+    fn tier(&self) -> Option<&'static str> {
+        self.inner.tier().map(tier_name)
+    }
+
+    /// The type of the code a `"code"` tier read, as its word - the
+    /// identifier's `kind`; `None` otherwise.
+    #[getter]
+    fn kind(&self) -> Option<&str> {
+        match self.inner.tier() {
+            Some(MatchTier::Code(kind)) => Some(kind.as_str()),
+            _ => None,
+        }
+    }
+
+    /// How similar the two short names of an `"economic"` tier are, from
+    /// the threshold to `1`; `None` otherwise.
+    #[getter]
+    fn similarity(&self) -> Option<f64> {
+        match self.inner.tier() {
+            Some(MatchTier::Economic { similarity }) => Some(*similarity),
+            _ => None,
+        }
+    }
+
+    /// Whether the ISIN was derived - the element stated none; `None` for a
+    /// miss.
+    #[getter]
+    const fn derived(&self) -> Option<bool> {
+        match self.inner {
+            Resolved::Matched { derived, .. } => Some(derived),
+            Resolved::Unmatched(_) => None,
+        }
+    }
+
+    /// Whether the row's listing facts belong to the element: its market is
+    /// the row's, or either is unstated; `None` for a miss.
+    #[getter]
+    const fn listing(&self) -> Option<bool> {
+        match self.inner {
+            Resolved::Matched { listing, .. } => Some(listing),
+            Resolved::Unmatched(_) => None,
+        }
+    }
+
+    /// Why none matched, as the name of the core's `Unmatched` variant;
+    /// `None` for a match.
+    #[getter]
+    fn unmatched(&self) -> Option<&'static str> {
+        self.inner.unmatched().map(unmatched_name)
+    }
+
+    /// The ISINs an `Ambiguous` miss found, in ISIN order; `None` otherwise.
+    #[getter]
+    fn isins(&self) -> Option<Vec<String>> {
+        match self.inner.unmatched() {
+            Some(Unmatched::Ambiguous { isins, .. }) => {
+                Some(isins.iter().map(|isin| isin.as_str().to_owned()).collect())
+            }
+            _ => None,
+        }
+    }
+
+    /// What the element states: the ISIN of an `UnknownIsin`, the CFI
+    /// category letter of a `CfiConflict`, the origin currency of a
+    /// `CurrencyConflict`; `None` otherwise.
+    #[getter]
+    fn stated(&self) -> Option<String> {
+        match self.inner.unmatched() {
+            Some(Unmatched::UnknownIsin { stated }) => Some(stated.as_str().to_owned()),
+            Some(Unmatched::CfiConflict { stated, .. }) => Some(stated.to_string()),
+            Some(Unmatched::CurrencyConflict { stated, .. }) => Some(stated.as_str().to_owned()),
+            _ => None,
+        }
+    }
+
+    /// What the instrument holds instead: the CFI category letter of a
+    /// `CfiConflict`, the origin currency of a `CurrencyConflict`; `None`
+    /// otherwise.
+    #[getter]
+    fn held(&self) -> Option<String> {
+        match self.inner.unmatched() {
+            Some(Unmatched::CfiConflict { held, .. }) => Some(held.to_string()),
+            Some(Unmatched::CurrencyConflict { held, .. }) => Some(held.as_str().to_owned()),
+            _ => None,
+        }
+    }
+
+    /// How similar the most similar instrument of a `BelowThreshold` miss
+    /// is; `None` otherwise.
+    #[getter]
+    fn best(&self) -> Option<f64> {
+        match self.inner.unmatched() {
+            Some(Unmatched::BelowThreshold { best, .. }) => Some(*best),
+            _ => None,
+        }
+    }
+
+    /// The instrument a `CfiConflict`, a `CurrencyConflict` or a
+    /// `BelowThreshold` miss names; `None` otherwise.
+    #[getter]
+    fn isin(&self) -> Option<&str> {
+        match self.inner.unmatched() {
+            Some(
+                Unmatched::CfiConflict { isin, .. }
+                | Unmatched::CurrencyConflict { isin, .. }
+                | Unmatched::BelowThreshold { isin, .. },
+            ) => Some(isin.as_str()),
+            _ => None,
+        }
+    }
+
+    const fn __bool__(&self) -> bool {
+        self.matched()
+    }
+
+    /// Equal where the two answers are: the same row, tier and flags, or the
+    /// same miss with the same fields.
+    fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
+        other
+            .cast::<Self>()
+            .is_ok_and(|other| other.get().inner == self.inner)
+    }
+
+    fn __repr__(&self) -> String {
+        let flag = |held: bool| if held { "True" } else { "False" };
+        match &self.inner {
+            Resolved::Matched {
+                entry,
+                tier,
+                derived,
+                listing,
+            } => format!(
+                "Resolution(matched=True, isin='{}', {}, derived={}, listing={})",
+                entry.isin().as_str(),
+                tier_repr(tier),
+                flag(*derived),
+                flag(*listing),
+            ),
+            Resolved::Unmatched(why) => {
+                let fields = match why {
+                    Unmatched::NoKey | Unmatched::NoCandidate => String::new(),
+                    Unmatched::UnknownIsin { stated } => {
+                        format!(", stated='{}'", stated.as_str())
+                    }
+                    Unmatched::Ambiguous { tier, isins } => format!(
+                        ", {}, isins={:?}",
+                        tier_repr(tier),
+                        isins.iter().map(Isin::as_str).collect::<Vec<_>>()
+                    ),
+                    Unmatched::CfiConflict { stated, held, isin } => format!(
+                        ", stated='{stated}', held='{held}', isin='{}'",
+                        isin.as_str()
+                    ),
+                    Unmatched::CurrencyConflict { stated, held, isin } => format!(
+                        ", stated='{}', held='{}', isin='{}'",
+                        stated.as_str(),
+                        held.as_str(),
+                        isin.as_str()
+                    ),
+                    Unmatched::BelowThreshold { best, isin } => {
+                        format!(", best={best}, isin='{}'", isin.as_str())
+                    }
+                };
+                format!(
+                    "Resolution(matched=False, unmatched='{}'{fields})",
+                    unmatched_name(why)
+                )
+            }
+        }
     }
 }

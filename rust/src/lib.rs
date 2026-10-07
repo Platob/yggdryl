@@ -209,9 +209,9 @@ pub use fix::{
     MARKETDATAKIND_TAG_NAME, MARKETDATATYPE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME,
     MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME,
     MSGPLUGINSIDE_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, ORDQTY_TAG_NAME,
-    PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
-    RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH,
-    SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS,
+    ORIGCCY_TAG_NAME, PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME,
+    PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME,
+    SOH, SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS,
     STANDARD_TRAILER_TAGS, STATE_TAG_NAME, STRIKEPX_TAG_NAME, TICKER_TAG_NAME, TRADABLE_TAG_NAME,
     ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, Words, fix_column_of, fix_column_tags, fix_crate_fields,
     fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document,
@@ -317,7 +317,7 @@ pub use idtype::IdType;
 pub use integer::*;
 pub use interval::*;
 pub use isin::*;
-pub use isin_registry::{IsinEntry, IsinRegistry};
+pub use isin_registry::{IsinEntry, IsinRegistry, MatchTier, Resolution, Unmatched};
 pub use lei::*;
 pub use limit::Limit;
 pub use mapping::*;
@@ -431,6 +431,7 @@ pub mod internals {
     pub use crate::error::internals as error;
     pub use crate::expression::eval::internals as expression_eval;
     pub use crate::expression::selector::internals as expression_selector;
+    pub use crate::fisn::internals as fisn;
     pub use crate::fix::catalog::internals as fix_catalog;
     pub use crate::fix::codec::internals as fix_codec;
     pub use crate::fix::codes::internals as fix_codes;

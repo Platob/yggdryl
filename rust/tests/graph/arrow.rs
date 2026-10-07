@@ -337,7 +337,7 @@ fn replace_struct_child(array: &StructArray, name: &str, child: ArrayRef) -> Str
 fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
     let field = MarketData::field().unwrap();
     let names: Vec<&str> = field.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 6 + 9 + 35 + 5 + 3 + 6);
+    assert_eq!(names.len(), 6 + 9 + 36 + 5 + 3 + 6);
     // The element's facts, the event's, the market's and the operation's,
     // in the order their traits state them: the columns every generated
     // schema opens with.
@@ -348,8 +348,8 @@ fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
         .chain(MarketColumn::ALL.map(MarketColumn::name))
         .chain(OperationColumn::ALL.map(OperationColumn::name))
         .collect();
-    assert_eq!(names[..55], shared[..]);
-    assert_eq!(shared.len(), 6 + 9 + 35 + 5);
+    assert_eq!(names[..56], shared[..]);
+    assert_eq!(shared.len(), 6 + 9 + 36 + 5);
     assert_eq!(names[0], "curruuid");
     assert_eq!(names[6], "currunix");
     assert!(
@@ -370,12 +370,15 @@ fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
         &yggdryl::DataType::MarketDataType
     );
     assert!(!field.fields()[16].is_nullable());
+    // The origin currency follows the currency it defaults to, null where
+    // none is held.
     assert_eq!(
-        names[17..24],
+        names[17..25],
         [
             "price",
             "stoppx",
             "currency",
+            "origccy",
             "quantity",
             "displayqty",
             "hiddenqty",
@@ -384,15 +387,17 @@ fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
     );
     // When an element last executed is a market fact, stated among the
     // market columns rather than the event's.
-    assert_eq!(names[28..32], ["miccode", "execunix", "lastpx", "lastqty"]);
-    assert_eq!(names[34..37], ["leavesqty", "cxlqty", "prevpx"]);
+    assert_eq!(field.fields()[20].dtype(), &yggdryl::DataType::Ccy);
+    assert!(field.fields()[20].is_nullable());
+    assert_eq!(names[29..33], ["miccode", "execunix", "lastpx", "lastqty"]);
+    assert_eq!(names[35..38], ["leavesqty", "cxlqty", "prevpx"]);
     // The strike of the option it is about follows the ticker, before the
     // free-form metadata closes the market's facts.
-    assert_eq!(names[47..50], ["ticker", "strikepx", "metadata"]);
-    assert_eq!(field.fields()[48].dtype(), &yggdryl::DataType::Decimal);
-    assert!(field.fields()[48].is_nullable());
+    assert_eq!(names[48..51], ["ticker", "strikepx", "metadata"]);
+    assert_eq!(field.fields()[49].dtype(), &yggdryl::DataType::Decimal);
+    assert!(field.fields()[49].is_nullable());
     assert_eq!(
-        names[50..55],
+        names[51..56],
         [
             "ordqty",
             "timeinforce",
@@ -403,8 +408,8 @@ fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
     );
     // The book controls a row states - what a book's delta replays by;
     // the price and size an entry stated are walk-time.
-    assert_eq!(names[55..58], ["bookscope", "bookaction", "bookposition"]);
-    assert_eq!(field.fields()[57].dtype(), &yggdryl::DataType::UInt32);
+    assert_eq!(names[56..59], ["bookscope", "bookaction", "bookposition"]);
+    assert_eq!(field.fields()[58].dtype(), &yggdryl::DataType::UInt32);
     for gone in [
         "mdupdateaction",
         "mdentrypositionno",
@@ -424,11 +429,11 @@ fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
     ] {
         assert!(!names.contains(&gone), "{gone}");
     }
-    assert!(field.fields()[55..].iter().all(Field::is_nullable));
+    assert!(field.fields()[56..].iter().all(Field::is_nullable));
     // A book's three operation lists - its alive entries, its delta and its
     // events - then a trade's executions and a book's two sides.
     assert_eq!(
-        names[58..],
+        names[59..],
         [
             "alive",
             "delta",
@@ -439,14 +444,14 @@ fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
         ]
     );
     // An operation row, the item of every operation list: nothing nested.
-    for list in &field.fields()[58..62] {
+    for list in &field.fields()[59..63] {
         let item = list.dtype().serie_item().unwrap().clone();
         let item: Vec<&str> = item.fields().iter().map(Field::name).collect();
-        assert_eq!(item.len(), 6 + 9 + 35 + 5 + 3, "{}", list.name());
-        assert_eq!(item, names[..58], "{}", list.name());
+        assert_eq!(item.len(), 6 + 9 + 36 + 5 + 3, "{}", list.name());
+        assert_eq!(item, names[..59], "{}", list.name());
     }
     // A book's two sides are its price levels, one limit each.
-    for side in &field.fields()[62..] {
+    for side in &field.fields()[63..] {
         assert_eq!(side.dtype(), &yggdryl::DataType::serie(Limit::field()));
     }
 }
@@ -1880,7 +1885,7 @@ fn a_batch_stating_no_limits_columns_still_reads() {
         .filter(|at| !schema.field(*at).name().ends_with("limits"))
         .collect();
     let batch = batch.project(&kept).unwrap();
-    assert_eq!(batch.schema().fields().len(), 6 + 9 + 35 + 5 + 3 + 4);
+    assert_eq!(batch.schema().fields().len(), 6 + 9 + 36 + 5 + 3 + 4);
     assert_eq!(
         read(batch_reader(batch.schema(), [batch])).unwrap(),
         expected

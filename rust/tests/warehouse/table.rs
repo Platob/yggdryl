@@ -159,7 +159,7 @@ fn a_table_forwards_its_implementations_merge_key() {
             IcebergTable::create_from_url(
                 Url::from_path(root.join("ticks")).expect("a URL"),
                 &Properties::new(),
-                Some(FormatVersion::V2),
+                Some(FormatVersion::V3),
                 schema,
                 Some(PartitionSpec::unpartitioned()),
             )

@@ -5612,9 +5612,9 @@ binding.FixCodec.prototype.writeArrowReader = function writeArrowReader(source, 
 // native `BatchReader`, as every `fromArrowReader` takes one.
 {
   const NativeIsinRegistry = binding.IsinRegistry
-  // One row or none: `get` by ISIN, `getByTicker`, `getListing` and
-  // `removeListing` by an ISIN or a ticker and a market.
-  for (const name of ['get', 'getByTicker', 'getListing', 'removeListing']) {
+  // One row or none: `get` by ISIN, `getByTicker`, `getByCode`, `getListing`
+  // and `removeListing` by an ISIN, a ticker or a code and a market.
+  for (const name of ['get', 'getByTicker', 'getByCode', 'getListing', 'removeListing']) {
     const native = NativeIsinRegistry.prototype[name]
     NativeIsinRegistry.prototype[name] = {
       [name](...args) {
@@ -5635,6 +5635,13 @@ binding.FixCodec.prototype.writeArrowReader = function writeArrowReader(source, 
   const nativeMerge = NativeIsinRegistry.prototype.merge
   NativeIsinRegistry.prototype.merge = function merge(entry) {
     return nativeMerge.call(this, asScalar(entry))
+  }
+  // A resolution names its matched row as the same plain object.
+  const nativeResolve = NativeIsinRegistry.prototype.resolve
+  NativeIsinRegistry.prototype.resolve = function resolve(element) {
+    const resolution = nativeResolve.call(this, element)
+    if (resolution.entry !== null) resolution.entry = resolution.entry.asJs()
+    return resolution
   }
 }
 

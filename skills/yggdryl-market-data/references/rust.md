@@ -350,10 +350,10 @@ let values = vec![
     MarketData::from(BookEvent::new(1_700_000_001_000_000_000, "AAPL")),
 ];
 
-// 64 columns: 6 element, 9 event, 35 market (marketdatakind first), 5 operation,
+// 65 columns: 6 element, 9 event, 36 market (marketdatakind first), 5 operation,
 // the book controls bookscope, bookaction and bookposition, 6 nested.
 let field = MarketData::field()?;
-assert_eq!(field.field_len(), 64);
+assert_eq!(field.field_len(), 65);
 assert_eq!(field.fields()[15].name(), "marketdatakind");
 let batches: Vec<RecordBatch> = MarketData::arrow_reader(values.clone(), Some(1_000), None)?.collect::<Result<_, _>>()?;
 let read: Vec<MarketData> = MarketData::from_arrow_reader(batch_reader(batches[0].schema(), batches))?

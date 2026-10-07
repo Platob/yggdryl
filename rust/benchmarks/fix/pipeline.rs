@@ -1131,4 +1131,50 @@ pub fn line_benchmarks(criterion: &mut Criterion) {
         });
     }
     group.finish();
+    fill_benchmarks(criterion);
+}
+
+/// What a fill from the seeded instrument registry costs one element: by
+/// its stated ISIN, and - for an instrument the registry knows by no code
+/// the element states - by the short name it states in its currency, the
+/// exact tier's miss alone where the economic match is off and the scan of
+/// every instrument in that currency where it is on.
+fn fill_benchmarks(criterion: &mut Criterion) {
+    use yggdryl::{Ccy, IdType, IsinRegistry};
+    let identified = |kind: IdType, value: &str| {
+        let mut element = OrderEvent::at(1);
+        element
+            .insert_securityid(Identifier::new(IdKey::base(kind), value).expect("an identifier"))
+            .expect("a security identifier");
+        element
+    };
+    let by_isin = identified(IdType::Isin, "US0378331005");
+    let mut by_name = identified(IdType::Fisn, "APPLE INC./SH SH");
+    by_name.set_currency(Ccy::new("USD").expect("a currency"), true);
+    let exact = IsinRegistry::seeded();
+    let economic = IsinRegistry::seeded().with_economic_match(true);
+    assert!(exact.fill(&mut by_isin.clone()), "Apple by its ISIN");
+    assert!(!exact.fill(&mut by_name.clone()), "no exact key");
+    assert!(
+        economic.fill(&mut by_name.clone()),
+        "Apple by its short name"
+    );
+    let mut group = criterion.benchmark_group("fix/fill");
+    for (case, registry, element) in [
+        ("known_isin", &exact, &by_isin),
+        ("unknown_fisn_exact", &exact, &by_name),
+        ("unknown_fisn_economic", &economic, &by_name),
+    ] {
+        group.bench_function(case, |bencher| {
+            bencher.iter_batched(
+                || element.clone(),
+                |mut held| {
+                    black_box(registry).fill(&mut held);
+                    held
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+    group.finish();
 }

@@ -96,7 +96,7 @@
     ]
   },
   "kpi": {
-    "fields": 6272,
+    "fields": 6273,
     "groups": 581,
     "enumFields": 2030,
     "codesets": 739,
@@ -105,7 +105,7 @@
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 152,
+    "columns": 153,
     "memberships": 0,
     "dialects": 0,
     "datatypes": 29,
@@ -136,7 +136,7 @@
       ],
       [
         "ccy",
-        165
+        166
       ],
       [
         "binary",
@@ -79250,10 +79250,22 @@
       },
       {
         "dtype": {
+          "type": "ccy"
+        },
+        "metadata": {
+          "FIX:tag": "65018",
+          "description": "The currency the instrument originates in - the one it was issued in, which a depositary receipt or a share class listed in another currency trades apart from - where the message states it or the lifecycle's registry filled it; no FIX field states it. Null where neither did, the currency then being the origin an amount converts from; a row stating one is the row's word.",
+          "display": "Origin Currency"
+        },
+        "name": "origccy",
+        "nullable": true
+      },
+      {
+        "dtype": {
           "type": "isin"
         },
         "metadata": {
-          "FIX:tag": "65021",
+          "FIX:tag": "65022",
           "description": "The normalized ISIN the message identifies.",
           "display": "ISIN Code"
         },
@@ -79268,7 +79280,7 @@
           "FIX:names": [
             "instrument[exchange]"
           ],
-          "FIX:tag": "65022",
+          "FIX:tag": "65023",
           "description": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC or a Reuters mnemonic resolving to one, and XXXX for a currency pair naming none; a bridge's INSTRUMENT[EXCHANGE] states it.",
           "display": "MIC Code"
         },
@@ -79282,7 +79294,7 @@
           "unit": "nanosecond"
         },
         "metadata": {
-          "FIX:tag": "65023",
+          "FIX:tag": "65024",
           "FIX:transient": "false",
           "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know.",
           "display": "Execution Time"
@@ -79295,7 +79307,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65041",
+          "FIX:tag": "65042",
           "description": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived.",
           "display": "Message Plugin ID"
         },
@@ -79308,7 +79320,7 @@
         },
         "metadata": {
           "FIX:codeset": "msgpluginsidecodeset",
-          "FIX:tag": "65042",
+          "FIX:tag": "65043",
           "description": "The role of the FIX plugin whose session produced the message: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, and independent of Side(54).",
           "display": "Message Plugin Side"
         },
@@ -79320,7 +79332,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65043",
+          "FIX:tag": "65044",
           "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
           "display": "Message Originator"
         },
@@ -79332,7 +79344,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65044",
+          "FIX:tag": "65045",
           "description": "The message context a bridge handled the message in, as its own log names it.",
           "display": "Message Context ID"
         },
@@ -79344,7 +79356,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65045",
+          "FIX:tag": "65046",
           "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
           "display": "Message Session ID"
         },
@@ -79356,7 +79368,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65046",
+          "FIX:tag": "65047",
           "FIX:transient": "false",
           "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
           "display": "Message Session Event ID"
@@ -79369,7 +79381,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65047",
+          "FIX:tag": "65048",
           "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
           "display": "Conversation ID"
         },
@@ -79381,7 +79393,7 @@
           "type": "forex"
         },
         "metadata": {
-          "FIX:tag": "65048",
+          "FIX:tag": "65049",
           "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other replaces its type's answer, the base key.",
           "display": "Forex Code"
         },
@@ -79393,7 +79405,7 @@
           "type": "bbg"
         },
         "metadata": {
-          "FIX:tag": "65049",
+          "FIX:tag": "65050",
           "description": "The normalized Bloomberg identifier the message identifies.",
           "display": "Bloomberg Code"
         },
@@ -79405,7 +79417,7 @@
           "type": "figi"
         },
         "metadata": {
-          "FIX:tag": "65050",
+          "FIX:tag": "65051",
           "description": "The normalized FIGI the message identifies.",
           "display": "FIGI Code"
         },
@@ -79417,7 +79429,7 @@
           "type": "url"
         },
         "metadata": {
-          "FIX:tag": "65051",
+          "FIX:tag": "65052",
           "FIX:transient": "false",
           "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
           "display": "Source URL"
@@ -225272,8 +225284,8 @@
           "type": "map"
         },
         "metadata": {
-          "FIX:counter": "65036",
-          "FIX:tag": "65036",
+          "FIX:counter": "65037",
+          "FIX:tag": "65037",
           "description": "What a message stated that is no field and no identifier map holds: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order; a key an identifier map holds with its value - a bridge's TECH.CLIENTID, its PARENTORDERID - rides fixentries under 0:key as it arrived instead.",
           "display": "Metadata"
         },
@@ -278669,6 +278681,13 @@
         "x": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent."
       },
       {
+        "c": "origccy",
+        "t": 65018,
+        "n": "Origin Currency",
+        "y": "ccy",
+        "x": "The currency the instrument originates in - the one it was issued in, which a depositary receipt or a share class listed in another currency trades apart from - where the message states it or the lifecycle's registry filled it; no FIX field states it. Null where neither did, the currency then being the origin an amount converts from; a row stating one is the row's word."
+      },
+      {
         "c": "quantity",
         "t": 53,
         "n": "Quantity",
@@ -278684,14 +278703,14 @@
       },
       {
         "c": "hiddenqty",
-        "t": 65018,
+        "t": 65019,
         "n": "Hidden Quantity",
         "y": "decimal",
         "x": "The part of the quantity an iceberg keeps from the market: the quantity past DisplayQty, else past MaxFloor, where it shows less than all of it. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "unit",
-        "t": 65019,
+        "t": 65020,
         "n": "Unit",
         "y": "unit",
         "x": "The unit the quantity is counted in: UnitOfMeasure, the empty unit where none is stated. Derived from the message's fields; a row stating one is the row's word."
@@ -278705,14 +278724,14 @@
       },
       {
         "c": "securityids",
-        "t": 65020,
+        "t": 65021,
         "n": "Security IDs",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
         "x": "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key, the keyed aliases a bridge states - ISINCODE, OMS_RICCODE, SEDOL_CODE - and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent, and a keyed alias under 0:key. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "isincode",
-        "t": 65021,
+        "t": 65022,
         "n": "ISIN Code",
         "y": "isin",
         "x": "The normalized ISIN the message identifies."
@@ -278726,14 +278745,14 @@
       },
       {
         "c": "miccode",
-        "t": 65022,
+        "t": 65023,
         "n": "MIC Code",
         "y": "mic",
         "x": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC or a Reuters mnemonic resolving to one, and XXXX for a currency pair naming none; a bridge's INSTRUMENT[EXCHANGE] states it."
       },
       {
         "c": "execunix",
-        "t": 65023,
+        "t": 65024,
         "n": "Execution Time",
         "y": "datetime64(ns,\"UTC\")",
         "x": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know."
@@ -278782,28 +278801,28 @@
       },
       {
         "c": "prevpx",
-        "t": 65024,
+        "t": 65025,
         "n": "Previous Price",
         "y": "decimal",
         "x": "The price the step before the message settled on: PrevClosePx, the one its lifecycle moved from once followed. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "prevqty",
-        "t": 65025,
+        "t": 65026,
         "n": "Previous Quantity",
         "y": "decimal",
         "x": "The quantity the step before the message settled on, which only a lifecycle states. Derived; a row stating one is the row's word."
       },
       {
         "c": "spotrate",
-        "t": 65026,
+        "t": 65027,
         "n": "Spot Rate",
         "y": "decimal",
         "x": "The spot part of an FX forward price: LastSpotRate. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "forwardpoints",
-        "t": 65027,
+        "t": 65028,
         "n": "Forward Points",
         "y": "decimal",
         "x": "The forward points of an FX forward price: LastForwardPoints. Derived from the message's fields; a row stating one is the row's word."
@@ -278817,70 +278836,70 @@
       },
       {
         "c": "bidqty",
-        "t": 65028,
+        "t": 65029,
         "n": "Bid Quantity",
         "y": "decimal",
         "x": "The quantity bid: BidSize. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "bidccy",
-        "t": 65029,
+        "t": 65030,
         "n": "Bid Currency",
         "y": "ccy",
         "x": "The currency the bid is stated in: a bridge's bid currency, else the message's own where it states a bid. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "askpx",
-        "t": 65030,
+        "t": 65031,
         "n": "Ask Price",
         "y": "decimal",
         "x": "The ask price: OfferPx. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "askqty",
-        "t": 65031,
+        "t": 65032,
         "n": "Ask Quantity",
         "y": "decimal",
         "x": "The quantity offered: OfferSize. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "askccy",
-        "t": 65032,
+        "t": 65033,
         "n": "Ask Currency",
         "y": "ccy",
         "x": "The currency the ask is stated in: a bridge's ask currency, else the message's own where it states an ask. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "fxrates",
-        "t": 65033,
+        "t": 65034,
         "n": "FX Rates",
         "y": "map(field(\"entries\",struct(field(\"key\",ccy,nullable=false,metadata={}),field(\"value\",decimal,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
         "x": "The FX rates the message states, target currency to the rate an amount is divided by, which no FIX field fills. Derived; a row stating one is the row's word."
       },
       {
         "c": "ticker",
-        "t": 65034,
+        "t": 65035,
         "n": "Ticker",
         "y": "utf8",
         "x": "The ticker the instrument goes by: Symbol, trimmed. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "strikepx",
-        "t": 65035,
+        "t": 65036,
         "n": "Strike Price",
         "y": "decimal",
         "x": "The strike price of the option the message identifies: StrikePrice, the one its chain names for the same instrument once followed. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "metadata",
-        "t": 65036,
+        "t": 65037,
         "n": "Metadata",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
         "x": "What a message stated that is no field and no identifier map holds: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order; a key an identifier map holds with its value - a bridge's TECH.CLIENTID, its PARENTORDERID - rides fixentries under 0:key as it arrived instead."
       },
       {
         "c": "ordqty",
-        "t": 65037,
+        "t": 65038,
         "n": "Order Quantity",
         "y": "decimal",
         "x": "The quantity the operation ordered: OrderQty; working, CumQty plus LeavesQty where it states none. Derived from the message's fields; a row stating one is the row's word."
@@ -278894,21 +278913,21 @@
       },
       {
         "c": "tradable",
-        "t": 65038,
+        "t": 65039,
         "n": "Tradable",
         "y": "boolean",
         "x": "Whether the instrument can trade: SecurityTradingStatus, else TradingSessionStatus or SecurityStatus. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "identifiers",
-        "t": 65039,
+        "t": 65040,
         "n": "Identifiers",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
         "x": "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap, the parties that name one, and the keys no dictionary resolved whose names spell one - a bridge's PARENTORDERID, its firm.x.ParentOrderID - which ride fixentries under 0:key. Derived from the message's fields; a set a row states keeps its own and takes what it lacks."
       },
       {
         "c": "partyids",
-        "t": 65040,
+        "t": 65041,
         "n": "Party IDs",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
         "x": "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, Account under AcctIDSource, and the keys no dictionary resolved whose names spell a party - a bridge's OMS_UserID, its TECH.CLIENTID - which ride fixentries under 0:key. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks."
@@ -279020,49 +279039,49 @@
       },
       {
         "c": "msgpluginid",
-        "t": 65041,
+        "t": 65042,
         "n": "Message Plugin ID",
         "y": "utf8",
         "x": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived."
       },
       {
         "c": "msgpluginside",
-        "t": 65042,
+        "t": 65043,
         "n": "Message Plugin Side",
         "y": "pluginside",
         "x": "The role of the FIX plugin whose session produced the message: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, and independent of Side(54)."
       },
       {
         "c": "msgoriginator",
-        "t": 65043,
+        "t": 65044,
         "n": "Message Originator",
         "y": "utf8",
         "x": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content."
       },
       {
         "c": "msgctxid",
-        "t": 65044,
+        "t": 65045,
         "n": "Message Context ID",
         "y": "utf8",
         "x": "The message context a bridge handled the message in, as its own log names it."
       },
       {
         "c": "msgsessionid",
-        "t": 65045,
+        "t": 65046,
         "n": "Message Session ID",
         "y": "utf8",
         "x": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself."
       },
       {
         "c": "msgsesseventid",
-        "t": 65046,
+        "t": 65047,
         "n": "Message Session Event ID",
         "y": "utf8",
         "x": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on."
       },
       {
         "c": "conversationid",
-        "t": 65047,
+        "t": 65048,
         "n": "Conversation ID",
         "y": "utf8",
         "x": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content."
@@ -279076,21 +279095,21 @@
       },
       {
         "c": "forexcode",
-        "t": 65048,
+        "t": 65049,
         "n": "Forex Code",
         "y": "forex",
         "x": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other replaces its type's answer, the base key."
       },
       {
         "c": "bloombergcode",
-        "t": 65049,
+        "t": 65050,
         "n": "Bloomberg Code",
         "y": "bbg",
         "x": "The normalized Bloomberg identifier the message identifies."
       },
       {
         "c": "figicode",
-        "t": 65050,
+        "t": 65051,
         "n": "FIGI Code",
         "y": "figi",
         "x": "The normalized FIGI the message identifies."
@@ -279790,6 +279809,7 @@
         "price": "10.5",
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": "100",
         "displayqty": null,
         "hiddenqty": null,
@@ -280120,6 +280140,7 @@
         "price": null,
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": "0",
         "displayqty": null,
         "hiddenqty": null,
@@ -280533,6 +280554,7 @@
         "price": "41.25",
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": "50",
         "displayqty": null,
         "hiddenqty": null,
@@ -283471,6 +283493,7 @@
         "price": null,
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": null,
         "displayqty": null,
         "hiddenqty": null,
@@ -283775,6 +283798,7 @@
         "price": null,
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": null,
         "displayqty": null,
         "hiddenqty": null,
@@ -284013,6 +284037,7 @@
         "price": null,
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": null,
         "displayqty": null,
         "hiddenqty": null,
@@ -284184,6 +284209,7 @@
         "price": null,
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": null,
         "displayqty": null,
         "hiddenqty": null,
@@ -284385,6 +284411,7 @@
         "price": null,
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": null,
         "displayqty": null,
         "hiddenqty": null,
@@ -284650,6 +284677,7 @@
         "price": "10.75",
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": null,
         "displayqty": null,
         "hiddenqty": null,
@@ -284955,6 +284983,7 @@
         "price": "10.5",
         "stoppx": null,
         "currency": "USD",
+        "origccy": null,
         "quantity": "100",
         "displayqty": null,
         "hiddenqty": null,
@@ -285246,6 +285275,7 @@
         "price": null,
         "stoppx": null,
         "currency": "USD",
+        "origccy": null,
         "quantity": "100",
         "displayqty": null,
         "hiddenqty": null,
@@ -285631,6 +285661,7 @@
         "price": null,
         "stoppx": null,
         "currency": "GBP",
+        "origccy": null,
         "quantity": null,
         "displayqty": null,
         "hiddenqty": null,
@@ -285945,6 +285976,7 @@
         "price": "41.25",
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": null,
         "displayqty": null,
         "hiddenqty": null,
@@ -286171,6 +286203,7 @@
         "price": null,
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": "100",
         "displayqty": null,
         "hiddenqty": null,
@@ -286386,6 +286419,7 @@
         "price": null,
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": "100",
         "displayqty": null,
         "hiddenqty": null,
@@ -286592,6 +286626,7 @@
         "price": null,
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": null,
         "displayqty": null,
         "hiddenqty": null,
@@ -286809,6 +286844,7 @@
         "price": null,
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": null,
         "displayqty": null,
         "hiddenqty": null,
@@ -287041,6 +287077,7 @@
         "price": "10.5",
         "stoppx": null,
         "currency": "XXX",
+        "origccy": null,
         "quantity": "100",
         "displayqty": null,
         "hiddenqty": null,

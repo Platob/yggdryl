@@ -2828,6 +2828,28 @@ isin_registry_shared: yggdryl.IsinRegistry | None = isin_registry_codec.isin_reg
 assert isin_registry_merged and isin_registry_row is not None and isin_registry_bound == 8
 assert isin_registry_loaded == 1 and isin_registry_shared == isin_registry and len(isin_registry) == 1
 assert isin_registry_rows == len(isin_registry_listings) == 1 and isin_registry_listing is None
+isin_registry_by_code: dict[str, Any] | None = isin_registry_seeded.get_by_code("cusip", "037833100", "XNAS")
+isin_registry_lookup_codes: tuple[str, ...] = yggdryl.IsinRegistry.LOOKUP_CODES
+isin_registry_threshold: float = isin_registry.economic_threshold
+isin_registry.set_economic_threshold(yggdryl.IsinRegistry.DEFAULT_ECONOMIC_THRESHOLD)
+isin_registry_economic: bool = isin_registry.is_economic_match
+isin_registry.set_economic_match(False)
+isin_registry_resolution: yggdryl.Resolution = isin_registry_seeded.resolve(
+    yggdryl.graph.Order(securityids=[identifier_security])
+)
+isin_registry_resolved_tier: str | None = isin_registry_resolution.tier
+isin_registry_resolved_kind: str | None = isin_registry_resolution.kind
+isin_registry_resolved_entry: dict[str, Any] | None = isin_registry_resolution.entry
+isin_registry_resolved_why: str | None = isin_registry_resolution.unmatched
+isin_registry_resolved_isins: list[str] | None = isin_registry_resolution.isins
+isin_registry_resolved_best: float | None = isin_registry_resolution.best
+isin_registry_origccy: yggdryl.Scalar | None = graph_root_order.origccy
+isin_registry_origin_currency: yggdryl.Scalar = graph_root_order.origin_currency
+assert isin_registry_by_code is not None and "cusip" in isin_registry_lookup_codes and not isin_registry_economic
+assert isin_registry_resolution.matched and isin_registry_resolved_tier == "isin" and isin_registry_resolved_why is None
+assert isin_registry_resolved_entry is not None and isin_registry_resolved_isins is None and isin_registry_resolved_best is None
+assert isin_registry_resolved_kind is None and yggdryl.Resolution is yggdryl.isin_registry.Resolution
+assert isin_registry_threshold == 0.85 and isin_registry_origccy is None and isin_registry_origin_currency.as_py() == "XXX"
 assert isin_registry_removed == [] and isin_registry_removed_listing is None
 eusipa: yggdryl.Eusipa = yggdryl.Eusipa(2300)
 eusipa_text: yggdryl.Eusipa = yggdryl.Eusipa("1260")

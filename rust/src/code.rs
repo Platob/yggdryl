@@ -174,6 +174,55 @@ macro_rules! code_value {
                 Self::$leaf(value)
             }
         }
+
+        #[doc = concat!(
+            "Reads a `", stringify!($leaf), "` as its `new` does: `str::parse` is that door."
+        )]
+        #[doc = $crate::code::code_parse_example!($leaf)]
+        impl ::std::str::FromStr for $leaf {
+            type Err = $crate::Error;
+
+            fn from_str(value: &str) -> ::std::result::Result<Self, Self::Err> {
+                <$leaf>::new(value)
+            }
+        }
+
+        /// Borrows the validated code, as `as_str` does.
+        impl AsRef<str> for $leaf {
+            fn as_ref(&self) -> &str {
+                <$leaf>::as_str(self)
+            }
+        }
+    };
+}
+
+/// The example a code's `FromStr` carries: the currency's alone, so one
+/// page shows the two conversions every code answers and the doctest runs
+/// once rather than once per code.
+macro_rules! code_parse_example {
+    (Ccy) => {
+        r#"
+
+```
+use yggdryl::Ccy;
+
+# fn main() -> yggdryl::Result<()> {
+let usd: Ccy = "USD".parse()?;
+assert_eq!(usd, Ccy::new("USD")?);
+assert_eq!(AsRef::<str>::as_ref(&usd), "USD");
+// The width the code fixes refuses the same text `new` refuses.
+assert!("TOOLONGCCY".parse::<Ccy>().is_err());
+// Any code reads where text is asked for.
+fn spelled(code: impl AsRef<str>) -> usize {
+    code.as_ref().len()
+}
+assert_eq!(spelled(usd), 3);
+# Ok(())
+# }
+```"#
+    };
+    ($other:ident) => {
+        ""
     };
 }
 
@@ -341,6 +390,7 @@ pub(crate) fn code_refusal(dtype: &DataType) -> Error {
 }
 
 pub(crate) use code_leaf;
+pub(crate) use code_parse_example;
 pub(crate) use code_value;
 
 /// Whether `text` is one of the spellings that state no value.

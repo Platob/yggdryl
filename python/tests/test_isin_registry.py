@@ -8,20 +8,28 @@ from __future__ import annotations
 import copy
 import datetime
 import logging
+import math
 import os
 import pathlib
 import pickle
+import re
 
 import pyarrow as pa
 import pytest
 
-from yggdryl import Eusipa, IOResult, IsinRegistry
+from yggdryl import Eusipa, Identifier, IOResult, IsinRegistry, graph
 from yggdryl.holder import LocalFile
-from yggdryl.fix import FixCodec, FixRegistry
+from yggdryl.fix import FixCodec, FixMsg, FixRegistry
+from yggdryl.isin_registry import Resolution
 
 SEED = pathlib.Path(__file__).resolve().parents[2] / "config" / "fix"
 HOLCIM = "CH0012214059"
 APPLE = "US0378331005"
+NOVARTIS = "CH0012005267"
+DIAGEO = "GB0002374006"
+SAP = "DE0007164600"
+HSBC = "GB0005405286"
+MICROSOFT = "US5949181045"
 
 
 @pytest.fixture(scope="module")
@@ -43,10 +51,11 @@ def test_a_registry_learns_a_message_and_fills_a_later_one_named_by_its_ticker(c
     assert registry.is_dirty
     row = registry.get(HOLCIM)
     assert row is not None
-    # The two stamps are the message's instant, which the undated line takes
-    # from the clock: present, and left out of the facts compared.
-    assert row["updunix"] is not None and row["lastunix"] is not None
-    assert {key: value for key, value in row.items() if value is not None and key not in ("updunix", "lastunix")} == {
+    # The three stamps are the message's instant, which the undated line
+    # takes from the clock: present, and left out of the facts compared.
+    stamps = ("updunix", "firstunix", "lastunix")
+    assert all(row[stamp] is not None for stamp in stamps)
+    assert {key: value for key, value in row.items() if value is not None and key not in stamps} == {
         "cficode": "ESVUFR",
         "currency": "CHF",
         "isin": HOLCIM,
@@ -70,9 +79,11 @@ def test_a_registry_learns_a_message_and_fills_a_later_one_named_by_its_ticker(c
     assert not registry.fill(later), "nothing left to fill"
     wire = later.into_bytes(ord("|"))
     assert b"461=" not in wire and b"15=" not in wire and b"48=" not in wire, "never the wire"
-    # A RIC is a listing code, never a key.
+    # A RIC is a listing code and, with no ISIN stated, one of the lookup
+    # codes (`IsinRegistry.LOOKUP_CODES`, since local codes became keys): it
+    # names the one instrument holding it, its ISIN derived.
     by_ric = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=C|22=5|48=HOLN.S|10=0|")
-    assert not registry.fill(by_ric) and by_ric.isincode is None
+    assert registry.fill(by_ric) and by_ric.isincode == HOLCIM and by_ric.securityids.is_derived("isin")
 
 
 def test_one_isin_on_two_markets_is_two_listings_and_every_learn_moves_lastunix(codec: FixCodec) -> None:
@@ -232,7 +243,8 @@ def test_a_store_written_before_the_product_category_loads_it_null(tmp_path: pat
     registry = IsinRegistry()
     registry.merge({"isin": HOLCIM, "ric": "HOLN.S"})
     older = registry.into_arrow_reader().read_all().drop_columns(["eusipacode"])
-    assert len(older.schema.names) == 43, "the forty-four columns but the product category"
+    # Forty-six columns since `firstunix` and `origccy` joined the row.
+    assert len(older.schema.names) == 45, "the forty-six columns but the product category"
     target = tmp_path / "instruments.arrow"
     LocalFile(target).overwrite_arrow_reader(pa.RecordBatchReader.from_batches(older.schema, older.to_batches()))
     loaded = IsinRegistry.from_url(target)
@@ -347,9 +359,10 @@ def test_a_registry_round_trips_through_a_holder(tmp_path: pathlib.Path) -> None
     table = snapshot.read_all()
     assert table.num_rows == 2, "the stream is a snapshot a later write does not move"
     assert table.column("isin").to_pylist() == [HOLCIM, APPLE], "in ISIN order"
-    assert table.schema.names[:12] == [
+    assert table.schema.names[:14] == [
         "isin",
         "updunix",
+        "firstunix",
         "lastunix",
         "cficode",
         "countrycode",
@@ -360,8 +373,11 @@ def test_a_registry_round_trips_through_a_holder(tmp_path: pathlib.Path) -> None
         "ticker",
         "fisn",
         "currency",
+        "origccy",
     ]
-    assert len(table.schema.names) == 44, "the latest instant an event stated the ISIN is the forty-fourth column"
+    # Forty-six: the earliest instant an event stated the ISIN joined after
+    # `updunix`, and the origin currency after the trading currency.
+    assert len(table.schema.names) == 46
     target = tmp_path / "instruments.arrow"
     LocalFile(target).overwrite_arrow_reader(IsinRegistry.from_arrow_reader(table).into_arrow_reader())
     loaded = IsinRegistry.from_url(target)
@@ -532,3 +548,221 @@ def test_a_registry_is_equal_only_to_itself_and_never_hashed_or_pickled() -> Non
         pickle.dumps(registry)
     with pytest.raises(TypeError):
         copy.deepcopy(registry)
+
+
+def test_the_first_learn_sets_firstunix_and_only_an_earlier_event_moves_it(codec: FixCodec) -> None:
+    utc = datetime.timezone.utc
+    early, first, later = (datetime.datetime(2026, 1, 2, hour, tzinfo=utc) for hour in (8, 9, 11))
+
+    def met(instant: datetime.datetime) -> object:
+        line = b"8=FIX.4.4|35=D|11=A|22=4|48=" + HOLCIM.encode() + b"|10=0|"
+        return FixCodec(codec.registry, default_sending_time=instant).parse_fix_line(line)
+
+    registry = IsinRegistry()
+    assert registry.field().index_of("firstunix") == registry.field().index_of("updunix") + 1
+    assert registry.field().index_of("lastunix") == registry.field().index_of("updunix") + 2
+    assert registry.learn(met(first))
+    row = registry.get(HOLCIM)
+    assert row is not None and (row["updunix"], row["firstunix"], row["lastunix"]) == (first, first, first)
+    assert registry.learn(met(later)), "a later event moves lastunix"
+    row = registry.get(HOLCIM)
+    assert row is not None and (row["firstunix"], row["lastunix"]) == (first, later), "not firstunix"
+    assert registry.learn(met(early)), "replayed out of order"
+    row = registry.get(HOLCIM)
+    assert row is not None
+    assert (row["updunix"], row["firstunix"], row["lastunix"]) == (first, early, later), "updunix moves with a fact alone"
+    clean = IsinRegistry.from_arrow_reader(registry.into_arrow_reader())
+    assert not clean.learn(met(first)) and not clean.is_dirty, "between the two: nothing moves"
+    # A golden file states it under each of its spellings, the earlier kept.
+    for name in ("firstunix", "FirstSeen", "first_seen_unix"):
+        golden = pa.table(
+            {
+                "ISIN": [HOLCIM, HOLCIM],
+                name: pa.array([later, first], pa.timestamp("ns", tz="UTC")),
+            }
+        )
+        loaded = IsinRegistry.from_arrow_reader(golden).get(HOLCIM)
+        assert loaded is not None and loaded["firstunix"] == first, name
+
+
+def _registry(*rows: dict[str, object]) -> IsinRegistry:
+    registry = IsinRegistry()
+    for row in rows:
+        assert registry.merge(row)
+    return registry
+
+
+def _order(*codes: tuple[str, str], **facts: object) -> graph.OrderEvent:
+    return graph.OrderEvent(1, securityids=[Identifier(kind, value) for kind, value in codes], **facts)
+
+
+def test_the_cascade_takes_the_isin_then_a_code_then_the_ticker_on_its_market() -> None:
+    registry = _registry(
+        {"isin": APPLE, "miccode": "XNAS", "ticker": "AAPL"},
+        {"isin": DIAGEO, "miccode": "XLON", "ticker": "DGE"},
+        {"isin": SAP, "miccode": "XETR"},
+    )
+    # The ISIN wins over a CUSIP naming Apple.
+    by_isin = registry.resolve(_order(("isin", SAP), ("cusip", "037833100")))
+    assert isinstance(by_isin, Resolution) and by_isin and by_isin.matched
+    assert (by_isin.tier, by_isin.kind, by_isin.derived, by_isin.listing) == ("isin", None, False, True)
+    assert by_isin.entry is not None and by_isin.entry["isin"] == SAP
+    assert (by_isin.unmatched, by_isin.isins, by_isin.stated, by_isin.similarity) == (None, None, None, None)
+    # A CUSIP wins over a ticker naming Diageo; Apple is not listed on XLON.
+    by_code = registry.resolve(_order(("cusip", "037833100"), ticker="DGE", miccode="XLON"))
+    assert (by_code.tier, by_code.kind, by_code.derived, by_code.listing) == ("code", "cusip", True, False)
+    assert by_code.entry is not None and by_code.entry["isin"] == APPLE
+    # The ticker on its market last.
+    by_ticker = registry.resolve(_order(ticker="DGE", miccode="XLON"))
+    assert (by_ticker.tier, by_ticker.derived, by_ticker.listing) == ("symbology", True, True)
+    assert by_ticker.entry is not None and by_ticker.entry["isin"] == DIAGEO
+    # A FIX message and a `MarketData` resolve as any leaf does.
+    assert registry.resolve(graph.MarketData(_order(("isin", SAP)))) == by_isin
+    with pytest.raises(TypeError, match="market leaf"):
+        registry.resolve("US0378331005")
+    # The public lookups.
+    apple = registry.get_by_code("cusip", "037833100")
+    assert apple is not None and apple["isin"] == APPLE
+    diageo = registry.get_by_code("SEDOL", "0237400", "XLON")
+    assert diageo is not None and diageo["isin"] == DIAGEO, "the SEDOL its ISIN embeds, any spelling of its type"
+    assert registry.get_by_code("cusip", "not a cusip") is None
+    assert registry.get_by_code("isoccy", "USD") is None, "no lookup code"
+    assert "isoccy" not in IsinRegistry.LOOKUP_CODES and IsinRegistry.LOOKUP_CODES[:3] == ("cusip", "sedol", "wkn")
+    with pytest.raises(ValueError):
+        registry.get_by_code("cusip", "037833100", "TOOLONG")
+    # Nothing stated: no key; a ticker nobody lists: no candidate.
+    nothing = registry.resolve(_order())
+    assert not nothing and nothing.unmatched == "NoKey"
+    assert (nothing.entry, nothing.tier, nothing.derived, nothing.listing) == (None, None, None, None)
+    assert registry.resolve(_order(ticker="ZZZZ")).unmatched == "NoCandidate"
+
+
+def test_an_unknown_stated_isin_ends_the_cascade_and_fills_nothing(codec: FixCodec) -> None:
+    registry = _registry({"isin": APPLE, "miccode": "XNAS"})
+    unknown = registry.resolve(_order(("isin", NOVARTIS), ("cusip", "037833100")))
+    assert (unknown.matched, unknown.unmatched, unknown.stated) == (False, "UnknownIsin", NOVARTIS)
+    assert unknown.isin is None and unknown.held is None
+    message = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=A|22=4|48=" + NOVARTIS.encode() + b"|10=0|")
+    assert registry.resolve(message) == unknown
+    assert not registry.fill(message) and message.isincode == NOVARTIS and message.cficode is None
+
+
+def test_a_code_two_instruments_hold_is_ambiguous_and_stops_the_cascade() -> None:
+    registry = _registry(
+        {"isin": APPLE, "common": "C-1"},
+        {"isin": SAP, "common": "C-1"},
+        {"isin": DIAGEO, "miccode": "XLON", "ticker": "DGE"},
+    )
+    ambiguous = registry.resolve(_order(("common", "C-1"), ticker="DGE", miccode="XLON"))
+    assert (ambiguous.matched, ambiguous.unmatched, ambiguous.tier, ambiguous.kind) == (False, "Ambiguous", "code", "common")
+    assert ambiguous.isins == [SAP, APPLE], "in ISIN order"
+    assert registry.get_by_code("common", "C-1") is None
+    # One instrument on two markets is one answer, never an ambiguity.
+    hsbc = IsinRegistry.seeded().resolve(_order(("sedol", "0540528")))
+    assert (hsbc.tier, hsbc.kind, hsbc.derived) == ("code", "sedol", True)
+    assert hsbc.entry is not None and hsbc.entry["isin"] == HSBC
+
+
+def test_the_economic_tier_matches_a_similar_short_name_in_the_same_currency() -> None:
+    def named(name: str, **facts: object) -> graph.OrderEvent:
+        return _order(("fisn", name), **{"currency": "USD", **facts})
+
+    def registry_of(name: str, cfi: str) -> IsinRegistry:
+        return _registry({"isin": APPLE, "miccode": "XNAS", "fisn": name, "cficode": cfi})
+
+    similar = registry_of("APPLE INC./SH", "ESVUFR").resolve(named("APPLE INC/SH"))
+    assert (similar.tier, similar.derived, similar.listing) == ("economic", True, True)
+    assert similar.similarity is not None and math.isclose(similar.similarity, 12 / 13)
+    assert similar.entry is not None and similar.entry["isin"] == APPLE
+
+    plain = registry_of("APPLE INC/SH", "ESVUFR")
+    below = plain.resolve(named("APPLE INC/SH USD"))
+    assert (below.unmatched, below.best, below.isin) == ("BelowThreshold", 0.75, APPLE)
+
+    conflict = registry_of("APPLE INC/SH", "DBFTFR").resolve(named("APPLE INC/SH", cficode="ESVUFR"))
+    assert (conflict.unmatched, conflict.stated, conflict.held, conflict.isin) == ("CfiConflict", "E", "D", APPLE)
+    assert plain.resolve(named("APPLE INC/SH", cficode="XXXXXX")).tier == "economic", "unclassified conflicts with nothing"
+    assert plain.resolve(named("APPLE INC/SH", currency="EUR")).unmatched == "NoCandidate", "another currency"
+
+    issued = _registry({"isin": APPLE, "miccode": "XNAS", "fisn": "APPLE INC/SH", "origccy": "USD"})
+    origin = issued.resolve(named("APPLE INC/SH", origccy="EUR"))
+    assert (origin.unmatched, origin.stated, origin.held, origin.isin) == ("CurrencyConflict", "EUR", "USD", APPLE)
+
+    twins = registry_of("APPLE INC/SH", "ESVUFR")
+    assert twins.merge({"isin": MICROSOFT, "miccode": "XNYS", "fisn": "APPLE INC/SH"})
+    tied = twins.resolve(named("APPLE INC/SH"))
+    assert (tied.unmatched, tied.tier, tied.similarity, tied.isins) == ("Ambiguous", "economic", 1.0, [APPLE, MICROSOFT])
+
+    assert plain.resolve(_order(ticker="ZZZZ", currency="USD")).unmatched == "NoCandidate", "no short name"
+    assert plain.resolve(named("APPLE INC/SH", currency="XXX")).unmatched == "NoCandidate", "XXX states no currency"
+
+
+def test_a_fill_takes_the_economic_match_only_where_it_is_enabled(codec: FixCodec) -> None:
+    registry = _registry({"isin": APPLE, "miccode": "XNAS", "fisn": "APPLE INC./SH"})
+    assert not registry.is_economic_match
+    assert registry.economic_threshold == IsinRegistry.DEFAULT_ECONOMIC_THRESHOLD == 0.85
+
+    def named() -> FixMsg:
+        return codec.parse_fix_line(b"8=FIX.4.4|35=D|11=A|2737=APPLE INC/SH|15=USD|10=0|")
+
+    off = named()
+    assert registry.resolve(off).tier == "economic", "resolve weighs it always"
+    assert not registry.fill(off) and off.isincode is None, "a judgement no fill takes unasked"
+    registry.set_economic_match(True)
+    assert registry.is_economic_match
+    on = named()
+    assert registry.fill(on) and on.isincode == APPLE and on.securityids.is_derived("isin")
+    registry.set_economic_threshold(0.95)
+    assert not registry.fill(named()), "a stricter threshold refuses what it took"
+    for refused in (0.0, 1.5, math.nan, -0.5):
+        spelled = "NaN" if math.isnan(refused) else f"{refused:g}"
+        with pytest.raises(ValueError, match=re.escape(spelled)):
+            registry.set_economic_threshold(refused)
+    assert registry.economic_threshold == 0.95, "a refusal moves nothing"
+    registry.set_economic_threshold(1.0)
+    registry.clear()
+    assert (registry.economic_threshold, registry.is_economic_match) == (1.0, True), "the registry's, never the store's"
+
+
+def test_the_origin_currency_is_stated_or_filled_and_reads_the_currency_where_unheld(codec: FixCodec) -> None:
+    euro = graph.OrderEvent(1, currency="EUR")
+    assert euro.origccy is None and euro.origin_currency.as_py() == "EUR", "defaulted by currency, never stored"
+    issued = graph.OrderEvent(1, currency="EUR", origccy="USD")
+    assert issued.origccy is not None and issued.origccy.as_py() == "USD"
+    assert (issued.origin_currency.as_py(), issued.currency.as_py()) == ("USD", "EUR")
+    assert graph.MarketData(issued).origin_currency.as_py() == "USD"
+    assert graph.OrderEvent(1).origin_currency.as_py() == "XXX"
+    # A row's cell is the held value and null otherwise.
+    rows = graph.MarketData.arrow_reader([euro, issued]).read_all()
+    assert rows.column("origccy").to_pylist() == [None, "USD"]
+
+    # The registry's stated origin currency fills an element stating none,
+    # and never one that does; nothing derives it into a column.
+    registry = _registry({"isin": APPLE, "miccode": "XNAS", "origccy": "USD"}, {"isin": SAP, "miccode": "XETR"})
+    assert IsinRegistry.field().index_of("origccy") == IsinRegistry.field().index_of("currency") + 1
+    sap = registry.get(SAP)
+    assert sap is not None and sap["currency"] == "EUR" and sap["origccy"] is None
+    line = b"8=FIX.4.4|35=D|11=A|22=4|48=" + APPLE.encode() + b"|15=EUR|10=0|"
+    unstated = codec.parse_fix_line(line)
+    assert unstated.origccy is None and unstated.origin_currency.as_py() == "EUR"
+    assert registry.fill(unstated)
+    assert unstated.origccy is not None and unstated.origccy.as_py() == "USD"
+    assert unstated.origin_currency.as_py() == "USD" and unstated.currency.as_py() == "EUR"
+    own = codec.parse_fix_line(line)
+    own.set("origccy", "CHF")
+    registry.fill(own)
+    assert own.origccy is not None and own.origccy.as_py() == "CHF", "a statement stands"
+
+
+def test_a_resolution_is_equal_by_value_and_never_hashed() -> None:
+    registry = _registry({"isin": APPLE, "miccode": "XNAS"})
+    first, second = (registry.resolve(_order(("isin", APPLE))) for _ in range(2))
+    assert first == second and first != registry.resolve(_order())
+    assert repr(first) == "Resolution(matched=True, isin='US0378331005', tier='isin', derived=False, listing=True)"
+    assert repr(registry.resolve(_order(("isin", NOVARTIS)))) == (
+        "Resolution(matched=False, unmatched='UnknownIsin', stated='CH0012005267')"
+    )
+    with pytest.raises(TypeError):
+        hash(first)
+    with pytest.raises(TypeError):
+        Resolution()  # type: ignore[call-arg]

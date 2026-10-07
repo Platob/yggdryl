@@ -83,7 +83,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::graph::iterator::order;
 use crate::graph::{Element, Event, EventIterator, Market};
-use crate::isin_registry::{IsinTable, warn_full};
+use crate::isin_registry::{EconomicMemo, IsinTable, warn_full};
 use crate::logging::warning::warned;
 use crate::{Error, IsinRegistry, Result, Scalar, Side, State, Uuid};
 
@@ -706,7 +706,8 @@ enum Codes {
 }
 
 impl Codes {
-    /// Learns what `message` states about its instrument - its country of
+    /// Learns what `message` states about its instrument - its origin
+    /// currency ([`FixMsg::stated_origccy`]), its country of
     /// issue beside it, where it states one its ISIN does not already say
     /// ([`FixMsg::stated_country`]), the instrument it is written on
     /// ([`FixMsg::stated_underlying_isin`]) and the EUSIPA product category
@@ -716,26 +717,40 @@ impl Codes {
     /// ([`FixMsg::fill_instrument`]): the identifiers, the ticker, the CFI
     /// code and the currency, settled no further than the market facts
     /// they imply, since a parsed message is already clean and nothing a
-    /// fill writes reaches its identity. The one lock is held across the
+    /// fill writes reaches its identity - an economic match only where the
+    /// registry states it ([`IsinRegistry::is_economic_match`]), answered
+    /// once per short name and currency the walk meets while the
+    /// instruments stand still (`memo`). The one lock is held across the
     /// learn and the fill, and the warning a full registry owes is raised
     /// once it is let go of: the host a warning reaches may be waiting on
     /// that very lock.
-    fn learn_and_fill(&mut self, message: &mut FixMsg) {
+    fn learn_and_fill(&mut self, message: &mut FixMsg, memo: &mut EconomicMemo) {
         let country = message.stated_country();
         let underlying = message.stated_underlying_isin();
         let product = message.stated_eusipa();
+        let origccy = message.stated_origccy();
         let full = match self {
             Self::Walk(registry) => {
-                let learned =
-                    registry.learn_stating(message, country.as_ref(), underlying.as_ref(), product);
-                message.fill_instrument(registry.as_table());
+                let learned = registry.learn_stating(
+                    message,
+                    origccy.as_ref(),
+                    country.as_ref(),
+                    underlying.as_ref(),
+                    product,
+                );
+                message.fill_instrument(registry.as_table(), memo);
                 learned.full
             }
             Self::Shared(registry) => {
                 let mut registry = registry.lock().unwrap_or_else(PoisonError::into_inner);
-                let learned =
-                    registry.learn_stating(message, country.as_ref(), underlying.as_ref(), product);
-                message.fill_instrument(registry.as_table());
+                let learned = registry.learn_stating(
+                    message,
+                    origccy.as_ref(),
+                    country.as_ref(),
+                    underlying.as_ref(),
+                    product,
+                );
+                message.fill_instrument(registry.as_table(), memo);
                 learned.full
             }
         };
@@ -750,6 +765,8 @@ impl Codes {
 struct Prepared<I> {
     source: Intake<I>,
     codes: Codes,
+    /// The economic matches this walk answered.
+    memo: EconomicMemo,
     /// At most one key per distinct delivery in this already collected finite
     /// capture. A late retransmission must remain a repeat after any number of
     /// intervening deliveries; retaining only a recent window loses that fact.
@@ -764,6 +781,7 @@ impl<I> Prepared<I> {
         Self {
             source,
             codes: registry.map_or_else(|| Codes::Walk(IsinRegistry::new()), Codes::Shared),
+            memo: EconomicMemo::default(),
             seen: HashSet::with_capacity(capacity),
         }
     }
@@ -778,7 +796,7 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Prepared<I> {
             if !self.seen.insert(delivery_key(&message)) {
                 continue;
             }
-            self.codes.learn_and_fill(&mut message);
+            self.codes.learn_and_fill(&mut message, &mut self.memo);
             return Some(message.into());
         }
     }

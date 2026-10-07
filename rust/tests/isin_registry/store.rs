@@ -471,7 +471,7 @@ fn an_iceberg_table_store_is_replaced_in_one_snapshot_and_emptied_as_one() {
 
 /// The registry's own row partitions an Iceberg table by the ISIN's country
 /// prefix: a table created from `IsinEntry::field()` holds a one-field spec,
-/// Iceberg's truncation of `isin` to two characters, over the forty-four
+/// Iceberg's truncation of `isin` to two characters, over the forty-five
 /// columns and no other; every commit replaces every partition in one
 /// snapshot - every listing row of it, the listings of one ISIN in one -
 /// the live data files' partition values exactly the distinct prefixes of
@@ -490,7 +490,7 @@ fn an_iceberg_table_created_from_the_registrys_row_is_partitioned_by_the_country
         .into_scheme_compat(&yggdryl::Scheme::ICEBERG)
         .unwrap();
     yggdryl::iceberg::assign_field_ids(&mut schema, 1).unwrap();
-    assert_eq!(schema.field_len(), 44, "no partition column");
+    assert_eq!(schema.field_len(), 46, "no partition column");
     let spec = PartitionSpec::from_schema(FIRST_PARTITION_ID, &schema).unwrap();
     assert_eq!(spec.fields.len(), 1);
     assert_eq!(spec.fields[0].transform, Transform::Truncate(2));
@@ -585,7 +585,7 @@ fn an_iceberg_table_created_from_the_registrys_row_is_partitioned_by_the_country
 }
 
 /// The rows `registry` holds as a store written before the product
-/// category was a column: its snapshot less `eusipacode`, forty-three
+/// category was a column: its snapshot less `eusipacode`, forty-four
 /// columns.
 fn without_category(registry: &IsinRegistry) -> yggdryl::arrow::BatchReader {
     without(registry, "eusipacode")
@@ -609,7 +609,7 @@ fn without(registry: &IsinRegistry, column: &str) -> yggdryl::arrow::BatchReader
 /// every overwrite of a leaf does, so the category is kept by the registry
 /// and not by such a store until the store is laid out afresh - an emptied
 /// leaf, or a new one - when a commit writes the row as it is now,
-/// forty-four columns.
+/// forty-five columns.
 #[test]
 fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row() {
     let (_, folder) = counted_folder("isin");
@@ -623,7 +623,7 @@ fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row
     handle
         .write_arrow_reader(without_category(&older), IOMode::Overwrite, &options)
         .unwrap();
-    assert_eq!(columns(&leaf()), 43);
+    assert_eq!(columns(&leaf()), 45);
 
     let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
     let row = registry.get(HOLCIM).unwrap();
@@ -635,7 +635,7 @@ fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row
         .merge(entry(HOLCIM, &[]).with_eusipacode(category))
         .unwrap();
     assert_eq!(registry.commit().unwrap().written_rows, 1);
-    assert_eq!(columns(&leaf()), 43, "the leaf's own row");
+    assert_eq!(columns(&leaf()), 45, "the leaf's own row");
     let back = IsinRegistry::from_holder(leaf()).unwrap();
     let row = back.get(HOLCIM).unwrap();
     assert_eq!(row.get(&IdType::Ric), Some("HOLN.S"));
@@ -647,7 +647,7 @@ fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row
     let mut moved = IsinRegistry::from_holder(fresh()).unwrap();
     moved.merge(registry.get(HOLCIM).unwrap().clone()).unwrap();
     moved.commit().unwrap();
-    assert_eq!(columns(&fresh()), 44);
+    assert_eq!(columns(&fresh()), 46);
     let back = IsinRegistry::from_holder(fresh()).unwrap();
     assert_eq!(back.get(HOLCIM).unwrap().eusipacode(), category);
 }
@@ -677,7 +677,7 @@ fn a_leaf_store_without_the_short_name_loads_it_null_and_keeps_its_own_row() {
     handle
         .write_arrow_reader(without(&older, "fisn"), IOMode::Overwrite, &options)
         .unwrap();
-    assert_eq!(columns(&leaf()), 43);
+    assert_eq!(columns(&leaf()), 45);
 
     let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
     let row = registry.get(APPLE).unwrap();
@@ -689,7 +689,7 @@ fn a_leaf_store_without_the_short_name_loads_it_null_and_keeps_its_own_row() {
         .merge(entry(APPLE, &[]).with_fisn(name.clone()))
         .unwrap();
     assert_eq!(registry.commit().unwrap().written_rows, 1);
-    assert_eq!(columns(&leaf()), 43, "the leaf's own row");
+    assert_eq!(columns(&leaf()), 45, "the leaf's own row");
     let back = IsinRegistry::from_holder(leaf()).unwrap();
     assert_eq!(back.get(APPLE).unwrap().get(&IdType::Common), Some("C-1"));
     assert_eq!(back.get(APPLE).unwrap().fisn(), None);
@@ -699,7 +699,7 @@ fn a_leaf_store_without_the_short_name_loads_it_null_and_keeps_its_own_row() {
     let mut moved = IsinRegistry::from_holder(fresh()).unwrap();
     moved.merge(registry.get(APPLE).unwrap().clone()).unwrap();
     moved.commit().unwrap();
-    assert_eq!(columns(&fresh()), 44);
+    assert_eq!(columns(&fresh()), 46);
     let back = IsinRegistry::from_holder(fresh()).unwrap();
     assert_eq!(back.get(APPLE).unwrap().fisn(), name.as_ref());
 }
@@ -724,7 +724,7 @@ fn a_leaf_store_without_lastunix_loads_it_null_and_keeps_its_own_row() {
     handle
         .write_arrow_reader(without(&older, "lastunix"), IOMode::Overwrite, &options)
         .unwrap();
-    assert_eq!(columns(&leaf()), 43);
+    assert_eq!(columns(&leaf()), 45);
 
     let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
     let row = registry.get(APPLE).unwrap();
@@ -740,7 +740,7 @@ fn a_leaf_store_without_lastunix_loads_it_null_and_keeps_its_own_row() {
     assert!(registry.learn(&met), "met: the instant alone moves");
     assert!(registry.is_dirty());
     assert_eq!(registry.commit().unwrap().written_rows, 1);
-    assert_eq!(columns(&leaf()), 43, "the leaf's own row");
+    assert_eq!(columns(&leaf()), 45, "the leaf's own row");
     let back = IsinRegistry::from_holder(leaf()).unwrap();
     assert_eq!(back.get(APPLE).unwrap().get(&IdType::Common), Some("C-1"));
     assert_eq!(back.get(APPLE).unwrap().lastunix(), None);
@@ -750,9 +750,63 @@ fn a_leaf_store_without_lastunix_loads_it_null_and_keeps_its_own_row() {
     let mut moved = IsinRegistry::from_holder(fresh()).unwrap();
     moved.merge(registry.get(APPLE).unwrap().clone()).unwrap();
     moved.commit().unwrap();
-    assert_eq!(columns(&fresh()), 44);
+    assert_eq!(columns(&fresh()), 46);
     let back = IsinRegistry::from_holder(fresh()).unwrap();
     assert_eq!(back.get(APPLE).unwrap().lastunix(), Some(20));
+}
+
+/// A leaf written before `firstunix` was a column loads it null and keeps
+/// its own row through a commit - a learn earlier than any the registry
+/// met moves `firstunix` alone and still dirties the registry - the instant
+/// kept by the registry alone; a store laid out afresh stores it, and it
+/// reads back.
+#[test]
+fn a_leaf_store_without_firstunix_loads_it_null_and_keeps_its_own_row() {
+    use yggdryl::graph::OrderEvent;
+    use yggdryl::{IdKey, Identifier};
+
+    let (_, folder) = counted_folder("isin-firstunix");
+    let leaf = || folder.child_by_path("instruments.arrows").unwrap();
+    let mut older = IsinRegistry::new();
+    older
+        .merge(
+            entry(APPLE, &[(IdType::Common, "C-1")])
+                .with_firstunix(Some(30))
+                .with_lastunix(Some(30)),
+        )
+        .unwrap();
+    let mut handle = leaf();
+    let options = handle.record_options().unwrap();
+    handle
+        .write_arrow_reader(without(&older, "firstunix"), IOMode::Overwrite, &options)
+        .unwrap();
+    assert_eq!(columns(&leaf()), 45);
+
+    let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
+    let row = registry.get(APPLE).unwrap();
+    assert_eq!((row.firstunix(), row.lastunix()), (None, Some(30)));
+    let mut met = OrderEvent::at(10);
+    yggdryl::graph::Market::insert_securityid(
+        &mut met,
+        Identifier::new(IdKey::base(IdType::Isin), APPLE).unwrap(),
+    )
+    .unwrap();
+    assert!(registry.learn(&met), "met earlier: firstunix alone moves");
+    assert!(registry.is_dirty());
+    assert_eq!(registry.commit().unwrap().written_rows, 1);
+    assert_eq!(columns(&leaf()), 45, "the leaf's own row");
+    let back = IsinRegistry::from_holder(leaf()).unwrap();
+    assert_eq!(back.get(APPLE).unwrap().firstunix(), None);
+    assert_eq!(registry.get(APPLE).unwrap().firstunix(), Some(10));
+
+    let fresh = || folder.child_by_path("fresh.arrows").unwrap();
+    let mut moved = IsinRegistry::from_holder(fresh()).unwrap();
+    moved.merge(registry.get(APPLE).unwrap().clone()).unwrap();
+    moved.commit().unwrap();
+    assert_eq!(columns(&fresh()), 46);
+    let back = IsinRegistry::from_holder(fresh()).unwrap();
+    let row = back.get(APPLE).unwrap();
+    assert_eq!((row.firstunix(), row.lastunix()), (Some(10), Some(30)));
 }
 
 /// Holcim listed on XSWX and on XLON, and Apple on XNAS: three listing rows
@@ -892,7 +946,7 @@ fn an_iceberg_store_without_the_product_category_loads_it_null_and_keeps_its_sch
             .unwrap()
             .fields()
             .len(),
-        43
+        45
     );
 }
 

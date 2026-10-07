@@ -356,10 +356,10 @@ fn the_events_field_is_the_flat_marketdata_row_behind_its_stamp() {
     assert!(!field.is_nullable());
     let names: Vec<&str> = field.fields().iter().map(|child| child.name()).collect();
     assert_eq!(&names[..3], ["bookunix", "role", "curruuid"]);
-    // The stamp, the six element, nine event, thirty-five market and five
+    // The stamp, the six element, nine event, thirty-six market and five
     // operation columns, then the book controls `bookscope`, `bookaction`
     // and `bookposition`.
-    assert_eq!(names.len(), 2 + 6 + 9 + 35 + 5 + 3);
+    assert_eq!(names.len(), 2 + 6 + 9 + 36 + 5 + 3);
     assert!(!names.iter().any(|name| {
         [
             "alive",
@@ -615,7 +615,7 @@ fn an_iceberg_table_a_capture_landed_in_answers_every_route() {
     let _ = std::fs::remove_dir_all(&path);
     IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         MarketData::field()
             .unwrap()
             .into_scheme_compat(&Scheme::ICEBERG)
@@ -1499,8 +1499,9 @@ fn events_list_every_entry_delta_and_event_of_the_books_in_range() {
         .collect();
     assert!(names.contains("curruuid") && names.contains("prevuuid") && names.contains("state"));
     assert!(!names.contains("alive") && !names.contains("bidlimits"));
-    // StrikePx adds one market fact to the previous 59-column event schema.
-    assert_eq!(names.len(), 60);
+    // The origin currency, `origccy`, adds one market fact to the previous
+    // 60-column event schema, as StrikePx added one to the 59 before it.
+    assert_eq!(names.len(), 61);
     // A UUID is its canonical text.
     assert_eq!(text(&rows[0], "curruuid").len(), 36);
 
@@ -1652,8 +1653,10 @@ fn the_audit_downloads_as_csv_in_each_coding_and_reads_back() {
         let field = readback.read_arrow_field(&options).unwrap();
         let names: Vec<&str> = field.fields().iter().map(|child| child.name()).collect();
         assert_eq!(&names[..3], ["bookunix", "role", "curruuid"]);
-        // StrikePx adds one market fact to the previous 59-column audit schema.
-        assert_eq!(names.len(), 60);
+        // The origin currency, `origccy`, adds one market fact to the
+        // previous 60-column audit schema, as StrikePx added one to the 59
+        // before it.
+        assert_eq!(names.len(), 61);
     }
 
     let mut bids = range().to_vec();

@@ -4815,3 +4815,79 @@ fn a_book_row_refuses_an_item_in_the_wrong_list() {
         "{error}"
     );
 }
+
+/// `operation` stating it was read from the element `source`.
+fn sourced(mut operation: MarketData, source: u128) -> MarketData {
+    operation.set_srcuuids(vec![Uuid::from_v8(source)]);
+    operation
+}
+
+/// The sources each of `entries` states, in their order.
+fn sources_of<'a>(entries: impl IntoIterator<Item = &'a MarketData>) -> Vec<Vec<Uuid>> {
+    entries
+        .into_iter()
+        .map(|entry| entry.get_srcuuids().to_vec())
+        .collect()
+}
+
+/// A book states no sources, whatever the events it holds state: a walk
+/// over sourced events emits books stating none - the very books, by
+/// identity, a walk over the same events stating none emits, since a
+/// source feeds no digest - while every event it holds keeps its own, the
+/// one the walk was given. A caller's sources are kept nowhere, and a book
+/// rebuilt by `with_previous`, or merged with another statement of it,
+/// states none either.
+#[test]
+fn a_book_states_no_sources_whatever_the_events_it_holds_state() {
+    let inputs = || {
+        vec![
+            operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
+            operation("quote", "IBM", "Q-1", 1, "Sell", "101", 1, "New"),
+            operation("execution", "IBM", "E-1", 2, "Buy", "100", 1, "Filled"),
+        ]
+    };
+    let from = |inputs: Vec<MarketData>| {
+        inputs
+            .into_iter()
+            .zip(70..)
+            .map(|(input, source)| sourced(input, source))
+            .collect::<Vec<_>>()
+    };
+    let books = books_of(from(inputs()));
+    let bare = books_of(inputs());
+    assert_eq!(books.len(), 2);
+    for (book, unsourced) in books.iter().zip(&bare) {
+        assert!(book.get_srcuuids().is_empty());
+        assert_eq!(book.get_curruuid(), unsourced.get_curruuid());
+    }
+    let source = |payload: u128| vec![Uuid::from_v8(payload)];
+    assert_eq!(sources_of(books[0].delta()), [source(70), source(71)]);
+    assert_eq!(sources_of(books[1].events()), [source(72)]);
+
+    let mut stated = books[0].clone();
+    stated.set_srcuuids(source(9));
+    assert!(stated.get_srcuuids().is_empty());
+    assert_eq!(stated, books[0]);
+
+    let origin = BookEvent::new(books[0].get_currunix(), books[0].get_crosscode());
+    let rebuilt = books[0].clone().with_previous(&origin).expect("a rebuild");
+    assert!(rebuilt.is_complete() && rebuilt.get_srcuuids().is_empty());
+    assert_eq!(sources_of(rebuilt.alive()), [source(70), source(71)]);
+
+    // Two statements of one book, the later recording the reference: the
+    // merge unions their delta and states no source.
+    let statement = |entries: Vec<MarketData>, recdunix: i64| {
+        let mut book = BookEvent::new(1, "IBM");
+        book.add_operations(entries).unwrap();
+        book.set_recdunix(Some(recdunix));
+        book.finalize();
+        book
+    };
+    let left = statement(from(inputs()).into_iter().take(1).collect(), 10);
+    let right = statement(from(inputs()).into_iter().take(2).collect(), 20);
+    let merged = left
+        .merge_with(&right)
+        .expect("the right statement adds a quote");
+    assert!(merged.get_srcuuids().is_empty());
+    assert_eq!(sources_of(merged.delta()), [source(70), source(71)]);
+}

@@ -496,6 +496,7 @@ fn a_create_states_its_format_version_or_takes_the_lowest_the_schema_needs() {
     let plain = desk
         .create_table("plain", &micros, &Properties::new())
         .expect("a table");
+    // v2: the create default for a schema that needs no v3 type.
     assert_eq!(version(&plain), FormatVersion::V2);
     let stated = desk
         .create_table(

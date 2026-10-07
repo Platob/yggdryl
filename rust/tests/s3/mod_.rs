@@ -383,6 +383,7 @@ mod accounting {
             // then the document's `PUT` under `If-None-Match: *`, the claim of
             // version 1, one `GET` of its other spelling, `v1.gz`, which finds
             // no claim beside it, and the hint's `PUT`, written whole.
+            // v2: the sequence pins what a keyed merge costs, which v3 refuses.
             let (mut table, create) = cost(&store, || {
                 IcebergTable::create(root.clone(), FormatVersion::V2, schema.clone(), spec)
                     .expect("creates")
@@ -569,7 +570,7 @@ mod accounting {
             let root: S3Folder = crate::mod_::folder(&store, "lake/racing/");
             IcebergTable::create(
                 root.clone(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema(),
                 PartitionSpec::unpartitioned(),
             )
@@ -676,7 +677,7 @@ mod accounting {
             let root: S3Folder = crate::mod_::folder(&store, "lake/trades/");
             let schema = schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
-            let mut table = IcebergTable::create(root.clone(), FormatVersion::V2, schema, spec)
+            let mut table = IcebergTable::create(root.clone(), FormatVersion::V3, schema, spec)
                 .expect("creates");
             let version = table.metadata_version().unwrap();
             let stage = yggdryl::local::LocalFolder::temporary()
@@ -807,7 +808,7 @@ mod accounting {
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
             let mut table = IcebergTable::create(
                 root.clone(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema.clone(),
                 spec.clone(),
             )
@@ -832,7 +833,7 @@ mod accounting {
             assert_eq!(entries.len(), 1);
             assert!(entries[0].data_file.file_size_in_bytes > 0);
             entries[0].data_file.file_size_in_bytes = 0;
-            write_manifest(&mut manifest, FormatVersion::V2, &schema, &spec, &entries)
+            write_manifest(&mut manifest, FormatVersion::V3, &schema, &spec, &entries)
                 .expect("the manifest rewrites");
 
             let opened = IcebergTable::open(root.clone()).expect("opens");

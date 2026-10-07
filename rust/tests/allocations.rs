@@ -1132,6 +1132,67 @@ fn a_service_rebuild_allocates_per_delta_not_per_level() {
     );
 }
 
+/// A complete book's row writes no source of an entry alive on it - the row
+/// of the delta that applied the entry writes them - so a book whose alive
+/// entries were each read from an element of their own lays out in as many
+/// bytes as one whose entries state none, at 8 levels a side and at 1,024:
+/// the row drops sixteen bytes per source per alive entry. Laying them out
+/// allocates nothing for them either: the one allocation a sourced entry
+/// costs is the write check's copy of it, which finalizes the copy to prove
+/// the entry canonical and copies its sources with it.
+#[test]
+fn a_book_row_lays_out_alike_whether_its_alive_entries_state_sources() {
+    let laid_out = |levels: usize, sourced: bool| {
+        let mut entries = allocation_level_entries(levels);
+        if sourced {
+            for (entry, source) in entries.iter_mut().zip(1_u128..) {
+                entry.set_srcuuids(vec![Uuid::from_v8(source)]);
+            }
+        }
+        let update = allocation_level_entry("Buy", 0, 0, 2, "Replaced");
+        let books = BookIterator::new(entries.into_iter().chain([update]), 0)
+            .unwrap()
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(books.len(), 2);
+        let origin = BookEvent::new(books[0].get_currunix(), books[0].get_crosscode());
+        let first = books[0].clone().with_previous(&origin).unwrap();
+        let book = books[1].clone().with_previous(&first).unwrap();
+        assert_eq!(book.alive().count(), levels * 16);
+        assert_eq!(book.delta().len(), 1);
+        let stating = book
+            .alive()
+            .filter(|entry| !entry.get_srcuuids().is_empty())
+            .count();
+        let value = MarketData::from(book);
+        let (allocations, batch) = counted(|| {
+            let mut rows = MarketData::arrow_reader(vec![value], None, None).unwrap();
+            rows.next().unwrap().unwrap()
+        });
+        (yggdryl::arrow::memory_size(&batch), allocations, stating)
+    };
+    for levels in [8, 1_024] {
+        let (bare, bare_allocations, none) = laid_out(levels, false);
+        let (sourced, sourced_allocations, stating) = laid_out(levels, true);
+        println!(
+            "book row at {levels} levels a side: {bare} bytes and {bare_allocations} allocations with no source, {sourced} bytes and {sourced_allocations} allocations with {stating} alive entries stating one"
+        );
+        assert_eq!(
+            (none, stating),
+            (0, levels * 16 - 1),
+            "the update states none"
+        );
+        assert_eq!(
+            sourced, bare,
+            "a book row of {levels} levels a side took {sourced} bytes with sourced alive entries but {bare} without"
+        );
+        assert!(
+            sourced_allocations <= bare_allocations + stating,
+            "a book row of {levels} levels a side allocated {sourced_allocations} times with {stating} sourced alive entries but {bare_allocations} without"
+        );
+    }
+}
+
 /// A book's readings by kind - its resting orders, the orders and quotes
 /// among its delta, and the executions among its events - borrow the entries
 /// the book holds: nothing is allocated, at 8 entries or 1,024, the resting
@@ -7969,9 +8030,23 @@ struct StageCosts {
 /// out - its values, its validity and the array around them - to 1507, 1487
 /// and 1525, and each batch by the one array it gathers more, to 211; no
 /// other stage moved.
-/// Main also adds the required `msgpluginside` column (65042), whose
+/// Main also adds the required `msgpluginside` column (65043), whose
 /// five landing allocations combine with strike's seven: 1512, 1492 and
 /// 1530. Both added arrays make each batch 212; no per-row stage moved.
+///
+/// The origin currency then came to be a market fact, `origccy` (65018), a
+/// column of the fixed row's shared prefix none of these messages states:
+/// each landing rose by the eleven a nullable `ccy` column holding a null
+/// costs to lay out - eleven over a lone column's landing, where a
+/// nullable decimal holding a null costs the seven above - to 1523, 1503
+/// and 1541, and each batch by the one array it gathers more, to 213. And
+/// the instrument registry gained its lookup-code index beside its ticker
+/// index: each walk's first learn takes the index's own `Arc` off the
+/// static empty one every registry shares - one more on every walk - and
+/// its own table where the row it learns holds a code a lookup reads. The
+/// bridge row's and a frame's Swiss ISINs embed a Valor, so their walks
+/// rose by two to 12; the packed frame's `EZ` ISIN embeds none, and its
+/// walk rose by one to 11. No other stage moved.
 ///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
@@ -7981,10 +8056,10 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 543,
             into_row: 88,
-            landing: 1512,
-            batch: 212,
+            landing: 1523,
+            batch: 213,
             digest: 1,
-            lifecycle: 10,
+            lifecycle: 12,
         },
     ),
     (
@@ -7993,10 +8068,10 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 212,
             into_row: 64,
-            landing: 1492,
-            batch: 212,
+            landing: 1503,
+            batch: 213,
             digest: 1,
-            lifecycle: 10,
+            lifecycle: 12,
         },
     ),
     (
@@ -8005,10 +8080,10 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 1016,
             into_row: 250,
-            landing: 1530,
-            batch: 212,
+            landing: 1541,
+            batch: 213,
             digest: 1,
-            lifecycle: 10,
+            lifecycle: 11,
         },
     ),
 ];
@@ -8824,20 +8899,128 @@ fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
     }
 }
 
+/// `resolve` by a stated ISIN, by a lookup code and by the ticker on its
+/// market borrows the row it answers and allocates nothing, whatever the
+/// registry holds: the code index is keyed by the type and the code, read
+/// through a borrowed key.
+#[test]
+fn an_isin_registry_resolves_by_isin_code_and_ticker_without_allocating() {
+    use yggdryl::graph::{Market, OrderEvent};
+    use yggdryl::{Mic, Resolution};
+    for size in [64, 4_096] {
+        let registry = isin_registry_of(size);
+        let isin = numbered_isin("FR", 7);
+        let by_isin = {
+            let mut element = OrderEvent::at(2);
+            element
+                .insert_securityid(Identifier::new(IdKey::base(IdType::Isin), &isin).unwrap())
+                .unwrap();
+            element
+        };
+        let by_code = {
+            let mut element = OrderEvent::at(2);
+            element
+                .insert_securityid(Identifier::new(IdKey::base(IdType::Common), "C-7").unwrap())
+                .unwrap();
+            element
+        };
+        let by_ticker = {
+            let mut element = OrderEvent::at(2);
+            element.set_ticker(Some(SmolStr::new("T7")), true);
+            element.set_miccode(Some(Mic::new("XPAR").unwrap()), true);
+            element
+        };
+        for (how, element) in [
+            ("ISIN", &by_isin),
+            ("code", &by_code),
+            ("ticker", &by_ticker),
+        ] {
+            assert!(matches!(
+                registry.resolve(element),
+                Resolution::Matched { entry, .. } if entry.isin().as_str() == isin
+            ));
+            free(&format!("resolving by {how} at {size} instruments"), || {
+                assert!(matches!(
+                    registry.resolve(black_box(element)),
+                    Resolution::Matched { .. }
+                ));
+            });
+        }
+    }
+}
+
+/// The economic scan scores each instrument of the element's currency
+/// once, borrowing its short name, so a match allocates nothing at 64
+/// instruments as at 4,096; two equal bests allocate the one `Vec` of
+/// their ISINs the answer holds, and nothing per instrument.
+#[test]
+fn an_isin_registry_economic_scan_allocates_nothing_per_instrument() {
+    use yggdryl::graph::{Market, OrderEvent};
+    use yggdryl::{Ccy, Fisn, Isin, IsinEntry, IsinRegistry, Mic, Resolution, Unmatched};
+    for size in [64, 4_096] {
+        let mut registry = IsinRegistry::new();
+        for number in 0..size {
+            registry
+                .merge(
+                    IsinEntry::new(Isin::new(numbered_isin("FR", number)).unwrap())
+                        .with_miccode(Some(Mic::new("XPAR").unwrap()))
+                        .with_fisn(Some(Fisn::new(format!("ISSUER {number}/SH")).unwrap())),
+                )
+                .unwrap();
+        }
+        let named = |name: &str| {
+            let mut element = OrderEvent::at(2);
+            element
+                .insert_securityid(Identifier::new(IdKey::base(IdType::Fisn), name).unwrap())
+                .unwrap();
+            element.set_currency(Ccy::new("EUR").unwrap(), true);
+            element
+        };
+        let one = named("ISSUER 7/SH");
+        free(&format!("an economic match at {size} instruments"), || {
+            assert!(matches!(
+                registry.resolve(black_box(&one)),
+                Resolution::Matched { .. }
+            ));
+        });
+        registry
+            .merge(
+                IsinEntry::new(Isin::new(numbered_isin("BE", 1)).unwrap())
+                    .with_miccode(Some(Mic::new("XPAR").unwrap()))
+                    .with_fisn(Some(Fisn::new("ISSUER 7/SH").unwrap())),
+            )
+            .unwrap();
+        let (allocations, ambiguous) = counted(|| {
+            matches!(
+                registry.resolve(black_box(&one)),
+                Resolution::Unmatched(Unmatched::Ambiguous { .. })
+            )
+        });
+        assert!(ambiguous);
+        assert_eq!(
+            allocations, 1,
+            "two equal bests at {size} instruments: the one Vec"
+        );
+    }
+}
+
 /// A snapshot stream shares the table rather than copying it: opening one
 /// costs the same eleven allocations at 64 instruments as at 4,096 - the
 /// reader, its schema and its field, and the two root declarations the
 /// schema carries, `PARTITION:by` and `SORT:by` - its two keys, `isin` and
 /// `miccode`, one text as its one key was - six more than the five before
-/// the row declared them - and draining it lays each row out once, eight
-/// allocations a row - the named row, a B-tree of its forty-four cells
-/// inserted in column order, which takes six leaf nodes behind one `Arc`
-/// as the forty-three before `lastunix`, the forty-two before `fisn` and
-/// the forty-one before `eusipacode` did, where the thirty-seven cells of
-/// the row before `countrycode`, `forexcode` and `currency` were added took
-/// five, and its canonical run - plus one doubling of the batch's row vector
-/// each time the rows double. The cursor that walks one instrument's
-/// listings holds its ISIN inline, so it allocates nothing a row.
+/// the row declared them - and draining it lays each row out once, one
+/// allocation a row - the row's run, its forty-six cells written where the
+/// run keeps them in column order, each code typed as its column holds it
+/// so the canonicalization answers the run untouched, and the short texts
+/// and codes held inline - plus one doubling of the batch's row vector each
+/// time the rows double. It was eight a row while the snapshot built the
+/// named row - a B-tree of the cells behind one `Arc` that canonicalized
+/// into the run per row - and nine from the forty-fifth column, `origccy`,
+/// on; the snapshot now yields the ordered row, which is what a row
+/// is, so the column count moves no allocation. The cursor that walks one
+/// instrument's listings holds its ISIN inline, so it allocates nothing a
+/// row.
 #[test]
 fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
     // The row's Arrow projection is built once per process, on first use.
@@ -8858,8 +9041,8 @@ fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
     for size in [64, 256] {
         assert_eq!(
             drain(2 * size) - drain(size),
-            8 * size + 1,
-            "{size} more rows cost other than eight a row"
+            size + 1,
+            "{size} more rows cost other than one a row"
         );
     }
 }
@@ -8867,15 +9050,19 @@ fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
 /// Reloading rows the registry already holds - a golden file read again -
 /// costs each batch the same whatever its rows: one cast plan for the
 /// stream, the landing per batch - one narrowing per column of the
-/// forty-four, one more than the forty-three before `lastunix` was added,
-/// two more than the forty-two before `fisn` was, three more than the
-/// forty-one before `eusipacode` was and four more than the forty before
-/// `underlyingisin` was, six more than the thirty-seven before
-/// `countrycode`, `forexcode` and `currency` were - and a code cell adopted
-/// as the landing proved it, so a row that moves nothing allocates nothing.
-/// The 43rd column, `fisn`, landed one more buffer per batch, and the 44th,
-/// `lastunix`, one more again: one column, one allocation, at both corpus
-/// sizes - a row that states no `lastunix` folds no instant.
+/// forty-six, one more than the forty-five before `firstunix` was added,
+/// two more than the forty-four before `origccy` was,
+/// two more than the forty-three before `lastunix` was, three more than the
+/// forty-two before `fisn` was, four more than the forty-one before
+/// `eusipacode` was and five more than the forty before `underlyingisin`
+/// was, seven more than the thirty-seven before `countrycode`, `forexcode`
+/// and `currency` were - and a code cell adopted as the landing proved it,
+/// so a row that moves nothing allocates nothing. The 43rd column, `fisn`,
+/// landed one more buffer per batch, the 44th, `lastunix`, one more again,
+/// the 45th, `origccy`, one more again, and the 46th, `firstunix`, one
+/// more again: one column, one allocation, at both corpus sizes - a row
+/// that states no `lastunix` or `firstunix` folds no instant, and one that
+/// states no origin currency folds none.
 #[test]
 fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     let mut each_at = Vec::new();
@@ -8906,7 +9093,7 @@ fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     }
     assert_eq!(
         each_at,
-        [54, 54],
+        [56, 56],
         "a batch of 64 and of 512 known rows: a cost per row"
     );
 }
@@ -10601,11 +10788,11 @@ fn iceberg_quotes(
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("a spec");
     let folder = yggdryl::local::LocalFolder::new(&path).expect("a folder");
     let mut table = if sorted {
-        IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec)
+        IcebergTable::create(folder, FormatVersion::V3, schema.clone(), spec)
     } else {
         IcebergTable::create_sorted(
             folder,
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec,
             SortOrder::unsorted(),

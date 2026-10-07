@@ -160,6 +160,8 @@ fn a_table_written_here_is_left_for_an_external_reader() {
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("a partition spec");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).expect("a folder"),
+        // v2: the exchange's v2 leg, which `check_iceberg_interop.py` reads
+        // as format version 2, and its upsert is a keyed merge v3 refuses.
         FormatVersion::V2,
         schema,
         spec,
@@ -378,6 +380,7 @@ fn a_large_manifest_is_left_for_baseline_readers() {
         .collect();
     let mut handle =
         yggdryl::local::LocalFile::new(dir.join("manifest-10k.avro")).expect("a file handle");
+    // v2: the manifest `docs/media/avro.md`'s comparison table states and times.
     write_manifest(&mut handle, FormatVersion::V2, &schema, &spec, &entries)
         .expect("the baseline manifest writes");
     println!("iceberg-interop: wrote manifest-10k.avro");

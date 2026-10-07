@@ -20,6 +20,7 @@ fn v1_document() -> Scalar {
         .unwrap()
         .required_field("row");
     let mut metadata = TableMetadata::new(
+        // A v1 snapshot states its manifests directly: the reading pinned here.
         FormatVersion::V1,
         "file:///tmp/official",
         schema,
@@ -171,7 +172,7 @@ fn the_crates_own_transforms_cross_the_official_model_and_come_back() -> yggdryl
         ],
     };
     let mut metadata = TableMetadata::new(
-        FormatVersion::V2,
+        FormatVersion::V3,
         "file:///tmp/official-transforms",
         timestamp_schema(),
         spec,
@@ -295,7 +296,7 @@ fn a_reserved_bucket_count_is_refused_by_its_count_never_read_as_a_bridged_trans
         }],
     };
     let metadata = TableMetadata::new(
-        FormatVersion::V2,
+        FormatVersion::V3,
         "file:///tmp/official-bucket",
         timestamp_schema(),
         spec(Transform::Bucket(i32::MAX as u32)),
@@ -311,7 +312,7 @@ fn a_reserved_bucket_count_is_refused_by_its_count_never_read_as_a_bridged_trans
     // `quarter` and 4294967295 `week`; 2147483648 carries nothing.
     for count in [2_147_483_648_u32, 2_147_483_663, u32::MAX - 1, u32::MAX] {
         let built = TableMetadata::new(
-            FormatVersion::V2,
+            FormatVersion::V3,
             "file:///tmp/official-bucket",
             timestamp_schema(),
             spec(Transform::Bucket(count)),
@@ -376,7 +377,7 @@ fn the_official_crate_refuses_a_document_naming_the_crates_own_transforms() -> y
         (Transform::Quarter, "quarter"),
     ] {
         let metadata = TableMetadata::new(
-            FormatVersion::V2,
+            FormatVersion::V3,
             "file:///tmp/official-unbridged",
             timestamp_schema(),
             PartitionSpec {

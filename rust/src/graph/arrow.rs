@@ -2,7 +2,7 @@
 //! [`MarketData`] leaf is written in and read back from.
 //!
 //! A row is the six [`ElementColumn`]s and the nine [`EventColumn`]s, the
-//! thirty-five [`MarketColumn`]s - opening with `marketdatakind`, the
+//! thirty-six [`MarketColumn`]s - opening with `marketdatakind`, the
 //! [`MarketDataKind`] its leaf stands under - the five
 //! [`OperationColumn`]s, the book controls a market-data entry states -
 //! `bookscope`, `bookaction` and `bookposition`, which a book's delta
@@ -20,6 +20,11 @@
 //! is its own typed column; a leaf leaves null what it does not state. A
 //! nested operation row is `marketdatakind`, the event, market and
 //! operation columns and the three book controls, and nests nothing.
+//! A book states no `srcuuids`, and neither does an entry nested in its
+//! `alive`: that entry is the very one the `delta` of the book that applied
+//! it holds, whose row writes its sources, as a trade's `executions` and a
+//! book's `delta` and `events` do. Read back, either cell lands as none,
+//! whatever it holds.
 //!
 //! Written column by column from the typed leaves, and read back
 //! tolerantly: the reader's columns are resolved by name once per stream,
@@ -579,9 +584,10 @@ impl Column {
                 MarketColumn::Ticker => Storage::Text,
                 MarketColumn::ExecUnix => Storage::Clock,
                 MarketColumn::SecurityIds | MarketColumn::Metadata => Storage::Pairs,
-                MarketColumn::Currency | MarketColumn::BidCcy | MarketColumn::AskCcy => {
-                    Storage::Code(Code::Ccy)
-                }
+                MarketColumn::Currency
+                | MarketColumn::OrigCcy
+                | MarketColumn::BidCcy
+                | MarketColumn::AskCcy => Storage::Code(Code::Ccy),
                 MarketColumn::Unit => Storage::Code(Code::Unit),
                 MarketColumn::Side => Storage::Side,
                 MarketColumn::IsinCode => Storage::Code(Code::Isin),
@@ -754,6 +760,10 @@ struct Row<'a> {
     control: Option<&'a BookRef>,
     executions: Option<&'a [ExecutionEvent]>,
     book: Option<&'a BookEvent>,
+    /// Whether the row writes its sources: every row but an entry alive on
+    /// a book, the very entry the delta of the book that applied it holds,
+    /// whose row writes them.
+    sources: bool,
 }
 
 impl<'a> Row<'a> {
@@ -791,6 +801,14 @@ impl<'a> Row<'a> {
         Self::operation(MarketKind::ExecutionEvent, execution, execution.book())
     }
 
+    /// An entry alive on a book, as the book's row nests it: with no sources.
+    fn resting(entry: &'a MarketData) -> Self {
+        Self {
+            sources: false,
+            ..Self::of(entry)
+        }
+    }
+
     fn undated(
         kind: MarketKind,
         element: &'a dyn Element,
@@ -806,6 +824,7 @@ impl<'a> Row<'a> {
             control: None,
             executions: None,
             book: None,
+            sources: true,
         }
     }
 
@@ -835,7 +854,7 @@ impl<'a> Row<'a> {
         match (column, self.book, self.executions) {
             // A delta book states no alive entry.
             (Column::Alive, Some(book), _) if book.is_complete() => {
-                items.extend(book.alive().map(Self::of));
+                items.extend(book.alive().map(Self::resting));
             }
             (Column::Delta, Some(book), _) => items.extend(book.delta().map(Self::of)),
             // The executions and the snapshot controls, each the dated row it
@@ -880,11 +899,11 @@ impl<'a> Row<'a> {
         }
     }
 
-    /// The sources a row states; none where it names none.
+    /// The sources a row states; none where it names none or writes none.
     fn uuids(&self, column: Column) -> Option<&'a [Uuid]> {
         let element: &'a dyn Element = self.element;
         match column {
-            Column::Element(ElementColumn::SrcUuids) => {
+            Column::Element(ElementColumn::SrcUuids) if self.sources => {
                 Some(element.get_srcuuids()).filter(|uuids| !uuids.is_empty())
             }
             _ => None,
@@ -954,6 +973,11 @@ impl<'a> Row<'a> {
         match column {
             Column::Element(ElementColumn::CrossCode) => Some(element.get_crosscode()),
             Column::Market(MarketColumn::Currency) => Some(market.get_currency().as_str()),
+            // The origin held, null where none is: never the currency it
+            // defaults to at read, which a reader would take for a statement.
+            Column::Market(MarketColumn::OrigCcy) => Some(market.get_origccy())
+                .filter(|held| !held.is_none())
+                .map(Ccy::as_str),
             Column::Market(MarketColumn::BidCcy) => market.get_bidccy().map(Ccy::as_str),
             Column::Market(MarketColumn::AskCcy) => market.get_askccy().map(Ccy::as_str),
             Column::Market(MarketColumn::Unit) => Some(market.get_unit().as_str()),
@@ -2630,6 +2654,7 @@ impl Landed {
         element.finalize();
         claims.validate(&element, path)?;
         self.check_element(row, &element, path)?;
+        self.check_sources(row, &element, path)?;
         self.check_market(row, &element, path)?;
         self.check_operation(row, &element, path)?;
         self.check_metadata(
@@ -2679,6 +2704,7 @@ impl Landed {
     ) -> Result<()> {
         claims.validate(canonical, path)?;
         self.check_event(row, canonical, path)?;
+        self.check_sources(row, canonical, path)?;
         self.check_market(row, canonical, path)?;
         self.check_operation(row, canonical, path)?;
         self.check_metadata(
@@ -2734,6 +2760,7 @@ impl Landed {
     ) -> Result<SnapshotEvent> {
         claims.validate(&control, path)?;
         self.check_event(row, &control, path)?;
+        self.check_sources(row, &control, path)?;
         self.check_market(row, &control, path)?;
         self.check_metadata(row, &control, None, path)?;
         Ok(control)
@@ -2801,6 +2828,7 @@ impl Landed {
         )
         .map_err(|error| path.reroot(error))?;
         claims.validate(&book, path)?;
+        // A book states no sources: a cell stating some lands as none.
         self.check_event(row, &book, path)?;
         self.check_market(row, &book, path)?;
         self.check_metadata(row, &book, None, path)?;
@@ -3165,6 +3193,11 @@ impl Landed {
                             target.set_currency(held, true);
                         }
                     }
+                    MarketColumn::OrigCcy => {
+                        if let Some(held) = leaf.code(row, path, name, |text| Ccy::new(text))? {
+                            target.set_origccy(held, true);
+                        }
+                    }
                     MarketColumn::BidCcy => {
                         if let Some(held) = leaf.code(row, path, name, |text| Ccy::new(text))? {
                             target.set_bidccy(Some(held), true);
@@ -3251,7 +3284,8 @@ impl Landed {
     }
 
     /// Every element fact the row states but the identities, which the
-    /// claims hold, must be the one `canonical` settled on.
+    /// claims hold, and the sources ([`Self::check_sources`]), must be the
+    /// one `canonical` settled on.
     fn check_element<E: Element + ?Sized>(
         &self,
         row: usize,
@@ -3270,6 +3304,18 @@ impl Landed {
                 &code,
             ));
         }
+        Ok(())
+    }
+
+    /// The sources the row states must be the ones `canonical` holds: what
+    /// it read, in their canonical order. Never asked of a book, which
+    /// states none whatever its row holds.
+    fn check_sources<E: Element + ?Sized>(
+        &self,
+        row: usize,
+        canonical: &E,
+        path: &Path<'_>,
+    ) -> Result<()> {
         if let Some(uuids) = self
             .element_leaf(ElementColumn::SrcUuids)
             .and_then(|leaf| leaf.uuids(row))
@@ -3419,6 +3465,14 @@ impl Landed {
                         leaf,
                         row,
                         Some(canonical.get_currency()),
+                        |text| Ccy::new(text),
+                        path,
+                        name,
+                    )?,
+                    MarketColumn::OrigCcy => check_code(
+                        leaf,
+                        row,
+                        Some(canonical.get_origccy()).filter(|held| !held.is_none()),
                         |text| Ccy::new(text),
                         path,
                         name,
@@ -3809,13 +3863,15 @@ impl Operations {
         let Serie::Serie(list) = serie else {
             return Err(unlanded(column, Storage::Nested));
         };
+        let mut items = Landed::new(list.items().children(), &layouts.operation, layouts)?;
+        // An entry alive on a book states no sources there, whatever the
+        // cell holds: the row of the delta that applied it states them.
+        if column == Column::Alive {
+            items.element[position(&ElementColumn::ALL, &ElementColumn::SrcUuids)] = None;
+        }
         Ok(Self {
             list: Arc::clone(list),
-            items: Box::new(Landed::new(
-                list.items().children(),
-                &layouts.operation,
-                layouts,
-            )?),
+            items: Box::new(items),
         })
     }
 }

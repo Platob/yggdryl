@@ -1748,6 +1748,10 @@ impl SidesJournal {
 /// [`Self::best_price`], [`Self::best_quantity`], [`Self::spread`],
 /// [`Self::bbo_midpoint`], [`Self::median_quantity`], [`Self::is_crossed`],
 /// [`Self::is_locked`].
+///
+/// A book states no sources - [`Element::get_srcuuids`] answers none and
+/// [`Element::set_srcuuids`] keeps nothing: its provenance is the events it
+/// holds, each the very entry the walk was given, sources included.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BookEvent {
     event: MarketEventFacts,
@@ -2087,6 +2091,8 @@ impl BookEvent {
         }
         // A book is not sided: its cross code stays as given.
         event.set_marketdatakind(crate::MarketDataKind::Book);
+        // A book states no sources, whatever its row stated.
+        event.set_srcuuids(Vec::new());
         if alive.is_none()
             && let Some(snapshot) = event.get_snapunix()
         {
@@ -3475,13 +3481,15 @@ impl Element for BookEvent {
         self.event.set_crosshashcode(crosshashcode);
     }
 
+    /// None: a book states no sources. Its provenance is the events it
+    /// holds, each stored in a row of its own with its sources, so a book
+    /// read back from its row states none either.
     fn get_srcuuids(&self) -> &[Uuid] {
-        self.event.get_srcuuids()
+        &[]
     }
 
-    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
-        self.event.set_srcuuids(sources);
-    }
+    /// Keeps nothing: a book states no sources ([`Self::get_srcuuids`]).
+    fn set_srcuuids(&mut self, _sources: Vec<Uuid>) {}
 
     fn is_after(&self, other: &Self) -> bool {
         self.get_currunix() > other.get_currunix()

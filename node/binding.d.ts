@@ -78,6 +78,7 @@ export {
   type HttpRecorded,
   type HttpServerOptions,
   type HttpStats,
+  type IsinResolution,
   type JoinOptionsInput,
   type MetadataEntry,
   type ObjectOptions,

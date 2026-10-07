@@ -291,10 +291,10 @@ from yggdryl import MarketDataKind, graph
 order = graph.OrderEvent(1_700_000_000_000_000_000, crosscode="O-1001")
 values = [graph.Order(), order, graph.BookEvent(1_700_000_001_000_000_000, "AAPL")]
 
-# 64 columns: 6 element, 9 event, 35 market (marketdatakind first), 5 operation,
+# 65 columns: 6 element, 9 event, 36 market (marketdatakind first), 5 operation,
 # the book controls bookscope, bookaction and bookposition, 6 nested.
 field = graph.MarketData.field()
-assert len(list(field)) == 64
+assert len(list(field)) == 65
 assert [child.name for child in field][15] == "marketdatakind"
 reader = graph.MarketData.arrow_reader(values, batch_row_size=1_000)
 assert isinstance(reader, pa.RecordBatchReader)

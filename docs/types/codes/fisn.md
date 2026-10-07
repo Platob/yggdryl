@@ -240,6 +240,52 @@ An [`IsinRegistry`](../../graph/isin-registry.md) row holds an instrument's shor
     assert.equal(field.indexOf('fisn'), field.indexOf('ticker') + 1)
     ```
 
+## Similarity
+
+`Fisn::similarity` scores how alike two short names are, from `0` to `1`: one less the Levenshtein distance between their bytes over the longer one's length - both already upper case - symmetric, `1` for two equal names, and allocating nothing. It is what the instrument registry's [economic match](../../graph/isin-registry.md#by-short-name) weighs, at or above its `economic_threshold` (`0.85` unless set). Python and JavaScript hold no `Fisn` value, so the score crosses there as a `resolve` answer's `similarity`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::Fisn;
+
+    let apple = Fisn::new("APPLE INC/SH")?;
+    let dotted = Fisn::new("APPLE INC./SH")?;
+    assert_eq!(apple.similarity(&apple), 1.0);
+    assert!((apple.similarity(&dotted) - 12.0 / 13.0).abs() < 1e-12, "one insertion in thirteen");
+    assert_eq!(apple.similarity(&dotted), dotted.similarity(&apple));
+    assert_eq!(apple.similarity(&Fisn::new("APPLE INC/SH USD")?), 0.75);
+    ```
+
+=== "Python"
+
+    ```python
+    import math
+
+    from yggdryl import Identifier, IsinRegistry, graph
+
+    registry = IsinRegistry()
+    registry.merge({"isin": "US0378331005", "miccode": "XNAS", "fisn": "APPLE INC./SH"})
+    order = graph.OrderEvent(1, securityids=[Identifier("fisn", "APPLE INC/SH")], currency="USD")
+    answer = registry.resolve(order)
+    assert answer.tier == "economic" and answer.similarity is not None
+    assert math.isclose(answer.similarity, 12 / 13), "one insertion in thirteen"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Identifier, IsinRegistry, graph } = require('yggdryl')
+
+    const registry = new IsinRegistry()
+    registry.merge({ isin: 'US0378331005', miccode: 'XNAS', fisn: 'APPLE INC./SH' })
+    const order = new graph.OrderEvent(1n, { securityids: [new Identifier('fisn', 'APPLE INC/SH')], currency: 'USD' })
+    const answer = registry.resolve(order)
+    assert.equal(answer.tier, 'economic')
+    assert.ok(Math.abs(answer.similarity - 12 / 13) < 1e-12, 'one insertion in thirteen')
+    ```
+
 ## Edges
 
 - `expected a '/' between the issuer and the instrument description`, `expected an issuer name before the '/'`, `expected an instrument description after the '/'`, `expected printable characters` - the four shape refusals, each naming `fisn` and the spelling it saw.

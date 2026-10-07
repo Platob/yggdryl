@@ -418,11 +418,11 @@ def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegis
     # The one lifted `marketdata` schema every leaf is written under: the
     # kind, then every fact a column of its own, the book's entries, its
     # delta and its events, a trade's executions and price levels nested -
-    # sixty-four columns, an operation's `bookaction` and `bookposition`
+    # sixty-five columns, an operation's `bookaction` and `bookposition`
     # among them.
     assert reader.schema == MarketData.field().into_arrow_schema()
     names = reader.schema.names
-    assert len(names) == 64
+    assert len(names) == 65
     assert names[0] == "curruuid"
     assert names.index("marketdatakind") == 15
     assert {"bookaction", "bookposition"} <= set(names)
@@ -1780,24 +1780,25 @@ def test_the_crate_map_group_is_a_group_a_message_may_reference(tmp_path: Any) -
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SEED = REPO / "config" / "fix"
 
-# What the crate itself adds beside the specification: 51 definitions in tag
+# What the crate itself adds beside the specification: 52 definitions in tag
 # order from 65001 - the element's identities, the event's clocks, the market
 # and operation facts in the fixed row's band order, then the message's own
-# and the capture's own - 49 scalar facts and one Map group.
+# and the capture's own - 50 scalar facts and one Map group.
 # ISIN, Forex, Bloomberg, FIGI and MIC are crate columns, views of the
 # message's security identifiers; a bridge's originating plugin and
 # conversation are columns too, while the identifiers it states under its own
 # keys are inferred from them and stay content; the option's strike price is
 # the derived column `strikepx` beside the dictionary's StrikePrice(202); CFI
 # remains FIX's standard tag 461, as do prices and quantities.
-CRATED = 51
+CRATED = 52
 # What ``FixRegistry()`` holds: the crate fields a message states - a derived
 # column is the fixed row's, never filed - SendingTime (52) and TransactTime
-# (60), and the Map group. ``len`` counts groups; iteration walks the 33
+# (60), and the Map group. ``len`` counts groups; iteration walks the 34
 # scalars alone. The plugin-side column adds one registered scalar to the
-# branch registry; the metadata Map remains a group.
-SEEDED = 34
-SEEDED_SCALARS = 33
+# branch registry, and the origin currency one more; the metadata Map
+# remains a group.
+SEEDED = 35
+SEEDED_SCALARS = 34
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -1808,7 +1809,7 @@ CLOCK_INSTANT = dt.datetime(2024, 1, 2, 10, 15, 30, tzinfo=dt.timezone.utc)
 # The crate's own tags the message answers as typed facts, renumbered
 # contiguously from 65001 in the fixed row's band order (A11).
 UNIX_TAG = 65007
-EXECUNIX_TAG = 65023
+EXECUNIX_TAG = 65024
 RECDUNIX_TAG = 65009
 CREAUNIX_TAG = 65008
 PREVUNIX_TAG = 65011
@@ -1823,22 +1824,22 @@ PREVUUID_TAG = 65013
 SEQNUM_TAG = 65014
 SRCUUIDS_TAG = 65006
 MARKETDATAKIND_TAG = 65016
-MSGPLUGINID_TAG = 65041
-MSGPLUGINSIDE_TAG = 65042
-MSGCTXID_TAG = 65044
-MSGSESSIONID_TAG = 65045
-MSGSESSEVENTID_TAG = 65046
-ISINCODE_TAG = 65021
-FOREXCODE_TAG = 65048
-BLOOMBERGCODE_TAG = 65049
-FIGICODE_TAG = 65050
-MICCODE_TAG = 65022
-STRIKEPX_TAG = 65035
+MSGPLUGINID_TAG = 65042
+MSGPLUGINSIDE_TAG = 65043
+MSGCTXID_TAG = 65045
+MSGSESSIONID_TAG = 65046
+MSGSESSEVENTID_TAG = 65047
+ISINCODE_TAG = 65022
+FOREXCODE_TAG = 65049
+BLOOMBERGCODE_TAG = 65050
+FIGICODE_TAG = 65051
+MICCODE_TAG = 65023
+STRIKEPX_TAG = 65036
 STATE_TAG = 65015
-METADATA_TAG = 65036
-SOURCEURL_TAG = 65051
-MSGORIGINATOR_TAG = 65043
-CONVERSATIONID_TAG = 65047
+METADATA_TAG = 65037
+SOURCEURL_TAG = 65052
+MSGORIGINATOR_TAG = 65044
+CONVERSATIONID_TAG = 65048
 
 
 def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
@@ -2326,6 +2327,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "state",
         "marketdatakind",
         "marketdatatype",
+        "origccy",
         "hiddenqty",
         "unit",
         "securityids",
@@ -2364,7 +2366,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
     assert tags[0] == CURRUUID_TAG and tags[-1] == SOURCEURL_TAG
-    assert tags == list(range(65001, 65052))
+    assert tags == list(range(65001, 65053))
     assert all(field.fix.sources == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 

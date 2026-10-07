@@ -304,7 +304,7 @@ mod iceberg {
         let path = root("update-schema");
         let mut first = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -345,7 +345,7 @@ mod iceberg {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec,
         )
@@ -368,7 +368,7 @@ mod iceberg {
         let by_symbol = root("sorted-by-symbol");
         let mut sorted = IcebergTable::create_sorted(
             LocalFolder::new(&by_symbol).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
             SortOrder {
@@ -412,7 +412,7 @@ mod iceberg {
         let plain = root("unsorted");
         let mut unsorted = IcebergTable::create_sorted(
             LocalFolder::new(&plain).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
             SortOrder::unsorted(),
@@ -467,7 +467,7 @@ mod iceberg {
         let appended = |label: &str, batches: Vec<RecordBatch>| -> Vec<i64> {
             let mut table = IcebergTable::create_sorted(
                 LocalFolder::new(root(label)).unwrap(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema.clone(),
                 PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
                 order_by_symbol().clone(),
@@ -628,7 +628,7 @@ mod iceberg {
             let schema = schema();
             let mut table = IcebergTable::create(
                 LocalFolder::new(&path).unwrap(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema.clone(),
                 PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
             )
@@ -777,7 +777,7 @@ mod iceberg {
                 let schema = schema();
                 let mut table = IcebergTable::create(
                     LocalFolder::new(&path).unwrap(),
-                    FormatVersion::V2,
+                    FormatVersion::V3,
                     schema.clone(),
                     PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
                 )
@@ -837,7 +837,7 @@ mod iceberg {
         let schema = schema();
         let mut table = IcebergTable::create(
             folder,
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
         )
@@ -879,7 +879,7 @@ mod iceberg {
         let path = root("no-bytes");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -917,7 +917,7 @@ mod iceberg {
         let schema = schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
         )
@@ -1052,9 +1052,9 @@ mod iceberg {
         let spec = PartitionSpec::identity(1, schema, &["venue"]).unwrap();
         let mut table = match order {
             Some(order) => {
-                IcebergTable::create_sorted(folder, FormatVersion::V2, schema.clone(), spec, order)
+                IcebergTable::create_sorted(folder, FormatVersion::V3, schema.clone(), spec, order)
             }
-            None => IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec),
+            None => IcebergTable::create(folder, FormatVersion::V3, schema.clone(), spec),
         }
         .unwrap();
         for commit in commits {
@@ -1233,7 +1233,7 @@ mod iceberg {
         let (filesystem, folder) = counted_folder("ordered-window");
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table =
-            IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec).unwrap();
+            IcebergTable::create(folder, FormatVersion::V3, schema.clone(), spec).unwrap();
         let commits: [&[Quote]; 3] = [
             &[("XNAS", 1, 1), ("XLON", 2, 2), ("XNYS", 3, 3)],
             &[("XNAS", 11, 4), ("XLON", 12, 5), ("XNYS", 13, 6)],
@@ -1523,7 +1523,7 @@ mod iceberg {
 
         let mut unpartitioned = IcebergTable::create(
             LocalFolder::new(root("ordered-transform-whole")).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             quotes_schema(&["truncate(ts, 10)", "id"]),
             PartitionSpec::unpartitioned(),
         )
@@ -1557,7 +1557,7 @@ mod iceberg {
         let spec = PartitionSpec::identity(1, &schema, &["ts"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(root("ordered-retyped")).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec,
         )
@@ -1643,7 +1643,7 @@ mod iceberg {
     fn three_versions(path: &std::path::Path) -> IcebergTable<LocalFolder> {
         let mut table = IcebergTable::create(
             LocalFolder::new(path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -2212,7 +2212,7 @@ mod own_key {
         ] {
             let (path, table) = table(
                 &format!("answers-{label}"),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 ids,
                 partitioned,
             );
@@ -2236,6 +2236,7 @@ mod own_key {
         for door in [
             "serie", "reader", "generic", "records", "commit", "holder", "session",
         ] {
+            // A keyed merge: v2 only, refused on v3.
             let (path, mut table) =
                 seeded(&format!("doors-{door}"), FormatVersion::V2, &[1], false);
             let options: RecordOptions = IOMedia::record_options(&table).unwrap();
@@ -2300,6 +2301,7 @@ mod own_key {
 
     #[test]
     fn a_key_the_options_name_wins_over_the_tables_own() {
+        // A keyed merge: v2 only, refused on v3.
         let (path, mut table) = seeded("named", FormatVersion::V2, &[1], false);
         let by_symbol = IOMedia::record_options(&table)
             .unwrap()
@@ -2318,7 +2320,7 @@ mod own_key {
 
     #[test]
     fn a_partitioned_table_stating_no_identifier_replaces_partitions_through_the_record_doors() {
-        let (path, mut table) = seeded("partitions", FormatVersion::V2, &[], true);
+        let (path, mut table) = seeded("partitions", FormatVersion::V3, &[], true);
         table
             .merge_serie(trades(&[(5, "E", "XNAS")]), None)
             .unwrap();
@@ -2332,7 +2334,7 @@ mod own_key {
 
     #[test]
     fn an_unpartitioned_table_stating_no_key_refuses_naming_merge_by() {
-        let (path, mut table) = table("no-key", FormatVersion::V2, &[], false);
+        let (path, mut table) = table("no-key", FormatVersion::V3, &[], false);
         assert!(IOMedia::merge_by(&table).unwrap().is_empty());
         let options = IOMedia::record_options(&table).unwrap();
         let pulls = Arc::new(AtomicUsize::new(0));
@@ -2391,6 +2393,7 @@ mod own_key {
         let mut table = IcebergTable::create_from_url(
             Url::from_path(&path).unwrap(),
             &Properties::new(),
+            // A keyed merge: v2 only, refused on v3.
             Some(FormatVersion::V2),
             schema,
             Some(PartitionSpec::unpartitioned()),
@@ -2426,14 +2429,14 @@ mod own_key {
         let error = IcebergTable::create_from_url(
             Url::from_path(&path).unwrap(),
             &Properties::new(),
-            Some(FormatVersion::V2),
+            Some(FormatVersion::V3),
             schema(&[99]),
             Some(PartitionSpec::unpartitioned()),
         )
         .expect_err("no column carries field id 99");
         assert!(error.to_string().contains("identifier field 99"), "{error}");
 
-        let (path, _) = seeded("dangling-open", FormatVersion::V2, &[1], false);
+        let (path, _) = seeded("dangling-open", FormatVersion::V3, &[1], false);
         for entry in std::fs::read_dir(path.join("metadata")).unwrap() {
             let entry = entry.unwrap().path();
             if entry.to_string_lossy().ends_with(".metadata.json") {
@@ -2469,6 +2472,7 @@ mod own_key {
 
     #[test]
     fn a_true_merge_key_merges_on_the_tables_own_key() {
+        // A keyed merge: v2 only, refused on v3.
         let (path, mut table) = seeded("true-key", FormatVersion::V2, &[1], false);
         let options = IOMedia::record_options(&table)
             .unwrap()
@@ -2498,6 +2502,7 @@ mod own_key {
     fn a_merge_that_changes_no_row_commits_nothing() {
         for partitioned in [false, true] {
             let label = format!("unchanged-{partitioned}");
+            // A keyed merge: v2 only, refused on v3.
             let (path, mut table) = seeded(&label, FormatVersion::V2, &[1], partitioned);
             // A replay, and a first arrival that differs then a last that
             // does not: no row changes, so no snapshot is committed.
@@ -2556,6 +2561,7 @@ mod own_key {
     fn a_merge_whose_key_returns_to_its_stored_row_in_a_later_batch_commits_nothing() {
         for partitioned in [false, true] {
             let label = format!("unchanged-across-batches-{partitioned}");
+            // A keyed merge: v2 only, refused on v3.
             let (path, mut table) = seeded(&label, FormatVersion::V2, &[1], partitioned);
             // One stream of two batches: the first restates 1 with another
             // symbol, the second with the stored one. The last arrival is
@@ -2613,7 +2619,7 @@ mod own_key {
     fn a_merge_keyed_by_the_partition_alone_replaces_it_even_with_its_own_rows() {
         // The partition is the key, and a partition is replaced, never
         // compared: the same rows again are a new snapshot.
-        let (path, mut table) = seeded("partition-replay", FormatVersion::V2, &[], true);
+        let (path, mut table) = seeded("partition-replay", FormatVersion::V3, &[], true);
         table
             .merge_serie(trades(&[(1, "A", "XNAS")]), None)
             .unwrap();
@@ -2630,7 +2636,7 @@ mod own_key {
     fn an_overwrite_of_no_row_still_replaces_what_it_addresses() {
         // The exit a merge that changed nothing takes is not an overwrite's:
         // a stated scope with no incoming row is emptied.
-        let (path, mut table) = seeded("overwrite-empty", FormatVersion::V2, &[1], false);
+        let (path, mut table) = seeded("overwrite-empty", FormatVersion::V3, &[1], false);
         table.commit_overwrite_where(&[], reader(&[])).unwrap();
         let held = reopened(&path);
         assert_eq!(held.metadata().unwrap().snapshots().len(), 2);
@@ -2647,7 +2653,7 @@ mod own_key {
             "serie", "reader", "generic", "records", "commit", "holder", "session",
         ] {
             let (path, mut table) =
-                seeded(&format!("absent-{door}"), FormatVersion::V2, &[1], false);
+                seeded(&format!("absent-{door}"), FormatVersion::V3, &[1], false);
             let options: RecordOptions = IOMedia::record_options(&table).unwrap();
             let result = match door {
                 "serie" => Some(table.append_serie(trades(incoming), None).unwrap()),
@@ -2708,7 +2714,7 @@ mod own_key {
 
     #[test]
     fn an_append_whose_every_key_is_held_commits_nothing_on_every_version() {
-        for version in [FormatVersion::V2, FormatVersion::V3] {
+        for version in [FormatVersion::V3, FormatVersion::V2] {
             let label = format!("absent-replay-{version:?}");
             let (path, mut table) = seeded(&label, version, &[1], false);
             let replay = table
@@ -2745,7 +2751,7 @@ mod own_key {
 
     #[test]
     fn a_cadenced_keyed_append_sees_its_earlier_commits_as_stored() {
-        let (path, mut table) = seeded("absent-cadence", FormatVersion::V2, &[1], false);
+        let (path, mut table) = seeded("absent-cadence", FormatVersion::V3, &[1], false);
         let options = IOMedia::record_options(&table)
             .unwrap()
             .with_commit_batch_num(1);
@@ -2781,7 +2787,7 @@ mod own_key {
     #[test]
     fn a_partitioned_keyed_table_holds_one_key_per_partition() {
         // The key is (venue, id): 2 under XNAS is not 2 under XLON.
-        let (path, mut table) = seeded("absent-partitioned", FormatVersion::V2, &[1], true);
+        let (path, mut table) = seeded("absent-partitioned", FormatVersion::V3, &[1], true);
         let result = table
             .append_serie(
                 trades(&[(2, "B9", "XNAS"), (2, "B2", "XLON"), (1, "A2", "XNAS")]),
@@ -2805,7 +2811,7 @@ mod own_key {
         // Written unpartitioned, then partitioned by venue: the first file
         // belongs to no partition of the current spec, and the key is now
         // (venue, id).
-        let (path, mut table) = seeded("absent-foreign", FormatVersion::V2, &[1], false);
+        let (path, mut table) = seeded("absent-foreign", FormatVersion::V3, &[1], false);
         table
             .commit_metadata_changes(|metadata| {
                 let spec = PartitionSpec::identity(1, metadata.current_schema()?, &["venue"])?;
@@ -2840,7 +2846,7 @@ mod own_key {
         // no file holds is appended - its first arrival.
         let (path, mut table) = seeded(
             "absent-foreign-partition-key",
-            FormatVersion::V2,
+            FormatVersion::V3,
             &[3],
             false,
         );
@@ -2877,7 +2883,7 @@ mod own_key {
 
     #[test]
     fn a_table_stating_no_key_appends_every_row() {
-        let (path, mut table) = seeded("absent-unkeyed", FormatVersion::V2, &[], false);
+        let (path, mut table) = seeded("absent-unkeyed", FormatVersion::V3, &[], false);
         let result = table
             .append_serie(trades(&[(1, "A", "XNAS"), (1, "A", "XNAS")]), None)
             .unwrap();
@@ -2888,7 +2894,7 @@ mod own_key {
 
     #[test]
     fn the_later_commits_of_an_overwrite_append_every_row_whatever_the_key() {
-        let (path, mut table) = seeded("absent-overwrite", FormatVersion::V2, &[1], false);
+        let (path, mut table) = seeded("absent-overwrite", FormatVersion::V3, &[1], false);
         let options = IOMedia::record_options(&table)
             .unwrap()
             .with_commit_batch_num(1);
@@ -2915,7 +2921,7 @@ mod own_key {
     fn a_keyed_append_beaten_by_a_concurrent_commit_conflicts_where_a_blind_one_rebases() {
         for (ids, conflicts) in [(&[1][..], true), (&[][..], false)] {
             let label = format!("absent-beaten-{conflicts}");
-            let (path, _) = seeded(&label, FormatVersion::V2, ids, false);
+            let (path, _) = seeded(&label, FormatVersion::V3, ids, false);
             let mut late = reopened(&path);
             late.set_options(
                 yggdryl::iceberg::IcebergOptions::new()
@@ -2955,6 +2961,7 @@ mod own_key {
         let (filesystem, folder) = counted_folder("own-key-costs");
         let mut table = IcebergTable::create(
             folder,
+            // A keyed merge: v2 only, refused on v3.
             FormatVersion::V2,
             schema(&[1]),
             PartitionSpec::unpartitioned(),
@@ -2999,6 +3006,7 @@ mod own_key {
         let (blind_filesystem, blind_folder) = counted_folder("own-key-costs-blind");
         let mut blind = IcebergTable::create(
             blind_folder,
+            // Like for like with the keyed table above, which a keyed merge holds to v2.
             FormatVersion::V2,
             schema(&[]),
             PartitionSpec::unpartitioned(),
@@ -3039,6 +3047,79 @@ mod own_key {
         );
     }
 
+    /// The keyed appends of the pin above, on format version 3: the same
+    /// two data files, then a key outside both files' bounds, one inside the
+    /// second's and one spanning both, beside the blind append to a table
+    /// stating no key. A v3 table refuses the replay merge, so the twin
+    /// measures the appends alone, and each costs what it costs on v2: row
+    /// lineage is the `first-row-id` and `added-rows` a v3 snapshot and its
+    /// manifest list state - fields of documents a commit writes anyway -
+    /// so it moves no call.
+    #[test]
+    fn a_keyed_append_on_format_version_3_opens_only_the_files_its_keys_may_be_in() {
+        use crate::counting_filesystem::counted_folder;
+
+        let (filesystem, folder) = counted_folder("own-key-costs-v3");
+        let mut table = IcebergTable::create(
+            folder,
+            FormatVersion::V3,
+            schema(&[1]),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table
+            .commit_append(reader(&[(1, "A", "XNAS"), (2, "B", "XLON")]))
+            .unwrap();
+        table
+            .commit_append(reader(&[(10, "J", "XNAS"), (11, "K", "XLON")]))
+            .unwrap();
+        assert_eq!(table.data_files().unwrap().len(), 2);
+        let outside = filesystem.costs(|| {
+            table.commit_append(reader(&[(50, "X", "XNAS")])).unwrap();
+        });
+        let inside = filesystem.costs(|| {
+            table.commit_append(reader(&[(11, "K2", "XLON")])).unwrap();
+        });
+        let spanning = filesystem.costs(|| {
+            table
+                .commit_append(reader(&[(2, "B2", "XLON"), (10, "J2", "XNAS")]))
+                .unwrap();
+        });
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 3);
+
+        let (blind_filesystem, blind_folder) = counted_folder("own-key-costs-blind-v3");
+        let mut blind = IcebergTable::create(
+            blind_folder,
+            FormatVersion::V3,
+            schema(&[]),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        blind
+            .commit_append(reader(&[(1, "A", "XNAS"), (2, "B", "XLON")]))
+            .unwrap();
+        blind
+            .commit_append(reader(&[(10, "J", "XNAS"), (11, "K", "XLON")]))
+            .unwrap();
+        let unkeyed = blind_filesystem.costs(|| {
+            blind.commit_append(reader(&[(50, "X", "XNAS")])).unwrap();
+        });
+        assert_eq!(
+            [
+                outside.as_str(),
+                unkeyed.as_str(),
+                inside.as_str(),
+                spanning.as_str()
+            ],
+            [
+                "create_file=1 file_info=1 open_input_stream=5 open_output_stream=4",
+                "create_file=1 file_info=1 open_input_stream=3 open_output_stream=4",
+                "file_info=5 open_input_stream=5",
+                "file_info=10 open_input_stream=6"
+            ]
+        );
+    }
+
     #[cfg(feature = "internals")]
     #[test]
     fn a_keyed_append_reads_a_stored_file_for_its_key_columns_alone() {
@@ -3065,7 +3146,7 @@ mod own_key {
 
     #[test]
     fn a_limit_on_a_keyless_merge_of_a_partitioned_table_is_refused() {
-        let (path, mut table) = seeded("limited", FormatVersion::V2, &[], true);
+        let (path, mut table) = seeded("limited", FormatVersion::V3, &[], true);
         let limited = IOMedia::record_options(&table)
             .unwrap()
             .with_max_row_size(1);
@@ -3171,6 +3252,7 @@ mod located {
         let mut table =
             IcebergTable::create_from_url(&location, &properties, None, schema(), None).unwrap();
         let metadata = table.metadata().unwrap();
+        // format_version_for: 2 by default, pinned.
         assert_eq!(metadata.format_version(), FormatVersion::V2);
         assert_eq!(metadata.default_spec().unwrap().fields.len(), 1);
         assert_eq!(
@@ -3214,6 +3296,7 @@ mod located {
         .unwrap();
         assert_eq!(
             again.metadata().unwrap().format_version(),
+            // format_version_for: 2 by default, pinned.
             FormatVersion::V2
         );
         assert_eq!(ids(&again), [1, 2]);
@@ -3242,12 +3325,14 @@ mod located {
         let stated = IcebergTable::open_or_create_from_url(
             Url::from_path(path.join("stated")).unwrap(),
             &Properties::new(),
+            // A stated version, below the default, is taken as stated.
             Some(FormatVersion::V1),
             numbered,
             Some(spec.clone()),
         )
         .unwrap();
         let metadata = stated.metadata().unwrap();
+        // A stated version, below the default, is taken as stated.
         assert_eq!(metadata.format_version(), FormatVersion::V1);
         assert_eq!(metadata.default_spec().unwrap().fields, spec.fields);
 
@@ -3703,7 +3788,7 @@ mod stated_bits {
         assert_eq!(schema.fields()[0].dtype(), &DataType::Int64);
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
@@ -3767,7 +3852,7 @@ mod stated_bits {
         schema.as_sort_mut().set_by_texts(["digest"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
@@ -3816,7 +3901,7 @@ mod stated_bits {
         let path = root("refused");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             StructType::from_fields([DataType::Int64.required_field("digest")])
                 .map(DataType::from)
                 .unwrap()

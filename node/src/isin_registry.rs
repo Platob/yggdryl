@@ -7,14 +7,15 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use napi::Either;
-use napi::bindgen_prelude::Result;
+use napi::bindgen_prelude::{Either11, FromNapiValue, Null, Result, Unknown};
 use napi_derive::napi;
 use yggdryl::holder::Holder;
-use yggdryl::{IsinEntry, IsinRegistry};
+use yggdryl::{IdType, IsinEntry, IsinRegistry, MatchTier, Resolution, Unmatched};
 
 use crate::field::JsField;
 
 use crate::fix::JsFixMsg;
+use crate::graph::AnyMarketData;
 use crate::iobase::{LocationInput, located_from_input, location_target};
 use crate::iomedia::JsBatchReader;
 use crate::ioresult::JsIOResult;
@@ -55,17 +56,187 @@ fn store_of(
     }
 }
 
+/// What `IsinRegistry.resolve` answers for one element, as a plain object:
+/// the listing row it names and how, or why none - each refusal's fields
+/// spelled out, so a caller acts on a `CfiConflict` without reading text.
+/// A field a variant does not state is `null`.
+#[napi(object, object_from_js = false)]
+pub struct IsinResolution {
+    /// Whether a row was matched.
+    pub matched: bool,
+    /// The matched row as a plain object of its columns: the listing on the
+    /// element's market, else the one row holding the key, else the
+    /// instrument's single row, else its first.
+    #[napi(ts_type = "Record<string, unknown> | null")]
+    pub entry: Either<JsScalar, Null>,
+    /// The tier that matched - or, for `Ambiguous`, found the two -
+    /// `isin`, `code`, `symbology` or `economic`.
+    #[napi(ts_type = "'isin' | 'code' | 'symbology' | 'economic' | null")]
+    pub tier: Either<&'static str, Null>,
+    /// The type of the code a `code` tier read, one of
+    /// `IsinRegistry.lookupCodes()`.
+    #[napi(ts_type = "string | null")]
+    pub kind: Either<String, Null>,
+    /// How similar the short names an `economic` tier weighed are, from the
+    /// threshold to `1`.
+    #[napi(ts_type = "number | null")]
+    pub similarity: Either<f64, Null>,
+    /// Whether the ISIN was derived - the element stated none; a match only.
+    #[napi(ts_type = "boolean | null")]
+    pub derived: Either<bool, Null>,
+    /// Whether the row's listing facts belong to the element: its market is
+    /// the row's, or either is unstated; a match only.
+    #[napi(ts_type = "boolean | null")]
+    pub listing: Either<bool, Null>,
+    /// Why none matched, the refusal's name: `NoKey`, `UnknownIsin`,
+    /// `NoCandidate`, `Ambiguous`, `CfiConflict`, `CurrencyConflict` or
+    /// `BelowThreshold`.
+    #[napi(
+        ts_type = "'NoKey' | 'UnknownIsin' | 'NoCandidate' | 'Ambiguous' | 'CfiConflict' | 'CurrencyConflict' | 'BelowThreshold' | null"
+    )]
+    pub unmatched: Either<&'static str, Null>,
+    /// The instruments an `Ambiguous` key or score names, in ISIN order.
+    #[napi(ts_type = "string[] | null")]
+    pub isins: Either<Vec<String>, Null>,
+    /// The element's own: the ISIN an `UnknownIsin` states, the CFI category
+    /// of a `CfiConflict`, the origin currency of a `CurrencyConflict`.
+    #[napi(ts_type = "string | null")]
+    pub stated: Either<String, Null>,
+    /// The instrument's: the CFI category of a `CfiConflict`, the origin
+    /// currency of a `CurrencyConflict`.
+    #[napi(ts_type = "string | null")]
+    pub held: Either<String, Null>,
+    /// How similar the most similar instrument of a `BelowThreshold` is.
+    #[napi(ts_type = "number | null")]
+    pub best: Either<f64, Null>,
+    /// The instrument a `CfiConflict`, a `CurrencyConflict` or a
+    /// `BelowThreshold` names.
+    #[napi(ts_type = "string | null")]
+    pub isin: Either<String, Null>,
+}
+
+impl IsinResolution {
+    /// Every field unstated.
+    fn empty(matched: bool) -> Self {
+        Self {
+            matched,
+            entry: Either::B(Null),
+            tier: Either::B(Null),
+            kind: Either::B(Null),
+            similarity: Either::B(Null),
+            derived: Either::B(Null),
+            listing: Either::B(Null),
+            unmatched: Either::B(Null),
+            isins: Either::B(Null),
+            stated: Either::B(Null),
+            held: Either::B(Null),
+            best: Either::B(Null),
+            isin: Either::B(Null),
+        }
+    }
+
+    /// `tier` named and its parameters stated.
+    fn with_tier(mut self, tier: &MatchTier) -> Self {
+        self.tier = Either::A(match tier {
+            MatchTier::Isin => "isin",
+            MatchTier::Code(kind) => {
+                self.kind = Either::A(kind.as_str().to_owned());
+                "code"
+            }
+            MatchTier::Symbology => "symbology",
+            MatchTier::Economic { similarity } => {
+                self.similarity = Either::A(*similarity);
+                "economic"
+            }
+        });
+        self
+    }
+
+    /// The core's answer, spelled out.
+    fn from_core(resolution: &Resolution<'_>) -> Self {
+        match resolution {
+            Resolution::Matched {
+                entry,
+                tier,
+                derived,
+                listing,
+            } => {
+                let mut answer = Self::empty(true).with_tier(tier);
+                answer.entry = Either::A(JsScalar::from_core(entry.into_scalar()));
+                answer.derived = Either::A(*derived);
+                answer.listing = Either::A(*listing);
+                answer
+            }
+            Resolution::Unmatched(why) => {
+                let mut answer = Self::empty(false);
+                answer.unmatched = Either::A(match why {
+                    Unmatched::NoKey => "NoKey",
+                    Unmatched::UnknownIsin { stated } => {
+                        answer.stated = Either::A(stated.as_str().to_owned());
+                        "UnknownIsin"
+                    }
+                    Unmatched::NoCandidate => "NoCandidate",
+                    Unmatched::Ambiguous { tier, isins } => {
+                        answer = answer.with_tier(tier);
+                        answer.isins =
+                            Either::A(isins.iter().map(|isin| isin.as_str().to_owned()).collect());
+                        "Ambiguous"
+                    }
+                    Unmatched::CfiConflict { stated, held, isin } => {
+                        answer.stated = Either::A(stated.to_string());
+                        answer.held = Either::A(held.to_string());
+                        answer.isin = Either::A(isin.as_str().to_owned());
+                        "CfiConflict"
+                    }
+                    Unmatched::CurrencyConflict { stated, held, isin } => {
+                        answer.stated = Either::A(stated.as_str().to_owned());
+                        answer.held = Either::A(held.as_str().to_owned());
+                        answer.isin = Either::A(isin.as_str().to_owned());
+                        "CurrencyConflict"
+                    }
+                    Unmatched::BelowThreshold { best, isin } => {
+                        answer.best = Either::A(*best);
+                        answer.isin = Either::A(isin.as_str().to_owned());
+                        "BelowThreshold"
+                    }
+                });
+                answer
+            }
+        }
+    }
+}
+
+/// What `registry` resolves `item` to, read through the leaf it holds with
+/// no copy of it.
+fn resolution_of(registry: &IsinRegistry, item: &AnyMarketData<'_>) -> IsinResolution {
+    let resolution = match item {
+        Either11::A(data) => registry.resolve(&data.inner),
+        Either11::B(leaf) => registry.resolve(&leaf.inner),
+        Either11::C(leaf) => registry.resolve(&leaf.inner),
+        Either11::D(leaf) => registry.resolve(&leaf.inner),
+        Either11::E(leaf) => registry.resolve(&leaf.inner),
+        Either11::F(leaf) => registry.resolve(&leaf.inner),
+        Either11::G(leaf) => registry.resolve(&leaf.inner),
+        Either11::H(leaf) => registry.resolve(&leaf.inner),
+        Either11::I(leaf) => registry.resolve(&leaf.inner),
+        Either11::J(leaf) => registry.resolve(&leaf.inner),
+        Either11::K(message) => registry.resolve(message.as_core()),
+    };
+    IsinResolution::from_core(&resolution)
+}
+
 /// A table of instruments keyed by ISIN, one listing row per market - the
 /// instrument facts every listing of an ISIN shares (its CFI code, its
 /// country of issue, its currency pair, the instrument it is written on,
-/// its product category, its ISO 18774 short name, `updunix` and
-/// `lastunix`), and the listing facts of one market (its ticker, its
-/// trading currency, its listing codes) beside one code per
-/// `SecurityIDSource(22)` type - that a lifecycle learns into and fills
-/// from, and a parse fills from. Bound to
-/// the store it was loaded from, committed back only where it moved.
-/// Mutable and shared: equal only to itself; its rows cross out as an Arrow
-/// stream.
+/// its product category, its ISO 18774 short name, its origin currency,
+/// `updunix`, `firstunix` and `lastunix`), and the listing facts of one
+/// market (its ticker, its trading currency, its listing codes) beside one
+/// code per `SecurityIDSource(22)` type - that a lifecycle learns into and
+/// fills from, and a parse fills from. The ISIN is the key; with none, a
+/// code of `lookupCodes()` or a ticker on its market finds an instrument
+/// (`getByCode`, `getByTicker`, `resolve`). Bound to the store it was loaded
+/// from, committed back only where it moved. Mutable and shared: equal only
+/// to itself; its rows cross out as an Arrow stream.
 #[napi(js_name = "IsinRegistry")]
 pub struct JsIsinRegistry {
     pub(crate) inner: Arc<Mutex<IsinRegistry>>,
@@ -119,10 +290,11 @@ impl JsIsinRegistry {
     }
 
     /// The registry's row: the required struct `isinregistry` every listing
-    /// row is laid out as - `isin`, `updunix`, `lastunix`, `cficode`,
-    /// `countrycode`, `forexcode`, `underlyingisin`, `eusipacode`,
-    /// `miccode`, `ticker`, `fisn`, `currency`, then one column per
-    /// `SecurityIDSource(22)` type but the ISIN: forty-four columns - what a
+    /// row is laid out as - `isin`, `updunix`, `firstunix`, `lastunix`,
+    /// `cficode`, `countrycode`, `forexcode`, `underlyingisin`,
+    /// `eusipacode`, `miccode`, `ticker`, `fisn`, `currency`, `origccy`,
+    /// then one column per `SecurityIDSource(22)` type but the ISIN:
+    /// forty-six columns - what a
     /// table holding the registry is created from. Its root declares
     /// `PARTITION:by` `["truncate(isin, 2)"]` - an Iceberg table created
     /// from it partitions by the ISIN's country prefix, storing no column -
@@ -311,11 +483,13 @@ impl JsIsinRegistry {
     }
 
     /// The listing row the ticker `ticker` names on `market`, as a plain
-    /// object of its columns, or `null`: the one row listing the ticker on
-    /// `market` - a MIC, checked by the `mic` datatype - else the one
-    /// listing it on no market; where `market` is unstated (`null` or
-    /// `XXXX`), the one row listing it on any. Two rows answering is
-    /// ambiguous, and answers none.
+    /// object of its columns, or `null`: the one ISIN a row of which lists
+    /// the ticker on `market` - a MIC, checked by the `mic` datatype - else
+    /// on no market; where `market` is unstated (`null` or `XXXX`), on any;
+    /// then that ISIN's row on `market`, else the one row listing the
+    /// ticker, else its single row, else its first. Two ISINs answering is
+    /// ambiguous, and answers none; two listings of one ISIN are one
+    /// instrument.
     #[napi(ts_return_type = "Record<string, unknown> | null")]
     pub fn get_by_ticker(
         &self,
@@ -326,6 +500,101 @@ impl JsIsinRegistry {
         Ok(Self::row(
             self.lock().get_by_ticker(&ticker, market.as_ref()),
         ))
+    }
+
+    /// The listing row the code `value` of type `kind` - one of
+    /// `lookupCodes()`, read as its type stores it - names on `market`, as a
+    /// plain object of its columns, or `null`: the one ISIN a row of which
+    /// holds the code, then its row on `market` - a MIC, checked by the
+    /// `mic` datatype - else the one row holding the code, else its single
+    /// row, else its first. Two ISINs holding the code is ambiguous, and
+    /// answers none, as does a type no lookup reads and a value its type
+    /// refuses; a word no identifier type spells throws.
+    #[napi(ts_return_type = "Record<string, unknown> | null")]
+    pub fn get_by_code(
+        &self,
+        kind: String,
+        value: String,
+        market: Option<String>,
+    ) -> Result<Option<JsScalar>> {
+        let kind: IdType = kind.parse().map_err(napi_error)?;
+        let market = market.as_deref().map(mic_of).transpose()?;
+        let registry = self.lock();
+        Ok(Self::row(registry.get_by_code(
+            &kind,
+            &value,
+            market.as_ref(),
+        )))
+    }
+
+    /// The identifier types a lookup reads, in the order `resolve` reads
+    /// them: the national numbers, the global and the vendor codes, then
+    /// every other `SecurityIDSource(22)` code naming one instrument. A
+    /// currency, a country, an index or an issuer code is no key.
+    #[napi]
+    pub fn lookup_codes() -> Vec<String> {
+        IsinRegistry::LOOKUP_CODES
+            .iter()
+            .map(|kind| kind.as_str().to_owned())
+            .collect()
+    }
+
+    /// The listing row `element` - a `MarketData`, any market leaf or a
+    /// `FixMsg` - names, and how, by the one waterfall a fill reads: a real
+    /// ISIN it holds decides alone, one the registry lacks ending the
+    /// cascade (`UnknownIsin`); with none, each code of `lookupCodes()` it
+    /// holds, in that order, then its ticker on its market, the first naming
+    /// one instrument matching and the first naming two ending the cascade
+    /// (`Ambiguous`); and only where all of those found nothing, the
+    /// economic match: the instrument listed in the element's stated
+    /// currency whose short name is the most similar to the one it states,
+    /// at least `economicThreshold`, an instrument of another stated origin
+    /// currency or CFI category dropped (`CurrencyConflict`,
+    /// `CfiConflict`). `XXX` states no currency and an unclassified `X` no
+    /// category. This door always weighs the economic match; a fill takes
+    /// it only where `isEconomicMatch` says so.
+    #[napi(
+        ts_args_type = "element: MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent | FixMsg"
+    )]
+    pub fn resolve(&self, element: Unknown<'_>) -> Result<IsinResolution> {
+        let kind = element.get_type()?.to_string().to_lowercase();
+        let item = AnyMarketData::from_unknown(element).map_err(|_| {
+            napi_error(format!(
+                "expected MarketData, a market leaf or a FixMsg, got {kind}"
+            ))
+        })?;
+        Ok(resolution_of(&self.lock(), &item))
+    }
+
+    /// How similar two short names must be, from above `0` to `1`, for an
+    /// economic match: `0.85` unless told otherwise.
+    #[napi(getter)]
+    pub fn economic_threshold(&self) -> f64 {
+        self.lock().economic_threshold()
+    }
+
+    /// Sets `economicThreshold`; NaN and a value outside `(0, 1]` throw,
+    /// naming the value, and move nothing.
+    #[napi]
+    pub fn set_economic_threshold(&self, threshold: f64) -> Result<()> {
+        self.lock()
+            .set_economic_threshold(threshold)
+            .map_err(napi_error)
+    }
+
+    /// Whether a fill - `fill`, `enrich`, a lifecycle's - takes an economic
+    /// match where nothing exact names the element; `false` unless told
+    /// otherwise, since a derived ISIN becomes the key an element's book and
+    /// chain live under. A parse never takes one.
+    #[napi(getter)]
+    pub fn is_economic_match(&self) -> bool {
+        self.lock().is_economic_match()
+    }
+
+    /// Sets `isEconomicMatch`.
+    #[napi]
+    pub fn set_economic_match(&self, enabled: bool) {
+        self.lock().set_economic_match(enabled);
     }
 
     /// Folds one row - an object of column names to cells, `isin` required
@@ -339,7 +608,8 @@ impl JsIsinRegistry {
     /// created where the ISIN has none there, and, where it names none,
     /// into the ISIN's single listing, or into none, with one warning per
     /// column, where it has several. `updunix` moves where a fact moved,
-    /// `lastunix` becomes the later of the two. Whether anything moved.
+    /// `firstunix` becomes the earlier of the two and `lastunix` the later.
+    /// Whether anything moved.
     #[napi(ts_args_type = "entry: Record<string, unknown>")]
     pub fn merge(&self, entry: &JsScalar) -> Result<bool> {
         let entry = IsinEntry::from_scalar(&entry.inner).map_err(napi_error)?;
@@ -394,19 +664,22 @@ impl JsIsinRegistry {
     /// Learns what a message states about its instrument - keyed by its
     /// stated real ISIN, dated at its `currunix`: its CFI code, its market,
     /// its ticker, its currency, the pair it states and its real
-    /// equivalents, onto the listing its market names - and moves
-    /// `lastunix` to its `currunix` where that is later, so meeting a known
-    /// instrument later moves the registry too. Whether anything moved.
+    /// equivalents and the origin currency it states, onto the listing its
+    /// market names - and moves `firstunix` to its `currunix` where that is
+    /// earlier and `lastunix` where it is later, so meeting a known
+    /// instrument again moves the registry too. Whether anything moved.
     #[napi]
     pub fn learn(&self, message: &JsFixMsg) -> bool {
         self.lock().learn(message.as_core())
     }
 
     /// Fills what a message leaves unsaid about its instrument from the row
-    /// its ISIN names, else its ticker on its market - each equivalent and
-    /// the pair as a `derived` identifier, the ticker on its own market,
-    /// its CFI code where the row's refines it, the currency on the same
-    /// stated market under the row's ticker - never its wire. Whether
+    /// `resolve` names - by its ISIN, else a code of `lookupCodes()`, else
+    /// its ticker on its market, else, where `isEconomicMatch`, its short
+    /// name - each equivalent and the pair as a `derived` identifier, the
+    /// ticker on its own market, its CFI code where the row's refines it,
+    /// the currency on the same stated market under the row's ticker, the
+    /// origin currency where it holds none - never its wire. Whether
     /// anything moved.
     #[napi]
     pub fn fill(&self, message: &mut JsFixMsg) -> bool {

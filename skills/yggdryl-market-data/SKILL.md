@@ -8,8 +8,8 @@ description: Models and streams market data with yggdryl's graph layer in Rust, 
 The graph layer is market data as **elements that name each other by
 identity**, never by reference. Four Rust traits say what an element answers -
 `Element` (identity, cross code, digest, sources), `Event` (instant, state,
-place at its instant, clocks), `Market` (thirty-five facts: the `marketdatatype` of its kind, price, stop price, the `strikepx` of the option it is about,
-quantity and its shown and hidden parts, currency, unit, side, the security's identifiers `securityids` and the `isincode` they hold, classification, market,
+place at its instant, clocks), `Market` (thirty-six facts: the `marketdatatype` of its kind, price, stop price, the `strikepx` of the option it is about,
+quantity and its shown and hidden parts, currency, the `origccy` the instrument was issued in (`origin_currency()` reads `currency` where none is held), unit, side, the security's identifiers `securityids` and the `isincode` they hold, classification, market,
 the `execunix` it last executed at, last-trade, progress, FX parts, the stated bid and ask - `bidpx`, `bidqty`,
 `bidccy`, `askpx`, `askqty`, `askccy` - the `fxrates`, ticker, metadata) and
 `Operation` (five more: the `ordqty` it asked for, the `TimeInForce` member it stands for, whether it trades, the `identifiers`, the
@@ -17,7 +17,7 @@ the `execunix` it last executed at, last-trade, progress, FX parts, the stated b
 typed leaves answer them: `Order`/`OrderEvent`, `Quote`/`QuoteEvent`,
 `Execution`/`ExecutionEvent`, the composite `TradeEvent`, and the book types
 `BookEvent` and `SnapshotEvent`. `MarketData` is the one value over every
-leaf, and the lifted **`marketdata` Arrow row** (64 columns: the element,
+leaf, and the lifted **`marketdata` Arrow row** (65 columns: the element,
 event, market and operation columns every generated row opens with, the book
 controls `bookscope`, `bookaction` and `bookposition`, then the nested
 `alive`, `delta`, `events`, `executions`, `bidlimits` and `asklimits` -
@@ -165,7 +165,10 @@ Hold these facts:
 | an identifier | `Identifier::new(IdKey::base(IdType::Isin), value)?`, `"ullink:isin".parse::<IdKey>()?`, `Identifiers` | `Identifier(key, value)` - `"isin"`, `"ullink:isin"` - `Identifiers([...])`, `Identifiers.from_dict({...})`, `into_dict()` | `new Identifier(key, value)`, `new Identifiers([...])`, `Identifiers.fromObject({...})`, `intoObject()` |
 | what instruments are known by | `IsinRegistry::from_url(&url, props)?`, `registry.enrich(&mut event)`, `get("CH0012214059")`, `get_by_ticker("HOLN", Some(&mic))`, `commit()?` | `IsinRegistry.from_url(path)`, `registry.get("CH0012214059")` (a `dict`), `get_by_ticker("HOLN", "XSWX")`, `enrich(fix_msg)`, `commit()` | `IsinRegistry.fromUrl(path)`, `registry.get('CH0012214059')` (a plain object), `getByTicker('HOLN', 'XSWX')`, `enrich(fixMsg)`, `commit()` |
 | an instrument's listings, one row per market | `registry.listings(isin)` (MIC order; `get` the first), `get_listing(isin, &mic)`, `rows()` (`len()` counts ISINs), `remove_listing(isin, &mic)`, `remove(isin)` -> every listing | `listings(isin)`, `get_listing(isin, "XSWX")`, `rows` (a property), `remove_listing(isin, "XSWX")`, `remove(isin)` -> `list[dict]` | `listings(isin)`, `getListing(isin, 'XSWX')`, `rows` (a getter), `removeListing(isin, 'XSWX')`, `remove(isin)` -> objects |
-| when an instrument was last met, and last changed | `entry.lastunix()` (every `learn` moves it), `entry.updunix()` (only a moved fact does) | `row["lastunix"]`, `row["updunix"]` (a `datetime`) | `row.lastunix`, `row.updunix` (a `Date`, or a datetime `Scalar` past millisecond precision) |
+| when an instrument was first and last met, and last changed | `entry.firstunix()` (an earlier `learn` moves it back), `entry.lastunix()` (a later one moves it), `entry.updunix()` (only a moved fact does) | `row["firstunix"]`, `row["lastunix"]`, `row["updunix"]` (a `datetime`) | `row.firstunix`, `row.lastunix`, `row.updunix` (a `Date`, or a datetime `Scalar` past millisecond precision) |
+| which instrument an element means, and how | `registry.resolve(&element)` -> `Resolution::Matched { entry, tier, derived, listing }` or `Resolution::Unmatched(Unmatched::..)`; `get_by_code(&IdType::Cusip, "037833100", None)`; `IsinRegistry::LOOKUP_CODES` | `registry.resolve(element)` -> `Resolution` (`.matched`, `.entry`, `.tier`, `.kind`, `.unmatched`, ...); `get_by_code("cusip", "037833100")`; `IsinRegistry.LOOKUP_CODES` | `registry.resolve(element)` -> a plain object (`.matched`, `.entry`, `.tier`, `.kind`, `.unmatched`, ...); `getByCode('cusip', '037833100')`; `IsinRegistry.lookupCodes()` |
+| match by short name, scored | `set_economic_match(true)` (a fill takes it), `set_economic_threshold(0.9)?` (default `0.85`) | `set_economic_match(True)`, `set_economic_threshold(0.9)`, `economic_threshold` | `setEconomicMatch(true)`, `setEconomicThreshold(0.9)`, `economicThreshold` |
+| the currency an instrument was issued in | `get_origccy()` (stated or filled; `Ccy::none()` otherwise), `origin_currency()` (else the currency), `set_origccy(ccy, overwrite)`; a registry row's `entry.origccy()` | `.origccy` (`Scalar` or `None`), `.origin_currency`; `origccy="USD"` at build; `row["origccy"]` | `.origccy` (or `null`), `.originCurrency`; `origccy: 'USD'` at build; `row.origccy` |
 | security, own and party identifiers | `insert_securityid(id)?`, `insert_identifier(id)?`, `insert_partyid(id)?` (Rust-only verbs) | `securityids=[Identifier("isin", ...)]`, `identifiers=[...]`, `partyids=[...]` at build | `securityids: [new Identifier('isin', ...)]`, `identifiers: [...]`, `partyids: [...]` at build |
 | read an identifier map | `get_securityids().get(&IdType::Isin)`, `get_from(&src, &kind)` | `order.securityids.get("isin")`, `get_from(src, type)`, iterate `Identifier`s | `order.securityids.get('isin')`, `getFrom(src, type)`, `toArray()` |
 | FX rates (nothing fills them) | `insert_fxrate(ccy, rate)`, `set_fxrates(map)` | `fxrates={"EUR": Decimal("1.1")}` at build | `fxrates: { EUR: '1.1' }` at build |
@@ -279,7 +282,12 @@ Hold these facts:
    `currhashcode`, `crosshashcode`) is refused.
 9. Sources are provenance: `srcuuids` never changes identity, never travels
    along a chain, and merges as a sorted union - use it to point back at the
-   lines an event was read from.
+   lines an event was read from. A book states none (`srcuuids` empty,
+   setting it keeps nothing): its provenance is the events it holds. Its row
+   writes `srcuuids` null, and null for every entry nested in `alive` - that
+   entry is the one the `delta` of the book that applied it holds, whose row
+   writes its sources - so read the sources off the `delta_serie` and
+   `events_serie` rows, never off a book's `alive`.
 10. Numbers are exact decimals: pass `Decimal('189.5')` in Python and the text
     `'189.5'` in JavaScript - a float price (`189.5`) is refused at `$.price`
     (`got f64`). Python answers `Scalar` (`.as_py()` -> `Decimal`), JavaScript
@@ -363,9 +371,14 @@ Hold these facts:
   type alone for the base source, and `Identifier("fix:clordid", value)` is the
   base `clordid`.
 - An `IsinRegistry` fills what an element leaves unsaid about its instrument
-  from what earlier elements stated - keyed by the ISIN alone, a ticker
-  leading to it on its market, a RIC or a Bloomberg symbol only an equivalent
-  - as `derived` identifiers, so a filled code reads back `is_derived`, plus
+  from what earlier elements stated - keyed by the ISIN, a code of
+  `LOOKUP_CODES` (a CUSIP, a SEDOL, a FIGI, a RIC, a Bloomberg symbol) or a
+  ticker on its market leading back to it, and a short name in the element's
+  currency only under `set_economic_match(true)`; `resolve(element)` names
+  the row, its tier and whether the ISIN was derived, or why none - an ISIN
+  it lacks (`UnknownIsin`, ending the cascade), a key two instruments hold
+  (`Ambiguous`), a CFI or origin-currency conflict, a score below the
+  threshold - as `derived` identifiers, so a filled code reads back `is_derived`, plus
   the ticker, the CFI code and the listing's currency as market facts; a
   valid stated value fills and replaces whatever the time; a row also holds
   the `underlyingisin` and the `eusipacode` - a structured product's EUSIPA
@@ -373,11 +386,11 @@ Hold these facts:
   learned - never the bindings' `learn` - which nothing fills; `merge` takes
   either as stated. A row is one listing - one per (ISIN, market): the
   instrument's facts (`cficode`, `fisn`, `underlyingisin`, `eusipacode`,
-  `updunix`, `lastunix`, the non-listing codes) are every listing's, the
+  `updunix`, `firstunix`, `lastunix`, `origccy`, the non-listing codes) are every listing's, the
   ticker, currency and listing codes one market's; a listing fact stated on
   no market lands on the ISIN's single listing, or with a warning on none of
-  several. Every `learn` moves `lastunix`, so meeting a known instrument
-  later dirties the registry and the next `commit()` writes it. A store written
+  several. Every `learn` states `firstunix` and `lastunix`, so meeting a known
+  instrument earlier or later than before dirties the registry and the next `commit()` writes it. A store written
   before `eusipacode` was a column loads it null and keeps its own row on
   `commit()`, so the category reaches only a store laid out afresh. The bindings'
   `learn`/`fill`/`enrich` take a `FixMsg`, a FIX lifecycle runs them on every

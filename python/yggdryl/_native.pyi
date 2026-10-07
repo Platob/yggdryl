@@ -7189,13 +7189,15 @@ class IsinRegistry:
     and market - shared behind one lock.
 
     Each row holds the instrument's ``isin``, ``updunix`` (when the statement
-    that last moved a fact of it happened, a stamp), ``lastunix`` (the latest
-    instant an event the registry learned from stated the ISIN, moved by every
-    learn), detailed ``cficode``, its ``countrycode`` of issue, its
+    that last moved a fact of it happened, a stamp), ``firstunix`` (the
+    earliest instant an event the registry learned from stated the ISIN, moved
+    only by an earlier one), ``lastunix`` (the latest, moved by every learn),
+    detailed ``cficode``, its ``countrycode`` of issue, its
     ``forexcode`` pair, the ``underlyingisin`` it is written on, its
     ``eusipacode`` - the four-digit EUSIPA product category ``Eusipa`` reads,
     an ``int`` - the ``miccode`` of the listing, its ``ticker``, its ``fisn``
-    (the ISO 18774 short name) and trading ``currency`` and one code per
+    (the ISO 18774 short name), trading ``currency``, ``origccy`` (the
+    currency it was issued in, where stated, never derived) and one code per
     ``SecurityIDSource(22)`` type but the ISIN. The instrument facts are the
     ISIN's and every listing row of it carries them; the market, the ticker,
     the currency and the listing codes are each row's own, a statement naming
@@ -7205,7 +7207,9 @@ class IsinRegistry:
     Valor its ISIN embeds and the currency of its listing market's country
     alone - a row with no market keeps none, where it states none. ``seeded`` holds the embedded common instruments. A lifecycle learns
     into it - keyed by a stated real ISIN - and fills from it what a message
-    leaves unsaid, a parse fills derived identifiers from it, and a valid
+    leaves unsaid, naming the row by ``resolve``'s waterfall - its ISIN, a code
+    of ``LOOKUP_CODES``, its ticker on its market, and, where
+    ``is_economic_match``, its short name in its currency - a parse fills derived identifiers from it, and a valid
     stated value fills and replaces whatever the time. Bound to the store it
     was loaded from (``from_url``, ``from_env``) and committed back only
     where it moved (``commit``). Equal only to itself; never hashed or
@@ -7218,8 +7222,9 @@ class IsinRegistry:
     @staticmethod
     def field() -> Field:
         """The registry's row: the required struct ``isinregistry`` of
-        forty-four columns every listing row is laid out as, ``lastunix`` right
-        after ``updunix``, what a table holding the registry is created from;
+        forty-six columns every listing row is laid out as, ``firstunix`` then
+        ``lastunix`` right after ``updunix`` and ``origccy`` after
+        ``currency``, what a table holding the registry is created from;
         its root declares ``PARTITION:by`` ``["truncate(isin, 2)"]`` - the
         ISIN's country prefix, storing no column - and ``SORT:by``
         ``["isin", "miccode"]``."""
@@ -7272,6 +7277,37 @@ class IsinRegistry:
         unstated, the one row listing it on any. Two rows answering is
         ambiguous, and answers ``None``."""
         ...
+    LOOKUP_CODES: ClassVar[tuple[str, ...]]
+    """The codes a lookup reads, in cascade order, each its type's word."""
+    DEFAULT_ECONOMIC_THRESHOLD: ClassVar[float]
+    """How similar two short names must be by default for an economic match: ``0.85``."""
+    def get_by_code(self, kind: str, value: str, market: str | None = None) -> dict[str, Any] | None:
+        """The listing row the code ``value`` of type ``kind`` - one of
+        ``LOOKUP_CODES`` - names: the one instrument holding it, its row on
+        ``market``, else the one row holding the code, else its single row,
+        else its first. Two instruments holding it, a type that is no lookup
+        code or a value its type refuses answer ``None``."""
+        ...
+    def resolve(self, element: object) -> Resolution:
+        """The listing row ``element`` - a market leaf, a ``MarketData`` or a
+        ``FixMsg`` - names, and how: its real ISIN alone, one the registry
+        lacks ending the cascade (``UnknownIsin``); else each code of
+        ``LOOKUP_CODES`` it states, then its ticker on its market, the first
+        naming two instruments ending it (``Ambiguous``); else the instrument
+        listed in its stated currency whose short name is the most similar, at
+        least ``economic_threshold``, another stated origin currency or CFI
+        category dropped and named. Fills nothing."""
+        ...
+    @property
+    def economic_threshold(self) -> float:
+        """How similar two short names must be, in ``(0, 1]``, for an economic match."""
+    def set_economic_threshold(self, threshold: float) -> None:
+        """Sets ``economic_threshold``; NaN or a value outside ``(0, 1]`` raises ``ValueError`` naming it."""
+        ...
+    @property
+    def is_economic_match(self) -> bool:
+        """Whether ``fill`` takes an economic match where nothing exact names the element; ``False`` unless set."""
+    def set_economic_match(self, enabled: bool) -> None: ...
     def merge(self, entry: Mapping[str, object]) -> bool: ...
     def remove(self, isin: str) -> list[dict[str, Any]]:
         """Removes every listing row of ``isin``, answering them in MIC order."""
@@ -7289,6 +7325,66 @@ class IsinRegistry:
     def fill(self, message: FixMsg) -> bool: ...
     def enrich(self, message: FixMsg) -> bool: ...
     def __len__(self) -> int: ...
+    def __bool__(self) -> bool: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __repr__(self) -> str: ...
+
+class Resolution:
+    """What ``IsinRegistry.resolve`` answered for one element: the row it
+    names and how, or why none, every field of the core answer an attribute.
+
+    A match (``matched``, and truth) states ``entry``, ``tier`` - ``"isin"``,
+    ``"code"``, ``"symbology"`` or ``"economic"`` - ``kind`` (a ``"code"``
+    tier's type), ``similarity`` (an ``"economic"`` tier's), ``derived`` and
+    ``listing``. A miss states ``unmatched`` - ``"NoKey"``, ``"UnknownIsin"``,
+    ``"NoCandidate"``, ``"Ambiguous"``, ``"CfiConflict"``,
+    ``"CurrencyConflict"`` or ``"BelowThreshold"`` - and its variant's fields:
+    ``isins`` and ``tier`` of an ``Ambiguous``, ``stated``, ``held``, ``best``,
+    ``isin``. Every other attribute is ``None``. Immutable, equal by value,
+    never hashed.
+    """
+
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+
+    @property
+    def matched(self) -> bool: ...
+    @property
+    def entry(self) -> dict[str, Any] | None: ...
+    @property
+    def tier(self) -> Literal["isin", "code", "symbology", "economic"] | None: ...
+    @property
+    def kind(self) -> str | None: ...
+    @property
+    def similarity(self) -> float | None: ...
+    @property
+    def derived(self) -> bool | None: ...
+    @property
+    def listing(self) -> bool | None: ...
+    @property
+    def unmatched(
+        self,
+    ) -> (
+        Literal[
+            "NoKey",
+            "UnknownIsin",
+            "NoCandidate",
+            "Ambiguous",
+            "CfiConflict",
+            "CurrencyConflict",
+            "BelowThreshold",
+        ]
+        | None
+    ): ...
+    @property
+    def isins(self) -> list[str] | None: ...
+    @property
+    def stated(self) -> str | None: ...
+    @property
+    def held(self) -> str | None: ...
+    @property
+    def best(self) -> float | None: ...
+    @property
+    def isin(self) -> str | None: ...
     def __bool__(self) -> bool: ...
     def __eq__(self, other: object, /) -> bool: ...
     def __repr__(self) -> str: ...
@@ -7769,6 +7865,12 @@ class FixMsg:
     def price(self) -> Scalar | None: ...
     @property
     def currency(self) -> Scalar: ...
+    @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
     @property
     def quantity(self) -> Scalar | None: ...
     @property
@@ -8305,6 +8407,12 @@ class Order:
     @property
     def currency(self) -> Scalar: ...
     @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
+    @property
     def quantity(self) -> Scalar | None: ...
     @property
     def unit(self) -> str: ...
@@ -8427,6 +8535,12 @@ class Quote:
     @property
     def currency(self) -> Scalar: ...
     @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
+    @property
     def quantity(self) -> Scalar | None: ...
     @property
     def unit(self) -> str: ...
@@ -8548,6 +8662,12 @@ class Execution:
     def price(self) -> Scalar | None: ...
     @property
     def currency(self) -> Scalar: ...
+    @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
     @property
     def quantity(self) -> Scalar | None: ...
     @property
@@ -8694,6 +8814,12 @@ class OrderEvent:
     def price(self) -> Scalar | None: ...
     @property
     def currency(self) -> Scalar: ...
+    @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
     @property
     def quantity(self) -> Scalar | None: ...
     @property
@@ -8851,6 +8977,12 @@ class QuoteEvent:
     @property
     def currency(self) -> Scalar: ...
     @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
+    @property
     def quantity(self) -> Scalar | None: ...
     @property
     def unit(self) -> str: ...
@@ -9007,6 +9139,12 @@ class ExecutionEvent:
     @property
     def currency(self) -> Scalar: ...
     @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
+    @property
     def quantity(self) -> Scalar | None: ...
     @property
     def unit(self) -> str: ...
@@ -9156,6 +9294,12 @@ class TradeEvent:
     def price(self) -> Scalar | None: ...
     @property
     def currency(self) -> Scalar: ...
+    @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
     @property
     def quantity(self) -> Scalar | None: ...
     @property
@@ -9308,6 +9452,12 @@ class BookEvent:
     def price(self) -> Scalar | None: ...
     @property
     def currency(self) -> Scalar: ...
+    @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
     @property
     def quantity(self) -> Scalar | None: ...
     @property
@@ -9530,6 +9680,12 @@ class SnapshotEvent:
     @property
     def currency(self) -> Scalar: ...
     @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
+    @property
     def quantity(self) -> Scalar | None: ...
     @property
     def unit(self) -> str: ...
@@ -9642,6 +9798,12 @@ class MarketData:
     def price(self) -> Scalar | None: ...
     @property
     def currency(self) -> Scalar: ...
+    @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
     @property
     def quantity(self) -> Scalar | None: ...
     @property

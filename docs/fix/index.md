@@ -28,10 +28,10 @@ component carries its four-character `FIX:msgcat` metadata, and the builtin
 `EXEC=8`, `ORDR=10`, `QUOT=14`, `TRAD=21`, `ORDB=22`, and so on); the
 [filing](#a-message-type-is-filed-under-one-category) says which types each
 holds. The normalized
-instrument columns are `isincode(65021)`, `forexcode(65047)`,
-`bloombergcode(65048)`, `figicode(65049)` and `miccode(65022)` - the first
+instrument columns are `isincode(65022)`, `forexcode(65049)`,
+`bloombergcode(65050)`, `figicode(65051)` and `miccode(65023)` - the first
 four views of the message's security identifiers, the last its market -
-beside the strike, the [derived](capture.md#a-derived-column-restates-a-fix-field) market column `strikepx(65035)` read off the dictionary's own `StrikePrice(202)`, which keeps its column (Rust `Market::get_strikepx`, Python and JavaScript `msg.strikepx`); CFI remains standard `CFICode(461)`,
+beside the strike, the [derived](capture.md#a-derived-column-restates-a-fix-field) market column `strikepx(65036)` read off the dictionary's own `StrikePrice(202)`, which keeps its column (Rust `Market::get_strikepx`, Python and JavaScript `msg.strikepx`); CFI remains standard `CFICode(461)`,
 and a CUSIP or a SEDOL is one more security identifier of its own type,
 in the message's `securityids`.
 
@@ -477,7 +477,7 @@ the group: the group's length is its count. Fields, components and groups are
 the three registry categories, a message being a component that carries
 `FIX:msgtype`.
 
-The crate's `metadata(65036)` is also a group: a nullable, sorted-key
+The crate's `metadata(65037)` is also a group: a nullable, sorted-key
 `map<utf8, utf8>` whose occurrence is its non-null entries Struct, with no
 separate scalar counter and no invented numeric tags for its key or value. A
 parse fills it from the
@@ -509,10 +509,10 @@ names are folded; `display` keeps the specification's spelling.
     assert!(!registry.field_by_name("Party")?.fields().is_empty());
     assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("PartyID")?.as_fix().tag()?, Some(448));
-    let metadata = registry.field_by_counter(65_036)?;
+    let metadata = registry.field_by_counter(65_037)?;
     assert_eq!(metadata.name(), "metadata");
-    assert_eq!(metadata.as_fix().counter()?, Some(65_036));
-    assert!(registry.get_field_by_tag(65_036).is_none(), "a Map group is no scalar");
+    assert_eq!(metadata.as_fix().counter()?, Some(65_037));
+    assert!(registry.get_field_by_tag(65_037).is_none(), "a Map group is no scalar");
     ```
 
 === "Python"
@@ -531,10 +531,10 @@ names are folded; `display` keeps the specification's spelling.
     assert registry.field_by_name("Party").is_struct
     assert registry.field_by_path("Parties.PartyID").fix.tag == 448
     assert registry.field_by_name("PartyID").fix.tag == 448
-    metadata = registry.field_by_counter(65_036)
+    metadata = registry.field_by_counter(65_037)
     assert metadata.name == "metadata"
-    assert metadata.fix.counter == 65_036
-    assert registry.get_field_by_tag(65_036) is None, "a Map group is no scalar"
+    assert metadata.fix.counter == 65_037
+    assert registry.get_field_by_tag(65_037) is None, "a Map group is no scalar"
     ```
 
 === "JavaScript"
@@ -554,10 +554,10 @@ names are folded; `display` keeps the specification's spelling.
     assert.ok(registry.fieldByName('Party').fieldLen > 0)
     assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
     assert.equal(registry.fieldByName('PartyID').fix.tag, 448)
-    const metadata = registry.fieldByCounter(65036)
+    const metadata = registry.fieldByCounter(65037)
     assert.equal(metadata.name, 'metadata')
-    assert.equal(metadata.fix.counter, 65036)
-    assert.equal(registry.getFieldByTag(65036), null, 'a Map group is no scalar')
+    assert.equal(metadata.fix.counter, 65037)
+    assert.equal(registry.getFieldByTag(65037), null, 'a Map group is no scalar')
     ```
 
 ## Edges

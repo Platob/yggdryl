@@ -40,10 +40,15 @@ fn quote_schema() -> Field {
     schema
 }
 
-/// A v2 table over [`quote_schema`], unpartitioned and never written to.
+/// A v3 table over [`quote_schema`], unpartitioned and never written to.
 fn metadata() -> TableMetadata {
+    metadata_at(FormatVersion::V3)
+}
+
+/// [`metadata`] at `version`, for a test pinning what another version does.
+fn metadata_at(version: FormatVersion) -> TableMetadata {
     TableMetadata::new(
-        FormatVersion::V2,
+        version,
         "file:///tmp/evolve",
         quote_schema(),
         PartitionSpec::unpartitioned(),
@@ -51,7 +56,8 @@ fn metadata() -> TableMetadata {
     .unwrap()
 }
 
-/// One appended snapshot with the given identifier and commit time.
+/// One appended snapshot with the given identifier and commit time, adding
+/// no row: the row lineage a v3 table asks of every snapshot.
 fn snapshot(snapshot_id: i64, timestamp_ms: i64) -> Snapshot {
     Snapshot {
         snapshot_id,
@@ -66,8 +72,17 @@ fn snapshot(snapshot_id: i64, timestamp_ms: i64) -> Snapshot {
         )],
         schema_id: Some(0),
         encryption_key_id: None,
+        first_row_id: Some(0),
+        added_rows: Some(0),
+    }
+}
+
+/// [`snapshot`] as a v1 or v2 table states it: no row lineage.
+fn snapshot_before_v3(snapshot_id: i64, timestamp_ms: i64) -> Snapshot {
+    Snapshot {
         first_row_id: None,
         added_rows: None,
+        ..snapshot(snapshot_id, timestamp_ms)
     }
 }
 
@@ -551,7 +566,6 @@ mod schema_updates {
             "{message}"
         );
 
-        metadata.upgrade_format_version(FormatVersion::V3).unwrap();
         let mut with_default = metadata.current_schema().unwrap().clone();
         let mut quantity = DataType::Int64.required_field("quantity");
         quantity
@@ -584,9 +598,9 @@ mod schema_updates {
 mod metadata_updates {
     use super::{
         DataType, FormatVersion, PartitionSpec, SchemaUpdate, SmolStr, SnapshotRef, TableMetadata,
-        Transform, default_spec_id_mut, identity_order, last_column_id_mut, metadata,
+        Transform, default_spec_id_mut, identity_order, last_column_id_mut, metadata, metadata_at,
         metadata_compression_codec, next_row_id_mut, partition_specs_mut, quote_schema,
-        schemas_mut, snapshot, sort_orders_mut,
+        schemas_mut, snapshot, snapshot_before_v3, sort_orders_mut,
     };
     use yggdryl::{Scalar, StructType};
 
@@ -688,7 +702,6 @@ mod metadata_updates {
             Some(partition_statistics)
         );
 
-        metadata.upgrade_format_version(FormatVersion::V3).unwrap();
         let key = yggdryl::json::from_utf8(
             r#"{"key-id":"key-1","encrypted-key-metadata":"aWNlYmVyZw==",
                 "encrypted-by-id":"kms"}"#,
@@ -700,7 +713,8 @@ mod metadata_updates {
         assert_eq!(metadata.remove_encryption_key("key-1").unwrap(), Some(key));
         assert!(metadata.encryption_keys().is_empty());
 
-        let mut v2 = super::metadata();
+        // v2 holds no encryption keys: the refusal pinned here.
+        let mut v2 = super::metadata_at(FormatVersion::V2);
         let message = v2.add_encryption_key(Scalar::Null).unwrap_err().to_string();
         assert!(
             message.contains("v3") && message.contains("encryption"),
@@ -773,7 +787,8 @@ mod metadata_updates {
 
     #[test]
     fn upgrading_to_v3_initializes_next_row_id_and_a_downgrade_is_refused() {
-        let mut metadata = metadata();
+        // The v2 -> v3 upgrade path.
+        let mut metadata = metadata_at(FormatVersion::V2);
         assert_eq!(metadata.next_row_id(), None);
         metadata.upgrade_format_version(FormatVersion::V3).unwrap();
         assert_eq!(metadata.format_version(), FormatVersion::V3);
@@ -795,6 +810,7 @@ mod metadata_updates {
         );
 
         let message = metadata
+            // The downgrade refused.
             .upgrade_format_version(FormatVersion::V2)
             .unwrap_err()
             .to_string();
@@ -807,13 +823,14 @@ mod metadata_updates {
     #[test]
     fn versioned_snapshot_fields_and_refs_never_disappear_silently() {
         let mut v1 = TableMetadata::new(
+            // v1's own snapshot rules: no refs.
             FormatVersion::V1,
             "file:///tmp/evolve-v1",
             quote_schema(),
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        let mut first = snapshot(7, v1.last_updated_ms() + 1);
+        let mut first = snapshot_before_v3(7, v1.last_updated_ms() + 1);
         first.sequence_number = None;
         v1.set_current_snapshot(first).unwrap();
         let message = v1
@@ -826,8 +843,9 @@ mod metadata_updates {
         );
         assert!(v1.into_json().unwrap().get_key_str("refs").is_none());
 
-        let mut v2 = metadata();
-        let mut missing_sequence = snapshot(8, v2.last_updated_ms() + 1);
+        // v2's own snapshot rules: a sequence number, no key id.
+        let mut v2 = metadata_at(FormatVersion::V2);
+        let mut missing_sequence = snapshot_before_v3(8, v2.last_updated_ms() + 1);
         missing_sequence.sequence_number = None;
         let message = v2
             .set_current_snapshot(missing_sequence)
@@ -838,7 +856,7 @@ mod metadata_updates {
             "{message}"
         );
 
-        let mut encrypted = snapshot(9, v2.last_updated_ms() + 1);
+        let mut encrypted = snapshot_before_v3(9, v2.last_updated_ms() + 1);
         encrypted.encryption_key_id = Some(SmolStr::new_static("key-1"));
         let message = v2.set_current_snapshot(encrypted).unwrap_err().to_string();
         assert!(
@@ -846,7 +864,7 @@ mod metadata_updates {
             "{message}"
         );
 
-        let mut dangling = snapshot(10, v2.last_updated_ms() + 1);
+        let mut dangling = snapshot_before_v3(10, v2.last_updated_ms() + 1);
         dangling.schema_id = Some(999);
         let message = v2.set_current_snapshot(dangling).unwrap_err().to_string();
         assert!(
@@ -1069,7 +1087,8 @@ mod metadata_updates {
 
     #[test]
     fn a_batch_of_updates_round_trips_through_its_document() {
-        let mut metadata = metadata();
+        // The batch carries the v2 -> v3 upgrade.
+        let mut metadata = metadata_at(FormatVersion::V2);
         metadata.set_property("owner", "kaiju").unwrap();
         metadata
             .assign_uuid("0b4f7721-755e-5df5-ab6b-8a23c7905a82")
@@ -1077,9 +1096,7 @@ mod metadata_updates {
         metadata.set_location("file:///tmp/evolve-moved").unwrap();
         metadata.upgrade_format_version(FormatVersion::V3).unwrap();
         let timestamp = metadata.last_updated_ms() + 60_000;
-        let mut snapshot = snapshot(3, timestamp);
-        snapshot.first_row_id = metadata.next_row_id();
-        snapshot.added_rows = Some(0);
+        let snapshot = snapshot(3, timestamp);
         metadata.set_current_snapshot(snapshot).unwrap();
         metadata
             .set_snapshot_ref("audit", SnapshotRef::branch(3))

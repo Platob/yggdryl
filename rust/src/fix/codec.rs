@@ -936,7 +936,7 @@ impl FixCodec {
     /// row, byte and batch doors alike, the FIX rows [`Self::messages`]
     /// rebuilds and every reader composed over it included - states as its
     /// `msgpluginside`. A row-header capture or a row cell named
-    /// `msgpluginside` - a line spelling the crate tag `65042` itself
+    /// `msgpluginside` - a line spelling the crate tag `65043` itself
     /// included, as every crate tag a line spells is the row's word, and
     /// the cell a FIX row carries - is the row's word over the stamp. A
     /// codec told no source stamps `UKNW`.

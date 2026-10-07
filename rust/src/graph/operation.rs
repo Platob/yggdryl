@@ -359,6 +359,12 @@ impl<K: OperationKind> Market for OperationElement<K> {
     fn set_currency(&mut self, currency: crate::Ccy, overwrite: bool) {
         self.data.set_currency(currency, overwrite);
     }
+    fn get_origccy(&self) -> &crate::Ccy {
+        self.data.get_origccy()
+    }
+    fn set_origccy(&mut self, ccy: crate::Ccy, overwrite: bool) {
+        self.data.set_origccy(ccy, overwrite);
+    }
     fn get_quantity(&self) -> Option<Decimal> {
         self.data.get_quantity()
     }
@@ -916,6 +922,12 @@ impl<K: OperationKind> Market for OperationEvent<K> {
     }
     fn set_currency(&mut self, currency: crate::Ccy, overwrite: bool) {
         self.data.set_currency(currency, overwrite);
+    }
+    fn get_origccy(&self) -> &crate::Ccy {
+        self.data.get_origccy()
+    }
+    fn set_origccy(&mut self, ccy: crate::Ccy, overwrite: bool) {
+        self.data.set_origccy(ccy, overwrite);
     }
     fn get_quantity(&self) -> Option<Decimal> {
         self.data.get_quantity()

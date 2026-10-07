@@ -1,4 +1,4 @@
-import { BatchReader, IsinRegistry, type FixCodec, type FixMsg, type IOResult } from '..'
+import { BatchReader, IsinRegistry, type FixCodec, type FixMsg, type IOResult, type IsinResolution, type OrderEvent } from '..'
 
 const registry: IsinRegistry = new IsinRegistry(8)
 const unbounded: IsinRegistry = new IsinRegistry()
@@ -31,6 +31,24 @@ const learned: boolean = registry.learn(message)
 const filled: boolean = registry.fill(message)
 const enriched: boolean = registry.enrich(message)
 registry.clear()
+const byCode: Record<string, unknown> | null = registry.getByCode('cusip', '037833100', 'XNAS')
+const byCodeAnywhere: Record<string, unknown> | null = registry.getByCode('sedol', '0540528')
+const lookupCodes: string[] = IsinRegistry.lookupCodes()
+declare const order: OrderEvent
+const resolution: IsinResolution = registry.resolve(order)
+const fromMessage: IsinResolution = registry.resolve(message)
+const matched: boolean = resolution.matched
+const entry: Record<string, unknown> | null = resolution.entry
+const tier: 'isin' | 'code' | 'symbology' | 'economic' | null = resolution.tier
+const similarity: number | null = resolution.similarity
+const why: string | null = resolution.unmatched
+const isins: string[] | null = resolution.isins
+const threshold: number = registry.economicThreshold
+registry.setEconomicThreshold(0.9)
+const economic: boolean = registry.isEconomicMatch
+registry.setEconomicMatch(true)
+const origccy: string | null = order.origccy
+const originCurrency: string = message.originCurrency
 
 // @ts-expect-error the count is read-only
 registry.length = 2
@@ -40,5 +58,11 @@ registry.get(1)
 registry.rows = 2
 // @ts-expect-error a listing names its market
 registry.getListing('CH0012214059')
+// @ts-expect-error a code names its type
+registry.getByCode('037833100')
+// @ts-expect-error the threshold is set through its setter
+registry.economicThreshold = 0.9
+// @ts-expect-error a resolution reads a market value
+registry.resolve({ isin: 'CH0012214059' })
 
-void [merged, row, dirty, listings, listing, removedListing, removed, count, rowCount, bound, read, fromUrl, withProperties, committed, fromEnv, seeded, seededFromUrl, same, text, shared, learned, filled, enriched]
+void [merged, row, dirty, listings, listing, removedListing, removed, count, rowCount, bound, read, fromUrl, withProperties, committed, fromEnv, seeded, seededFromUrl, same, text, shared, learned, filled, enriched, byCode, byCodeAnywhere, lookupCodes, fromMessage, matched, entry, tier, similarity, why, isins, threshold, economic, origccy, originCurrency]

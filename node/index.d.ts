@@ -441,6 +441,19 @@ export declare class BookEvent {
   get price(): string | null
   /** The currency, as the `ccy` code it is; `XXX` where none. */
   get currency(): string
+  /**
+   * The currency the instrument originates in - the one it was
+   * issued in, which a depositary receipt or a share class listed
+   * in another currency trades apart from - as the `ccy` code it
+   * is, where the element states it or a registry filled it;
+   * `null` where neither did, never defaulted.
+   */
+  get origccy(): string | null
+  /**
+   * The origin currency read with its default: `origccy` where
+   * held, else `currency` - `XXX` only where neither is stated.
+   */
+  get originCurrency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
   /** The stop price the order triggers at, as decimal text; `null` where none. */
@@ -1768,6 +1781,19 @@ export declare class Execution {
   get price(): string | null
   /** The currency, as the `ccy` code it is; `XXX` where none. */
   get currency(): string
+  /**
+   * The currency the instrument originates in - the one it was
+   * issued in, which a depositary receipt or a share class listed
+   * in another currency trades apart from - as the `ccy` code it
+   * is, where the element states it or a registry filled it;
+   * `null` where neither did, never defaulted.
+   */
+  get origccy(): string | null
+  /**
+   * The origin currency read with its default: `origccy` where
+   * held, else `currency` - `XXX` only where neither is stated.
+   */
+  get originCurrency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
   /** The stop price the order triggers at, as decimal text; `null` where none. */
@@ -2041,6 +2067,19 @@ export declare class ExecutionEvent {
   get price(): string | null
   /** The currency, as the `ccy` code it is; `XXX` where none. */
   get currency(): string
+  /**
+   * The currency the instrument originates in - the one it was
+   * issued in, which a depositary receipt or a share class listed
+   * in another currency trades apart from - as the `ccy` code it
+   * is, where the element states it or a registry filled it;
+   * `null` where neither did, never defaulted.
+   */
+  get origccy(): string | null
+  /**
+   * The origin currency read with its default: `origccy` where
+   * held, else `currency` - `XXX` only where neither is stated.
+   */
+  get originCurrency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
   /** The stop price the order triggers at, as decimal text; `null` where none. */
@@ -3591,6 +3630,17 @@ export declare class FixMsg {
   /** The currency; `XXX` where none is stated. */
   get currency(): string
   /**
+   * The currency the instrument originates in, as the `ccy` code it is:
+   * the crate field `origccy` the message states, or what a registry
+   * filled; `null` where neither did, never defaulted.
+   */
+  get origccy(): string | null
+  /**
+   * The origin currency read with its default: `origccy` where held,
+   * else `currency` - `XXX` only where neither is stated.
+   */
+  get originCurrency(): string
+  /**
    * The price the message last traded at, as decimal text, or `null`.
    * FIX's own `LastPx(31)`.
    */
@@ -3740,7 +3790,7 @@ export declare class FixMsg {
    *
    * A key reaching no field and no child, or a value the field refuses,
    * throws the core's refusal and leaves the message as it was. So does a
-   * key reaching the capture's own column - `sourceurl` (65051), by tag
+   * key reaching the capture's own column - `sourceurl` (65052), by tag
    * or by name: a message holds no fact for it, and a row child would put
    * it on the wire.
    */
@@ -5775,14 +5825,15 @@ export type JsIOResult = IOResult
  * A table of instruments keyed by ISIN, one listing row per market - the
  * instrument facts every listing of an ISIN shares (its CFI code, its
  * country of issue, its currency pair, the instrument it is written on,
- * its product category, its ISO 18774 short name, `updunix` and
- * `lastunix`), and the listing facts of one market (its ticker, its
- * trading currency, its listing codes) beside one code per
- * `SecurityIDSource(22)` type - that a lifecycle learns into and fills
- * from, and a parse fills from. Bound to
- * the store it was loaded from, committed back only where it moved.
- * Mutable and shared: equal only to itself; its rows cross out as an Arrow
- * stream.
+ * its product category, its ISO 18774 short name, its origin currency,
+ * `updunix`, `firstunix` and `lastunix`), and the listing facts of one
+ * market (its ticker, its trading currency, its listing codes) beside one
+ * code per `SecurityIDSource(22)` type - that a lifecycle learns into and
+ * fills from, and a parse fills from. The ISIN is the key; with none, a
+ * code of `lookupCodes()` or a ticker on its market finds an instrument
+ * (`getByCode`, `getByTicker`, `resolve`). Bound to the store it was loaded
+ * from, committed back only where it moved. Mutable and shared: equal only
+ * to itself; its rows cross out as an Arrow stream.
  */
 export declare class IsinRegistry {
   /**
@@ -5793,10 +5844,11 @@ export declare class IsinRegistry {
   constructor(maxInstruments?: number | undefined | null)
   /**
    * The registry's row: the required struct `isinregistry` every listing
-   * row is laid out as - `isin`, `updunix`, `lastunix`, `cficode`,
-   * `countrycode`, `forexcode`, `underlyingisin`, `eusipacode`,
-   * `miccode`, `ticker`, `fisn`, `currency`, then one column per
-   * `SecurityIDSource(22)` type but the ISIN: forty-four columns - what a
+   * row is laid out as - `isin`, `updunix`, `firstunix`, `lastunix`,
+   * `cficode`, `countrycode`, `forexcode`, `underlyingisin`,
+   * `eusipacode`, `miccode`, `ticker`, `fisn`, `currency`, `origccy`,
+   * then one column per `SecurityIDSource(22)` type but the ISIN:
+   * forty-six columns - what a
    * table holding the registry is created from. Its root declares
    * `PARTITION:by` `["truncate(isin, 2)"]` - an Iceberg table created
    * from it partitions by the ISIN's country prefix, storing no column -
@@ -5911,13 +5963,69 @@ export declare class IsinRegistry {
   getListing(isin: string, market: string): Record<string, unknown> | null
   /**
    * The listing row the ticker `ticker` names on `market`, as a plain
-   * object of its columns, or `null`: the one row listing the ticker on
-   * `market` - a MIC, checked by the `mic` datatype - else the one
-   * listing it on no market; where `market` is unstated (`null` or
-   * `XXXX`), the one row listing it on any. Two rows answering is
-   * ambiguous, and answers none.
+   * object of its columns, or `null`: the one ISIN a row of which lists
+   * the ticker on `market` - a MIC, checked by the `mic` datatype - else
+   * on no market; where `market` is unstated (`null` or `XXXX`), on any;
+   * then that ISIN's row on `market`, else the one row listing the
+   * ticker, else its single row, else its first. Two ISINs answering is
+   * ambiguous, and answers none; two listings of one ISIN are one
+   * instrument.
    */
   getByTicker(ticker: string, market?: string | undefined | null): Record<string, unknown> | null
+  /**
+   * The listing row the code `value` of type `kind` - one of
+   * `lookupCodes()`, read as its type stores it - names on `market`, as a
+   * plain object of its columns, or `null`: the one ISIN a row of which
+   * holds the code, then its row on `market` - a MIC, checked by the
+   * `mic` datatype - else the one row holding the code, else its single
+   * row, else its first. Two ISINs holding the code is ambiguous, and
+   * answers none, as does a type no lookup reads and a value its type
+   * refuses; a word no identifier type spells throws.
+   */
+  getByCode(kind: string, value: string, market?: string | undefined | null): Record<string, unknown> | null
+  /**
+   * The identifier types a lookup reads, in the order `resolve` reads
+   * them: the national numbers, the global and the vendor codes, then
+   * every other `SecurityIDSource(22)` code naming one instrument. A
+   * currency, a country, an index or an issuer code is no key.
+   */
+  static lookupCodes(): Array<string>
+  /**
+   * The listing row `element` - a `MarketData`, any market leaf or a
+   * `FixMsg` - names, and how, by the one waterfall a fill reads: a real
+   * ISIN it holds decides alone, one the registry lacks ending the
+   * cascade (`UnknownIsin`); with none, each code of `lookupCodes()` it
+   * holds, in that order, then its ticker on its market, the first naming
+   * one instrument matching and the first naming two ending the cascade
+   * (`Ambiguous`); and only where all of those found nothing, the
+   * economic match: the instrument listed in the element's stated
+   * currency whose short name is the most similar to the one it states,
+   * at least `economicThreshold`, an instrument of another stated origin
+   * currency or CFI category dropped (`CurrencyConflict`,
+   * `CfiConflict`). `XXX` states no currency and an unclassified `X` no
+   * category. This door always weighs the economic match; a fill takes
+   * it only where `isEconomicMatch` says so.
+   */
+  resolve(element: MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent | FixMsg): IsinResolution
+  /**
+   * How similar two short names must be, from above `0` to `1`, for an
+   * economic match: `0.85` unless told otherwise.
+   */
+  get economicThreshold(): number
+  /**
+   * Sets `economicThreshold`; NaN and a value outside `(0, 1]` throw,
+   * naming the value, and move nothing.
+   */
+  setEconomicThreshold(threshold: number): void
+  /**
+   * Whether a fill - `fill`, `enrich`, a lifecycle's - takes an economic
+   * match where nothing exact names the element; `false` unless told
+   * otherwise, since a derived ISIN becomes the key an element's book and
+   * chain live under. A parse never takes one.
+   */
+  get isEconomicMatch(): boolean
+  /** Sets `isEconomicMatch`. */
+  setEconomicMatch(enabled: boolean): void
   /**
    * Folds one row - an object of column names to cells, `isin` required
    * - into the listings of its ISIN by the update rule: a stated valid
@@ -5930,7 +6038,8 @@ export declare class IsinRegistry {
    * created where the ISIN has none there, and, where it names none,
    * into the ISIN's single listing, or into none, with one warning per
    * column, where it has several. `updunix` moves where a fact moved,
-   * `lastunix` becomes the later of the two. Whether anything moved.
+   * `firstunix` becomes the earlier of the two and `lastunix` the later.
+   * Whether anything moved.
    */
   merge(entry: Record<string, unknown>): boolean
   /**
@@ -5959,17 +6068,20 @@ export declare class IsinRegistry {
    * Learns what a message states about its instrument - keyed by its
    * stated real ISIN, dated at its `currunix`: its CFI code, its market,
    * its ticker, its currency, the pair it states and its real
-   * equivalents, onto the listing its market names - and moves
-   * `lastunix` to its `currunix` where that is later, so meeting a known
-   * instrument later moves the registry too. Whether anything moved.
+   * equivalents and the origin currency it states, onto the listing its
+   * market names - and moves `firstunix` to its `currunix` where that is
+   * earlier and `lastunix` where it is later, so meeting a known
+   * instrument again moves the registry too. Whether anything moved.
    */
   learn(message: FixMsg): boolean
   /**
    * Fills what a message leaves unsaid about its instrument from the row
-   * its ISIN names, else its ticker on its market - each equivalent and
-   * the pair as a `derived` identifier, the ticker on its own market,
-   * its CFI code where the row's refines it, the currency on the same
-   * stated market under the row's ticker - never its wire. Whether
+   * `resolve` names - by its ISIN, else a code of `lookupCodes()`, else
+   * its ticker on its market, else, where `isEconomicMatch`, its short
+   * name - each equivalent and the pair as a `derived` identifier, the
+   * ticker on its own market, its CFI code where the row's refines it,
+   * the currency on the same stated market under the row's ticker, the
+   * origin currency where it holds none - never its wire. Whether
    * anything moved.
    */
   fill(message: FixMsg): boolean
@@ -6274,6 +6386,19 @@ export declare class MarketData {
   get price(): string | null
   /** The currency, as the `ccy` code it is; `XXX` where none. */
   get currency(): string
+  /**
+   * The currency the instrument originates in - the one it was
+   * issued in, which a depositary receipt or a share class listed
+   * in another currency trades apart from - as the `ccy` code it
+   * is, where the element states it or a registry filled it;
+   * `null` where neither did, never defaulted.
+   */
+  get origccy(): string | null
+  /**
+   * The origin currency read with its default: `origccy` where
+   * held, else `currency` - `XXX` only where neither is stated.
+   */
+  get originCurrency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
   /** The stop price the order triggers at, as decimal text; `null` where none. */
@@ -6913,6 +7038,19 @@ export declare class Order {
   get price(): string | null
   /** The currency, as the `ccy` code it is; `XXX` where none. */
   get currency(): string
+  /**
+   * The currency the instrument originates in - the one it was
+   * issued in, which a depositary receipt or a share class listed
+   * in another currency trades apart from - as the `ccy` code it
+   * is, where the element states it or a registry filled it;
+   * `null` where neither did, never defaulted.
+   */
+  get origccy(): string | null
+  /**
+   * The origin currency read with its default: `origccy` where
+   * held, else `currency` - `XXX` only where neither is stated.
+   */
+  get originCurrency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
   /** The stop price the order triggers at, as decimal text; `null` where none. */
@@ -7186,6 +7324,19 @@ export declare class OrderEvent {
   get price(): string | null
   /** The currency, as the `ccy` code it is; `XXX` where none. */
   get currency(): string
+  /**
+   * The currency the instrument originates in - the one it was
+   * issued in, which a depositary receipt or a share class listed
+   * in another currency trades apart from - as the `ccy` code it
+   * is, where the element states it or a registry filled it;
+   * `null` where neither did, never defaulted.
+   */
+  get origccy(): string | null
+  /**
+   * The origin currency read with its default: `origccy` where
+   * held, else `currency` - `XXX` only where neither is stated.
+   */
+  get originCurrency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
   /** The stop price the order triggers at, as decimal text; `null` where none. */
@@ -7958,6 +8109,19 @@ export declare class Quote {
   get price(): string | null
   /** The currency, as the `ccy` code it is; `XXX` where none. */
   get currency(): string
+  /**
+   * The currency the instrument originates in - the one it was
+   * issued in, which a depositary receipt or a share class listed
+   * in another currency trades apart from - as the `ccy` code it
+   * is, where the element states it or a registry filled it;
+   * `null` where neither did, never defaulted.
+   */
+  get origccy(): string | null
+  /**
+   * The origin currency read with its default: `origccy` where
+   * held, else `currency` - `XXX` only where neither is stated.
+   */
+  get originCurrency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
   /** The stop price the order triggers at, as decimal text; `null` where none. */
@@ -8231,6 +8395,19 @@ export declare class QuoteEvent {
   get price(): string | null
   /** The currency, as the `ccy` code it is; `XXX` where none. */
   get currency(): string
+  /**
+   * The currency the instrument originates in - the one it was
+   * issued in, which a depositary receipt or a share class listed
+   * in another currency trades apart from - as the `ccy` code it
+   * is, where the element states it or a registry filled it;
+   * `null` where neither did, never defaulted.
+   */
+  get origccy(): string | null
+  /**
+   * The origin currency read with its default: `origccy` where
+   * held, else `currency` - `XXX` only where neither is stated.
+   */
+  get originCurrency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
   /** The stop price the order triggers at, as decimal text; `null` where none. */
@@ -9694,6 +9871,19 @@ export declare class SnapshotEvent {
   get price(): string | null
   /** The currency, as the `ccy` code it is; `XXX` where none. */
   get currency(): string
+  /**
+   * The currency the instrument originates in - the one it was
+   * issued in, which a depositary receipt or a share class listed
+   * in another currency trades apart from - as the `ccy` code it
+   * is, where the element states it or a registry filled it;
+   * `null` where neither did, never defaulted.
+   */
+  get origccy(): string | null
+  /**
+   * The origin currency read with its default: `origccy` where
+   * held, else `currency` - `XXX` only where neither is stated.
+   */
+  get originCurrency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
   /** The stop price the order triggers at, as decimal text; `null` where none. */
@@ -10922,6 +11112,19 @@ export declare class TradeEvent {
   get price(): string | null
   /** The currency, as the `ccy` code it is; `XXX` where none. */
   get currency(): string
+  /**
+   * The currency the instrument originates in - the one it was
+   * issued in, which a depositary receipt or a share class listed
+   * in another currency trades apart from - as the `ccy` code it
+   * is, where the element states it or a registry filled it;
+   * `null` where neither did, never defaulted.
+   */
+  get origccy(): string | null
+  /**
+   * The origin currency read with its default: `origccy` where
+   * held, else `currency` - `XXX` only where neither is stated.
+   */
+  get originCurrency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
   /** The stop price the order triggers at, as decimal text; `null` where none. */
@@ -12255,7 +12458,7 @@ export interface FixCaptureView {
    * source or one stating no role - never `null`. The codec stamps it from
    * the source it reads under (`FixCodec`'s `source`), and a row-header
    * capture or a row cell named `msgpluginside` is the row's word over
-   * it; also `byTag(65042)`.
+   * it; also `byTag(65043)`.
    */
   msgpluginside: string
   /** The message context a bridge handled the line in. */
@@ -12266,19 +12469,19 @@ export interface FixCaptureView {
    * The session event the message was delivered as - `MsgType`,
    * `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
    * `8:e7256476:9effef3e6a:1094` - where all four are stated; also
-   * `byTag(65046)`.
+   * `byTag(65047)`.
    */
   msgsesseventid: string | null
   /**
    * The plugin the message came into a bridge through, as the bridge's
    * log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-   * (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65043)`.
+   * (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65044)`.
    */
   msgoriginator: string | null
   /**
    * The conversation a bridge filed the message under - a
    * `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
-   * of its log line; also `byTag(65047)`.
+   * of its log line; also `byTag(65048)`.
    */
   conversationid: string | null
 }
@@ -12444,7 +12647,7 @@ export interface FixCommitReport {
  * instrument codes (`isincode`, `bloombergcode`, `figicode`, `forexcode`,
  * `miccode`) and the market and operation facts a message names - each a
  * fact no FIX dictionary publishes, at the datatype its graph column names,
- * numbered contiguously from `65001` through `fixmsg` (`65052`). The strike
+ * numbered contiguously from `65001` through `fixmsg` (`65053`). The strike
  * price is the derived market fact `strikepx` over `StrikePrice(202)`, and a
  * bridge's own identifier keys are no crate field either: they arrive as
  * unmapped entries and are read for the identifier name they end with.
@@ -13022,6 +13225,70 @@ export interface IntoSerieOptions {
   safe?: boolean
   /** `value` or `bits`; `value` by default. */
   representation?: string
+}
+
+/**
+ * What `IsinRegistry.resolve` answers for one element, as a plain object:
+ * the listing row it names and how, or why none - each refusal's fields
+ * spelled out, so a caller acts on a `CfiConflict` without reading text.
+ * A field a variant does not state is `null`.
+ */
+export interface IsinResolution {
+  /** Whether a row was matched. */
+  matched: boolean
+  /**
+   * The matched row as a plain object of its columns: the listing on the
+   * element's market, else the one row holding the key, else the
+   * instrument's single row, else its first.
+   */
+  entry: Record<string, unknown> | null
+  /**
+   * The tier that matched - or, for `Ambiguous`, found the two -
+   * `isin`, `code`, `symbology` or `economic`.
+   */
+  tier: 'isin' | 'code' | 'symbology' | 'economic' | null
+  /**
+   * The type of the code a `code` tier read, one of
+   * `IsinRegistry.lookupCodes()`.
+   */
+  kind: string | null
+  /**
+   * How similar the short names an `economic` tier weighed are, from the
+   * threshold to `1`.
+   */
+  similarity: number | null
+  /** Whether the ISIN was derived - the element stated none; a match only. */
+  derived: boolean | null
+  /**
+   * Whether the row's listing facts belong to the element: its market is
+   * the row's, or either is unstated; a match only.
+   */
+  listing: boolean | null
+  /**
+   * Why none matched, the refusal's name: `NoKey`, `UnknownIsin`,
+   * `NoCandidate`, `Ambiguous`, `CfiConflict`, `CurrencyConflict` or
+   * `BelowThreshold`.
+   */
+  unmatched: 'NoKey' | 'UnknownIsin' | 'NoCandidate' | 'Ambiguous' | 'CfiConflict' | 'CurrencyConflict' | 'BelowThreshold' | null
+  /** The instruments an `Ambiguous` key or score names, in ISIN order. */
+  isins: string[] | null
+  /**
+   * The element's own: the ISIN an `UnknownIsin` states, the CFI category
+   * of a `CfiConflict`, the origin currency of a `CurrencyConflict`.
+   */
+  stated: string | null
+  /**
+   * The instrument's: the CFI category of a `CfiConflict`, the origin
+   * currency of a `CurrencyConflict`.
+   */
+  held: string | null
+  /** How similar the most similar instrument of a `BelowThreshold` is. */
+  best: number | null
+  /**
+   * The instrument a `CfiConflict`, a `CurrencyConflict` or a
+   * `BelowThreshold` names.
+   */
+  isin: string | null
 }
 
 /**

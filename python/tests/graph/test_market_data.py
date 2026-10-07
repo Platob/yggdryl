@@ -201,9 +201,9 @@ def test_the_field_is_the_lifted_marketdata_struct() -> None:
     assert names.index("marketdatakind") == 15
     assert names[16] == "marketdatatype"
     # The strike is the market fact after the ticker, before the metadata.
-    assert len(names) == 64
-    assert names.index("strikepx") == names.index("ticker") + 1 == 48
-    assert names[49] == "metadata"
+    assert len(names) == 65
+    assert names.index("strikepx") == names.index("ticker") + 1 == 49
+    assert names[50] == "metadata"
     assert str(field["strikepx"].dtype) == "decimal"
     for name in (
         "currunix",
@@ -544,6 +544,41 @@ def test_the_delta_and_the_events_of_held_books_are_laid_out_by_kind() -> None:
     # A kind no spelling reads is refused at the door.
     with pytest.raises(ValueError):
         graph.MarketData.delta_serie(rows, "NOPE")
+
+
+def test_a_book_row_states_no_sources_while_its_delta_and_events_rows_do() -> None:
+    lines = [f"018bcfe5-6800-7000-8000-00000000000{n}" for n in (1, 2, 3)]
+    facts: dict[str, Any] = {"price": D("101"), "quantity": 1, "ticker": "ACME", "state": "NEW"}
+    order = graph.OrderEvent(CLOCK, crosscode="B-1", side="BUYS", srcuuids=[lines[0]], **facts)
+    quote = graph.QuoteEvent(CLOCK, crosscode="Q-1", side="BUYS", srcuuids=[lines[1]], **facts)
+    fill = graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUYS", lastqty=1, ticker="ACME", srcuuids=[lines[2]])
+    book = graph.BookEvent(CLOCK, "ACME").with_operations([order, quote, fill])
+    # A book states no sources; the events it holds keep theirs.
+    assert book.srcuuids == []
+    assert [[source.as_py() for source in entry.srcuuids] for entry in book.delta] == [[lines[0]], [lines[1]]]
+
+    rows = graph.MarketData.arrow_reader([book]).read_all()
+    assert rows.column("srcuuids").to_pylist() == [None]
+    (row,) = rows.to_pylist()
+    # An alive entry writes none: the delta row that applied it does.
+    assert [entry["srcuuids"] for entry in row["alive"]] == [None, None]
+    assert all(entry["srcuuids"] is not None for entry in row["delta"] + row["events"])
+
+    # Read back, the book is the one written and states no source, nor do
+    # its alive entries.
+    (read,) = graph.MarketData.from_arrow_reader(rows)
+    held = read.as_book_event()
+    assert held is not None and held.curruuid == book.curruuid and held.srcuuids == []
+    assert [entry.curruuid for entry in held.alive] == [entry.curruuid for entry in book.alive]
+    assert [entry.srcuuids for entry in held.alive] == [[], []]
+
+    # The delta and the events laid out of the book rows carry every source.
+    def sources(serie: Any) -> list[list[str]]:
+        laid_out = graph.MarketData.from_arrow_reader(serie.read_all())
+        return [[source.as_py() for source in entry.srcuuids] for entry in laid_out]
+
+    assert sources(graph.MarketData.delta_serie(rows)) == [[lines[0]], [lines[1]]]
+    assert sources(graph.MarketData.events_serie(rows)) == [[lines[2]]]
 
 
 def test_an_identifier_column_is_a_sorted_map_from_its_key_to_its_value() -> None:

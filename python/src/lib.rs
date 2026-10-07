@@ -703,6 +703,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<identifier::PyIdentifier>()?;
     module.add_class::<identifier::PyIdentifiers>()?;
     module.add_class::<isin_registry::PyIsinRegistry>()?;
+    module.add_class::<isin_registry::PyResolution>()?;
     module.add_class::<eusipa::PyEusipa>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;

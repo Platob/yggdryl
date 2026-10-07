@@ -199,7 +199,7 @@ fn execution_time_uses_the_first_execution_specific_statement() {
     let reader = reader();
     let direct = settled(
         &reader,
-        b"8=FIX.4.4|35=8|65023=20240102-10:15:30.100|2749=20240102-10:15:30.200|768=2|769=20240102-10:15:30.250|770=2|769=20240102-10:15:30.300|770=1|eventtimestamp=20240102-10:15:30.400|150=F|60=20240102-10:15:30.500|10=0|",
+        b"8=FIX.4.4|35=8|65024=20240102-10:15:30.100|2749=20240102-10:15:30.200|768=2|769=20240102-10:15:30.250|770=2|769=20240102-10:15:30.300|770=1|eventtimestamp=20240102-10:15:30.400|150=F|60=20240102-10:15:30.500|10=0|",
     );
     assert_eq!(direct.get_execunix(), Some(DIRECT));
 
@@ -2658,6 +2658,74 @@ fn a_walk_learns_the_product_category_a_bridge_key_states_and_lifts_it_nowhere()
 /// and the market, and fills them into a later message of the instrument
 /// where it leaves them unsaid, settled no further than the market facts
 /// they imply: the message's identity and its wire are the parse's.
+/// The lifecycle takes the economic match - an instrument found by the
+/// short name a message states in its currency, its ISIN derived - only
+/// where the registry states it, and a parse door never does: the parse
+/// takes the exact tier alone. Within one walk every message stating the
+/// same short name and currency takes the one answer.
+#[test]
+fn a_walk_takes_the_economic_match_only_where_the_registry_states_it() {
+    use std::sync::{Arc, Mutex};
+    use yggdryl::{IsinEntry, IsinRegistry, Mic};
+
+    const APPLE: &str = "US0378331005";
+    let mut registry = IsinRegistry::new();
+    registry
+        .merge(
+            IsinEntry::new(Isin::new(APPLE).unwrap())
+                .with_miccode(Some(Mic::new("XNAS").unwrap()))
+                .with_fisn(Some(yggdryl::Fisn::new("APPLE INC./SH").unwrap())),
+        )
+        .unwrap();
+    let instruments = Arc::new(Mutex::new(registry));
+    let codec = super::fixed_codec(super::committed_registry())
+        .with_isin_registry(Arc::clone(&instruments));
+    let lines = |first: i32| {
+        (first..first + 2).map(|seq| {
+            format!(
+                "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|2737=APPLE INC/SH|15=USD|10=0|"
+            )
+        })
+    };
+    let walk = |first: i32| -> Vec<FixMsg> {
+        let parsed: Vec<FixMsg> = codec
+            .parse_lines(lines(first))
+            .collect::<yggdryl::Result<_>>()
+            .expect("two messages");
+        for message in &parsed {
+            assert_eq!(isincode(message), None, "a parse takes no economic match");
+        }
+        codec
+            .lifecycle(parsed)
+            .collect::<yggdryl::Result<_>>()
+            .expect("a walk")
+    };
+    let walked = walk(1);
+    assert_eq!(walked.len(), 2);
+    assert!(
+        walked.iter().all(|message| isincode(message).is_none()),
+        "off by default"
+    );
+    instruments
+        .lock()
+        .expect("the registry")
+        .set_economic_match(true);
+    let walked = walk(3);
+    assert_eq!(walked.len(), 2);
+    for message in &walked {
+        assert_eq!(isincode(message).as_deref(), Some(APPLE));
+        assert!(message.get_securityids().is_derived(&IdType::Isin));
+    }
+    let parsed = codec
+        .parse_fix_line(lines(5).next().unwrap().as_bytes())
+        .expect("a message");
+    assert_eq!(
+        isincode(&parsed),
+        None,
+        "enabled, and still no parse takes it"
+    );
+}
+
 #[test]
 fn a_walk_learns_the_country_and_the_currency_and_fills_them_unsettled() {
     use std::sync::{Arc, Mutex};

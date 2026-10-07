@@ -1979,7 +1979,7 @@ impl PyFixMsg {
     /// the dictionary. A key reaching a typed fact - a header or trailer
     /// tag, a crate column, one of the FIX fields a message lifts - records
     /// it on the holder that owns it, and `None` clears it. A key reaching the capture's
-    /// own column - `sourceurl` (65051), by tag or by name - is a located
+    /// own column - `sourceurl` (65052), by tag or by name - is a located
     /// `ValueError`: a message holds no fact for it, and a row child would
     /// put it on the wire. Any other key lands in the row: a
     /// known field types the value through the core's value contract, `None`
@@ -2340,6 +2340,23 @@ impl PyFixMsg {
     #[getter]
     fn currency(&self) -> PyScalar {
         code_scalar(self.inner.get_currency())
+    }
+
+    /// The currency the instrument originates in - the one it was issued
+    /// in - as the `ccy` code it is, where the message states it (the crate
+    /// field `origccy`) or a registry filled it; `None` where neither did,
+    /// never the currency.
+    #[getter]
+    fn origccy(&self) -> Option<PyScalar> {
+        let held = self.inner.get_origccy();
+        (!held.is_none()).then(|| code_scalar(held))
+    }
+
+    /// The currency an amount converts from: `origccy` where held, else
+    /// `currency` - never `XXX` where a currency is stated.
+    #[getter]
+    fn origin_currency(&self) -> PyScalar {
+        code_scalar(self.inner.origin_currency())
     }
 
     /// The quantity the message states, as a decimal; `None` where it

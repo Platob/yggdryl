@@ -44,7 +44,7 @@ mod categories {
         let cases = [
             (
                 b"8=FIX.4.4|35=D|11=I|22=4|48=US0378331005|10=0|".as_slice(),
-                65_021,
+                65_022,
                 "US0378331005",
             ),
             (
@@ -54,12 +54,12 @@ mod categories {
             ),
             (
                 b"8=FIX.4.4|35=D|11=B|22=A|48=AAPL US Equity|10=0|".as_slice(),
-                65_049,
+                65_050,
                 "AAPL US Equity",
             ),
             (
                 b"8=FIX.4.4|35=D|11=M|207=XNAS|10=0|".as_slice(),
-                65_022,
+                65_023,
                 "XNAS",
             ),
         ];

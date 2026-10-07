@@ -109,7 +109,7 @@ mod iceberg {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )
@@ -164,7 +164,7 @@ mod iceberg {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )

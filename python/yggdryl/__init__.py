@@ -304,7 +304,7 @@ from .urn import UrnField, urn
 from .url import UrlField, url
 from .version import Version, VersionField, version
 from .identifier import Identifier, Identifiers
-from .isin_registry import IsinRegistry
+from .isin_registry import IsinRegistry, Resolution
 from .eusipa import Eusipa
 
 __all__ = [
@@ -409,6 +409,7 @@ __all__ = [
     "ProtocolField",
     "PythonMetadata",
     "RecordOptions",
+    "Resolution",
     "RicField",
     "RunEndEncodedField",
     "Scalar",

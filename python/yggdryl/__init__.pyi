@@ -371,6 +371,7 @@ from .identifier import (
 )
 from .isin_registry import (
     IsinRegistry as IsinRegistry,
+    Resolution as Resolution,
 )
 from .eusipa import (
     Eusipa as Eusipa,

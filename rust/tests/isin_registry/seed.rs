@@ -107,6 +107,11 @@ fn the_seed_holds_every_row_of_the_document_once_in_isin_and_mic_order() {
             cell(row, "fisn"),
             "{isin}"
         );
+        assert_eq!(
+            entry.origccy().map(|code| code.as_str()),
+            cell(row, "origccy"),
+            "{isin}: the origin currency stated, and none derived"
+        );
         // A listed country is the row's country; the ISIN's own prefix is
         // held as none beside it, and a reserved code (`EZ`) is no country.
         let country = cell(row, "countrycode")
@@ -263,6 +268,58 @@ fn an_index_row_states_no_market_and_no_short_name() {
         assert_eq!(code.as_str(), "TIEXXX", "{}", index.isin());
     }
     assert!(!yggdryl::Cfi::is_detailed("MRIXXX"));
+}
+
+/// The seed states an origin currency where the research names a share
+/// class's currency some listing of it trades apart from - the five Irish
+/// USD share classes, `USD` in each fund's name and FIRDS short name
+/// (`VANGUARD/SHS USD`, `ISHS VII/SHS CL-ACC USD`), listed in GBP on the
+/// London Stock Exchange or in EUR on Xetra, and CSPX in USD on London and
+/// in EUR on Xetra (SXR8) - and nowhere else: no row's origin is derived,
+/// so the Irish prefix reads as no EUR and Tencent's Cayman prefix as no
+/// KYD; a row stating none reads its own currency where an element asks.
+#[test]
+fn the_seed_states_the_origin_currency_of_the_irish_usd_share_classes_alone() {
+    let seeded = IsinRegistry::seeded();
+    let origin = |isin: &str| {
+        seeded
+            .get(isin)
+            .unwrap_or_else(|| panic!("{isin}: seeded"))
+            .origccy()
+            .map(|code| code.as_str())
+    };
+    for (isin, currency) in [
+        ("IE00B3RBWM25", "GBP"),
+        ("IE00B3XXRP09", "GBP"),
+        ("IE00B4L5Y983", "EUR"),
+        ("IE00B5BMR087", "USD"),
+        ("IE00B6R52259", "EUR"),
+    ] {
+        assert_eq!(origin(isin), Some("USD"), "{isin}: a USD share class");
+        assert_eq!(
+            seeded
+                .get(isin)
+                .and_then(IsinEntry::currency)
+                .map(|code| code.as_str()),
+            Some(currency),
+            "{isin}: the listing's own"
+        );
+    }
+    assert_eq!(
+        origin("KYG875721634"),
+        None,
+        "Tencent: no KYD from the prefix"
+    );
+    assert_eq!(
+        origin("IE00B4BNMY34"),
+        None,
+        "Accenture: no EUR from the prefix"
+    );
+    assert_eq!(
+        seeded.iter().filter(|row| row.origccy().is_some()).count(),
+        5,
+        "the five Irish USD share classes, one listing each"
+    );
 }
 
 /// A seed row derives the national number its ISIN embeds, as any row the

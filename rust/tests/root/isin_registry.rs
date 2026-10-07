@@ -2,7 +2,8 @@
 //! an instrument is known by - learned from statements, filled into the
 //! ones that leave it unsaid, a valid value filling and replacing whatever
 //! the time, the instrument's facts on every listing and a listing's on its
-//! own row, a ticker leading back to its ISIN on its market - read from and
+//! own row, a ticker or a lookup code leading back to its ISIN, the
+//! `resolve` waterfall over them and the economic match - read from and
 //! written to a holder through the Arrow record surface.
 
 use std::sync::Arc;
@@ -15,7 +16,7 @@ use yggdryl::holder::{Buffer, Holder};
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{
     Ccy, Cfi, Country, Eusipa, Fisn, Forex, IOBase, IOMedia, IOMode, IdKey, IdType, Identifier,
-    Isin, IsinEntry, IsinRegistry, Mic,
+    Isin, IsinEntry, IsinRegistry, MatchTier, Mic, Resolution, Unmatched,
 };
 
 const HOLCIM: &str = "CH0012214059";
@@ -151,10 +152,13 @@ fn a_statement_is_learned_by_its_isin_and_filled_into_one_naming_it() {
     assert_eq!(own.get_cficode().map(|code| code.as_str()), Some("ESVUFR"));
 }
 
-/// A RIC is a listing code like a Bloomberg symbol: filled on the same
-/// market, never a key a lookup or a learn reads.
+/// A RIC is a listing code like a Bloomberg symbol, and one of the
+/// lookup codes (`IsinRegistry::LOOKUP_CODES`) since local codes became
+/// keys: with no ISIN, an element naming only the RIC resolves to the one
+/// instrument holding it, its ISIN derived; a code two instruments hold
+/// resolves to none. A learn stays keyed by a stated ISIN alone.
 #[test]
-fn a_ric_is_an_ordinary_listing_code_and_keys_nothing() {
+fn a_ric_is_a_listing_code_and_with_no_isin_a_lookup_key() {
     let mut registry = IsinRegistry::new();
     registry
         .merge(
@@ -166,17 +170,20 @@ fn a_ric_is_an_ordinary_listing_code_and_keys_nothing() {
             .with_miccode(mic("XSWX")),
         )
         .unwrap();
-    // An element naming only the RIC resolves to nothing.
+    // An element naming only the RIC resolves to the instrument holding it.
     let mut by_ric = order(20, &[(IdType::Ric, "HOLN.S")]);
-    assert!(!registry.fill(&mut by_ric));
-    assert_eq!(by_ric.get_isincode(), None);
+    assert!(registry.fill(&mut by_ric));
+    assert_eq!(by_ric.get_isincode(), Some(HOLCIM));
+    assert!(by_ric.get_securityids().is_derived(&IdType::Isin));
+    assert_eq!(by_ric.get_securityids().get(&IdType::Common), Some("C-1"));
     // A statement naming a RIC and no ISIN is learned by nothing.
     assert!(!registry.learn(&order(
         30,
         &[(IdType::Ric, "HOLN.S"), (IdType::Belgian, "B-1")]
     )));
     assert_eq!(registry.get(HOLCIM).unwrap().get(&IdType::Belgian), None);
-    // Two rows may hold one RIC, and a fill hands each its own.
+    // Two instruments may hold one RIC, and a fill by its ISIN hands each
+    // its own; by the RIC alone, neither.
     registry
         .merge(entry(APPLE, Some(10), &[(IdType::Ric, "HOLN.S")]))
         .unwrap();
@@ -191,6 +198,10 @@ fn a_ric_is_an_ordinary_listing_code_and_keys_nothing() {
     let mut apple = order(40, &[(IdType::Isin, APPLE)]);
     assert!(registry.fill(&mut apple));
     assert_eq!(apple.get_securityids().get(&IdType::Ric), Some("HOLN.S"));
+    let mut ambiguous = order(40, &[(IdType::Ric, "HOLN.S")]);
+    assert!(!registry.fill(&mut ambiguous), "two instruments hold it");
+    assert_eq!(ambiguous.get_isincode(), None);
+    assert_eq!(registry.get_by_code(&IdType::Ric, "HOLN.S", None), None);
     // On the row's market or none, the RIC fills; on another, it does not.
     let mut elsewhere = order(40, &[(IdType::Isin, HOLCIM)]);
     elsewhere.set_miccode(mic("XLON"), true);
@@ -202,8 +213,10 @@ fn a_ric_is_an_ordinary_listing_code_and_keys_nothing() {
     );
 }
 
+/// A Bloomberg symbol is a lookup key as a RIC is; a statement without an
+/// ISIN is still learned by nothing.
 #[test]
-fn a_bloomberg_symbol_is_never_a_key() {
+fn a_bloomberg_symbol_keys_a_lookup_and_no_learn() {
     let mut registry = IsinRegistry::new();
     registry
         .merge(entry(
@@ -213,8 +226,8 @@ fn a_bloomberg_symbol_is_never_a_key() {
         ))
         .unwrap();
     let mut symbol = order(20, &[(IdType::Bloomberg, "HOLN SW Equity")]);
-    assert!(!registry.fill(&mut symbol));
-    assert_eq!(symbol.get_isincode(), None);
+    assert!(registry.fill(&mut symbol));
+    assert_eq!(symbol.get_isincode(), Some(HOLCIM));
     assert!(
         !registry.learn(&order(
             20,
@@ -225,6 +238,7 @@ fn a_bloomberg_symbol_is_never_a_key() {
         )),
         "a statement without an ISIN is learned by nothing"
     );
+    assert_eq!(registry.get(HOLCIM).unwrap().get(&IdType::Common), None);
 }
 
 /// No clock gates a merge: a stated valid value fills a column the row
@@ -926,14 +940,16 @@ fn an_entry_reads_back_from_its_scalar() {
         .iter()
         .map(|field| field.name().to_string())
         .collect();
-    // The twelve facts, the two stamps, the product category and the short
-    // name among the instrument's, then the thirty-two equivalents.
-    assert_eq!(columns.len(), 44);
+    // The fourteen facts, the three stamps, the product category, the
+    // short name and the origin currency among the instrument's, then the
+    // thirty-two equivalents.
+    assert_eq!(columns.len(), 46);
     assert_eq!(
-        &columns[..13],
+        &columns[..15],
         [
             "isin",
             "updunix",
+            "firstunix",
             "lastunix",
             "cficode",
             "countrycode",
@@ -944,6 +960,7 @@ fn an_entry_reads_back_from_its_scalar() {
             "ticker",
             "fisn",
             "currency",
+            "origccy",
             "cusip"
         ]
     );
@@ -952,13 +969,14 @@ fn an_entry_reads_back_from_its_scalar() {
         .as_fields()
         .unwrap()
         .iter()
-        .take(12)
+        .take(14)
         .map(|field| field.dtype().to_string())
         .collect();
     assert_eq!(
         types,
         [
             "isin",
+            "datetime64(ns,\"UTC\")",
             "datetime64(ns,\"UTC\")",
             "datetime64(ns,\"UTC\")",
             "cfi",
@@ -969,6 +987,7 @@ fn an_entry_reads_back_from_its_scalar() {
             "mic",
             "utf8",
             "fisn",
+            "ccy",
             "ccy"
         ]
     );
@@ -1287,7 +1306,8 @@ fn a_registry_round_trips_an_ipc_file_through_the_record_surface() {
     registry
         .merge(
             entry(APPLE, None, &[(IdType::Cusip, "037833100")])
-                .with_forexcode(Some(Forex::new("USD/CHF").unwrap())),
+                .with_forexcode(Some(Forex::new("USD/CHF").unwrap()))
+                .with_origccy(ccy("USD")),
         )
         .unwrap();
     let mut handle = Buffer::new().with_media_type(yggdryl::MimeType::ARROW_STREAM.into());
@@ -2194,8 +2214,11 @@ fn an_instrument_learned_on_two_markets_holds_one_listing_on_each() {
     assert!(back.iter().eq(registry.iter()));
     assert_eq!((back.len(), back.rows()), (1, 2));
 
-    // One ticker on both markets names each listing on its own, and
-    // neither where no market is stated.
+    // One ticker on both markets names each listing on its own, and the
+    // instrument where no market is stated: the index holds one slot per
+    // ISIN since local codes became keys, so two listings of one ISIN are
+    // one answer - its first listing, its listing facts withheld - where
+    // two (ISIN, market) slots answered none before.
     assert!(registry.learn(&stated(40, "XLON", "HOLN", "HOLN.L", "GBP")));
     for market in ["XLON", "XSWX"] {
         assert_eq!(
@@ -2205,7 +2228,23 @@ fn an_instrument_learned_on_two_markets_holds_one_listing_on_each() {
             mic(market).as_ref()
         );
     }
-    assert!(registry.get_by_ticker("HOLN", None).is_none(), "ambiguous");
+    assert_eq!(
+        registry.get_by_ticker("HOLN", None),
+        registry.get(HOLCIM),
+        "one instrument, its first listing"
+    );
+    let mut unmarketed = OrderEvent::at(50);
+    unmarketed.set_ticker(Some(SmolStr::new("HOLN")), true);
+    let Resolution::Matched {
+        entry: found,
+        tier: MatchTier::Symbology,
+        derived: true,
+        listing: false,
+    } = registry.resolve(&unmarketed)
+    else {
+        panic!("one instrument, its listing facts withheld")
+    };
+    assert_eq!(found.isin().as_str(), HOLCIM);
     assert!(registry.get_by_ticker("0QKY", None).is_none(), "renamed");
 }
 
@@ -2550,6 +2589,691 @@ fn a_golden_file_with_two_rows_of_one_isin_loads_two_listings() {
     }
 }
 
+/// The origin currency is an instrument fact held only where stated: a
+/// golden file's column under each of its spellings, a merge on any
+/// listing - every listing then holds it - and a learn; `XXX` states none,
+/// and no fold derives one, from the ISIN's prefix or from a listing's
+/// currency. A
+/// EUR listing of a USD share class learned from an element stating only
+/// its currency leaves the instrument's origin USD; the fill lands the
+/// origin into an element holding none and never over one it holds; an FX
+/// pair's origin is never learned.
+#[test]
+fn the_origin_currency_is_an_instrument_fact_stated_and_never_derived() {
+    const CSPX: &str = "IE00B5BMR087";
+    let origin = |registry: &IsinRegistry, key: &str| {
+        registry
+            .get(key)
+            .and_then(IsinEntry::origccy)
+            .map(|code| code.as_str().to_owned())
+    };
+    for name in [
+        "origccy",
+        "OrigCurrency",
+        "OriginalCurrency",
+        "original_currency",
+        "Issue_Currency",
+    ] {
+        let golden = IsinRegistry::from_arrow_reader(flat(&[
+            ("isin", vec![Some(CSPX), Some(HOLCIM)]),
+            ("mic", vec![Some("XLON"), Some("XSWX")]),
+            ("currency", vec![Some("GBP"), Some("CHF")]),
+            (name, vec![Some("USD"), None]),
+        ]))
+        .unwrap();
+        assert_eq!(origin(&golden, CSPX).as_deref(), Some("USD"), "{name}");
+        assert_eq!(origin(&golden, HOLCIM), None, "{name}: none from CHF");
+    }
+
+    let mut registry = IsinRegistry::new();
+    registry
+        .merge(
+            IsinEntry::new(isin(CSPX))
+                .with_miccode(mic("XLON"))
+                .with_currency(ccy("USD")),
+        )
+        .unwrap();
+    assert_eq!(
+        origin(&registry, CSPX),
+        None,
+        "neither the prefix's EUR nor the listing's USD is derived"
+    );
+    assert_eq!(
+        IsinEntry::new(isin(CSPX))
+            .with_origccy(ccy("XXX"))
+            .origccy(),
+        None,
+        "XXX states none"
+    );
+    assert!(
+        registry
+            .merge(
+                IsinEntry::new(isin(CSPX))
+                    .with_miccode(mic("XETR"))
+                    .with_currency(ccy("EUR"))
+                    .with_origccy(ccy("USD")),
+            )
+            .unwrap()
+    );
+    assert_eq!(registry.rows(), 2);
+    for row in registry.listings(CSPX) {
+        assert_eq!(
+            row.origccy().map(|code| code.as_str()),
+            Some("USD"),
+            "{:?}: every listing",
+            row.miccode()
+        );
+    }
+    assert!(
+        !registry
+            .merge(IsinEntry::new(isin(CSPX)).with_origccy(ccy("USD")))
+            .unwrap(),
+        "restated, it moves nothing"
+    );
+    let xetra = registry
+        .get_listing(CSPX, &Mic::new("XETR").unwrap())
+        .unwrap()
+        .clone();
+    assert_eq!(IsinEntry::from_scalar(&xetra.into_scalar()).unwrap(), xetra);
+
+    // A EUR listing of the USD class, learned from an order stating only
+    // its currency: the listing's currency is EUR, the origin stays USD.
+    let mut seeded = IsinRegistry::seeded();
+    assert_eq!(origin(&seeded, CSPX).as_deref(), Some("USD"));
+    let mut sxr8 = order(10, &[(IdType::Isin, CSPX)]);
+    sxr8.set_miccode(mic("XETR"), true);
+    sxr8.set_ticker(Some(SmolStr::new("SXR8")), true);
+    sxr8.set_currency(Ccy::new("EUR").unwrap(), true);
+    assert!(sxr8.get_origccy().is_none());
+    assert!(seeded.learn(&sxr8));
+    let listing = seeded
+        .get_listing(CSPX, &Mic::new("XETR").unwrap())
+        .unwrap();
+    assert_eq!(listing.currency().map(|code| code.as_str()), Some("EUR"));
+    for row in seeded.listings(CSPX) {
+        assert_eq!(
+            row.origccy().map(|code| code.as_str()),
+            Some("USD"),
+            "{:?}: never EUR",
+            row.miccode()
+        );
+    }
+    // The fill lands the origin where the element holds none...
+    let mut filled = order(20, &[(IdType::Isin, CSPX)]);
+    filled.set_miccode(mic("XETR"), true);
+    assert!(seeded.fill(&mut filled));
+    assert_eq!(filled.get_origccy().as_str(), "USD");
+    assert_eq!(filled.get_currency().as_str(), "EUR");
+    assert_eq!(filled.origin_currency().as_str(), "USD");
+    // ...and never over one it holds.
+    let mut held = order(20, &[(IdType::Isin, CSPX)]);
+    held.set_origccy(Ccy::new("GBP").unwrap(), true);
+    seeded.fill(&mut held);
+    assert_eq!(held.get_origccy().as_str(), "GBP");
+    // An instrument stating none fills none: the element reads its own
+    // currency as its origin.
+    let mut holcim = order(20, &[(IdType::Isin, HOLCIM)]);
+    holcim.set_miccode(mic("XSWX"), true);
+    assert!(seeded.fill(&mut holcim));
+    assert!(holcim.get_origccy().is_none());
+    assert_eq!(holcim.origin_currency().as_str(), "CHF");
+
+    // A stated origin is learned; an FX pair's never is.
+    let mut learned = IsinRegistry::new();
+    let mut stated = order(5, &[(IdType::Isin, APPLE)]);
+    stated.set_origccy(Ccy::new("USD").unwrap(), true);
+    assert!(learned.learn(&stated));
+    assert_eq!(origin(&learned, APPLE).as_deref(), Some("USD"));
+    let fx = numbered("EZ");
+    let mut traded = order(
+        10,
+        &[(IdType::Isin, fx.as_str()), (IdType::Forex, "EUR/USD")],
+    );
+    traded.set_currency(Ccy::new("EUR").unwrap(), true);
+    traded.set_origccy(Ccy::new("EUR").unwrap(), true);
+    assert!(learned.learn(&traded));
+    assert_eq!(origin(&learned, &fx), None, "a pair's is no instrument's");
+}
+
+/// `firstunix` is the earliest instant an event the registry learned an
+/// instrument from: the first learn sets it beside `lastunix`, every
+/// listing holds it, an earlier event moves it back - the registry dirty -
+/// and a later one never moves it, so a learn moving neither stamp nor a
+/// fact leaves the registry clean; a stated one merges earlier-wins; a
+/// golden file states it under each of its spellings; the snapshot carries
+/// it.
+#[test]
+fn the_first_learn_sets_firstunix_and_only_an_earlier_event_moves_it() {
+    let met = |unix: i64| order(unix, &[(IdType::Isin, APPLE)]);
+    let mut registry = IsinRegistry::new();
+    assert!(registry.learn(&met(20)));
+    let row = registry.get(APPLE).unwrap();
+    assert_eq!(
+        (row.updunix(), row.firstunix(), row.lastunix()),
+        (Some(20), Some(20), Some(20))
+    );
+    let mut loaded =
+        IsinRegistry::from_arrow_reader(registry.into_arrow_reader().unwrap()).unwrap();
+    assert_eq!(loaded.get(APPLE).unwrap().firstunix(), Some(20), "carried");
+    assert!(!loaded.learn(&met(20)), "met again at the same instant");
+    assert!(loaded.learn(&met(30)), "a later event moves lastunix");
+    assert_eq!(
+        loaded.get(APPLE).unwrap().firstunix(),
+        Some(20),
+        "not firstunix"
+    );
+    let mut clean = IsinRegistry::from_arrow_reader(loaded.into_arrow_reader().unwrap()).unwrap();
+    assert!(!clean.learn(&met(25)), "between the two: nothing moves");
+    assert!(!clean.is_dirty());
+    assert!(clean.learn(&met(5)), "replayed out of order");
+    assert!(clean.is_dirty());
+    let row = clean.get(APPLE).unwrap();
+    assert_eq!(
+        (row.updunix(), row.firstunix(), row.lastunix()),
+        (Some(20), Some(5), Some(30)),
+        "updunix moves with a fact alone"
+    );
+    // A stated one merges earlier-wins, and every listing holds it.
+    assert!(
+        !clean
+            .merge(IsinEntry::new(isin(APPLE)).with_firstunix(Some(9)))
+            .unwrap()
+    );
+    assert!(
+        clean
+            .merge(IsinEntry::new(isin(APPLE)).with_firstunix(Some(1)))
+            .unwrap()
+    );
+    for market in ["XNAS", "XETR"] {
+        clean
+            .merge(IsinEntry::new(isin(APPLE)).with_miccode(mic(market)))
+            .unwrap();
+    }
+    assert_eq!(clean.rows(), 2);
+    for row in clean.listings(APPLE) {
+        assert_eq!(row.firstunix(), Some(1), "{:?}", row.miccode());
+    }
+    // A golden file states it under each of its spellings.
+    for name in ["firstunix", "FirstSeen", "first_seen_unix"] {
+        use arrow_array::TimestampNanosecondArray;
+        let schema = Arc::new(Schema::new(vec![
+            ArrowField::new("ISIN", ArrowType::Utf8, false),
+            ArrowField::new(
+                name,
+                ArrowType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into())),
+                true,
+            ),
+        ]));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(StringArray::from(vec![APPLE, APPLE])),
+                Arc::new(
+                    TimestampNanosecondArray::from(vec![Some(30), Some(20)]).with_timezone("UTC"),
+                ),
+            ],
+        )
+        .unwrap();
+        let golden =
+            IsinRegistry::from_arrow_reader(yggdryl::arrow::batch_reader(schema, [batch])).unwrap();
+        assert_eq!(
+            golden.get(APPLE).unwrap().firstunix(),
+            Some(20),
+            "{name}: the earlier"
+        );
+    }
+}
+
+/// The exact tier, in its order: a real ISIN decides alone over a code
+/// naming another instrument, a code over a ticker naming another, the
+/// ticker on its market last - each answering its tier and whether the ISIN
+/// was derived and the row's listing facts are the element's.
+#[test]
+fn the_cascade_takes_the_isin_then_a_code_then_the_ticker_on_its_market() {
+    let mut registry = IsinRegistry::new();
+    registry
+        .merge(
+            IsinEntry::new(isin(APPLE))
+                .with_miccode(mic("XNAS"))
+                .with_ticker(Some(SmolStr::new("AAPL"))),
+        )
+        .unwrap();
+    registry
+        .merge(
+            IsinEntry::new(isin(DIAGEO))
+                .with_miccode(mic("XLON"))
+                .with_ticker(Some(SmolStr::new("DGE"))),
+        )
+        .unwrap();
+    registry
+        .merge(IsinEntry::new(isin(SAP)).with_miccode(mic("XETR")))
+        .unwrap();
+    // The ISIN wins over a CUSIP naming Apple.
+    let stated = order(1, &[(IdType::Isin, SAP), (IdType::Cusip, "037833100")]);
+    let Resolution::Matched {
+        entry: row,
+        tier: MatchTier::Isin,
+        derived: false,
+        listing: true,
+    } = registry.resolve(&stated)
+    else {
+        panic!("{:?}", registry.resolve(&stated))
+    };
+    assert_eq!(row.isin().as_str(), SAP);
+    // A CUSIP wins over a ticker naming Diageo.
+    let mut coded = order(1, &[(IdType::Cusip, "037833100")]);
+    coded.set_ticker(Some(SmolStr::new("DGE")), true);
+    coded.set_miccode(mic("XLON"), true);
+    let Resolution::Matched {
+        entry: row,
+        tier: MatchTier::Code(IdType::Cusip),
+        derived: true,
+        listing: false,
+    } = registry.resolve(&coded)
+    else {
+        panic!("{:?}", registry.resolve(&coded))
+    };
+    assert_eq!(row.isin().as_str(), APPLE, "Apple is not listed on XLON");
+    // The ticker on its market last.
+    let mut ticked = OrderEvent::at(1);
+    ticked.set_ticker(Some(SmolStr::new("DGE")), true);
+    ticked.set_miccode(mic("XLON"), true);
+    let Resolution::Matched {
+        entry: row,
+        tier: MatchTier::Symbology,
+        derived: true,
+        listing: true,
+    } = registry.resolve(&ticked)
+    else {
+        panic!("{:?}", registry.resolve(&ticked))
+    };
+    assert_eq!(row.isin().as_str(), DIAGEO);
+    // The same through the public lookups.
+    assert_eq!(
+        registry
+            .get_by_code(&IdType::Cusip, "037833100", None)
+            .map(|row| row.isin().as_str()),
+        Some(APPLE)
+    );
+    assert_eq!(
+        registry
+            .get_by_code(&IdType::Sedol, "0237400", mic("XLON").as_ref())
+            .map(|row| row.isin().as_str()),
+        Some(DIAGEO),
+        "the SEDOL its ISIN embeds"
+    );
+    assert_eq!(
+        registry.get_by_code(&IdType::Cusip, "not a cusip", None),
+        None
+    );
+    assert_eq!(registry.get_by_code(&IdType::IsoCcy, "USD", None), None);
+    // Nothing stated: no key.
+    assert_eq!(
+        registry.resolve(&OrderEvent::at(1)),
+        Resolution::Unmatched(Unmatched::NoKey)
+    );
+    let mut unknown = OrderEvent::at(1);
+    unknown.set_ticker(Some(SmolStr::new("ZZZZ")), true);
+    assert_eq!(
+        registry.resolve(&unknown),
+        Resolution::Unmatched(Unmatched::NoCandidate)
+    );
+}
+
+/// A real ISIN the registry lacks ends the cascade: a CUSIP beside it that
+/// another row holds names nothing, and a fill takes nothing - another
+/// instrument's codes would surround the one it states.
+#[test]
+fn an_unknown_stated_isin_ends_the_cascade_and_fills_nothing() {
+    let mut registry = IsinRegistry::new();
+    registry
+        .merge(IsinEntry::new(isin(APPLE)).with_miccode(mic("XNAS")))
+        .unwrap();
+    let mut stated = order(1, &[(IdType::Isin, NOVARTIS), (IdType::Cusip, "037833100")]);
+    assert_eq!(
+        registry.resolve(&stated),
+        Resolution::Unmatched(Unmatched::UnknownIsin {
+            stated: isin(NOVARTIS)
+        })
+    );
+    assert!(!registry.fill(&mut stated));
+    assert_eq!(stated.get_isincode(), Some(NOVARTIS));
+    assert_eq!(stated.get_cficode(), None);
+}
+
+/// A code two instruments hold is ambiguous: the cascade stops there - the
+/// ticker beside it naming one instrument is not read, nor is any short
+/// name scanned - and a fill takes nothing.
+#[test]
+fn a_code_two_instruments_hold_is_ambiguous_and_stops_the_cascade() {
+    let mut registry = IsinRegistry::new();
+    for text in [APPLE, SAP] {
+        registry
+            .merge(entry(text, Some(1), &[(IdType::Common, "C-1")]))
+            .unwrap();
+    }
+    registry
+        .merge(
+            IsinEntry::new(isin(DIAGEO))
+                .with_miccode(mic("XLON"))
+                .with_ticker(Some(SmolStr::new("DGE"))),
+        )
+        .unwrap();
+    let mut stated = order(1, &[(IdType::Common, "C-1")]);
+    stated.set_ticker(Some(SmolStr::new("DGE")), true);
+    stated.set_miccode(mic("XLON"), true);
+    assert_eq!(
+        registry.resolve(&stated),
+        Resolution::Unmatched(Unmatched::Ambiguous {
+            tier: MatchTier::Code(IdType::Common),
+            isins: vec![isin(SAP), isin(APPLE)],
+        })
+    );
+    assert!(!registry.fill(&mut stated));
+    assert_eq!(stated.get_isincode(), None);
+}
+
+/// One instrument on two markets is one answer, never an ambiguity: the
+/// seed's HSBC SEDOL with no market resolves to its ISIN, and an instrument
+/// listed on two markets in one currency is matched by its CUSIP and by its
+/// short name alike. An element on a market the instrument is not listed on
+/// takes its instrument facts and none of the listing's: no RIC, no ticker.
+#[test]
+fn the_listings_of_one_instrument_are_one_match() {
+    let seeded = IsinRegistry::seeded();
+    let sedol = order(1, &[(IdType::Sedol, "0540528")]);
+    let Resolution::Matched {
+        entry: row,
+        tier: MatchTier::Code(IdType::Sedol),
+        derived: true,
+        ..
+    } = seeded.resolve(&sedol)
+    else {
+        panic!("{:?}", seeded.resolve(&sedol))
+    };
+    assert_eq!(row.isin().as_str(), HSBC);
+    assert_eq!(seeded.listings(HSBC).len(), 2);
+
+    let mut registry = IsinRegistry::new();
+    for market in ["XNAS", "XNYS"] {
+        registry
+            .merge(
+                IsinEntry::new(isin(APPLE))
+                    .with_miccode(mic(market))
+                    .with_fisn(fisn("APPLE INC/SH")),
+            )
+            .unwrap();
+    }
+    assert_eq!(registry.rows(), 2);
+    let by_cusip = order(1, &[(IdType::Cusip, "037833100")]);
+    assert!(matches!(
+        registry.resolve(&by_cusip),
+        Resolution::Matched {
+            tier: MatchTier::Code(IdType::Cusip),
+            ..
+        }
+    ));
+    let mut by_name = order(1, &[(IdType::Fisn, "APPLE INC/SH")]);
+    by_name.set_currency(Ccy::new("USD").unwrap(), true);
+    let Resolution::Matched {
+        entry: row,
+        tier: MatchTier::Economic { similarity },
+        derived: true,
+        ..
+    } = registry.resolve(&by_name)
+    else {
+        panic!("{:?}", registry.resolve(&by_name))
+    };
+    assert_eq!((row.isin().as_str(), similarity), (APPLE, 1.0));
+
+    let mut london = IsinRegistry::new();
+    london
+        .merge(
+            entry(APPLE, Some(1), &[(IdType::Ric, "AAPL.L")])
+                .with_miccode(mic("XLON"))
+                .with_ticker(Some(SmolStr::new("0R2V"))),
+        )
+        .unwrap();
+    let mut swiss = order(2, &[(IdType::Cusip, "037833100")]);
+    swiss.set_miccode(mic("XSWX"), true);
+    assert!(matches!(
+        london.resolve(&swiss),
+        Resolution::Matched {
+            tier: MatchTier::Code(IdType::Cusip),
+            derived: true,
+            listing: false,
+            ..
+        }
+    ));
+    assert!(london.fill(&mut swiss));
+    assert_eq!(swiss.get_isincode(), Some(APPLE));
+    assert_eq!(swiss.get_securityids().get(&IdType::Ric), None);
+    assert_eq!(swiss.get_ticker(), None);
+}
+
+/// The economic tier: the instrument listed in the element's currency whose
+/// short name is the most similar, at least the threshold - `APPLE INC/SH`
+/// against `APPLE INC./SH`, one insertion in thirteen - while a name four
+/// bytes longer is below it by its length alone; another stated CFI
+/// category or origin currency drops the instrument and names the
+/// conflict, an unclassified `XXXXXX` conflicts with nothing, another
+/// currency is never a candidate, two equal bests are ambiguous, and no
+/// short name or a currency of `XXX` is no candidate, never a scan.
+#[test]
+fn the_economic_tier_matches_a_similar_short_name_in_the_same_currency() {
+    let usd = || Ccy::new("USD").unwrap();
+    let named = |name: &str| {
+        let mut element = order(1, &[(IdType::Fisn, name)]);
+        element.set_currency(usd(), true);
+        element
+    };
+    let registry_of = |name: &str, code: &str| {
+        let mut registry = IsinRegistry::new();
+        registry
+            .merge(
+                IsinEntry::new(isin(APPLE))
+                    .with_miccode(mic("XNAS"))
+                    .with_fisn(fisn(name))
+                    .with_cficode(cfi(code)),
+            )
+            .unwrap();
+        registry
+    };
+    let registry = registry_of("APPLE INC./SH", "ESVUFR");
+    let Resolution::Matched {
+        entry: row,
+        tier: MatchTier::Economic { similarity },
+        derived: true,
+        listing: true,
+    } = registry.resolve(&named("APPLE INC/SH"))
+    else {
+        panic!("{:?}", registry.resolve(&named("APPLE INC/SH")))
+    };
+    assert_eq!(row.isin().as_str(), APPLE);
+    assert!((similarity - 12.0 / 13.0).abs() < 1e-12, "{similarity}");
+
+    let plain = registry_of("APPLE INC/SH", "ESVUFR");
+    assert_eq!(
+        plain.resolve(&named("APPLE INC/SH USD")),
+        Resolution::Unmatched(Unmatched::BelowThreshold {
+            best: 0.75,
+            isin: isin(APPLE)
+        })
+    );
+
+    let mut equity = named("APPLE INC/SH");
+    equity.set_cficode(cfi("ESVUFR"), true);
+    assert_eq!(
+        registry_of("APPLE INC/SH", "DBFTFR").resolve(&equity),
+        Resolution::Unmatched(Unmatched::CfiConflict {
+            stated: 'E',
+            held: 'D',
+            isin: isin(APPLE)
+        })
+    );
+    let mut unclassified = named("APPLE INC/SH");
+    unclassified.set_cficode(Some(Cfi::new("XXXXXX").unwrap()), true);
+    assert!(matches!(
+        plain.resolve(&unclassified),
+        Resolution::Matched {
+            tier: MatchTier::Economic { .. },
+            ..
+        }
+    ));
+
+    let mut euro = order(1, &[(IdType::Fisn, "APPLE INC/SH")]);
+    euro.set_currency(Ccy::new("EUR").unwrap(), true);
+    assert_eq!(
+        plain.resolve(&euro),
+        Resolution::Unmatched(Unmatched::NoCandidate),
+        "another currency is no candidate"
+    );
+
+    let mut issued = IsinRegistry::new();
+    issued
+        .merge(
+            IsinEntry::new(isin(APPLE))
+                .with_miccode(mic("XNAS"))
+                .with_fisn(fisn("APPLE INC/SH"))
+                .with_origccy(ccy("USD")),
+        )
+        .unwrap();
+    let mut other_origin = named("APPLE INC/SH");
+    other_origin.set_origccy(Ccy::new("EUR").unwrap(), true);
+    assert_eq!(
+        issued.resolve(&other_origin),
+        Resolution::Unmatched(Unmatched::CurrencyConflict {
+            stated: Ccy::new("EUR").unwrap(),
+            held: usd(),
+            isin: isin(APPLE)
+        })
+    );
+
+    let mut twins = registry_of("APPLE INC/SH", "ESVUFR");
+    let other = numbered("US");
+    twins
+        .merge(
+            IsinEntry::new(isin(&other))
+                .with_miccode(mic("XNYS"))
+                .with_fisn(fisn("APPLE INC/SH")),
+        )
+        .unwrap();
+    assert_eq!(
+        twins.resolve(&named("APPLE INC/SH")),
+        Resolution::Unmatched(Unmatched::Ambiguous {
+            tier: MatchTier::Economic { similarity: 1.0 },
+            isins: vec![isin(&other), isin(APPLE)],
+        })
+    );
+
+    let mut nameless = OrderEvent::at(1);
+    nameless.set_ticker(Some(SmolStr::new("ZZZZ")), true);
+    nameless.set_currency(usd(), true);
+    assert_eq!(
+        plain.resolve(&nameless),
+        Resolution::Unmatched(Unmatched::NoCandidate)
+    );
+    let mut unpriced = order(1, &[(IdType::Fisn, "APPLE INC/SH")]);
+    unpriced.set_currency(Ccy::new("XXX").unwrap(), true);
+    assert_eq!(
+        plain.resolve(&unpriced),
+        Resolution::Unmatched(Unmatched::NoCandidate),
+        "XXX states no currency"
+    );
+}
+
+/// The economic match is weighed by `resolve` always and taken by a fill
+/// only where the registry says so - `false` by default - landing the ISIN
+/// as a derivation; the threshold is a similarity in `(0, 1]`, and a value
+/// outside it or NaN is refused by value. A parse door's fill never takes
+/// it ([`yggdryl::FixCodec`]'s lifecycle is pinned in `rust/tests/fix/enrich.rs`).
+#[test]
+fn a_fill_takes_the_economic_match_only_where_it_is_enabled() {
+    let mut registry = IsinRegistry::new();
+    registry
+        .merge(
+            IsinEntry::new(isin(APPLE))
+                .with_miccode(mic("XNAS"))
+                .with_fisn(fisn("APPLE INC./SH")),
+        )
+        .unwrap();
+    assert!(!registry.is_economic_match());
+    assert_eq!(
+        registry.economic_threshold(),
+        IsinRegistry::DEFAULT_ECONOMIC_THRESHOLD
+    );
+    let element = || {
+        let mut element = order(1, &[(IdType::Fisn, "APPLE INC/SH")]);
+        element.set_currency(Ccy::new("USD").unwrap(), true);
+        element
+    };
+    let mut off = element();
+    assert!(
+        !registry.fill(&mut off),
+        "a judgement no fill takes unasked"
+    );
+    assert_eq!(off.get_isincode(), None);
+    registry.set_economic_match(true);
+    let mut on = element();
+    assert!(registry.fill(&mut on));
+    assert_eq!(on.get_isincode(), Some(APPLE));
+    assert!(on.get_securityids().is_derived(&IdType::Isin));
+    // A stricter threshold refuses what it took.
+    let mut strict = registry.try_with_economic_threshold(0.95).unwrap();
+    assert!(strict.is_economic_match());
+    assert!(!strict.fill(&mut element()));
+    for refused in [0.0, 1.5, f64::NAN, -0.5] {
+        let error = strict
+            .set_economic_threshold(refused)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(&format!("{refused}")), "{refused}: {error}");
+    }
+    assert_eq!(strict.economic_threshold(), 0.95, "a refusal moves nothing");
+    strict.set_economic_threshold(1.0).unwrap();
+    // The settings are the registry's, never the store's: a clear keeps them.
+    strict.clear();
+    assert_eq!(
+        (strict.economic_threshold(), strict.is_economic_match()),
+        (1.0, true)
+    );
+    let disabled = IsinRegistry::new().with_economic_match(false);
+    assert!(!disabled.is_economic_match());
+}
+
+/// The fallbacks stand beside the waterfall: the listing currency its
+/// market's country implies fills an empty column only, the origin
+/// currency is never derived into a column, and an element's
+/// `origin_currency` reads its own currency where it holds none.
+#[test]
+fn the_fallbacks_fill_empty_columns_and_derive_no_origin_currency() {
+    let mut registry = IsinRegistry::new();
+    registry
+        .merge(IsinEntry::new(isin(SAP)).with_miccode(mic("XETR")))
+        .unwrap();
+    registry
+        .merge(
+            IsinEntry::new(isin(DIAGEO))
+                .with_miccode(mic("XLON"))
+                .with_currency(ccy("USD")),
+        )
+        .unwrap();
+    let sap = registry.get(SAP).unwrap();
+    assert_eq!(sap.currency().map(Ccy::as_str), Some("EUR"));
+    assert_eq!(sap.origccy(), None);
+    assert_eq!(
+        registry.get(DIAGEO).unwrap().currency().map(Ccy::as_str),
+        Some("USD"),
+        "a statement stands"
+    );
+    let mut element = order(1, &[(IdType::Wkn, "716460")]);
+    element.set_currency(Ccy::new("EUR").unwrap(), true);
+    assert!(registry.fill(&mut element));
+    assert_eq!(element.get_isincode(), Some(SAP));
+    assert!(element.get_origccy().is_none());
+    assert_eq!(element.origin_currency().as_str(), "EUR");
+}
+
 #[cfg(feature = "internals")]
 mod internal {
     use yggdryl::internals::isin_registry::ENTRY_CHARGE;
@@ -2597,12 +3321,18 @@ mod internal {
         );
     }
 
+    /// A listing row is charged its worst case, 5,387 bytes on a 64-bit
+    /// target since the code index joined the table - one slot per code a
+    /// row holds, `12 * (80 + 96 + 16)` bytes with each value's heap - and
+    /// `firstunix` the row, past the 4 KiB it was charged before, so the
+    /// charge is the next power of two of KiB and the default bound holds
+    /// 128 MiB rather than 64.
     #[test]
-    fn the_default_bound_holds_at_most_forty_eight_mebibytes() {
-        assert_eq!(ENTRY_CHARGE, 3 * 1024);
+    fn the_default_bound_holds_at_most_one_hundred_twenty_eight_mebibytes() {
+        assert_eq!(ENTRY_CHARGE, 8 * 1024);
         assert_eq!(
             IsinRegistry::DEFAULT_MAX_INSTRUMENTS * ENTRY_CHARGE,
-            48 * 1024 * 1024
+            128 * 1024 * 1024
         );
     }
 }

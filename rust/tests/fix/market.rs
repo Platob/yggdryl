@@ -3610,8 +3610,8 @@ fn a_lifecycle_merge_keeps_the_union_with_the_reference_leading() {
     let capture = messages(
         &codec,
         &[
-            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:00|65045=SESSION|65044=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=1|18=G|10=0|",
-            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:01|65045=SESSION|65044=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=2|111=3|10=0|",
+            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:00|65046=SESSION|65045=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=1|18=G|10=0|",
+            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:01|65046=SESSION|65045=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=2|111=3|10=0|",
         ],
     );
     let walked = codec

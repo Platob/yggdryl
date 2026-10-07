@@ -1267,7 +1267,7 @@ mod internal {
                 })
                 .collect();
             let mut handle = Buffer::new();
-            write_manifest(&mut handle, FormatVersion::V2, &schema, &spec, &entries).unwrap();
+            write_manifest(&mut handle, FormatVersion::V3, &schema, &spec, &entries).unwrap();
             let manifest = ManifestFile {
                 manifest_path: "metadata/statistics-free.avro".into(),
                 manifest_length: 128,
@@ -1480,7 +1480,7 @@ mod iceberg {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )
@@ -1603,7 +1603,7 @@ mod iceberg {
         let arrow = schema.clone().into_arrow_schema().unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
@@ -1661,7 +1661,7 @@ mod iceberg {
         let path = root("scan_layouts");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -1744,7 +1744,7 @@ mod iceberg {
         let schema = schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table =
-            IcebergTable::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
+            IcebergTable::create(folder.clone(), FormatVersion::V3, schema, spec).unwrap();
         for (id, venue) in ["XNAS", "XNYS", "XLON", "XPAR", "XETR", "XTKS"]
             .into_iter()
             .enumerate()

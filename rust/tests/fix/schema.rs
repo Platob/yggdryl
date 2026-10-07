@@ -87,9 +87,10 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     // `parties` state what they name, and a message stating them keeps them
     // among its entries.
     let tags = yggdryl::fix_schema_tags();
-    // The capture now states the plugin role beside its plugin id: one
-    // new tagged column over the strike-bearing row.
-    assert_eq!(tags.len(), 151);
+    // The capture states the plugin role beside its plugin id, and the
+    // market band the origin currency after the currency: one tagged column
+    // each over the strike-bearing row.
+    assert_eq!(tags.len(), 152);
     for tag in [22, 48, 453, 454] {
         assert!(!tags.contains(&tag), "{tag} is no column");
     }
@@ -97,7 +98,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     // event's, the market's and the operation's facts, the crate's own tag
     // or - for a market or an operation column FIX already names alike -
     // that field's.
-    let shared = 6 + 9 + 35 + 5;
+    let shared = 6 + 9 + 36 + 5;
     assert_eq!(
         &tags[..15],
         [
@@ -120,23 +121,25 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "the element, then the event"
     );
     assert_eq!(
-        &tags[15..25],
+        &tags[15..26],
         [
             yggdryl::MARKETDATAKIND_TAG_NAME.0,
             yggdryl::MARKETDATATYPE_TAG_NAME.0,
             44,
             99,
             15,
+            // The origin currency, the crate's own: no FIX field states it.
+            65_018,
             53,
             1138,
             yggdryl::HIDDENQTY_TAG_NAME.0,
             yggdryl::UNIT_TAG_NAME.0,
             54,
         ],
-        "the market's category and type, prices and quantities, FIX's own fields where FIX names them alike"
+        "the market's category and type, prices, the currency and the origin, and quantities, FIX's own fields where FIX names them alike"
     );
     assert_eq!(
-        &tags[47..50],
+        &tags[48..51],
         [
             yggdryl::TICKER_TAG_NAME.0,
             yggdryl::STRIKEPX_TAG_NAME.0,
@@ -145,7 +148,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "the ticker, the strike FIX states as StrikePrice(202), then the metadata"
     );
     assert_eq!(
-        &tags[50..shared],
+        &tags[51..shared],
         [
             yggdryl::ORDQTY_TAG_NAME.0,
             59,
@@ -213,7 +216,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     let schema = fix_schema(&registry, "fix").unwrap();
     // The two identifier fields and the two groups - each its list alone,
     // its length the count - are four columns no row holds.
-    assert_eq!(schema.fields().len(), 152);
+    assert_eq!(schema.fields().len(), 153);
     assert!(
         schema
             .fields()
@@ -1296,7 +1299,7 @@ fn the_identity_columns_cross_an_iceberg_table_in_the_storage_their_width_asks_f
     // transform over `updatedat` - and no longer a column of this crate's.
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         schema.clone(),
         PartitionSpec::unpartitioned(),
     )
@@ -2254,7 +2257,7 @@ fn digests_stating_bits_cross_an_iceberg_table_as_longs() {
     std::fs::create_dir_all(&path).unwrap();
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         schema.clone(),
         PartitionSpec::unpartitioned(),
     )

@@ -275,7 +275,9 @@ impl IsinRegistry {
     /// bound to the store it was.
     pub fn set_holder(&mut self, holder: impl Into<Holder>) -> Result<usize> {
         let mut store = Store::bind(holder.into())?;
-        let held = std::mem::take(&mut self.table);
+        // The economic settings are the registry's, never the store's.
+        let emptied = self.table.emptied();
+        let held = std::mem::replace(&mut self.table, emptied);
         let was_dirty = self.dirty;
         let loaded = (|| -> Result<usize> {
             let reader = store.holder.read_arrow_reader(&store.options)?;

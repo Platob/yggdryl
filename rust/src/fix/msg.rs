@@ -18,7 +18,7 @@ use super::registry::FixMap;
 use super::{FixId, FixIdMapKind, FixKey, FixRegistry};
 use crate::graph::facts::OperationEventFacts;
 use crate::graph::{Element, Event, FxRates, Market, Metadata, Operation};
-use crate::isin_registry::IsinTable;
+use crate::isin_registry::{EconomicMemo, IsinTable};
 use crate::xxhash;
 use crate::{
     Ccy, Cfi, Country, Decimal, Forex, IdKey, IdSource, IdType, Identifier, Identifiers,
@@ -3872,11 +3872,13 @@ impl FixMsg {
     /// ([`IsinTable::fill_unsettled`]): the identifiers
     /// [`Self::fill_instrument_ids`] derives, the ticker on the same market,
     /// the CFI code where the row's refines it and the currency on the same
-    /// stated market under the row's ticker - then the market facts they
-    /// imply, and nothing more: a parsed message is settled already, and a
-    /// fill moves nothing its identity reads. Whether anything moved.
-    pub(super) fn fill_instrument(&mut self, table: &IsinTable) -> bool {
-        let moved = table.fill_unsettled(self);
+    /// stated market under the row's ticker - from the exact match, else,
+    /// where the table states the economic match, the economic one, `memo`
+    /// keeping the walk's answers - then the market facts they imply, and
+    /// nothing more: a parsed message is settled already, and a fill moves
+    /// nothing its identity reads. Whether anything moved.
+    pub(super) fn fill_instrument(&mut self, table: &IsinTable, memo: &mut EconomicMemo) -> bool {
+        let moved = table.fill_unsettled(self, Some(memo));
         if moved {
             self.event.fill_market();
         }
@@ -3902,6 +3904,19 @@ impl FixMsg {
             .filter(|isin| IdType::Isin.is_real(isin))
             .map(|isin| &isin[..2]);
         (prefix != Some(country.as_str())).then_some(country)
+    }
+
+    /// The currency of issue the message states: its crate `origccy`
+    /// column, read by its tag as [`Self::stated_country`] reads
+    /// `CountryOfIssue(470)` - no FIX field states one. What the lifecycle
+    /// learns before it fills ([`Self::fill_instrument`]); none where the
+    /// message holds none, and never the currency
+    /// [`Market::origin_currency`] defaults it to.
+    pub(super) fn stated_origccy(&self) -> Option<Ccy> {
+        match self.get_by_tag(super::crated::ORIGCCY_TAG_NAME.0)? {
+            Scalar::Ccy(held) if !held.is_none() => Some(held),
+            _ => None,
+        }
     }
 
     /// The ISIN of the one instrument this message's own is written on - its
@@ -6498,6 +6513,16 @@ impl Market for FixMsg {
     fn set_currency(&mut self, currency: Ccy, overwrite: bool) {
         self.stated |= fact::CURRENCY;
         self.event.set_currency(currency, overwrite);
+    }
+
+    /// No FIX field states it: the crate's `origccy` column is its one
+    /// source, so no settle restates it and no bit marks it.
+    fn get_origccy(&self) -> &Ccy {
+        self.event.get_origccy()
+    }
+
+    fn set_origccy(&mut self, ccy: Ccy, overwrite: bool) {
+        self.event.set_origccy(ccy, overwrite);
     }
 
     fn get_quantity(&self) -> Option<Decimal> {

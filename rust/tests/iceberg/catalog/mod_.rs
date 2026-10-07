@@ -498,6 +498,7 @@ fn a_create_takes_the_stated_format_version_else_the_lowest_the_schema_needs() {
     };
     assert_eq!(
         version("nyc.micros", &row(micros), &none()),
+        // format_version_for: 2 by default, pinned.
         FormatVersion::V2
     );
     assert_eq!(

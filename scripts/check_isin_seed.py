@@ -15,19 +15,25 @@ byte.
 - the crate's copy is the file's bytes exactly;
 
 - the document is a JSON array of objects holding only the keys `isin`,
-  `ticker`, `miccode`, `currency`, `countrycode`, `cficode` and `fisn`,
-  `isin`, `ticker`, `currency` and `cficode` required;
+  `ticker`, `miccode`, `currency`, `origccy`, `countrycode`, `cficode` and
+  `fisn`, `isin`, `ticker`, `currency` and `cficode` required;
 - an ISIN is twelve upper-case ASCII letters and digits closing on its
   ISO 6166 check digit; a row is unique on its ISIN and its `miccode`, and
   the array is sorted by the ISIN, then the `miccode`;
 - a row of no `miccode` - an index, which trades on no market - is its
   ISIN's only row, since the registry holds an unlisted row alone;
 - the rows of one ISIN agree on the instrument's facts - `countrycode`,
-  `cficode` and `fisn` - which the registry holds on every listing;
+  `cficode`, `fisn` and `origccy` - which the registry holds on every
+  listing;
 - `countrycode` is two upper-case letters, the ISIN's own prefix unless that
   prefix is an agency's (`EU EZ XA XB XC XD XF XK XS XT`), where it may name
   another country or be absent - an index of no one country;
 - `currency` is three upper-case letters;
+- `origccy`, the currency the instrument was issued in, is three upper-case
+  letters, stated only where the research names it - a share class's
+  currency its fund's name and short name spell - and never derived from the
+  ISIN's prefix, which names a domicile: an Irish USD share class is not
+  EUR, a Cayman holding not KYD;
 - `miccode` is four upper-case letters or digits that ISO 10383 assigned:
   a row of `rust/src/mic/tables.rs`;
 - `cficode` is six upper-case letters in ISO 10962:2021, the edition the
@@ -55,7 +61,7 @@ SEED = ROOT / "config" / "isin" / "instruments.json"
 COPY = ROOT / "rust" / "src" / "isin_registry" / "seed.json"
 MICS = ROOT / "rust" / "src" / "mic" / "tables.rs"
 
-KEYS = ("isin", "ticker", "miccode", "currency", "countrycode", "cficode", "fisn")
+KEYS = ("isin", "ticker", "miccode", "currency", "origccy", "countrycode", "cficode", "fisn")
 REQUIRED = ("isin", "ticker", "currency", "cficode")
 AGENCY_PREFIXES = frozenset(("EU", "EZ", "XA", "XB", "XC", "XD", "XF", "XK", "XS", "XT"))
 
@@ -154,9 +160,10 @@ def check_row(at: int, row: object, mics: set[str]) -> list[str]:
             failures.append(
                 f"{where}.countrycode: expected the ISIN's prefix {isin[:2]!r}, got {country!r}"
             )
-    currency = row.get("currency")
-    if "currency" in row and (not isinstance(currency, str) or not CURRENCY_SHAPE.fullmatch(currency)):
-        failures.append(f"{where}.currency: expected three upper-case letters, got {currency!r}")
+    for key in ("currency", "origccy"):
+        currency = row.get(key)
+        if key in row and (not isinstance(currency, str) or not CURRENCY_SHAPE.fullmatch(currency)):
+            failures.append(f"{where}.{key}: expected three upper-case letters, got {currency!r}")
     mic = row.get("miccode")
     if "miccode" in row:
         if not isinstance(mic, str) or not MIC_SHAPE.fullmatch(mic):
@@ -178,7 +185,7 @@ def check_row(at: int, row: object, mics: set[str]) -> list[str]:
 
 
 # The facts of an instrument the registry holds on every listing of it.
-INSTRUMENT_KEYS = ("countrycode", "cficode", "fisn")
+INSTRUMENT_KEYS = ("countrycode", "cficode", "fisn", "origccy")
 
 
 def check(seed: Path, mics_path: Path) -> list[str]:

@@ -1087,7 +1087,7 @@ fn the_plugin_side_is_a_schema_column_an_intrinsic_set_and_clean_under_check() {
     );
 
     // The schema lists the column after the plugin id; the strike moves its
-    // tag to 65042, at the terminal and as JSON.
+    // tag to 65043, at the terminal and as JSON.
     let schema = output_text(&workspace.success(&["schema"]));
     let plugin = schema
         .lines()
@@ -1101,7 +1101,7 @@ fn the_plugin_side_is_a_schema_column_an_intrinsic_set_and_clean_under_check() {
     let line = schema.lines().nth(side).unwrap();
     assert!(
         line.contains("pluginside")
-            && line.contains("65042")
+            && line.contains("65043")
             && line.contains("Message Plugin Side"),
         "{line}"
     );

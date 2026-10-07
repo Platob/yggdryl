@@ -1,4 +1,4 @@
-//! The thirty-five columns every market element is stated in.
+//! The thirty-six columns every market element is stated in.
 //!
 //! One column per fact [`Market`] answers, under one name and one datatype
 //! each, in one order, so every generated schema of a market - an
@@ -29,6 +29,8 @@ pub enum MarketColumn {
     StopPx,
     /// The currency it is priced in.
     Currency,
+    /// The currency the instrument originates in, where held.
+    OrigCcy,
     /// The quantity it is about.
     Quantity,
     /// The part of the quantity shown to the market: an iceberg's peak.
@@ -98,12 +100,13 @@ impl MarketColumn {
     /// Every market column in canonical row order: the category and the
     /// type first, then what the element is about - its prices, then its
     /// quantities - the instrument, the execution and the quote.
-    pub const ALL: [Self; 35] = [
+    pub const ALL: [Self; 36] = [
         Self::MarketDataKind,
         Self::MarketDataType,
         Self::Price,
         Self::StopPx,
         Self::Currency,
+        Self::OrigCcy,
         Self::Quantity,
         Self::DisplayQty,
         Self::HiddenQty,
@@ -145,6 +148,7 @@ impl MarketColumn {
             Self::Price => "price",
             Self::StopPx => "stoppx",
             Self::Currency => "currency",
+            Self::OrigCcy => "origccy",
             Self::Quantity => "quantity",
             Self::DisplayQty => "displayqty",
             Self::HiddenQty => "hiddenqty",
@@ -187,6 +191,7 @@ impl MarketColumn {
             Self::Price => "Price",
             Self::StopPx => "Stop Price",
             Self::Currency => "Currency",
+            Self::OrigCcy => "Origin Currency",
             Self::Quantity => "Quantity",
             Self::DisplayQty => "Display Quantity",
             Self::HiddenQty => "Hidden Quantity",
@@ -233,6 +238,9 @@ impl MarketColumn {
             Self::Price => "The price the element is about.",
             Self::StopPx => "The price a stop order triggers at.",
             Self::Currency => "The currency the element is priced in; XXX where it states none.",
+            Self::OrigCcy => {
+                "The currency the instrument originates in - the one it was issued in - where the element states it or a registry filled it; null where neither did, the currency then being the origin an amount converts from."
+            }
             Self::Quantity => "The quantity the element is about.",
             Self::DisplayQty => "The part of the quantity shown to the market: an iceberg's peak.",
             Self::HiddenQty => {
@@ -309,7 +317,7 @@ impl MarketColumn {
             | Self::BidQty
             | Self::AskPx
             | Self::AskQty => DataType::Decimal,
-            Self::Currency | Self::BidCcy | Self::AskCcy => DataType::Ccy,
+            Self::Currency | Self::OrigCcy | Self::BidCcy | Self::AskCcy => DataType::Ccy,
             Self::Unit => DataType::Unit,
             Self::Side => DataType::Side,
             Self::SecurityIds => Identifiers::dtype(),
@@ -382,6 +390,10 @@ impl MarketColumn {
             Self::HiddenQty => element.get_hiddenqty().map(Scalar::from),
             Self::CxlQty => element.get_cxlqty().map(Scalar::from),
             Self::Currency => Some(element.get_currency().clone().into()),
+            Self::OrigCcy => {
+                let held = element.get_origccy();
+                (!held.is_none()).then(|| Scalar::Ccy(held.clone()))
+            }
             Self::Quantity => element.get_quantity().map(Scalar::from),
             Self::Unit => Some(element.get_unit().clone().into()),
             Self::Side => Some(element.get_side().into()),
@@ -466,6 +478,14 @@ impl MarketColumn {
                     element.set_currency(held, true);
                 }
             }
+            Self::OrigCcy => match value {
+                Scalar::Null => element.set_origccy(Ccy::none(), true),
+                _ => {
+                    if let Some(held) = currency_of(value) {
+                        element.set_origccy(held, true);
+                    }
+                }
+            },
             Self::Quantity => match value {
                 Scalar::Null => element.set_quantity(None, true),
                 _ => {
