@@ -465,13 +465,19 @@ fn an_iceberg_table_store_is_replaced_in_one_snapshot_and_emptied_as_one() {
 }
 
 /// The rows `registry` holds as a store written before the product
-/// category was a column: its snapshot less `eusipacode`, forty-one
+/// category was a column: its snapshot less `eusipacode`, forty-two
 /// columns.
 fn without_category(registry: &IsinRegistry) -> yggdryl::arrow::BatchReader {
+    without(registry, "eusipacode")
+}
+
+/// The rows `registry` holds as a store written before `column` was one:
+/// its snapshot less that column.
+fn without(registry: &IsinRegistry, column: &str) -> yggdryl::arrow::BatchReader {
     let reader = registry.into_arrow_reader().unwrap();
     let schema = reader.schema();
     let kept: Vec<usize> = (0..schema.fields().len())
-        .filter(|at| schema.field(*at).name() != "eusipacode")
+        .filter(|at| schema.field(*at).name() != column)
         .collect();
     let projected = std::sync::Arc::new(schema.project(&kept).unwrap());
     let batches: Vec<_> = reader.map(|batch| batch.unwrap().project(&kept)).collect();
@@ -483,7 +489,7 @@ fn without_category(registry: &IsinRegistry) -> yggdryl::arrow::BatchReader {
 /// every overwrite of a leaf does, so the category is kept by the registry
 /// and not by such a store until the store is laid out afresh - an emptied
 /// leaf, or a new one - when a commit writes the row as it is now,
-/// forty-two columns.
+/// forty-three columns.
 #[test]
 fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row() {
     let (_, folder) = counted_folder("isin");
@@ -497,14 +503,7 @@ fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row
     handle
         .write_arrow_reader(without_category(&older), IOMode::Overwrite, &options)
         .unwrap();
-    let columns = |handle: &dyn IOBase| {
-        handle
-            .read_arrow_field(&handle.record_options().unwrap())
-            .unwrap()
-            .fields()
-            .len()
-    };
-    assert_eq!(columns(&leaf()), 41);
+    assert_eq!(columns(&leaf()), 42);
 
     let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
     let row = registry.get(HOLCIM).unwrap();
@@ -516,7 +515,7 @@ fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row
         .merge(entry(HOLCIM, &[]).with_eusipacode(category))
         .unwrap();
     assert_eq!(registry.commit().unwrap().written_rows, 1);
-    assert_eq!(columns(&leaf()), 41, "the leaf's own row");
+    assert_eq!(columns(&leaf()), 42, "the leaf's own row");
     let back = IsinRegistry::from_holder(leaf()).unwrap();
     let row = back.get(HOLCIM).unwrap();
     assert_eq!(row.get(&IdType::Ric), Some("HOLN.S"));
@@ -528,9 +527,61 @@ fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row
     let mut moved = IsinRegistry::from_holder(fresh()).unwrap();
     moved.merge(registry.get(HOLCIM).unwrap().clone()).unwrap();
     moved.commit().unwrap();
-    assert_eq!(columns(&fresh()), 42);
+    assert_eq!(columns(&fresh()), 43);
     let back = IsinRegistry::from_holder(fresh()).unwrap();
     assert_eq!(back.get(HOLCIM).unwrap().eusipacode(), category);
+}
+
+/// The number of columns the record stream `handle` holds declares.
+fn columns(handle: &dyn IOBase) -> usize {
+    handle
+        .read_arrow_field(&handle.record_options().unwrap())
+        .unwrap()
+        .fields()
+        .len()
+}
+
+/// A leaf written before the short name was a column loads it null and
+/// keeps its own row through a commit, the name kept by the registry alone;
+/// a store laid out afresh stores it.
+#[test]
+fn a_leaf_store_without_the_short_name_loads_it_null_and_keeps_its_own_row() {
+    let (_, folder) = counted_folder("isin-fisn");
+    let leaf = || folder.child_by_path("instruments.arrows").unwrap();
+    let mut older = IsinRegistry::new();
+    older
+        .merge(entry(APPLE, &[(IdType::Common, "C-1")]))
+        .unwrap();
+    let mut handle = leaf();
+    let options = handle.record_options().unwrap();
+    handle
+        .write_arrow_reader(without(&older, "fisn"), IOMode::Overwrite, &options)
+        .unwrap();
+    assert_eq!(columns(&leaf()), 42);
+
+    let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
+    let row = registry.get(APPLE).unwrap();
+    assert_eq!(row.get(&IdType::Common), Some("C-1"));
+    assert_eq!(row.fisn(), None);
+    assert!(!registry.is_dirty());
+    let name = Some(yggdryl::Fisn::new("APPLE INC/SH SH").unwrap());
+    registry
+        .merge(entry(APPLE, &[]).with_fisn(name.clone()))
+        .unwrap();
+    assert_eq!(registry.commit().unwrap().written_rows, 1);
+    assert_eq!(columns(&leaf()), 42, "the leaf's own row");
+    let back = IsinRegistry::from_holder(leaf()).unwrap();
+    assert_eq!(back.get(APPLE).unwrap().get(&IdType::Common), Some("C-1"));
+    assert_eq!(back.get(APPLE).unwrap().fisn(), None);
+    assert_eq!(registry.get(APPLE).unwrap().fisn(), name.as_ref());
+
+    let fresh = || folder.child_by_path("fresh.arrows").unwrap();
+    let mut moved = IsinRegistry::from_holder(fresh()).unwrap();
+    moved.merge(registry.get(APPLE).unwrap().clone()).unwrap();
+    moved.commit().unwrap();
+    assert_eq!(columns(&fresh()), 43);
+    let back = IsinRegistry::from_holder(fresh()).unwrap();
+    assert_eq!(back.get(APPLE).unwrap().fisn(), name.as_ref());
 }
 
 /// An Iceberg table created before the product category was a column loads
@@ -572,7 +623,7 @@ fn an_iceberg_store_without_the_product_category_loads_it_null_and_keeps_its_sch
             .unwrap()
             .fields()
             .len(),
-        41
+        42
     );
 }
 

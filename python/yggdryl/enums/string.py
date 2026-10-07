@@ -29,8 +29,10 @@ that declaration back as a class.
 
 A subclass body is the caller's vocabulary, so the seven names this class API
 owns - `as_enum`, `dtype`, `from_code`, `from_field`, `from_str`, `into_field`,
-`into_str` - are refused as member names rather than shadowed: a member spelled
-like one of them would replace the method and fail only later, at the call site.
+`into_str` - and the readings a code base adds - `Country.currency`,
+`Mic.operating`, `Mic.is_segment`, `Mic.country` - are refused as member names
+rather than shadowed: a member spelled like one of them would replace the
+method and fail only later, at the call site.
 
 The worked example is in the Python extension documentation, beside the field
 the declaration builds.
@@ -41,10 +43,19 @@ from __future__ import annotations
 import enum
 import functools
 import logging
+import types
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, cast
 
-from .._native import DataType, Field, StringEnum
+from .._native import (
+    DataType,
+    Field,
+    StringEnum,
+    country_currency,
+    mic_country,
+    mic_is_segment,
+    mic_operating,
+)
 
 if TYPE_CHECKING:
     from typing import Self
@@ -71,6 +82,30 @@ _RESERVED_MEMBER_NAMES = frozenset(
 )
 
 
+def _class_api(bases: Iterable[type]) -> frozenset[str]:
+    """Every name the class API of a vocabulary over `bases` owns.
+
+    The seven the shared base owns, and each public reading a code base
+    declares beside them - `Country.currency`, `Mic.country` - read off the
+    bases themselves, so a reading added to a base is reserved where it is
+    written.
+    """
+
+    names = set(_RESERVED_MEMBER_NAMES)
+    for base in bases:
+        for owner in getattr(base, "__mro__", ()):
+            if isinstance(owner, _AsciiCodeMeta):
+                names.update(
+                    name
+                    for name, attribute in vars(owner).items()
+                    if not name.startswith("_")
+                    and isinstance(
+                        attribute, (property, classmethod, staticmethod, types.FunctionType)
+                    )
+                )
+    return frozenset(names)
+
+
 class _AsciiCodeMeta(enum.EnumMeta):
     """Refuse a vocabulary member spelled as one of the class API names.
 
@@ -87,7 +122,7 @@ class _AsciiCodeMeta(enum.EnumMeta):
         classdict: Any,
         **options: Any,
     ) -> _AsciiCodeMeta:
-        shadowed = _RESERVED_MEMBER_NAMES.intersection(classdict._member_names)
+        shadowed = _class_api(bases).intersection(classdict._member_names)
         if shadowed:
             module = classdict.get("__module__", "<unknown>")
             qualname = classdict.get("__qualname__", name)
@@ -243,16 +278,6 @@ class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
         declared = field.string_enum
         if declared is None:
             raise ValueError(f"the field {field.name!r} declares no enum")
-        # A stored declaration is data another writer produced, so a member
-        # name the class API owns is reported as bad data here rather than
-        # raised by the metaclass while the class is rebuilt below.
-        shadowed = _RESERVED_MEMBER_NAMES.intersection(declared.members)
-        if shadowed:
-            raise ValueError(
-                f"the field {field.name!r} declares "
-                f"{', '.join(sorted(shadowed))}, which name the class API "
-                "rather than a value"
-            )
         # Read off the datatype, not the width alone: `ccy` and
         # `fixed_ascii(8)` pack to the same integers and are not the same base.
         base = _base_for(field.dtype)
@@ -260,6 +285,16 @@ class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
             raise ValueError(
                 f"expected a fixed US-ASCII string or a registered code to "
                 f"declare an enum over, got {field.dtype}"
+            )
+        # A stored declaration is data another writer produced, so a member
+        # name the class API owns is reported as bad data here rather than
+        # raised by the metaclass while the class is rebuilt below.
+        shadowed = _class_api((base,)).intersection(declared.members)
+        if shadowed:
+            raise ValueError(
+                f"the field {field.name!r} declares "
+                f"{', '.join(sorted(shadowed))}, which name the class API "
+                "rather than a value"
             )
         # The Enum functional API builds a class from names and values, and it
         # is spelled as a call on the base, which static typing reads as one
@@ -314,6 +349,18 @@ class Country(AsciiCode):
     def dtype(cls) -> DataType:
         return _COUNTRY
 
+    @property
+    def currency(self) -> Ccy | None:
+        """The legal tender ISO 4217 list one gives this country, or `None`.
+
+        One currency per country, a fund code never; `None` for a code list
+        one gives no currency - the user-assigned `XX` and `ZZ`, an agency
+        prefix.
+        """
+
+        currency = country_currency(self._text)
+        return None if currency is None else Ccy.from_str(currency)
+
 
 class Ccy(AsciiCode):
     """A vocabulary of currency codes - ISO 4217's or a digital-asset ticker - over `ccy`."""
@@ -329,6 +376,35 @@ class Mic(AsciiCode):
     @classmethod
     def dtype(cls) -> DataType:
         return _MIC
+
+    @property
+    def operating(self) -> Mic | None:
+        """The operating MIC this code trades under in ISO 10383, or `None`.
+
+        Itself for an operating MIC, its market's for a segment, `None` for a
+        code the registry never assigned; every code ever assigned answers,
+        an expired one included.
+        """
+
+        operating = mic_operating(self._text)
+        return None if operating is None else Mic.from_str(operating)
+
+    @property
+    def is_segment(self) -> bool:
+        """Whether ISO 10383 lists this code as a segment of another market."""
+
+        return mic_is_segment(self._text)
+
+    @property
+    def country(self) -> Country | None:
+        """The country ISO 10383 places this code in, or `None`.
+
+        `None` for a code it never assigned or one it places in no single
+        country: `XOFF` and `XXXX`.
+        """
+
+        country = mic_country(self._text)
+        return None if country is None else Country.from_str(country)
 
 
 class Cfi(AsciiCode):

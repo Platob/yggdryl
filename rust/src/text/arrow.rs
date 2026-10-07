@@ -1446,10 +1446,24 @@ fn read_stream_known(
 ) -> Result<crate::StreamSerie> {
     let plan = options.line_plan()?.projected(options);
     let field = plan.field(smol_str::SmolStr::new(options.name()))?;
+    let declared = options.field();
+    let safe = options.safe();
     let options = options.clone();
     let lines = read_text_lines_known(handle, &options, container)?;
-    Ok(crate::StreamSerie::from_rows(
+    let rows = crate::StreamSerie::from_rows(
         field,
         lines.map(move |line| line.and_then(|line| super::batch::row_of(&plan, &line, &options))),
-    ))
+    );
+    // A declared field selects and casts during the read, as every other
+    // encoding's does: the columns it names out of the line's row, each cast
+    // to the declared shape through the one engine, planned once.
+    let Some(declared) = declared else {
+        return Ok(rows);
+    };
+    crate::StreamChunkedSerie::from_arrow_reader(
+        Some(&declared),
+        rows.into_arrow_reader()?,
+        crate::ArrowCastOptions::new().with_safe(safe),
+    )?
+    .into_stream()
 }

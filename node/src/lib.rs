@@ -17,6 +17,7 @@ mod cast;
 pub mod charset;
 mod chunked_serie;
 pub mod coding;
+mod country;
 mod datatype;
 // Discovered through NAPI's generated registration inventory rather than
 // ordinary Rust call sites, like `uri` below.
@@ -46,6 +47,7 @@ mod key_serie;
 pub use key_serie::{JsKeySerie, JsKeySeries, JsStreamKeySerie};
 mod logging;
 mod media;
+mod mic;
 mod text;
 mod timezone;
 // These private exports are discovered through NAPI's generated registration

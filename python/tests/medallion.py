@@ -14,11 +14,17 @@ other: running a stage again over a window rewrites that window.
 capture                              -> parse_log_messages         -> bronze.record_keeping.log_messages
 bronze.record_keeping.log_messages   -> parse_fix_messages_raw     -> bronze.record_keeping.fix_messages
 bronze.record_keeping.fix_messages   -> parse_fix_messages_refined -> silver.record_keeping.fix_messages
+                                                                   -> silver.record_keeping.instruments
 silver.record_keeping.fix_messages   -> parse_books                -> silver.record_keeping.books
 silver.record_keeping.books          -> parse_events               -> silver.record_keeping.orders
                                                                    -> silver.record_keeping.quotes
                                                                    -> silver.record_keeping.executions
 ```
+
+The refined parse commits what its lifecycle learned of the instruments it
+met to `silver.record_keeping.instruments`, where the codec holds a bound
+registry, once the refined messages are written: the registry is no stage
+of its own, since nothing but the lifecycle teaches it.
 
 The window rule: a row is windowed by `currunix`, and a stage reads the
 rows of its source inside the window alone. A walk - the lifecycle, the book
@@ -84,9 +90,14 @@ QUARTER_MILLIS = 900_000
 # What a table of the pipeline is created with.
 TABLE_PROPERTIES = {"format-version": "3"}
 
-# The event tables the books' deltas are laid out in, each the deltas of one
-# kind: the orders, the quotes, the executions.
-EVENTS = (("orders", "ORDR"), ("quotes", "QUOT"), ("executions", "EXEC"))
+# The event tables the books are laid out in, each through the door of its
+# list and the kind it keeps: the orders and the quotes are the books'
+# delta, the executions among their events.
+EVENTS: tuple[tuple[str, Callable[[Any, str | None], StreamChunkedSerie], str], ...] = (
+    ("orders", MarketData.delta_serie, "ORDR"),
+    ("quotes", MarketData.delta_serie, "QUOT"),
+    ("executions", MarketData.events_serie, "EXEC"),
+)
 
 
 def window_filter(start: dt.datetime, end: dt.datetime) -> str:
@@ -220,8 +231,8 @@ def instruments(silver: Catalog, namespace_name: str = NAMESPACE) -> IsinRegistr
     `silver.record_keeping.instruments`: the table opened as it is or created
     from the registry's own row, unpartitioned, so the registry loads what an
     earlier run committed and commits what this run's lifecycle learns. Hand
-    it to the codec (`FixCodec(..., isin_registry=...)`) and commit it after
-    the lifecycle stage (`commit_instruments`)."""
+    it to the codec (`FixCodec(..., isin_registry=...)`): the refined parse
+    commits it (`commit_instruments`)."""
     namespace = silver.namespaces.open_or_create(namespace_name)
     row = yggdryl.iceberg.assign_field_ids(
         unnumbered(IsinRegistry.field().into_scheme_compat("iceberg"))
@@ -264,19 +275,31 @@ def parse_fix_messages_raw(lake: Lake, start: dt.datetime, end: dt.datetime) -> 
     return lake.table_of("bronze", "fix_messages", parsed.field).overwrite_serie(parsed)
 
 
-def parse_fix_messages_refined(lake: Lake, start: dt.datetime, end: dt.datetime) -> IOResult:
+def parse_fix_messages_refined(lake: Lake, start: dt.datetime, end: dt.datetime) -> dict[str, IOResult]:
     """`bronze.record_keeping.fix_messages`, read in its order, walked by the
-    lifecycle over sorted input, to `silver.record_keeping.fix_messages`."""
+    lifecycle over sorted input, to `silver.record_keeping.fix_messages`; then
+    what the lifecycle learned of the instruments, where the codec holds a
+    bound registry, to `silver.record_keeping.instruments`.
+
+    Answers the refined write under `silver.fix_messages` and, where a
+    registry is bound, its commit under `silver.instruments`: the commit
+    runs once the write has drained the walk, so it holds every instrument
+    the window taught."""
     walked = lake.codec.lifecycle_serie(stored_rows(lake.source_of("bronze", "fix_messages"), start, end))
-    return lake.table_of("silver", "fix_messages", walked.field).overwrite_serie(walked)
+    written = {"silver.fix_messages": lake.table_of("silver", "fix_messages", walked.field).overwrite_serie(walked)}
+    registry = lake.codec.isin_registry
+    if registry is not None:
+        written["silver.instruments"] = commit_instruments(registry)
+    return written
 
 
 def parse_books(lake: Lake, start: dt.datetime, end: dt.datetime) -> IOResult:
     """`silver.record_keeping.fix_messages`, read in its order, folded into
     books every quarter of an hour, to `silver.record_keeping.books` -
     partitioned by `partunix` like every other table, each book keyed by its
-    instrument's ISIN where it holds one, and holding every event of its
-    tick among its `deltas`.
+    instrument's ISIN where it holds one, and holding the orders and quotes
+    its tick applied in its `delta` and every other event of its tick - the
+    executions, the snapshot controls - among its `events`.
 
     The quarter hour alone is the partition: a window opens on a quarter
     hour, so a rerun replaces whole partitions, and nothing reads the books
@@ -293,24 +316,20 @@ def parse_events(lake: Lake, start: dt.datetime, end: dt.datetime) -> dict[str, 
     """`silver.record_keeping.books`, read once, to the three event tables.
 
     The window's books are held under the process spill bound, and each
-    table is written the deltas of its kind - the orders, the quotes, the
-    executions - folded out of the held books, so the books' files are read
-    once rather than once per kind. Each write replaces the partitions its
+    table is written its kind folded out of the held books through the door
+    `EVENTS` names - the orders and the quotes out of the books' `delta`,
+    the executions out of their `events` - so the books' files are read once
+    rather than once per kind. Each write replaces the partitions its
     rows fall in, as every stage's does; a write's `where` would instead
     name the rows the overwrite replaces across the whole table.
     """
     books = ChunkedSerie.from_(stored_rows(lake.source_of("silver", "books"), start, end))
     written: dict[str, IOResult] = {}
-    for name, kind in EVENTS:
-        rows = MarketData.deltas_serie(StreamChunkedSerie.from_chunked(books), kind)
+    for name, door, kind in EVENTS:
+        rows = door(StreamChunkedSerie.from_chunked(books), kind)
         written[f"silver.{name}"] = lake.table_of("silver", name, rows.field).overwrite_serie(rows)
     return written
 
-
-def parse_instruments(lake: Lake, _start: dt.datetime, _end: dt.datetime) -> dict[str, IOResult]:
-    """Commit the registry the lifecycle just taught, where one is bound."""
-    registry = lake.codec.isin_registry
-    return {} if registry is None else {"silver.instruments": commit_instruments(registry)}
 
 Stage = Callable[[Lake, dt.datetime, dt.datetime], dict[str, IOResult]]
 
@@ -319,8 +338,7 @@ Stage = Callable[[Lake, dt.datetime, dt.datetime], dict[str, IOResult]]
 STAGES_OF: dict[str, Stage] = {
     "bronze.log_messages": lambda lake, start, end: {"bronze.log_messages": parse_log_messages(lake, start, end)},
     "bronze.fix_messages": lambda lake, start, end: {"bronze.fix_messages": parse_fix_messages_raw(lake, start, end)},
-    "silver.fix_messages": lambda lake, start, end: {"silver.fix_messages": parse_fix_messages_refined(lake, start, end)},
-    "silver.instruments": parse_instruments,
+    "silver.fix_messages": parse_fix_messages_refined,
     "silver.books": lambda lake, start, end: {"silver.books": parse_books(lake, start, end)},
     "silver.events": parse_events,
 }

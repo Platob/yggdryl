@@ -256,9 +256,9 @@ class TestCandleIterator:
 
     def test_candles_from_delta_books_equal_candles_from_complete_books(self) -> None:
         # A candle reads a book's top of book, which every book states whether
-        # it holds its sides or its deltas alone: the candles of a walk's
-        # books - each its deltas alone, the first following no book - are the
-        # candles of those books rebuilt whole.
+        # it is complete or a delta book: the candles of a walk's delta
+        # books - the first following no book - are the candles of those
+        # books rebuilt complete.
         operations = [
             quote(OFFSET_DAY + SECOND, "ACME", "B-1", "BUY", "100", 10),
             quote(OFFSET_DAY + SECOND, "ACME", "A-1", "SELL", "102", 5),
@@ -267,16 +267,16 @@ class TestCandleIterator:
             quote(OFFSET_DAY + 90 * SECOND, "ACME", "B-1", "BUY", "99", 1),
             quote(OFFSET_DAY + 130 * SECOND, "ACME", "A-2", "SELL", "101.5", 2),
         ]
-        deltas = books(operations)
-        assert not any(book.is_complete for book in deltas)
+        delta_books = books(operations)
+        assert not any(book.is_complete for book in delta_books)
         whole: list[graph.BookEvent] = []
-        for book in deltas:
+        for book in delta_books:
             previous = whole[-1] if whole else graph.BookEvent.keyed(book.currunix, "ACME")
             rebuilt = book.with_previous(previous)
             assert rebuilt is not None
             whole.append(rebuilt)
         assert all(book.is_complete for book in whole)
-        folded = list(graph.CandleIterator(deltas, MINUTE))
+        folded = list(graph.CandleIterator(delta_books, MINUTE))
         assert len(folded) == 3
         assert folded == list(graph.CandleIterator(whole, MINUTE))
 

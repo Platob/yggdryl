@@ -113,7 +113,7 @@ from yggdryl._native import (
     Tables,
 )
 from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
-from yggdryl.enums import MARKET_VIEWS, AsciiCode, Ccy, fixed_ascii
+from yggdryl.enums import MARKET_VIEWS, AsciiCode, Ccy, Country, Mic, fixed_ascii
 from yggdryl.holder import (
     Buffer,
     Buffered,
@@ -612,6 +612,11 @@ ascii_declared_enum: StringEnum = TypedCcy.as_enum()
 ascii_declared_field: Field = TypedCcy.into_field("ccy", nullable=False)
 ascii_recovered_class: type[AsciiCode] = AsciiCode.from_field(ascii_declared_field)
 ascii_base: type[AsciiCode] = TypedCcy
+country_tender: Ccy | None = Country.from_str("US").currency
+mic_operating_market: Mic | None = Mic.from_str("XNGS").operating
+mic_segment: bool = Mic.from_str("XNGS").is_segment
+mic_country_code: Country | None = Mic.from_str("XNGS").country
+assert country_tender == Ccy.from_str("USD") and mic_segment and mic_country_code == Country.from_str("US")
 
 ascii_declaration: StringEnum = StringEnum("Side", {"BUY": "B"})
 ascii_declaration_json: str = ascii_declaration.into_json()
@@ -2210,13 +2215,14 @@ graph_book_with_operations: graph.BookEvent = graph_book.with_operations(
     [graph_order_event, graph.MarketData(graph_quote_event)]
 )
 graph_book_alive: list[graph.MarketData] = graph_book_with_operations.alive
-graph_book_deltas: list[graph.MarketData] = graph_book_with_operations.deltas
+graph_book_delta: list[graph.MarketData] = graph_book_with_operations.delta
+graph_book_controls: list[graph.SnapshotEvent] = graph_book_with_operations.controls
 graph_book_ordlive: list[graph.OrderEvent] = graph_book_with_operations.ordlive
 graph_book_orddelta: list[graph.OrderEvent] = graph_book_with_operations.orddelta
 graph_book_quotes: list[graph.QuoteEvent] = graph_book_with_operations.quotes
 graph_book_executions: list[graph.ExecutionEvent] = graph_book_with_operations.executions
 graph_book_events: list[graph.MarketData] = graph_book_with_operations.events
-assert graph_book_events == []
+assert graph_book_events == [] and graph_book_controls == []
 graph_book_alive_on: list[graph.MarketData] = graph_book_with_operations.alive_on(Side.BUYS)
 graph_book_alive_on_text: list[graph.MarketData] = graph_book_with_operations.alive_on("SELL")
 graph_book_complete: bool = graph_book_with_operations.is_complete
@@ -2367,7 +2373,7 @@ assert not graph_book_ref_range_delete and not graph_book_ref_partial
 assert graph_quote_event_booked.book == graph_book_ref
 assert graph_trade_executions == [graph_fill]
 assert graph_trade_restated == graph_trade
-assert graph_book_alive[0] == graph.MarketData(graph_order_event) and len(graph_book_deltas) == 2
+assert graph_book_alive[0] == graph.MarketData(graph_order_event) and len(graph_book_delta) == 2
 assert graph_book_complete and not graph_book_crossed
 assert graph_book_alive_on == [graph.MarketData(graph_order_event)]
 assert graph_book_keyed.crosscode == "3:0:XX0000000000" and graph_book_keyed.is_complete
@@ -2804,6 +2810,8 @@ isin_registry_row: dict[str, Any] | None = isin_registry.get("CH0012214059")
 isin_registry_dirty: bool = isin_registry.is_dirty
 isin_registry_committed: yggdryl.IOResult = yggdryl.IsinRegistry.from_url("instruments.arrows", 8).commit()
 isin_registry_default: yggdryl.IsinRegistry = yggdryl.IsinRegistry.from_env()
+isin_registry_seeded: yggdryl.IsinRegistry = yggdryl.IsinRegistry.seeded()
+isin_registry_short_name: object = (isin_registry_seeded.get("US0378331005") or {}).get("fisn")
 isin_registry_listed: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN")
 isin_registry_on_market: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN", "XSWX")
 isin_registry_bound: int = isin_registry.max_instruments

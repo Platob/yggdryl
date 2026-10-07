@@ -168,7 +168,7 @@ test('a one-sided book states no mid or spread', () => {
 })
 
 test('candles from delta books equal candles from the books rebuilt whole', () => {
-  // With no grid a walk emits every book as its deltas alone, the first
+  // With no grid a walk emits every book as a delta book, the first
   // following no book; a candle reads each book's top of book, which a
   // delta book states, so rebuilding them changes no candle.
   const operations = [
@@ -179,15 +179,15 @@ test('candles from delta books equal candles from the books rebuilt whole', () =
     quote(OFFSET_DAY + 90n * SECOND, 'ACME', 'B-1', 'BUY', '99', 1),
     quote(OFFSET_DAY + 130n * SECOND, 'ACME', 'A-2', 'SELL', '101.5', 2),
   ]
-  const deltas = books(operations)
-  assert.ok(deltas.every((book) => !book.isComplete))
+  const deltaBooks = books(operations)
+  assert.ok(deltaBooks.every((book) => !book.isComplete))
   const whole = []
-  for (const book of deltas) {
+  for (const book of deltaBooks) {
     const previous = whole.at(-1) ?? graph.BookEvent.keyed(book.currunix, 'ACME')
     whole.push(book.withPrevious(previous))
   }
   assert.ok(whole.every((book) => book.isComplete))
-  const folded = graph.candles(deltas, '1m')
+  const folded = graph.candles(deltaBooks, '1m')
   const rebuilt = graph.candles(whole, '1m')
   assert.equal(folded.length, 3)
   assert.equal(rebuilt.length, 3)

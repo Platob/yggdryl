@@ -5,7 +5,9 @@ use arrow_array::{
     Array, ArrayRef, FixedSizeBinaryArray, ListArray, RecordBatch, StringArray,
     TimestampNanosecondArray,
 };
+use arrow_buffer::NullBuffer;
 use smol_str::SmolStr;
+use std::sync::Arc;
 use yggdryl::IdKey;
 use yggdryl::arrow::BatchReader;
 use yggdryl::graph::{
@@ -16,7 +18,14 @@ use yggdryl::graph::{
 use yggdryl::{Decimal, Field, FieldPath, IdType, Identifier, MarketDataKind, Plan, Side, State};
 
 /// The nested columns of the root row: what a flat view drops.
-const NESTED: [&str; 5] = ["alive", "deltas", "executions", "bidlimits", "asklimits"];
+const NESTED: [&str; 6] = [
+    "alive",
+    "delta",
+    "events",
+    "executions",
+    "bidlimits",
+    "asklimits",
+];
 
 const ISIN: &str = "US0378331005";
 
@@ -324,7 +333,8 @@ fn every_plan_is_built_as_its_text_reads_back() {
         MarketData::plan(&MarketView::Books, &[])
             .unwrap()
             .to_string(),
-        "select * exclude (executions) where marketdatakind = 'BOOK' and deltas is not null"
+        "select * exclude (executions) where marketdatakind = 'BOOK' \
+         and (delta is not null or events is not null)"
     );
     assert_eq!(
         MarketData::plan(
@@ -422,7 +432,7 @@ fn a_trade_is_one_row_per_execution_its_own_columns_beside_it() {
 }
 
 #[test]
-fn a_book_is_one_row_its_alive_entries_and_deltas_kept_nested() {
+fn a_book_is_one_row_its_alive_entries_delta_and_events_kept_nested() {
     let out = view(&MarketView::Books, &[]);
     let expected: Vec<String> = MarketData::field()
         .unwrap()
@@ -443,8 +453,9 @@ fn a_book_is_one_row_its_alive_entries_and_deltas_kept_nested() {
         instants(column(&out, "currunix")),
         books.map(|book| Some(book.get_currunix()))
     );
-    // Each book's one bid and one ask, alive and applied at its instant.
-    for name in ["alive", "deltas"] {
+    // Each book's one bid and one ask, alive and applied at its instant,
+    // and no other event recorded there.
+    for (name, held) in [("alive", [2, 2]), ("delta", [2, 2]), ("events", [0, 0])] {
         let list = column(&out, name)
             .as_any()
             .downcast_ref::<ListArray>()
@@ -453,28 +464,26 @@ fn a_book_is_one_row_its_alive_entries_and_deltas_kept_nested() {
             (0..out.num_rows())
                 .map(|row| list.value_length(row))
                 .collect::<Vec<_>>(),
-            [2, 2],
+            held,
             "{name}"
         );
     }
 }
 
-/// The books view keeps every book a walk emits - with no grid each stating
-/// its deltas alone, its `alive` cell null - and drops a snapshot control,
-/// which states neither list.
+/// The books view keeps every book a walk emits - with no grid each a
+/// delta book, its `alive` cell null, the instant that recorded only an
+/// execution an event-only one - and a row stating its `events` alone, its
+/// `delta` cell null, and drops a snapshot control, which states none of
+/// the three lists.
 #[test]
-fn the_books_view_keeps_a_book_stating_its_deltas_alone_and_drops_a_snapshot_control() {
+fn the_books_view_keeps_a_delta_book_and_an_event_only_row_and_drops_a_snapshot_control() {
     let mut values = BookIterator::new(
-        [20, 21]
-            .map(|unix| {
-                MarketData::from(operation::<OrderKind>(
-                    unix,
-                    &format!("O-{unix}"),
-                    "Buy",
-                    "New",
-                ))
-            })
-            .into_iter(),
+        [
+            MarketData::from(operation::<OrderKind>(20, "O-20", "Buy", "New")),
+            MarketData::from(operation::<OrderKind>(21, "O-21", "Buy", "New")),
+            MarketData::from(execution(22, "E-22", "Buy")),
+        ]
+        .into_iter(),
         0,
     )
     .unwrap()
@@ -484,31 +493,88 @@ fn the_books_view_keeps_a_book_stating_its_deltas_alone_and_drops_a_snapshot_con
     assert_eq!(
         values
             .iter()
-            .map(|book| book.as_book_event().unwrap().is_complete())
+            .map(|book| {
+                let book = book.as_book_event().unwrap();
+                (book.is_complete(), book.delta().len(), book.events().len())
+            })
             .collect::<Vec<_>>(),
-        [false, false]
+        [(false, 1, 0), (false, 1, 0), (false, 0, 1)]
     );
-    let mut control = OrderEvent::at(22);
-    control.set_crosscode("W-22".to_owned());
+    let mut control = OrderEvent::at(23);
+    control.set_crosscode("W-23".to_owned());
     control.set_ticker(Some(SmolStr::new("ACME")), true);
     control.finalize();
     values.push(MarketData::from(SnapshotEvent::snapshot(
         &control,
         Some(SmolStr::new("Symbol=ACME")),
     )));
-    let out = drained(
-        MarketData::apply_view(
-            &MarketView::Books,
-            &[],
-            MarketData::arrow_reader(values, None, None).unwrap(),
+    let written = drained(MarketData::arrow_reader(values, None, None).unwrap()).unwrap();
+    for name in ["alive", "delta", "events"] {
+        assert!(
+            column(&written, name).is_null(3),
+            "a control states no {name}"
+        );
+    }
+    let books = |batch: RecordBatch| {
+        drained(
+            MarketData::apply_view(
+                &MarketView::Books,
+                &[],
+                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+            )
+            .unwrap(),
         )
-        .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(instants(column(&out, "currunix")), [Some(20), Some(21)]);
+        .unwrap()
+    };
+
+    let out = books(written.clone());
+    assert_eq!(
+        instants(column(&out, "currunix")),
+        [Some(20), Some(21), Some(22)]
+    );
     let alive = column(&out, "alive");
-    assert_eq!((alive.is_null(0), alive.is_null(1)), (true, true));
-    assert_eq!(column(&out, "deltas").null_count(), 0);
+    assert_eq!(
+        (0..3).map(|row| alive.is_null(row)).collect::<Vec<_>>(),
+        [true, true, true]
+    );
+    assert_eq!(column(&out, "delta").null_count(), 0);
+    assert_eq!(lengths(column(&out, "events")), [0, 0, 1]);
+
+    // The event-only row's `delta` cell null: its `events` alone keep it.
+    let delta = column(&written, "delta")
+        .as_any()
+        .downcast_ref::<ListArray>()
+        .unwrap();
+    assert_eq!(
+        delta.value_length(2),
+        0,
+        "the event-only book's delta is empty"
+    );
+    let arrow_schema::DataType::List(item) = delta.data_type() else {
+        unreachable!("the delta column is a list");
+    };
+    let nulled = ListArray::new(
+        Arc::clone(item),
+        delta.offsets().clone(),
+        Arc::clone(delta.values()),
+        Some(NullBuffer::from(vec![true, true, false, false])),
+    );
+    let mut columns = written.columns().to_vec();
+    columns[written.schema().index_of("delta").unwrap()] = Arc::new(nulled);
+    let stated = RecordBatch::try_new(written.schema(), columns).unwrap();
+    let out = books(stated);
+    assert_eq!(
+        instants(column(&out, "currunix")),
+        [Some(20), Some(21), Some(22)]
+    );
+    assert!(column(&out, "delta").is_null(2));
+    assert_eq!(lengths(column(&out, "events")), [0, 0, 1]);
+}
+
+/// The items each row of a list column holds.
+fn lengths(array: &ArrayRef) -> Vec<i32> {
+    let list = array.as_any().downcast_ref::<ListArray>().unwrap();
+    (0..list.len()).map(|row| list.value_length(row)).collect()
 }
 
 #[test]

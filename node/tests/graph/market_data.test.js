@@ -148,9 +148,9 @@ test('the field is the lifted marketdata struct', () => {
     assert.ok(names.includes(name), name)
   }
   // A1/A10: six identity, nine event, thirty-five market and five
-  // operation columns, the three book controls a book's deltas replay by,
-  // and the five nested columns closing the row: 63 in all.
-  assert.equal(names.length, 6 + 9 + 35 + 5 + 3 + 5)
+  // operation columns, the three book controls a book's delta replays by,
+  // and the six nested columns closing the row: 64 in all.
+  assert.equal(names.length, 6 + 9 + 35 + 5 + 3 + 6)
   assert.deepEqual(names.slice(55, 58), ['bookscope', 'bookaction', 'bookposition'])
   assert.equal(field.fieldAt(57).dtype.id, 'uint32')
   assert.deepEqual(names.slice(58), NESTED)
@@ -307,7 +307,7 @@ test('an undated row needs no clock', () => {
 })
 
 // The named views over a `marketdata` stream: one plan each.
-const NESTED = ['alive', 'deltas', 'executions', 'bidlimits', 'asklimits']
+const NESTED = ['alive', 'delta', 'events', 'executions', 'bidlimits', 'asklimits']
 const ISIN = 'US0378331005'
 
 // The root's children, by name.
@@ -359,11 +359,11 @@ test('every view is one plan whose text reads back', () => {
     graph.MarketData.plan('trades').toString(),
     `select * exclude (${nested}), unnest(executions) as execution where marketdatakind = 'TRAD'`,
   )
-  // A book states its deltas - a complete one its alive entries beside
-  // them - where a snapshot control states neither.
+  // A book states its delta and its events - a complete one its alive
+  // entries beside them - where a snapshot control states none.
   assert.equal(
     graph.MarketData.plan('BOOKS').toString(),
-    "select * exclude (executions) where marketdatakind = 'BOOK' and deltas is not null",
+    "select * exclude (executions) where marketdatakind = 'BOOK' and (delta is not null or events is not null)",
   )
   assert.equal(
     graph.MarketData.plan('lifecycle', [], 'C-1').toString(),
@@ -412,8 +412,8 @@ test('each view keeps its own columns over a small stream', () => {
   assert.deepEqual([...trades.getChild('crosscode')], ['21:0:T-1', '21:0:T-1'])
   assert.deepEqual([...trades.getChild('execution.crosscode')], ['8:1:E-1', '8:2:E-2'])
 
-  // A book keeps its alive entries, deltas and levels nested; a snapshot
-  // control, which states no deltas, is no book row.
+  // A book keeps its alive entries, delta, events and levels nested; a
+  // snapshot control, which states none of them, is no book row.
   const books = viewed('books')
   assert.deepEqual(names(books), rootNames().filter((name) => name !== 'executions'))
   assert.equal(books.numRows, 1)

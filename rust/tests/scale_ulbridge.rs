@@ -2,15 +2,18 @@
 //! one stream of text rows, appended into an Iceberg table, read back in
 //! order, parsed as FIX and walked through their lifecycle into a second
 //! table, and that table read back in order into books - a snapshot of every
-//! book each quarter of an hour, and the deltas between them flattened to
-//! `marketdata` rows - each in a table of its own.
+//! book each quarter of an hour, and between them every book's delta (the
+//! orders and quotes it applied) and its events (the executions and snapshot
+//! controls it recorded), each list laid out as `marketdata` rows - each in a
+//! table of its own.
 //!
 //! ```text
 //! logs/ --read_serie--> text rows --append_serie--> text table
 //! text table --read_serie (sorted)--> parse_text_serie --> lifecycle_serie --overwrite_serie--> fix table
 //! fix table --read_serie (sorted)--> messages_serie --> lifecycle --> books every 15 minutes
 //!     complete books --overwrite_serie--> books table
-//!     their deltas   --overwrite_serie--> deltas table
+//!     their delta    --overwrite_serie--> delta table
+//!     their events   --overwrite_serie--> events table
 //! ```
 //!
 //! Every table is created from the schema of the stream written to it, as
@@ -95,14 +98,14 @@ use arrow_array::{
 use arrow_schema::{ArrowError, SchemaRef};
 use regex::bytes::Regex;
 use yggdryl::arrow::BatchReader;
-use yggdryl::graph::{BookIterator, MarketData};
+use yggdryl::graph::{BookEvent, BookIterator, MarketData};
 use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
 use yggdryl::local::LocalFolder;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::{TextOptions, read_text_lines};
 use yggdryl::{
     ArrowCastOptions, DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, IOResult, Level,
-    Scheme, Serie, SpillOptions, StreamChunkedSerie, Timezone,
+    MarketDataKind, Scheme, Serie, SpillOptions, StreamChunkedSerie, Timezone,
 };
 
 /// The capture every copy repeats, exactly as the bridge wrote it.
@@ -770,10 +773,12 @@ struct Probe {
     messages: AtomicU64,
     /// The FIX rows the lifecycle walked.
     walked: AtomicU64,
-    /// The complete books and the delta-only ones the fold answered.
+    /// The complete books and the delta books the fold answered.
     books: AtomicU64,
-    /// The orders and quotes the books' deltas flatten to.
-    deltas: AtomicU64,
+    /// The orders and quotes the books' delta lays out as.
+    delta: AtomicU64,
+    /// The executions and snapshot controls the books' events lay out as.
+    events: AtomicU64,
     /// Every batch any stage pulled, and what they occupy.
     batches: AtomicU64,
     arrow_bytes: AtomicU64,
@@ -917,8 +922,8 @@ enum Stage {
     Lifecycle,
     /// The walked rows written over their table.
     Fix,
-    /// The books folded from the stored FIX rows: the snapshots and the
-    /// deltas, each written over its table.
+    /// The books folded from the stored FIX rows: the snapshots, the
+    /// delta and the events, each written over its table.
     Books,
 }
 
@@ -976,13 +981,15 @@ struct Outcome {
     messages: u64,
     walked: u64,
     books: u64,
-    deltas: u64,
+    delta: u64,
+    events: u64,
     batches: u64,
     arrow_bytes: u64,
     text: Option<Stored>,
     fix: Option<Stored>,
     snapshots: Option<Stored>,
-    flattened: Option<Stored>,
+    delta_table: Option<Stored>,
+    events_table: Option<Stored>,
     table_bytes: u64,
     baseline: Option<Resident>,
     finale: Option<Resident>,
@@ -1362,13 +1369,15 @@ fn run(shape: &Run) -> Outcome {
         messages: 0,
         walked: 0,
         books: 0,
-        deltas: 0,
+        delta: 0,
+        events: 0,
         batches: 0,
         arrow_bytes: 0,
         text: None,
         fix: None,
         snapshots: None,
-        flattened: None,
+        delta_table: None,
+        events_table: None,
         table_bytes: 0,
         baseline,
         finale: None,
@@ -1468,10 +1477,11 @@ fn run(shape: &Run) -> Outcome {
                         reprocess(&codec, &text, &text_row, &mut fix, shape, &fix_held);
                     }
                     if shape.stage == Stage::Books {
-                        let (snapshots, flattened) =
+                        let (snapshots, delta, events) =
                             books(&codec, &fix, &fix_row, &scratch.0, shape, &probe);
                         outcome.snapshots = Some(snapshots);
-                        outcome.flattened = Some(flattened);
+                        outcome.delta_table = Some(delta);
+                        outcome.events_table = Some(events);
                     }
                 }
             }
@@ -1480,7 +1490,7 @@ fn run(shape: &Run) -> Outcome {
     outcome.streamed_in = started.elapsed();
     outcome.finale = Resident::now();
     outcome.watched_peak = watchdog.map(Watchdog::finish);
-    outcome.table_bytes = ["text", "fix", "books", "deltas"]
+    outcome.table_bytes = ["text", "fix", "books", "delta", "events"]
         .iter()
         .map(|table| folder_bytes(&scratch.0.join(table)))
         .sum();
@@ -1489,7 +1499,8 @@ fn run(shape: &Run) -> Outcome {
     outcome.messages = probe.messages.load(Ordering::Relaxed);
     outcome.walked = probe.walked.load(Ordering::Relaxed);
     outcome.books = probe.books.load(Ordering::Relaxed);
-    outcome.deltas = probe.deltas.load(Ordering::Relaxed);
+    outcome.delta = probe.delta.load(Ordering::Relaxed);
+    outcome.events = probe.events.load(Ordering::Relaxed);
     outcome.batches = probe.batches.load(Ordering::Relaxed);
     outcome.arrow_bytes = probe.arrow_bytes.load(Ordering::Relaxed);
     outcome
@@ -1617,9 +1628,10 @@ fn reprocess(
 }
 
 /// The books the stored FIX rows fold into, a snapshot of every book each
-/// quarter of an hour: the complete books written over one table, and the
-/// deltas of every book flattened to `marketdata` rows over another. The
-/// FIX table is read once for each, in its own order.
+/// quarter of an hour: the complete books written over one table, every
+/// book's delta laid out as `marketdata` rows over a second and every book's
+/// events over a third. The FIX table is read once for each, in its own
+/// order.
 fn books(
     codec: &FixCodec,
     fix: &IcebergTable<LocalFolder>,
@@ -1627,7 +1639,7 @@ fn books(
     scratch: &Path,
     shape: &Run,
     probe: &Arc<Probe>,
-) -> (Stored, Stored) {
+) -> (Stored, Stored, Stored) {
     let row = MarketData::field().expect("the marketdata row");
 
     // Every book the fold answers; the table keeps the complete ones.
@@ -1658,49 +1670,104 @@ fn books(
         "the books no quarter closed are skipped"
     );
 
-    // Every order and quote a book applied, in the order applied.
-    let deltas = BookIterator::new(
-        walked_again(codec, fix, fix_row).map(|message| message.map(MarketData::from)),
-        QUARTER_MS,
-    )
-    .expect("the book fold")
-    .flat_map(|book| match book {
-        Ok(book) => book.deltas().cloned().map(Ok).collect::<Vec<_>>(),
-        Err(error) => vec![Err(error)],
-    });
-    let batches = MarketData::arrow_reader(deltas, Some(shape.batch_rows), Some(shape.batch_bytes))
-        .expect("the delta rows");
-    let flattened = counted(
-        StreamChunkedSerie::from_arrow_reader(Some(&row), batches, ArrowCastOptions::new())
-            .expect("the delta stream"),
+    // Every order and quote a book applied, in the order applied; then
+    // every execution and snapshot control a book recorded, in the order
+    // recorded.
+    let (delta, delta_held) = laid_out(
+        codec,
+        (fix, fix_row),
+        (&scratch.join("delta"), &row),
+        shape,
         probe,
-        |probe| &probe.deltas,
+        |book| book.delta().cloned().collect(),
+        |probe| &probe.delta,
     );
-    let mut deltas = create(&scratch.join("deltas"), &row);
-    let flat = deltas
-        .overwrite_serie(Serie::from(flattened), Some(&writing(&deltas, shape)))
-        .expect("the deltas write");
-    let deltas_held = held(&deltas);
-    assert_eq!(
-        flat,
-        IOResult::new(deltas_held.rows, deltas_held.rows),
-        "the delta overwrite's result"
+    let (events, events_held) = laid_out(
+        codec,
+        (fix, fix_row),
+        (&scratch.join("events"), &row),
+        shape,
+        probe,
+        |book| book.events().cloned().collect(),
+        |probe| &probe.events,
     );
 
     if shape.verified {
         verify("books", &snapshots, &snapshots_held);
-        verify("deltas", &deltas, &deltas_held);
-        // Both tables read back as the market data they were written from:
-        // a snapshot a book, a delta the order or the quote a book applied.
-        for (table, held) in [(&snapshots, &snapshots_held), (&deltas, &deltas_held)] {
+        verify("delta", &delta, &delta_held);
+        verify("events", &events, &events_held);
+        // Every table reads back as the market data it was written from: a
+        // snapshot a book, a delta entry the order or the quote a book
+        // applied, an event the execution or the snapshot control a book
+        // recorded.
+        let kinds = |table: &IcebergTable<LocalFolder>, held: &Stored| -> Vec<MarketDataKind> {
             let read = MarketData::from_arrow_reader(stored(table, &row, None).into_arrow_reader())
                 .expect("the stored rows as market data")
                 .collect::<Result<Vec<MarketData>, _>>()
                 .expect("every stored row reads back");
             assert_eq!(read.len() as u64, held.rows);
-        }
+            read.iter().map(MarketData::marketdatakind).collect()
+        };
+        kinds(&snapshots, &snapshots_held);
+        assert!(
+            kinds(&delta, &delta_held)
+                .into_iter()
+                .all(|kind| matches!(kind, MarketDataKind::Order | MarketDataKind::Quotation)),
+            "the delta table holds orders and quotes alone"
+        );
+        assert!(
+            kinds(&events, &events_held)
+                .into_iter()
+                .all(|kind| matches!(kind, MarketDataKind::Execution | MarketDataKind::Book)),
+            "the events table holds executions and snapshot controls alone"
+        );
     }
-    (snapshots_held, deltas_held)
+    (snapshots_held, delta_held, events_held)
+}
+
+/// One list of every book the stored FIX rows fold into, laid out as
+/// `marketdata` rows and written over a table of its own at `target`: the
+/// FIX table read once more in its own order, folded on the books' grid,
+/// each book's `pick` taken in book order and counted by `counter` as it is
+/// written, so the table holds every item of every book exactly once.
+fn laid_out(
+    codec: &FixCodec,
+    (fix, fix_row): (&IcebergTable<LocalFolder>, &Field),
+    (target, row): (&Path, &Field),
+    shape: &Run,
+    probe: &Arc<Probe>,
+    pick: fn(&BookEvent) -> Vec<MarketData>,
+    counter: fn(&Probe) -> &AtomicU64,
+) -> (IcebergTable<LocalFolder>, Stored) {
+    let items = BookIterator::new(
+        walked_again(codec, fix, fix_row).map(|message| message.map(MarketData::from)),
+        QUARTER_MS,
+    )
+    .expect("the book fold")
+    .flat_map(move |book| match book {
+        Ok(book) => pick(&book).into_iter().map(Ok).collect::<Vec<_>>(),
+        Err(error) => vec![Err(error)],
+    });
+    let batches = MarketData::arrow_reader(items, Some(shape.batch_rows), Some(shape.batch_bytes))
+        .expect("the laid-out rows");
+    let rows = counted(
+        StreamChunkedSerie::from_arrow_reader(Some(row), batches, ArrowCastOptions::new())
+            .expect("the laid-out stream"),
+        probe,
+        counter,
+    );
+    let mut table = create(target, row);
+    let written = table
+        .overwrite_serie(Serie::from(rows), Some(&writing(&table, shape)))
+        .expect("the laid-out write");
+    let table_held = held(&table);
+    assert_eq!(
+        written,
+        IOResult::new(table_held.rows, table_held.rows),
+        "the {} overwrite's result",
+        target.display()
+    );
+    (table, table_held)
 }
 
 /// The bytes every file under `root` holds.
@@ -1741,13 +1808,14 @@ fn report(outcome: &Outcome) {
         outcome.streamed_in,
     );
     println!(
-        "scale_ulbridge: {} lines, {} messages, {} walked, {} books, {} deltas in {} batches ({} \
-         MiB of Arrow); {} MiB of tables on disk",
+        "scale_ulbridge: {} lines, {} messages, {} walked, {} books, {} delta entries, {} events \
+         in {} batches ({} MiB of Arrow); {} MiB of tables on disk",
         outcome.lines,
         outcome.messages,
         outcome.walked,
         outcome.books,
-        outcome.deltas,
+        outcome.delta,
+        outcome.events,
         outcome.batches,
         mib(outcome.arrow_bytes),
         mib(outcome.table_bytes),
@@ -1756,7 +1824,8 @@ fn report(outcome: &Outcome) {
         ("text", outcome.text),
         ("fix", outcome.fix),
         ("books", outcome.snapshots),
-        ("deltas", outcome.flattened),
+        ("delta", outcome.delta_table),
+        ("events", outcome.events_table),
     ] {
         if let Some(table) = table {
             println!(
@@ -1976,7 +2045,8 @@ fn the_capture_pipeline_lands_every_stage_in_order() {
     let text = outcome.text.expect("the text table");
     let fix = outcome.fix.expect("the FIX table");
     let snapshots = outcome.snapshots.expect("the books table");
-    let flattened = outcome.flattened.expect("the deltas table");
+    let delta = outcome.delta_table.expect("the delta table");
+    let events = outcome.events_table.expect("the events table");
 
     assert_eq!(
         text.rows,
@@ -2012,10 +2082,18 @@ fn the_capture_pipeline_lands_every_stage_in_order() {
         outcome.books
     );
     assert_eq!(
-        flattened.rows, outcome.deltas,
-        "the deltas table holds every delta the books applied"
+        delta.rows, outcome.delta,
+        "the delta table holds every order and quote the books applied"
     );
-    assert!(flattened.rows > 0, "{flattened:?}");
+    assert!(delta.rows > 0, "{delta:?}");
+    assert_eq!(
+        events.rows, outcome.events,
+        "the events table holds every execution and control the books recorded"
+    );
+    assert!(
+        events.rows > 0,
+        "the capture's executions are events: {events:?}"
+    );
 }
 
 #[test]
@@ -2054,10 +2132,16 @@ fn a_capture_of_any_size_streams_in_constant_memory() {
             "the FIX table holds every walked row"
         );
     }
-    if let Some(flattened) = outcome.flattened {
+    if let Some(delta) = outcome.delta_table {
         assert_eq!(
-            flattened.rows, outcome.deltas,
-            "the deltas table holds every delta"
+            delta.rows, outcome.delta,
+            "the delta table holds every delta entry"
+        );
+    }
+    if let Some(events) = outcome.events_table {
+        assert_eq!(
+            events.rows, outcome.events,
+            "the events table holds every event"
         );
     }
     let lines = outcome.lines;

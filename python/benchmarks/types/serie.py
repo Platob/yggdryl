@@ -1,6 +1,6 @@
 """The ordering, uniqueness, grouping and window doors of ``Serie``,
-``ChunkedSerie``, ``WindowSerie`` and ``SerieReader``, each beside the PyArrow
-compute kernel that answers the same ask where one exists.
+``ChunkedSerie``, ``WindowSerie`` and ``StreamChunkedSerie``, each beside the
+PyArrow compute kernel that answers the same ask where one exists.
 
 What a row measures is the boundary: reading the keyword options, the
 indices, mask or keys argument, the call off the GIL, and handing the answer
@@ -26,7 +26,7 @@ from collections.abc import Callable
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from yggdryl import ChunkedSerie, Field, Serie, SerieReader, SerieReaderWindows
+from yggdryl import ChunkedSerie, Field, Serie, StreamChunkedSerie, StreamKeySerie
 
 ROWS = 4_096
 VALUES = pa.array([(index * 7_919) % 1_024 for index in range(ROWS)], pa.int64())
@@ -64,10 +64,11 @@ TICKED = Serie.from_(TICKED_BATCH)
 CHUNKED_TICKED = ChunkedSerie.from_(
     pa.Table.from_batches([TICKED_BATCH.slice(0, ROWS // 2), TICKED_BATCH.slice(ROWS // 2)])
 )
-LENT = TICKED.window_by("venue")[1][1]
-# The last of the 274 windows a quarter hour cuts: its record skips every
+LENT_ITEM = TICKED.window_by("venue")[1]
+LENT = LENT_ITEM.rows
+# The last of the 274 windows a quarter hour cuts: its key skips every
 # window before it.
-LENT_LAST = TICKED.window_by("minutes(ts, 15)")[-1][1]
+LENT_LAST = TICKED.window_by("minutes(ts, 15)")[-1]
 
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
@@ -76,9 +77,9 @@ def _measure(name: str, operation: Callable[[], object], iterations: int) -> Non
     print(f"{name:52} {nanoseconds:14.1f} ns/op")
 
 
-def _drained(windows: SerieReaderWindows) -> int:
+def _drained(windows: StreamKeySerie) -> int:
     """Every row of every window of a stream, each window read in turn."""
-    return sum(len(piece) for window in windows for piece in window)
+    return sum(len(window.rows) for window in windows)
 
 
 def _fresh() -> Serie:
@@ -116,7 +117,7 @@ def _cases() -> list[tuple[str, Callable[[], object]]]:
         ("Serie.into_filtered (pyarrow)", lambda: pc.filter(VALUES, MASK)),
         ("Serie.partition_by, 16 keys", lambda: PRICES.partition_by(HELD_VENUES)),
         ("Serie.partition_by, sorted keys", lambda: PRICES.partition_by(HELD_SORTED_KEYS)),
-        ("Serie.partition_by_paths, one path", lambda: QUOTES.partition_by_paths("venue")),
+        ("Serie.partition_by, one path", lambda: QUOTES.partition_by("venue")),
         ("Serie.memory_size (yggdryl)", PRICES.memory_size),
         ("Serie.memory_size (pyarrow nbytes)", lambda: VALUES.nbytes),
         # Serie: the writes, each on a clone sharing the buffers.
@@ -190,18 +191,20 @@ def _cases() -> list[tuple[str, Callable[[], object]]]:
             "WindowSerie.window_by",
             lambda: TICKED.window(WINDOW_OFFSET, WINDOW_ROWS).window_by("venue"),
         ),
-        ("WindowSerie.window_by, a lent window", lambda: LENT.window_by("minutes(ts, 15)")),
-        ("WindowSerie.static_values", lambda: LENT.static_values),
-        ("WindowSerie.static_values, the last of 274", lambda: LENT_LAST.static_values),
+        ("Serie.window_by, a lent window's rows", lambda: LENT.window_by("minutes(ts, 15)")),
+        ("KeySerie.key", lambda: LENT_ITEM.key),
+        ("KeySerie.key, the last of 274", lambda: LENT_LAST.key),
         ("ChunkedSerie.window_by", lambda: CHUNKED_TICKED.window_by("venue")),
         ("ChunkedSerie.window_by sorted", lambda: CHUNKED_TICKED.window_by("venue", True)),
         (
-            "SerieReader.window_by, drained",
-            lambda: _drained(SerieReader.from_serie(TICKED).window_by("venue")),
+            "StreamChunkedSerie.window_by, drained",
+            lambda: _drained(StreamChunkedSerie.from_serie(TICKED).window_by("venue")),
         ),
         (
-            "SerieReader.window_by sorted, drained",
-            lambda: _drained(SerieReader.from_serie(TICKED).window_by("venue", True)),
+            "StreamChunkedSerie.window_by sorted, drained",
+            lambda: _drained(
+                StreamChunkedSerie.from_serie(TICKED).window_by("venue", True)
+            ),
         ),
     ]
 
@@ -220,9 +223,9 @@ def main() -> None:
     assert PRICES.into_filtered(HELD_MASK).into_arrow_array().equals(pc.filter(VALUES, MASK))
     assert PRICES.unique_count() == pc.count_distinct(VALUES).as_py()
     assert len(TICKED.window_by("venue")) == len(CHUNKED_TICKED.window_by("venue")) == 16
-    assert _drained(SerieReader.from_serie(TICKED).window_by("venue", True)) == ROWS
-    last = LENT_LAST.static_values
-    assert last is not None and last["windownum"].as_py() == 273
+    assert _drained(StreamChunkedSerie.from_serie(TICKED).window_by("venue", True)) == ROWS
+    assert len(TICKED.window_by("minutes(ts, 15)")) == 274
+    assert LENT_LAST.rownum == ROWS - 1 and len(LENT_LAST.rows) == 1
     gc.disable()
     try:
         for name, operation in _cases():

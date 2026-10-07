@@ -228,11 +228,13 @@ export type JsBatchReader = BatchReader
 /**
  * One coherent view of a market at one exact nanosecond instant: on a
  * complete book every live entry of both sides and the price levels of
- * each, and on every book the deltas applied since the book before it and
- * the top of book it settled on. A walk emits a book whole only at a
- * snapshot tick and every other book as its deltas alone, which
- * `withPrevious` over the complete book before it rebuilds. Immutable:
- * `withOperations` and every verb answer a new book.
+ * each, and on every book its `delta` - the orders and quotes its instant
+ * applied since the book before it - its `events` - every other event the
+ * instant recorded - and the top of book it settled on. A walk emits a
+ * complete book only at a snapshot tick and every other book as a delta
+ * book, holding no sides, which `withPrevious` over the complete book
+ * before it rebuilds. Immutable: `withOperations` and every verb answer a
+ * new book.
  */
 export declare class BookEvent {
   /**
@@ -245,70 +247,84 @@ export declare class BookEvent {
    * An empty book keyed `key` at `currunix` nanoseconds since the epoch:
    * `key` is its crosscode - an instrument's ISIN, a ticker, or
    * `XX0000000000` - and the book states neither a ticker nor an ISIN.
-   * The empty base a code's first book, stating its deltas alone,
-   * rebuilds over with `withPrevious`.
+   * The empty base a code's first book, a delta book, rebuilds over
+   * with `withPrevious`.
    */
   static keyed(currunix: bigint | number, key: string): BookEvent
   /**
    * Whether the book holds its sides - every entry alive on it - rather
-   * than only the deltas it applied since the book before it: a book a
-   * caller builds, one a walk emits at a snapshot tick, and one rebuilt
-   * by `withPrevious` are complete.
+   * than only its `delta` and `events`, a delta book: a book a caller
+   * builds, one a walk emits at a snapshot tick, and one rebuilt by
+   * `withPrevious` are complete.
    */
   get isComplete(): boolean
   /**
    * Every entry alive on the book, each once and a `MarketData`: the bid
    * side's, best price first and every entry stating no price last, then
    * the ask side's the same way but those resting on the bid too - a
-   * two-sided quote is one entry, listed with the bids. Empty on a book
-   * stating its deltas alone.
+   * two-sided quote is one entry, listed with the bids. Empty on a delta
+   * book.
    */
   alive(): Array<JsMarketData>
   /**
    * The entries alive on the side `side` names - read through the `Side`
    * vocabulary - each a `MarketData`, best price first and every entry
    * stating no price last - a two-sided quote on both sides. Empty for a
-   * side that is neither a bid nor an ask, or on a book stating its
-   * deltas alone.
+   * side that is neither a bid nor an ask, or on a delta book.
    */
   aliveOn(side: string | number): Array<JsMarketData>
   /**
-   * Every event of the book's instant since the book before this one,
-   * each a `MarketData`, in the order applied across both sides: the
-   * orders and quotes applied, and the executions recorded, which rest on
-   * no side. What a book stating its deltas alone states, and what
-   * `withPrevious` replays over the book before it.
+   * The book's delta: the membership operations its instant applied
+   * since the book before this one, each a `MarketData`, in the order
+   * applied across both sides - the orders and quotes placed, changed,
+   * ended, expired, withdrawn or range-deleted. What a delta book states
+   * beside its `events()`, and what `withPrevious` replays over the book
+   * before it; `orddelta()` and `quotes()` partition it.
    */
-  deltas(): Array<JsMarketData>
+  delta(): Array<JsMarketData>
+  /**
+   * The book's events: every other event its instant recorded, each a
+   * `MarketData`, in the order applied - the executions, which rest on
+   * no side and move none, and the snapshot controls whose membership
+   * replacement made the book complete. A delta book states them beside
+   * its `delta()`, and a rebuild replays none of them; `executions()`
+   * and `controls()` partition them.
+   */
+  events(): Array<JsMarketData>
   /**
    * The orders resting on the book - every `alive()` entry that is an
    * order - each an `OrderEvent`, in `alive()`'s order: the bid side's,
-   * best price first, then the ask side's. Empty on a book stating its
-   * deltas alone.
+   * best price first, then the ask side's. Empty on a delta book.
    */
   ordlive(): Array<JsOrderEvent>
   /**
-   * The orders among `deltas()`, each an `OrderEvent`, in the order
-   * applied: every order the book's instant placed, changed or ended.
+   * The orders among `delta()`, each an `OrderEvent`, in the order
+   * applied: every order the book's instant placed, changed, ended,
+   * expired or withdrawn.
    */
   orddelta(): Array<JsOrderEvent>
   /**
-   * The quotes among `deltas()`, each a `QuoteEvent`, in the order
+   * The quotes among `delta()`, each a `QuoteEvent`, in the order
    * applied; a quote resting since an earlier instant is `alive()`'s and
    * not here.
    */
   quotes(): Array<JsQuoteEvent>
   /**
-   * The executions among `deltas()`, each an `ExecutionEvent`, in the
+   * The executions among `events()`, each an `ExecutionEvent`, in the
    * order applied: recorded at the book's instant, resting on no side.
    */
   executions(): Array<JsExecutionEvent>
   /**
+   * The snapshot controls among `events()`, each a `SnapshotEvent`, in
+   * the order applied: the full refreshes whose membership replacement
+   * made the book complete at its instant.
+   */
+  controls(): Array<JsSnapshotEvent>
+  /**
    * One limit per price level of the side `side` names - read through
    * the `Side` vocabulary - best first and the one unpriced limit last,
    * each naming its entries' `curruuid`s in position order; empty for a
-   * side that is neither a bid nor an ask, and on a book stating its
-   * deltas alone.
+   * side that is neither a bid nor an ask, and on a delta book.
    */
   limits(side: string | number): Array<BookLimit>
   /**
@@ -359,10 +375,11 @@ export declare class BookEvent {
   /**
    * This book with every operation of one atomic group applied: each an
    * order or quote event, a snapshot control, or a `MarketData` holding
-   * one, folded, and an execution event recorded among the deltas,
-   * moving no side, since a fill moves a book through its order's or
-   * quote's report; a trade event is pruned and changes nothing. A book
-   * stating its deltas alone is refused at `$.alive`.
+   * one, folded - an order or a quote recorded among its `delta()`, a
+   * control among its `events()` - and an execution event recorded among
+   * its `events()`, moving no side, since a fill moves a book through its
+   * order's or quote's report; a trade event is pruned and changes
+   * nothing. A delta book is refused at `$.alive`.
    */
   withOperations(operations: Array<MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent>): BookEvent
   /** The element's own identity, as its hyphenated text. */
@@ -1253,6 +1270,34 @@ export declare class Compaction {
   clone(): Compaction
 }
 export type JsCompaction = Compaction
+
+/**
+ * One ISO 3166-1 alpha-2 country code, held by its shape: at most two
+ * ASCII bytes, read as the `country` datatype reads one. Immutable.
+ */
+export declare class Country {
+  /**
+   * The code `code` spells, refused where the `country` datatype refuses
+   * it.
+   */
+  constructor(code: string)
+  /** Whether ISO 3166-1 currently assigns this code. */
+  get isListed(): boolean
+  /**
+   * The legal tender ISO 4217 list one gives this country - one currency
+   * per country, a fund code never - or `null` where it gives none: the
+   * user-assigned `XX` and `ZZ`, an agency prefix (`XS`, `EU`), a country
+   * with no universal currency.
+   */
+  get currency(): string | null
+  /** Whether `other` is the same code. */
+  equals(other: Country): boolean
+  /** The code. */
+  toString(): string
+  /** The code, as JSON states it. */
+  toJSON(): string
+}
+export type JsCountry = Country
 
 /**
  * One live data file of the current snapshot, with the spec that placed it.
@@ -5729,7 +5774,7 @@ export type JsIOResult = IOResult
 /**
  * A table of instruments keyed by ISIN - each row the instrument's CFI
  * code, its country of issue, its currency pair, the instrument it is
- * written on, its market, its ticker
+ * written on, its market, its ticker, its ISO 18774 short name
  * and trading currency and one code per `SecurityIDSource(22)` type - that
  * a lifecycle learns into and fills from, and a parse fills from. Bound to
  * the store it was loaded from, committed back only where it moved.
@@ -5746,11 +5791,23 @@ export declare class IsinRegistry {
   /**
    * The registry's row: the required struct `isinregistry` every row is
    * laid out as - `isin`, `updunix`, `cficode`, `countrycode`,
-   * `forexcode`, `underlyingisin`, `eusipacode`, `miccode`, `ticker`, `currency`, then
-   * one column per `SecurityIDSource(22)` type but the ISIN: forty-two
-   * columns - what a table holding the registry is created from.
+   * `forexcode`, `underlyingisin`, `eusipacode`, `miccode`, `ticker`,
+   * `fisn`, `currency`, then one column per `SecurityIDSource(22)` type
+   * but the ISIN: forty-three columns - what a table holding the
+   * registry is created from.
    */
   static field(): Field
+  /**
+   * A registry holding the seed - the common instruments
+   * `config/isin/instruments.json` states, embedded at build time: each a
+   * stock, a fund or an index by its ISIN, its ticker, its market but an
+   * index's, its trading currency, its country, its detailed CFI code and
+   * its short name - clean, bound to no store, bounded at the core's
+   * 16,384. A seed row is an ordinary statement, so the facts it implies
+   * - the national number its ISIN embeds, the currency of its market's
+   * country - are derived as for any other. `new` holds none of it.
+   */
+  static seeded(): IsinRegistry
   /**
    * A registry bound to the store `location` names and loaded from it:
    * a URL of any scheme this build holds, a path or an `IOBase` - an
@@ -5767,7 +5824,9 @@ export declare class IsinRegistry {
    * an installed registry, else the store `YGGDRYL_ISIN_REGISTRY_URI`
    * names - a URL of any scheme, a path, `~` the home - else
    * `~/.config/yggdryl/isin/`, a folder of Arrow IPC parts the first
-   * `commit` lays out; with no home, an empty registry bound to nothing.
+   * `commit` lays out; with no home, the seed bound to nothing. A store
+   * is laid over the seed - its rows win, a seed row it lacks stands -
+   * and the registry is clean after the load.
    * A failed load throws and is retried by the next call.
    */
   static fromEnv(): IsinRegistry
@@ -6095,14 +6154,25 @@ export declare class MarketData {
    */
   static fromArrowReader(reader: JsBatchReader): JsMarketDataRowIterator
   /**
-   * The deltas of the books `source` holds - a `Serie`, a `ChunkedSerie`
-   * or a `StreamChunkedSerie`, consumed - laid out as `marketdata` rows in book
-   * order, as a `StreamChunkedSerie`: every event each book states among its
-   * deltas, of `kind` where one is named (`'ORDR'`, `'QUOT'`, `'EXEC'`,
-   * any spelling the kind reads), every kind otherwise; a row that is no
-   * book is refused by its kind where it is read.
+   * The delta of the books `source` holds - a `Serie`, a `ChunkedSerie`
+   * or a `StreamChunkedSerie`, consumed - laid out as `marketdata` rows
+   * in book order, as a `StreamChunkedSerie`: the orders and quotes each
+   * book's instant applied, in the order applied, of `kind` where one is
+   * named (`'ORDR'`, `'QUOT'`, any spelling the kind reads), both
+   * otherwise; a row that is no book is refused by its kind where it is
+   * read. `eventsSerie` reads every other event the books recorded.
    */
-  static deltasSerie(source: JsSerie | ChunkedSerie | JsStreamChunkedSerie, kind?: string | undefined | null): JsStreamChunkedSerie
+  static deltaSerie(source: JsSerie | ChunkedSerie | JsStreamChunkedSerie, kind?: string | undefined | null): JsStreamChunkedSerie
+  /**
+   * The events of the books `source` holds - a `Serie`, a
+   * `ChunkedSerie` or a `StreamChunkedSerie`, consumed - laid out as
+   * `marketdata` rows in book order, as a `StreamChunkedSerie`: every
+   * other event each book's instant recorded - the executions and the
+   * snapshot controls - in the order applied, of `kind` where one is
+   * named (`'EXEC'`, or `'BOOK'` for the controls, any spelling the kind
+   * reads), every kind otherwise; `deltaSerie`'s refusals.
+   */
+  static eventsSerie(source: JsSerie | ChunkedSerie | JsStreamChunkedSerie, kind?: string | undefined | null): JsStreamChunkedSerie
   /**
    * The plan one named view is over a `marketdata` stream - `orders`,
    * `quotes`, `executions`, `trades`, `books`, or the
@@ -6403,6 +6473,41 @@ export declare class MediaType {
   toJSON(): any
 }
 export type JsMediaType = MediaType
+
+/**
+ * One ISO 10383 market identifier code, held by its shape: at most four
+ * ASCII bytes, read as the `mic` datatype reads one. Immutable.
+ */
+export declare class Mic {
+  /** The code `code` spells, refused where the `mic` datatype refuses it. */
+  constructor(code: string)
+  /** Whether this is the market stated as none, `XXXX`. */
+  get isNone(): boolean
+  /**
+   * The operating MIC this code trades under in ISO 10383: itself for an
+   * operating MIC, its market's for a segment, `null` for a code the
+   * registry never assigned. An expired code answers too.
+   */
+  get operating(): string | null
+  /**
+   * Whether ISO 10383 lists this code as a segment of another market:
+   * false for an operating MIC and for a code it never assigned.
+   */
+  get isSegment(): boolean
+  /**
+   * The country ISO 10383 places this code in, or `null` where the
+   * registry never assigned it or places it in no single country - `XOFF`
+   * and `XXXX` answer none.
+   */
+  get country(): string | null
+  /** Whether `other` is the same code. */
+  equals(other: Mic): boolean
+  /** The code. */
+  toString(): string
+  /** The code, as JSON states it. */
+  toJSON(): string
+}
+export type JsMic = Mic
 
 /** An immutable canonical MIME `type/subtype` value. */
 export declare class MimeType {

@@ -40,9 +40,11 @@ test('a registry learns a message and fills a later one named by its ticker', ()
   assert.equal(registry.isDirty, true)
   const row = registry.get(HOLCIM)
   assert.deepEqual(statedColumns(row), {
-    cficode: 'ESVUFR', currency: 'CHF', isin: HOLCIM, miccode: 'XSWX', ric: 'HOLN.S', ticker: 'HOLN',
+    cficode: 'ESVUFR', currency: 'CHF', isin: HOLCIM, miccode: 'XSWX', ric: 'HOLN.S', ticker: 'HOLN', valor: '1221405',
   })
-  assert.equal(row.valor, null, 'a code the message only derived is never learned')
+  // The message's derived valor is never learned; the row's valor is the
+  // default the fold reads off the closed CH ISIN itself.
+  assert.equal(row.valor, '1221405', 'the valor a CH ISIN embeds is the row default')
   assert.equal(row.countrycode, null, 'the prefix already says the country')
   assert.deepEqual(registry.getByTicker('HOLN', 'XSWX'), row)
   assert.equal(registry.getByTicker('HOLN', 'XLON'), null)
@@ -90,6 +92,44 @@ test('a row merges by the update rule', () => {
   assert.ok(bounded.merge({ isin: HOLCIM }))
   assert.throws(() => bounded.merge({ isin: APPLE }), /1/)
   assert.equal(bounded.toString(), 'IsinRegistry(len=1, maxInstruments=1, dirty=true)')
+})
+
+test('a row takes the defaults its ISIN and its market imply', () => {
+  // The national number a closed ISIN embeds fills its empty column, and an
+  // empty currency is the listing market's country's legal tender; a stated
+  // value is never replaced by either.
+  const diageo = 'GB0002374006'
+  const registry = new IsinRegistry()
+  assert.ok(registry.merge({ isin: diageo, miccode: 'XLON' }))
+  const row = registry.get(diageo)
+  assert.equal(row.sedol, '0237400', "a GB '00' ISIN embeds its SEDOL")
+  assert.equal(row.currency, 'GBP', 'XLON is in GB')
+  assert.ok(registry.merge({ isin: APPLE, cusip: '037833100', currency: 'EUR' }))
+  assert.equal(registry.get(APPLE).currency, 'EUR', 'a stated currency stands')
+  assert.equal(registry.get(APPLE).cusip, '037833100')
+})
+
+test('the seed holds the common instruments, clean and bound to no store', () => {
+  const seeded = IsinRegistry.seeded()
+  assert.equal(seeded.length, 208)
+  assert.equal(seeded.isDirty, false)
+  assert.equal(seeded.maxInstruments, 16384)
+  assert.throws(() => seeded.commit(), /holder/, 'bound to no store')
+  const apple = seeded.getByTicker('AAPL', 'XNAS')
+  assert.equal(apple.isin, APPLE)
+  assert.deepEqual(
+    [apple.ticker, apple.miccode, apple.currency, apple.fisn, apple.cficode],
+    ['AAPL', 'XNAS', 'USD', 'APPLE INC/SH SH', 'ESVUFR'],
+  )
+  assert.equal(apple.cusip, '037833100', 'the CUSIP its ISIN embeds')
+  assert.equal(seeded.get('GB0002374006').sedol, '0237400')
+  assert.equal(new IsinRegistry().length, 0, 'new holds none of it')
+  assert.ok(seeded.merge({ isin: APPLE, ric: 'AAPL.OQ' }))
+  assert.equal(seeded.isDirty, true)
+  assert.equal(IsinRegistry.seeded().get(APPLE).ric, null, 'each seeded registry is its own')
+  const field = IsinRegistry.field()
+  assert.equal(field.fieldLen, 43, 'the short name is the forty-third column')
+  assert.equal(field.indexOf('fisn'), field.indexOf('ticker') + 1)
 })
 
 test('a golden table loads by any spelling of its columns', () => {
@@ -229,11 +269,13 @@ test('the process registry is the store the environment names, shared with the c
     const path = require('node:path')
     const { IsinRegistry, fix } = require(process.argv[1])
     const registry = IsinRegistry.fromEnv()
-    assert.equal(registry.length, 0, 'an empty first run')
+    // The seed lies under the store, so an empty first run holds it, clean.
+    assert.equal(registry.length, 208, 'an empty first run is the seed')
+    assert.equal(registry.isDirty, false)
     assert.ok(IsinRegistry.fromEnv().equals(registry), 'resolved once')
     assert.throws(() => IsinRegistry.installEnv(new IsinRegistry()), /already resolved/)
     assert.ok(registry.merge({ isin: '${HOLCIM}', ric: 'HOLN.S' }))
-    assert.equal(registry.commit().writtenRows, 1)
+    assert.equal(registry.commit().writtenRows, 208, 'the seed rides the first commit')
     assert.ok(fs.existsSync(path.join(process.argv[2], 'part-0.arrows')))
     const codec = fix.FixCodec.fromEnv()
     assert.ok(codec.isinRegistry.equals(registry))

@@ -71,8 +71,8 @@ fn execution(unix: i64, ticker: &str, code: &str, side: Side, quantity: i64) -> 
 /// Two tickers across three minutes: `ACME` quoted on both sides in the
 /// first minute, requoted and executed in the second and requoted in the
 /// third; `BETA` quoted once in each of the first two minutes. Six books:
-/// the execution is recorded at its instant, a book of `ACME` stating it
-/// alone among its deltas and holding it alive nowhere.
+/// the execution is recorded at its instant, a delta book of `ACME` whose
+/// delta is empty and whose one event it is, holding it alive nowhere.
 fn operations() -> Vec<MarketData> {
     vec![
         quote(T0 + 5 * SECOND, "ACME", "AB1", Side::Buy, "100", 10),
@@ -360,11 +360,17 @@ fn the_events_field_is_the_flat_marketdata_row_behind_its_stamp() {
     // operation columns, then the book controls `bookscope`, `bookaction`
     // and `bookposition`.
     assert_eq!(names.len(), 2 + 6 + 9 + 35 + 5 + 3);
-    assert!(
-        !names
-            .iter()
-            .any(|name| ["alive", "deltas", "executions", "bidlimits", "asklimits"].contains(name))
-    );
+    assert!(!names.iter().any(|name| {
+        [
+            "alive",
+            "delta",
+            "events",
+            "executions",
+            "bidlimits",
+            "asklimits",
+        ]
+        .contains(name)
+    }));
     assert_eq!(
         field.fields()[0].dtype().to_string(),
         "datetime64(ns,\"UTC\")"
@@ -516,7 +522,7 @@ fn the_readings_answer_without_http() {
     let total: usize = rows.iter().map(|batch| batch.num_rows()).sum();
     assert_eq!(
         total, 5,
-        "every book's deltas, the execution among them: {total}"
+        "every book's delta and events, the execution among its book's events: {total}"
     );
     assert_eq!(
         rows[0].schema(),
@@ -1344,13 +1350,16 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
     assert_eq!(text(&book, "imbalance"), "-0.111111111111111111");
     assert_eq!(member(&book, "islocked"), &Scalar::from(false));
     assert_eq!(member(&book, "iscrossed"), &Scalar::from(false));
-    // The table states the book at 10:01:05 as its delta: it is answered
-    // whole, rebuilt over the book before it.
+    // The table states the book at 10:01:10 as a delta book recording the
+    // execution alone: it is answered whole, rebuilt over the book before
+    // it with nothing replayed, its delta empty and its one event the
+    // execution.
     assert_eq!(member(&book, "complete"), &Scalar::from(true));
     assert_eq!(member(&book, "alive"), &Scalar::from(3_u64));
-    assert_eq!(member(&book, "deltas"), &Scalar::from(1_u64));
-    // Every member the route table names, and no other: a book holds no
-    // execution.
+    assert_eq!(member(&book, "delta"), &Scalar::from(0_u64));
+    assert_eq!(member(&book, "events"), &Scalar::from(1_u64));
+    // Every member the route table names, and no other: a book rests no
+    // execution on a side.
     let keys: BTreeSet<&str> = book
         .as_struct()
         .unwrap()
@@ -1375,7 +1384,8 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
             "iscrossed",
             "complete",
             "alive",
-            "deltas",
+            "delta",
+            "events",
             "bidlimits",
             "asklimits",
         ])
@@ -1433,14 +1443,22 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
 }
 
 #[test]
-fn events_list_every_entry_and_delta_of_the_books_in_range() {
+fn events_list_every_entry_delta_and_event_of_the_books_in_range() {
     let (_server, endpoint, _) = running("/", BookServiceOptions::new());
     let answer = ok_json(&get(&endpoint, "events", &range()));
     assert_eq!(member(&answer, "truncated"), &Scalar::from(false));
     let rows = items(member(&answer, "rows"));
-    // With no grid no book is whole: each states its deltas alone.
+    // With no grid no book is whole: each is a delta book, its quotes
+    // `delta` rows and its execution an `event` row.
     let roles: BTreeSet<String> = rows.iter().map(|row| text(row, "role")).collect();
-    assert_eq!(roles, BTreeSet::from(["delta".to_owned()]));
+    assert_eq!(
+        roles,
+        BTreeSet::from(["delta".to_owned(), "event".to_owned()])
+    );
+    assert!(
+        rows.iter()
+            .all(|row| (text(row, "role") == "event") == (text(row, "marketdatakind") == "EXEC"))
+    );
     assert!(rows.iter().all(|row| text(row, "ticker") == "ACME"));
     let instants: BTreeSet<String> = rows.iter().map(|row| text(row, "bookunix")).collect();
     assert_eq!(
@@ -1465,13 +1483,13 @@ fn events_list_every_entry_and_delta_of_the_books_in_range() {
             ("EXEC".to_owned(), 1),
             ("QUOT".to_owned(), rows.len() - 1)
         ]),
-        "the execution is the one delta of its instant"
+        "the execution is the one event of its instant"
     );
     let first_book: Vec<&Scalar> = rows
         .iter()
         .filter(|row| text(row, "bookunix") == "2026-01-05T10:00:05.000000000Z")
         .collect();
-    // The two deltas that placed the first book's two entries.
+    // The two quotes of the first book's delta that placed its two entries.
     assert_eq!(first_book.len(), 2);
     let names: BTreeSet<&str> = rows[0]
         .as_struct()
@@ -1513,9 +1531,10 @@ fn events_list_every_entry_and_delta_of_the_books_in_range() {
 
 #[test]
 fn events_are_bounded_by_the_limit_and_the_options() {
-    // The range's ACME audit is four rows: the first book's two deltas
-    // placing its entries, then the one delta of each book after it - with
-    // no grid each states its deltas alone; the options bound it at three.
+    // The range's ACME audit is five rows: the first book's two quotes
+    // placing its entries, then the one quote or execution each book after
+    // it recorded - with no grid each is a delta book; the options bound it
+    // at three.
     let (_server, endpoint, _) = running("/", BookServiceOptions::new().with_max_event_rows(3));
     let mut two = range().to_vec();
     two.push(("limit", "2"));
@@ -1822,6 +1841,64 @@ fn a_delta_taking_an_entry_off_a_side_is_kept_by_that_side() {
     );
 }
 
+/// An execution rests on no side: the audit lists it among its book's
+/// events under the role `event`, after the `delta` rows of its instant,
+/// and a side asked keeps it by the side it takes.
+#[test]
+fn an_execution_is_an_event_row_after_the_delta_rows_of_its_book() {
+    let books = BookIterator::new(
+        [
+            quote(T0 + 5 * SECOND, "ACME", "B-1", Side::Buy, "100", 2),
+            execution(T0 + 6 * SECOND, "ACME", "E-1", Side::Sell, 1),
+            quote(T0 + 6 * SECOND, "ACME", "A-1", Side::Sell, "101", 3),
+        ]
+        .into_iter(),
+        0,
+    )
+    .unwrap()
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
+    assert_eq!(books.len(), 2);
+    assert_eq!((books[1].delta().len(), books[1].events().len()), (1, 1));
+    let (_server, endpoint, _) = running_over(holder_of(books));
+    let audit = |query: &[(&str, &str)]| -> Vec<(String, String, String)> {
+        items(member(&ok_json(&get(&endpoint, "events", query)), "rows"))
+            .iter()
+            .map(|row| {
+                (
+                    text(row, "bookunix"),
+                    text(row, "role"),
+                    text(row, "marketdatakind"),
+                )
+            })
+            .collect()
+    };
+    let row = |seconds: u8, role: &str, kind: &str| {
+        (
+            format!("2026-01-05T10:00:{seconds:02}.000000000Z"),
+            role.to_owned(),
+            kind.to_owned(),
+        )
+    };
+    assert_eq!(
+        audit(&range()),
+        [
+            row(5, "delta", "QUOT"),
+            row(6, "delta", "QUOT"),
+            row(6, "event", "EXEC"),
+        ]
+    );
+    let mut asks = range().to_vec();
+    asks.push(("side", "ask"));
+    assert_eq!(
+        audit(&asks),
+        [row(6, "delta", "QUOT"), row(6, "event", "EXEC")]
+    );
+    let mut bids = range().to_vec();
+    bids.push(("side", "bid"));
+    assert_eq!(audit(&bids), [row(5, "delta", "QUOT")]);
+}
+
 /// `books` written as `marketdata` rows into a buffer named
 /// `books.arrows`.
 fn holder_of(books: Vec<BookEvent>) -> Holder {
@@ -1839,7 +1916,7 @@ fn holder_of(books: Vec<BookEvent>) -> Holder {
 }
 
 /// The fixture's books of ACME, as the walk emits them with no grid: each
-/// stating its deltas alone, the first following no book.
+/// a delta book, the first following no book.
 fn acme_books() -> Vec<BookEvent> {
     BookIterator::new(operations().into_iter(), 0)
         .unwrap()
@@ -1850,7 +1927,7 @@ fn acme_books() -> Vec<BookEvent> {
         .collect()
 }
 
-/// A table a walk landed with no grid holds every book as its deltas, the
+/// A table a walk landed with no grid holds every book as a delta book, the
 /// first following no book: the book at an instant is the last origin at or
 /// before it - a whole book, or the first, rebuilt over the empty book a
 /// walk starts from - with every book after it folded over it in instant
@@ -1899,7 +1976,7 @@ fn the_book_at_an_instant_is_rebuilt_from_the_origin_before_it() {
     }
     assert_eq!(book.alive().count(), 4);
 
-    // The rows hold no order: the deltas fold in instant order still.
+    // The rows hold no order: the delta books fold in instant order still.
     let mut shuffled = acme.clone();
     shuffled.reverse();
     let service =
@@ -1912,7 +1989,7 @@ fn the_book_at_an_instant_is_rebuilt_from_the_origin_before_it() {
     assert_eq!(book.alive().count(), 4);
 }
 
-/// A table holding a book's first appearance alone - its deltas, following
+/// A table holding a book's first appearance alone - its delta, following
 /// no book - answers it whole, rebuilt over the empty book a walk starts
 /// from, and says it is complete.
 #[test]
@@ -1931,7 +2008,7 @@ fn a_book_following_no_book_is_rebuilt_over_the_empty_book_and_complete() {
 }
 
 /// Best effort: a book naming as its `prevuuid` a book the rows read do not
-/// hold is answered as it stands - its deltas, its top of book - and says
+/// hold is answered as it stands - its delta, its top of book - and says
 /// it is not complete.
 #[test]
 fn a_book_naming_a_book_the_rows_do_not_hold_answers_incomplete() {

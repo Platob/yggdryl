@@ -106,8 +106,8 @@ fn snapshot(unix: i64, code: &str) -> SnapshotEvent {
     SnapshotEvent::snapshot(&event, Some(SmolStr::new("Symbol=ACME")))
 }
 
-/// A book of one order and one quote: the execution beside them is pruned
-/// before the fold.
+/// A book of one order and one quote in its `delta`, and the execution
+/// beside them, resting on no side, among its `events`.
 fn book(unix: i64) -> BookEvent {
     let mut book = BookEvent::new(unix, "ACME");
     book.add_operations([
@@ -119,8 +119,9 @@ fn book(unix: i64) -> BookEvent {
     book
 }
 
-/// A book whose last change was a full snapshot of one scope: its entry
-/// states a walk-time control no row carries.
+/// A book whose last change was a full snapshot of one scope: its entry, in
+/// its `delta`, states a walk-time control no row carries, and the snapshot
+/// control that replaced the scope's membership is among its `events`.
 fn snapshot_book(unix: i64) -> BookEvent {
     let mut book = BookEvent::new(unix, "ACME");
     book.add_operations([
@@ -336,7 +337,7 @@ fn replace_struct_child(array: &StructArray, name: &str, child: ArrayRef) -> Str
 fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
     let field = MarketData::field().unwrap();
     let names: Vec<&str> = field.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 6 + 9 + 35 + 5 + 3 + 5);
+    assert_eq!(names.len(), 6 + 9 + 35 + 5 + 3 + 6);
     // The element's facts, the event's, the market's and the operation's,
     // in the order their traits state them: the columns every generated
     // schema opens with.
@@ -400,7 +401,7 @@ fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
             "partyids"
         ]
     );
-    // The book controls a row states - what a book's deltas replay by;
+    // The book controls a row states - what a book's delta replays by;
     // the price and size an entry stated are walk-time.
     assert_eq!(names[55..58], ["bookscope", "bookaction", "bookposition"]);
     assert_eq!(field.fields()[57].dtype(), &yggdryl::DataType::UInt32);
@@ -419,21 +420,33 @@ fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
         "limits",
         "bid",
         "ask",
+        "deltas",
     ] {
         assert!(!names.contains(&gone), "{gone}");
     }
     assert!(field.fields()[55..].iter().all(Field::is_nullable));
+    // A book's three operation lists - its alive entries, its delta and its
+    // events - then a trade's executions and a book's two sides.
     assert_eq!(
         names[58..],
-        ["alive", "deltas", "executions", "bidlimits", "asklimits"]
+        [
+            "alive",
+            "delta",
+            "events",
+            "executions",
+            "bidlimits",
+            "asklimits"
+        ]
     );
     // An operation row, the item of every operation list: nothing nested.
-    let item = field.fields()[58].dtype().serie_item().unwrap().clone();
-    let item: Vec<&str> = item.fields().iter().map(Field::name).collect();
-    assert_eq!(item.len(), 6 + 9 + 35 + 5 + 3);
-    assert_eq!(item, names[..58]);
+    for list in &field.fields()[58..62] {
+        let item = list.dtype().serie_item().unwrap().clone();
+        let item: Vec<&str> = item.fields().iter().map(Field::name).collect();
+        assert_eq!(item.len(), 6 + 9 + 35 + 5 + 3, "{}", list.name());
+        assert_eq!(item, names[..58], "{}", list.name());
+    }
     // A book's two sides are its price levels, one limit each.
-    for side in &field.fields()[61..] {
+    for side in &field.fields()[62..] {
         assert_eq!(side.dtype(), &yggdryl::DataType::serie(Limit::field()));
     }
 }
@@ -515,13 +528,43 @@ fn every_leaf_round_trips_in_bounded_batches() {
     assert_eq!(actual[6].as_trade_event().unwrap().executions().len(), 2);
     let book = actual[7].as_book_event().unwrap();
     assert_eq!(book.alive().count(), 2);
-    // The order and the quote it placed, and the execution it recorded.
-    assert_eq!(book.deltas().len(), 3);
-    // A trade's row states its executions; a book's states none.
+    // The order and the quote it placed are its delta, the execution it
+    // recorded its one event.
+    assert_eq!(book.delta().len(), 2);
+    assert_eq!((book.orddelta().count(), book.quotes().count()), (1, 1));
+    assert_eq!(book.events().len(), 1);
+    assert_eq!(
+        book.executions()
+            .map(|execution| execution.get_crosscode().to_owned())
+            .collect::<Vec<_>>(),
+        ["8:1:E-9"]
+    );
+    assert_eq!(book.controls().count(), 0);
+    // A trade's row states its executions; a book's states none, its own
+    // execution being among its events.
     let executions = batches[1].column_by_name("executions").unwrap();
     assert!(executions.is_valid(1) && executions.is_null(2));
+    let events = batches[1].column_by_name("events").unwrap();
+    assert!(events.is_null(1), "a trade states no events");
+    // A snapshot book's entry is its delta, and the control that replaced
+    // its scope - a `BOOK` item among its events - reads back as that
+    // control.
     let replaced = actual[8].as_book_event().unwrap();
     assert_eq!(replaced.alive().count(), 1);
+    assert_eq!((replaced.delta().len(), replaced.events().len()), (1, 1));
+    let stated = expected[8].as_book_event().unwrap();
+    assert_eq!(
+        replaced.controls().collect::<Vec<_>>(),
+        stated.controls().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        replaced
+            .controls()
+            .map(|control| control.book().action)
+            .collect::<Vec<_>>(),
+        [Some(MdUpdateAction::Snapshot)]
+    );
+    assert_eq!(replaced.executions().count(), 0);
     let control = actual[10].as_snapshot_event().unwrap();
     assert_eq!(control.book().action, Some(MdUpdateAction::Snapshot));
     assert_eq!(control.book().scope.as_deref(), Some("Symbol=ACME"));
@@ -728,8 +771,9 @@ fn the_instant_says_whether_a_row_is_an_element_or_an_event() {
 }
 
 /// A `BOOK` row is dated, and a dated one a book where it states its
-/// `alive` entries and a snapshot control where the cell is null; a batch
-/// that laid out no `alive` column cannot say which.
+/// `alive` entries, a delta book where the cell is null and its `delta` or
+/// its `events` a list, and a snapshot control where all three are null; a
+/// batch that laid out no `alive` column cannot say which.
 #[test]
 fn a_dated_book_row_is_told_by_its_alive_entries() {
     let batch = written(vec![MarketData::from(book(10))]);
@@ -746,8 +790,8 @@ fn a_dated_book_row_is_told_by_its_alive_entries() {
         "{error}"
     );
 
-    // A book row with its entries nulled reads as a book stating its deltas
-    // alone, which states no price level.
+    // A book row with its entries nulled reads as a delta book, which
+    // states no price level.
     let held = batch.column_by_name("alive").unwrap();
     let error = refusal(with_column(
         &batch,
@@ -756,7 +800,7 @@ fn a_dated_book_row_is_told_by_its_alive_entries() {
     ));
     assert!(error.contains("$[0].bidlimits"), "{error}");
     assert!(
-        error.contains("expected no limits on a book holding only its deltas, got 1"),
+        error.contains("expected no limits on a delta book, got 1"),
         "{error}"
     );
 
@@ -1836,7 +1880,7 @@ fn a_batch_stating_no_limits_columns_still_reads() {
         .filter(|at| !schema.field(*at).name().ends_with("limits"))
         .collect();
     let batch = batch.project(&kept).unwrap();
-    assert_eq!(batch.schema().fields().len(), 6 + 9 + 35 + 5 + 3 + 3);
+    assert_eq!(batch.schema().fields().len(), 6 + 9 + 35 + 5 + 3 + 4);
     assert_eq!(
         read(batch_reader(batch.schema(), [batch])).unwrap(),
         expected
@@ -1978,8 +2022,8 @@ fn every_filled_fact_is_a_column_and_reads_back() {
 }
 
 /// The books a walk with no grid emits over two orders of ACME at `unix`
-/// and one at `unix + 1`: each its deltas alone, the first following no
-/// book and the second the first.
+/// and one at `unix + 1`: each a delta book, the first following no book
+/// and the second the first.
 fn walked_books(unix: i64) -> Vec<BookEvent> {
     BookIterator::new(
         [
@@ -1995,17 +2039,17 @@ fn walked_books(unix: i64) -> Vec<BookEvent> {
     .unwrap()
 }
 
-/// A complete book holding no live entry and stating deltas - every entry
+/// A complete book holding no live entry and stating a delta - every entry
 /// it folded ended - writes an empty `alive` list, which a table storing a
-/// null list as an empty one cannot tell from the null a book stating its
-/// deltas alone writes; stating no snapshot instant to be told by, as every
-/// complete book a walk emits does, it reads back from either table as a
-/// book stating its deltas alone, its identity and its deltas kept, and
-/// rebuilds whole over the empty book it follows: the row does not carry
-/// the completeness of an empty book, a loss the walk never meets. Only a
-/// built or rebuilt book meets this.
+/// null list as an empty one cannot tell from the null a delta book
+/// writes; stating no snapshot instant to be told by, as every complete
+/// book a walk emits does, it reads back from either table as a delta
+/// book, its identity and its delta kept, and rebuilds whole over the
+/// empty book it follows: the row does not carry the completeness of an
+/// empty book, a loss the walk never meets. Only a built or rebuilt book
+/// meets this.
 #[test]
-fn a_complete_empty_book_stating_deltas_and_no_snapshot_instant_reads_back_as_its_deltas() {
+fn a_complete_empty_book_stating_a_delta_and_no_snapshot_instant_reads_back_as_a_delta_book() {
     let mut ended = order(1, "O-1");
     ended.set_state(State::Canceled);
     ended.finalize();
@@ -2018,10 +2062,11 @@ fn a_complete_empty_book_stating_deltas_and_no_snapshot_instant_reads_back_as_it
     assert_eq!(
         (
             book.alive().count(),
-            book.deltas().len(),
+            book.delta().len(),
+            book.events().len(),
             book.get_snapunix()
         ),
-        (0, 2, None)
+        (0, 2, 0, None)
     );
     let batch = written(vec![MarketData::from(book.clone())]);
     assert!(
@@ -2038,7 +2083,8 @@ fn a_complete_empty_book_stating_deltas_and_no_snapshot_instant_reads_back_as_it
             "the row does not carry the completeness of an empty book"
         );
         assert_eq!(read_back.get_curruuid(), book.get_curruuid());
-        assert_eq!(read_back.deltas().len(), 2);
+        assert_eq!(read_back.delta().len(), 2);
+        assert_eq!(read_back.events().len(), 0);
         let rebuilt = read_back
             .clone()
             .with_previous(&BookEvent::new(1, "ACME"))
@@ -2049,12 +2095,11 @@ fn a_complete_empty_book_stating_deltas_and_no_snapshot_instant_reads_back_as_it
     }
 }
 
-/// A book stating its deltas alone writes its `deltas` and leaves `alive`,
+/// A delta book writes its `delta` and its `events` and leaves `alive`,
 /// `bidlimits` and `asklimits` null; a complete book - an empty one -
 /// writes all of them, even empty. Each reads back as the form it was
 /// written in, its identity kept; read from a table that stores a null
-/// list as an empty one, a book stating its deltas alone reads back as one
-/// still.
+/// list as an empty one, a delta book reads back as one still.
 #[test]
 fn a_delta_book_row_states_no_alive_entry_and_no_limits() {
     let books = walked_books(20);
@@ -2074,7 +2119,8 @@ fn a_delta_book_row_states_no_alive_entry_and_no_limits() {
             "{name}"
         );
     }
-    assert_eq!(column_of(&batch, "deltas").null_count(), 0);
+    assert_eq!(column_of(&batch, "delta").null_count(), 0);
+    assert_eq!(column_of(&batch, "events").null_count(), 0);
     for batch in [batch.clone(), with_null_lists_emptied(&batch)] {
         let actual = read(batch_reader(batch.schema(), [batch])).unwrap();
         let actual: Vec<&BookEvent> = actual
@@ -2091,7 +2137,8 @@ fn a_delta_book_row_states_no_alive_entry_and_no_limits() {
         for (read, stated) in actual.iter().zip(&values) {
             assert_eq!(read.get_curruuid(), stated.get_curruuid());
         }
-        assert_eq!(actual[1].deltas().len(), 1);
+        assert_eq!(actual[1].delta().len(), 1);
+        assert_eq!(actual[1].events().len(), 0);
         assert_eq!(actual[1].alive().count(), 0);
         assert_eq!(
             actual[1].best_price(Side::Buy),
@@ -2109,6 +2156,130 @@ fn a_delta_book_row_states_no_alive_entry_and_no_limits() {
         assert_eq!(rebuilt.get_curruuid(), books[1].get_curruuid());
         assert_eq!(rebuilt.alive().count(), 3);
     }
+}
+
+/// The books a walk with no grid emits over an order of ACME at `unix` and
+/// an execution at `unix + 1`: a delta book of the order, then an
+/// event-only one - its `delta` empty, the execution its one event.
+fn event_only_books(unix: i64) -> Vec<BookEvent> {
+    BookIterator::new(
+        [
+            MarketData::from(order(unix, &format!("O-{unix}"))),
+            MarketData::from(execution(unix + 1, &format!("E-{}", unix + 1), "Buy")),
+        ]
+        .into_iter(),
+        0,
+    )
+    .unwrap()
+    .collect::<yggdryl::Result<Vec<_>>>()
+    .unwrap()
+}
+
+/// An instant that recorded only an execution emits an event-only book: a
+/// delta book whose `delta` is empty and whose `events` hold the
+/// execution. Its row - `alive` null, `delta` empty or null, `events` one
+/// `EXEC` item, no `snapunix` - reads back as that delta book and never as
+/// a snapshot control, from a table that keeps a null list null and from
+/// one that stores it empty, and rebuilds over the book before it with
+/// nothing replayed.
+#[test]
+fn an_event_only_book_row_reads_back_as_a_delta_book_never_a_control() {
+    let books = event_only_books(40);
+    let book = &books[1];
+    assert!(!book.is_complete());
+    assert_eq!(
+        (book.delta().len(), book.events().len(), book.get_snapunix()),
+        (0, 1, None)
+    );
+    let batch = written(vec![MarketData::from(book.clone())]);
+    assert!(column_of(&batch, "alive").is_null(0));
+    assert!(column_of(&batch, "snapunix").is_null(0));
+    let delta = column_of(&batch, "delta");
+    assert!(delta.is_valid(0), "a delta book states its delta, empty");
+    assert_eq!(
+        delta
+            .as_any()
+            .downcast_ref::<ListArray>()
+            .unwrap()
+            .value_length(0),
+        0
+    );
+    // The same row with its `delta` cell null: the `events` alone tell it.
+    let delta_nulled = with_column(&batch, "delta", new_null_array(delta.data_type(), 1));
+    let previous = books[0]
+        .clone()
+        .with_previous(&BookEvent::new(40, "ACME"))
+        .unwrap();
+    assert_eq!(previous.alive().count(), 1);
+    for batch in [batch.clone(), with_null_lists_emptied(&batch), delta_nulled] {
+        let read_back = read(batch_reader(batch.schema(), [batch]))
+            .unwrap()
+            .remove(0);
+        assert_eq!(read_back.kind(), MarketKind::BookEvent, "never a control");
+        let read_back = read_back.as_book_event().unwrap();
+        assert!(!read_back.is_complete());
+        assert_eq!(read_back.get_curruuid(), book.get_curruuid());
+        assert_eq!((read_back.delta().len(), read_back.events().len()), (0, 1));
+        assert_eq!(
+            read_back
+                .executions()
+                .map(|execution| execution.get_crosscode().to_owned())
+                .collect::<Vec<_>>(),
+            ["8:1:E-41"]
+        );
+        assert_eq!(read_back.controls().count(), 0);
+        // Rebuilt over the book before it, it replays nothing: the sides it
+        // settles on are that book's, under its own identity.
+        let rebuilt = read_back.clone().with_previous(&previous).unwrap();
+        assert!(rebuilt.is_complete());
+        assert_eq!(rebuilt.get_curruuid(), book.get_curruuid());
+        assert_eq!(
+            rebuilt
+                .alive()
+                .map(Element::get_curruuid)
+                .collect::<Vec<_>>(),
+            previous
+                .alive()
+                .map(Element::get_curruuid)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            rebuilt.best_price(Side::Buy),
+            previous.best_price(Side::Buy)
+        );
+    }
+}
+
+/// A book's `delta` holds orders and quotes and its `events` executions
+/// and snapshot controls: an `EXEC` item in `delta` and an `ORDR` item in
+/// `events` are each refused at the item's category.
+#[test]
+fn a_book_row_holding_an_execution_in_its_delta_or_an_order_in_its_events_is_refused() {
+    let books = event_only_books(40);
+    let ordered = written(vec![MarketData::from(books[0].clone())]);
+    let executed = written(vec![MarketData::from(books[1].clone())]);
+    // The event-only book's execution laid out in its delta.
+    let error = refusal(with_column(
+        &executed,
+        "delta",
+        column_of(&executed, "events"),
+    ));
+    assert!(error.contains("$[0].delta[0].marketdatakind"), "{error}");
+    assert!(
+        error.contains("expected ORDR or QUOT among a book's delta, got EXEC"),
+        "{error}"
+    );
+    // The first book's order laid out in its events.
+    let error = refusal(with_column(
+        &ordered,
+        "events",
+        column_of(&ordered, "delta"),
+    ));
+    assert!(error.contains("$[0].events[0].marketdatakind"), "{error}");
+    assert!(
+        error.contains("expected EXEC or BOOK among a book's events, got ORDR"),
+        "{error}"
+    );
 }
 
 /// A two-sided quote is listed once in `alive`, with the bids, while the
@@ -2179,7 +2350,7 @@ fn a_complete_book_whose_sides_order_a_level_differently_round_trips() {
     }
 }
 
-/// A book's deltas replay by the update action and the position each
+/// A book's delta replays by the update action and the position each
 /// states, which its row states: a walk positioning entries in a level and
 /// deleting through a position, written and read back, rebuilds every book
 /// as the walk held it.
@@ -2263,7 +2434,7 @@ fn delta_books_read_back_replay_their_ranges_and_positions() {
     assert_eq!(codes(&walked[2]), ["14:0:P-A", "14:0:P-C"]);
 }
 
-/// A book stating its deltas alone states the price and the quantity its
+/// A delta book states the price and the quantity its
 /// best bid and ask settle on, and a row stating another is refused there;
 /// so is one stating a snapshot instant, which only a whole book states.
 #[test]
@@ -2287,7 +2458,7 @@ fn a_delta_book_row_whose_price_disagrees_with_its_legs_is_refused() {
     ));
     assert!(error.contains("$[0].snapunix"), "{error}");
     assert!(
-        error.contains("expected no snapshot instant on a book holding only its deltas, got 21"),
+        error.contains("expected no snapshot instant on a delta book, got 21"),
         "{error}"
     );
 }
@@ -2328,9 +2499,10 @@ fn a_book_row_and_a_two_sided_quote_row_state_both_sides() {
     assert!(error.contains("$[0].side"), "{error}");
 }
 
-/// A book stating its deltas alone is pinned by the book it follows and
-/// the deltas it applied: a row naming another predecessor, or stating
-/// other deltas, derives another identity and is refused at its
+/// A delta book is pinned by the book it follows, the delta it applied
+/// and the events it recorded: a row naming another predecessor, or
+/// stating another delta or other events, derives another identity and is
+/// refused at its
 /// `curruuid`.
 #[test]
 fn a_delta_book_row_stating_another_chain_is_refused_at_its_identity() {
@@ -2341,22 +2513,34 @@ fn a_delta_book_row_stating_another_chain_is_refused_at_its_identity() {
     assert!(error.contains("$[0].curruuid"), "{error}");
 
     let empty = written(vec![MarketData::from(BookEvent::new(21, "EMPTY"))]);
-    let none = Arc::clone(empty.column_by_name("deltas").unwrap());
-    let error = refusal(with_column(&batch, "deltas", none));
+    let none = Arc::clone(empty.column_by_name("delta").unwrap());
+    let error = refusal(with_column(&batch, "delta", none));
+    assert!(error.contains("$[0].curruuid"), "{error}");
+
+    // An event-only book stating no event is another book.
+    let executed = written(vec![MarketData::from(event_only_books(40)[1].clone())]);
+    let none = Arc::clone(empty.column_by_name("events").unwrap());
+    let error = refusal(with_column(&executed, "events", none));
     assert!(error.contains("$[0].curruuid"), "{error}");
 }
 
-/// The deltas of a stream of books lay out as the rows of their kind, in
-/// book order: every event each book recorded, of the kind asked for or of
-/// every kind, and a stream holding a row that is no book is refused at
-/// that row.
+/// The delta and the events of a stream of books lay out as the rows of
+/// their kind, in book order: `delta_serie` every order and quote each book
+/// applied, `events_serie` every execution and snapshot control each book
+/// recorded, of the kind asked for or of every kind, and a stream holding a
+/// row that is no book is refused at that row by either.
 #[test]
-fn the_deltas_of_books_lay_out_as_the_rows_of_their_kind() {
+fn the_delta_and_the_events_of_books_lay_out_as_the_rows_of_their_kind() {
+    // Four books: the first order's, the execution's event-only one, the
+    // second order's, and the snapshot's - its entry applied, its control
+    // recorded.
     let inputs = || {
         vec![
             MarketData::from(order(1, "O-1")),
             MarketData::from(execution(2, "E-2", "Buy")),
             MarketData::from(order(3, "O-3")),
+            MarketData::from(entry(4, "Q-4", MdUpdateAction::Snapshot)),
+            MarketData::from(snapshot(4, "W-4")),
         ]
     };
     let codes = |rows: &[MarketData]| {
@@ -2364,48 +2548,74 @@ fn the_deltas_of_books_lay_out_as_the_rows_of_their_kind() {
             .map(|row| row.get_crosscode().to_owned())
             .collect::<Vec<_>>()
     };
+    let delta = |kind: Option<MarketDataKind>| {
+        read(
+            MarketData::delta_serie(books_serie(inputs()), kind)
+                .unwrap()
+                .into_arrow_reader(),
+        )
+        .unwrap()
+    };
+    let events = |kind: Option<MarketDataKind>| {
+        read(
+            MarketData::events_serie(books_serie(inputs()), kind)
+                .unwrap()
+                .into_arrow_reader(),
+        )
+        .unwrap()
+    };
 
-    let executions = MarketData::deltas_serie(
-        books_serie(inputs()),
-        Some(yggdryl::MarketDataKind::Execution),
-    )
-    .unwrap();
-    let executions = read(executions.into_arrow_reader()).unwrap();
+    // The orders and the quote, in book order, each as the event it is.
+    assert_eq!(codes(&delta(None)), ["10:1:O-1", "10:1:O-3", "14:0:Q-4"]);
+    assert_eq!(
+        codes(&delta(Some(MarketDataKind::Order))),
+        ["10:1:O-1", "10:1:O-3"]
+    );
+    assert_eq!(codes(&delta(Some(MarketDataKind::Quotation))), ["14:0:Q-4"]);
+    // No delta holds an execution or a control.
+    assert!(delta(Some(MarketDataKind::Execution)).is_empty());
+    assert!(delta(Some(MarketDataKind::Book)).is_empty());
+
+    // The execution and the control, in book order.
+    let every = events(None);
+    assert_eq!(
+        every.iter().map(MarketData::kind).collect::<Vec<_>>(),
+        [MarketKind::ExecutionEvent, MarketKind::SnapshotEvent]
+    );
+    let executions = events(Some(MarketDataKind::Execution));
     assert_eq!(codes(&executions), ["8:1:E-2"]);
     assert_eq!(executions[0].get_execunix(), Some(0));
-
-    let every = MarketData::deltas_serie(books_serie(inputs()), None).unwrap();
+    let controls = events(Some(MarketDataKind::Book));
+    assert_eq!(controls.len(), 1);
+    assert_eq!(controls[0].kind(), MarketKind::SnapshotEvent);
     assert_eq!(
-        codes(&read(every.into_arrow_reader()).unwrap()),
-        ["10:1:O-1", "8:1:E-2", "10:1:O-3"]
+        controls[0].get_curruuid(),
+        snapshot(4, "W-4").get_curruuid(),
+        "the control the snapshot recorded"
     );
+    // No event is an order or a quote.
+    assert!(events(Some(MarketDataKind::Order)).is_empty());
+    assert!(events(Some(MarketDataKind::Quotation)).is_empty());
 
-    // A stream that holds no book answers its deltas: none.
-    let orders = MarketData::deltas_serie(
-        books_serie(inputs()),
-        Some(yggdryl::MarketDataKind::Quotation),
-    )
-    .unwrap();
-    assert!(read(orders.into_arrow_reader()).unwrap().is_empty());
-
-    // A row that is no book is refused as an item of the stream.
-    let flat = MarketData::arrow_reader(inputs(), None, None).unwrap();
-    let flat = yggdryl::StreamChunkedSerie::from_arrow_reader(
-        Some(&MarketData::field().unwrap()),
-        flat,
-        yggdryl::ArrowCastOptions::new(),
-    )
-    .unwrap();
-    let error = read(
-        MarketData::deltas_serie(flat, None)
-            .unwrap()
-            .into_arrow_reader(),
-    )
-    .unwrap_err();
-    assert!(
-        error.to_string().contains("expected a book_event"),
-        "{error}"
-    );
+    // A row that is no book is refused as an item of either stream.
+    let flat = || {
+        yggdryl::StreamChunkedSerie::from_arrow_reader(
+            Some(&MarketData::field().unwrap()),
+            MarketData::arrow_reader(inputs(), None, None).unwrap(),
+            yggdryl::ArrowCastOptions::new(),
+        )
+        .unwrap()
+    };
+    for serie in [
+        MarketData::delta_serie(flat(), None).unwrap(),
+        MarketData::events_serie(flat(), None).unwrap(),
+    ] {
+        let error = read(serie.into_arrow_reader()).unwrap_err();
+        assert!(
+            error.to_string().contains("expected a book_event"),
+            "{error}"
+        );
+    }
 }
 
 /// A stream of books over a fine grid repeats every alive entry of every
@@ -2484,7 +2694,7 @@ fn market_rows_whose_digests_a_table_stored_as_longs_read_back_as_their_leaves()
     // The written root, its digests retyped to `int64` at every depth and
     // stating nothing: a foreign layout.
     let mut foreign = MarketData::field().unwrap();
-    for prefix in ["", "alive[0].", "deltas[0].", "executions[0]."] {
+    for prefix in ["", "alive[0].", "delta[0].", "events[0].", "executions[0]."] {
         for name in ["currhashcode", "crosshashcode"] {
             let path = format!("{prefix}{name}");
             let mut child = foreign.get_field_by_path(&path).unwrap().clone();

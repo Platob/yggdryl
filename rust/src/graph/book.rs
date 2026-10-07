@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::arrow::{ALIVE, DELTAS, RowFilter};
+use super::arrow::{ALIVE, DELTA, EVENTS, RowFilter};
 use super::facts::{MarketEventFacts, OperationEventFacts};
 use super::market::merge_market_event_into_reference;
 use super::market_data::MarketData;
@@ -317,8 +317,9 @@ pub(crate) fn rests_on(entry: &MarketData, side: Side) -> bool {
 
 /// Whether `entry` is about the side `side` takes, resting there or not: a
 /// sided entry taking it, an unsided one stating a leg there - a leg sized
-/// zero, which withdraws it, included - or tagging it. What a delta that
-/// takes an entry off a side still states, which the audit keeps by.
+/// zero, which withdraws it, included - or tagging it. What an order or a
+/// quote of a book's delta that takes an entry off a side still states,
+/// which the audit keeps by.
 #[cfg(feature = "http")]
 pub(crate) fn states_on(entry: &MarketData, side: Side) -> bool {
     (side.is_bid() || side.is_ask())
@@ -368,7 +369,7 @@ fn promote_to_quote(operation: MarketData, data: OperationEventFacts) -> MarketD
 /// The store is shared: a book a walk emits whole holds the store the
 /// walk keeps, so emitting a deep book costs a reference count, and the
 /// walk copies its side once at its next change - only while a consumer
-/// still holds that book. Between them the walk emits its deltas alone and
+/// still holds that book. Between them the walk emits delta books and
 /// changes the store it alone holds in place.
 ///
 /// A change costs a binary search over the side's levels, one scan of the
@@ -1320,7 +1321,7 @@ fn restates(applied: &MarketData, held: &MarketData) -> bool {
 }
 
 /// A book's two sides, each one store in book order: what a complete book
-/// holds and a book stating only its deltas does not.
+/// holds and a delta book does not.
 #[derive(Clone, Debug, PartialEq)]
 struct Sides {
     bid: Ladder,
@@ -1607,27 +1608,22 @@ impl Sides {
         self.ask.clear_partition(partition, cleared) || bid
     }
 
-    /// Replays one delta a book applied - its range, or its entry placed by
-    /// the identity it continues - exactly as the book placed it: the same
-    /// shared entry, with nothing followed again.
+    /// Replays one order or quote of a book's delta - its range, or its
+    /// entry placed by the identity it continues - exactly as the book
+    /// placed it: the same shared entry, with nothing followed again.
     ///
     /// # Errors
     ///
     /// Refuses what [`Self::resolve`], [`Self::place`] and
     /// [`Self::delete_range`] refuse.
-    fn replay(&mut self, delta: &Arc<MarketData>) -> Result<()> {
-        // An execution was recorded, never placed: replaying it places
-        // nothing either.
-        if matches!(delta.as_ref(), MarketData::ExecutionEvent(_)) {
-            return Ok(());
-        }
-        match delta.operation_event().control_action() {
+    fn replay(&mut self, entry: &Arc<MarketData>) -> Result<()> {
+        match entry.operation_event().control_action() {
             Some(action) if action.is_range_delete() => {
-                self.delete_range(delta, action == MdUpdateAction::DeleteThru, None)
+                self.delete_range(entry, action == MdUpdateAction::DeleteThru, None)
             }
             _ => {
-                let identity = self.resolve(delta)?;
-                self.place(&identity, delta, None)
+                let identity = self.resolve(entry)?;
+                self.place(&identity, entry, None)
             }
         }
     }
@@ -1710,93 +1706,116 @@ impl SidesJournal {
 }
 
 /// One coherent view of a market at one exact nanosecond instant: the
-/// orders and quotes alive on its two sides, and the deltas - every event
-/// of its instant since the book before it, in the order applied: the
-/// orders and quotes it applied, and the executions it recorded. An entry
-/// rests on every side it states a leg for: an order on the side it takes,
-/// a quote on its bid and its ask, a two-sided quote one entry shared by
-/// both sides. An execution rests on no side and moves none - its fill
-/// moved the book through its order's or quote's own report - and stands
-/// among the deltas at its instant, the book's last execution instant
-/// following it; every input
+/// orders and quotes alive on its two sides, its **delta** - the
+/// membership operations its instant applied since the book before it,
+/// the orders and quotes placed, changed, ended, expired, withdrawn or
+/// range-deleted, in the order applied, each the very entry a side holds
+/// where it rests - and its **events** - every other event the instant
+/// recorded, in the order applied: the executions and the snapshot
+/// controls. An entry rests on every side it states a leg for: an order on
+/// the side it takes, a quote on its bid and its ask, a two-sided quote one
+/// entry shared by both sides. An execution rests on no side and moves
+/// none - its fill moved the book through its order's or quote's own
+/// report - and stands among the events at its instant, the book's last
+/// execution instant following it; a snapshot control stands among the
+/// events of the complete book whose membership it replaced. Every input
 /// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded) does
 /// not admit is pruned before the fold.
 ///
 /// A book is **complete** - [`Self::is_complete`] - where it holds its
 /// sides: one a caller builds and changes with [`Self::add_operations`],
 /// one a walk emits whole, or one rebuilt by [`Element::with_previous`]. A
-/// [`BookIterator`] emits a book whole only at a snapshot tick - every
+/// [`BookIterator`] emits a complete book only at a snapshot tick - every
 /// crossed grid tick, a group that replaced membership - and every other
-/// book as its **deltas** alone, beside the top-of-book facts it settled
-/// on: [`Element::with_previous`] over the complete book before it rebuilds
-/// it, deltas replayed in the order applied, under the same identity - over
+/// book as a **delta book**, which holds no sides and states its delta and
+/// its events alone, beside the top-of-book facts they settled on:
+/// [`Element::with_previous`] over the complete book before it rebuilds it,
+/// its delta replayed in the order applied, under the same identity - over
 /// the empty book every walk starts from where it names no `prevuuid`, as
 /// the first book of a book code does.
 ///
 /// Each side of a complete book is one contiguous store in book order,
 /// shared with the books a walk emits until the walk changes it, and every
 /// reading borrows from it: [`Self::alive`], [`Self::alive_on`],
-/// [`Self::deltas`], and the same entries by kind - [`Self::ordlive`] the
-/// orders resting, [`Self::orddelta`], [`Self::quotes`] and
-/// [`Self::executions`] the deltas, and [`Self::events`] every other delta,
-/// of which the fold admits none today. A complete
-/// book answers each side as the [`Limit`]s its row states under
-/// `bidlimits` and `asklimits` - [`Self::limits`], best first - and its
-/// depth, [`Self::depth`] and [`Self::imbalance`]; a book holding only its
-/// deltas answers none of them. Every book, complete or
-/// not, answers its top of book from the facts it settled on, reading no
-/// side: [`Self::best_price`], [`Self::best_quantity`], [`Self::spread`],
+/// [`Self::delta`], [`Self::events`], and the same entries by kind -
+/// [`Self::ordlive`] the orders resting, [`Self::orddelta`] and
+/// [`Self::quotes`] the delta, [`Self::executions`] and [`Self::controls`]
+/// the events. A complete book answers each side as the [`Limit`]s its row
+/// states under `bidlimits` and `asklimits` - [`Self::limits`], best first -
+/// and its depth, [`Self::depth`] and [`Self::imbalance`]; a delta book
+/// answers none of them. Every book, complete or a delta book, answers its
+/// top of book from the facts it settled on, reading no side:
+/// [`Self::best_price`], [`Self::best_quantity`], [`Self::spread`],
 /// [`Self::bbo_midpoint`], [`Self::median_quantity`], [`Self::is_crossed`],
 /// [`Self::is_locked`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct BookEvent {
     event: MarketEventFacts,
-    /// Both sides, on a complete book; none on a book stating its deltas
-    /// alone.
+    /// Both sides, on a complete book; none on a delta book.
     sides: Option<Sides>,
-    /// Every event of the book's instant since the book before this one,
-    /// in the order applied across both sides: the orders and quotes
-    /// applied, each the very entry a side holds where it rests, and the
-    /// executions recorded, resting nowhere.
-    deltas: Vec<Arc<MarketData>>,
+    /// The membership operations the instant applied: the orders and
+    /// quotes, in the order applied across both sides, each the very entry
+    /// a side holds where it rests.
+    delta: Vec<Arc<MarketData>>,
+    /// Every other event the instant recorded, in the order applied: the
+    /// executions, resting nowhere, and the snapshot controls.
+    events: Vec<Arc<MarketData>>,
 }
 
 /// What one group did to a book: whether it applied an order or a quote
-/// as a delta, whether it replaced the membership of a partition - a
+/// to its delta, whether it recorded an execution or a snapshot control
+/// among its events, whether it replaced the membership of a partition - a
 /// snapshot - and, for a snapshot, whether it removed an entry it did not
 /// restate and whether the book holds an entry after it.
 #[derive(Clone, Copy, Debug, Default)]
 struct Applied {
-    deltas: bool,
+    delta: bool,
+    events: bool,
     replaced: bool,
     removed: bool,
     holds: bool,
 }
 
 impl Applied {
-    /// Whether the group changed the book: it recorded a delta, or it is a
+    /// Whether the group changed the book, which is then emitted: it
+    /// recorded an order or a quote in its delta, or an event, or it is a
     /// snapshot of a book holding an entry or one it emptied - an empty
-    /// book replaced by nothing changes nothing.
+    /// book replaced by nothing changes nothing but the control it records.
     const fn any(self) -> bool {
-        self.deltas || (self.replaced && (self.removed || self.holds))
+        self.delta || self.events || (self.replaced && (self.removed || self.holds))
     }
+}
+
+/// What one input did to a book: nothing - a repeat of the live entry it
+/// continues, or of the one a full snapshot cleared - an order or a quote
+/// applied to its delta, or an execution or a snapshot control recorded
+/// among its events.
+#[derive(Clone, Copy, Debug)]
+enum Recorded {
+    Nothing,
+    Delta,
+    Event,
 }
 
 /// What one journaled group did to a book, so a refused group - or one
 /// applying nothing - leaves it as it was: the event, the sides' journal,
-/// and the deltas - their count before the group, or all of them where a
-/// new instant took them.
+/// and the delta and the events - their lengths before the group, or both
+/// lists whole where a new instant took them.
 struct BookJournal {
     event: MarketEventFacts,
     sides: SidesJournal,
-    deltas_len: usize,
-    taken: Option<Vec<Arc<MarketData>>>,
+    delta_len: usize,
+    events_len: usize,
+    taken: Option<TakenLists>,
 }
+
+/// A book's delta and events, taken whole where a new instant began.
+type TakenLists = (Vec<Arc<MarketData>>, Vec<Arc<MarketData>>);
 
 impl BookJournal {
     /// The journal of a group at `unix` on `book`, its sides kept `whole`
-    /// where the group replaces membership; the deltas taken where the
-    /// group starts a new instant.
+    /// where the group replaces membership; the delta and the events taken
+    /// where the group starts a new instant.
     fn new(book: &mut BookEvent, unix: i64, whole: bool) -> Self {
         let advancing = book.event.get_currunix() != unix;
         Self {
@@ -1808,8 +1827,14 @@ impl BookJournal {
                     ask: SideJournal::default(),
                 },
             },
-            deltas_len: book.deltas.len(),
-            taken: advancing.then(|| std::mem::take(&mut book.deltas)),
+            delta_len: book.delta.len(),
+            events_len: book.events.len(),
+            taken: advancing.then(|| {
+                (
+                    std::mem::take(&mut book.delta),
+                    std::mem::take(&mut book.events),
+                )
+            }),
         }
     }
 
@@ -1818,8 +1843,14 @@ impl BookJournal {
             self.sides.rollback(sides);
         }
         match self.taken {
-            Some(deltas) => book.deltas = deltas,
-            None => book.deltas.truncate(self.deltas_len),
+            Some((delta, events)) => {
+                book.delta = delta;
+                book.events = events;
+            }
+            None => {
+                book.delta.truncate(self.delta_len);
+                book.events.truncate(self.events_len);
+            }
         }
         book.event = self.event;
     }
@@ -1951,8 +1982,8 @@ impl BookEvent {
     /// the book states neither a ticker nor an ISIN until its first input
     /// states each, and its side is [`Side::Both`], whatever it is set to.
     /// The empty base every walk starts a code's books from,
-    /// which a code's first book, stating its deltas alone and following
-    /// no book, rebuilds over with [`Element::with_previous`]:
+    /// which a code's first book, a delta book following no book, rebuilds
+    /// over with [`Element::with_previous`]:
     ///
     /// ```
     /// use yggdryl::graph::{BookEvent, BookIterator, Element, Event, Market, MarketData, OrderEvent};
@@ -1990,7 +2021,8 @@ impl BookEvent {
         let mut book = Self {
             event,
             sides: Some(Sides::new()),
-            deltas: Vec::new(),
+            delta: Vec::new(),
+            events: Vec::new(),
         };
         book.finalize();
         book
@@ -2014,30 +2046,44 @@ impl BookEvent {
     }
 
     /// Rebuilds one canonical book from what its row states: the event, the
-    /// entries alive on both sides - none for a book stating its deltas
-    /// alone - and the deltas in the order applied, each entry standing as
-    /// one on every side it rests on, each side in the order `orders` lists
-    /// its entries' `curruuid`s where the row states it - its price levels
-    /// do - validating that the entries, the deltas and every symbol agree
-    /// with the event, without replaying anything as a fresh mutation. A
-    /// complete book settles its top of book on its sides; a book stating
-    /// its deltas alone keeps the one it states, its price and quantity
-    /// those of its best bid and ask.
+    /// entries alive on both sides - none for a delta book - and its delta
+    /// and its events in the order applied, each entry standing as one on
+    /// every side it rests on, each side in the order `orders` lists its
+    /// entries' `curruuid`s where the row states it - its price levels do -
+    /// validating that the entries, the delta, the events and every symbol
+    /// agree with the event, without replaying anything as a fresh
+    /// mutation. A complete book settles its top of book on its sides; a
+    /// delta book keeps the one it states, its price and quantity those of
+    /// its best bid and ask.
     ///
     /// # Errors
     ///
-    /// Refuses an entry resting on no side at `$.alive[i]`, a delta that is
-    /// no order or quote at `$.deltas[i]`, and whatever a side or the book
-    /// refuses.
+    /// Refuses an entry resting on no side at `$.alive[i]`, an entry of the
+    /// delta that is no order or quote at `$.delta[i]`, an event that is no
+    /// execution or snapshot control - and a snapshot control on a delta
+    /// book - at `$.events[i]`, a snapshot instant on a delta book at
+    /// `$.snapunix`, and whatever a side or the book refuses.
     pub(crate) fn from_parts(
         mut event: MarketEventFacts,
         alive: Option<Vec<MarketData>>,
-        deltas: Vec<MarketData>,
+        delta: Vec<MarketData>,
+        events: Vec<MarketData>,
         orders: [Option<&[Uuid]>; 2],
     ) -> Result<Self> {
-        let deltas: Vec<Arc<MarketData>> = deltas.into_iter().map(Arc::new).collect();
-        for (index, delta) in deltas.iter().enumerate() {
-            validate_delta_kind(delta, &format_smolstr!("$.{DELTAS}[{index}]"))?;
+        let delta: Vec<Arc<MarketData>> = delta.into_iter().map(Arc::new).collect();
+        for (index, entry) in delta.iter().enumerate() {
+            validate_delta_kind(entry, &format_smolstr!("$.{DELTA}[{index}]"))?;
+        }
+        let events: Vec<Arc<MarketData>> = events.into_iter().map(Arc::new).collect();
+        for (index, item) in events.iter().enumerate() {
+            let path = format_smolstr!("$.{EVENTS}[{index}]");
+            validate_event_kind(item, &path)?;
+            if alive.is_none() && matches!(item.as_ref(), MarketData::SnapshotEvent(_)) {
+                return Err(invalid(
+                    path,
+                    "expected no snapshot control among a delta book's events: a replaced membership makes a book complete",
+                ));
+            }
         }
         // A book is not sided: its cross code stays as given.
         event.set_marketdatakind(crate::MarketDataKind::Book);
@@ -2046,9 +2092,7 @@ impl BookEvent {
         {
             return Err(invalid(
                 "$.snapunix",
-                format_smolstr!(
-                    "expected no snapshot instant on a book holding only its deltas, got {snapshot}"
-                ),
+                format_smolstr!("expected no snapshot instant on a delta book, got {snapshot}"),
             ));
         }
         let sides = alive
@@ -2057,7 +2101,8 @@ impl BookEvent {
         let mut book = Self {
             event,
             sides,
-            deltas,
+            delta,
+            events,
         };
         book.validate_parts()?;
         book.event = book.canonical_event()?;
@@ -2076,18 +2121,21 @@ impl BookEvent {
             ));
         }
         validate_symbols(key, ALIVE, self.alive())?;
-        validate_symbols(key, DELTAS, self.deltas())?;
+        validate_symbols(key, DELTA, self.delta())?;
+        validate_symbols(key, EVENTS, self.events())?;
         let unix = self.event.get_currunix();
         validate_component_times(unix, ALIVE, entries(self.alive()), true)?;
-        validate_component_times(unix, DELTAS, entries(self.deltas()), false)?;
+        validate_component_times(unix, DELTA, entries(self.delta()), false)?;
+        validate_component_times(unix, EVENTS, dated(self.events()), false)?;
         validate_propagation_bounds(&self.event, ALIVE, entries(self.alive()))?;
-        validate_propagation_bounds(&self.event, DELTAS, entries(self.deltas()))
+        validate_propagation_bounds(&self.event, DELTA, entries(self.delta()))?;
+        validate_propagation_bounds(&self.event, EVENTS, dated(self.events()))
     }
 
     /// Whether the book holds its sides - every entry alive on it - rather
-    /// than only the deltas it applied since the book before it: a book a
-    /// caller builds, one a walk emits at a snapshot tick, and one rebuilt
-    /// by [`Element::with_previous`] are complete.
+    /// than only the delta and the events of its instant, as a delta book
+    /// does: a book a caller builds, one a walk emits at a snapshot tick,
+    /// and one rebuilt by [`Element::with_previous`] are complete.
     ///
     /// ```
     /// use yggdryl::graph::{BookEvent, BookIterator, Element, Event, Market, MarketData, OrderEvent};
@@ -2107,12 +2155,13 @@ impl BookEvent {
     /// };
     /// let books = BookIterator::new(vec![order("B-1", 1, 99), order("B-2", 2, 100)].into_iter(), 0)?
     ///     .collect::<yggdryl::Result<Vec<_>>>()?;
-    /// // With no grid each book states its delta alone, beside the best bid
-    /// // it settled on; the first follows no book.
+    /// // With no grid each book is a delta book, stating its delta alone
+    /// // beside the best bid it settled on; the first follows no book.
     /// assert!(!books[0].is_complete() && !books[1].is_complete());
     /// assert_eq!(books[0].get_prevuuid(), None);
     /// assert_eq!(books[1].alive().count(), 0);
-    /// assert_eq!(books[1].deltas().len(), 1);
+    /// assert_eq!(books[1].delta().len(), 1);
+    /// assert_eq!(books[1].events().len(), 0);
     /// assert_eq!(books[1].best_price(Side::Buy), Some(Decimal::from_int(100)));
     /// // The first is whole over the empty book a walk starts from, and the
     /// // next over it, each under its own identity.
@@ -2132,8 +2181,7 @@ impl BookEvent {
     /// Every entry alive on the book, each once: the bid side's, best price
     /// first and every entry stating no price last, then the ask side's
     /// the same way but those resting on the bid too - a two-sided quote is
-    /// one entry, listed with the bids. Nothing on a book stating its deltas
-    /// alone.
+    /// one entry, listed with the bids. Nothing on a delta book.
     pub fn alive(&self) -> impl Iterator<Item = &MarketData> {
         self.sides.iter().flat_map(Sides::alive)
     }
@@ -2142,8 +2190,7 @@ impl BookEvent {
     /// every entry stating no price last, borrowed from the side's store -
     /// a two-sided quote on both sides, at its leg's price on each; nothing
     /// for a side that is neither a bid nor an ask - `UNKN`, `BOTH`, for
-    /// which [`Self::alive`] is both sides - or on a book stating its deltas
-    /// alone.
+    /// which [`Self::alive`] is both sides - or on a delta book.
     ///
     /// ```
     /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent};
@@ -2172,8 +2219,8 @@ impl BookEvent {
     /// assert_eq!(book.alive_on(Side::Unknown).len(), 0);
     /// assert_eq!(book.alive_on(Side::Both).len(), 0);
     /// assert_eq!(book.get_side(), Side::Both);
-    /// // The deltas are the three orders, in the order applied.
-    /// let applied: Vec<_> = book.deltas().map(Element::get_crosscode).collect();
+    /// // Its delta is the three orders, in the order applied.
+    /// let applied: Vec<_> = book.delta().map(Element::get_crosscode).collect();
     /// assert_eq!(applied, ["10:1:B-1", "10:2:A-1", "10:1:B-2"]);
     /// # Ok(())
     /// # }
@@ -2185,14 +2232,60 @@ impl BookEvent {
             .map(Arc::as_ref)
     }
 
-    /// Every event of the book's instant since the book before this one,
-    /// in the order applied across both sides - the orders and quotes
-    /// applied, and the executions recorded, which rest on no side: what a
-    /// book stating its deltas alone states, and what
-    /// [`Element::with_previous`] replays over the book before it, an
-    /// execution placing nothing on the way.
-    pub fn deltas(&self) -> impl ExactSizeIterator<Item = &MarketData> {
-        self.deltas.iter().map(Arc::as_ref)
+    /// The book's delta: the membership operations its instant applied
+    /// since the book before this one, in the order applied across both
+    /// sides - the orders and quotes placed, changed, ended, expired,
+    /// withdrawn or range-deleted, each the very entry a side holds where
+    /// it rests. What a delta book states beside its [`Self::events`], and
+    /// what [`Element::with_previous`] replays over the book before it.
+    pub fn delta(&self) -> impl ExactSizeIterator<Item = &MarketData> {
+        self.delta.iter().map(Arc::as_ref)
+    }
+
+    /// The book's events: every other event its instant recorded, in the
+    /// order applied - the executions, which rest on no side and move none,
+    /// their fills having moved the book through their orders' or quotes'
+    /// own reports, and the snapshot controls whose membership replacement
+    /// made the book complete. A delta book states them beside its
+    /// [`Self::delta`], and a rebuild replays none of them.
+    /// [`Self::executions`] and [`Self::controls`] partition them; laid out
+    /// as rows, they are [`MarketData::events_serie`]'s.
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookEvent, Element, Event, ExecutionEvent, Market, MarketData, OrderEvent};
+    /// use yggdryl::{Decimal, Side, State};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut order = OrderEvent::at(1);
+    /// order.set_crosscode("B-1".to_owned());
+    /// order.set_side(Side::Buy, true);
+    /// order.set_price(Some(Decimal::from_int(100)), true);
+    /// order.set_quantity(Some(Decimal::ONE), true);
+    /// order.set_state(State::New);
+    /// order.finalize();
+    /// let mut book = BookEvent::new(1, "ACME");
+    /// book.add_operations([MarketData::from(order)])?;
+    /// // A second later an execution alone: the book records it and moves
+    /// // no side.
+    /// let mut fill = ExecutionEvent::at(2);
+    /// fill.set_crosscode("E-1".to_owned());
+    /// fill.set_side(Side::Buy, true);
+    /// fill.set_lastqty(Some(Decimal::ONE), true);
+    /// fill.finalize();
+    /// book.add_operations([MarketData::from(fill)])?;
+    /// assert_eq!(book.get_currunix(), 2);
+    /// assert_eq!(book.delta().len(), 0);
+    /// let recorded: Vec<_> = book.events().map(Element::get_crosscode).collect();
+    /// assert_eq!(recorded, ["8:1:E-1"]);
+    /// assert_eq!(book.alive().count(), 1);
+    /// // A nested book is refused by kind, the book untouched.
+    /// assert!(book.add_operations([MarketData::from(BookEvent::new(2, "ACME"))]).is_err());
+    /// assert_eq!(book.events().len(), 1);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn events(&self) -> impl ExactSizeIterator<Item = &MarketData> {
+        self.events.iter().map(Arc::as_ref)
     }
 
     /// The orders resting on the book - every [`Self::alive`] entry that is
@@ -2200,8 +2293,8 @@ impl BookEvent {
     /// first and every order stating no price last, then the ask side's. An
     /// order placed at the book's instant is here and among
     /// [`Self::orddelta`] as the one entry both borrow; one the instant ended
-    /// is among the deltas alone. Nothing on a book stating its deltas
-    /// alone: rebuild it with [`Element::with_previous`] first.
+    /// is in its delta alone. Nothing on a delta book: rebuild it with
+    /// [`Element::with_previous`] first.
     ///
     /// ```
     /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent};
@@ -2233,28 +2326,28 @@ impl BookEvent {
         self.alive().filter_map(MarketData::as_order_event)
     }
 
-    /// The orders among [`Self::deltas`] - every order the book's instant
+    /// The orders among [`Self::delta`] - every order the book's instant
     /// applied: placed, changed, ended, expired or withdrawn to another
     /// book - in the order applied, each the very entry a side holds where
-    /// it rests ([`Self::ordlive`]). What a book stating its deltas alone
-    /// states too.
+    /// it rests ([`Self::ordlive`]). What a delta book states too.
     pub fn orddelta(&self) -> impl Iterator<Item = &OrderEvent> {
-        self.deltas().filter_map(MarketData::as_order_event)
+        self.delta().filter_map(MarketData::as_order_event)
     }
 
-    /// The quotes among [`Self::deltas`] - every quote the book's instant
+    /// The quotes among [`Self::delta`] - every quote the book's instant
     /// applied - in the order applied. A quote resting since an earlier
-    /// instant is [`Self::alive`]'s and not here.
+    /// instant is [`Self::alive`]'s and not here. These and
+    /// [`Self::orddelta`] partition the delta; laid out as rows, the same
+    /// split is [`MarketData::delta_serie`]'s `kind`.
     pub fn quotes(&self) -> impl Iterator<Item = &QuoteEvent> {
-        self.deltas().filter_map(MarketData::as_quote_event)
+        self.delta().filter_map(MarketData::as_quote_event)
     }
 
-    /// The executions among [`Self::deltas`], in the order applied: each
+    /// The executions among [`Self::events`], in the order applied: each
     /// one the book recorded at its instant, resting on no side and moving
     /// none - its fill moved the book through its order's or quote's own
-    /// report. [`Self::orddelta`], [`Self::quotes`], these and
-    /// [`Self::events`] partition the deltas; laid out as rows, the same
-    /// split is [`MarketData::deltas_serie`]'s `kind`.
+    /// report. These and [`Self::controls`] partition the events; laid out
+    /// as rows, the same split is [`MarketData::events_serie`]'s `kind`.
     ///
     /// ```
     /// use yggdryl::graph::{BookEvent, Element, ExecutionEvent, Market, MarketData, OrderEvent, QuoteEvent};
@@ -2282,35 +2375,23 @@ impl BookEvent {
     /// book.add_operations([MarketData::from(order), MarketData::from(fill), MarketData::from(quote)])?;
     /// assert_eq!(book.executions().map(Element::get_crosscode).collect::<Vec<_>>(), ["8:1:E-1"]);
     /// assert_eq!(book.quotes().map(Element::get_crosscode).collect::<Vec<_>>(), ["14:0:Q-1"]);
-    /// assert_eq!(
-    ///     book.orddelta().count()
-    ///         + book.quotes().count()
-    ///         + book.executions().count()
-    ///         + book.events().count(),
-    ///     book.deltas().len()
-    /// );
+    /// assert_eq!(book.orddelta().count() + book.quotes().count(), book.delta().len());
+    /// assert_eq!(book.executions().count() + book.controls().count(), book.events().len());
     /// # Ok(())
     /// # }
     /// ```
     pub fn executions(&self) -> impl Iterator<Item = &ExecutionEvent> {
-        self.deltas().filter_map(MarketData::as_execution_event)
+        self.events().filter_map(MarketData::as_execution_event)
     }
 
-    /// Every delta that is no order, quote or execution, in the order
-    /// applied - the typed home of whatever else a book comes to record, so
-    /// [`Self::orddelta`], [`Self::quotes`], [`Self::executions`] and these
-    /// partition [`Self::deltas`] whatever it holds. Empty today, by
-    /// construction: a fold prunes every input `MarketDataKind::is_recorded`
-    /// refuses before it reads one - a trade, whose fills are executions
-    /// already, a batch, a session message - refuses every other recorded
-    /// one by kind - an undated order, quote or execution, a nested book -
-    /// and folds a snapshot control into the sides' membership, never among
-    /// the deltas; a book read back from its row refuses a delta of any
-    /// other kind at `$.deltas[i]`.
+    /// The snapshot controls among [`Self::events`], in the order applied:
+    /// each `W` control whose membership replacement made the book
+    /// complete, so only a complete book states one. These and
+    /// [`Self::executions`] partition the events.
     ///
     /// ```
-    /// use yggdryl::graph::{BookEvent, Element, Market, MarketData, OrderEvent};
-    /// use yggdryl::{Decimal, Side};
+    /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent, SnapshotEvent};
+    /// use yggdryl::{Decimal, Side, State};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut order = OrderEvent::at(1);
@@ -2318,29 +2399,25 @@ impl BookEvent {
     /// order.set_side(Side::Buy, true);
     /// order.set_price(Some(Decimal::from_int(100)), true);
     /// order.set_quantity(Some(Decimal::ONE), true);
+    /// order.set_state(State::New);
     /// order.finalize();
     /// let mut book = BookEvent::new(1, "ACME");
     /// book.add_operations([MarketData::from(order)])?;
-    /// assert_eq!(book.events().count(), 0);
-    /// // A nested book is refused by kind, the book untouched.
-    /// assert!(book.add_operations([MarketData::from(BookEvent::new(1, "ACME"))]).is_err());
-    /// assert_eq!(book.orddelta().count() + book.events().count(), book.deltas().len());
+    /// // A second later a full snapshot states the book empty.
+    /// let control = SnapshotEvent::snapshot(&OrderEvent::at(2), None);
+    /// book.add_operations([MarketData::from(control)])?;
+    /// assert_eq!(book.alive().count(), 0);
+    /// assert_eq!(book.delta().len(), 0);
+    /// assert_eq!(book.controls().count(), 1);
+    /// assert_eq!(book.get_snapunix(), Some(2));
     /// # Ok(())
     /// # }
     /// ```
-    pub fn events(&self) -> impl Iterator<Item = &MarketData> {
-        self.deltas().filter(|delta| {
-            !matches!(
-                delta,
-                MarketData::OrderEvent(_)
-                    | MarketData::QuoteEvent(_)
-                    | MarketData::ExecutionEvent(_)
-            )
-        })
+    pub fn controls(&self) -> impl Iterator<Item = &SnapshotEvent> {
+        self.events().filter_map(MarketData::as_snapshot_event)
     }
 
-    /// Whether the book holds no entry alive - a book stating its deltas
-    /// alone states none.
+    /// Whether the book holds no entry alive - a delta book states none.
     fn is_empty(&self) -> bool {
         self.sides.as_ref().is_none_or(Sides::is_empty)
     }
@@ -2354,14 +2431,14 @@ impl BookEvent {
     /// The levels of the side `side` takes, borrowed from its store, best
     /// first and the unpriced level last: what [`Self::limits`] answers,
     /// read without building a [`Limit`]; nothing for a side that is
-    /// neither a bid nor an ask, or on a book stating its deltas alone.
+    /// neither a bid nor an ask, or on a delta book.
     pub(crate) fn levels(&self, side: Side) -> Levels<'_> {
         self.ladder(side)
             .map_or_else(Levels::default, Ladder::levels)
     }
 
     /// The side a bid or an ask names; none for a side that is neither, or
-    /// on a book stating its deltas alone.
+    /// on a delta book.
     fn ladder(&self, side: Side) -> Option<&Ladder> {
         self.sides.as_ref()?.ladder(side)
     }
@@ -2376,8 +2453,8 @@ impl BookEvent {
     /// one holding only unpriced entries, one no level of which can trade,
     /// or a side that is neither a bid nor an ask. A level that cannot trade
     /// is skipped, never answered. What the book states as `bidpx` (`BUYS`)
-    /// and `askpx` (`SELL`), and read from it, so a book stating its deltas
-    /// alone answers it too.
+    /// and `askpx` (`SELL`), and read from it, so a delta book answers it
+    /// too.
     #[must_use]
     pub fn best_price(&self, side: Side) -> Option<Decimal> {
         if side.is_bid() {
@@ -2410,7 +2487,7 @@ impl BookEvent {
     /// order, and whether any of them does not state `tradable = false` - an
     /// entry stating nothing trades, and a level every entry of which states
     /// `false` cannot. Nothing for a side that is neither a bid nor an ask,
-    /// or on a book stating its deltas alone. What a complete book's row
+    /// or on a delta book. What a complete book's row
     /// states under `bidlimits` (`BUYS`) and `asklimits` (`SELL`); the first
     /// priced limit that can trade is [`Self::best_price`] and
     /// [`Self::best_quantity`].
@@ -2469,8 +2546,8 @@ impl BookEvent {
     /// The exact sum of the first `levels` limits' quantities of the side
     /// `side` takes, in [`Self::limits`] order, the unpriced limit counted
     /// where it is reached: zero for an empty side or no level, `None` past
-    /// decimal, for a side that is neither a bid nor an ask, or on a book
-    /// stating its deltas alone.
+    /// decimal, for a side that is neither a bid nor an ask, or on a delta
+    /// book.
     ///
     /// ```
     /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent};
@@ -2594,7 +2671,7 @@ impl BookEvent {
     /// `(bid - ask) / (bid + ask)` over their [`Self::depth`]s, from `1`
     /// for a book resting on the bid alone to `-1` on the ask alone; `None`
     /// where the total is zero - both sides empty, or no level - past
-    /// decimal, or on a book stating its deltas alone.
+    /// decimal, or on a delta book.
     ///
     /// ```
     /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent};
@@ -2645,36 +2722,40 @@ impl BookEvent {
 
     /// Atomically applies all operations of one timestamp. Full-snapshot depth
     /// operations and controls first replace only their declared book scope.
-    /// A book folds an [`OrderEvent`], a [`QuoteEvent`] and a
-    /// [`SnapshotEvent`], each applied order or quote recorded as a delta in
-    /// the order applied, and records an [`ExecutionEvent`] among the deltas
-    /// as it is, resting on no side and moving none. Every input of a kind
+    /// A book folds an [`OrderEvent`] and a [`QuoteEvent`], each applied
+    /// order or quote recorded in its [`Self::delta`] in the order applied,
+    /// and a [`SnapshotEvent`], whose membership replacement makes it
+    /// complete, recorded among its [`Self::events`]; it records an
+    /// [`ExecutionEvent`] among its events as it is, resting on no side and
+    /// moving none. Every input of a kind
     /// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
     /// does not admit - a [`TradeEvent`](super::TradeEvent) - is pruned
     /// first, so a group of nothing else changes nothing: the instant does
-    /// not advance and the deltas stand.
+    /// not advance and the delta and the events stand.
     ///
     /// An order or a quote rests on every side it states a leg for, as one
     /// entry: an order on the side it takes, a quote - which holds a bid and
     /// an ask and tags a side - on each leg it states a price or a quantity
     /// of, so a two-sided quote stands on both sides and is listed once by
     /// [`Self::alive`]; a leg sized zero rests nowhere. Every order and quote
-    /// is a delta wherever it rests: one resting on no side and continuing
-    /// no live entry - warned of where it is live - one first seen ended and
-    /// one ending an entry the book no longer holds place nothing, never
-    /// refused, and still advance the book as its deltas.
+    /// is in the delta wherever it rests: one resting on no side and
+    /// continuing no live entry - warned of where it is live - one first
+    /// seen ended and one ending an entry the book no longer holds place
+    /// nothing, never refused, and still advance the book as its delta.
     ///
     /// A statement repeating the live entry it continues - every fact the
     /// same but its identity, its digests and where it stands in its chain,
-    /// and the same book control - is no change: it records no delta and
-    /// leaves the entry as it stood, and a group of repeats changes nothing.
-    /// A full snapshot restating an entry its scope held keeps that entry,
-    /// identity and all, and one replacing an empty book by nothing changes
-    /// nothing either.
+    /// and the same book control - is no change: it records nothing in the
+    /// delta and leaves the entry as it stood, and a group of repeats
+    /// changes nothing. A full snapshot restating an entry its scope held
+    /// keeps that entry, identity and all, and one replacing an empty book
+    /// by nothing changes nothing but the control it records among the
+    /// events.
     ///
     /// A group at a later instant advances the book: it follows the book it
     /// was, naming it as its `prevuuid` and `prevunix` and its price and
-    /// quantity as its `prevpx` and `prevqty`, and its deltas start again.
+    /// quantity as its `prevpx` and `prevqty`, and its delta and its events
+    /// start again.
     ///
     /// An entry stating no price - a market order - is given none: it rests
     /// at the one unpriced level of its side, after every priced level, so
@@ -2684,8 +2765,8 @@ impl BookEvent {
     ///
     /// # Errors
     ///
-    /// Refuses, at `$.alive`, a book stating its deltas alone - rebuild it
-    /// with [`Element::with_previous`] first. Returns the first item's own
+    /// Refuses, at `$.alive`, a delta book - rebuild it with
+    /// [`Element::with_previous`] first. Returns the first item's own
     /// error, and [`Error::InvalidRecord`] for any other variant - naming its
     /// kind - an operation the book refuses, or a level whose aggregate
     /// quantity would pass decimal (at `$.quantity`); the book is unchanged
@@ -2708,13 +2789,12 @@ impl BookEvent {
     /// [`Self::add_operations`] over one instant's inputs in hand, every
     /// group journaled in place: what it applied, its top of book settled
     /// and its identity left for the caller to derive - a group of pruned
-    /// and repeated inputs alone, or an empty book replaced by nothing,
-    /// leaves the book as it was.
+    /// and repeated inputs alone leaves the book as it was.
     fn fold_group(&mut self, mut operations: Vec<MarketData>) -> Result<Applied> {
         if self.sides.is_none() {
             return Err(invalid(
                 format_smolstr!("$.{ALIVE}"),
-                "a book holding only its deltas takes no operations: rebuild it with with_previous first",
+                "a delta book takes no operations: rebuild it with with_previous first",
             ));
         }
         operations.retain(recorded);
@@ -2773,7 +2853,13 @@ impl BookEvent {
         journal: &mut SidesJournal,
     ) -> Result<Applied> {
         self.advance(unix);
-        self.event.set_snapunix(None);
+        // A snapshot instant stands for the whole instant it was set at: a
+        // later group at that instant adds to the replaced membership, and
+        // the control it recorded stays in a complete book; only the next
+        // instant leaves the snapshot behind.
+        if self.event.get_snapunix() != Some(unix) {
+            self.event.set_snapunix(None);
+        }
         let mut cleared = HashMap::new();
         let sides = self.sides.as_mut().expect("a complete book folds");
         for partition in partitions {
@@ -2784,7 +2870,11 @@ impl BookEvent {
             ..Applied::default()
         };
         for operation in operations {
-            applied.deltas |= self.apply_inner(operation, Some(&mut *journal), &cleared)?;
+            match self.apply_inner(operation, Some(&mut *journal), &cleared)? {
+                Recorded::Delta => applied.delta = true,
+                Recorded::Event => applied.events = true,
+                Recorded::Nothing => {}
+            }
         }
         // A group replacing membership is a snapshot: the book states its
         // instant, and is authoritative where it is merged.
@@ -2800,11 +2890,11 @@ impl BookEvent {
     /// Replaces the membership of `partitions` with the snapshot's
     /// `members`, each standing as one on every side it rests on - one
     /// resting on none, which no membership holds, warned of - its
-    /// `controls` folded.
+    /// `controls` folded and recorded among the events, in the order given.
     fn replace_snapshot_membership(
         &mut self,
         members: Vec<MarketData>,
-        controls: &[SnapshotEvent],
+        controls: Vec<SnapshotEvent>,
         partitions: &BTreeSet<SnapshotPartition>,
         unix: i64,
     ) -> Result<()> {
@@ -2846,6 +2936,7 @@ impl BookEvent {
                     ..EventBounds::of(&control.event)
                 },
             );
+            next.events.push(Arc::new(MarketData::from(control)));
         }
         let sides = next.sides.as_mut().expect("a walk's book is complete");
         sides.bid.replace_membership(&snapshot, partitions)?;
@@ -2855,23 +2946,23 @@ impl BookEvent {
         Ok(())
     }
 
-    /// Applies one input: a snapshot control folds its bounds, a range
-    /// delete takes positions off its side, and an order or a quote
-    /// continues the live entry it resolves to and is placed on every side
-    /// it rests on, one delta recording it. Every order and quote but a
-    /// repeat is a delta, in the order applied, whether or not it rests
-    /// anywhere: one ending an entry the book does not hold, one first seen
-    /// ended, and one resting on no side - a live one warned of - place
-    /// nothing, and a range stating neither side takes nothing off. Whether
-    /// it recorded a delta: not for a control, nor for a repeat of the live
-    /// entry it continues, or of the one a full snapshot cleared from its
-    /// scope, which stands again as it was.
+    /// Applies one input: an execution and a snapshot control fold their
+    /// bounds and are recorded among the events, a range delete takes
+    /// positions off its side, and an order or a quote continues the live
+    /// entry it resolves to and is placed on every side it rests on, the
+    /// delta recording it. Every order and quote but a repeat is in the
+    /// delta, in the order applied, whether or not it rests anywhere: one
+    /// ending an entry the book does not hold, one first seen ended, and
+    /// one resting on no side - a live one warned of - place nothing, and a
+    /// range stating neither side takes nothing off. What it recorded:
+    /// nothing for a repeat of the live entry it continues, or of the one a
+    /// full snapshot cleared from its scope, which stands again as it was.
     fn apply_inner(
         &mut self,
         input: MarketData,
         mut journal: Option<&mut SidesJournal>,
         cleared: &HashMap<LiveKey, Arc<MarketData>>,
-    ) -> Result<bool> {
+    ) -> Result<Recorded> {
         foldable(&input, || SmolStr::new_static("$.operation.kind"))?;
         let key = super::market::base_crosscode(self.get_crosscode());
         if let Some(reason) = book_mismatch(key, &input) {
@@ -2898,16 +2989,17 @@ impl BookEvent {
         let Self {
             event,
             sides,
-            deltas,
+            delta,
+            events,
         } = self;
         // An execution moves no side - its fill moved the book through its
-        // order's or quote's own report - and is recorded among the deltas
+        // order's or quote's own report - and is recorded among the events
         // at its instant, the bounds it states following: the book's last
         // execution instant is its own.
         if matches!(input, MarketData::ExecutionEvent(_)) {
             fold_bounds(event, EventBounds::of_data(&input));
-            deltas.push(Arc::new(input));
-            return Ok(true);
+            events.push(Arc::new(input));
+            return Ok(Recorded::Event);
         }
         let sides = sides.as_mut().expect("a complete book folds");
         if matches!(input, MarketData::SnapshotEvent(_)) {
@@ -2919,14 +3011,15 @@ impl BookEvent {
                     ..EventBounds::of(event_view)
                 },
             );
-            return Ok(false);
+            events.push(Arc::new(input));
+            return Ok(Recorded::Event);
         }
         let action = input.operation_event().control_action();
         if let Some(action) = action.filter(|action| action.is_range_delete()) {
             sides.delete_range(&input, action == MdUpdateAction::DeleteThru, journal)?;
             fold_bounds(event, EventBounds::of_data(&input));
-            deltas.push(Arc::new(input));
-            return Ok(true);
+            delta.push(Arc::new(input));
+            return Ok(Recorded::Delta);
         }
         if action == Some(MdUpdateAction::New)
             && !input
@@ -2949,14 +3042,14 @@ impl BookEvent {
         let continued = previous.is_some();
         let applied = continue_entry(input, previous, action)?;
         if previous.is_some_and(|held| restates(&applied, held)) {
-            return Ok(false);
+            return Ok(Recorded::Nothing);
         }
         if !continued
             && let Some(held) = cleared.get(&identity)
             && restates(&applied, held)
         {
             sides.place(&identity, held, journal.as_deref_mut())?;
-            return Ok(false);
+            return Ok(Recorded::Nothing);
         }
         if !continued
             && applied.operation_event().get_state().is_live()
@@ -2968,12 +3061,12 @@ impl BookEvent {
         let entry = Arc::new(applied);
         sides.place(&identity, &entry, journal)?;
         fold_bounds(event, EventBounds::of_data(&entry));
-        deltas.push(entry);
-        Ok(true)
+        delta.push(entry);
+        Ok(Recorded::Delta)
     }
 
     /// Settles the top-of-book facts on the sides of a complete book; a
-    /// book stating its deltas alone keeps the ones it states.
+    /// delta book keeps the ones it states.
     fn settle(&mut self) {
         if let Some(sides) = &self.sides {
             sides.settle(&mut self.event);
@@ -2982,8 +3075,8 @@ impl BookEvent {
 
     /// The event facts the book settles on: a complete book's on its sides,
     /// checked first - a level whose aggregate quantity passes decimal is
-    /// refused - and a book stating its deltas alone its own, priced at its
-    /// best bid and ask ([`book_price`], [`median_quantity`]); finalized.
+    /// refused - and a delta book its own, priced at its best bid and ask
+    /// ([`book_price`], [`median_quantity`]); finalized.
     pub(super) fn canonical_event(&self) -> Result<MarketEventFacts> {
         let mut event = self.event.clone();
         match &self.sides {
@@ -2999,28 +3092,30 @@ impl BookEvent {
                 );
             }
         }
-        finalize_book_event(&mut event, self.sides.as_ref(), &self.deltas);
+        finalize_book_event(&mut event, self.sides.as_ref(), &self.delta, &self.events);
         Ok(event)
     }
 
     /// Moves the book to `unix` where it stands at another instant: it
-    /// follows the book it was ([`follow_book`]), its place and deltas
-    /// start again.
+    /// follows the book it was ([`follow_book`]), its place, its delta and
+    /// its events start again.
     fn advance(&mut self, unix: i64) {
         if self.event.get_currunix() == unix {
             return;
         }
         let head = self.event.clone();
         follow_book(&mut self.event, &head);
-        self.deltas.clear();
+        self.delta.clear();
+        self.events.clear();
         self.event.set_seqnum(0);
         self.event.set_currunix(unix);
     }
 
-    /// The book a walk emits at its instant - whole at a snapshot `tick`,
-    /// which states its instant as its `snapunix`, else its deltas alone -
-    /// finalized, the deltas handed over and the walk's copy keeping the
-    /// identity it emitted: the sides shared, never copied.
+    /// The book a walk emits at its instant - complete at a snapshot
+    /// `tick`, which states its instant as its `snapunix`, else a delta
+    /// book - finalized, the delta and the events handed over and the
+    /// walk's copy keeping the identity it emitted: the sides shared, never
+    /// copied.
     fn emit(&mut self, tick: bool) -> Self {
         let unix = self.event.get_currunix();
         self.event.set_snapunix(tick.then_some(unix));
@@ -3028,7 +3123,8 @@ impl BookEvent {
         Self {
             event: self.event.clone(),
             sides: if tick { self.sides.clone() } else { None },
-            deltas: std::mem::take(&mut self.deltas),
+            delta: std::mem::take(&mut self.delta),
+            events: std::mem::take(&mut self.events),
         }
     }
 
@@ -3072,21 +3168,20 @@ impl BookEvent {
     }
 
     /// This book over `previous`, which it follows, moved rather than
-    /// borrowed: a book stating its deltas alone takes `previous`' sides -
-    /// shared with nothing else where `previous` was the last holder, so
-    /// nothing is copied - and replays its deltas over them; a complete book
-    /// follows it alone. A book stating its deltas alone and no `prevuuid`
-    /// follows no book - it is the first of its code a walk emitted, or the
-    /// first after it started again - so it rebuilds over the empty book
-    /// every walk starts from, whatever `previous` holds
-    /// ([`Self::rebuilt_from_empty`]).
+    /// borrowed: a delta book takes `previous`' sides - shared with nothing
+    /// else where `previous` was the last holder, so nothing is copied -
+    /// and replays its delta over them; a complete book follows it alone. A
+    /// delta book stating no `prevuuid` follows no book - it is the first
+    /// of its code a walk emitted, or the first after it started again - so
+    /// it rebuilds over the empty book every walk starts from, whatever
+    /// `previous` holds ([`Self::rebuilt_from_empty`]).
     ///
     /// # Errors
     ///
     /// Refuses what [`Element::with_previous`] answers `None` for, naming
-    /// why: another book, a `previous` holding no sides, a delta that does
-    /// not replay, or a rebuild whose top of book is not the one this book
-    /// states.
+    /// why: another book, a `previous` holding no sides, an entry of the
+    /// delta that does not replay, or a rebuild whose top of book is not the
+    /// one this book states.
     pub(crate) fn rebuilt(mut self, previous: Self) -> Result<Self> {
         self.check_follows(&previous)?;
         if self.sides.is_some() {
@@ -3101,23 +3196,23 @@ impl BookEvent {
         let Some(sides) = sides else {
             return Err(invalid(
                 format_smolstr!("$.{ALIVE}"),
-                "expected a complete book to rebuild over, got one holding only its deltas",
+                "expected a complete book to rebuild over, got a delta book",
             ));
         };
         self.rebuild(sides, Some(&event))
     }
 
-    /// This book stating its deltas alone and no `prevuuid`, rebuilt over
-    /// the empty book it follows - [`Self::keyed`] under its own key, the
-    /// one every walk starts a code's books from - whole and under its own
-    /// identity: the first book a walk emits for its code, unless a
-    /// snapshot tick made it whole.
+    /// This delta book stating no `prevuuid`, rebuilt over the empty book it
+    /// follows - [`Self::keyed`] under its own key, the one every walk
+    /// starts a code's books from - whole and under its own identity: the
+    /// first book a walk emits for its code, unless a snapshot tick made it
+    /// whole.
     ///
     /// # Errors
     ///
     /// Refuses, at `$.prevuuid`, a book following another, and what a
-    /// rebuild refuses: a delta that does not replay, or a rebuild whose top
-    /// of book is not the one this book states.
+    /// rebuild refuses: an entry of the delta that does not replay, or a
+    /// rebuild whose top of book is not the one this book states.
     pub(crate) fn rebuilt_from_empty(self) -> Result<Self> {
         if let Some(previous) = self.event.get_prevuuid() {
             return Err(invalid(
@@ -3136,16 +3231,17 @@ impl BookEvent {
         self.rebuild(sides, None)
     }
 
-    /// This book stating its deltas alone rebuilt over `sides`, those of the
-    /// book `previous` it follows - the empty book where it follows none:
-    /// each delta replayed in the order applied, the link to `previous`
-    /// taken, and the top of book the rebuild settles on checked against
-    /// the one this book states; under its own identity.
+    /// This delta book rebuilt over `sides`, those of the book `previous` it
+    /// follows - the empty book where it follows none: each entry of its
+    /// delta replayed in the order applied - its events replay nothing, an
+    /// execution resting on no side - the link to `previous` taken, and the
+    /// top of book the rebuild settles on checked against the one this book
+    /// states; under its own identity.
     fn rebuild(mut self, mut sides: Sides, previous: Option<&MarketEventFacts>) -> Result<Self> {
-        for (index, delta) in self.deltas.iter().enumerate() {
-            sides.replay(delta).map_err(|error| match error {
+        for (index, entry) in self.delta.iter().enumerate() {
+            sides.replay(entry).map_err(|error| match error {
                 Error::InvalidRecord { reason, .. } => {
-                    invalid(format_smolstr!("$.{DELTAS}[{index}]"), reason)
+                    invalid(format_smolstr!("$.{DELTA}[{index}]"), reason)
                 }
                 other => other,
             })?;
@@ -3158,7 +3254,7 @@ impl BookEvent {
         if let Some(name) = unsettled(&self.event, &settled) {
             return Err(invalid(
                 format_smolstr!("$.{name}"),
-                "expected the book its deltas rebuild over the book before it, got another top of book",
+                "expected the book its delta rebuilds over the book before it, got another top of book",
             ));
         }
         self.sides = Some(sides);
@@ -3232,7 +3328,7 @@ fn order_chains(operations: &mut Vec<MarketData>) {
 /// The most inputs of one instant [`order_chains`] checks pair by pair.
 const CHAINS_SCANNED: usize = 32;
 
-/// `entry`, alive on a book, as the delta that takes it off the book at
+/// `entry`, alive on a book, as the entry of its delta that takes it off at
 /// `unix` in `state` - an expiration at its deadline, a removal where its
 /// chain moved to another book: a delete of the current generation, the
 /// reference a prior rename used to reach its predecessor dropped,
@@ -3287,15 +3383,18 @@ fn median_quantity(bid: Option<Decimal>, ask: Option<Decimal>) -> Option<Decimal
 /// Digests a book in chain form: its market event - its state, the book it
 /// follows and every market fact, its top of book included - its instant,
 /// the digest of each side's live entries only where it states a snapshot
-/// instant, then its deltas - their count and each one's operation word and
-/// `curruuid` - in the order applied. A book between snapshots is pinned by
-/// the book it follows, its deltas and the facts they settled on, so a book
-/// stating its deltas alone and the book rebuilt from it share one
-/// identity, and a book walks its sides only at a snapshot.
+/// instant, then its delta - its length and each entry's operation word and
+/// `curruuid` - and its events - their count and each one's leaf kind and
+/// `curruuid`, since a snapshot control states no operation - in the order
+/// applied. A book between snapshots is pinned by the book it follows, its
+/// delta, its events and the facts they settled on, so a delta book and
+/// the book rebuilt from it share one identity, and a book walks its sides
+/// only at a snapshot.
 fn finalize_book_event(
     event: &mut MarketEventFacts,
     sides: Option<&Sides>,
-    deltas: &[Arc<MarketData>],
+    delta: &[Arc<MarketData>],
+    events: &[Arc<MarketData>],
 ) {
     // A book holds both sides.
     event.set_side(Side::Both, true);
@@ -3309,10 +3408,15 @@ fn finalize_book_event(
             digest.write(&side.digest().to_be_bytes());
         }
     }
-    digest.write(&(deltas.len() as u64).to_be_bytes());
-    for delta in deltas {
-        digest.write(delta.operation_event().operation_word().as_bytes());
-        digest.write(&delta.get_curruuid().get().to_be_bytes());
+    digest.write(&(delta.len() as u64).to_be_bytes());
+    for entry in delta {
+        digest.write(entry.operation_event().operation_word().as_bytes());
+        digest.write(&entry.get_curruuid().get().to_be_bytes());
+    }
+    digest.write(&(events.len() as u64).to_be_bytes());
+    for item in events {
+        digest.write(item.kind().as_str().as_bytes());
+        digest.write(&item.get_curruuid().get().to_be_bytes());
     }
     event.finalized(digest.finish());
 }
@@ -3386,20 +3490,25 @@ impl Element for BookEvent {
     }
 
     fn finalize(&mut self) {
-        finalize_book_event(&mut self.event, self.sides.as_ref(), &self.deltas);
+        finalize_book_event(
+            &mut self.event,
+            self.sides.as_ref(),
+            &self.delta,
+            &self.events,
+        );
     }
 
-    /// This book as the one after `previous`: a book stating its deltas
-    /// alone rebuilt over `previous`' sides, its deltas replayed in the
-    /// order applied, whole and under its own identity - over the empty
-    /// book where it names no `prevuuid`, being the first of its code a walk
-    /// emitted - and a complete book - authoritative - linked to `previous`
-    /// alone. `None` where it cannot follow it - another book code, an
-    /// earlier instant than `previous`', another book than the one it names
-    /// as its `prevuuid`, a book holding only its deltas over one holding no
-    /// sides either, a delta that does not replay, or a rebuild settling on
-    /// another top of book than the one it states - and, for a complete
-    /// book, where nothing moves.
+    /// This book as the one after `previous`: a delta book rebuilt over
+    /// `previous`' sides, its delta replayed in the order applied, whole
+    /// and under its own identity - over the empty book where it names no
+    /// `prevuuid`, being the first of its code a walk emitted - and a
+    /// complete book - authoritative - linked to `previous` alone. `None`
+    /// where it cannot follow it - another book code, an earlier instant
+    /// than `previous`', another book than the one it names as its
+    /// `prevuuid`, a delta book over another delta book, an entry of the
+    /// delta that does not replay, or a rebuild settling on another top of
+    /// book than the one it states - and, for a complete book, where
+    /// nothing moves.
     fn with_previous(mut self, previous: &Self) -> Option<Self> {
         if self.sides.is_none() {
             if self.event.get_prevuuid().is_none() {
@@ -3407,7 +3516,7 @@ impl Element for BookEvent {
                 return self.rebuilt_from_empty().ok();
             }
             // The sides `previous` shares are copied once, where the first
-            // delta changes them.
+            // entry of the delta changes them.
             return self.rebuilt(previous.clone()).ok();
         }
         self.check_follows(previous).ok()?;
@@ -3422,10 +3531,12 @@ impl Element for BookEvent {
     /// reference chosen by its recording clock: two complete books' sides
     /// joined - the reference's entries, then each of the supplement's it
     /// does not hold, unless the reference is a snapshot, which is
-    /// authoritative - and their deltas; a complete book over one stating
-    /// its deltas alone, which it is authoritative over; two books stating
-    /// their deltas alone, the reference's facts over the deltas of both,
-    /// the reference's first. `None` where they are not one book at one
+    /// authoritative and keeps its own delta and events - each of the two
+    /// lists the union of both books', the reference's first, then each of
+    /// the supplement's it lacks by kind and `curruuid`; a complete book
+    /// over a delta book, which it is authoritative over; two delta books,
+    /// the reference's facts over the union of both books' delta and of
+    /// both books' events. `None` where they are not one book at one
     /// instant or nothing moves.
     fn merge_with(self, other: &Self) -> Option<Self> {
         if self.get_crosscode() != other.get_crosscode()
@@ -3443,27 +3554,32 @@ impl Element for BookEvent {
             (Some(held), Some(supplied)) => {
                 let authoritative = reference.get_snapunix().is_some();
                 let sides = merge_book_sides(held, supplied, authoritative)?;
-                let deltas = if authoritative {
-                    reference.deltas.clone()
+                let (delta, events) = if authoritative {
+                    (reference.delta.clone(), reference.events.clone())
                 } else {
-                    union_deltas(&reference.deltas, &supplement.deltas)
+                    (
+                        union_recorded(&reference.delta, &supplement.delta),
+                        union_recorded(&reference.events, &supplement.events),
+                    )
                 };
                 let merged = Self {
                     event: reference.event.clone(),
                     sides: Some(sides),
-                    deltas,
+                    delta,
+                    events,
                 };
                 (merged, supplement)
             }
-            // A complete book is authoritative over one stating its deltas
-            // alone, whichever records later.
+            // A complete book is authoritative over a delta book, whichever
+            // records later.
             (Some(_), None) => (reference.clone(), supplement),
             (None, Some(_)) => (supplement.clone(), reference),
             (None, None) => {
                 let merged = Self {
                     event: reference.event.clone(),
                     sides: None,
-                    deltas: union_deltas(&reference.deltas, &supplement.deltas),
+                    delta: union_recorded(&reference.delta, &supplement.delta),
+                    events: union_recorded(&reference.events, &supplement.events),
                 };
                 (merged, supplement)
             }
@@ -3498,40 +3614,44 @@ delegate_event!(
 /// its ISIN from the first input stating each; no input moves them after.
 /// An identity restated under another key - a chain stated by its ticker
 /// alone and then, its instrument learned, under its ISIN - leaves the book
-/// it stood in by a delta there - a snapshot's member as any other
-/// statement - removing it in state `REMOVED` and reporting no fill, and
-/// opens in its own at the same instant, so an entry rests in one book at a
-/// time.
-/// Each timestamp and book is committed atomically across ordinary deltas,
-/// expirations, and explicit snapshot membership.
+/// it stood in through that book's delta - a snapshot's member as any
+/// other statement - removing it in state `REMOVED` and reporting no fill,
+/// and opens in its own at the same instant, so an entry rests in one book
+/// at a time.
+/// Each timestamp and book is committed atomically across ordinary orders
+/// and quotes, expirations, recorded events and explicit snapshot
+/// membership.
 ///
-/// A book is emitted whole - [`BookEvent::is_complete`], its alive entries,
-/// its limits and its `snapunix` the instant - only at a snapshot tick:
-/// every grid tick `snapshot_millis` crosses for every code - the ticks the
-/// walk catches up on and the quiet buckets included - and a group that
-/// replaced membership: a full refresh, an empty snapshot control, or
-/// inputs stating a `snapunix`. Every other book states the deltas its
-/// instant applied alone, beside the top of book they settled on, and names
-/// the book it follows as its `prevuuid` - none for the first book of a
-/// book code, which follows the empty book a walk starts from:
-/// [`Element::with_previous`] over the complete book before it rebuilds it
-/// whole. With no grid, a book is whole only at a full refresh, so
+/// A complete book - [`BookEvent::is_complete`], its alive entries, its
+/// limits and its `snapunix` the instant - is emitted only at a snapshot
+/// tick: every grid tick `snapshot_millis` crosses for every code - the
+/// ticks the walk catches up on and the quiet buckets included - and a
+/// group that replaced membership: a full refresh, an empty snapshot
+/// control, or inputs stating a `snapunix`. Every other book is a delta
+/// book, stating the delta and the events of its instant alone, beside the
+/// top of book they settled on, and names the book it follows as its
+/// `prevuuid` - none for the first book of a book code, which follows the
+/// empty book a walk starts from: [`Element::with_previous`] over the
+/// complete book before it rebuilds it whole. With no grid, a book is whole only at a full refresh, so
 /// rebuilding a book reads back to its first appearance or its last full
 /// refresh.
 ///
-/// A book is emitted where it holds a delta - every order and quote folded
-/// into it but a repeat of the live entry it continues, resting anywhere
-/// or not - or at a snapshot tick where it holds an entry; a snapshot
-/// emptying a book is emitted too, empty and whole, for the books after it
-/// to rebuild over. An instant whose inputs only repeat what the book
-/// holds emits no book for it, and neither does a grid tick finding a book
-/// empty that nothing changed there: the next book follows the last one
+/// A book is emitted where its delta or its events hold an entry - every
+/// order and quote folded into it but a repeat of the live entry it
+/// continues, resting anywhere or not, every execution, every snapshot
+/// control - or at a snapshot tick where it holds an entry: an instant that
+/// recorded only an execution emits a delta book whose delta is empty, and
+/// a snapshot emptying a book - or a control replacing an empty book by
+/// nothing - is emitted complete and empty, for the books after it to
+/// rebuild over. An instant whose inputs only repeat what the book holds
+/// emits no book for it, and neither does a grid tick finding a book empty
+/// that nothing changed there: the next book follows the last one
 /// emitted.
 ///
 /// The walk folds what
 /// [`MarketDataKind::is_booked`](crate::MarketDataKind::is_booked) admits -
 /// orders, quotes and snapshot controls - records every execution among the
-/// deltas of its instrument's book at its instant, and prunes every other
+/// events of its instrument's book at its instant, and prunes every other
 /// input [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
 /// does not admit where it is pulled, a FIX message's leaves once it is
 /// split: a pruned input touches no book, no instant and no grid, so an
@@ -3565,8 +3685,8 @@ where
     expirations: BTreeSet<BookExpiration>,
     /// Per book, the one deadline each identity is scheduled for: a later
     /// statement withdraws its predecessor's, so the schedule holds at most
-    /// one deadline per identity a delta stated - never one per amendment -
-    /// and a full refresh drops its book's alone.
+    /// one deadline per identity a book's delta stated - never one per
+    /// amendment - and a full refresh drops its book's alone.
     scheduled: HashMap<String, HashMap<LiveKey, BookExpiration>>,
     /// Per identity the walk folded alive, the key of the book it stands
     /// in: an input of the identity keyed elsewhere - a chain stated by
@@ -3652,7 +3772,7 @@ where
     ///     .collect::<yggdryl::Result<Vec<_>>>()?;
     /// // The ask never reached a book, so its instant emitted none.
     /// assert_eq!(books.len(), 1);
-    /// assert_eq!(books[0].deltas().len(), 1);
+    /// assert_eq!(books[0].delta().len(), 1);
     /// // A column the row does not carry is refused where the filter is bound.
     /// let walk = BookIterator::new(std::iter::empty::<MarketData>(), 0)?;
     /// assert!(walk.with_filter("nope = 1").is_err());
@@ -3759,15 +3879,19 @@ where
         }
     }
 
-    /// Emits every book whole at the grid tick `snapshot`, each a book the
-    /// walk's last book of its code follows - but those whose group at that
-    /// tick `failed`, and an empty book no group changed at the tick, which
-    /// holds neither an entry nor a delta: skipped before it advances, so
-    /// the next book follows the last one emitted.
+    /// Emits every book complete at the grid tick `snapshot`, each a book
+    /// the walk's last book of its code follows - but those whose group at
+    /// that tick `failed`, and an empty book no group changed at the tick,
+    /// which holds no entry and records nothing in its delta or its events:
+    /// skipped before it advances, so the next book follows the last one
+    /// emitted.
     fn emit_snapshot(&mut self, snapshot: i64, failed: &HashSet<String>) {
         for (symbol, book) in &mut self.books {
             if failed.contains(symbol)
-                || (book.is_empty() && book.deltas.is_empty() && book.get_currunix() != snapshot)
+                || (book.is_empty()
+                    && book.delta.is_empty()
+                    && book.events.is_empty()
+                    && book.get_currunix() != snapshot)
             {
                 continue;
             }
@@ -3778,13 +3902,15 @@ where
     }
 
     /// Schedules the deadline of each entry `symbol`'s last group applied
-    /// alive, withdrawing the one its identity was scheduled for before -
-    /// a delta ending the entry or stating no deadline withdraws it alone -
-    /// or, where the group replaced its membership (`resync`), of every
-    /// entry alive, the book's earlier schedules withdrawn: each entry once,
-    /// whichever sides it rests on. What a delta reaches only through
-    /// another identity - a range, a rename - stays scheduled until it falls
-    /// due, where [`Self::due`] passes it over.
+    /// alive - an order or a quote of its delta; an execution rests nowhere
+    /// and is never scheduled - withdrawing the one its identity was
+    /// scheduled for before - an entry of the delta ending it or stating no
+    /// deadline withdraws it alone - or, where the group replaced its
+    /// membership (`resync`), of every entry alive, the book's earlier
+    /// schedules withdrawn: each entry once, whichever sides it rests on.
+    /// What the delta reaches only through another identity - a range, a
+    /// rename - stays scheduled until it falls due, where [`Self::due`]
+    /// passes it over.
     fn schedule_expirations(&mut self, symbol: &str, resync: bool) {
         let Self {
             books,
@@ -3808,7 +3934,7 @@ where
         let stated = if resync {
             Box::new(book.alive()) as Box<dyn Iterator<Item = &MarketData>>
         } else {
-            Box::new(book.deltas())
+            Box::new(book.delta())
         };
         for operation in stated {
             let identity = LiveKey::of(operation);
@@ -3900,8 +4026,9 @@ where
         expired
     }
 
-    /// The delta that withdraws `input`'s identity from the book it stands
-    /// in where that is not `key`, `input`'s own, with that book's key:
+    /// The order or quote of a book's delta that withdraws `input`'s
+    /// identity from the book it stands in where that is not `key`,
+    /// `input`'s own, with that book's key:
     /// the entry as it stands there - alive, or pending in `raw` at this
     /// instant - taken off it ([`withdrawn`]) at `unix`, removed; `None`
     /// where the identity stands in no other book. Records `key` as where
@@ -4037,7 +4164,7 @@ where
                     }
                     // An execution is recorded and never a snapshot's member,
                     // whatever snapshot instant it states: it joins the
-                    // group of its instant as any delta does.
+                    // group of its instant, recorded among the events.
                     if matches!(input, MarketData::ExecutionEvent(_))
                         || input
                             .as_event()
@@ -4122,11 +4249,14 @@ where
                     let members = snapshot_members.remove(symbol).unwrap_or_default();
                     let controls = snapshot_controls.remove(symbol).unwrap_or_default();
                     let held = !next.is_empty();
-                    match next.replace_snapshot_membership(members, &controls, partitions, unix) {
+                    // The controls are recorded among the events.
+                    let records_controls = !controls.is_empty();
+                    match next.replace_snapshot_membership(members, controls, partitions, unix) {
                         Ok(()) => {
                             // Emptied, it removed what it held: replacing
                             // leaves every other partition as it stood.
                             applied.replaced = true;
+                            applied.events |= records_controls;
                             applied.holds = !next.is_empty();
                             applied.removed |= held && !applied.holds;
                         }
@@ -4168,8 +4298,8 @@ where
             if at_grid {
                 self.emit_snapshot(unix, &failed);
             } else {
-                // A book emits only what a group changed: its deltas, or
-                // itself whole at a keyframe.
+                // A book emits only what a group changed: a delta book of
+                // its delta and its events, or a complete book at a keyframe.
                 for symbol in &touched {
                     if failed.contains(symbol) || unchanged.contains(symbol) {
                         continue;
@@ -4233,7 +4363,7 @@ fn effective_unix(input: &MarketData) -> i64 {
 const FILTERED_ROWS: usize = 1024;
 
 /// Whether a book states an input of `input`'s kind - folded into a side,
-/// or recorded among its deltas:
+/// or recorded among its events:
 /// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded), the
 /// one rule every pruning site reads.
 fn recorded(input: &MarketData) -> bool {
@@ -4241,8 +4371,8 @@ fn recorded(input: &MarketData) -> bool {
 }
 
 /// Refuses, at `path`, every variant a book does not state: a book takes an
-/// order or a quote, an execution it records, or a snapshot control, each
-/// dated.
+/// order or a quote, folded into a side and its delta, or an execution or
+/// a snapshot control, recorded among its events, each dated.
 fn foldable(input: &MarketData, path: impl FnOnce() -> SmolStr) -> Result<()> {
     if matches!(
         input,
@@ -4274,18 +4404,39 @@ fn validate_kind(operation: &MarketData, path: &str) -> Result<()> {
     Err(invalid(path, "expected an order or quote on a book side"))
 }
 
-/// Refuses, at `path`, anything but an order, a quote or an execution: what
-/// a book's delta is - an entry it placed, or an execution it recorded.
+/// Refuses, at `path`, anything but an order or a quote: what an entry of
+/// a book's delta is.
 fn validate_delta_kind(operation: &MarketData, path: &str) -> Result<()> {
     if matches!(
         operation,
-        MarketData::OrderEvent(_) | MarketData::QuoteEvent(_) | MarketData::ExecutionEvent(_)
+        MarketData::OrderEvent(_) | MarketData::QuoteEvent(_)
     ) {
         return Ok(());
     }
     Err(invalid(
         path,
-        "expected an order, a quote or an execution among a book's deltas",
+        format_smolstr!(
+            "expected an order or a quote among a book's delta, got {}",
+            operation.kind().as_str()
+        ),
+    ))
+}
+
+/// Refuses, at `path`, anything but an execution or a snapshot control:
+/// what one of a book's events is.
+fn validate_event_kind(operation: &MarketData, path: &str) -> Result<()> {
+    if matches!(
+        operation,
+        MarketData::ExecutionEvent(_) | MarketData::SnapshotEvent(_)
+    ) {
+        return Ok(());
+    }
+    Err(invalid(
+        path,
+        format_smolstr!(
+            "expected an execution or a snapshot control among a book's events, got {}",
+            operation.kind().as_str()
+        ),
     ))
 }
 
@@ -4307,9 +4458,9 @@ fn left_out(operation: &MarketData) {
 /// under `action`: a change or an overlay inherits the price and the size
 /// it leaves unstated, and so does a delete - it names the entry it
 /// removes, and a feed routinely states no price on it, so the terminal
-/// delta carries the level it takes out - then it follows the entry,
-/// carrying what its chain carries (a quote's legs it states nothing of),
-/// typed as an order where it continues one or learns its `OrderID`.
+/// entry of the delta carries the level it takes out - then it follows the
+/// entry, carrying what its chain carries (a quote's legs it states nothing
+/// of), typed as an order where it continues one or learns its `OrderID`.
 ///
 /// # Errors
 ///
@@ -4449,9 +4600,10 @@ fn merge_book_sides(reference: &Sides, supplement: &Sides, authoritative: bool) 
     })
 }
 
-/// The deltas of two statements of one book: the reference's in their
-/// order, then each of the supplement's it lacks, by kind and `curruuid`.
-fn union_deltas(
+/// One list two statements of one book recorded - their delta, or their
+/// events: the reference's in their order, then each of the supplement's
+/// it lacks, by kind and `curruuid`.
+fn union_recorded(
     reference: &[Arc<MarketData>],
     supplement: &[Arc<MarketData>],
 ) -> Vec<Arc<MarketData>> {
@@ -4459,14 +4611,14 @@ fn union_deltas(
         .iter()
         .map(|operation| (operation.kind(), operation.get_curruuid()))
         .collect::<HashSet<_>>();
-    let mut deltas = reference.to_vec();
-    deltas.extend(
+    let mut recorded = reference.to_vec();
+    recorded.extend(
         supplement
             .iter()
             .filter(|operation| keys.insert((operation.kind(), operation.get_curruuid())))
             .cloned(),
     );
-    deltas
+    recorded
 }
 
 fn position_of(operation: &MarketData) -> Option<u64> {
@@ -4601,6 +4753,29 @@ fn entries<'a>(
     entries: impl IntoIterator<Item = &'a MarketData>,
 ) -> impl Iterator<Item = &'a dyn super::operation::BookOperation> {
     entries.into_iter().map(MarketData::operation_event)
+}
+
+/// An event that is also a market element: what the clock checks read one
+/// of a book's events through - an execution, or a snapshot control, which
+/// is no operation.
+trait Dated: Event + Market {}
+
+impl<T: Event + Market> Dated for T {}
+
+/// The dated execution or snapshot control each of a book's events is, for
+/// the checks that read an event's clocks.
+fn dated<'a>(
+    events: impl IntoIterator<Item = &'a MarketData>,
+) -> impl Iterator<Item = &'a dyn Dated> {
+    events.into_iter().map(|item| -> &'a dyn Dated {
+        match item {
+            MarketData::ExecutionEvent(execution) => execution,
+            MarketData::SnapshotEvent(control) => control,
+            _ => unreachable!(
+                "a book records only executions and snapshot controls among its events"
+            ),
+        }
+    })
 }
 
 fn validate_propagation_bounds<'a, E, I>(
@@ -4739,7 +4914,7 @@ pub mod internals {
     }
 
     /// How many deadlines `walk` holds scheduled: at most one per identity
-    /// a delta stated, however often it was amended.
+    /// a book's delta stated, however often it was amended.
     pub fn scheduled_expirations<I>(walk: &BookIterator<I>) -> usize
     where
         I: Iterator,

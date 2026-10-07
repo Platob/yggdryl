@@ -293,16 +293,16 @@ graph_methods!(PyMarketData, "MarketData"; [
         Ok(PyMarketDataRowIterator::over(rows))
     }
 
-    /// The deltas of the books `source` holds - any source `read_serie`
-    /// answers or `StreamChunkedSerie.from_` reads - laid out as `marketdata` rows
-    /// in book order, as a native `StreamChunkedSerie`: every event each book
-    /// states among its deltas, of `kind` where one is named (`"ORDR"`,
-    /// `"QUOT"`, `"EXEC"`, any spelling `enums.MarketDataKind` reads), every
-    /// kind otherwise; a row that is no book is refused by its kind where
-    /// it is read. Detached: the books are pulled as the rows are.
+    /// The delta of the books `source` holds - any source `read_serie`
+    /// answers or `StreamChunkedSerie.from_` reads - laid out as `marketdata`
+    /// rows in book order, as a native `StreamChunkedSerie`: the orders and
+    /// quotes each book's instant applied, of `kind` where one is named
+    /// (`"ORDR"`, `"QUOT"`, any spelling `enums.MarketDataKind` reads), both
+    /// otherwise; a row that is no book is refused by its kind where it is
+    /// read. Detached: the books are pulled as the rows are.
     #[staticmethod]
     #[pyo3(signature = (source, kind=None))]
-    fn deltas_serie(
+    fn delta_serie(
         py: Python<'_>,
         source: &Bound<'_, PyAny>,
         kind: Option<&str>,
@@ -312,7 +312,32 @@ graph_methods!(PyMarketData, "MarketData"; [
             .transpose()
             .map_err(value_error)?;
         let source = serie_source_of(source)?;
-        py.detach(move || CoreMarketData::deltas_serie(source, kind))
+        py.detach(move || CoreMarketData::delta_serie(source, kind))
+            .map(PyStreamChunkedSerie::from)
+            .map_err(value_error)
+    }
+
+    /// The events of the books `source` holds - any source `read_serie`
+    /// answers or `StreamChunkedSerie.from_` reads - laid out as `marketdata`
+    /// rows in book order, as a native `StreamChunkedSerie`: every other
+    /// event each book's instant recorded - the executions and the snapshot
+    /// controls - of `kind` where one is named (`"EXEC"`, or `"BOOK"` for
+    /// the controls, any spelling `enums.MarketDataKind` reads), both
+    /// otherwise; a row that is no book is refused by its kind where it is
+    /// read. Detached: the books are pulled as the rows are.
+    #[staticmethod]
+    #[pyo3(signature = (source, kind=None))]
+    fn events_serie(
+        py: Python<'_>,
+        source: &Bound<'_, PyAny>,
+        kind: Option<&str>,
+    ) -> PyResult<PyStreamChunkedSerie> {
+        let kind = kind
+            .map(yggdryl::MarketDataKind::read)
+            .transpose()
+            .map_err(value_error)?;
+        let source = serie_source_of(source)?;
+        py.detach(move || CoreMarketData::events_serie(source, kind))
             .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }

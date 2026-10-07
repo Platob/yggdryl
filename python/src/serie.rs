@@ -460,7 +460,7 @@ pub(crate) fn is_native_columnar(value: &Bound<'_, PyAny>) -> bool {
 /// # Errors
 ///
 /// Returns whatever a library conversion or an Arrow C crossing raised, and a
-/// `ValueError` for a `StreamChunkedSerie` already handed over.
+/// `ValueError` for a `StreamChunkedSerie` already consumed.
 pub(crate) fn columnar(value: &Bound<'_, PyAny>) -> PyResult<Option<Columnar>> {
     if let Ok(serie) = value.extract::<PyRef<'_, PySerie>>() {
         return Ok(Some(Columnar::Held(serie.inner.clone())));

@@ -445,7 +445,10 @@ through the same codec fills derived identifiers from the table its door
 fixed. A codec without one learns into a registry of each walk's own;
 `isinRegistry` shares one across walks run one after another, bound to a
 store with `fromUrl` and written back with `commit()` only where it moved,
-and `FixCodec.fromEnv()` shares the process's own, `IsinRegistry.fromEnv()`.
+and `FixCodec.fromEnv()` shares the process's own, `IsinRegistry.fromEnv()`,
+laid over the embedded common instruments `IsinRegistry.seeded()` holds. A
+row carries the national number its ISIN embeds - Holcim's Valor below -
+and its market's country's currency where it states none.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -459,6 +462,7 @@ const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config',
 const stated = '8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|'
 for (const _ of codec.lifecycle([...codec.parseLines([Buffer.from(stated)])])) void _
 assert.equal(instruments.get('CH0012214059').ric, 'HOLN.S')
+assert.equal(instruments.get('CH0012214059').valor, '1221405', 'the Valor a CH ISIN embeds')
 
 // A later parse naming only the ticker on the market takes the ISIN from the
 // table, derived; the walk fills the CFI code as a market fact.

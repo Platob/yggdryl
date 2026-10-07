@@ -21,6 +21,8 @@ import {
   type Order,
   type OrderEvent,
   type QuoteEvent,
+  type SnapshotEvent,
+  StreamChunkedSerie,
 } from '../..'
 
 // The operation leaves take their named facts as one plain object, or the
@@ -73,17 +75,28 @@ const book: BookEvent = new graph.BookEvent(1n, 'IBM').withOperations(new Set(it
 const alive: MarketData[] = book.alive()
 const bids: MarketData[] = book.aliveOn('BUYS')
 const asks: MarketData[] = book.aliveOn(2)
-const deltas: MarketData[] = book.deltas()
-// The same entries by kind: the orders resting, and the deltas' orders,
-// quotes and executions, each the typed leaf.
+const delta: MarketData[] = book.delta()
+const bookEvents: MarketData[] = book.events()
+// The same entries by kind: the orders resting, the delta's orders and
+// quotes, and the events' executions and controls, each the typed leaf.
 const ordlive: OrderEvent[] = book.ordlive()
 const orddelta: OrderEvent[] = book.orddelta()
 const bookQuotes: QuoteEvent[] = book.quotes()
 const bookExecutions: ExecutionEvent[] = book.executions()
+const bookControls: SnapshotEvent[] = book.controls()
 const complete: boolean = book.isComplete
 const keyed: BookEvent = graph.BookEvent.keyed(1n, 'CH0012214059')
 const rebuilt: BookEvent | null = book.withPrevious(keyed)
 const books: BookEvent[] = [...new graph.BookIterator(items, 0)]
+// A table of books read back as the rows of its delta or its events, of one
+// kind where one is named.
+const deltaRows: StreamChunkedSerie = graph.MarketData.deltaSerie(
+  StreamChunkedSerie.fromArrowReader(graph.MarketData.arrowReader(books)),
+)
+const eventRows: StreamChunkedSerie = graph.MarketData.eventsSerie(
+  StreamChunkedSerie.fromArrowReader(graph.MarketData.arrowReader(books)),
+  'EXEC',
+)
 // A book walk narrows what it folds by a predicate over the `marketdata` row.
 const filtered: BookEvent[] = [...new graph.BookIterator(items, 0, "side = 'BUYS'")]
 const heldFilter: BookEvent[] = [...new graph.BookIterator(items, 0, new Filter("side = 'BUYS'"))]
@@ -175,8 +188,9 @@ void kinds
 void field
 void rows
 void marketKinds
-void [alive, bids, asks, deltas, complete, keyed, rebuilt, filtered, heldFilter, termFilter]
-void [ordlive, orddelta, bookQuotes, bookExecutions]
+void [alive, bids, asks, delta, bookEvents, complete, keyed, rebuilt, filtered, heldFilter, termFilter]
+void [ordlive, orddelta, bookQuotes, bookExecutions, bookControls]
+void [deltaRows, eventRows]
 void books
 void walked
 void snapshotNs

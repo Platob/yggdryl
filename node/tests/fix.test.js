@@ -3788,7 +3788,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const names = Array.from({ length: reader.field.fieldLen }, (_, at) => reader.field.fieldAt(at).name)
     assert.equal(names[0], 'curruuid')
     assert.ok(names.includes('marketdatakind'))
-    for (const name of ['alive', 'deltas', 'executions', 'bidlimits', 'asklimits', 'price', 'quantity']) {
+    for (const name of ['alive', 'delta', 'events', 'executions', 'bidlimits', 'asklimits', 'price', 'quantity']) {
       assert.ok(names.includes(name), name)
     }
     assert.ok(!names.includes('px') && !names.includes('qty'))
@@ -3798,7 +3798,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.deepEqual(exactColumn(books, 'price'), [101n * 10n ** 18n, 1015n * 10n ** 17n])
 
     // The rows read back as the typed books they were written from: the
-    // full refresh a keyframe holding its sides, the update its deltas alone.
+    // full refresh a complete book holding its sides, the update a delta book.
     const [first, second] = [
       ...graph.MarketData.fromArrowReader(codec.bookArrowReader([snapshot, update])),
     ].map((data) => data.asBookEvent())
@@ -3809,9 +3809,11 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // The best tradable levels are the book's own bid and ask (A20, A22).
     assert.deepEqual([first.bidpx, first.askpx, second.bidpx], ['100', '102', '101'])
     // The update's trade entry (`269=2`) is an execution, recorded among
-    // the deltas beside the bid's change and moving no side.
-    assert.deepEqual(second.deltas().map((delta) => delta.marketdatakind).sort(), ['EXEC', 'QUOT'])
-    assert.equal(second.deltas().find((delta) => delta.marketdatakind === 'QUOT').price, '101')
+    // the events beside the bid's change in the delta and moving no side.
+    assert.deepEqual(second.delta().map((delta) => delta.marketdatakind), ['QUOT'])
+    assert.equal(second.delta()[0].price, '101')
+    assert.deepEqual(second.events().map((event) => event.marketdatakind), ['EXEC'])
+    assert.equal(second.executions().length, 1)
     assert.deepEqual(second.alive(), [])
     // Over the book before it, the update is whole again.
     const whole = second.withPrevious(first)
@@ -3838,9 +3840,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     for (const filter of ["side = 'BUYS'", new Filter("side = 'BUYS'"), Term.parse("side = 'BUYS'")]) {
       const bids = books(filter)
       assert.equal(bids.length, 2, String(filter))
-      assert.ok(bids.every((book) => book.deltas().every((delta) => ['ORDR', 'EXEC'].includes(delta.marketdatakind))))
-      assert.ok(bids[1].deltas().some((delta) => delta.marketdatakind === 'EXEC'))
-      assert.ok(bids.every((book) => book.deltas().every((delta) => delta.side === 'BUYS')))
+      assert.ok(bids.every((book) => book.delta().every((delta) => delta.marketdatakind === 'ORDR')))
+      assert.ok(bids.every((book) => book.events().every((event) => event.marketdatakind === 'EXEC')))
+      assert.ok(bids[1].events().some((event) => event.marketdatakind === 'EXEC'))
+      assert.ok(bids.every((book) => [...book.delta(), ...book.events()].every((held) => held.side === 'BUYS')))
     }
     const asks = books("side = 'SELL'")
     assert.equal(asks.length, 1)
@@ -5024,13 +5027,13 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const once = every.filter((operation) => !seen.has(operation.curruuid) && seen.add(operation.curruuid))
     assert.deepEqual(once.map((operation) => operation.curruuid), operations.map((operation) => operation.curruuid))
 
-    // Every order folds into a book and every execution is pruned - a fill
-    // moved its book through its order's report already - so a book stands
-    // at every instant an order states, and one where only an execution
-    // does, recording it: eleven books, the NOVN order's three steps each
-    // its book's instant, each stating its deltas alone - with no grid and
-    // no snapshot input no book is whole. The last holds nothing, its
-    // unpriced order having rested and left at one instant.
+    // Every order folds into a book and every execution is recorded among
+    // its book's events - a fill moved its book through its order's report
+    // already - so a book stands at every instant an order states, and one
+    // where only an execution does, an event-only book: eleven books, the
+    // NOVN order's three steps each its book's instant, each a delta book -
+    // with no grid and no snapshot input no book is complete. The last holds
+    // nothing, its unpriced order having rested and left at one instant.
     const books = [...new graph.BookIterator(operations, 0)]
     assert.equal(books.length, 11)
     assert.ok(books.every((book) => !book.isComplete))
@@ -5051,10 +5054,11 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       '3:0:XX0000000001',
     ])
     assert.deepEqual([last.limits('BUYS'), last.limits('SELL'), last.alive()], [[], [], []])
-    assert.deepEqual(last.deltas().map((delta) => delta.price), [null, null])
+    assert.deepEqual(last.delta().map((delta) => delta.price), [null, null])
+    assert.deepEqual(last.events(), [])
     // Re-pinned from the run, as `rust/tests/fix/ulbridge.rs` pins it: the
-    // book digests its entries and deltas rather than side summaries (A2),
-    // no book control but its scope (A1), no lanes (A10), and the deltas'
+    // book digests its entries and delta rather than side summaries (A2),
+    // no book control but its scope (A1), no lanes (A10), and the delta's
     // side-prefixed cross codes (A17), each event's place out of its
     // content code, a delta's place its instant's, the metadata a
     // follower takes from its chain, the four-letter side code the
@@ -5068,14 +5072,19 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // wire's identifiers digest under `base`, beside the base key a named
     // source fills - and when the bridge's `DETAILEDCFICODE` became a name
     // of `CFICode(461)`, folded into it. It moved again when a book stopped
-    // holding executions and digested its deltas once, in the order applied;
-    // when a code's first book stopped being whole, stating its deltas alone
-    // and following no book; and when a book came to be keyed by its
+    // holding executions and digested its delta once, in the order applied;
+    // when a code's first book stopped being complete, a delta book
+    // following no book; and when a book came to be keyed by its
     // instrument's ISIN and to hold it as its `isin` security identifier:
     // the one value `rust/tests/fix/ulbridge.rs` and the Python binding pin
     // for this log. It moved again when a book came to state `BOTH` as its
     // side, which its own market event feeds where a side nobody stated fed.
-    assert.equal(last.currhashcode, 1_914_142_786_384_712_743n)
+    // It moved again when a book split what its instant recorded into its
+    // `delta` - the orders and quotes - and its `events` - the executions
+    // and the snapshot controls - and came to digest the events after the
+    // delta: this book holds no event, so it feeds the empty list's count
+    // beside its two delta entries.
+    assert.equal(last.currhashcode, 10_745_751_629_392_559_435n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {

@@ -50,8 +50,11 @@ def test_a_registry_learns_a_message_and_fills_a_later_one_named_by_its_ticker(c
         "miccode": "XSWX",
         "ric": "HOLN.S",
         "ticker": "HOLN",
+        "valor": "1221405",
     }
-    assert row["valor"] is None, "a code the message only derived is never learned"
+    # The row's Valor is the one its own ISIN embeds, filled at the fold as a
+    # default every row of a Swiss ISIN carries - not the message's derived
+    # identifier, which a learn still never reads.
     assert row["countrycode"] is None, "the prefix already says the country"
     assert registry.get_by_ticker("HOLN", "XSWX") == row and registry.get_by_ticker("HOLN", "XLON") is None
     later = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=B|55=HOLN|207=XSWX|10=0|")
@@ -172,7 +175,7 @@ def test_a_store_written_before_the_product_category_loads_it_null(tmp_path: pat
     registry = IsinRegistry()
     registry.merge({"isin": HOLCIM, "ric": "HOLN.S"})
     older = registry.into_arrow_reader().read_all().drop_columns(["eusipacode"])
-    assert len(older.schema.names) == 41
+    assert len(older.schema.names) == 42, "the forty-three columns but the product category"
     target = tmp_path / "instruments.arrow"
     LocalFile(target).overwrite_arrow_reader(pa.RecordBatchReader.from_batches(older.schema, older.to_batches()))
     loaded = IsinRegistry.from_url(target)
@@ -286,7 +289,7 @@ def test_a_registry_round_trips_through_a_holder(tmp_path: pathlib.Path) -> None
     table = snapshot.read_all()
     assert table.num_rows == 2, "the stream is a snapshot a later write does not move"
     assert table.column("isin").to_pylist() == [HOLCIM, APPLE], "in ISIN order"
-    assert table.schema.names[:10] == [
+    assert table.schema.names[:11] == [
         "isin",
         "updunix",
         "cficode",
@@ -296,9 +299,10 @@ def test_a_registry_round_trips_through_a_holder(tmp_path: pathlib.Path) -> None
         "eusipacode",
         "miccode",
         "ticker",
+        "fisn",
         "currency",
     ]
-    assert len(table.schema.names) == 42
+    assert len(table.schema.names) == 43, "the ISO 18774 short name is the forty-third column"
     target = tmp_path / "instruments.arrow"
     LocalFile(target).overwrite_arrow_reader(IsinRegistry.from_arrow_reader(table).into_arrow_reader())
     loaded = IsinRegistry.from_url(target)
@@ -370,6 +374,8 @@ def test_the_process_registry_is_the_sealed_store_and_the_codec_the_environment_
     default = IsinRegistry.from_env()
     assert default == IsinRegistry.from_env(), "resolved once"
     assert not default.is_dirty
+    apple = default.get(APPLE)
+    assert apple is not None and apple["ticker"] == "AAPL", "the store is laid over the seed"
     codec = FixCodec.from_env()
     assert codec.isin_registry == default
     own = IsinRegistry()
@@ -378,6 +384,48 @@ def test_the_process_registry_is_the_sealed_store_and_the_codec_the_environment_
     with pytest.raises(ValueError, match="already resolved"):
         IsinRegistry.install_env(IsinRegistry())
     assert "YGGDRYL_ISIN_REGISTRY_URI" in os.environ, "the suite seals the default"
+
+
+def test_the_seed_holds_the_common_instruments_clean_and_bound_to_nothing() -> None:
+    seeded = IsinRegistry.seeded()
+    assert len(seeded) == 208 and not seeded.is_dirty
+    assert len(IsinRegistry()) == 0, "a registry built by hand holds none of it"
+    apple = seeded.get(APPLE)
+    assert apple is not None
+    assert (apple["ticker"], apple["miccode"], apple["currency"], apple["fisn"]) == (
+        "AAPL",
+        "XNAS",
+        "USD",
+        "APPLE INC/SH SH",
+    )
+    assert apple["cusip"] == "037833100", "the CUSIP its ISIN embeds"
+    assert seeded.get_by_ticker("AAPL", "XNAS") == apple
+    assert IsinRegistry.seeded() != seeded, "each call is a registry of its own"
+    with pytest.raises(ValueError, match="unbound registry"):
+        seeded.commit()
+
+
+def test_the_short_name_is_the_column_after_the_ticker_and_merges_by_the_update_rule() -> None:
+    field = IsinRegistry.field()
+    assert field.index_of("fisn") == field.index_of("ticker") + 1
+    registry = IsinRegistry()
+    assert registry.merge({"isin": HOLCIM, "fisn": "HOLCIM LTD/SH"})
+    assert registry.get(HOLCIM)["fisn"] == "HOLCIM LTD/SH"
+    assert registry.merge({"isin": HOLCIM, "fisn": "HOLCIM AG/SH"}), "a stated value replaces one that differs"
+    assert registry.get(HOLCIM)["fisn"] == "HOLCIM AG/SH"
+
+
+def test_a_row_carries_the_defaults_its_facts_imply_where_it_states_none() -> None:
+    registry = IsinRegistry()
+    bae = "GB0002634946"
+    assert registry.merge({"isin": bae, "miccode": "XLON"})
+    row = registry.get(bae)
+    assert row is not None
+    assert row["sedol"] == "0263494", "the SEDOL a GB '00' ISIN embeds"
+    assert row["currency"] == "GBP", "the currency of the listing market's country"
+    # A stated value is never replaced by a default.
+    assert registry.merge({"isin": bae, "currency": "USD"})
+    assert registry.get(bae)["currency"] == "USD"
 
 
 def test_a_registry_is_equal_only_to_itself_and_never_hashed_or_pickled() -> None:

@@ -17,10 +17,10 @@ the `execunix` it last executed at, last-trade, progress, FX parts, the stated b
 typed leaves answer them: `Order`/`OrderEvent`, `Quote`/`QuoteEvent`,
 `Execution`/`ExecutionEvent`, the composite `TradeEvent`, and the book types
 `BookEvent` and `SnapshotEvent`. `MarketData` is the one value over every
-leaf, and the lifted **`marketdata` Arrow row** (63 columns: the element,
+leaf, and the lifted **`marketdata` Arrow row** (64 columns: the element,
 event, market and operation columns every generated row opens with, the book
 controls `bookscope`, `bookaction` and `bookposition`, then the nested
-`alive`, `deltas`, `executions`, `bidlimits` and `asklimits` -
+`alive`, `delta`, `events`, `executions`, `bidlimits` and `asklimits` -
 [Row schemas](https://platob.github.io/yggdryl/graph/schemas/)) is how any of
 them crosses a boundary.
 
@@ -132,17 +132,19 @@ Hold these facts:
   - CumQty` while it works, `0` once done, the rest `cxlqty` when canceled) -
   and the binding constructors run the same fills. Every fill is a column, so
   a row read back answers it unchanged; never recompute one by hand.
-- **Books are folded, and stated as deltas.** `BookIterator` folds a sorted
+- **Books are folded, complete or delta.** `BookIterator` folds a sorted
   stream into one `BookEvent` per book and instant that moved it. A book
   folds orders and quotes into its sides (`MarketDataKind::is_booked`,
-  Rust-only) and records every execution among its `deltas` at its instant
+  Rust-only) and records every execution among its `events` at its instant
   (`is_recorded`), moving no side - a fill moved the book through its
   order's or quote's own report; a trade or a batch is pruned before the
   walk. A book is **complete** (`is_complete`: its `alive` entries and
   `limits`) only at a snapshot tick - every grid tick a positive
   `snapshot_millis` crosses, and a snapshot input (a FIX `W` full refresh, an
-  empty `W`, inputs stating `snapunix`); every other book states its
-  `deltas` alone beside the top of book they settled on (`bidpx`, `askpx`,
+  empty `W`, inputs stating `snapunix`); every other book is a **delta
+  book**, holding no sides: its `delta` (the orders and quotes its instant
+  applied) and its `events` (the executions and snapshot controls it
+  recorded) beside the top of book they settled on (`bidpx`, `askpx`,
   `best_price`, `spread`). With `snapshot_millis = 0` and no snapshot input
   every book is a delta book. `with_previous` over the complete book before it
   rebuilds a delta book whole under its own identity; a code's first book
@@ -166,6 +168,8 @@ Hold these facts:
 | read an identifier map | `get_securityids().get(&IdType::Isin)`, `get_from(&src, &kind)` | `order.securityids.get("isin")`, `get_from(src, type)`, iterate `Identifier`s | `order.securityids.get('isin')`, `getFrom(src, type)`, `toArray()` |
 | FX rates (nothing fills them) | `insert_fxrate(ccy, rate)`, `set_fxrates(map)` | `fxrates={"EUR": Decimal("1.1")}` at build | `fxrates: { EUR: '1.1' }` at build |
 | an option's strike price (a follower of the same instrument carries it) | `set_strikepx(Some(px), overwrite)`, `get_strikepx()` (`Market`) | `strikepx=Decimal("190")` at build, `.strikepx` | `strikepx: '190'` at build, `.strikepx` |
+| the common instruments, and what a row derives | `IsinRegistry::seeded()`, `entry.fisn()`; a folded row's embedded CUSIP, SEDOL, WKN or Valor and its market's currency where it states none | `IsinRegistry.seeded()`, `row["fisn"]`, `row["sedol"]`, `row["currency"]` | `IsinRegistry.seeded()`, `row.fisn`, `row.sedol`, `row.currency` |
+| a venue's facts, a country's currency | `Mic::operating()`, `is_segment()`, `country()`; `Country::currency()` | `Mic.from_str("XNGS").operating`, `.is_segment`, `.country`; `Country.from_str("GB").currency` (`yggdryl.enums`) | `new Mic('XNGS').operating`, `.isSegment`, `.country`; `new Country('GB').currency` |
 | a structured product's category, as a registry row holds it | `registry.get(isin).and_then(IsinEntry::eusipacode)` -> `Eusipa`, `entry.with_eusipacode(Some(code))`; `name()`, `sspa_name()` | `registry.get(isin)["eusipacode"]` (an `int`), `Eusipa(code).name`, `.sspa_name`; `merge({..., "eusipacode": 2300})` | `registry.get(isin).eusipacode` (a number); no `Eusipa` |
 | a composite trade | `TradeEvent::from_parts(&root, executions)?` | `graph.TradeEvent.from_parts(root, executions)` | `graph.TradeEvent.fromParts(root, executions)` |
 | follow a predecessor | `event.with_previous(&prev)` | `event.with_previous(prev)` | `event.withPrevious(prev)` |
@@ -181,8 +185,9 @@ Hold these facts:
 | the empty book a code starts from | `BookEvent::keyed(unix, key)` | `graph.BookEvent.keyed(unix, key)` | `graph.BookEvent.keyed(unix, key)` |
 | whether a book holds its sides | `is_complete()` | `book.is_complete` | `book.isComplete` |
 | rebuild a delta book whole | `book.with_previous(&previous)` | `book.with_previous(previous)` | `book.withPrevious(previous)` |
-| a book's entries | `alive()`, `alive_on(Side::Buy)`, `deltas()` | `book.alive`, `book.alive_on(Side.BUYS)`, `book.deltas` | `book.alive()`, `book.aliveOn('BUYS')`, `book.deltas()` |
-| a book's entries by kind | `ordlive()`, `orddelta()`, `quotes()`, `executions()`, `events()` (every other delta) | `book.ordlive`, `book.orddelta`, `book.quotes`, `book.executions`, `book.events` | `book.ordlive()`, `book.orddelta()`, `book.quotes()`, `book.executions()`; no `events` |
+| a book's entries | `alive()`, `alive_on(Side::Buy)`, `delta()`, `events()` | `book.alive`, `book.alive_on(Side.BUYS)`, `book.delta`, `book.events` | `book.alive()`, `book.aliveOn('BUYS')`, `book.delta()`, `book.events()` |
+| a book's entries by kind | `ordlive()`; `orddelta()` and `quotes()` partition `delta`, `executions()` and `controls()` partition `events` | `book.ordlive`, `book.orddelta`, `book.quotes`, `book.executions`, `book.controls` | `book.ordlive()`, `book.orddelta()`, `book.quotes()`, `book.executions()`, `book.controls()` |
+| a table of books' delta or events as rows | `MarketData::delta_serie(books, None)?`, `MarketData::events_serie(books, Some(MarketDataKind::Execution))?` | `graph.MarketData.delta_serie(books)`, `graph.MarketData.events_serie(books, "EXEC")` | `graph.MarketData.deltaSerie(books)`, `graph.MarketData.eventsSerie(books, 'EXEC')` |
 | read a side | `limits(Side::Buy)`, `best_price(Side::Buy)`, `best_quantity(..)`, `depth(Side::Buy, n)` | `book.limits(Side.BUYS)`, `book.best_price(Side.BUYS)`, `book.depth(Side.BUYS, n)` | `book.limits('BUYS')`, `book.bestPrice('BUYS')`, `book.depth('BUYS', n)` |
 | read both sides | `get_bidpx()`, `get_askpx()`, `spread()`, `is_crossed()`, `imbalance(n)` | `book.bidpx`, `book.askpx`, `book.spread`, `book.is_crossed`, `book.imbalance(n)` | `book.bidpx`, `book.askpx`, `book.spread`, `book.isCrossed`, `book.imbalance(n)` |
 | clear a scope with a snapshot | `SnapshotEvent::snapshot(&event, scope)` | `graph.SnapshotEvent.snapshot(event, scope=None)` | `graph.SnapshotEvent.snapshot(event, scope)` |
@@ -208,7 +213,12 @@ Hold these facts:
    order, a quote or an execution, a dated one the event; `TRAD` and `BOOK`
    must be dated, and a `BOOK` row is a complete book where its `alive` cell
    is a list (even an empty one), a delta book where `alive` is null and
-   `deltas` a list, and a snapshot control where both are null. A `BOOK` row
+   `delta` or `events` a list, and a snapshot control where all three are
+   null; a table storing a null list as an empty one reads an empty `alive`
+   beside a non-empty `delta` or `events` and no `snapunix` as a delta book,
+   so a row recording only an execution is a delta book, never a control. An
+   `EXEC` item in `delta`, or an `ORDR` or `QUOT` one in `events`, is refused
+   by path. A `BOOK` row
    holding an `executions` entry is refused there: that column is a trade's.
 3. Views are `Plan`s run by the expression engine: `apply_view` binds once
    against the reader's schema and streams; `plan()` shows the text. Add a
@@ -228,20 +238,20 @@ Hold these facts:
    An entry restated under another key - stated by its ticker, then under its
    ISIN - leaves the book it stood in by a `REMOVED` delta and opens in its
    new one at the same instant, so an entry rests in one book at a time. A
-   book is yielded where it holds a delta, or at a snapshot tick where it
-   holds an entry (a snapshot emptying a book is yielded too, empty and
-   complete); an instant that only repeats what the book holds yields none.
-   Depth persists; `deltas` carry only that instant's orders, quotes and
-   executions, in the order applied - `orddelta`, `quotes`, `executions` and
-   `events` (Rust and Python) read them by kind and partition them, and
-   `ordlive` the orders resting on a complete book. `events` - every delta
-   no order, quote or execution event - is empty: a book records nothing
-   else, a trade or a batch pruned and an undated leaf or a book refused
-   before the fold; it is where a kind the fold comes to record would land.
+   book is yielded where its instant recorded a `delta` or an `events` entry,
+   or at a snapshot tick where it holds an entry (a snapshot emptying a book
+   is yielded too, empty and complete, its control in `events`); an instant that only repeats what the book holds yields none.
+   Depth persists; `delta` carries only that instant's orders and quotes
+   (`orddelta` and `quotes` partition it) and `events` its executions and
+   snapshot controls (`executions` and `controls` partition it), each in the
+   order applied; `ordlive` reads the orders resting on a complete book. An
+   instant that recorded only an execution yields a delta book whose `delta`
+   is empty. A trade or a batch is pruned and an undated leaf or a book
+   refused before the fold.
    A positive `snapshot_millis` adds the complete live book
    at every crossed epoch-aligned tick.
-6. A book row nests `deltas` (operation rows, in the order applied) and, on a
-   complete book, `alive` and `bidlimits`, `asklimits` (one `Limit` per price
+6. A book row nests `delta` and `events` (their rows in the order applied)
+   and, on a complete book, `alive` and `bidlimits`, `asklimits` (one `Limit` per price
    level, best first: `price`, `quantity`, `uuids`, `tradable`) - null on a
    delta book; its `executions` cell is null. A book rests an order on the
    side it takes and a quote on every side it states a leg for: a two-sided
@@ -291,7 +301,7 @@ Hold these facts:
 - `currhashcode` and `crosshashcode` read back from any layout a table stored
   them in: a whole `decimal(20, 0)` as the number, an `int64` cell as its
   bits - the `long` an Iceberg column stating `FIELD:representation=bits`
-  holds - at the root and in `alive`, `deltas` and `executions`, every
+  holds - at the root and in `alive`, `delta`, `events` and `executions`, every
   identity still verified against the rebuilt leaf. `MarketData::field()`
   states no declaration, so `into_scheme_compat` widens unless the caller
   states it on the digests at every depth (`set_field_by_path`).
@@ -312,14 +322,14 @@ Hold these facts:
   book refuses; only a source's own failure ends it, and so does a value no
   book folds (the next bullet).
 - A book folds dated orders, dated quotes and snapshot controls, and
-  records a dated execution among its deltas, resting on no side. A trade or
+  records a dated execution among its `events`, resting on no side. A trade or
   a batch is pruned - no error, no book, no instant - and a filter
   (`with_filter`, `filter=`) narrows what is left, never admitting them
   back. An undated `Order` or a `BookEvent` is refused - by
   `BookIterator` at `$.operation.kind`, by `with_operations`/`add_operations`
   at `$.operations[i].kind`. An order or a quote resting on neither the bid
   nor the ask (an order of side `UKNW`, a quote stating no leg, a leg sized zero) is
-  placed nowhere, with a warning, and still counts as the book's delta.
+  placed nowhere, with a warning, and still counts among the book's `delta`.
 - A grid multiplies: every tick `snapshot_millis` crosses yields every live
   book complete, each repeating every alive entry it holds, so a fine grid
   over deep books is `alive entries x ticks` nested rows whatever the input's

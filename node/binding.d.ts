@@ -9,6 +9,7 @@ export {
   Bound,
   BoundSelector,
   ByteIterator,
+  Country,
   DataType,
   Digest,
   Expression,
@@ -23,6 +24,7 @@ export {
   IOResult,
   Listing,
   MediaType,
+  Mic,
   MimeType,
   Plan,
   ProtocolField,
@@ -958,7 +960,7 @@ declare module './index' {
      * Stream sorted messages through native market data and books into
      * nested Arrow batches, one book per book key and instant. A positive
      * snapshot width is epoch aligned. Orders, quotes and `W`/`X` book
-     * messages fold and an execution is recorded among its book's deltas -
+     * messages fold and an execution is recorded among its book's events -
      * an entry reporting a trade (`269=2`) as the execution it is; a trade
      * never reaches a book. `filter`, a predicate over the `marketdata` row,
      * narrows what the books fold and never admits a pruned kind; not given,
@@ -5444,7 +5446,7 @@ export interface OperationEventConstructor<T> {
  * caller's iterable through the loader's pull adapter, the way `FixCodec`'s
  * streams are; a failure behind the iterable is thrown as itself. Orders,
  * quotes and snapshot controls fold, an execution is recorded among its
- * book's deltas, and every other input is pruned; `filter`, a predicate over
+ * book's events, and every other input is pruned; `filter`, a predicate over
  * the `marketdata` row bound once, narrows what the books fold and never
  * admits a trade.
  */

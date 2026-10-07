@@ -1139,7 +1139,7 @@ class TestSerieVerbs:
         handle = IOBase(tmp_path / "quotes.arrows")
         reader = StreamChunkedSerie.from_(quote_table())
         handle.overwrite_serie(reader)
-        with pytest.raises(ValueError, match="handed over"):
+        with pytest.raises(ValueError, match="already consumed"):
             handle.append_serie(reader)
         assert rows_of(handle) == quote_rows()
 

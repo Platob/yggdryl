@@ -42,7 +42,7 @@ function sourceFor(suffix, value) {
 }
 
 function committedSourceFor(suffix, ids, venues) {
-  if (suffix !== 'StreamSerie') return sourceFor(suffix, table(ids, venues))
+  if (suffix !== 'Records') return sourceFor(suffix, table(ids, venues))
   return (function* records() {
     for (let index = 0; index < ids.length; index += 1) {
       yield { id: ids[index], venue: venues[index] }
@@ -133,7 +133,7 @@ test('generic write entry points dispatch every representation by mode', (t) => 
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch', 'StreamSerie']) {
+  for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch', 'Records']) {
     const handle = new IOBase(path.join(root, `generic-${suffix}.arrows`))
     const overwritten = handle[`write${suffix}`](
       committedSourceFor(suffix, [1n, 2n], ['XNAS', 'XNYS']),
@@ -188,7 +188,7 @@ test('generic write mode is required and validated before input inspection', (t)
     )
     assert.equal(reader.consumed, false, `reader mode=${String(mode)}`)
 
-    for (const suffix of ['ArrowTable', 'ArrowBatch', 'StreamSerie']) {
+    for (const suffix of ['ArrowTable', 'ArrowBatch', 'Records']) {
       let accesses = 0
       const untouched = new Proxy({}, {
         get() {
@@ -232,7 +232,7 @@ test('commit cadence has parity across every synchronous representation and inte
   // than the stream, and 2 does not divide the three batches the five rows
   // convert into at two rows a batch.
   for (const cadence of [1, 8, 2]) {
-    for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch', 'StreamSerie']) {
+    for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch', 'Records']) {
       for (const intent of ['overwrite', 'append', 'merge']) {
         const label = `${suffix} ${intent} commit=${cadence}`
         const handle = new IOBase(path.join(root, `${suffix}-${intent}-${cadence}.arrows`))
@@ -317,7 +317,7 @@ test('invalid intent does not convert or consume any adapter input', (t) => {
         throw new Error('records were pulled')
       },
     }
-    assert.throws(() => handle[`${intent}StreamSerie`](records, options), message)
+    assert.throws(() => handle[`${intent}Records`](records, options), message)
     assert.equal(pulls, 0, `${intent} records`)
 
     let asyncPulls = 0
@@ -327,7 +327,7 @@ test('invalid intent does not convert or consume any adapter input', (t) => {
         throw new Error('async records were pulled')
       },
     }
-    assert.throws(() => handle[`${intent}StreamSerie`](asyncRecords, options), message)
+    assert.throws(() => handle[`${intent}Records`](asyncRecords, options), message)
     assert.equal(asyncPulls, 0, `${intent} async records`)
   }
 })
@@ -338,7 +338,7 @@ test('zero write limits never inspect any representation source', (t) => {
   const declared = BatchReader.from(table()).field
 
   for (const bound of ['maxRowSize', 'maxByteSize']) {
-    for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch', 'StreamSerie']) {
+    for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch', 'Records']) {
       for (const intent of ['overwrite', 'append', 'merge']) {
         const handle = new IOBase(path.join(root, `${bound}-${suffix}-${intent}.arrows`))
         let options = handle.recordOptions().withField(declared)
@@ -398,7 +398,7 @@ test('zero commit cadence is rejected without inspecting any source', (t) => {
     },
   })
 
-  for (const suffix of ['ArrowTable', 'ArrowBatch', 'StreamSerie']) {
+  for (const suffix of ['ArrowTable', 'ArrowBatch', 'Records']) {
     assert.throws(
       () => handle[`overwrite${suffix}`](source, options),
       /commit_batch_num|commitBatchNum/,
@@ -592,7 +592,7 @@ test('unset async cadence keeps every intent unpublished through a source failur
       ),
     )
     const controlled = controlledAsyncFailure(incoming)
-    const pending = handle[`${intent}StreamSerie`](
+    const pending = handle[`${intent}Records`](
       controlled.source,
       optionsForIntent(handle, intent),
     )
@@ -636,7 +636,7 @@ test('bounded async records publish whole cadences of batches for every intent',
       ),
     )
     const controlled = controlledAsyncFailure(incoming)
-    const pending = handle[`${intent}StreamSerie`](
+    const pending = handle[`${intent}Records`](
       controlled.source,
       optionsForIntent(handle, intent, 2),
     )

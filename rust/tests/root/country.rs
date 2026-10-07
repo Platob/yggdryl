@@ -1,7 +1,7 @@
 //! `rust/src/country.rs`: ISO 3166-1's two-letter country code, held by
 //! its shape and ranked by the listing.
 
-use yggdryl::{CodeValue, Country, DataType, Scalar, StringEnum};
+use yggdryl::{Ccy, CodeValue, Country, DataType, Scalar, StringEnum};
 
 #[test]
 fn a_country_is_at_most_two_ascii_bytes_and_the_listing_is_a_rank() {
@@ -47,4 +47,82 @@ fn a_listed_country_replaces_an_unlisted_one_whichever_leads() {
     assert_eq!(listed.clone().merge_with(&other), listed);
     assert_eq!(other.clone().merge_with(&listed), other);
     assert_eq!(masked.clone().merge_with(&other_masked), masked);
+}
+
+/// A country answers the one legal tender ISO 4217 list one gives it: a
+/// fund code never, and where list one gives two tenders the one the
+/// generator's override table names.
+#[test]
+fn a_country_answers_the_one_legal_tender_list_one_gives_it() {
+    for (country, currency) in [
+        ("US", "USD"),
+        ("CH", "CHF"),
+        ("DE", "EUR"),
+        ("GB", "GBP"),
+        ("JP", "JPY"),
+        // A territory using another country's tender.
+        ("LI", "CHF"),
+        ("AX", "EUR"),
+        // Two tenders in list one: the override table's choice.
+        ("SV", "USD"),
+        ("PA", "PAB"),
+        ("LS", "LSL"),
+        ("VE", "VES"),
+    ] {
+        assert_eq!(
+            Country::new(country).unwrap().currency(),
+            Some(Ccy::new(currency).unwrap()),
+            "{country}"
+        );
+    }
+    // None where list one gives no currency: the user-assigned codes, an
+    // agency prefix, a country with no universal currency, a spelling no
+    // code is.
+    for none in ["XX", "ZZ", "XS", "EU", "AQ", "PS", "GS", "ch", ""] {
+        assert_eq!(Country::new(none).unwrap().currency(), None, "{none}");
+    }
+    // Every listed country has a tender but the three list one gives no
+    // universal currency.
+    let unanswered: Vec<&str> = StringEnum::COUNTRIES
+        .iter()
+        .copied()
+        .filter(|code| Country::new(code).unwrap().currency().is_none())
+        .collect();
+    assert_eq!(unanswered, ["AQ", "GS", "PS"]);
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    use yggdryl::internals::country::country_currency;
+    use yggdryl::{Ccy, Country, StringEnum};
+
+    /// The generated table is sorted by the alpha-2 code with each code once,
+    /// what the binary search needs; every code is listed, every currency is
+    /// three upper-case letters ISO 4217 lists, and every row is what
+    /// `currency` answers.
+    #[test]
+    fn the_generated_currency_table_is_sorted_unique_and_what_currency_answers() {
+        let rows = country_currency();
+        assert!(
+            rows.windows(2).all(|pair| pair[0].0 < pair[1].0),
+            "sorted by the alpha-2 code, each code once"
+        );
+        for &(country, currency) in rows {
+            let code = Country::new(country).unwrap();
+            assert!(code.is_listed(), "{country}");
+            assert!(
+                currency.len() == 3 && currency.bytes().all(|byte| byte.is_ascii_uppercase()),
+                "{country}: {currency}"
+            );
+            assert!(
+                StringEnum::CURRENCIES.contains(&currency),
+                "{country}: {currency}"
+            );
+            assert_eq!(
+                code.currency(),
+                Some(Ccy::new(currency).unwrap()),
+                "{country}"
+            );
+        }
+    }
 }

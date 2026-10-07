@@ -17,7 +17,7 @@ A fact has one name and one datatype in every row, so a reader who knows one row
 | Names | Every fact has one name and one datatype in every row. Every generated column carries a display name in its `display` metadata |
 | Text line | The 15 element and event columns, then `body`, then one column per row-header capture |
 | FIX row | The 55 prefix columns, then the message's own bands and `fixentries`: 152 fields and 151 tags under the committed dictionary. A fact FIX states in a field of its own is that field, typed as the dictionary types it (`price` is `Price(44)`, `timeinforce` the `TimeInForce(59)` wire text the message's [`TimeInForce`](../types/enum/timeinforce.md) member is read from) |
-| `marketdata` row | The 55 prefix columns, the three book controls `bookscope`, `bookaction` and `bookposition`, then the nested `alive`, `deltas`, `executions`, `bidlimits` and `asklimits`: 63 columns |
+| `marketdata` row | The 55 prefix columns, the three book controls `bookscope`, `bookaction` and `bookposition`, then the nested `alive`, `delta`, `events`, `executions`, `bidlimits` and `asklimits`: 64 columns |
 | Identifiers | `securityids`, `identifiers` and `partyids` are each a sorted `map<utf8, utf8>` from the key's text to its value ([Identifier](identifier.md#arrow)): on the FIX row every key the map holds - `src:type`, the type alone for the base source; on a market-data row the base keys alone, one per type, every other key [side information](market-data.md#side-information) in `metadata` under its map's name and its `src:type` spelling, `securityids.ullink:isin`; read raw and closed once, so every type held has its base key |
 | Cross code | `crosscode` is the code as an element stores it - `{kind}:{side}:{base}` on a `marketdata` row and on a FIX row, the side stated by an order or an execution alone (`10:1:O-1001`, `14:0:Q-1`, `3:0:AAPL`) - and as given on a text line, which is no market element ([Market](market.md#sides-and-cross-codes)) |
 | Persisted | Every [market fill](market.md#setting-fill-or-overwrite) a leaf answered is stored as a column value. A row read back through `MarketData::from_arrow_reader` or `FixMsg::from_row` answers the same facts without running the fills again |
@@ -40,9 +40,10 @@ A fact has one name and one datatype in every row, so a reader who knows one row
 
     let row = MarketData::field()?;
     let names: Vec<&str> = row.fields().iter().map(|field| field.name()).collect();
-    assert_eq!(names.len(), 63);
+    assert_eq!(names.len(), 64);
     assert_eq!(&names[..55], prefix.as_slice());
     assert_eq!(&names[55..58], ["bookscope", "bookaction", "bookposition"]);
+    assert_eq!(&names[58..61], ["alive", "delta", "events"]);
     ```
 
 === "Python"
@@ -55,8 +56,9 @@ A fact has one name and one datatype in every row, so a reader who knows one row
     assert prefix[15:17] == ["marketdatakind", "marketdatatype"]
 
     names = graph.MarketData.field().into_arrow_schema().names
-    assert len(names) == 63
+    assert len(names) == 64
     assert names[:55] == prefix and names[55:58] == ["bookscope", "bookaction", "bookposition"]
+    assert names[58:61] == ["alive", "delta", "events"]
     ```
 
 === "JavaScript"
@@ -70,8 +72,9 @@ A fact has one name and one datatype in every row, so a reader who knows one row
     assert.deepEqual(prefix.slice(15, 17), ['marketdatakind', 'marketdatatype'])
 
     const row = graph.MarketData.field()
-    assert.equal(row.fieldLen, 63)
+    assert.equal(row.fieldLen, 64)
     assert.deepEqual([55, 56, 57].map((at) => row.getFieldAt(at).name), ['bookscope', 'bookaction', 'bookposition'])
+    assert.deepEqual([58, 59, 60].map((at) => row.getFieldAt(at).name), ['alive', 'delta', 'events'])
     ```
 
 ## The text line
@@ -279,8 +282,8 @@ A group column (`trdregtimestamps`, `regulatorytradeids`) is a `serie` of the gr
 This is `MarketData::field()`: the prefix, then the book.
 
 - `securityids`, `identifiers` and `partyids` are sorted `map<utf8, utf8>`s from a type's base key - the type alone - to its value, one per type; every other key a map holds, `src:type`, is [side information](market-data.md#side-information) in `metadata` under the map's name, `securityids.ullink:isin`.
-- `bookscope`, `bookaction` and `bookposition` are the [book control](order.md#book-control) a market-data entry states, which a book's deltas replay by.
-- `alive`, `deltas` and `executions` are series of the prefix and the three book controls (`operationevent`); `alive` is a complete book's, `deltas` every book's, `executions` a trade's alone - null on a book row.
+- `bookscope`, `bookaction` and `bookposition` are the [book control](order.md#book-control) a market-data entry states, which a book's `delta` replays by.
+- `alive`, `delta`, `events` and `executions` are series of the prefix and the three book controls (`operationevent`); `alive` is a [complete](book.md#complete-books-and-delta-books) book's live orders and quotes, `delta` every book's orders and quotes its instant applied, `events` every other event that instant recorded - its executions and snapshot controls - and `executions` a trade's alone, null on a book row.
 - `bidlimits` and `asklimits` are series of [`Limit`](book.md), best level first.
 
 | # | Column | Datatype | Required | Display | Band |
@@ -344,10 +347,11 @@ This is `MarketData::field()`: the prefix, then the book.
 | 56 | `bookaction` | `utf8` |  | Book Action | book control |
 | 57 | `bookposition` | `uint32` |  | Book Position | book control |
 | 58 | `alive` | `serie<operationevent>` |  |  | book |
-| 59 | `deltas` | `serie<operationevent>` |  |  | book |
-| 60 | `executions` | `serie<operationevent>` |  |  | trade |
-| 61 | `bidlimits` | `serie<limit>` |  |  | book |
-| 62 | `asklimits` | `serie<limit>` |  |  | book |
+| 59 | `delta` | `serie<operationevent>` |  |  | book |
+| 60 | `events` | `serie<operationevent>` |  |  | book |
+| 61 | `executions` | `serie<operationevent>` |  |  | trade |
+| 62 | `bidlimits` | `serie<limit>` |  |  | book |
+| 63 | `asklimits` | `serie<limit>` |  |  | book |
 
 ## Edges
 

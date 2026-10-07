@@ -146,11 +146,13 @@ def _book_iterator_drain() -> int:
 
 
 def _book_iterator_walk_drain() -> int:
-    return sum(len(book.deltas) for book in graph.BookIterator(WALK_OPERATIONS))
+    return sum(len(book.delta) + len(book.events) for book in graph.BookIterator(WALK_OPERATIONS))
 
 
 def _book_iterator_walk_drain_filtered() -> int:
-    return sum(len(book.deltas) for book in graph.BookIterator(WALK_OPERATIONS, filter=WALK_FILTER))
+    return sum(
+        len(book.delta) + len(book.events) for book in graph.BookIterator(WALK_OPERATIONS, filter=WALK_FILTER)
+    )
 
 
 def _event_iterator_drain() -> int:

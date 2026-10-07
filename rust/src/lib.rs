@@ -424,6 +424,7 @@ pub mod internals {
     pub use crate::bytestream::internals as bytestream;
     pub use crate::charset::reader::internals as charset_reader;
     pub use crate::code::internals as code;
+    pub use crate::country::internals as country;
     pub use crate::decimal::internals as decimal;
     pub use crate::diff::internals as diff;
     pub use crate::duration::internals as duration;
@@ -508,6 +509,7 @@ pub mod internals {
     pub use crate::media::partition::internals as media_partition;
     pub use crate::merge::internals as merge;
     pub use crate::metadata::internals as metadata;
+    pub use crate::mic::internals as mic;
     pub use crate::mime_type::line::internals as mime_type_line;
     pub use crate::parallel::internals as parallel;
     #[cfg(feature = "parquet")]

@@ -13,13 +13,15 @@ use yggdryl::graph::{Market, OrderEvent};
 use yggdryl::holder::{Buffer, Holder};
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{
-    Ccy, Cfi, Country, Eusipa, Forex, IOBase, IOMedia, IOMode, IdKey, IdType, Identifier, Isin,
-    IsinEntry, IsinRegistry, Mic,
+    Ccy, Cfi, Country, Eusipa, Fisn, Forex, IOBase, IOMedia, IOMode, IdKey, IdType, Identifier,
+    Isin, IsinEntry, IsinRegistry, Mic,
 };
 
 const HOLCIM: &str = "CH0012214059";
 const APPLE: &str = "US0378331005";
 const NOVARTIS: &str = "CH0012005267";
+const DIAGEO: &str = "GB0002374006";
+const SAP: &str = "DE0007164600";
 
 fn isin(text: &str) -> Isin {
     Isin::new(text).unwrap()
@@ -64,6 +66,10 @@ fn cfi(text: &str) -> Option<Cfi> {
 
 fn ccy(text: &str) -> Option<Ccy> {
     Some(Ccy::new(text).unwrap())
+}
+
+fn fisn(text: &str) -> Option<Fisn> {
+    Some(Fisn::new(text).unwrap())
 }
 
 #[test]
@@ -579,7 +585,11 @@ fn a_listing_fact_on_another_market_switches_the_listing_whole() {
     assert_eq!(row.miccode().map(|code| code.as_str()), Some("XLON"));
     assert_eq!(row.get(&IdType::Ric), Some("HOLN.L"));
     assert_eq!(row.ticker(), None, "cleared: the statement restated none");
-    assert_eq!(row.currency(), None);
+    assert_eq!(
+        row.currency().map(|code| code.as_str()),
+        Some("GBP"),
+        "cleared, then the new listing's default: XLON is in GB"
+    );
     assert_eq!(row.get(&IdType::Common), Some("C"), "the instrument's");
     assert_eq!(row.updunix(), Some(10));
     assert!(
@@ -650,7 +660,11 @@ fn the_country_the_pair_and_the_currency_are_learned_and_filled() {
         row.country().map(|code| code.as_str().to_owned()),
         Some("LI".into())
     );
-    assert_eq!(row.currency(), None, "XXX states no currency");
+    assert_eq!(
+        row.currency(),
+        None,
+        "XXX states no currency, and a row of no market takes no default"
+    );
     assert!(
         IsinEntry::new(isin(HOLCIM))
             .with_countrycode(Some(Country::new("XX").unwrap()))
@@ -740,12 +754,18 @@ fn the_country_the_pair_and_the_currency_are_learned_and_filled() {
     assert_eq!(unmarked.get_ticker(), Some("HOLN"));
     assert!(unmarked.get_currency().is_none());
     // The same market, another ticker: the currency does not fill, and
-    // nothing else is left to.
+    // once the Valor number the row holds is derived, nothing else is
+    // left to.
     let mut other_ticker = order(20, &[(IdType::Isin, HOLCIM)]);
     other_ticker.set_miccode(mic("XSWX"), true);
     other_ticker.set_ticker(Some(SmolStr::new("HOLNX")), true);
-    assert!(!registry.fill(&mut other_ticker));
+    assert!(registry.fill(&mut other_ticker));
+    assert_eq!(
+        other_ticker.get_securityids().get(&IdType::Valor),
+        Some("1221405")
+    );
     assert!(other_ticker.get_currency().is_none());
+    assert!(!registry.fill(&mut other_ticker));
     // The same market and ticker: it fills; a stated one stands.
     let mut same = order(20, &[(IdType::Isin, HOLCIM)]);
     same.set_miccode(mic("XSWX"), true);
@@ -858,10 +878,20 @@ fn an_entry_reads_back_from_its_scalar() {
     .with_underlyingisin(Some(isin(APPLE)))
     .with_miccode(mic("XSWX"))
     .with_ticker(Some(SmolStr::new(" HOLN ")))
+    .with_fisn(fisn("HOLCIM/REG SHS"))
     .with_currency(ccy("CHF"));
     assert_eq!(entry.ticker(), Some("HOLN"));
     assert_eq!(entry.underlyingisin().map(Isin::as_str), Some(APPLE));
+    assert_eq!(entry.fisn().map(Fisn::as_str), Some("HOLCIM/REG SHS"));
     assert_eq!(IsinEntry::from_scalar(&entry.into_scalar()).unwrap(), entry);
+    assert_eq!(
+        entry
+            .into_scalar()
+            .as_struct()
+            .and_then(|cells| cells.get("fisn"))
+            .and_then(|cell| cell.as_str()),
+        Some("HOLCIM/REG SHS")
+    );
     assert_eq!(
         entry
             .into_scalar()
@@ -876,11 +906,11 @@ fn an_entry_reads_back_from_its_scalar() {
         .iter()
         .map(|field| field.name().to_string())
         .collect();
-    // The ten facts, the product category among the instrument's, then the
-    // thirty-two equivalents.
-    assert_eq!(columns.len(), 42);
+    // The eleven facts, the product category and the short name among the
+    // instrument's, then the thirty-two equivalents.
+    assert_eq!(columns.len(), 43);
     assert_eq!(
-        &columns[..11],
+        &columns[..12],
         [
             "isin",
             "updunix",
@@ -891,6 +921,7 @@ fn an_entry_reads_back_from_its_scalar() {
             "eusipacode",
             "miccode",
             "ticker",
+            "fisn",
             "currency",
             "cusip"
         ]
@@ -900,7 +931,7 @@ fn an_entry_reads_back_from_its_scalar() {
         .as_fields()
         .unwrap()
         .iter()
-        .take(10)
+        .take(11)
         .map(|field| field.dtype().to_string())
         .collect();
     assert_eq!(
@@ -915,6 +946,7 @@ fn an_entry_reads_back_from_its_scalar() {
             "int32",
             "mic",
             "utf8",
+            "fisn",
             "ccy"
         ]
     );
@@ -1413,6 +1445,11 @@ fn a_folder_of_parts_loads_in_part_order() {
     );
     assert_eq!(holcim.get(&IdType::Common), Some("C-5"), "filled");
     assert_eq!(holcim.get(&IdType::Valor), Some("1221405"));
+    assert_eq!(
+        holcim.currency().map(|code| code.as_str()),
+        Some("GBP"),
+        "the switched listing's currency: the part of no market stated none to replace it"
+    );
     assert!(loaded.get(APPLE).is_some());
     // The folder's own record stream is the same door.
     let mut from_folder = IsinRegistry::new();
@@ -1482,7 +1519,11 @@ fn a_flat_golden_file_loads_by_the_columns_its_names_spell() {
     assert_eq!(row.get(&IdType::ExchSymb), Some("HOLN"));
     assert_eq!(row.get(&IdType::Valor), Some("1221405"));
     let apple = registry.get(APPLE).unwrap();
-    assert!(apple.iter().next().is_none());
+    assert_eq!(
+        apple.iter().collect::<Vec<_>>(),
+        [(&IdType::Cusip, "037833100")],
+        "the CUSIP its ISIN embeds, derived; nothing else stated"
+    );
     assert_eq!(apple.forexcode().map(|pair| pair.as_str()), Some("USD/CHF"));
 
     // Two columns naming one fact, and no ISIN at all, are refused.
@@ -1552,7 +1593,11 @@ fn a_load_refuses_a_utf8_code_its_type_refuses_on_its_row_and_column() {
     assert_eq!(row.get(&IdType::Ric), None);
     assert_eq!(row.ticker(), None);
     assert_eq!(row.countrycode(), None);
-    assert_eq!(row.currency(), None);
+    assert_eq!(
+        row.currency(),
+        None,
+        "XXX states none, and a row of no market takes no default"
+    );
     assert_eq!(row.get(&IdType::Valor), Some("1221405"));
 }
 
@@ -1644,6 +1689,342 @@ fn a_load_refuses_a_row_past_twelve_equivalents() {
             .iter()
             .count(),
         IsinRegistry::MAX_EQUIVALENTS
+    );
+}
+
+/// The short name is an instrument fact: learned where an element states
+/// it as a `fisn` security identifier - never where it was only derived -
+/// filled into one naming the ISIN on any market as a derived identifier,
+/// replaced by another whatever the time, kept by a listing switch, and
+/// carried by the scalar, the snapshot stream and a golden file's column.
+#[test]
+fn the_short_name_is_an_instrument_fact_learned_filled_and_read_back() {
+    const NAME: &str = "APPLE INC/SH SH";
+    let mut registry = IsinRegistry::new();
+    let mut stated = order(10, &[(IdType::Isin, APPLE), (IdType::Fisn, NAME)]);
+    stated.set_miccode(mic("XNAS"), true);
+    stated.set_ticker(Some(SmolStr::new("AAPL")), true);
+    assert!(registry.learn(&stated));
+    assert_eq!(
+        registry.get(APPLE).unwrap().fisn().map(Fisn::as_str),
+        Some(NAME)
+    );
+    assert!(!registry.learn(&stated), "nothing new");
+
+    // Filled into an element naming the ISIN, derived, on any market.
+    let mut named = order(20, &[(IdType::Isin, APPLE)]);
+    assert!(registry.fill(&mut named));
+    assert_eq!(named.get_securityids().get(&IdType::Fisn), Some(NAME));
+    assert!(named.get_securityids().is_derived(&IdType::Fisn));
+    let mut elsewhere = order(20, &[(IdType::Isin, APPLE)]);
+    elsewhere.set_miccode(mic("XLON"), true);
+    assert!(registry.fill(&mut elsewhere));
+    assert_eq!(elsewhere.get_securityids().get(&IdType::Fisn), Some(NAME));
+    // What a fill derived is never learned.
+    let mut fresh = IsinRegistry::new();
+    fresh.learn(&named);
+    assert_eq!(fresh.get(APPLE).and_then(IsinEntry::fisn), None);
+    // A stated one stands over the row's.
+    let mut own = order(
+        20,
+        &[(IdType::Isin, APPLE), (IdType::Fisn, "APPLE INC/COM")],
+    );
+    registry.fill(&mut own);
+    assert_eq!(
+        own.get_securityids().get(&IdType::Fisn),
+        Some("APPLE INC/COM")
+    );
+
+    // Another replaces whatever the time; a listing switch keeps it.
+    assert!(
+        registry
+            .merge(
+                IsinEntry::new(isin(APPLE))
+                    .with_updunix(Some(1))
+                    .with_fisn(fisn("APPLE INC/COM"))
+            )
+            .unwrap()
+    );
+    assert!(
+        registry
+            .merge(
+                IsinEntry::new(isin(APPLE))
+                    .with_miccode(mic("XLON"))
+                    .with_ticker(Some(SmolStr::new("0R2V")))
+            )
+            .unwrap()
+    );
+    let row = registry.get(APPLE).unwrap();
+    assert_eq!(row.miccode().map(Mic::as_str), Some("XLON"));
+    assert_eq!(row.fisn().map(Fisn::as_str), Some("APPLE INC/COM"));
+    assert!(
+        !registry
+            .merge(IsinEntry::new(isin(APPLE)).with_fisn(fisn("apple inc/com")))
+            .unwrap(),
+        "the same name, folded upper case, moves nothing"
+    );
+
+    // The scalar and the snapshot stream carry it.
+    let row = registry.get(APPLE).unwrap();
+    assert_eq!(IsinEntry::from_scalar(&row.into_scalar()).unwrap(), *row);
+    let back = IsinRegistry::from_arrow_reader(registry.into_arrow_reader().unwrap()).unwrap();
+    assert!(back.iter().eq(registry.iter()));
+    assert_eq!(
+        back.get(APPLE).unwrap().fisn().map(Fisn::as_str),
+        Some("APPLE INC/COM")
+    );
+    // A golden file names it by any of its spellings.
+    for name in [
+        "FISN",
+        "fisn_code",
+        "ShortName",
+        "FinancialInstrumentShortName",
+    ] {
+        let loaded = IsinRegistry::from_arrow_reader(flat(&[
+            ("ISIN", vec![Some(APPLE)]),
+            (name, vec![Some(NAME)]),
+        ]))
+        .unwrap();
+        assert_eq!(
+            loaded.get(APPLE).unwrap().fisn().map(Fisn::as_str),
+            Some(NAME),
+            "{name}"
+        );
+    }
+}
+
+/// A row the registry folds holds the national number its ISIN embeds in
+/// its equivalent column where it states none - a CUSIP for `US`, a SEDOL
+/// for `GB` behind `00`, a Valor number for `CH`, a WKN for `DE` behind
+/// `000` - and a stated code is never replaced by the derivation; a row
+/// built by hand and never folded holds only what it was given.
+#[test]
+fn a_folded_row_holds_the_national_number_its_isin_embeds() {
+    let mut registry = IsinRegistry::new();
+    for (key, kind, code) in [
+        (APPLE, IdType::Cusip, "037833100"),
+        (DIAGEO, IdType::Sedol, "0237400"),
+        (HOLCIM, IdType::Valor, "1221405"),
+        (SAP, IdType::Wkn, "716460"),
+    ] {
+        assert!(registry.merge(IsinEntry::new(isin(key))).unwrap(), "{key}");
+        let row = registry.get(key).unwrap();
+        assert_eq!(row.get(&kind), Some(code), "{key}");
+        assert_eq!(row.iter().count(), 1, "{key}: that one code");
+    }
+    let french = numbered("FR");
+    registry.merge(IsinEntry::new(isin(&french))).unwrap();
+    assert!(
+        registry.get(&french).unwrap().iter().next().is_none(),
+        "no scheme this crate checks"
+    );
+    assert!(
+        IsinEntry::new(isin(APPLE)).get(&IdType::Cusip).is_none(),
+        "never folded"
+    );
+
+    // A stated code stands, created or moved.
+    const MICROSOFT: &str = "594918104";
+    let mut stated = IsinRegistry::new();
+    stated
+        .merge(entry(APPLE, Some(1), &[(IdType::Cusip, MICROSOFT)]))
+        .unwrap();
+    assert_eq!(
+        stated.get(APPLE).unwrap().get(&IdType::Cusip),
+        Some(MICROSOFT)
+    );
+    assert!(
+        stated
+            .merge(entry(APPLE, Some(2), &[(IdType::Common, "C-1")]))
+            .unwrap()
+    );
+    assert_eq!(
+        stated.get(APPLE).unwrap().get(&IdType::Cusip),
+        Some(MICROSOFT)
+    );
+    // A row with no room left passes the derivation over.
+    let full = [
+        IdType::Quik,
+        IdType::Dutch,
+        IdType::Sicovam,
+        IdType::Belgian,
+        IdType::Common,
+        IdType::ClearingHouse,
+        IdType::FpmlSpec,
+        IdType::Opra,
+        IdType::FpmlUrl,
+        IdType::Loc,
+        IdType::MktAssigned,
+        IdType::RedEntity,
+    ]
+    .into_iter()
+    .fold(IsinEntry::new(isin(APPLE)), |entry, kind| {
+        entry.try_with_code(kind, "X-1").unwrap()
+    });
+    let mut bounded = IsinRegistry::new();
+    bounded.merge(full).unwrap();
+    assert_eq!(bounded.get(APPLE).unwrap().get(&IdType::Cusip), None);
+
+    // The derived SEDOL is a listing code: filled on the row's market
+    // alone.
+    let mut listed = IsinRegistry::new();
+    listed
+        .merge(IsinEntry::new(isin(DIAGEO)).with_miccode(mic("XLON")))
+        .unwrap();
+    let mut paris = order(10, &[(IdType::Isin, DIAGEO)]);
+    paris.set_miccode(mic("XPAR"), true);
+    assert!(!listed.fill(&mut paris), "another market's listing code");
+    assert_eq!(paris.get_securityids().get(&IdType::Sedol), None);
+    let mut london = order(10, &[(IdType::Isin, DIAGEO)]);
+    london.set_miccode(mic("XLON"), true);
+    assert!(listed.fill(&mut london));
+    assert_eq!(
+        london.get_securityids().get(&IdType::Sedol),
+        Some("0237400")
+    );
+    assert!(london.get_securityids().is_derived(&IdType::Sedol));
+}
+
+/// A row the registry folds with no currency takes its listing's default,
+/// the legal tender of the country its market is in - its market alone,
+/// never its ISIN's country - and a row of no market, or of a market of no
+/// single country, takes none; a stated currency stands, a later statement
+/// replaces a default as it replaces any value, and a market arriving later
+/// sets it. A default never travels as a statement: a stored row read back
+/// over another listing moves no currency it did not state. A ticker-keyed
+/// element on the listing is filled with it.
+#[test]
+fn a_folded_row_defaults_its_currency_to_its_markets_country() {
+    let currency = |registry: &IsinRegistry, key: &str| {
+        registry
+            .get(key)
+            .and_then(IsinEntry::currency)
+            .map(|code| code.as_str().to_owned())
+    };
+    let mut registry = IsinRegistry::new();
+    registry
+        .merge(
+            IsinEntry::new(isin(DIAGEO))
+                .with_miccode(mic("XLON"))
+                .with_ticker(Some(SmolStr::new("DGE"))),
+        )
+        .unwrap();
+    assert_eq!(currency(&registry, DIAGEO).as_deref(), Some("GBP"));
+    let french = numbered("FR");
+    registry.merge(IsinEntry::new(isin(&french))).unwrap();
+    assert_eq!(
+        currency(&registry, &french),
+        None,
+        "no market: a currency is a listing's"
+    );
+    // A market arriving later sets it.
+    assert!(
+        registry
+            .merge(IsinEntry::new(isin(&french)).with_miccode(mic("XPAR")))
+            .unwrap()
+    );
+    assert_eq!(currency(&registry, &french).as_deref(), Some("EUR"));
+    registry
+        .merge(IsinEntry::new(isin(APPLE)).with_miccode(mic("XETR")))
+        .unwrap();
+    assert_eq!(
+        currency(&registry, APPLE).as_deref(),
+        Some("EUR"),
+        "the market's country only, never the ISIN's"
+    );
+    registry
+        .merge(IsinEntry::new(isin(NOVARTIS)).with_miccode(mic("XOFF")))
+        .unwrap();
+    assert_eq!(
+        currency(&registry, NOVARTIS),
+        None,
+        "XOFF is of no single country"
+    );
+    // A stated currency stands; a later statement replaces a default.
+    registry
+        .merge(
+            IsinEntry::new(isin(HOLCIM))
+                .with_miccode(mic("XLON"))
+                .with_currency(ccy("USD")),
+        )
+        .unwrap();
+    assert_eq!(currency(&registry, HOLCIM).as_deref(), Some("USD"));
+    registry
+        .merge(IsinEntry::new(isin(SAP)).with_miccode(mic("XETR")))
+        .unwrap();
+    assert_eq!(currency(&registry, SAP).as_deref(), Some("EUR"));
+    assert!(
+        registry
+            .merge(IsinEntry::new(isin(SAP)).with_currency(ccy("USD")))
+            .unwrap()
+    );
+    assert_eq!(currency(&registry, SAP).as_deref(), Some("USD"));
+    // A listing switch clears the currency and derives the new market's.
+    assert!(
+        registry
+            .merge(
+                IsinEntry::new(isin(HOLCIM))
+                    .with_miccode(mic("XSWX"))
+                    .with_ticker(Some(SmolStr::new("HOLN")))
+            )
+            .unwrap()
+    );
+    assert_eq!(currency(&registry, HOLCIM).as_deref(), Some("CHF"));
+    // A row read back states what its store held - nothing derived travels
+    // with a statement it was not part of: an entry merged over another
+    // listing moves only the facts it states.
+    let mut other = IsinRegistry::new();
+    other
+        .merge(entry(HOLCIM, Some(1), &[(IdType::Common, "C-1")]))
+        .unwrap();
+    assert_eq!(currency(&other, HOLCIM), None);
+    assert!(registry.merge(other.get(HOLCIM).unwrap().clone()).unwrap());
+    assert_eq!(
+        currency(&registry, HOLCIM).as_deref(),
+        Some("CHF"),
+        "a row of no market states no currency to replace the listing's"
+    );
+
+    // An element naming the ticker on the listing takes the ISIN, the
+    // SEDOL it embeds and the default currency.
+    let mut ticked = OrderEvent::at(20);
+    ticked.set_ticker(Some(SmolStr::new("DGE")), true);
+    ticked.set_miccode(mic("XLON"), true);
+    assert!(registry.fill(&mut ticked));
+    assert_eq!(ticked.get_isincode(), Some(DIAGEO));
+    assert_eq!(
+        ticked.get_securityids().get(&IdType::Sedol),
+        Some("0237400")
+    );
+    assert_eq!(ticked.get_currency().as_str(), "GBP");
+}
+
+/// The seed is clean and bound to no store; a write moves the registry it
+/// is made on alone, and an empty registry holds none of it.
+#[test]
+fn a_seeded_registry_is_clean_and_unbound_and_new_holds_none_of_it() {
+    let seeded = IsinRegistry::seeded();
+    assert!(!seeded.is_empty());
+    assert!(!seeded.is_dirty());
+    assert!(seeded.holder().is_none());
+    assert_eq!(
+        seeded.max_instruments(),
+        IsinRegistry::DEFAULT_MAX_INSTRUMENTS
+    );
+    assert!(IsinRegistry::new().is_empty());
+    let mut moved = IsinRegistry::seeded();
+    assert!(
+        moved
+            .merge(entry(APPLE, Some(1), &[(IdType::Common, "C-1")]))
+            .unwrap()
+    );
+    assert!(moved.is_dirty());
+    assert_eq!(
+        IsinRegistry::seeded()
+            .get(APPLE)
+            .unwrap()
+            .get(&IdType::Common),
+        None
     );
 }
 

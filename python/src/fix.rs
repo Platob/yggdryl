@@ -3418,16 +3418,19 @@ impl PyFixCodec {
     /// stateful book iterator into a `pyarrow.RecordBatchReader` of lifted
     /// `marketdata` rows, one `book_event` row per book.
     ///
-    /// A book folds orders, quotes and `W`/`X` book messages; every other
-    /// record is ignored before it is expanded - a fill moves a book through
-    /// its order's or quote's report, so an execution, and a trade whose
-    /// fills are executions, never reach one. A quote is one entry resting
-    /// on each leg it states, its bid and its offer alike. What an admitted
-    /// message states that cannot stand is passed over with a warning;
-    /// the iterable's own failure follows the completed book prefix.
+    /// A book folds orders, quotes and `W`/`X` book messages into its sides
+    /// and records every execution among its events; every other record is
+    /// ignored before it is expanded - a fill moves a book through its
+    /// order's or quote's report, so the execution moves nothing, and a
+    /// trade, whose fills are executions, never reaches one. A quote is one
+    /// entry resting on each leg it states, its bid and its offer alike.
+    /// What an admitted message states that cannot stand is passed over
+    /// with a warning; the iterable's own failure follows the completed book
+    /// prefix.
     ///
     /// `snapshot_millis` enables epoch-aligned book snapshots, at which a
-    /// book is emitted whole; every other book states its deltas. One book
+    /// complete book is emitted; every other book is a delta book, stating
+    /// its delta and its events alone. One book
     /// is kept per book key - the instrument's ISIN, else its ticker, else
     /// `XX0000000000`. `filter` - a `Filter`, a `Term`, an `Expression` or
     /// the text of a predicate over the `marketdata` row - narrows what the

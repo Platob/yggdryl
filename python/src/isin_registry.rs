@@ -30,8 +30,8 @@ use crate::value_error;
 
 /// A table of instruments keyed by ISIN - each row the instrument's CFI
 /// code, its country of issue, its currency pair, the instrument it is
-/// written on, its EUSIPA product category, its market, its ticker
-/// and trading currency and one code per `SecurityIDSource(22)` type - that
+/// written on, its EUSIPA product category, its market, its ticker, its
+/// ISO 18774 short name and trading currency and one code per `SecurityIDSource(22)` type - that
 /// a lifecycle learns into and fills from, and a parse fills from. Bound to
 /// the store it was loaded from, committed back only where it moved.
 /// Mutable and shared: equal only to itself, never hashed or pickled; its
@@ -143,12 +143,26 @@ impl PyIsinRegistry {
     /// The registry's row: the required struct `isinregistry` every row is
     /// laid out as - `isin`, `updunix`, `cficode`, `countrycode`,
     /// `forexcode`, `underlyingisin`, `eusipacode` (`int32`, the four-digit
-    /// code `Eusipa` reads), `miccode`, `ticker`, `currency`, then one column
-    /// per `SecurityIDSource(22)` type but the ISIN: forty-two columns - what
-    /// a table holding the registry is created from.
+    /// code `Eusipa` reads), `miccode`, `ticker`, `fisn` (the ISO 18774
+    /// short name), `currency`, then one column per `SecurityIDSource(22)`
+    /// type but the ISIN: forty-three columns - what a table holding the
+    /// registry is created from.
     #[staticmethod]
     fn field() -> PyField {
         PyField::from_inner(IsinEntry::field())
+    }
+
+    /// A registry holding the seed - the common instruments
+    /// `config/isin/instruments.json` states, embedded at build time: each a
+    /// stock, a fund or an index by its ISIN, its ticker, its market but an
+    /// index's, its trading currency, its country, its detailed CFI code and
+    /// its short name where one is known - clean and bound to no store. A
+    /// seed row is an ordinary statement, so the facts it implies - the
+    /// national number its ISIN embeds, the currency of its market's country
+    /// - are derived as for any other; `IsinRegistry()` holds none of it.
+    #[staticmethod]
+    fn seeded(py: Python<'_>) -> Self {
+        py.detach(|| Self::from_core(IsinRegistry::seeded()))
     }
 
     /// A registry bound to the store `location` names and loaded from it:
@@ -201,8 +215,11 @@ impl PyIsinRegistry {
     /// an installed registry, else the store `YGGDRYL_ISIN_REGISTRY_URI`
     /// names - a URL of any scheme, a path, `~` the home - else
     /// `~/.config/yggdryl/isin/`, a folder of Arrow IPC parts the first
-    /// `commit` lays out; with no home, an empty registry bound to nothing.
-    /// A failed load raises and is retried by the next call.
+    /// `commit` lays out; with no home, the seed bound to nothing. A store
+    /// is laid over the seed (`seeded`): its rows fold over the seed's by
+    /// the update rule, so a value the store states wins and a seed row it
+    /// has no row of stands; clean after the load. A failed load raises and
+    /// is retried by the next call.
     #[staticmethod]
     fn from_env(py: Python<'_>) -> PyResult<Self> {
         py.detach(|| IsinRegistry::from_env().map(Self::from_shared))
@@ -324,7 +341,10 @@ impl PyIsinRegistry {
     /// differs, whatever the time, a code that is no real value of its
     /// type dropped; a compatible CFI code refines the held one and a
     /// contradicting one replaces it; a ticker or a listing code stated on
-    /// another market switches the listing whole. Whether anything moved.
+    /// another market switches the listing whole. The row then carries the
+    /// defaults its facts imply where it states none: the CUSIP, SEDOL, WKN
+    /// or Valor its ISIN embeds, and the currency of its market's country,
+    /// else of its own. Whether anything moved.
     fn merge(&self, py: Python<'_>, entry: &Bound<'_, PyAny>) -> PyResult<bool> {
         let entry = IsinEntry::from_scalar(&struct_from_entries(entry)?).map_err(value_error)?;
         self.with(py, |registry| registry.merge(entry))

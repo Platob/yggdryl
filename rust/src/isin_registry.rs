@@ -13,13 +13,21 @@
 //! A row is updated on differences and no clock gates it: a statement's
 //! non-null valid value fills a column the row lacks and replaces one it
 //! holds that differs, an invalid value moves nothing, and `updunix` is a
-//! stamp ([`IsinRegistry::merge`]). The registry holds its table apart from
-//! the store it is bound to: [`IsinRegistry::from_holder`] loads one,
-//! [`IsinRegistry::commit`] writes the table back as one snapshot where it
-//! moved, and [`IsinRegistry::from_env`] is the process's own, located by
-//! `YGGDRYL_ISIN_REGISTRY_URI`.
+//! stamp ([`IsinRegistry::merge`]). Wherever a row is created or moves, the
+//! facts it implies fill, once the statement has landed, the columns it
+//! leaves empty - the national number its ISIN embeds
+//! ([`securityid::embedded`](crate::securityid::embedded)) and the currency
+//! of its market's country - so a default never displaces a statement.
+//! The registry holds its table apart from the store it is bound to:
+//! [`IsinRegistry::from_holder`] loads one, [`IsinRegistry::commit`] writes
+//! the table back as one snapshot where it moved, and
+//! [`IsinRegistry::from_env`] is the process's own, located by
+//! `YGGDRYL_ISIN_REGISTRY_URI` and laid over the seed
+//! ([`IsinRegistry::seeded`]): the common instruments
+//! `config/isin/instruments.json` states, embedded at build time.
 
 pub(crate) mod env;
+pub(crate) mod seed;
 pub(crate) mod store;
 
 use std::borrow::Cow;
@@ -39,9 +47,9 @@ use crate::idtype::FIX_SECURITY_SOURCES;
 use crate::logging::warning::warned;
 use crate::serie::{DateTimeNanosecondSerie, Int32Serie, Utf8StringSerie};
 use crate::{
-    ArrowCastOptions, Ccy, Cfi, CodeValue, Country, DataType, Error, Eusipa, Field, Forex, IOBase,
-    IdKey, IdType, Identifier, Isin, Mic, Result, Scalar, Serie, StreamChunkedSerie, StructType,
-    TimeUnit, Timezone,
+    ArrowCastOptions, Ccy, Cfi, CodeValue, Country, DataType, Error, Eusipa, FISN_WIDTH, Field,
+    Fisn, Forex, IOBase, IdKey, IdType, Identifier, Isin, Mic, Result, Scalar, Serie,
+    StreamChunkedSerie, StructType, TimeUnit, Timezone,
 };
 
 pub(crate) use store::Store;
@@ -50,7 +58,7 @@ pub(crate) use store::Store;
 const ROOT: &str = "isinregistry";
 
 /// The columns a row opens with, before one per equivalent type.
-const NAMES: [&str; 10] = [
+const NAMES: [&str; 11] = [
     "isin",
     "updunix",
     "cficode",
@@ -60,8 +68,15 @@ const NAMES: [&str; 10] = [
     "eusipacode",
     "miccode",
     "ticker",
+    "fisn",
     "currency",
 ];
+
+/// The place of the `fisn` column in [`NAMES`].
+const FISN: usize = 9;
+
+/// The place of the `currency` column in [`NAMES`].
+const CURRENCY: usize = 10;
 
 /// The most bytes a ticker holds.
 const MAX_TICKER_WIDTH: usize = 64;
@@ -73,11 +88,10 @@ const MAX_VALUE_HEAP_ALLOWANCE: usize =
 
 /// What one instrument's row may take at most: its key and entry twice over
 /// for the B-tree's slack - the entry holding its codes inline, a country,
-/// a pair, an underlying, a product category and a currency among them -
-/// its codes spilled to
-/// the heap with
-/// every value at the widest heap a value takes, its ticker's heap, and its
-/// one ticker slot in the ticker index with that ticker's heap.
+/// a pair, an underlying, a product category, a short name and a currency
+/// among them - its codes spilled to the heap with every value at the
+/// widest heap a value takes, its ticker's heap, its short name's heap, and
+/// its one ticker slot in the ticker index with that ticker's heap.
 const ENTRY_CHARGE: usize = 3 * 1024;
 
 const _: () = assert!(
@@ -86,6 +100,9 @@ const _: () = assert!(
             + IsinRegistry::MAX_EQUIVALENTS
                 * (size_of::<(IdType, SmolStr)>() + MAX_VALUE_HEAP_ALLOWANCE)
             + MAX_TICKER_WIDTH
+            + 2 * size_of::<usize>()
+            + 2 * align_of::<usize>()
+            + FISN_WIDTH
             + 2 * size_of::<usize>()
             + 2 * align_of::<usize>()
             + MAX_TICKER_WIDTH
@@ -125,11 +142,27 @@ fn later(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 /// `forexcode` an FX or referential number names, the `underlyingisin` it is
 /// written on - FIX's underlying, a real ISIN other than its own - its
 /// `eusipacode`, the EUSIPA product category of a structured product
-/// ([`Eusipa`]), the `miccode` its listing facts belong to, the `ticker`
-/// and the trading `currency` of that listing,
-/// and one code per `SecurityIDSource(22)` type but the ISIN, at most
+/// ([`Eusipa`]), the `miccode` its listing facts belong to, the `ticker`,
+/// the ISO 18774 short name `fisn` the instrument states ([`Fisn`]), the
+/// trading `currency` of that listing, and one code per
+/// `SecurityIDSource(22)` type but the ISIN, at most
 /// [`IsinRegistry::MAX_EQUIVALENTS`] of them, each held as its type stores
 /// it.
+///
+/// A row the registry folds - created or moved by a statement - fills,
+/// once the statement has landed, the columns its own facts imply where it
+/// leaves them empty: the national number its ISIN embeds
+/// ([`securityid::embedded`](crate::securityid::embedded)) in its
+/// equivalent column - `cusip`, `sedol`, `wkn` or `valor` - and, as its
+/// `currency`, the legal tender of the country its market is in
+/// ([`Mic::country`], [`Country::currency`]); a row of no market, or of a
+/// market of no single country, takes no currency, since a currency is a
+/// listing's. A default never displaces a statement: it fills only what the
+/// statement left empty, a later statement replaces it as it replaces any
+/// value, and a listing switch that clears the currency and the listing
+/// codes derives them again for the new market. A statement derives
+/// nothing - an entry built here and never folded holds only what it was
+/// given.
 ///
 /// ```
 /// use yggdryl::{Country, IdType, Isin, IsinEntry};
@@ -162,6 +195,7 @@ pub struct IsinEntry {
     eusipacode: Option<Eusipa>,
     miccode: Option<Mic>,
     ticker: Option<SmolStr>,
+    fisn: Option<Fisn>,
     currency: Option<Ccy>,
     codes: SmallVec<[(IdType, SmolStr); 4]>,
 }
@@ -186,7 +220,8 @@ static FIELD: LazyLock<Field> = LazyLock::new(|| {
         Field::new(NAMES[6], DataType::Int32, true),
         Field::new(NAMES[7], DataType::Mic, true),
         Field::new(NAMES[8], DataType::utf8(), true),
-        Field::new(NAMES[9], DataType::ccy(), true),
+        Field::new(NAMES[FISN], DataType::fisn(), true),
+        Field::new(NAMES[CURRENCY], DataType::ccy(), true),
     ];
     fields.extend(equivalents().map(|kind| Field::new(kind.as_str(), kind.value_dtype(), true)));
     Field::new(
@@ -210,6 +245,7 @@ impl IsinEntry {
             eusipacode: None,
             miccode: None,
             ticker: None,
+            fisn: None,
             currency: None,
             codes: SmallVec::new(),
         }
@@ -223,9 +259,10 @@ impl IsinEntry {
 
     /// The required struct `isinregistry` a row is: `isin`, `updunix`,
     /// `cficode`, `countrycode`, `forexcode`, `underlyingisin`, `eusipacode`
-    /// (`int32`), `miccode`, `ticker`, `currency`, then one column per
-    /// `SecurityIDSource(22)` type but the ISIN, in the code set's order,
-    /// each of its type's [`IdType::value_dtype`]: forty-two columns.
+    /// (`int32`), `miccode`, `ticker`, `fisn`, `currency`, then one column
+    /// per `SecurityIDSource(22)` type but the ISIN, in the code set's
+    /// order, each of its type's [`IdType::value_dtype`]: forty-three
+    /// columns.
     #[must_use]
     pub fn field() -> Field {
         FIELD.clone()
@@ -250,7 +287,8 @@ impl IsinEntry {
             6 => self.eusipacode.is_some(),
             7 => self.miccode.is_some(),
             8 => self.ticker.is_some(),
-            9 => self.currency.is_some(),
+            FISN => self.fisn.is_some(),
+            CURRENCY => self.currency.is_some(),
             at => equivalents()
                 .nth(at - NAMES.len())
                 .is_some_and(|kind| self.codes.iter().any(|(held, _)| held == kind)),
@@ -335,7 +373,18 @@ impl IsinEntry {
         self.ticker.as_deref()
     }
 
-    /// The trading currency of the listing.
+    /// The ISO 18774 Financial Instrument Short Name the instrument states -
+    /// FIX's `FinancialInstrumentShortName(2737)`, `ACME CORP/SH` - an
+    /// instrument fact: it fills on any market and no listing switch clears
+    /// it.
+    #[must_use]
+    pub fn fisn(&self) -> Option<&Fisn> {
+        self.fisn.as_ref()
+    }
+
+    /// The trading currency of the listing: the one stated, else - on a
+    /// row the registry folded - the legal tender of the country its market
+    /// is in; none for a row of no market.
     #[must_use]
     pub fn currency(&self) -> Option<&Ccy> {
         self.currency.as_ref()
@@ -421,6 +470,13 @@ impl IsinEntry {
                 }
             })
             .filter(|ticker| (1..=MAX_TICKER_WIDTH).contains(&ticker.len()));
+        self
+    }
+
+    /// The row's financial instrument short name.
+    #[must_use]
+    pub fn with_fisn(mut self, name: Option<Fisn>) -> Self {
+        self.fisn = name;
         self
     }
 
@@ -543,12 +599,42 @@ impl IsinEntry {
             eusipacode: self.eusipacode,
             miccode: self.miccode.as_ref(),
             ticker: self.ticker.as_deref(),
+            fisn: self.fisn.as_ref(),
             currency: self.currency.as_ref(),
             codes,
         }
     }
 
-    /// The row a statement makes on its own.
+    /// Fills the columns the row's own facts imply where it leaves them
+    /// empty: each code its ISIN embeds ([`securityid::embedded`](crate::securityid::embedded))
+    /// in its equivalent column - a type past [`IsinRegistry::MAX_EQUIVALENTS`]
+    /// passed over - and the currency, the legal tender of the country its
+    /// market is in; a row of no market, or of a market of no single
+    /// country, takes none, since a currency is a listing's. Nothing here
+    /// replaces a held value: the registry calls it once on the row a fold
+    /// leaves, after the statement landed.
+    fn derive_defaults(&mut self) {
+        // The key is a code inline: held apart, the row stays writable.
+        let isin = self.isin.clone();
+        for id in crate::securityid::embedded(&isin) {
+            if self.get(id.kind()).is_none() {
+                // A derivation never refuses a row: the value its type
+                // would refuse, or a type with no room left, moves nothing.
+                let _ = self.set_code(id.kind().clone(), id.value());
+            }
+        }
+        if self.currency.is_none() {
+            self.currency = self
+                .miccode
+                .as_ref()
+                .and_then(Mic::country)
+                .and_then(|country| country.currency())
+                .filter(|code| !code.is_none());
+        }
+    }
+
+    /// The row a statement makes on its own: what it states, nothing
+    /// derived.
     fn from_statement(statement: &Statement<'_>) -> Self {
         let countrycode = statement
             .countrycode
@@ -562,6 +648,7 @@ impl IsinEntry {
             .with_eusipacode(statement.eusipacode)
             .with_miccode(statement.miccode.cloned())
             .with_ticker(statement.ticker.map(SmolStr::new))
+            .with_fisn(statement.fisn.cloned())
             .with_currency(statement.currency.cloned());
         for (kind, value) in &statement.codes {
             entry.put_code(kind, value);
@@ -613,7 +700,11 @@ impl IsinEntry {
             ),
             (NAMES[8], text(self.ticker())),
             (
-                NAMES[9],
+                NAMES[FISN],
+                self.fisn.clone().map_or(Scalar::Null, Scalar::from),
+            ),
+            (
+                NAMES[CURRENCY],
                 self.currency.clone().map_or(Scalar::Null, Scalar::from),
             ),
         ];
@@ -673,6 +764,7 @@ impl IsinEntry {
             eusipacode,
             miccode,
             ticker,
+            fisn,
             currency,
             codes @ ..,
         ] = cells.as_ref()
@@ -709,6 +801,10 @@ impl IsinEntry {
                 _ => None,
             })
             .with_ticker(ticker.as_str().map(SmolStr::new))
+            .with_fisn(match fisn {
+                Scalar::Fisn(name) => Some(name.clone()),
+                _ => None,
+            })
             .with_currency(match currency {
                 Scalar::Ccy(code) => Some(code.clone()),
                 _ => None,
@@ -740,6 +836,7 @@ struct Statement<'s> {
     eusipacode: Option<Eusipa>,
     miccode: Option<&'s Mic>,
     ticker: Option<&'s str>,
+    fisn: Option<&'s Fisn>,
     currency: Option<&'s Ccy>,
     codes: SmallVec<[(&'s IdType, &'s str); IsinRegistry::MAX_EQUIVALENTS]>,
 }
@@ -760,6 +857,7 @@ impl Statement<'_> {
             || self.eusipacode.is_some()
             || self.miccode.is_some()
             || self.ticker.is_some()
+            || self.fisn.is_some()
             || self.currency.is_some()
             || !self.codes.is_empty()
     }
@@ -769,7 +867,9 @@ impl Statement<'_> {
 /// nothing moves: a stated value fills a column the row lacks and replaces
 /// one it holds that differs; a CFI code compatible with the held one
 /// refines it and a contradicting one replaces it; a listing fact stated on
-/// another market switches the listing whole.
+/// another market switches the listing whole. Nothing is derived here: the
+/// registry derives the defaults of the row this answers
+/// ([`IsinEntry::derive_defaults`]).
 fn folded(row: &IsinEntry, statement: &Statement<'_>) -> Option<IsinEntry> {
     let mut next = Cow::Borrowed(row);
     // A code lands where its type is held or the row has room for one more;
@@ -825,6 +925,11 @@ fn folded(row: &IsinEntry, statement: &Statement<'_>) -> Option<IsinEntry> {
         && row.eusipacode != Some(stated)
     {
         next.to_mut().eusipacode = Some(stated);
+    }
+    if let Some(stated) = statement.fisn
+        && row.fisn.as_ref() != Some(stated)
+    {
+        next.to_mut().fisn = Some(stated.clone());
     }
     match (statement.miccode, &row.miccode) {
         (Some(stated), Some(held)) if stated != held => {
@@ -989,8 +1094,9 @@ impl IsinTable {
 
     /// Derives into `element` each security identifier `row` holds of a
     /// type it holds none of - the ISIN itself where `derived`, every
-    /// instrument code, the listing codes only on the same market, and the
-    /// pair - through [`Market::derive_securityid`]. Whether anything moved.
+    /// instrument code, the listing codes only on the same market, the pair
+    /// and the short name - through [`Market::derive_securityid`]. Whether
+    /// anything moved.
     fn derive_into<E: Market + ?Sized>(
         row: &IsinEntry,
         derived: bool,
@@ -1012,6 +1118,11 @@ impl IsinTable {
             && !element.get_securityids().contains_kind(&IdType::Forex)
         {
             moved |= element.derive_securityid(&IdType::Forex, pair.as_str());
+        }
+        if let Some(name) = &row.fisn
+            && !element.get_securityids().contains_kind(&IdType::Fisn)
+        {
+            moved |= element.derive_securityid(&IdType::Fisn, name.as_str());
         }
         moved
     }
@@ -1161,6 +1272,42 @@ impl IsinRegistry {
         }
     }
 
+    /// A registry holding the seed - the common instruments
+    /// `config/isin/instruments.json` states, embedded at build time: each
+    /// a stock, a fund or an index by its ISIN, its ticker, its market but
+    /// an index's, its trading currency, its country and its detailed CFI
+    /// code - clean and bound to no store, bounded at
+    /// [`Self::DEFAULT_MAX_INSTRUMENTS`].
+    ///
+    /// A seed row is an ordinary statement: the document is read once per
+    /// process through the column rule of [`Self::extend_from_arrow_reader`]
+    /// and every row folded by [`Self::merge`], so the facts a row implies -
+    /// the national number its ISIN embeds, the currency of its market's
+    /// country - are derived as for any other. Making one shares that table: no row
+    /// is copied until one moves. [`Self::from_env`] lays what the
+    /// environment names over it; [`Self::new`] holds none of it.
+    ///
+    /// ```
+    /// use yggdryl::{IdType, IsinRegistry, Mic};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let registry = IsinRegistry::seeded();
+    /// assert!(!registry.is_dirty() && registry.holder().is_none());
+    /// let apple = registry.get_by_ticker("AAPL", Some(&Mic::new("XNAS")?)).expect("seeded");
+    /// assert_eq!(apple.isin().as_str(), "US0378331005");
+    /// assert_eq!(apple.get(&IdType::Cusip), Some("037833100"), "the CUSIP its ISIN embeds");
+    /// assert!(IsinRegistry::new().is_empty());
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn seeded() -> Self {
+        Self {
+            table: seed::table().clone(),
+            ..Self::new()
+        }
+    }
+
     /// The registry bounded at `max` instruments.
     #[must_use]
     pub fn with_max_instruments(mut self, max: usize) -> Self {
@@ -1251,7 +1398,10 @@ impl IsinRegistry {
     /// a ticker or a listing code stated on another market switches the
     /// listing whole - market, ticker, currency and listing codes - and a
     /// currency alone never does; `updunix` becomes the later of the two
-    /// where something moved. Whether anything moved.
+    /// where something moved. A row created or moved then fills what its
+    /// own facts imply where the statement left it empty - the national
+    /// number its ISIN embeds, the currency of its market's country
+    /// ([`IsinEntry`]). Whether anything moved.
     ///
     /// # Errors
     ///
@@ -1292,10 +1442,13 @@ impl IsinRegistry {
         self.table = IsinTable::default();
     }
 
-    /// Folds one statement into its row, keyed by its ISIN.
+    /// Folds one statement into its row, keyed by its ISIN, then derives
+    /// the defaults of the row it leaves - once, after the statement
+    /// landed, so a default only fills a column the statement left empty
+    /// and never travels as a statement itself.
     fn fold(&mut self, statement: &Statement<'_>) -> Result<bool> {
         let current = self.table.rows.get(statement.isin.as_str());
-        let next = match current {
+        let mut next = match current {
             Some(row) => match folded(row, statement) {
                 Some(next) => next,
                 None => return Ok(false),
@@ -1313,6 +1466,7 @@ impl IsinRegistry {
                 IsinEntry::from_statement(statement)
             }
         };
+        next.derive_defaults();
         let held_ticker = current.and_then(|row| row.ticker.clone());
         let ticker = next.ticker.clone();
         let isin = SmolStr::new(next.isin.as_str());
@@ -1340,7 +1494,8 @@ impl IsinRegistry {
     /// market but `XXXX`, its ticker, its currency but `XXX` (unless it
     /// holds a currency pair, where `Currency(15)` is the dealt currency
     /// and not the listing's), the pair it states as a `forex` identifier,
-    /// and each equivalent type its map answers with a real value
+    /// the short name it states as a `fisn` identifier, and each
+    /// equivalent type its map answers with a real value
     /// ([`IdType::is_real`]), never one it only derived, a masked number or
     /// a typo. A new ISIN past [`Self::max_instruments`] is not learned,
     /// with one warning. Whether anything moved. What a FIX message names
@@ -1377,6 +1532,9 @@ impl IsinRegistry {
             return Learned::default();
         };
         let forexcode = stated(&IdType::Forex).and_then(|pair| Forex::new(pair).ok());
+        let fisn = stated(&IdType::Fisn)
+            .filter(|name| IdType::Fisn.is_real(name))
+            .and_then(|name| Fisn::new(name).ok());
         let currency = event.get_currency();
         let statement = Statement {
             isin: Isin::from_proven(isin),
@@ -1394,6 +1552,7 @@ impl IsinRegistry {
                 .get_ticker()
                 .map(str::trim)
                 .filter(|ticker| (1..=MAX_TICKER_WIDTH).contains(&ticker.len())),
+            fisn: fisn.as_ref(),
             currency: Some(currency)
                 .filter(|code| !code.is_none() && !ids.contains_kind(&IdType::Forex)),
             codes: equivalents()
@@ -1428,10 +1587,11 @@ impl IsinRegistry {
     /// or over a number ranking below it, a masked one or a typo: each
     /// equivalent of a type it holds none of as a derived identifier, the
     /// listing codes only where its market - none and `XXXX` unstated - is
-    /// the row's or either is unstated, the pair, the ticker on the same
-    /// market, its CFI code where it states none or the row's refines it,
-    /// and the currency only where both markets are stated and equal, the
-    /// ticker is the row's and it states none. The element is finalized
+    /// the row's or either is unstated, the pair, the short name, the
+    /// ticker on the same market, its CFI code where it states none or the
+    /// row's refines it, and the currency only where both markets are
+    /// stated and equal, the ticker is the row's and it states none. The
+    /// element is finalized
     /// where anything moved, and nothing is built where nothing is filled.
     /// Whether anything moved.
     pub fn fill<E: Market + Element + ?Sized>(&self, element: &mut E) -> bool {
@@ -1476,8 +1636,9 @@ impl IsinRegistry {
     /// identifier name past `underlying`, as `UnderlyingISIN` is - or
     /// `eusipa`, `eusipacode`, `eusipacategory`, `sspa`, `sspacode` or
     /// `sspacategory` for the product category, Euronext's `EUSIPA_Code`
-    /// among them, its cells numbers or text of the number; any other
-    /// column is passed over. The stream is cast once, into
+    /// among them, its cells numbers or text of the number, or `fisn`,
+    /// `fisncode`, `shortname` or `financialinstrumentshortname` for the
+    /// short name; any other column is passed over. The stream is cast once, into
     /// [`IsinEntry::field`], a column it lacks null and a value a column
     /// cannot hold null.
     ///
@@ -1671,7 +1832,7 @@ fn column_name(at: usize) -> &'static str {
 /// the market spellings; `None` for any other.
 fn registry_column(name: &str) -> Option<usize> {
     /// The spellings of the columns no identifier type names.
-    const MARKET: [(&str, usize); 21] = [
+    const MARKET: [(&str, usize); 25] = [
         ("isin", 0),
         ("updunix", 1),
         ("cfi", 2),
@@ -1690,9 +1851,13 @@ fn registry_column(name: &str) -> Option<usize> {
         ("ticker", 8),
         ("symbol", 8),
         ("tickersymbol", 8),
-        ("ccy", 9),
-        ("currency", 9),
-        ("currencycode", 9),
+        ("fisn", FISN),
+        ("fisncode", FISN),
+        ("shortname", FISN),
+        ("financialinstrumentshortname", FISN),
+        ("ccy", CURRENCY),
+        ("currency", CURRENCY),
+        ("currencycode", CURRENCY),
     ];
     let mut buffer = [0_u8; IDENTIFIER_WORD_WIDTH];
     let folded = fold_into(name, &mut buffer).ok()?;
@@ -1711,6 +1876,7 @@ fn registry_column(name: &str) -> Option<usize> {
         IdType::Isin => Some(0),
         IdType::Cfi => Some(2),
         IdType::Forex => Some(4),
+        IdType::Fisn => Some(FISN),
         kind => equivalents()
             .position(|held| *held == kind)
             .map(|at| at + NAMES.len()),
@@ -1728,6 +1894,7 @@ struct Columns {
     eusipacode: Arc<Int32Serie>,
     miccode: Arc<Utf8StringSerie>,
     ticker: Arc<Utf8StringSerie>,
+    fisn: Arc<Utf8StringSerie>,
     currency: Arc<Utf8StringSerie>,
     /// Each equivalent's column, and whether it is its type's own code
     /// column, whose cells the landing proved.
@@ -1757,6 +1924,7 @@ impl Columns {
                 | Serie::Ccy(held)
                 | Serie::Country(held)
                 | Serie::Forex(held)
+                | Serie::Fisn(held)
                 | Serie::Lei(held)
                 | Serie::Dti(held),
             ) => Ok((Arc::clone(held), true)),
@@ -1785,7 +1953,8 @@ impl Columns {
                 (held, false) => held,
                 (_, true) => return Err(unlanded(8)),
             },
-            currency: code(9)?,
+            fisn: code(FISN)?,
+            currency: code(CURRENCY)?,
             codes: equivalents()
                 .enumerate()
                 .map(|(at, kind)| {
@@ -1824,6 +1993,7 @@ impl Columns {
             )
             .with_miccode(self.miccode.value(row).map(Mic::from_proven))
             .with_ticker(self.ticker.value(row).map(SmolStr::new))
+            .with_fisn(self.fisn.value(row).and_then(|name| Fisn::new(name).ok()))
             .with_currency(
                 self.currency
                     .value(row)

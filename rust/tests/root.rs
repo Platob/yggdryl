@@ -157,6 +157,8 @@ mod media_type;
 mod merge;
 #[path = "root/metadata.rs"]
 mod metadata;
+#[path = "root/mic.rs"]
+mod mic;
 #[path = "root/mime_type.rs"]
 mod mime_type;
 #[cfg(feature = "internals")]

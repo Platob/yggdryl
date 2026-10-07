@@ -31,6 +31,7 @@ mod cast;
 mod charset;
 mod chunked_serie;
 mod coding;
+mod country;
 mod datatype;
 mod enums;
 mod eusipa;
@@ -54,6 +55,7 @@ mod logging;
 mod marketdatakind;
 mod marketdatatype;
 mod media;
+mod mic;
 mod parameters;
 mod pluginside;
 mod properties;
@@ -611,7 +613,7 @@ fn register_expression(module: &Bound<'_, PyModule>) -> PyResult<()> {
 
 /// Register the member tables the enum-family classes are built from at
 /// import: `State`, `MarketDataKind`, `MarketDataType`, `Side`, `TimeInForce`
-/// and `PluginSide`.
+/// and `PluginSide` - and the code readings `Country` and `Mic` redirect to.
 fn register_enum_members(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(state::state_members, module)?)?;
     module.add_function(wrap_pyfunction!(state::state_from_spelling, module)?)?;
@@ -643,6 +645,14 @@ fn register_enum_members(module: &Bound<'_, PyModule>) -> PyResult<()> {
     }
     module.add_function(wrap_pyfunction!(side::side_members, module)?)?;
     module.add_function(wrap_pyfunction!(side::side_from_spelling, module)?)?;
+    for function in [
+        wrap_pyfunction!(country::country_currency, module)?,
+        wrap_pyfunction!(mic::mic_operating, module)?,
+        wrap_pyfunction!(mic::mic_is_segment, module)?,
+        wrap_pyfunction!(mic::mic_country, module)?,
+    ] {
+        module.add_function(function)?;
+    }
     Ok(())
 }
 

@@ -451,7 +451,10 @@ through the same codec fills derived identifiers from the table its door
 fixed. A codec without one learns into a registry of each walk's own;
 `isin_registry=` shares one across walks run one after another, bound to a
 store with `from_url` and written back with `commit()` only where it moved,
-and `FixCodec.from_env()` shares the process's own, `IsinRegistry.from_env()`.
+and `FixCodec.from_env()` shares the process's own, `IsinRegistry.from_env()`,
+laid over the embedded common instruments `IsinRegistry.seeded()` holds. A
+row carries the national number its ISIN embeds - Holcim's Valor below -
+and its market's country's currency where it states none.
 A structured product's EUSIPA category is learned off a bridge's own key
 (`EUSIPACode`, `OMS_SSPACategory`, ...) as the row's `eusipacode`, an `int`
 that `yggdryl.Eusipa` names; the key is lifted into no identifier map.
@@ -469,6 +472,7 @@ codec = FixCodec(FixRegistry.from_handle(Path("config/fix")), isin_registry=inst
 stated = [b"8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|"]
 list(codec.lifecycle(codec.parse_lines(stated)))
 assert instruments.get("CH0012214059")["ric"] == "HOLN.S"
+assert instruments.get("CH0012214059")["valor"] == "1221405", "the Valor a CH ISIN embeds"
 
 # A bridge key states a structured product's category beside its ISIN.
 product = [b"8=FIX.4.4|35=D|11=C|22=4|48=CH0123456789|55=ACMEL|207=XSWX|OMS_SSPACategory=2300|10=0|"]
@@ -576,7 +580,8 @@ assert ack.market_data() == []
 `market_data` admits orders, quotes, executions and `W`/`X` book messages - a
 trade as the executions its parse split off - reads each as its one graph
 leaf (a book message one per entry) and sorts them by the instant a book folds
-them at; `graph.BookIterator` then walks them, pruning the executions.
+them at; `graph.BookIterator` then walks them, recording each execution among
+its book's `events`.
 `book_arrow_reader(messages, snapshot_millis=0, filter=None)` folds the same
 messages into book rows, one book per book key. Compose `lifecycle` in front when
 predecessor state matters. `market_arrow_reader` writes the sorted leaves as
@@ -759,5 +764,6 @@ with tempfile.TemporaryDirectory() as directory:
   beyond the grid and the filter (a `Filter`, a `Term`, an `Expression` or a
   predicate's text over the `marketdata` row): books are keyed by the
   instrument's ISIN, else the ticker, else `XX0000000000`, and a book is
-  complete only at a grid tick or a `W` full refresh - every other row states
-  its deltas, which `book.with_previous(previous)` rebuilds.
+  complete only at a grid tick or a `W` full refresh - every other row is a
+  delta book, its `delta` and `events`, which `book.with_previous(previous)`
+  rebuilds.

@@ -180,9 +180,9 @@ One column of frames in, batches out, the capture's own columns carried right af
 
 ## FIX market books
 
-`FixCodec::book_arrow_reader(messages, snapshot_millis, filter)` is the centralized Rust path from semantic messages to Arrow books. The composed reader admits what a book states - orders, quotes and `W`/`X` into its sides, and every execution among its deltas, the kinds [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md#sided-kinds-and-batches) admits - and ignores every other record before it is expanded: administration, requests, an acknowledgement of an execution, trades and batches. A fill moves a book through its order's or quote's report, which the parse [split off](message.md#a-parse-splits-what-a-message-reports) the execution, so the execution stands among the deltas of its instant and moves nothing, and a book message's trade entries (`269=2`) are recorded as the executions they are by the same rule; a venue's acknowledgement, cancel, reject, expiry or replace is its order's report and moves the entry it names. A quote is one entry, resting on each leg it states. Ignored records do not advance book time. `FixMarketIterator` lazily turns each admitted sorted message into `MarketData` values - one direct `OrderEvent` or `QuoteEvent`, or the operations and the `SnapshotEvent` of a `W` / `X` market-data group - while retaining at most that message's expansion; an operation dated before one it already yielded is yielded all the same, with a warning, and the book leaves it out. [`BookIterator`](../graph/book.md#book-fold) applies those operations atomically by effective timestamp, one book per [book key](../graph/book.md#books-by-key) - the instrument's ISIN, whatever its rank, else its ticker, else `XX0000000000`, the number that states none - and [`MarketData::arrow_reader`](../graph/market-data.md#arrow) writes each emitted book as one row of `MarketData::field()`, its `marketdatakind` `BOOK`, closing batches under the codec's row and byte limits. `filter`, where given, is an expression [`Filter`](../expression/filters.md) over that row, bound once: it narrows what the books fold and never admits a kind the rule above prunes, and one naming a column the row does not carry, or answering anything but a boolean, is refused when the reader is built. Nothing a message states fails the door: what cannot stand is [warned about](capture.md#warnings) and left out or defaulted, as [the message](message.md#market-data) and [the book fold](../graph/book.md#book-fold) say; only a source failure is an error item, once after the completed book prefix, and the reader fuses. The call deliberately does not run [`lifecycle`](lifecycle.md): pass enriched messages when predecessor state is required.
+`FixCodec::book_arrow_reader(messages, snapshot_millis, filter)` is the centralized Rust path from semantic messages to Arrow books. The composed reader admits what a book states - orders, quotes and `W`/`X` into its sides and its `delta`, and every execution among its `events`, the kinds [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md#sided-kinds-and-batches) admits - and ignores every other record before it is expanded: administration, requests, an acknowledgement of an execution, trades and batches. A fill moves a book through its order's or quote's report, which the parse [split off](message.md#a-parse-splits-what-a-message-reports) the execution, so the execution stands among the events of its instant and moves nothing, and a book message's trade entries (`269=2`) are recorded as the executions they are by the same rule; a venue's acknowledgement, cancel, reject, expiry or replace is its order's report and moves the entry it names. A quote is one entry, resting on each leg it states. Ignored records do not advance book time. `FixMarketIterator` lazily turns each admitted sorted message into `MarketData` values - one direct `OrderEvent` or `QuoteEvent`, or the operations and the `SnapshotEvent` of a `W` / `X` market-data group - while retaining at most that message's expansion; an operation dated before one it already yielded is yielded all the same, with a warning, and the book leaves it out. [`BookIterator`](../graph/book.md#book-fold) applies those operations atomically by effective timestamp, one book per [book key](../graph/book.md#books-by-key) - the instrument's ISIN, whatever its rank, else its ticker, else `XX0000000000`, the number that states none - and [`MarketData::arrow_reader`](../graph/market-data.md#arrow) writes each emitted book as one row of `MarketData::field()`, its `marketdatakind` `BOOK`, closing batches under the codec's row and byte limits. `filter`, where given, is an expression [`Filter`](../expression/filters.md) over that row, bound once: it narrows what the books fold and never admits a kind the rule above prunes, and one naming a column the row does not carry, or answering anything but a boolean, is refused when the reader is built. Nothing a message states fails the door: what cannot stand is [warned about](capture.md#warnings) and left out or defaulted, as [the message](message.md#market-data) and [the book fold](../graph/book.md#book-fold) say; only a source failure is an error item, once after the completed book prefix, and the reader fuses. The call deliberately does not run [`lifecycle`](lifecycle.md): pass enriched messages when predecessor state is required.
 
-Every booked input is a delta. A book row is emitted where its instant applied a delta, or at a snapshot tick where the book holds a live entry - a snapshot emptying a book is emitted too, empty and complete - and states the deltas its instant applied, in the order applied, each a row of the same market data shape, beside its best tradable bid and ask as its [`bidpx`, `bidqty`, `askpx` and `askqty`](../graph/market.md#bid-and-ask). Only a snapshot tick emits a complete book, nesting its live entries and each side's [price levels](../graph/book.md#limits), best first: every grid tick a positive `snapshot_millis` crosses, and a snapshot input - a `W` full refresh, an empty `W`, inputs stating `snapunix`. Every other book is a delta book: its `alive`, `bidlimits` and `asklimits` cells are null, its `prevuuid` names the book it follows - none for a book key's first book - and [`with_previous`](../graph/book.md#book-fold) over the complete book before it rebuilds it whole. With `snapshot_millis = 0` and no `W`, every book is a delta book. A book row's `executions` cell is null. Python exposes the same path as `book_arrow_reader(messages, snapshot_millis=0, filter=None) -> pyarrow.RecordBatchReader` and JavaScript as `bookArrowReader(messages, snapshotMillis = 0, filter = undefined) -> BatchReader`, `filter` a `Filter`, a `Term` or the text of a predicate; both read back as typed books by `graph.MarketData.from_arrow_reader` / `graph.MarketData.fromArrowReader`. Neither binding reimplements the split, operation conversion, matching, book summaries or Arrow encoding.
+Every order and quote a book folds is recorded in its `delta`, every execution in its `events`. A book row is emitted where its instant recorded either - an instant recording only an execution emits a delta book whose `delta` is empty and whose `events` holds it - or at a snapshot tick where the book holds a live entry - a snapshot emptying a book is emitted too, empty and complete - and states its `delta` and `events`, each in the order applied and each entry a row of the same market data shape, beside its best tradable bid and ask as its [`bidpx`, `bidqty`, `askpx` and `askqty`](../graph/market.md#bid-and-ask). Only a snapshot tick emits a complete book, nesting its live entries and each side's [price levels](../graph/book.md#limits), best first: every grid tick a positive `snapshot_millis` crosses, and a snapshot input - a `W` full refresh, an empty `W`, inputs stating `snapunix`. Every other book is a delta book: its `alive`, `bidlimits` and `asklimits` cells are null, its `prevuuid` names the book it follows - none for a book key's first book - and [`with_previous`](../graph/book.md#book-fold) over the complete book before it rebuilds it whole. With `snapshot_millis = 0` and no `W`, every book is a delta book. A book row's `executions` cell is null. Python exposes the same path as `book_arrow_reader(messages, snapshot_millis=0, filter=None) -> pyarrow.RecordBatchReader` and JavaScript as `bookArrowReader(messages, snapshotMillis = 0, filter = undefined) -> BatchReader`, `filter` a `Filter`, a `Term` or the text of a predicate; both read back as typed books by `graph.MarketData.from_arrow_reader` / `graph.MarketData.fromArrowReader`. Neither binding reimplements the split, operation conversion, matching, book summaries or Arrow encoding.
 
 `FixCodec::market_data(messages)` is the sorted door. It collects a finite capture, admits what `book_arrow_reader` admits and the executions besides - a trade as the executions its parse split off - which stay market data of their own, expands each admitted message into its leaves as [`into_market_data`](message.md#market-data) does - each carrying its message's unmapped fields where the codec's `market_metadata` says so - and stably sorts the operations by the instant each stands at, the snapshot instant a walk stated else the event's own, which is the key `FixMarketIterator` and [`BookIterator`](../graph/book.md#book-fold) check. Sorting the operations rather than the messages is what places an entry whose own clock stands before an earlier message's, so the answer never regresses. Nothing a message states fails the capture: a message its intake refused for what it states is left out with a warning. A source failure ends the capture where it happens - yielded after the operations of every message before it, no later message read - and the iterator is fused. `market_arrow_reader(messages)` writes those operations as `MarketData::field()` rows under the codec's row and byte bounds, every row of the capture read before a source failure and then that failure, and `market_data_arrow_reader(source)` is its twin over batches of FIX rows, refusing a schema that makes no root before a row is read. The twin reads each row as its own message, its market facts derived from what the row states, so over rows no walk wrote it answers the leaves `market_arrow_reader` answers for their messages. Neither runs [`lifecycle`](lifecycle.md): `codec.market_data(codec.lifecycle(messages))` - or `market_arrow_reader` over the same walk - is the sorted handoff when the walk's enrichment is wanted, and a walked capture reaches it as messages, never as the rows `lifecycle_arrow_reader` writes: what the walk settles from a message's predecessors - `prevpx`, `prevqty`, a side or ticker it carries forward, an execution instant - is no cell of the row, and the twin reads a walked row without it.
 
@@ -223,12 +223,13 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64, filter: Optio
         [MarketKind::QuoteEvent, MarketKind::QuoteEvent, MarketKind::QuoteEvent, MarketKind::ExecutionEvent]
     );
     // The book walk records the trade entry as the execution it is: the
-    // snapshot is a complete book, the bid's change and the execution a
-    // delta book over it.
+    // snapshot is a complete book, and a delta book over it states the bid's
+    // change in its delta and the execution in its events.
     let books = BookIterator::new(operations.into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
     assert_eq!(books.len(), 2);
     assert!(books[0].is_complete() && !books[1].is_complete());
-    assert_eq!(books[1].deltas().len(), 2);
+    assert_eq!((books[1].delta().len(), books[1].events().len()), (1, 1));
+    assert_eq!(books[1].executions().count(), 1);
     assert_eq!(books[1].best_price(Side::Buy).map(|price| price.to_string()).as_deref(), Some("101"));
 
     // The book door does not sort: the same capture, out of order, leaves the
@@ -241,7 +242,8 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64, filter: Optio
         reader.map(|batch| batch.expect("a batch").num_rows()).sum()
     };
     // A filter narrows what the books fold: one keeping the executions alone
-    // folds the book of their instant, stating them as its deltas.
+    // folds the book of their instant, a delta book stating them among its
+    // events and nothing in its delta.
     let executions: Filter = "marketdatakind = 'EXEC'".parse()?;
     assert_eq!(rows(codec.book_arrow_reader(capture.clone(), 0, Some(&executions))?), 1);
 
@@ -280,17 +282,19 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64, filter: Optio
         "execution_event",
     ]
     # The book walk records the trade entry as the execution it is: the
-    # snapshot is a complete book, the bid's change and the execution a
-    # delta book over it.
+    # snapshot is a complete book, and a delta book over it states the bid's
+    # change in its delta and the execution in its events.
     books = list(graph.BookIterator(operations))
     assert len(books) == 2
     assert books[0].is_complete and not books[1].is_complete
-    assert len(books[1].deltas) == 2
+    assert (len(books[1].delta), len(books[1].events)) == (1, 1)
+    assert len(books[1].executions) == 1
     best = books[1].best_price(Side.BUYS)
     assert best is not None and best.as_py() == Decimal(101)
 
     # A filter narrows what the books fold: one keeping the executions alone
-    # folds the book of their instant, stating them as its deltas.
+    # folds the book of their instant, a delta book stating them among its
+    # events and nothing in its delta.
     assert codec.book_arrow_reader(capture, 0, "marketdatakind = 'EXEC'").read_all().num_rows == 1
 
     # The same operations as rows, from the messages or from their FIX rows.
@@ -324,16 +328,18 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64, filter: Optio
       ['quote_event', 'quote_event', 'quote_event', 'execution_event'],
     )
     // The book walk records the trade entry as the execution it is: the
-    // snapshot is a complete book, the bid's change and the execution a
-    // delta book over it.
+    // snapshot is a complete book, and a delta book over it states the bid's
+    // change in its delta and the execution in its events.
     const books = [...new graph.BookIterator(operations)]
     assert.equal(books.length, 2)
     assert.ok(books[0].isComplete && !books[1].isComplete)
-    assert.equal(books[1].deltas().length, 2)
+    assert.deepEqual([books[1].delta().length, books[1].events().length], [1, 1])
+    assert.equal(books[1].executions().length, 1)
     assert.equal(books[1].bestPrice('BUYS'), '101')
 
     // A filter narrows what the books fold: one keeping the executions alone
-    // folds the book of their instant, stating them as its deltas.
+    // folds the book of their instant, a delta book stating them among its
+    // events and nothing in its delta.
     assert.equal(codec.bookArrowReader(capture, 0, "marketdatakind = 'EXEC'").intoTable().numRows, 1)
 
     // The same operations as rows, from the messages or from their FIX rows.

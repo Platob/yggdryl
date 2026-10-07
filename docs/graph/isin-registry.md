@@ -6,18 +6,20 @@
 
 | Key | Rule |
 | --- | --- |
-| Owner | `yggdryl::IsinRegistry` and `yggdryl::IsinEntry` (root `isin_registry.rs`, with `isin_registry/store.rs` and `isin_registry/env.rs`); Python `yggdryl.IsinRegistry`; JavaScript `IsinRegistry`. A binding holds one table behind one lock and crosses a row as a `dict` / plain object of its columns; `IsinEntry` is Rust-only |
+| Owner | `yggdryl::IsinRegistry` and `yggdryl::IsinEntry` (root `isin_registry.rs`, with `isin_registry/store.rs`, `isin_registry/env.rs` and `isin_registry/seed.rs`); Python `yggdryl.IsinRegistry`; JavaScript `IsinRegistry`. A binding holds one table behind one lock and crosses a row as a `dict` / plain object of its columns; `IsinEntry` is Rust-only |
 | Key | a real ISIN - closing under a listed prefix, `IdType::Isin.is_real`, `XT` for a referential instrument among the agency prefixes - the instrument's one atomic code; a `ZZ` number, a masked one or a typo keys no row. A ticker leads back to its row through an exact inverse index the rows keep, gated by the market the listing was stated on; a RIC, a Bloomberg symbol, a FIGI, a CUSIP or a SEDOL is an equivalent the ISIN fills and is never looked up |
-| Row | `IsinEntry::field()`, the non-null struct `isinregistry`: `isin` (`isin`, required), `updunix` (`datetime64(ns, UTC)`, when the statement that last moved the row happened - a stamp, deciding nothing), `cficode` (`cfi`, detailed only), `countrycode` (`country`, the stated country of issue, listed only), `forexcode` (`forex`, the pair an FX or referential number names), `underlyingisin` (`isin`, the instrument it is written on - FIX's underlying - real and never the row's own ISIN), `eusipacode` (`int32`, the [product category](#the-product-category) of a structured product, a four-digit EUSIPA code), `miccode` (`mic`, the market its listing columns belong to, never `XXXX`), `ticker` (`utf8`, one to 64 bytes), `currency` (`ccy`, the listing's trading currency, never `XXX`), then one column per `SecurityIDSource(22)` type but the ISIN, in code-set order - `cusip`, `sedol`, `quik`, `ric`, `isoccy`, `isoctry`, `exchsymb`, `cta`, `bloomberg`, `wkn`, `dutch`, `valor`, ... `dti` - each typed by `IdType::value_dtype` (`ric`, `bbg`, `figi`, `lei`, `dti`, `utf8` for a type with no datatype of its own): 42 columns, at most `IsinRegistry::MAX_EQUIVALENTS` (12) codes stated per row |
-| Instrument and listing columns | `cficode`, `countrycode`, `forexcode`, `underlyingisin`, `eusipacode` and every code `IdType::is_listing` does not name are the instrument's and fill on any market; `miccode`, `ticker`, `currency` and the listing codes - `ric`, `bloomberg`, `exchsymb` (SIX's symbol on `XSWX` among them), `cta`, `sedol`, `figi`, `mktassigned`, `fim`, `umtf` - are one listing's, and move together |
-| Derived, never stored | the country of issue the ISIN's prefix names where ISO 3166 lists it (`IsinEntry::country()`, the stated country first), and the national number an ISIN embeds ([`securityid::embedded`](../types/codes/isin.md)) |
+| Row | `IsinEntry::field()`, the non-null struct `isinregistry`: `isin` (`isin`, required), `updunix` (`datetime64(ns, UTC)`, when the statement that last moved the row happened - a stamp, deciding nothing), `cficode` (`cfi`, detailed only), `countrycode` (`country`, the stated country of issue, listed only), `forexcode` (`forex`, the pair an FX or referential number names), `underlyingisin` (`isin`, the instrument it is written on - FIX's underlying - real and never the row's own ISIN), `eusipacode` (`int32`, the [product category](#the-product-category) of a structured product, a four-digit EUSIPA code), `miccode` (`mic`, the market its listing columns belong to, never `XXXX`), `ticker` (`utf8`, one to 64 bytes), `fisn` (`fisn`, the ISO 18774 Financial Instrument Short Name the instrument states, FIX's `FinancialInstrumentShortName(2737)`), `currency` (`ccy`, the listing's trading currency, never `XXX`), then one column per `SecurityIDSource(22)` type but the ISIN, in code-set order - `cusip`, `sedol`, `quik`, `ric`, `isoccy`, `isoctry`, `exchsymb`, `cta`, `bloomberg`, `wkn`, `dutch`, `valor`, ... `dti` - each typed by `IdType::value_dtype` (`ric`, `bbg`, `figi`, `lei`, `dti`, `utf8` for a type with no datatype of its own): 43 columns, at most `IsinRegistry::MAX_EQUIVALENTS` (12) codes stated per row |
+| Instrument and listing columns | `cficode`, `countrycode`, `forexcode`, `underlyingisin`, `eusipacode`, `fisn` and every code `IdType::is_listing` does not name are the instrument's and fill on any market; `miccode`, `ticker`, `currency` and the listing codes - `ric`, `bloomberg`, `exchsymb` (SIX's symbol on `XSWX` among them), `cta`, `sedol`, `figi`, `mktassigned`, `fim`, `umtf` - are one listing's, and move together |
+| Derived, never stored | the country of issue the ISIN's prefix names where ISO 3166 lists it (`IsinEntry::country()`, the stated country first) |
+| Derived facts | wherever the registry folds a row - creates it, or a statement moves it - it derives, once, after the statement has landed, the facts the row's own columns imply into the columns the statement left empty: the national number its ISIN embeds ([`securityid::embedded`](../types/codes/isin.md)) in its equivalent column - `cusip` for `US` and `CA`, `sedol` for `GB`, `IE`, `GG`, `JE` and `IM` behind `00`, `wkn` for `DE` behind `000`, `valor` for `CH` and `LI` - passed over where the row has no room left, and the `currency`, the legal tender ISO 4217 gives the country its market is in (`Mic::country`, `Country::currency`). The currency is a listing's, so it comes from the market alone, never from the ISIN's country: a row of no market, or of a market of no single country such as `XOFF`, takes none, and a market arriving later sets it. A default never displaces a statement: a statement derives nothing - `merge(entry)` folds what the entry states - so a default only fills what the held row leaves empty; a later statement replaces one as it replaces any value; and a listing switch, which clears the currency and the listing codes - a derived SEDOL among them - derives them again for the new market. A derived SEDOL is a listing code, filled into an element on the row's market alone. `learn` never reads an element's derived identifiers, so none of this is learned back from what a fill derived |
+| Seed | `IsinRegistry::seeded()` - Python and JavaScript `IsinRegistry.seeded()` - is a registry holding the common instruments `config/isin/instruments.json` states: one JSON array sorted by ISIN, each row keyed as the registry's columns are - `isin`, `ticker`, `miccode` (absent for an index, which trades on no market), `currency`, `countrycode` (absent where an index of a supranational prefix measures no one country), `cficode` in ISO 10962:2021 (`TIEXXX` an equity index) and, where FIRDS spells one, `fisn` - and nothing else. It is the one file maintained by hand; the crate embeds its copy `rust/src/isin_registry/seed.json`, inside the crate's package so a published crate and a source distribution carry it, which `python scripts/check_isin_seed.py --sync` writes byte for byte. The copy is read once per process through the column rule of `extend_from_arrow_reader`, each row folded by `merge`, so a seed row is an ordinary statement and its [derived facts](#derived-facts) are any row's; the registry is clean, bound to no store, and shares the one table until a write moves it. `IsinRegistry::new()` holds none of it. `scripts/check_isin_seed.py` checks the file in the change that edits it - its shape, every ISIN's ISO 6166 check digit, uniqueness and order, a country equal to the prefix but under an agency prefix, every MIC in the ISO 10383 table, a 2021 CFI code, a short name's shape, the crate's copy equal to the file - and `rust/tests/isin_registry/seed.rs` pins what the embedded copy holds and that it is the file's bytes |
 | `merge(entry)` | folds one row into the row of its ISIN by the [update rule](#the-update-rule); whether anything moved. Refuses an ISIN that is not real (`expected an ISIN some agency numbers, got ...`) and a new ISIN past `max_instruments` |
-| `learn(event)` | reads what a dated market element states about its instrument, keyed by its stated real ISIN alone, at its `currunix`: its detailed CFI code, its market but `XXXX`, its ticker, its currency but `XXX` - unless the element holds a currency pair, where `Currency(15)` is the dealt currency and no listing's - the pair it states as a `forex` identifier, and each equivalent its map answers with a real value ([`IdType::is_real`](identifier.md#ranks)); never a derived code, a masked number or a typo, an `Other` type or an `instrumentid`, and never an underlying or a product category - those are the [lifecycle's](../fix/lifecycle.md#instruments-are-learned-in-instant-order) reading of a FIX message ([The underlying](#the-underlying), [The product category](#the-product-category)). A new ISIN past the bound is skipped with one warning per registry; a known one keeps learning |
-| `fill(element)` | from the row its real ISIN - stated or derived - names, a miss ending the fill, else the row its ticker names on its market (`get_by_ticker`), whose ISIN is derived first - over none, or over a number [ranking](identifier.md#ranks) below it, a masked one or a typo: each equivalent of a type it holds nothing of as a `derived` identifier (its base key filled, so `map['valor']` answers), the listing codes only where its market - none and `XXXX` unstated - is the row's or either is unstated, the pair, the ticker on the same market, its CFI code where it states none or the row's [refines](../types/codes/cfi.md#two-statements-of-one-instrument) it, and the currency only where both markets are stated and equal, the ticker is the row's and it states none; the element is finalized where anything moved. Nothing reaches a FIX field or the wire |
+| `learn(event)` | reads what a dated market element states about its instrument, keyed by its stated real ISIN alone, at its `currunix`: its detailed CFI code, its market but `XXXX`, its ticker, its currency but `XXX` - unless the element holds a currency pair, where `Currency(15)` is the dealt currency and no listing's - the pair it states as a `forex` identifier, the short name it states as a `fisn` identifier, and each equivalent its map answers with a real value ([`IdType::is_real`](identifier.md#ranks)); never a derived code, a masked number or a typo, an `Other` type or an `instrumentid`, and never an underlying or a product category - those are the [lifecycle's](../fix/lifecycle.md#instruments-are-learned-in-instant-order) reading of a FIX message ([The underlying](#the-underlying), [The product category](#the-product-category)). A new ISIN past the bound is skipped with one warning per registry; a known one keeps learning |
+| `fill(element)` | from the row its real ISIN - stated or derived - names, a miss ending the fill, else the row its ticker names on its market (`get_by_ticker`), whose ISIN is derived first - over none, or over a number [ranking](identifier.md#ranks) below it, a masked one or a typo: each equivalent of a type it holds nothing of as a `derived` identifier (its base key filled, so `map['valor']` answers), the listing codes only where its market - none and `XXXX` unstated - is the row's or either is unstated, the pair, the short name, the ticker on the same market, its CFI code where it states none or the row's [refines](../types/codes/cfi.md#two-statements-of-one-instrument) it, and the currency only where both markets are stated and equal, the ticker is the row's and it states none; the element is finalized where anything moved. Nothing reaches a FIX field or the wire |
 | `enrich(event)` | `learn`, then `fill` |
 | Reads | `get(isin)` borrows a row, allocation-free; `get_by_ticker(ticker, market)` the one row listing the ticker whose market is `market`, or where either is unstated - none and `XXXX` unstated - two rows answering being ambiguous and answering none - Python `get_by_ticker(ticker, market=None)`, JavaScript `getByTicker(ticker, market?)`, a market the `mic` datatype refuses refused; `iter()` in ISIN order; `len`, `is_empty`, `max_instruments`, `is_dirty`; `remove(isin)`, `clear()` |
 | Persistence | `from_holder(holder)` / `from_url(url, properties)` bind and load - Python `IsinRegistry.from_url(location, max_instruments=..., **properties)`, JavaScript `IsinRegistry.fromUrl(location, maxInstruments?, properties?)`; `set_holder` / `try_with_holder` bind a registry already holding rows, folding them over the store's; `commit()` writes the table back as one snapshot only where it moved; `extend_from_handle(handle)` / `from_arrow_reader(reader)` / `extend_from_arrow_reader(reader)` read any record stream without binding, and `into_arrow_reader()` is the snapshot stream under `IsinEntry::field()` ([Persistence](#persistence)) |
-| The process's own | `from_env()` resolves once from `YGGDRYL_ISIN_REGISTRY_URI`, else `~/.config/yggdryl/isin/`, shared behind one lock; `install_env` installs one first; `FixCodec::from_env()` attaches it, `FixCodec::new` attaches none, and nothing commits but the caller ([The process registry](#the-process-registry)) |
+| The process's own | `from_env()` resolves once from `YGGDRYL_ISIN_REGISTRY_URI`, else `~/.config/yggdryl/isin/`, else no store, laid over the [seed](#seed) - the store's rows fold over the seed's, so a value the store states wins and a seed row it has none of stands, clean after the load - shared behind one lock; `install_env` installs one first; `FixCodec::from_env()` attaches it, `FixCodec::new` attaches none, and nothing commits but the caller ([The process registry](#the-process-registry)) |
 | Sharing | `FixCodec::with_isin_registry(Arc<Mutex<IsinRegistry>>)` shares one table with every lifecycle the codec runs and every parse door it opens: a parse door fixes the table once as it opens, under one lock on the calling thread, and fills derived identifiers from it on every worker; a lifecycle learns and fills under one lock per message. Python `FixCodec(..., isin_registry=registry)`, JavaScript `new fix.FixCodec(registry, { isinRegistry })`, each with an `isin_registry` / `isinRegistry` getter answering the caller's own table |
 
 ## Use
@@ -152,6 +154,152 @@
     assert.deepEqual(back.get('CH0012214059'), row)
     ```
 
+## Seed
+
+`IsinRegistry::seeded()` - Python `IsinRegistry.seeded()`, JavaScript `IsinRegistry.seeded()` - answers a registry holding the common instruments the crate ships: large equities on their primary listing and the main equity indices, each with its ticker, market, currency, country, CFI code and, where FIRDS spells one, its short name. The source is `config/isin/instruments.json`, the one file maintained by hand; the crate embeds its copy `rust/src/isin_registry/seed.json`, which `python scripts/check_isin_seed.py --sync` writes byte for byte. Each seed row is folded by `merge` as an ordinary statement, so it carries the [derived facts](#derived-facts) any row carries - Apple's CUSIP below is one, stated nowhere in the file. The registry is clean and bound to no store, so `commit` refuses; each call answers a registry of its own, sharing the one parsed table until a write moves it. `IsinRegistry::new()` holds none of it, and [`from_env`](#the-process-registry) lays its store over it.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{IdType, IsinRegistry, Mic};
+
+    let registry = IsinRegistry::seeded();
+    assert!(!registry.is_empty() && !registry.is_dirty() && registry.holder().is_none());
+    assert!(IsinRegistry::new().is_empty(), "a registry built by hand holds none of it");
+
+    let apple = registry.get("US0378331005").expect("seeded");
+    assert_eq!(apple.ticker(), Some("AAPL"));
+    assert_eq!(apple.miccode(), Some(&Mic::new("XNAS")?));
+    assert_eq!(apple.currency().map(|code| code.as_str()), Some("USD"));
+    assert_eq!(apple.fisn().map(|name| name.as_str()), Some("APPLE INC/SH SH"));
+    assert_eq!(apple.cficode().map(|code| code.as_str()), Some("ESVUFR"));
+    assert_eq!(apple.get(&IdType::Cusip), Some("037833100"), "the CUSIP its ISIN embeds");
+    assert_eq!(registry.get_by_ticker("AAPL", Some(&Mic::new("XNAS")?)), Some(apple));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IsinRegistry
+
+    registry = IsinRegistry.seeded()
+    assert len(registry) > 0 and not registry.is_dirty
+    assert len(IsinRegistry()) == 0, "a registry built by hand holds none of it"
+
+    apple = registry.get("US0378331005")
+    assert apple is not None
+    assert (apple["ticker"], apple["miccode"], apple["currency"], apple["fisn"], apple["cficode"]) == (
+        "AAPL",
+        "XNAS",
+        "USD",
+        "APPLE INC/SH SH",
+        "ESVUFR",
+    )
+    assert apple["cusip"] == "037833100", "the CUSIP its ISIN embeds"
+    assert registry.get_by_ticker("AAPL", "XNAS") == apple
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IsinRegistry } = require('yggdryl')
+
+    const registry = IsinRegistry.seeded()
+    assert.ok(registry.length > 0)
+    assert.equal(registry.isDirty, false)
+    assert.equal(new IsinRegistry().length, 0, 'a registry built by hand holds none of it')
+
+    const apple = registry.get('US0378331005')
+    assert.deepEqual(
+      [apple.ticker, apple.miccode, apple.currency, apple.fisn, apple.cficode],
+      ['AAPL', 'XNAS', 'USD', 'APPLE INC/SH SH', 'ESVUFR'],
+    )
+    assert.equal(apple.cusip, '037833100', 'the CUSIP its ISIN embeds')
+    assert.deepEqual(registry.getByTicker('AAPL', 'XNAS'), apple)
+    ```
+
+## Derived facts
+
+A row the registry folds - created, or moved by a statement - carries the facts its own columns imply, in the columns the statement left empty: the national number its ISIN embeds ([`securityid::embedded`](../types/codes/isin.md)) - a CUSIP for `US` and `CA`, a SEDOL for `GB`, `IE`, `GG`, `JE` and `IM` behind `00`, a WKN for `DE` behind `000`, a Valor for `CH` and `LI` - and the `currency`, the legal tender of the country its market is in ([`Mic::country`](../types/codes/mic.md#operating-mic-and-country), [`Country::currency`](../types/codes/country.md#currency)). The currency is the listing's, so it comes from the market alone, never from the ISIN's prefix: a US ISIN listed on `XETR` defaults to `EUR`, and a row of no market takes none until a market arrives. A default fills only what is empty; a stated value stands, and a later statement replaces a default as it replaces any value. A listing switch clears the currency and the listing codes - a derived SEDOL among them - and derives them again for the new market. `learn` never reads an element's derived identifiers, so nothing a fill derived is learned back.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{Ccy, IdType, Isin, IsinEntry, IsinRegistry, Mic};
+
+    let mut registry = IsinRegistry::new();
+    // A GB ISIN behind `00` embeds its SEDOL, and XLON is in GB.
+    registry.merge(IsinEntry::new(Isin::new("GB0002634946")?).with_miccode(Some(Mic::new("XLON")?)))?;
+    let row = registry.get("GB0002634946").expect("the row");
+    assert_eq!(row.get(&IdType::Sedol), Some("0263494"));
+    assert_eq!(row.currency().map(|code| code.as_str()), Some("GBP"));
+
+    // The currency is the market's country's, never the ISIN's; no market, none.
+    registry.merge(IsinEntry::new(Isin::new("US0378331005")?).with_miccode(Some(Mic::new("XETR")?)))?;
+    let apple = registry.get("US0378331005").expect("the row");
+    assert_eq!(apple.currency().map(|code| code.as_str()), Some("EUR"));
+    assert_eq!(apple.get(&IdType::Cusip), Some("037833100"));
+    registry.merge(IsinEntry::new(Isin::new("GB0002374006")?))?;
+    let unlisted = registry.get("GB0002374006").expect("the row");
+    assert_eq!(unlisted.get(&IdType::Sedol), Some("0237400"));
+    assert_eq!(unlisted.currency(), None);
+
+    // A stated value stands over a default.
+    registry.merge(IsinEntry::new(Isin::new("GB0002634946")?).with_currency(Some(Ccy::new("USD")?)))?;
+    let row = registry.get("GB0002634946").expect("the row");
+    assert_eq!(row.currency().map(|code| code.as_str()), Some("USD"));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IsinRegistry
+
+    registry = IsinRegistry()
+    # A GB ISIN behind `00` embeds its SEDOL, and XLON is in GB.
+    assert registry.merge({"isin": "GB0002634946", "miccode": "XLON"})
+    row = registry.get("GB0002634946")
+    assert row is not None and (row["sedol"], row["currency"]) == ("0263494", "GBP")
+
+    # The currency is the market's country's, never the ISIN's; no market, none.
+    assert registry.merge({"isin": "US0378331005", "miccode": "XETR"})
+    apple = registry.get("US0378331005")
+    assert apple is not None and (apple["cusip"], apple["currency"]) == ("037833100", "EUR")
+    registry.merge({"isin": "GB0002374006"})
+    unlisted = registry.get("GB0002374006")
+    assert unlisted is not None and (unlisted["sedol"], unlisted["currency"]) == ("0237400", None)
+
+    # A stated value stands over a default.
+    assert registry.merge({"isin": "GB0002634946", "currency": "USD"})
+    assert registry.get("GB0002634946")["currency"] == "USD"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IsinRegistry } = require('yggdryl')
+
+    const registry = new IsinRegistry()
+    // A GB ISIN behind `00` embeds its SEDOL, and XLON is in GB.
+    assert.ok(registry.merge({ isin: 'GB0002634946', miccode: 'XLON' }))
+    const row = registry.get('GB0002634946')
+    assert.deepEqual([row.sedol, row.currency], ['0263494', 'GBP'])
+
+    // The currency is the market's country's, never the ISIN's; no market, none.
+    assert.ok(registry.merge({ isin: 'US0378331005', miccode: 'XETR' }))
+    const apple = registry.get('US0378331005')
+    assert.deepEqual([apple.cusip, apple.currency], ['037833100', 'EUR'])
+    registry.merge({ isin: 'GB0002374006' })
+    const unlisted = registry.get('GB0002374006')
+    assert.deepEqual([unlisted.sedol, unlisted.currency], ['0237400', null])
+
+    // A stated value stands over a default.
+    assert.ok(registry.merge({ isin: 'GB0002634946', currency: 'USD' }))
+    assert.equal(registry.get('GB0002634946').currency, 'USD')
+    ```
+
 ## The update rule
 
 A statement - a row `merge` folds, or what `learn` reads off an element - folds into the row of its ISIN column by column. No clock gates it: the statement's `updunix` is a stamp, and what decides is whether the value is valid and whether it differs.
@@ -168,6 +316,8 @@ A statement - a row `merge` folds, or what `learn` reads off an element - folds 
 | the listing, on another market | a statement stating a ticker or a listing code switches the listing whole: `miccode` becomes its market, `ticker`, `currency` and the listing codes become what it states, and every listing column it does not restate is cleared; a statement stating a currency alone names no listing and moves nothing of it |
 | `underlyingisin` | an instrument fact: a real ISIN other than the row's own fills or replaces on any market, and no listing switch clears it; the row's own ISIN or a typo is no statement |
 | `eusipacode` | an instrument fact: a code of a category's shape fills or replaces on any market, and no listing switch clears it; a number of no category's shape is dropped with one warning ([The product category](#the-product-category)) |
+| `fisn` | an instrument fact: a short name fills or replaces on any market, and no listing switch clears it |
+| a derived default | once a statement has landed, the code the ISIN embeds and the currency of the row's market's country fill the columns it left empty; a default never displaces a statement, and a later statement replaces it ([Derived facts](#contract)) |
 | `updunix` | the later of the two, only where something moved |
 
 A statement that moves nothing allocates nothing and leaves the registry clean.
@@ -198,11 +348,12 @@ A statement that moves nothing allocates nothing and leaves the registry clean.
     assert!(registry.merge(holcim()?.with_cficode(Some(Cfi::new("ESVUFR")?)))?);
     assert!(registry.merge(holcim()?.with_cficode(Some(Cfi::new("ESNUFR")?)))?);
     assert_eq!(registry.get("CH0012214059").and_then(IsinEntry::cficode).map(Cfi::as_str), Some("ESNUFR"));
-    // A currency alone on another market names no listing; a listing code there switches it whole.
+    // A currency alone on another market names no listing; a listing code there switches it
+    // whole, and the currency the switch states none of defaults to the market's.
     assert!(!registry.merge(holcim()?.with_miccode(Some(Mic::new("XLON")?)).with_currency(Some(Ccy::new("GBP")?)))?);
     assert!(registry.merge(holcim()?.with_miccode(Some(Mic::new("XLON")?)).try_with_code(IdType::Ric, "HOLN.L")?)?);
     let row = registry.get("CH0012214059").expect("the row");
-    assert_eq!((row.miccode().map(Mic::as_str), row.get(&IdType::Ric), row.currency()), (Some("XLON"), Some("HOLN.L"), None));
+    assert_eq!((row.miccode().map(Mic::as_str), row.get(&IdType::Ric), row.currency().map(Ccy::as_str)), (Some("XLON"), Some("HOLN.L"), Some("GBP")));
     assert_eq!(row.get(&IdType::Cusip), Some("037833100"), "the instrument's own columns stay");
     ```
 
@@ -220,11 +371,12 @@ A statement that moves nothing allocates nothing and leaves the registry clean.
     # A typo under a checked code is dropped; a real code replaces.
     assert not registry.merge({"isin": HOLCIM, "cusip": "037833101"})
     assert registry.merge({"isin": HOLCIM, "cusip": "037833100", "countrycode": "LI"})
-    # A currency alone on another market names no listing; a listing code there switches it whole.
+    # A currency alone on another market names no listing; a listing code there switches it
+    # whole, and the currency the switch states none of defaults to the market's.
     assert not registry.merge({"isin": HOLCIM, "miccode": "XLON", "currency": "GBP"})
     assert registry.merge({"isin": HOLCIM, "miccode": "XLON", "ric": "HOLNl.L"})
     row = registry.get(HOLCIM)
-    assert row is not None and (row["miccode"], row["ric"], row["ticker"], row["currency"]) == ("XLON", "HOLNl.L", None, None)
+    assert row is not None and (row["miccode"], row["ric"], row["ticker"], row["currency"]) == ("XLON", "HOLNl.L", None, "GBP")
     assert (row["cusip"], row["countrycode"]) == ("037833100", "LI"), "the instrument's own columns stay"
     # A refining CFI code refines; a contradicting one replaces.
     assert registry.merge({"isin": HOLCIM, "cficode": "ESVXXX"})
@@ -248,11 +400,12 @@ A statement that moves nothing allocates nothing and leaves the registry clean.
     // A typo under a checked code is dropped; a real code replaces.
     assert.ok(!registry.merge({ isin: HOLCIM, cusip: '037833101' }))
     assert.ok(registry.merge({ isin: HOLCIM, cusip: '037833100', countrycode: 'LI' }))
-    // A currency alone on another market names no listing; a listing code there switches it whole.
+    // A currency alone on another market names no listing; a listing code there switches it
+    // whole, and the currency the switch states none of defaults to the market's.
     assert.ok(!registry.merge({ isin: HOLCIM, miccode: 'XLON', currency: 'GBP' }))
     assert.ok(registry.merge({ isin: HOLCIM, miccode: 'XLON', ric: 'HOLNl.L' }))
     const row = registry.get(HOLCIM)
-    assert.deepEqual([row.miccode, row.ric, row.ticker, row.currency], ['XLON', 'HOLNl.L', null, null])
+    assert.deepEqual([row.miccode, row.ric, row.ticker, row.currency], ['XLON', 'HOLNl.L', null, 'GBP'])
     assert.deepEqual([row.cusip, row.countrycode], ['037833100', 'LI'], 'the instrument\'s own columns stay')
     // A refining CFI code refines; a contradicting one replaces.
     assert.ok(registry.merge({ isin: HOLCIM, cficode: 'ESVXXX' }))
@@ -522,6 +675,8 @@ A registry is bound to one store and loaded from it once: `from_holder(holder)` 
 
 `commit()` writes the table back only where it moved since it was loaded or last committed, so the store holds exactly the snapshot (`into_arrow_reader`) whatever its layout: a leaf is rewritten in one overwrite, and truncated by a registry emptied; an Iceberg table is replaced in one atomic snapshot, every row of every partition, an emptied registry one empty snapshot that keeps the table a table; a plain folder has its record parts of the store's encoding removed - a leaf of another encoding or a file that is no record part, a README beside the parts, is never touched - then the snapshot laid out as one `part-0.arrows` under the layout the folder spells, none where the registry is empty. A clean registry touches the store with no call and answers no rows; a registry bound to no store refuses. A leaf names its encoding by its name, so `instruments.parquet` in a build without Parquet is refused at the binding rather than laid out as something else, and a location inside an Iceberg table - one partition of it - is refused too. Nothing commits implicitly: a lifecycle learns into the table, and the caller commits. The store's own rules hold: two processes committing whole snapshots to one file lose each other's rows, and an Iceberg table at the location is replaced atomically.
 
+In a medallion pipeline the registry is no stage of its own, since nothing but the lifecycle teaches it: the refined FIX parsing stage - the lifecycle walk to `silver.fix_messages` - commits the codec's registry once the refined write has drained the walk, so the commit holds every instrument the window taught, and a window that taught nothing writes nothing. Bound to an unpartitioned Iceberg table, that commit is one snapshot replacing every row, and the first one carries the seed rows into the lake's instruments table, which is then the whole reference.
+
 `extend_from_arrow_reader` resolves each column of the reader's schema once, before a row is read: the registry's own name, any spelling or alias of an identifier type (`RIC`, `riccode`, `BloombergSymbol`, `ISINCode`, `ccypair`), a field name a type is spelled by (`#ISINCODE`, `cusip_code`), or the registry's own spellings (`cfi`/`cficode`, `country`/`countrycode`/`countryofissue`, `mic`/`miccode`, `ticker`/`symbol`, `ccy`/`currency`/`currencycode`, `updunix`, `underlyingisin` or any key naming an underlying's ISIN - `UnderlyingISIN`, `OMS_Underlying_ISIN_Code` - and `eusipa`, `eusipacode`, `eusipacategory`, `sspa`, `sspacode` or `sspacategory` for the product category - Euronext's `EUSIPA_Code` - its cells numbers or the text of one); a column naming nothing is ignored. Two columns naming one fact are refused naming both, and a stream with no `isin` column is refused naming the columns it has - a stream of no columns at all, what a missing store reads as, is the empty registry. One cast plan lands each batch under the resolved subset of the row, a cell a typed column cannot hold landing null; a typed code column's cells are adopted as the landing proved them, and a `utf8` column's through its type's value rule. Each row folds through `merge`, so rows of one ISIN - in one file, or across a folder's parts - fold in the order they are read, and a load past `max_instruments` is refused naming the row rather than truncated. `extend_from_handle(handle)` reads a handle's own record stream the same way without binding to it, and `into_arrow_reader()` clones the table's `Arc` and lays the rows out one bounded batch at a time, holding one batch and never the table; a learn while it streams copies the table once and moves nothing the stream reads.
 
 === "Rust"
@@ -682,9 +837,9 @@ An Iceberg table is the store a pipeline keeps its instruments in: created from 
 1. a registry installed by `install_env` - Python `IsinRegistry.install_env(registry)`, JavaScript `IsinRegistry.installEnv(registry)` - before anything resolves one; installing after a resolution is a typed conflict;
 2. the location `YGGDRYL_ISIN_REGISTRY_URI` names: a URL of any scheme this build holds - a local folder or leaf, an Iceberg table's folder, an object store - or a bare path, a leading `~` the home directory; an empty value reads as unset, and a store holding nothing yet is an empty first run;
 3. `~/.config/yggdryl/isin/`, a folder of Arrow IPC parts the first `commit` lays out;
-4. with no home directory, an empty registry bound to nothing.
+4. with no home directory, the [seed](#seed) bound to nothing.
 
-A location that names a scheme this build has no backend for, a store that cannot be read or a row the registry refuses is an error, never the empty registry, and the default stays unresolved so the next call retries. `FixCodec::from_env()` - Python `FixCodec.from_env()`, JavaScript `FixCodec.fromEnv()` - is the one codec constructor that attaches it, so every parse through that codec fills from it and every lifecycle learns into it; `FixCodec::new` and the bindings' constructors attach none unless handed a registry. Nothing commits implicitly: what the walks learned reaches the store when the caller commits.
+Every store is laid over the seed: its rows fold over the seed's by the [update rule](#the-update-rule), so a value the store states wins and a seed row it has none of stands, clean after the load; a store holding nothing loads as the seed bound to it, and the seed reaches the store with the first commit that moves anything, as part of its snapshot. A location that names a scheme this build has no backend for, a store that cannot be read or a row the registry refuses is an error, never the seed alone, and the default stays unresolved so the next call retries. `FixCodec::from_env()` - Python `FixCodec.from_env()`, JavaScript `FixCodec.fromEnv()` - is the one codec constructor that attaches it, so every parse through that codec fills from it and every lifecycle learns into it; `FixCodec::new` and the bindings' constructors attach none unless handed a registry. Nothing commits implicitly: what the walks learned reaches the store when the caller commits.
 
 ```bash
 YGGDRYL_ISIN_REGISTRY_URI=s3://bucket/instruments/   # an object store folder of IPC parts

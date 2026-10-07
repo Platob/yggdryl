@@ -127,17 +127,18 @@ impl MarketData {
     }
 
     /// This value's dated order, quote or execution: the seam a book's
-    /// internals read through, unwrapped - a side holds orders and quotes,
-    /// the deltas executions beside them.
+    /// internals read through, unwrapped - a side and a book's delta hold
+    /// orders and quotes, its events the executions beside the snapshot
+    /// controls, which are no operation and are never read through it.
     pub(crate) fn operation_event(&self) -> &dyn BookOperation {
         self.as_operation_event()
-            .expect("a book states only dated order, quote or execution events")
+            .expect("a book reads operation facts only off a dated order, quote or execution")
     }
 
     /// [`Self::operation_event`], mutably.
     pub(crate) fn operation_event_mut(&mut self) -> &mut dyn BookOperation {
         self.as_operation_event_mut()
-            .expect("a book states only dated order, quote or execution events")
+            .expect("a book reads operation facts only off a dated order, quote or execution")
     }
 }
 

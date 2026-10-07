@@ -7192,8 +7192,11 @@ class IsinRegistry:
     ``countrycode`` of issue, its ``forexcode`` pair, the ``underlyingisin``
     it is written on, its ``eusipacode`` - the four-digit EUSIPA product
     category ``Eusipa`` reads, an ``int`` - the ``miccode`` its listing facts
-    belong to, its ``ticker`` and trading ``currency`` and one code per
-    ``SecurityIDSource(22)`` type but the ISIN. A lifecycle learns
+    belong to, its ``ticker``, its ``fisn`` (the ISO 18774 short name) and
+    trading ``currency`` and one code per ``SecurityIDSource(22)`` type but
+    the ISIN; a row carries the CUSIP, SEDOL, WKN or Valor its ISIN embeds
+    and the currency of its listing market's country alone - a row with no market keeps none, where it
+    states none. ``seeded`` holds the embedded common instruments. A lifecycle learns
     into it - keyed by a stated real ISIN - and fills from it what a message
     leaves unsaid, a parse fills derived identifiers from it, and a valid
     stated value fills and replaces whatever the time. Bound to the store it
@@ -7208,15 +7211,19 @@ class IsinRegistry:
     @staticmethod
     def field() -> Field:
         """The registry's row: the required struct ``isinregistry`` of
-        forty-two columns every row is laid out as, what a table holding the
+        forty-three columns every row is laid out as, what a table holding the
         registry is created from."""
+    @staticmethod
+    def seeded() -> IsinRegistry:
+        """A registry holding the seed - the common instruments ``config/isin/instruments.json`` states, embedded at build time - clean and bound to no store; each seed row an ordinary statement, its derived facts filled."""
+        ...
     @staticmethod
     def from_url(location: object, max_instruments: int = 16384, **properties: str) -> IsinRegistry:
         """A registry bound to the store a URL or path names and loaded from it: an Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an object store; a store holding nothing yet an empty first run."""
         ...
     @staticmethod
     def from_env() -> IsinRegistry:
-        """The process's own registry, resolved once from ``YGGDRYL_ISIN_REGISTRY_URI``, else ``~/.config/yggdryl/isin/``, and shared with ``FixCodec.from_env``."""
+        """The process's own registry, resolved once from ``YGGDRYL_ISIN_REGISTRY_URI``, else ``~/.config/yggdryl/isin/``, laid over the seed (``seeded``) - the store's rows win - and shared with ``FixCodec.from_env``."""
         ...
     @staticmethod
     def install_env(registry: IsinRegistry) -> None:
@@ -8044,18 +8051,19 @@ class FixCodec:
     ) -> pyarrow.RecordBatchReader:
         """Stream sorted FIX messages into lifted ``marketdata`` book rows.
 
-        A book folds ORDR, QUOT and BOOK W/X; every other record is ignored
-        before it is expanded - a fill moves a book through its order's or
-        quote's report, so an execution, and a trade whose fills are
-        executions, never reach one. A quote is one entry resting on each leg
-        it states. Nothing an admitted message states raises: what cannot
+        A book folds ORDR, QUOT and BOOK W/X into its sides and records every
+        EXEC among its events; every other record is ignored before it is
+        expanded - a fill moves a book through its order's or quote's report,
+        so the execution moves nothing, and a trade, whose fills are
+        executions, never reaches one. A quote is one entry resting on each
+        leg it states. Nothing an admitted message states raises: what cannot
         stand is left out or defaulted with a warning, an operation dated
         before its book is left out, and only a source failure raises, after
         the completed book prefix.
         Lifecycle enrichment is explicit: pass ``codec.lifecycle(messages)``
         when needed. Positive ``snapshot_millis`` enables epoch-aligned
-        snapshots, at which a book is written whole; every other book states
-        its deltas alone. One book is kept per book key - the instrument's
+        snapshots, at which a complete book is written; every other book is a
+        delta book, stating its delta and its events alone. One book is kept per book key - the instrument's
         ISIN, else its ticker, else ``XX0000000000``. ``filter``, a predicate
         over the ``marketdata`` row, narrows what the books fold and never
         admits a kind they do not; ``None`` keeps every booked leaf. Each leaf
@@ -8159,6 +8167,10 @@ def pluginside_from_spelling(spelling: str) -> int | None: ...
 def pluginside_from_plugin_type(class_: str) -> int: ...
 def side_members() -> list[tuple[str, int, str, str | None, list[bool]]]: ...
 def side_from_spelling(spelling: str) -> int | None: ...
+def country_currency(code: str) -> str | None: ...
+def mic_operating(code: str) -> str | None: ...
+def mic_is_segment(code: str) -> bool: ...
+def mic_country(code: str) -> str | None: ...
 
 # The graph vocabulary: the typed market leaves, `MarketData` over every one
 # of them, and the typed values and walks around them.
@@ -9208,8 +9220,11 @@ class BookEvent:
     """One coherent view of a market at one exact nanosecond instant.
 
     The live entries of both sides and each side's price levels on a complete
-    book, the deltas applied since the book before it on every book; a book
-    stating its deltas alone is whole again by ``with_previous``. Every book
+    book; on every book its ``delta`` - the orders and quotes its instant
+    applied - and its ``events`` - every other event its instant recorded: the
+    executions and the snapshot controls. A delta book holds no sides, states
+    its delta and events alone, and is complete again by ``with_previous``.
+    Every book
     answers its top of book. Immutable: ``with_operations`` and every verb
     answer a new book.
     """
@@ -9221,8 +9236,8 @@ class BookEvent:
     @staticmethod
     def keyed(currunix: int, key: str) -> BookEvent:
         """An empty book keyed ``key`` - an ISIN, a ticker or ``XX0000000000`` -
-        stating neither a ticker nor an ISIN: the base a code's first book,
-        stating its deltas alone, rebuilds over with ``with_previous``."""
+        stating neither a ticker nor an ISIN: the base a code's first book, a
+        delta book, rebuilds over with ``with_previous``."""
         ...
     @property
     def curruuid(self) -> Scalar: ...
@@ -9328,62 +9343,68 @@ class BookEvent:
     def metadata(self) -> dict[str, str]: ...
     @property
     def is_complete(self) -> bool:
-        """Whether the book holds its sides rather than its deltas alone."""
+        """Whether the book is a complete book, holding its sides, rather than
+        a delta book stating its delta and events alone."""
         ...
     @property
     def alive(self) -> list[MarketData]:
         """Every live entry once: the bid side's best first, then the ask side's;
-        a two-sided quote listed with the bids. Empty on a book stating its
-        deltas alone."""
+        a two-sided quote listed with the bids. Empty on a delta book."""
         ...
     def alive_on(self, side: Side | int | str) -> list[MarketData]:
         """The entries alive on the side ``side`` takes, best price first and the
         unpriced last; empty for a side that is neither a bid nor an ask, or on
-        a book stating its deltas alone."""
+        a delta book."""
         ...
     @property
-    def deltas(self) -> list[MarketData]:
-        """Every event of the book's instant since the book before this one, in
-        the order applied across both sides: the orders and quotes applied, and
-        the executions recorded, which rest on no side."""
+    def delta(self) -> list[MarketData]:
+        """The membership operations the book's instant applied since the book
+        before this one, in the order applied across both sides: the orders and
+        quotes placed, changed, ended, expired, withdrawn or range-deleted, each
+        the very entry a side holds where it rests. What ``with_previous``
+        replays over the book before it."""
         ...
     @property
     def ordlive(self) -> list[OrderEvent]:
         """The orders resting on the book, in ``alive``'s order: the bid side's
-        best first, then the ask side's. Empty on a book stating its deltas
-        alone."""
+        best first, then the ask side's. Empty on a delta book."""
         ...
     @property
     def orddelta(self) -> list[OrderEvent]:
-        """The orders among ``deltas``, in the order applied: every order the
-        book's instant placed, changed or ended."""
+        """The orders among ``delta``, in the order applied: every order the
+        book's instant placed, changed, ended, expired or withdrawn."""
         ...
     @property
     def quotes(self) -> list[QuoteEvent]:
-        """The quotes among ``deltas``, in the order applied; a quote resting
-        since an earlier instant is ``alive``'s and not here."""
+        """The quotes among ``delta``, in the order applied; a quote resting
+        since an earlier instant is ``alive``'s and not here. These and
+        ``orddelta`` partition ``delta``."""
         ...
     @property
     def executions(self) -> list[ExecutionEvent]:
-        """The executions among ``deltas``, in the order applied: recorded at
+        """The executions among ``events``, in the order applied: recorded at
         the book's instant, resting on no side."""
         ...
     @property
     def events(self) -> list[MarketData]:
-        """Every other delta - none an order, a quote or an execution - in the
-        order applied: ``orddelta``, ``quotes``, ``executions`` and these
-        partition ``deltas``. Empty today, by construction: a fold prunes a
-        trade, a batch and a session message, refuses an undated order, quote
-        or execution and a nested book by kind, and folds a snapshot control
-        into the sides, never among the deltas."""
+        """Every other event the book's instant recorded, in the order applied:
+        the executions, which rest on no side and move none, and the snapshot
+        controls whose membership replacement made the book complete. A delta
+        book states them beside its ``delta``; ``with_previous`` replays none
+        of them. ``executions`` and ``controls`` partition them."""
+        ...
+    @property
+    def controls(self) -> list[SnapshotEvent]:
+        """The snapshot controls among ``events``, in the order applied: each
+        ``W`` control whose membership replacement made the book complete, so
+        only a complete book states one."""
         ...
     def limits(self, side: Side | int | str) -> list[Scalar]:
         """One limit struct per level of the side ``side`` takes, best first.
 
         Each states its ``price`` (``None`` on the unpriced limit last), the
         ``quantity`` resting there, the ``uuids`` of the entries resting there
-        and whether the level is ``tradable``. Empty on a book stating its
-        deltas alone.
+        and whether the level is ``tradable``. Empty on a delta book.
         """
         ...
     def best_price(self, side: Side | int | str) -> Scalar | None:
@@ -9682,11 +9703,20 @@ class MarketData:
     @staticmethod
     def from_arrow_reader(reader: FixArrowSource) -> MarketDataRowIterator: ...
     @staticmethod
-    def deltas_serie(source: FixArrowSource, kind: str | None = None) -> StreamChunkedSerie:
-        """The deltas of the books ``source`` holds, laid out as ``marketdata``
-        rows in book order as a native ``StreamChunkedSerie``: every event each book
-        states among its deltas, of ``kind`` where one is named (``"ORDR"``,
-        ``"QUOT"``, ``"EXEC"``), every kind otherwise."""
+    def delta_serie(source: FixArrowSource, kind: str | None = None) -> StreamChunkedSerie:
+        """The delta of the books ``source`` holds, laid out as ``marketdata``
+        rows in book order as a native ``StreamChunkedSerie``: the orders and
+        quotes each book's instant applied, of ``kind`` where one is named
+        (``"ORDR"``, ``"QUOT"``), both otherwise; a row that is no book is
+        refused by its kind where it is read."""
+        ...
+    @staticmethod
+    def events_serie(source: FixArrowSource, kind: str | None = None) -> StreamChunkedSerie:
+        """The events of the books ``source`` holds, laid out as ``marketdata``
+        rows in book order as a native ``StreamChunkedSerie``: every other event
+        each book's instant recorded, of ``kind`` where one is named (``"EXEC"``,
+        or ``"BOOK"`` for the snapshot controls), both otherwise; a row that is
+        no book is refused by its kind where it is read."""
         ...
     @staticmethod
     def plan(
@@ -9748,13 +9778,13 @@ class BookIterator(Iterator[BookEvent]):
 
     Pulling its items lazily from the caller's iterable: order and quote
     events and snapshot controls fold, an execution is recorded among its
-    book's deltas, moving no side; a trade is pruned where it is pulled, and
+    book's events, moving no side; a trade is pruned where it is pulled, and
     any other leaf is refused by its kind. An operation
     dated before its book, an order or a quote stating neither side and a
     group the book refuses are left out with a ``logging`` warning, never an
     error. A book is whole at a snapshot tick - every grid tick when
-    ``snapshot_millis`` is positive, and a snapshot input - and states its
-    deltas alone otherwise. ``filter``, a predicate over the ``marketdata``
+    ``snapshot_millis`` is positive, and a snapshot input - and is a delta
+    book, stating its delta and events alone, otherwise. ``filter``, a predicate over the ``marketdata``
     row bound once, narrows what the walk folds; ``None`` keeps every recorded
     input.
     """

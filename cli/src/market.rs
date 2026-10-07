@@ -132,7 +132,7 @@ pub struct Serve {
 
     /// The grid a capture's books are folded on before they land, in
     /// milliseconds: a book lands whole - every entry alive - at every grid
-    /// tick holding one and at a full refresh, and as its deltas alone at
+    /// tick holding one and at a full refresh, and as a delta book at
     /// every other event, its first appearance included, which follows the
     /// empty book. Zero is no grid, so the book at an instant is rebuilt from
     /// its first appearance or its last full refresh, however far back.

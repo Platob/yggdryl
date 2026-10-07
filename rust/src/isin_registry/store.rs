@@ -210,6 +210,41 @@ impl IsinRegistry {
         }
     }
 
+    /// Binds the registry to `holder` with the precedence of
+    /// [`Self::set_holder`] turned over: the holder's rows fold over the
+    /// rows the registry holds by the update rule, so a value the store
+    /// states wins, and the registry is clean after - what the process
+    /// default loads, the seed beneath its store ([`Self::from_env`]).
+    /// Answers how many rows the holder held.
+    ///
+    /// # Errors
+    ///
+    /// What the holder's read or [`Self::extend_from_arrow_reader`]
+    /// refuses; the registry then stands as it was, bound to the store it
+    /// was.
+    pub(crate) fn set_holder_over(&mut self, holder: Holder) -> Result<usize> {
+        let mut store = Store::bind(holder)?;
+        let held = self.table.clone();
+        let was_dirty = self.dirty;
+        let loaded = (|| -> Result<usize> {
+            let reader = store.holder.read_arrow_reader(&store.options)?;
+            store.read_lacking(&reader.schema());
+            Ok(self.extend_from_arrow_reader(reader)?)
+        })();
+        match loaded {
+            Ok(read) => {
+                self.dirty = false;
+                self.store = Some(Box::new(store));
+                Ok(read)
+            }
+            Err(error) => {
+                self.table = held;
+                self.dirty = was_dirty;
+                Err(error)
+            }
+        }
+    }
+
     /// [`Self::set_holder`], consuming.
     ///
     /// # Errors
@@ -240,8 +275,8 @@ impl IsinRegistry {
     /// and answers no rows. Clean after.
     ///
     /// A leaf or an Iceberg table keeps the row it was laid out with, so a
-    /// store written before a column the registry now has - `eusipacode` -
-    /// is written without it, and the commit warns, naming the column and
+    /// store written before a column the registry now has - `eusipacode`,
+    /// `fisn` - is written without it, and the commit warns, naming the column and
     /// the store, wherever the registry holds a value there; the store is
     /// never migrated - an emptied leaf, or a new store, is laid out with
     /// the row as it is now.

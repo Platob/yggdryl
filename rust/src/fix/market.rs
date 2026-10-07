@@ -400,11 +400,11 @@ impl FixCodec {
     /// [`MarketData::field`] rows, each a `book_event`.
     ///
     /// A book folds orders, quotes and `W`/`X` book messages into its sides
-    /// and records every execution among its deltas - the kinds
+    /// and records every execution among its events - the kinds
     /// [`MarketDataKind::is_recorded`] admits - and every other record is
     /// ignored before it is expanded: a fill moves a book through its
     /// order's or quote's report, which the parse splits off the execution,
-    /// so the execution stands among the deltas of its instant and moves
+    /// so the execution stands among the events of its instant and moves
     /// nothing, and a trade, whose fills are the executions the parse split
     /// off, never reaches one. A quote is one entry resting on each leg it
     /// states, its bid and its offer alike. A book message's leaves are

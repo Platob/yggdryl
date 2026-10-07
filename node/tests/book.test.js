@@ -808,7 +808,8 @@ test('the summary names a book by its ticker else its ISIN, and flags one the se
     askqty: '250',
     complete: true,
     alive: 2,
-    deltas: 1,
+    delta: 1,
+    events: 1,
     bidlimits: [{ price: '72.25', quantity: '300', uuids: ['a'], tradable: true }],
     asklimits: [{ price: '72.35', quantity: '250', uuids: ['b'], tradable: true }],
   }
@@ -816,21 +817,24 @@ test('the summary names a book by its ticker else its ISIN, and flags one the se
   const [name] = node.findAll((element) => element.className === 'summary-name')
   assert.equal(name.textContent, 'HOLN · 3:0:CH0012214059')
   const labels = () => node.findAll((element) => element.className === 'stat-label').map((element) => element.textContent)
-  // The summary counts the alive entries and the deltas, an execution among them.
-  assert.deepEqual(labels(), ['Best bid', 'Best ask', 'Spread', 'Mid', 'Imbalance', 'Alive', 'Deltas'])
-  assert.doesNotMatch(node.textContent, /Deltas only/)
+  // The summary counts the alive entries, the delta - the orders and quotes
+  // the instant applied - and the events it recorded, an execution among them.
+  assert.deepEqual(labels(), ['Best bid', 'Best ask', 'Spread', 'Mid', 'Imbalance', 'Alive', 'Delta', 'Events'])
+  assert.doesNotMatch(node.textContent, /Delta book/)
   assert.match(node.textContent, /Alive2entries/)
+  assert.match(node.textContent, /Delta1since the previous book/)
+  assert.match(node.textContent, /Events1recorded at this instant/)
 
-  // A book the service answers `complete: false` states its deltas alone: its
-  // touch stands, and it is flagged, with no entry or limit counted; one
-  // stating no ticker is named by its ISIN.
+  // A book the service answers `complete: false` is a delta book: its touch
+  // stands, and it is flagged, with no entry or limit counted; one stating no
+  // ticker is named by its ISIN.
   renderSummary(node, { ...book, ticker: null, complete: false, alive: 0, bidlimits: [], asklimits: [] })
   assert.equal(node.findAll((element) => element.className === 'summary-name')[0].textContent, 'CH0012214059 · 3:0:CH0012214059')
   const flags = node.findAll((element) => element.className === 'chip chip-warn').map((element) => element.textContent)
-  assert.deepEqual(flags, ['Deltas only'])
+  assert.deepEqual(flags, ['Delta book'])
   assert.match(node.textContent, /Best bid72\.25/)
   assert.match(node.textContent, /Alive–not rebuilt/)
-  assert.equal(node.findAll((element) => element.className === 'empty').map((element) => element.textContent).join('|'), 'Not rebuilt: this book states its deltas alone.|Not rebuilt: this book states its deltas alone.')
+  assert.equal(node.findAll((element) => element.className === 'empty').map((element) => element.textContent).join('|'), 'Not rebuilt: this is a delta book.|Not rebuilt: this is a delta book.')
 })
 
 test('sorting an audit column keeps the focus on its heading', async () => {
@@ -1237,7 +1241,7 @@ const SERVICE = Object.freeze({
   'api/book': (request) => {
     const listed = SERVICE['api/tickers'].find((entry) => entry.key === request.params.ticker)
     const isincode = /^[A-Z]{2}[0-9A-Z]{9}[0-9]$/.test(request.params.ticker) ? request.params.ticker : null
-    return { currunix: request.params.at, ticker: listed?.ticker ?? null, isincode, crosscode: listed?.crosscode ?? null, bestbid: '72.25', bestask: '72.35', complete: true, alive: 2, deltas: 1, bidlimits: [], asklimits: [] }
+    return { currunix: request.params.at, ticker: listed?.ticker ?? null, isincode, crosscode: listed?.crosscode ?? null, bestbid: '72.25', bestask: '72.35', complete: true, alive: 2, delta: 1, events: 0, bidlimits: [], asklimits: [] }
   },
   'api/events': (request) => ({ rows: [{ currunix: request.params.from, role: 'alive', side: request.params.side === 'bid' ? 'BUYS' : 'SELL', price: '72.25', crosscode: `${request.params.ticker}-${request.params.side}` }], truncated: false }),
 })

@@ -81,6 +81,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | chain order lifecycles | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` |
 | chain rows already in Arrow | `codec.lifecycle_arrow_reader(reader)?` | `codec.lifecycle_arrow_reader(reader)` | `codec.lifecycleArrowReader(reader)` |
 | share what lifecycles learn about instruments, and what parses fill from | `codec.with_isin_registry(Arc::new(Mutex::new(IsinRegistry::from_url(&url, props)?)))`, `FixCodec::from_env()?` for the process's own, `registry.lock()?.commit()?` to write it back | `FixCodec(registry, isin_registry=IsinRegistry.from_url(path))`, `FixCodec.from_env()`, `registry.commit()` | `new fix.FixCodec(registry, { isinRegistry: IsinRegistry.fromUrl(path) })`, `fix.FixCodec.fromEnv()`, `registry.commit()` |
+| the common instruments, before any store | `IsinRegistry::seeded()` - what `from_env` lays its store over | `IsinRegistry.seeded()` | `IsinRegistry.seeded()` |
 | one message as graph leaves | `msg.market_data()?`, `msg.into_market_data()?` | `msg.market_data()` | `msg.marketData()` |
 | sorted market data | `codec.market_data(messages)` | `codec.market_data(messages)` | `codec.marketData(messages)` |
 | books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0, None)?`, `Some(&filter)` to narrow | `codec.book_arrow_reader(msgs, snapshot_millis=0, filter=None)` | `codec.bookArrowReader(msgs, 0, filter)` |
@@ -427,6 +428,13 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   `commit()` only where it moved, or the process's own `from_env()`, which
   `FixCodec.from_env()` attaches - to share it across walks run one after
   another. A RIC or a Bloomberg symbol is an equivalent, never a key.
+  `from_env()` starts from the embedded seed of common instruments
+  (`IsinRegistry.seeded()`, the store's rows winning), and a row the
+  registry folds carries the CUSIP, SEDOL, WKN or Valor its ISIN embeds and
+  its market's country's currency where it states none - defaults a
+  statement replaces. In a medallion pipeline commit the codec's registry
+  once, at the end of the refined FIX parsing stage, after its write has
+  drained the lifecycle: one snapshot, nothing where clean.
 - `StrikePrice(202)` is read into the market fact `strikepx` (`Market`), the
   fixed row's `strikepx` column right after `ticker` (crate tag `65035`), so
   a graph leaf carries no `strikeprice` metadata key; `msg.set(202, v)`

@@ -10,7 +10,7 @@ use napi::Either;
 use napi::bindgen_prelude::Result;
 use napi_derive::napi;
 use yggdryl::holder::Holder;
-use yggdryl::{DataType, IsinEntry, IsinRegistry, Mic, Scalar};
+use yggdryl::{IsinEntry, IsinRegistry};
 
 use crate::field::JsField;
 
@@ -18,6 +18,7 @@ use crate::fix::JsFixMsg;
 use crate::iobase::{LocationInput, located_from_input, location_target};
 use crate::iomedia::JsBatchReader;
 use crate::ioresult::JsIOResult;
+use crate::mic::mic_of;
 use crate::napi_error;
 use crate::text::codec::JsScalar;
 
@@ -33,24 +34,9 @@ fn bound_of(max_instruments: Option<f64>) -> Result<usize> {
     usize::try_from(max).map_err(|_| napi_error("maxInstruments must not be negative"))
 }
 
-/// A market identifier code as the `mic` datatype reads one, as Python's
-/// registry reads it.
-fn mic_of(text: &str) -> Result<Mic> {
-    match DataType::Mic
-        .scalar(Scalar::from(text))
-        .map_err(napi_error)?
-    {
-        Scalar::Mic(mic) => Ok(mic),
-        other => Err(napi_error(format!(
-            "expected a market identifier code, got {}",
-            other.kind()
-        ))),
-    }
-}
-
 /// A table of instruments keyed by ISIN - each row the instrument's CFI
 /// code, its country of issue, its currency pair, the instrument it is
-/// written on, its market, its ticker
+/// written on, its market, its ticker, its ISO 18774 short name
 /// and trading currency and one code per `SecurityIDSource(22)` type - that
 /// a lifecycle learns into and fills from, and a parse fills from. Bound to
 /// the store it was loaded from, committed back only where it moved.
@@ -102,12 +88,26 @@ impl JsIsinRegistry {
 
     /// The registry's row: the required struct `isinregistry` every row is
     /// laid out as - `isin`, `updunix`, `cficode`, `countrycode`,
-    /// `forexcode`, `underlyingisin`, `eusipacode`, `miccode`, `ticker`, `currency`, then
-    /// one column per `SecurityIDSource(22)` type but the ISIN: forty-two
-    /// columns - what a table holding the registry is created from.
+    /// `forexcode`, `underlyingisin`, `eusipacode`, `miccode`, `ticker`,
+    /// `fisn`, `currency`, then one column per `SecurityIDSource(22)` type
+    /// but the ISIN: forty-three columns - what a table holding the
+    /// registry is created from.
     #[napi]
     pub fn field() -> JsField {
         JsField::from_core(IsinEntry::field())
+    }
+
+    /// A registry holding the seed - the common instruments
+    /// `config/isin/instruments.json` states, embedded at build time: each a
+    /// stock, a fund or an index by its ISIN, its ticker, its market but an
+    /// index's, its trading currency, its country, its detailed CFI code and
+    /// its short name - clean, bound to no store, bounded at the core's
+    /// 16,384. A seed row is an ordinary statement, so the facts it implies
+    /// - the national number its ISIN embeds, the currency of its market's
+    /// country - are derived as for any other. `new` holds none of it.
+    #[napi(factory)]
+    pub fn seeded() -> Self {
+        Self::from_core(IsinRegistry::seeded())
     }
 
     /// A registry bound to the store `location` names and loaded from it:
@@ -148,7 +148,9 @@ impl JsIsinRegistry {
     /// an installed registry, else the store `YGGDRYL_ISIN_REGISTRY_URI`
     /// names - a URL of any scheme, a path, `~` the home - else
     /// `~/.config/yggdryl/isin/`, a folder of Arrow IPC parts the first
-    /// `commit` lays out; with no home, an empty registry bound to nothing.
+    /// `commit` lays out; with no home, the seed bound to nothing. A store
+    /// is laid over the seed - its rows win, a seed row it lacks stands -
+    /// and the registry is clean after the load.
     /// A failed load throws and is retried by the next call.
     #[napi(factory)]
     pub fn from_env() -> Result<Self> {

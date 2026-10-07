@@ -1,5 +1,5 @@
 """The Arrow value boundary: every columnar runtime in as a ``Serie`` or a
-``SerieReader``, every shape out.
+``StreamChunkedSerie``, every shape out.
 
 Run after ``maturin develop`` with::
 
@@ -38,7 +38,15 @@ from collections.abc import Callable
 
 import pyarrow as pa
 
-from yggdryl import ArrowCastPlan, ChunkedSerie, Field, IOBase, Scalar, Serie, SerieReader
+from yggdryl import (
+    ArrowCastPlan,
+    ChunkedSerie,
+    Field,
+    IOBase,
+    Scalar,
+    Serie,
+    StreamChunkedSerie,
+)
 
 ROW_COUNT = 4_096
 # `Limits::default().max_documents()` is 1,024, and JSON Lines yields one
@@ -245,7 +253,7 @@ def _cases(
     cases: list[tuple[str, Callable[[], object], int]] = [
         # A table may hold many chunks, so it crosses over the C stream that
         # `to_reader` is the PyArrow spelling of: neither side pulls a batch.
-        ("from Table (yggdryl)", lambda: SerieReader.from_(TABLE), small),
+        ("from Table (yggdryl)", lambda: StreamChunkedSerie.from_(TABLE), small),
         ("from Table (pyarrow)", lambda: TABLE.to_reader(), small),
         # A held container has no PyArrow counterpart to subtract: nothing else
         # imports it across the C Data Interface, so the number beside it is
@@ -276,24 +284,28 @@ def _cases(
         ("from Scalar", lambda: Serie.from_(SCALAR), small),
         (
             "from RecordBatchReader (yggdryl)",
-            lambda: SerieReader.from_(_reader()),
+            lambda: StreamChunkedSerie.from_(_reader()),
             small,
         ),
         ("from RecordBatchReader (pyarrow)", _reader, small),
-        ("SerieReader from Python scalar", lambda: SerieReader.from_(125), small),
         (
-            "SerieReader from native Scalar",
-            lambda: SerieReader.from_(NATIVE_SCALAR),
+            "StreamChunkedSerie from Python scalar",
+            lambda: StreamChunkedSerie.from_(125),
             small,
         ),
         (
-            "SerieReader from concrete tuple",
-            lambda: SerieReader.from_(CONCRETE_ROWS),
+            "StreamChunkedSerie from native Scalar",
+            lambda: StreamChunkedSerie.from_(NATIVE_SCALAR),
             small,
         ),
         (
-            "SerieReader Python scalar first batch",
-            lambda: next(SerieReader.from_(125)),
+            "StreamChunkedSerie from concrete tuple",
+            lambda: StreamChunkedSerie.from_(CONCRETE_ROWS),
+            small,
+        ),
+        (
+            "StreamChunkedSerie Python scalar first batch",
+            lambda: next(StreamChunkedSerie.from_(125)),
             small,
         ),
     ]
@@ -370,20 +382,22 @@ def _cases(
         ),
         # Construction plans the record cast; only the first-batch row executes it.
         (
-            "SerieReader held column, declared root",
-            lambda: SerieReader.from_(HELD_READER_COLUMN, READER_COLUMN_ROOT),
+            "StreamChunkedSerie held column, declared root",
+            lambda: StreamChunkedSerie.from_(HELD_READER_COLUMN, READER_COLUMN_ROOT),
             small,
         ),
         (
-            "SerieReader held declared first batch",
-            lambda: next(SerieReader.from_(HELD_READER_COLUMN, READER_COLUMN_ROOT)),
+            "StreamChunkedSerie held declared first batch",
+            lambda: next(StreamChunkedSerie.from_(HELD_READER_COLUMN, READER_COLUMN_ROOT)),
             bulk,
         ),
         # One held column as a stream, then cast under the declared root: the
         # plan compiled at the call, the record cast there.
         (
-            "SerieReader.cast, declared root",
-            lambda: SerieReader.from_serie(HELD_READER_COLUMN).cast(READER_COLUMN_ROOT),
+            "StreamChunkedSerie.cast, declared root",
+            lambda: StreamChunkedSerie.from_serie(HELD_READER_COLUMN).cast(
+                READER_COLUMN_ROOT
+            ),
             small,
         ),
         # The Serie doors pair with the two PyArrow casts above: the same
@@ -401,8 +415,8 @@ def _cases(
         ),
         ("ArrowCastPlan.apply, RecordBatch", lambda: BATCH_PLAN.apply(BATCH), bulk),
         (
-            "SerieReader drain, declared",
-            lambda: list(SerieReader.from_arrow_reader(TABLE, DECLARED_ROOT)),
+            "StreamChunkedSerie drain, declared",
+            lambda: list(StreamChunkedSerie.from_arrow_reader(TABLE, DECLARED_ROOT)),
             bulk,
         ),
         ("into_arrow_reader (yggdryl)", lambda: HELD_BATCH.into_arrow_reader(), small),
@@ -421,7 +435,7 @@ def _cases(
         # beside PyArrow draining its own table's stream.
         (
             "64x64 reader read_all (yggdryl)",
-            lambda: SerieReader.from_(WIDE_TABLE).into_arrow_reader().read_all(),
+            lambda: StreamChunkedSerie.from_(WIDE_TABLE).into_arrow_reader().read_all(),
             bulk,
         ),
         (
@@ -576,13 +590,13 @@ def main() -> None:
         f"{ROW_COUNT:,} rows, median of 7"
     )
     try:
-        reader = SerieReader.from_(HELD_READER_COLUMN, READER_COLUMN_ROOT)
+        reader = StreamChunkedSerie.from_(HELD_READER_COLUMN, READER_COLUMN_ROOT)
         assert reader.field == READER_COLUMN_ROOT
         (declared,) = list(reader)
         assert declared.child("size").into_arrow_array().equals(COLUMN.cast(pa.float64()))
         for value in (125, NATIVE_SCALAR, CONCRETE_ROWS):
-            assert list(SerieReader.from_(value)) == list(
-                SerieReader.from_serie(Serie.from_(value))
+            assert list(StreamChunkedSerie.from_(value)) == list(
+                StreamChunkedSerie.from_serie(Serie.from_(value))
             )
         assert HELD_BATCH.join_with(HELD_DIMENSION, "symbol").into_arrow_batch().num_rows == (
             TABLE.join(DIMENSION_TABLE, "symbol").num_rows

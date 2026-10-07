@@ -26,7 +26,7 @@ Signatures with no storage: a FIX message, a text line or a book entry can each 
 | Quote | [Quote](quote.md) | `Quote`, `QuoteEvent` | the same |
 | Execution | [Execution](execution.md) | `Execution`, `ExecutionEvent` | the same |
 | Trade | [Trade](trade.md) | `TradeEvent` | all four |
-| Book | [Book](book.md) | `BookEvent` - complete, or its deltas alone - `SnapshotEvent`, `BookIterator`, `yggdryl::Limit` | book/snapshot: `Element`, `Event`, `Market` |
+| Book | [Book](book.md) | `BookEvent` - a complete book or a delta book - `SnapshotEvent`, `BookIterator`, `yggdryl::Limit` | book/snapshot: `Element`, `Event`, `Market` |
 | Market data | [Market data](market-data.md) | `MarketData`, `MarketKind`, `ElementColumn`, `EventColumn`, `MarketColumn`, `OperationColumn`, `MarketView` | `Element`, `Market`, through the leaf held |
 | Row schemas | [Row schemas](schemas.md) | the text line, the FIX row and the `marketdata` row, column by column, over the one element, event, market and operation prefix | the same listing through `enums` and `MarketData.field()` |
 

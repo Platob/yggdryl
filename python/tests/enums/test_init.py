@@ -367,6 +367,49 @@ def test_a_stored_declaration_naming_the_class_api_is_bad_data() -> None:
     assert set(AsciiCode.from_field(field).__members__) == {"field", "OK"}
 
 
+def test_a_country_reads_its_legal_tender() -> None:
+    assert Country.from_str("US").currency == Ccy.from_str("USD")
+    assert Country.from_str("CH").currency == Ccy.from_str("CHF")
+    assert Country.from_str("XX").currency is None, "user-assigned, no tender"
+    assert isinstance(Country.from_str("GB").currency, Ccy)
+
+
+def test_a_mic_reads_its_market_its_segment_and_its_country() -> None:
+    segment = Mic.from_str("XNGS")
+    assert segment.operating == Mic.from_str("XNAS")
+    assert isinstance(segment.operating, Mic)
+    assert segment.is_segment and not Mic.from_str("XNAS").is_segment
+    assert Mic.from_str("XNAS").operating == Mic.from_str("XNAS"), "an operating MIC is its own"
+    assert segment.country == Country.from_str("US")
+    assert isinstance(segment.country, Country)
+    assert Mic.from_str("XLON").country == Country.from_str("GB")
+    assert Mic.from_str("XOFF").country is None, "off-exchange is in no single country"
+    unassigned = Mic.from_str("QQQQ")
+    assert unassigned.operating is None and not unassigned.is_segment and unassigned.country is None
+
+
+@pytest.mark.parametrize(
+    ("base", "reading"),
+    [("Country", "currency"), ("Mic", "operating"), ("Mic", "is_segment"), ("Mic", "country")],
+)
+def test_a_member_may_not_shadow_a_code_bases_reading(base: str, reading: str) -> None:
+    body = f"class Probe({base}):\n    {reading} = 'US'\n"
+    with pytest.raises(TypeError, match=f"reserves {reading} for its class API"):
+        exec(body, {"Country": Country, "Mic": Mic})
+    # A width carries no reading, so the same name is the caller's there.
+    class Venue(fixed_ascii(4)):
+        country = "XNAS"
+
+    assert Venue.country.into_str() == "XNAS"
+
+
+def test_a_stored_declaration_naming_a_code_bases_reading_is_bad_data() -> None:
+    field = Field("venue", DataType("mic"), nullable=False)
+    field.set_string_enum(StringEnum("Venue", {"country": "XNAS"}))
+    with pytest.raises(ValueError, match="which name the class API"):
+        AsciiCode.from_field(field)
+
+
 def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> None:
     # Each class is the Python spelling of one registered code in the grammar,
     # over the code's own datatype rather than an ASCII width.

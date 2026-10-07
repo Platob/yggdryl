@@ -172,7 +172,7 @@ impl MarketDataKind {
     /// replaces the depth of its instant. The one owner of that rule. An
     /// execution folds into no side - its fill moved the book through its
     /// order's or quote's own report - and is recorded among the book's
-    /// deltas instead ([`Self::is_recorded`]); every other kind - a trade,
+    /// events instead ([`Self::is_recorded`]); every other kind - a trade,
     /// whose fills are executions, a batch, whose items arrive as their own
     /// kinds, and every category the standard files no resting interest
     /// under - is pruned before a book walk routes it.
@@ -194,10 +194,13 @@ impl MarketDataKind {
         matches!(self, Self::Order | Self::Quotation | Self::Book)
     }
 
-    /// Whether a book states an element of this kind among its deltas:
-    /// what [`Self::is_booked`] admits, and an execution - recorded at its
-    /// instant in the book its instrument keys, moving no side, since its
-    /// fill moved the book through its order's or quote's own report. The
+    /// Whether a book states an element of this kind - folded into a side,
+    /// or recorded among its events: what [`Self::is_booked`] admits, a
+    /// snapshot control recorded among the events of the book whose
+    /// membership it replaced, and an execution, recorded among the events
+    /// of its instant in the book its instrument keys and moving no side,
+    /// since its fill moved the book through its order's or quote's own
+    /// report. The
     /// one owner of that rule, which every pruning site of a book walk
     /// reads: a trade, whose fills are executions, a batch, whose items
     /// arrive as their own kinds, and every other category are pruned

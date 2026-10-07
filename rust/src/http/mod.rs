@@ -79,6 +79,7 @@ use std::sync::OnceLock;
 pub use authorization::Authorization;
 #[cfg(any(feature = "aws", feature = "internals"))]
 pub(crate) use client::is_unanswered;
+#[cfg(feature = "s3")]
 pub(crate) use client::record_process;
 pub use client::{Client, HostStats, ProcessStats, StatsSnapshot, process_stats};
 pub use cookie::{Cookie, CookieJar};

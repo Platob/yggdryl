@@ -77,6 +77,18 @@ const MARKET_REPEATS: usize = crate::bench_profile::corpus(512, 4);
 const MARKET_DEPTH: usize = crate::bench_profile::corpus(1_024, 16);
 
 /// The log, as the bytes a `.log` file holds.
+/// The thread counts the multi-threaded rows run at: two, four and the
+/// host's own parallelism - what every door defaults to - each once, in
+/// that order, so a host of four cores runs the matrix of two.
+fn thread_matrix() -> Vec<usize> {
+    let host = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let mut matrix = vec![2, 4];
+    if !matrix.contains(&host) {
+        matrix.push(host);
+    }
+    matrix
+}
+
 fn corpus() -> Vec<u8> {
     LOG.repeat(REPEATS)
 }
@@ -534,8 +546,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // The same doors on several threads, against the one-thread rows above:
     // what the machine's cores buy each door, and what each door leaves on
     // the thread that pulls it - the text reader in front of the line
-    // doors, the batches closing behind the Arrow ones.
-    for threads in [2, 4] {
+    // doors, the batches closing behind the Arrow ones. The matrix ends at
+    // the host's own parallelism, the default every door runs at.
+    for threads in thread_matrix() {
         let spread = codec.clone().with_threads(threads);
         let composed = composed.clone().with_threads(threads);
         group.bench_function(format!("parse_lines/threads={threads}"), |bencher| {
@@ -877,7 +890,9 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
                     .expect("a sorted book iterator")
                     .try_fold(0_usize, |count, book| {
                         let book = book?;
-                        Ok::<_, yggdryl::Error>(count + book.alive().count() + book.deltas().len())
+                        Ok::<_, yggdryl::Error>(
+                            count + book.alive().count() + book.delta().len() + book.events().len(),
+                        )
                     })
                     .expect("the operation stream builds books")
             },

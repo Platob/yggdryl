@@ -57,11 +57,13 @@ fn market_data_list<'a>(entries: impl Iterator<Item = &'a CoreMarketData>) -> Ve
 
 /// One coherent view of a market at one exact nanosecond instant: on a
 /// complete book every live entry of both sides and the price levels of
-/// each, and on every book the deltas applied since the book before it and
-/// the top of book it settled on. A walk emits a book whole only at a
-/// snapshot tick and every other book as its deltas alone, which
-/// `withPrevious` over the complete book before it rebuilds. Immutable:
-/// `withOperations` and every verb answer a new book.
+/// each, and on every book its `delta` - the orders and quotes its instant
+/// applied since the book before it - its `events` - every other event the
+/// instant recorded - and the top of book it settled on. A walk emits a
+/// complete book only at a snapshot tick and every other book as a delta
+/// book, holding no sides, which `withPrevious` over the complete book
+/// before it rebuilds. Immutable: `withOperations` and every verb answer a
+/// new book.
 #[napi(js_name = "BookEvent")]
 #[derive(Clone)]
 pub struct JsBookEvent {
@@ -89,8 +91,8 @@ impl JsBookEvent {
     /// An empty book keyed `key` at `currunix` nanoseconds since the epoch:
     /// `key` is its crosscode - an instrument's ISIN, a ticker, or
     /// `XX0000000000` - and the book states neither a ticker nor an ISIN.
-    /// The empty base a code's first book, stating its deltas alone,
-    /// rebuilds over with `withPrevious`.
+    /// The empty base a code's first book, a delta book, rebuilds over
+    /// with `withPrevious`.
     #[napi(factory)]
     pub fn keyed(currunix: Either<BigInt, f64>, key: String) -> Result<Self> {
         let currunix = instant_of(currunix, "currunix")?;
@@ -98,9 +100,9 @@ impl JsBookEvent {
     }
 
     /// Whether the book holds its sides - every entry alive on it - rather
-    /// than only the deltas it applied since the book before it: a book a
-    /// caller builds, one a walk emits at a snapshot tick, and one rebuilt
-    /// by `withPrevious` are complete.
+    /// than only its `delta` and `events`, a delta book: a book a caller
+    /// builds, one a walk emits at a snapshot tick, and one rebuilt by
+    /// `withPrevious` are complete.
     #[napi(getter)]
     pub fn is_complete(&self) -> bool {
         self.inner.is_complete()
@@ -109,8 +111,8 @@ impl JsBookEvent {
     /// Every entry alive on the book, each once and a `MarketData`: the bid
     /// side's, best price first and every entry stating no price last, then
     /// the ask side's the same way but those resting on the bid too - a
-    /// two-sided quote is one entry, listed with the bids. Empty on a book
-    /// stating its deltas alone.
+    /// two-sided quote is one entry, listed with the bids. Empty on a delta
+    /// book.
     #[napi]
     pub fn alive(&self) -> Vec<JsMarketData> {
         market_data_list(self.inner.alive())
@@ -119,27 +121,37 @@ impl JsBookEvent {
     /// The entries alive on the side `side` names - read through the `Side`
     /// vocabulary - each a `MarketData`, best price first and every entry
     /// stating no price last - a two-sided quote on both sides. Empty for a
-    /// side that is neither a bid nor an ask, or on a book stating its
-    /// deltas alone.
+    /// side that is neither a bid nor an ask, or on a delta book.
     #[napi]
     pub fn alive_on(&self, side: Either<String, f64>) -> Result<Vec<JsMarketData>> {
         Ok(market_data_list(self.inner.alive_on(side_of(side)?)))
     }
 
-    /// Every event of the book's instant since the book before this one,
-    /// each a `MarketData`, in the order applied across both sides: the
-    /// orders and quotes applied, and the executions recorded, which rest on
-    /// no side. What a book stating its deltas alone states, and what
-    /// `withPrevious` replays over the book before it.
+    /// The book's delta: the membership operations its instant applied
+    /// since the book before this one, each a `MarketData`, in the order
+    /// applied across both sides - the orders and quotes placed, changed,
+    /// ended, expired, withdrawn or range-deleted. What a delta book states
+    /// beside its `events()`, and what `withPrevious` replays over the book
+    /// before it; `orddelta()` and `quotes()` partition it.
     #[napi]
-    pub fn deltas(&self) -> Vec<JsMarketData> {
-        market_data_list(self.inner.deltas())
+    pub fn delta(&self) -> Vec<JsMarketData> {
+        market_data_list(self.inner.delta())
+    }
+
+    /// The book's events: every other event its instant recorded, each a
+    /// `MarketData`, in the order applied - the executions, which rest on
+    /// no side and move none, and the snapshot controls whose membership
+    /// replacement made the book complete. A delta book states them beside
+    /// its `delta()`, and a rebuild replays none of them; `executions()`
+    /// and `controls()` partition them.
+    #[napi]
+    pub fn events(&self) -> Vec<JsMarketData> {
+        market_data_list(self.inner.events())
     }
 
     /// The orders resting on the book - every `alive()` entry that is an
     /// order - each an `OrderEvent`, in `alive()`'s order: the bid side's,
-    /// best price first, then the ask side's. Empty on a book stating its
-    /// deltas alone.
+    /// best price first, then the ask side's. Empty on a delta book.
     #[napi]
     pub fn ordlive(&self) -> Vec<JsOrderEvent> {
         self.inner
@@ -149,8 +161,9 @@ impl JsBookEvent {
             .collect()
     }
 
-    /// The orders among `deltas()`, each an `OrderEvent`, in the order
-    /// applied: every order the book's instant placed, changed or ended.
+    /// The orders among `delta()`, each an `OrderEvent`, in the order
+    /// applied: every order the book's instant placed, changed, ended,
+    /// expired or withdrawn.
     #[napi]
     pub fn orddelta(&self) -> Vec<JsOrderEvent> {
         self.inner
@@ -160,7 +173,7 @@ impl JsBookEvent {
             .collect()
     }
 
-    /// The quotes among `deltas()`, each a `QuoteEvent`, in the order
+    /// The quotes among `delta()`, each a `QuoteEvent`, in the order
     /// applied; a quote resting since an earlier instant is `alive()`'s and
     /// not here.
     #[napi]
@@ -172,7 +185,7 @@ impl JsBookEvent {
             .collect()
     }
 
-    /// The executions among `deltas()`, each an `ExecutionEvent`, in the
+    /// The executions among `events()`, each an `ExecutionEvent`, in the
     /// order applied: recorded at the book's instant, resting on no side.
     #[napi]
     pub fn executions(&self) -> Vec<JsExecutionEvent> {
@@ -183,11 +196,22 @@ impl JsBookEvent {
             .collect()
     }
 
+    /// The snapshot controls among `events()`, each a `SnapshotEvent`, in
+    /// the order applied: the full refreshes whose membership replacement
+    /// made the book complete at its instant.
+    #[napi]
+    pub fn controls(&self) -> Vec<JsSnapshotEvent> {
+        self.inner
+            .controls()
+            .cloned()
+            .map(JsSnapshotEvent::from_core)
+            .collect()
+    }
+
     /// One limit per price level of the side `side` names - read through
     /// the `Side` vocabulary - best first and the one unpriced limit last,
     /// each naming its entries' `curruuid`s in position order; empty for a
-    /// side that is neither a bid nor an ask, and on a book stating its
-    /// deltas alone.
+    /// side that is neither a bid nor an ask, and on a delta book.
     #[napi]
     pub fn limits(&self, side: Either<String, f64>) -> Result<Vec<BookLimit>> {
         Ok(self
@@ -271,10 +295,11 @@ impl JsBookEvent {
 
     /// This book with every operation of one atomic group applied: each an
     /// order or quote event, a snapshot control, or a `MarketData` holding
-    /// one, folded, and an execution event recorded among the deltas,
-    /// moving no side, since a fill moves a book through its order's or
-    /// quote's report; a trade event is pruned and changes nothing. A book
-    /// stating its deltas alone is refused at `$.alive`.
+    /// one, folded - an order or a quote recorded among its `delta()`, a
+    /// control among its `events()` - and an execution event recorded among
+    /// its `events()`, moving no side, since a fill moves a book through its
+    /// order's or quote's report; a trade event is pruned and changes
+    /// nothing. A delta book is refused at `$.alive`.
     #[napi(
         ts_args_type = "operations: Array<MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent>"
     )]
@@ -394,7 +419,7 @@ impl JsBookIterator {
     /// refresh.
     ///
     /// The walk folds orders, quotes and snapshot controls, records every
-    /// execution among the deltas of its book at its instant, and prunes
+    /// execution among the events of its book at its instant, and prunes
     /// every other input where it is pulled. `filter` - a `Filter`, a `Term`
     /// or the text of a predicate over the `marketdata` row - narrows it
     /// further, bound once here; it never admits a trade. Not given, every

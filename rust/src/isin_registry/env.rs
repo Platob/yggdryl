@@ -1,10 +1,19 @@
 //! The process-wide default registry, resolved once on first use.
+//!
+//! The default starts from the seed ([`IsinRegistry::seeded`]) - the
+//! common instruments `config/isin/instruments.json` states, embedded at
+//! build time - and lays what the environment names over it: the store's
+//! rows fold over the seed's, so a value the store states wins and a seed
+//! row the store has no row of stands, and the registry is clean after the
+//! load. The seed reaches a store through the first commit that moves
+//! anything, as part of its snapshot.
 
 use std::sync::{Arc, Mutex, OnceLock};
 
 use smol_str::format_smolstr;
 
 use super::IsinRegistry;
+use crate::holder::Holder;
 use crate::local::LocalFolder;
 use crate::{Error, Result, Url};
 
@@ -30,20 +39,23 @@ impl IsinRegistry {
     /// once per attempt, and every later call answers the same `Arc` once
     /// one succeeded. The resolution order is fixed, first match wins:
     ///
-    /// 1. a registry installed by [`Self::install_env`];
+    /// 1. a registry installed by [`Self::install_env`], as it was given;
     /// 2. the location `YGGDRYL_ISIN_REGISTRY_URI` names, trimmed of
     ///    blanks: a URL of any scheme this build holds, or a bare path, a
     ///    leading `~/` the home directory, which itself is refused; bound
-    ///    through [`Self::from_url`], a store holding nothing yet an empty
-    ///    first run; an empty value reads as unset;
+    ///    as [`Self::from_url`] binds, a store holding nothing yet a first
+    ///    run; an empty value reads as unset;
     /// 3. `~/.config/yggdryl/isin/`, a folder of Arrow IPC parts the first
     ///    commit lays out, reached through [`LocalFolder::home`];
-    /// 4. with no home directory, an empty registry bound to no store.
+    /// 4. with no home directory, the seed bound to no store.
     ///
-    /// Absence is a first run at every step: a store that holds nothing
-    /// loads as the empty registry bound to it. A location that names a
+    /// A store is laid over the seed ([`Self::seeded`]): its rows fold over
+    /// the seed's by the update rule, so a value the store states wins, a
+    /// seed row it has no row of stands, and the registry is clean after
+    /// the load. Absence is a first run at every step: a store that holds
+    /// nothing loads as the seed bound to it. A location that names a
     /// scheme this build has no backend for, a store that cannot be read or
-    /// a row the registry refuses is an error, never the empty registry.
+    /// a row the registry refuses is an error, never the seed alone.
     ///
     /// # Errors
     ///
@@ -102,7 +114,8 @@ impl IsinRegistry {
     }
 }
 
-/// Resolve the default from its two inputs, in the documented order.
+/// Resolve the default from its two inputs, in the documented order: the
+/// store they name laid over the seed, or the seed alone.
 ///
 /// Pure in both: `registry_location` is what `YGGDRYL_ISIN_REGISTRY_URI`
 /// held and `home` what [`LocalFolder::home`] answered, so the rule is
@@ -112,18 +125,20 @@ pub(super) fn autoload(
     registry_location: Option<&str>,
     home: Option<LocalFolder>,
 ) -> Result<IsinRegistry> {
-    let none: [(&str, &str); 0] = [];
-    if let Some(location) = registry_location
+    let url = match registry_location
         .map(str::trim)
         .filter(|location| !location.is_empty())
     {
-        let url = located(location, home.as_ref())?;
-        return IsinRegistry::from_url(&url, none);
-    }
-    let Some(home) = home else {
-        return Ok(IsinRegistry::new());
+        Some(location) => located(location, home.as_ref())?,
+        None => match home {
+            Some(home) => under_home(&home, CONFIG_PATH)?,
+            None => return Ok(IsinRegistry::seeded()),
+        },
     };
-    IsinRegistry::from_url(&under_home(&home, CONFIG_PATH)?, none)
+    let none: [(&str, &str); 0] = [];
+    let mut registry = IsinRegistry::seeded();
+    registry.set_holder_over(Holder::from_url(&url, none)?)?;
+    Ok(registry)
 }
 
 /// The URL `location` names: a URL as spelled, a bare path rooted on the

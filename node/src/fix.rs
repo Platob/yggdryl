@@ -3073,10 +3073,12 @@ impl JsFixCodec {
     /// stateful book iterator into Arrow batches of lifted `marketdata` rows,
     /// one `book_event` row per book.
     ///
-    /// Folds orders, quotes and `W`/`X` book messages; an execution, a
-    /// trade and every other record are ignored before they are expanded,
-    /// since a fill moves a book through its order's or quote's report.
-    /// Source errors still fail.
+    /// Folds orders, quotes and `W`/`X` book messages into each book's
+    /// sides - the orders and quotes its instant applied its `delta` - and
+    /// records every execution among its `events`, moving no side, since a
+    /// fill moves a book through its order's or quote's report; a trade and
+    /// every other record are ignored before they are expanded. Source
+    /// errors still fail.
     ///
     /// The loader supplies the iterable pull. `snapshotMillis` enables an
     /// epoch-aligned snapshot grid. `filter` - a `Filter`, a `Term` or the

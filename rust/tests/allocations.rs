@@ -1017,13 +1017,13 @@ fn allocation_book(entries: usize) -> BookEvent {
     book
 }
 
-/// One step of a book walk between ticks - the next book, emitted as its
-/// deltas alone - makes as many allocations at 8 levels a side as at 1,024,
+/// One step of a book walk between ticks - the next book, emitted as a
+/// delta book - makes as many allocations at 8 levels a side as at 1,024,
 /// whether the consumer drops every book or holds every one: nothing the
-/// step allocates is per level or per entry, and a book stating its deltas
-/// alone holds no side, so holding it never makes the next step copy one.
+/// step allocates is per level or per entry, and a delta book holds no
+/// side, so holding it never makes the next step copy one.
 /// The second step is counted, the walk's first change after its first
-/// book - every entry its delta - behind it. A copy of a side's store is
+/// book - every entry in its delta - behind it. A copy of a side's store is
 /// the same few
 /// allocations at any depth, so this count cannot tell a shared store from
 /// a copied one; `a_walk_shares_each_side_s_store_with_the_books_it_emits`
@@ -1038,13 +1038,15 @@ fn a_delta_book_walk_step_allocates_alike_at_8_and_1024_levels_while_every_book_
         )
         .unwrap();
         let first = books.next().unwrap().unwrap();
-        assert_eq!(first.deltas().len(), levels * 16);
+        assert_eq!(first.delta().len(), levels * 16);
+        assert_eq!(first.events().len(), 0);
         let second = books.next().unwrap().unwrap();
         assert!(!second.is_complete());
         let kept = held.then_some((first, second));
         let (allocations, book) = counted(|| books.next().unwrap().unwrap());
         assert!(!book.is_complete());
-        assert_eq!(book.deltas().len(), 1);
+        assert_eq!(book.delta().len(), 1);
+        assert_eq!(book.events().len(), 0);
         black_box((kept, book));
         allocations
     };
@@ -1070,11 +1072,11 @@ fn a_walk_step_at_a_deep_touch_allocates_alike_at_8_and_1024_entries() {
         let updates =
             [2, 3].map(|unix| allocation_level_entry("Buy", 0, entries / 2, unix, "Replaced"));
         let mut books = BookIterator::new(touch.chain(updates), 0).unwrap();
-        assert_eq!(books.next().unwrap().unwrap().deltas().len(), 2 * entries);
+        assert_eq!(books.next().unwrap().unwrap().delta().len(), 2 * entries);
         drop(books.next().unwrap().unwrap());
         let (allocations, book) = counted(|| books.next().unwrap().unwrap());
         assert!(!book.is_complete());
-        assert_eq!(book.deltas().len(), 1);
+        assert_eq!(book.delta().len(), 1);
         black_box(book);
         allocations
     };
@@ -1085,10 +1087,10 @@ fn a_walk_step_at_a_deep_touch_allocates_alike_at_8_and_1024_entries() {
     );
 }
 
-/// Rebuilding a book stating its deltas alone over the whole book before
+/// Rebuilding a delta book over the complete book before
 /// it - the fold `BookService::book` runs over the rows it read, through
 /// [`Element::with_previous`] - makes as many allocations over a book 8
-/// levels a side deep as over one 1,024 deep: it replays its deltas, and
+/// levels a side deep as over one 1,024 deep: it replays its delta, and
 /// never copies an entry or builds anything per level.
 #[test]
 fn a_service_rebuild_allocates_per_delta_not_per_level() {
@@ -1118,8 +1120,8 @@ fn a_service_rebuild_allocates_per_delta_not_per_level() {
     );
 }
 
-/// A book's readings by kind - its resting orders, and the orders, quotes,
-/// executions and every other delta among its deltas - borrow the entries
+/// A book's readings by kind - its resting orders, the orders and quotes
+/// among its delta, and the executions among its events - borrow the entries
 /// the book holds: nothing is allocated, at 8 entries or 1,024, the resting
 /// orders walking every live quote to find none.
 #[test]
@@ -1134,6 +1136,8 @@ fn a_book_s_readings_by_kind_allocate_nothing() {
             black_box(book.orddelta().map(black_box).count());
             black_box(book.quotes().map(black_box).count());
             black_box(book.executions().map(black_box).count());
+            black_box(book.controls().map(black_box).count());
+            black_box(book.delta().map(black_box).count());
             black_box(book.events().map(black_box).count());
         });
     }
@@ -1492,7 +1496,7 @@ fn allocation_market_books(count: usize) -> Vec<MarketData> {
         .collect()
 }
 
-/// A book row's nested lists - its `alive` and `deltas` rows and its
+/// A book row's nested lists - its `alive`, `delta` and `events` rows and its
 /// `bidlimits` and `asklimits` levels - are laid out straight into the
 /// batch's items, no list built per row: past its canonical check, what a
 /// batch of books costs grows with the buffers' doublings and not with the
@@ -1502,22 +1506,22 @@ fn a_book_batch_write_allocates_no_nested_list_per_row() {
     let overhead = |rows: usize| {
         let values = allocation_market_books(rows);
         // The check clones each entry, alive and applied, and the book's
-        // event: what a clone of the book holds - its event and its deltas'
-        // vector, sharing the one entry applied - and a clone of each of its
-        // entries, alive and applied, less the deltas' vector the check never
-        // builds.
+        // event: what a clone of the book holds - its event and its delta's
+        // vector, sharing the one entry applied, and its events' vector,
+        // empty and so no allocation - and a clone of each of its entries,
+        // alive and applied, less the delta's vector the check never builds.
         let (checked, ()) = counted(|| {
             for value in &values {
                 let book = value.as_book_event().expect("a book");
                 black_box(book.clone());
-                for entry in book.alive().chain(book.deltas()) {
+                for entry in book.alive().chain(book.delta()).chain(book.events()) {
                     black_box(entry.clone());
                 }
             }
         });
         let checked = checked
             .checked_sub(rows)
-            .expect("a deltas' vector per book");
+            .expect("a delta's vector per book");
         let mut reader = MarketData::arrow_reader(values, Some(rows), None).expect("a reader");
         let (written, batch) = counted(|| reader.next().expect("one batch").expect("the batch"));
         assert_eq!(batch.num_rows(), rows);
@@ -1536,12 +1540,12 @@ fn a_book_batch_write_allocates_no_nested_list_per_row() {
 }
 
 /// A batch of the books a walk emits between its snapshot ticks - each
-/// stating its one delta alone, its `alive` cell and its levels null -
+/// a delta book stating one order, its `alive` cell and its levels null -
 /// costs as many allocations over a book 8 levels a side deep as over one
-/// 1,024 deep: writing one lays out and checks its deltas, never an entry
+/// 1,024 deep: writing one lays out and checks its delta, never an entry
 /// or a level it holds.
 #[test]
-fn a_batch_of_books_stating_their_deltas_alone_writes_alike_at_8_and_1024_levels() {
+fn a_batch_of_delta_books_writes_alike_at_8_and_1024_levels() {
     let write = |levels: usize| {
         let updates = (2..66).map(|unix| allocation_level_entry("Buy", 0, 0, unix, "Replaced"));
         let books = BookIterator::new(
@@ -1565,7 +1569,7 @@ fn a_batch_of_books_stating_their_deltas_alone_writes_alike_at_8_and_1024_levels
     let (shallow, deep) = (write(8), write(1_024));
     assert!(
         deep <= shallow + 2,
-        "64 books stating their deltas alone cost {deep} allocations at 1,024 levels but {shallow} at 8"
+        "64 delta books cost {deep} allocations at 1,024 levels but {shallow} at 8"
     );
 }
 
@@ -8624,9 +8628,10 @@ fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
 /// A snapshot stream shares the table rather than copying it: opening one
 /// costs the same five allocations at 64 instruments as at 4,096 - the
 /// reader, its schema and its field - and draining it lays each row out
-/// once, eight allocations a row - the named row, a B-tree of its forty-two
-/// cells inserted in column order, which takes six leaf nodes behind one
-/// `Arc` as the forty-one before `eusipacode` did, where the thirty-seven
+/// once, eight allocations a row - the named row, a B-tree of its
+/// forty-three cells inserted in column order, which takes six leaf nodes
+/// behind one `Arc` as the forty-two before `fisn` and the forty-one before
+/// `eusipacode` did, where the thirty-seven
 /// cells of the row before `countrycode`, `forexcode` and `currency` were
 /// added took five, and its canonical run -
 /// plus one doubling of the batch's row vector each time the rows double.
@@ -8659,11 +8664,13 @@ fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
 /// Reloading rows the registry already holds - a golden file read again -
 /// costs each batch the same whatever its rows: one cast plan for the
 /// stream, the landing per batch - one narrowing per column of the
-/// forty-two, one more than the forty-one before `eusipacode` was added and
-/// two more than the forty before `underlyingisin` was, four more than the
-/// thirty-seven before `countrycode`, `forexcode` and `currency` were - and
-/// a code cell adopted as the landing proved it, so a row that moves
-/// nothing allocates nothing.
+/// forty-three, one more than the forty-two before `fisn` was added, two
+/// more than the forty-one before `eusipacode` was and three more than the
+/// forty before `underlyingisin` was, five more than the thirty-seven
+/// before `countrycode`, `forexcode` and `currency` were - and a code cell
+/// adopted as the landing proved it, so a row that moves nothing allocates
+/// nothing. The 43rd column, `fisn`, lands one more buffer per batch: one
+/// column, one allocation, at both corpus sizes.
 #[test]
 fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     let mut each_at = Vec::new();
@@ -8694,7 +8701,7 @@ fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     }
     assert_eq!(
         each_at,
-        [52, 52],
+        [53, 53],
         "a batch of 64 and of 512 known rows: a cost per row"
     );
 }

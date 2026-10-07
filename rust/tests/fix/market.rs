@@ -82,15 +82,16 @@ fn alive(book: &BookEvent, bid: bool) -> Vec<&MarketData> {
         .collect()
 }
 
-/// The deltas applied to one side of `book`, in the order they were.
-fn deltas(book: &BookEvent, bid: bool) -> Vec<&MarketData> {
-    book.deltas()
+/// The delta applied to one side of `book` - its orders and quotes - in
+/// the order applied.
+fn delta(book: &BookEvent, bid: bool) -> Vec<&MarketData> {
+    book.delta()
         .filter(|entry| entry.get_side().is_bid() == bid)
         .collect()
 }
 
 /// The books a lifted `marketdata` stream holds, each a `book_event` row,
-/// whole: a book stating its deltas alone rebuilt over the book of its code
+/// whole: a delta book rebuilt over the book of its code
 /// before it - the empty book a walk starts from where none is - as a
 /// reader folding the stream holds it.
 fn books_of(reader: yggdryl::arrow::BatchReader) -> Vec<BookEvent> {
@@ -108,7 +109,7 @@ fn books_of(reader: yggdryl::arrow::BatchReader) -> Vec<BookEvent> {
                 let origin = BookEvent::new(book.get_currunix(), book.get_crosscode());
                 let previous = last.get(book.get_crosscode()).unwrap_or(&origin);
                 book.with_previous(previous)
-                    .expect("a book stating its deltas rebuilds over the book before it")
+                    .expect("a delta book rebuilds over the book before it")
             };
             last.insert(book.get_crosscode().to_owned(), book.clone());
             book
@@ -131,7 +132,7 @@ fn folded(leaves: Vec<MarketData>) -> Vec<BookEvent> {
                 let origin = BookEvent::new(book.get_currunix(), book.get_crosscode());
                 let previous = last.get(book.get_crosscode()).unwrap_or(&origin);
                 book.with_previous(previous)
-                    .expect("a book stating its deltas rebuilds over the book before it")
+                    .expect("a delta book rebuilds over the book before it")
             };
             last.insert(whole.get_crosscode().to_owned(), whole.clone());
             Ok(whole)
@@ -361,8 +362,8 @@ fn an_order_a_venue_ends_by_execution_report_leaves_its_book() {
             alive(ended, true).is_empty(),
             "{state:?}: the order left its book"
         );
-        let [delta] = deltas(ended, true)[..] else {
-            panic!("{state:?}: the report is its book's one delta")
+        let [delta] = delta(ended, true)[..] else {
+            panic!("{state:?}: the report is its book's one delta entry")
         };
         assert_eq!(*operation_of(delta).get_state(), state);
     }
@@ -789,10 +790,10 @@ fn anonymous_trade_sides_are_order_independent_and_stable_id_tags_do_not_collide
 
 /// A12: a capture's market data holds each execution exactly once - the
 /// trade's sided executions and the order's fill - and its books record
-/// each among their deltas, resting on no side: a fill moves a book through
+/// each among their events, resting on no side: a fill moves a book through
 /// its order's report, the delta that report applies, with the execution
-/// beside it, and an instant only executions touched emits a book stating
-/// them alone.
+/// among its events, and an instant only executions touched emits a delta
+/// book whose delta is empty and whose events state them alone.
 #[test]
 fn a_capture_records_each_execution_in_its_book_and_folds_none() {
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
@@ -827,30 +828,37 @@ fn a_capture_records_each_execution_in_its_book_and_folds_none() {
             .all(|entry| entry.marketdatakind() != MarketDataKind::Execution),
         "no book holds an execution alive"
     );
-    let deltas = books[1].deltas().collect::<Vec<_>>();
-    assert_eq!(deltas.len(), 2, "the fill's report and the execution");
-    let report = deltas
-        .iter()
-        .find(|delta| delta.marketdatakind() == MarketDataKind::Order)
-        .expect("the fill's report");
-    assert!(
-        deltas
-            .iter()
-            .any(|delta| delta.marketdatakind() == MarketDataKind::Execution),
-        "the execution the parse split off"
+    let [report] = books[1].delta().collect::<Vec<_>>()[..] else {
+        panic!("the fill's report is the fill's book's one delta entry")
+    };
+    assert_eq!(report.marketdatakind(), MarketDataKind::Order);
+    assert_eq!(
+        books[1]
+            .events()
+            .map(MarketData::marketdatakind)
+            .collect::<Vec<_>>(),
+        [MarketDataKind::Execution],
+        "the execution the parse split off, among the fill's book's events"
     );
     assert_eq!(*operation_of(report).get_state(), State::PartiallyFilled);
-    assert_eq!(alive(&books[1], true), [*report]);
+    assert_eq!(alive(&books[1], true), [report]);
+    assert_eq!(
+        books[2].delta().len(),
+        0,
+        "the trade's instant moved no entry"
+    );
     assert_eq!(
         books[2]
-            .deltas()
+            .events()
             .map(MarketData::marketdatakind)
             .collect::<Vec<_>>(),
         [MarketDataKind::Execution, MarketDataKind::Execution]
     );
+    assert_eq!(books[2].executions().count(), 2);
+    assert_eq!(books[2].controls().count(), 0);
     // Rebuilt over the fill's book, the trade's instant keeps the order
     // alive: its executions replace no membership and rest on no side.
-    assert_eq!(alive(&books[2], true), [*report]);
+    assert_eq!(alive(&books[2], true), [report]);
     assert!(alive(&books[2], false).is_empty());
 
     let mut held: Vec<String> = codec
@@ -913,7 +921,7 @@ fn a_chain_restated_under_its_isin_rests_in_the_instruments_book_alone() {
         "the restatement stands in the instrument's book"
     );
     assert_eq!(
-        *operation_of(books[1].deltas().next().unwrap()).get_state(),
+        *operation_of(books[1].delta().next().unwrap()).get_state(),
         State::Removed,
         "the ticker book's delta withdraws the entry"
     );
@@ -963,8 +971,8 @@ fn a_quote_status_report_stating_a_cancel_removes_the_quote_from_its_book() {
         (0, 0),
         "the cancel's status report takes it off both"
     );
-    let [ended] = books[2].deltas().collect::<Vec<_>>()[..] else {
-        panic!("the status report is the one delta")
+    let [ended] = books[2].delta().collect::<Vec<_>>()[..] else {
+        panic!("the status report is the one delta entry")
     };
     assert_eq!(*operation_of(ended).get_state(), State::Canceled);
 }
@@ -1015,7 +1023,8 @@ fn a_two_sided_quote_is_one_message_holding_both_legs() {
     assert_eq!(book.get_side(), Side::Both);
     assert_eq!(alive(book, true), [entry]);
     assert_eq!(alive(book, false), [entry]);
-    assert_eq!(book.deltas().count(), 1, "one entry, one delta");
+    assert_eq!(book.delta().count(), 1, "one entry, one delta entry");
+    assert_eq!(book.events().count(), 0, "a quote is no event");
     assert_eq!(text(book.get_bidpx()).as_deref(), Some("99"));
     assert_eq!(text(book.get_bidqty()).as_deref(), Some("7"));
     assert_eq!(text(book.get_askpx()).as_deref(), Some("101"));
@@ -1340,18 +1349,20 @@ fn codec_streams_fix_messages_through_books_into_arrow_with_coherent_prices() {
     assert_eq!(text(books[1].get_bidpx()).as_deref(), Some("101"));
     assert_eq!(text(books[1].get_askqty()).as_deref(), Some("12"));
     // The update's trade entry (`269=2`) is an execution, recorded among
-    // the deltas beside the bid's change and moving no side.
-    let deltas = books[1].deltas().collect::<Vec<_>>();
-    assert_eq!(deltas.len(), 2, "the bid's change and the trade entry");
-    let delta = deltas
-        .iter()
-        .find(|delta| delta.marketdatakind() != MarketDataKind::Execution)
-        .expect("the bid's change");
-    assert_eq!(text(delta.get_price()).as_deref(), Some("101"));
-    assert!(
-        deltas
-            .iter()
-            .any(|delta| delta.marketdatakind() == MarketDataKind::Execution)
+    // the book's events beside the bid's change in its delta, and moving no
+    // side.
+    let [change] = books[1].delta().collect::<Vec<_>>()[..] else {
+        panic!("the bid's change is the update's one delta entry")
+    };
+    assert_ne!(change.marketdatakind(), MarketDataKind::Execution);
+    assert_eq!(text(change.get_price()).as_deref(), Some("101"));
+    assert_eq!(
+        books[1]
+            .events()
+            .map(MarketData::marketdatakind)
+            .collect::<Vec<_>>(),
+        [MarketDataKind::Execution],
+        "the trade entry"
     );
     // A leaf states its own category: a book entry naming no order is a
     // quote, whatever the message's `BOOK`.
@@ -1394,15 +1405,17 @@ fn codec_book_admission_skips_noncontributing_records_between_market_events() {
         .collect::<Vec<_>>();
     let expected = books_of(codec.book_arrow_reader(admitted.clone(), 0, None).unwrap());
     // The execution report's fill is market data its book records: its
-    // instant emits a book stating the execution alone.
+    // instant emits a delta book whose delta is empty and whose events
+    // state the execution alone.
     assert_eq!(expected.len(), 5);
     let filled = admitted[2].get_currunix();
     let fill = expected
         .iter()
         .find(|book| book.get_currunix() == filled)
         .expect("the fill's book");
+    assert_eq!(fill.delta().len(), 0, "the fill moved no entry");
     assert_eq!(
-        fill.deltas()
+        fill.events()
             .map(MarketData::marketdatakind)
             .collect::<Vec<_>>(),
         [MarketDataKind::Execution]
@@ -1415,11 +1428,8 @@ fn codec_book_admission_skips_noncontributing_records_between_market_events() {
             .count(),
         1
     );
-    assert_eq!(deltas(&expected[0], true)[0].kind(), MarketKind::OrderEvent);
-    assert_eq!(
-        deltas(&expected[1], false)[0].kind(),
-        MarketKind::QuoteEvent
-    );
+    assert_eq!(delta(&expected[0], true)[0].kind(), MarketKind::OrderEvent);
+    assert_eq!(delta(&expected[1], false)[0].kind(), MarketKind::QuoteEvent);
     let actual = books_of(codec.book_arrow_reader(mixed, 0, None).unwrap());
     assert_eq!(actual, expected);
 
@@ -1540,11 +1550,15 @@ fn book_arrow_reader_narrows_its_books_to_what_its_filter_keeps() {
     let bids = books(Some("side = 'BUYS'"));
     assert_eq!(bids.len(), 2, "the order and its fill's report");
     for book in &bids {
-        assert!(alive(book, false).is_empty() && deltas(book, false).is_empty());
-        assert!(book.deltas().all(|delta| matches!(
-            delta.marketdatakind(),
-            MarketDataKind::Order | MarketDataKind::Execution
-        )));
+        assert!(alive(book, false).is_empty() && delta(book, false).is_empty());
+        assert!(
+            book.delta()
+                .all(|entry| entry.marketdatakind() == MarketDataKind::Order)
+        );
+        assert!(
+            book.events()
+                .all(|event| event.marketdatakind() == MarketDataKind::Execution)
+        );
     }
     let asks = books(Some("side = 'SELL'"));
     assert_eq!(asks.len(), 1);
@@ -1663,7 +1677,7 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
     }
     assert_eq!(operation_of(versions[0]).get_prevuuid(), None);
     // A row states an entry's scope, its action and its position - what a
-    // book's deltas replay by - and no more of its control: the price and
+    // book's delta replays by - and no more of its control: the price and
     // size the entry stated for itself steered the walk and are no row
     // fact.
     for (version, action) in versions.into_iter().zip([
@@ -1703,9 +1717,9 @@ fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
     let previous = operation_of(alive(&books[0], true)[0]);
     assert!(alive(&books[1], true).is_empty());
     assert!(alive(&books[1], false).is_empty());
-    let bid_deltas = deltas(&books[1], true);
-    let [deleted] = bid_deltas[..] else {
-        panic!("one terminal bid delta")
+    let bid_delta = delta(&books[1], true);
+    let [deleted] = bid_delta[..] else {
+        panic!("one terminal bid delta entry")
     };
     assert_eq!(deleted.kind(), MarketKind::OrderEvent);
     // The delete action a row states, which a rebuild replays by.
@@ -2288,7 +2302,7 @@ fn an_fx_execution_is_lifted_prices_as_spot_plus_points_and_stays_a_leaf_its_boo
     assert_eq!(held.by_tag(195).unwrap(), super::decimal("0.0025"));
 
     // The execution the report splits off is a market leaf with its FX
-    // parts, recorded by its book among its deltas and moving nothing: its
+    // parts, recorded by its book among its events and moving nothing: its
     // report moves the book.
     let [_, execution] = <[FixMsg; 2]>::try_from(split(
         b"8=FIX.4.4|35=8|17=E1|37=O1|55=EURUSD|54=1|32=1000000|150=F|194=1.25|195=0.0025|10=0|",
@@ -2302,11 +2316,14 @@ fn an_fx_execution_is_lifted_prices_as_spot_plus_points_and_stays_a_leaf_its_boo
     let mut books = yggdryl::graph::BookIterator::new(inputs.clone().into_iter(), 0).unwrap();
     let book = books.next().expect("the execution's book").expect("a book");
     assert!(books.next().is_none());
+    assert!(!book.is_complete(), "an event-only book is a delta book");
+    assert_eq!(book.delta().count(), 0, "the execution moves no entry");
     assert_eq!(
-        book.deltas().count(),
+        book.events().count(),
         1,
-        "the execution is its book's one delta"
+        "the execution is its book's one event"
     );
+    assert_eq!(book.executions().count(), 1);
     assert!(book.alive().next().is_none(), "and it rests on no side");
     assert_eq!(text(execution.get_spotrate()).as_deref(), Some("1.25"));
     assert_eq!(

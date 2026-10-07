@@ -107,6 +107,14 @@ fn lifts_of(
         .collect()
 }
 
+/// The kind a caller named, read through the core vocabulary once.
+fn market_data_kind_of(kind: Option<String>) -> Result<Option<yggdryl::MarketDataKind>> {
+    kind.as_deref()
+        .map(yggdryl::MarketDataKind::read)
+        .transpose()
+        .map_err(napi_error)
+}
+
 /// The batch bounds a caller stated, checked once.
 fn batch_sizes(
     batch_row_size: Option<f64>,
@@ -293,14 +301,15 @@ impl JsMarketData {
         Ok(JsMarketDataRowIterator::over(Box::new(rows)))
     }
 
-    /// The deltas of the books `source` holds - a `Serie`, a `ChunkedSerie`
-    /// or a `StreamChunkedSerie`, consumed - laid out as `marketdata` rows in book
-    /// order, as a `StreamChunkedSerie`: every event each book states among its
-    /// deltas, of `kind` where one is named (`'ORDR'`, `'QUOT'`, `'EXEC'`,
-    /// any spelling the kind reads), every kind otherwise; a row that is no
-    /// book is refused by its kind where it is read.
+    /// The delta of the books `source` holds - a `Serie`, a `ChunkedSerie`
+    /// or a `StreamChunkedSerie`, consumed - laid out as `marketdata` rows
+    /// in book order, as a `StreamChunkedSerie`: the orders and quotes each
+    /// book's instant applied, in the order applied, of `kind` where one is
+    /// named (`'ORDR'`, `'QUOT'`, any spelling the kind reads), both
+    /// otherwise; a row that is no book is refused by its kind where it is
+    /// read. `eventsSerie` reads every other event the books recorded.
     #[napi]
-    pub fn deltas_serie(
+    pub fn delta_serie(
         source: Either3<
             ClassInstance<'_, JsSerie>,
             ClassInstance<'_, JsChunkedSerie>,
@@ -308,13 +317,31 @@ impl JsMarketData {
         >,
         kind: Option<String>,
     ) -> Result<JsStreamChunkedSerie> {
-        let kind = kind
-            .as_deref()
-            .map(yggdryl::MarketDataKind::read)
-            .transpose()
-            .map_err(napi_error)?;
+        let kind = market_data_kind_of(kind)?;
         let source = serie_source(source)?;
-        let reader = CoreMarketData::deltas_serie(source, kind).map_err(napi_error)?;
+        let reader = CoreMarketData::delta_serie(source, kind).map_err(napi_error)?;
+        Ok(JsStreamChunkedSerie::from_core(reader))
+    }
+
+    /// The events of the books `source` holds - a `Serie`, a
+    /// `ChunkedSerie` or a `StreamChunkedSerie`, consumed - laid out as
+    /// `marketdata` rows in book order, as a `StreamChunkedSerie`: every
+    /// other event each book's instant recorded - the executions and the
+    /// snapshot controls - in the order applied, of `kind` where one is
+    /// named (`'EXEC'`, or `'BOOK'` for the controls, any spelling the kind
+    /// reads), every kind otherwise; `deltaSerie`'s refusals.
+    #[napi]
+    pub fn events_serie(
+        source: Either3<
+            ClassInstance<'_, JsSerie>,
+            ClassInstance<'_, JsChunkedSerie>,
+            ClassInstance<'_, JsStreamChunkedSerie>,
+        >,
+        kind: Option<String>,
+    ) -> Result<JsStreamChunkedSerie> {
+        let kind = market_data_kind_of(kind)?;
+        let source = serie_source(source)?;
+        let reader = CoreMarketData::events_serie(source, kind).map_err(napi_error)?;
         Ok(JsStreamChunkedSerie::from_core(reader))
     }
 

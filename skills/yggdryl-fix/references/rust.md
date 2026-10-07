@@ -486,7 +486,11 @@ identifiers and the ticker, CFI and currency facts, never the wire; a parse
 through the same codec fills derived identifiers from the table its door
 fixed. A codec without one learns into a registry of each walk's own;
 `with_isin_registry` shares one across walks run one after another, bound to
-a store with `from_url` and written back with `commit` only where it moved.
+a store with `from_url` and written back with `commit` only where it moved;
+`IsinRegistry::from_env` lays its store over the embedded common instruments
+`IsinRegistry::seeded()` holds. A row carries the national number its ISIN
+embeds - Holcim's Valor below - and its market's country's currency where it
+states none.
 A structured product's EUSIPA category is learned off a bridge's own key
 (`EUSIPACode`, `OMS_SSPACategory`, ...) as the row's `eusipacode`, an
 `Eusipa`; the key is lifted into no identifier map.
@@ -508,6 +512,7 @@ let stated = ["8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|4
 let parsed: Vec<FixMsg> = codec.parse_lines(stated).collect::<yggdryl::Result<_>>()?;
 codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
 assert_eq!(instruments.lock().unwrap().get("CH0012214059").and_then(|row| row.get(&yggdryl::IdType::Ric)), Some("HOLN.S"));
+assert_eq!(instruments.lock().unwrap().get("CH0012214059").and_then(|row| row.get(&yggdryl::IdType::Valor)), Some("1221405"));
 
 // A bridge key states a structured product's category beside its ISIN.
 let product = ["8=FIX.4.4|35=D|11=C|22=4|48=CH0123456789|55=ACMEL|207=XSWX|OMS_SSPACategory=2300|10=0|"];

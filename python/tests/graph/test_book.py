@@ -51,9 +51,9 @@ class TestBookEvent:
         # A book holds both sides.
         assert book.side is Side.BOTH
         assert book.alive_on(Side.BOTH) == []
-        assert book.alive == [] and book.deltas == []
+        assert book.alive == [] and book.delta == []
         assert book.ordlive == [] and book.orddelta == [] and book.quotes == [] and book.executions == []
-        assert book.events == []
+        assert book.events == [] and book.controls == []
         assert book.alive_on(Side.BUYS) == [] and book.alive_on("SELL") == []
         # A book a caller builds holds its sides, empty or not.
         assert book.is_complete
@@ -180,24 +180,27 @@ class TestBookEvent:
         # The bid side's entries first, then the ask side's.
         assert [entry.marketdatakind for entry in alive] == [MarketDataKind.ORDR, MarketDataKind.QUOT]
         assert alive[0].as_order_event() is not None
-        assert len(book.deltas) == 2
+        assert len(book.delta) == 2 and book.events == []
         crossed = empty.with_operations([order(price="103"), quote()])
         assert crossed.is_crossed
 
     def test_market_data_folds_and_an_execution_is_recorded(self) -> None:
         # A book places no execution: a fill moves it through its order's
-        # report, and the execution stands among the deltas of its instant.
+        # report, and the execution stands among the events of its instant,
+        # never in its delta.
         execution = graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUYS", lastpx=D("101"), lastqty=1)
         book = graph.BookEvent(CLOCK, "IBM").with_operations(iter([graph.MarketData(order()), execution]))
         assert [entry.crosscode for entry in book.alive] == ["10:1:O-1"]
-        assert [delta.crosscode for delta in book.deltas] == ["10:1:O-1", "8:1:E-1"]
-        # Read by kind, the execution is an `ExecutionEvent` among the deltas.
+        assert [delta.crosscode for delta in book.delta] == ["10:1:O-1"]
+        assert [event.crosscode for event in book.events] == ["8:1:E-1"]
+        # Read by kind, the execution is an `ExecutionEvent` among the events.
         assert [type(held) for held in book.executions] == [graph.ExecutionEvent]
         assert [held.crosscode for held in book.executions] == ["8:1:E-1"]
         assert [held.crosscode for held in book.orddelta] == ["10:1:O-1"]
-        assert book.executions[0] == book.deltas[1].as_execution_event()
+        assert book.executions[0] == book.events[0].as_execution_event()
+        assert book.controls == []
 
-    def test_resting_orders_and_deltas_by_kind(self) -> None:
+    def test_resting_orders_and_the_delta_by_kind(self) -> None:
         book = graph.BookEvent(CLOCK, "IBM").with_operations(
             [order(code="B-1"), order(price="100", code="B-2"), quote()]
         )
@@ -213,12 +216,15 @@ class TestBookEvent:
         assert [type(entry) for entry in later.quotes] == [graph.QuoteEvent]
         assert [entry.crosscode for entry in later.quotes] == ["14:0:Q-2"]
         assert [entry.crosscode for entry in later.executions] == ["8:1:E-1"]
-        # Q-1 still rests: it is alive, not a delta of this instant.
+        # Q-1 still rests: it is alive, not in this instant's delta.
         assert "14:0:Q-1" in [entry.crosscode for entry in later.alive]
-        # The four partition the deltas; `events`, every other delta, is empty
-        # by construction: a fold records no other kind among them.
-        assert later.events == []
-        assert len(later.orddelta) + len(later.quotes) + len(later.executions) + len(later.events) == len(later.deltas)
+        # The orders and the quotes partition the delta; the executions and
+        # the controls partition the events.
+        assert [entry.crosscode for entry in later.delta] == ["10:1:B-1", "14:0:Q-2"]
+        assert [entry.crosscode for entry in later.events] == ["8:1:E-1"]
+        assert later.controls == []
+        assert len(later.orddelta) + len(later.quotes) == len(later.delta)
+        assert len(later.executions) + len(later.controls) == len(later.events)
         # A delta book states its changed orders and no resting one.
         books = list(graph.BookIterator([order(), order(CLOCK + 1, "100", "B-2")]))
         assert books[1].ordlive == [] and [entry.crosscode for entry in books[1].orddelta] == ["10:1:B-2"]
@@ -228,9 +234,9 @@ class TestBookEvent:
         assert rebuilt is not None and [entry.crosscode for entry in rebuilt.ordlive] == ["10:1:O-1", "10:1:B-2"]
         for held in (*books, rebuilt):
             assert held.events == []
-            assert len(held.orddelta) + len(held.quotes) + len(held.executions) == len(held.deltas)
+            assert len(held.orddelta) + len(held.quotes) == len(held.delta)
 
-    def test_no_delta_lands_among_the_events(self) -> None:
+    def test_a_trade_and_a_nested_book_reach_neither_list(self) -> None:
         # Refused first: a nested book and an undated order are refused by
         # kind, the book untouched; a trade is pruned before the fold.
         book = graph.BookEvent(CLOCK, "IBM").with_operations([order()])
@@ -238,13 +244,13 @@ class TestBookEvent:
             book.with_operations([graph.BookEvent(CLOCK, "IBM")])
         with pytest.raises(ValueError, match=r"\$\.operations\[0\]\.kind"):
             book.with_operations([graph.Order()])
-        assert book.events == [] and len(book.orddelta) == len(book.deltas) == 1
+        assert book.events == [] and len(book.orddelta) == len(book.delta) == 1
         root = graph.ExecutionEvent(CLOCK + 1, crosscode="T-1", ticker="IBM", lastpx=D("101"), lastqty=1)
         fill = graph.ExecutionEvent(CLOCK + 1, crosscode="F-1", side="BUYS", ticker="IBM", lastpx=D("101"), lastqty=1)
         trade = graph.TradeEvent.from_parts(root, [fill])
         books = list(graph.BookIterator([order(), trade, quote(CLOCK + 1)]))
         assert all(held.events == [] for held in books)
-        assert [delta.marketdatakind for held in books for delta in held.deltas] == [
+        assert [delta.marketdatakind for held in books for delta in held.delta] == [
             MarketDataKind.ORDR,
             MarketDataKind.QUOT,
         ]
@@ -280,7 +286,7 @@ class TestBookEvent:
         assert [entry.crosscode for entry in book.alive_on(Side.SELL)] == ["14:0:Q-1"]
         assert book.alive_on(Side.BUYS) == book.alive_on(Side.SELL)
         assert [entry.crosscode for entry in book.alive] == ["14:0:Q-1"]
-        assert [delta.crosscode for delta in book.deltas] == ["14:0:Q-1"]
+        assert [delta.crosscode for delta in book.delta] == ["14:0:Q-1"]
         assert [(limit["price"].as_py(), limit["quantity"].as_py()) for limit in book.limits(Side.BUYS)] == [
             (D("99"), D("2"))
         ]
@@ -303,12 +309,12 @@ class TestBookEvent:
         # Keyed by the instrument's ISIN, which beats its ticker.
         assert first.crosscode == "3:0:CH0012214059"
         assert first.ticker == "HOLN"
-        # With no grid and no snapshot input, a book states its deltas alone.
+        # With no grid and no snapshot input, a book is a delta book.
         assert not first.is_complete
         assert first.alive == [] and first.alive_on(Side.BUYS) == [] and first.limits(Side.BUYS) == []
-        assert [delta.crosscode for delta in first.deltas] == ["10:1:B-1"]
+        assert [delta.crosscode for delta in first.delta] == ["10:1:B-1"]
         assert decimal_of(first.best_price(Side.BUYS)) == D("99")
-        # A book stating its deltas alone takes no operations.
+        # A delta book takes no operations.
         with pytest.raises(ValueError, match=r"\$\.alive"):
             first.with_operations([order(clock=2)])
         base = graph.BookEvent.keyed(1, "CH0012214059")
@@ -326,6 +332,45 @@ class TestBookEvent:
         snapshot = graph.SnapshotEvent.snapshot(order(), "Symbol=IBM")
         book = graph.BookEvent(CLOCK, "IBM").with_operations([snapshot])
         assert book.alive == []
+        # The control is recorded among the events, never in the delta.
+        assert book.delta == []
+        assert [type(held) for held in book.controls] == [graph.SnapshotEvent]
+        assert len(book.events) == len(book.controls) == 1 and book.executions == []
+
+    def test_an_empty_snapshot_on_an_empty_book_states_its_control(self) -> None:
+        # An empty `W` on an empty book replaces no membership, yet the walk
+        # emits an empty complete book whose events hold the control.
+        control = graph.SnapshotEvent.snapshot(order(), "Symbol=IBM")
+        (book,) = graph.BookIterator([control])
+        assert book.is_complete and book.alive == [] and book.delta == []
+        assert book.snapunix == CLOCK
+        assert [held.crosscode for held in book.controls] == [control.crosscode]
+        assert [held.as_snapshot_event() is not None for held in book.events] == [True]
+        assert book.executions == []
+
+    def test_an_instant_only_an_execution_reached_is_an_event_only_book(self) -> None:
+        fill = graph.ExecutionEvent(CLOCK + 1, crosscode="E-1", side="BUYS", lastpx=D("101"), lastqty=1, ticker="IBM")
+        first, later = graph.BookIterator([order(), fill])
+        # A delta book with an empty delta and the execution in its events.
+        assert not later.is_complete
+        assert later.delta == [] and later.orddelta == [] and later.quotes == []
+        assert [held.crosscode for held in later.events] == ["8:1:E-1"]
+        assert [type(held) for held in later.executions] == [graph.ExecutionEvent]
+        assert later.controls == [] and later.events[0].as_snapshot_event() is None
+        # Laid out as a row and read back, it is the book it was, never a
+        # snapshot control.
+        (row,) = graph.MarketData.from_arrow_reader(graph.MarketData.arrow_reader([later]))
+        assert row.as_snapshot_event() is None
+        held = row.as_book_event()
+        assert held is not None and held.delta == [] and [e.crosscode for e in held.events] == ["8:1:E-1"]
+        # Rebuilt over the complete book before it, nothing is replayed: the
+        # order still rests and the execution stays an event.
+        whole = first.with_previous(graph.BookEvent.keyed(CLOCK, "IBM"))
+        assert whole is not None
+        rebuilt = later.with_previous(whole)
+        assert rebuilt is not None and rebuilt.is_complete
+        assert [entry.crosscode for entry in rebuilt.alive] == ["10:1:O-1"]
+        assert rebuilt.delta == [] and [held.crosscode for held in rebuilt.events] == ["8:1:E-1"]
 
     def test_refusals_name_the_item(self) -> None:
         book = graph.BookEvent(CLOCK, "IBM")
@@ -373,7 +418,7 @@ class TestSnapshotEvent:
 class TestBookIterator:
     def test_books_over_three_items_in_order(self) -> None:
         # A walk records an execution where it pulls it: an instant only an
-        # execution reached emits a book stating it alone, resting nowhere.
+        # execution reached emits an event-only book, resting it nowhere.
         execution = graph.ExecutionEvent(
             CLOCK + 1, crosscode="O-1", side="BUYS", lastpx=D("101"), lastqty=1, ticker="IBM"
         )
@@ -383,8 +428,9 @@ class TestBookIterator:
         assert [book.currunix for book in books] == [CLOCK, CLOCK + 1]
         assert decimal_of(books[0].best_price(Side.BUYS)) == D("101")
         assert decimal_of(books[0].best_price(Side.SELL)) == D("102")
-        assert [delta.marketdatakind for delta in books[0].deltas] == [MarketDataKind.ORDR, MarketDataKind.QUOT]
-        assert [delta.marketdatakind for delta in books[1].deltas] == [MarketDataKind.EXEC]
+        assert [delta.marketdatakind for delta in books[0].delta] == [MarketDataKind.ORDR, MarketDataKind.QUOT]
+        assert books[0].events == [] and books[1].delta == []
+        assert [event.marketdatakind for event in books[1].events] == [MarketDataKind.EXEC]
         assert decimal_of(books[1].best_price(Side.BUYS)) == D("101")
         assert hash(walk.__class__) is not None and walk.__hash__ is None
 
@@ -404,8 +450,8 @@ class TestBookIterator:
 
         buys = list(graph.BookIterator(inputs(), 0, "side = 'BUYS'"))
         assert [book.currunix for book in buys] == [1, 3, 4]
-        assert [delta.crosscode for delta in buys[1].deltas] == ["8:1:E-1"]
-        assert [delta.crosscode for delta in buys[2].deltas] == ["14:0:B-2"]
+        assert buys[1].delta == [] and [event.crosscode for event in buys[1].events] == ["8:1:E-1"]
+        assert [delta.crosscode for delta in buys[2].delta] == ["14:0:B-2"]
         # A filter is any filter the expression layer reads: text, a Filter
         # or a Term over the `marketdata` row.
         assert instants(Filter("side = 'BUYS'")) == [1, 3, 4]
