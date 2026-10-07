@@ -4629,8 +4629,17 @@ fn a_group_at_the_snapshot_s_instant_keeps_the_snapshot_and_its_control() {
     assert_eq!(book.get_snapunix(), Some(2));
     assert_eq!(book.alive().count(), 0);
     // The same instant again: a fill recorded among the events.
-    book.add_operations([operation("execution", "IBM", "E-1", 2, "Buy", "100", 1, "Filled")])
-        .unwrap();
+    book.add_operations([operation(
+        "execution",
+        "IBM",
+        "E-1",
+        2,
+        "Buy",
+        "100",
+        1,
+        "Filled",
+    )])
+    .unwrap();
     assert!(book.is_complete());
     assert_eq!(book.get_snapunix(), Some(2));
     assert_eq!(book.delta().len(), 0);
