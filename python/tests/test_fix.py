@@ -5632,10 +5632,12 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     (logs / "bridge-0.log").write_bytes(b"".join(captured[:72]))
     (logs / "bridge-1.log").write_bytes(b"".join(captured[72:]))
     # The instruments the pipeline meets, bound to a table of the silver
-    # catalog: the codec's lifecycle learns into it, and the refined parse
-    # commits it once its messages are written - no stage of its own.
+    # catalog and laid over the seed: the codec's lifecycle learns into it,
+    # and the refined parse commits it once its messages are written - no
+    # stage of its own. A first run holds the seed, clean.
     registry = medallion.instruments(silver)
-    assert len(registry) == 0 and not registry.is_dirty
+    seed = IsinRegistry.seeded()
+    assert len(registry) == len(seed) and not registry.is_dirty
     codec = _fixed_batch(seed_batch, threads=None, isin_registry=registry)
 
     # The capture's day - lines at 03:xx, 14:xx, 16:xx and 23:xx UTC - as
@@ -5669,12 +5671,21 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     ]
     assert written["bronze.log_messages"] == IOResult(144, 144)
     # The lifecycle learned the capture's instruments into the registry, and
-    # the commit wrote them as one snapshot: the table holds the registry.
+    # the first commit wrote them with the seed as one snapshot: the table
+    # holds the registry, the seed's rows and what the lifecycle learned.
     instruments = written["silver.instruments"].written_rows
-    assert instruments == len(registry) > 0
+    isins = registry.into_arrow_reader().read_all().column("isin").to_pylist()
+    learned = [isin for isin in isins if seed.get(isin) is None]
+    assert learned, "the capture names instruments the seed does not hold"
+    assert instruments == len(registry) == len(seed) + len(learned)
     assert not registry.is_dirty
     stored = silver.table("record_keeping.instruments")
     assert stored.row_size() == instruments
+    # Created from the registry's own row, the table is partitioned by the
+    # ISIN's country prefix - Iceberg's truncation of the key, no column -
+    # one live file per prefix the rows hold.
+    assert [(spec.name, spec.transform) for spec in stored.spec.fields] == [("isin_truncate", "truncate[2]")]
+    assert sorted(file.partition for file, _ in stored.data_files()) == sorted({(isin[:2],) for isin in isins})
     field = stored.field()
     assert field.index_of("underlyingisin") == field.index_of("forexcode") + 1
     reloaded = IsinRegistry.from_url(stored.url)

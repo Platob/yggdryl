@@ -13,7 +13,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 use smol_str::format_smolstr;
 
 use super::IsinRegistry;
-use crate::holder::Holder;
 use crate::local::LocalFolder;
 use crate::{Error, Result, Url};
 
@@ -43,16 +42,16 @@ impl IsinRegistry {
     /// 2. the location `YGGDRYL_ISIN_REGISTRY_URI` names, trimmed of
     ///    blanks: a URL of any scheme this build holds, or a bare path, a
     ///    leading `~/` the home directory, which itself is refused; bound
-    ///    as [`Self::from_url`] binds, a store holding nothing yet a first
-    ///    run; an empty value reads as unset;
+    ///    as [`Self::seeded_from_url`] binds, a store holding nothing yet a
+    ///    first run; an empty value reads as unset;
     /// 3. `~/.config/yggdryl/isin/`, a folder of Arrow IPC parts the first
     ///    commit lays out, reached through [`LocalFolder::home`];
     /// 4. with no home directory, the seed bound to no store.
     ///
-    /// A store is laid over the seed ([`Self::seeded`]): its rows fold over
-    /// the seed's by the update rule, so a value the store states wins, a
-    /// seed row it has no row of stands, and the registry is clean after
-    /// the load. Absence is a first run at every step: a store that holds
+    /// A store is laid over the seed ([`Self::seeded_from_url`]): its rows
+    /// fold over the seed's by the update rule, so a value the store states
+    /// wins, a seed row it has no row of stands, and the registry is clean
+    /// after the load. Absence is a first run at every step: a store that holds
     /// nothing loads as the seed bound to it. A location that names a
     /// scheme this build has no backend for, a store that cannot be read or
     /// a row the registry refuses is an error, never the seed alone.
@@ -136,9 +135,7 @@ pub(super) fn autoload(
         },
     };
     let none: [(&str, &str); 0] = [];
-    let mut registry = IsinRegistry::seeded();
-    registry.set_holder_over(Holder::from_url(&url, none)?)?;
-    Ok(registry)
+    IsinRegistry::seeded_from_url(&url, none)
 }
 
 /// The URL `location` names: a URL as spelled, a bare path rooted on the

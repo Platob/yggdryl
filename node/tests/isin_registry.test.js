@@ -132,6 +132,40 @@ test('the seed holds the common instruments, clean and bound to no store', () =>
   assert.equal(field.indexOf('fisn'), field.indexOf('ticker') + 1)
 })
 
+test('a store bound seeded is laid over the seed', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-isin-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const target = path.join(root, 'instruments.arrows')
+  const store = IsinRegistry.fromUrl(target)
+  assert.ok(store.merge({ isin: APPLE, miccode: 'XNAS', ticker: 'AAPL', currency: 'CHF' }))
+  const bae = 'GB0002634946'
+  assert.ok(store.merge({ isin: bae, miccode: 'XLON' }))
+  store.commit()
+  const seed = IsinRegistry.seeded()
+  assert.equal(seed.get(bae), null)
+  const registry = IsinRegistry.seededFromUrl(target, 1024)
+  assert.equal(registry.length, seed.length + 1)
+  assert.equal(registry.isDirty, false)
+  assert.equal(registry.maxInstruments, 1024)
+  assert.equal(registry.get(APPLE).currency, 'CHF', "the store's value wins")
+  assert.equal(registry.get(APPLE).fisn, seed.get(APPLE).fisn, "the seed's fact stands")
+  assert.deepEqual(registry.get(bae), store.get(bae), 'a row only the store holds')
+  assert.equal(registry.commit().writtenRows, 0, 'clean after the load')
+  assert.equal(IsinRegistry.fromUrl(target).length, 2, "unseeded: the store's rows alone")
+  assert.ok(registry.merge({ isin: HOLCIM, ric: 'HOLN.S' }))
+  assert.equal(registry.commit().writtenRows, registry.length, "the seed's rows with the store's")
+  assert.equal(IsinRegistry.fromUrl(target).length, registry.length)
+  assert.equal(IsinRegistry.seededFromUrl(new IOBase(target)).length, registry.length, 'a handle names the store too')
+  assert.throws(() => IsinRegistry.seededFromUrl(new IOBase(target), undefined, { media_type: 'x' }), /properties/)
+  const first = IsinRegistry.seededFromUrl(path.join(root, 'isin') + path.sep)
+  assert.equal(first.length, seed.length, 'a first run: the seed bound to the store')
+  assert.equal(first.commit().writtenRows, 0)
+  assert.ok(!fs.existsSync(path.join(root, 'isin')))
+  const field = IsinRegistry.field()
+  assert.equal(field.get('PARTITION:by'), '["truncate(isin, 2)"]')
+  assert.equal(field.get('SORT:by'), '["isin"]')
+})
+
 test('a golden table loads by any spelling of its columns', () => {
   const golden = new arrow.Table({
     ISIN: arrow.vectorFromArray([HOLCIM, APPLE], new arrow.Utf8()),

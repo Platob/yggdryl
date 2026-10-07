@@ -229,22 +229,29 @@ def stored_rows(table: Table, start: dt.datetime, end: dt.datetime) -> StreamChu
 def instruments(silver: Catalog, namespace_name: str = NAMESPACE) -> IsinRegistry:
     """The registry of the instruments the pipeline meets, bound to
     `silver.record_keeping.instruments`: the table opened as it is or created
-    from the registry's own row, unpartitioned, so the registry loads what an
-    earlier run committed and commits what this run's lifecycle learns. Hand
-    it to the codec (`FixCodec(..., isin_registry=...)`): the refined parse
-    commits it (`commit_instruments`)."""
+    from the registry's own row - partitioned by the ISIN's country prefix,
+    the `truncate(isin, 2)` the row declares, which stores no column - and
+    laid over the seed (`IsinRegistry.seeded_from_url`), so the registry
+    holds the common instruments the crate ships beneath what an earlier run
+    committed, the table's rows winning, and commits what this run's
+    lifecycle learns. The registry is clean after the load, so the seed is
+    committed on the first run, with the first instruments its lifecycle
+    learns, and is part of every snapshot after. Hand it to the codec
+    (`FixCodec(..., isin_registry=...)`): the refined parse commits it
+    (`commit_instruments`)."""
     namespace = silver.namespaces.open_or_create(namespace_name)
     row = yggdryl.iceberg.assign_field_ids(
         unnumbered(IsinRegistry.field().into_scheme_compat("iceberg"))
     )
     table = namespace.tables.open_or_create("instruments", row, **TABLE_PROPERTIES)
-    return IsinRegistry.from_url(table)
+    return IsinRegistry.seeded_from_url(table)
 
 
 def commit_instruments(registry: IsinRegistry) -> IOResult:
-    """What the lifecycle learned of the instruments it met, to the table the
-    registry is bound to - `silver.record_keeping.instruments` - as one
-    snapshot replacing every row, only where the registry moved: a run that
+    """What the lifecycle learned of the instruments it met, with the seed and
+    what earlier runs committed, to the table the registry is bound to -
+    `silver.record_keeping.instruments` - as one snapshot replacing every row
+    of every country partition, only where the registry moved: a run that
     learned nothing new writes nothing."""
     return registry.commit()
 

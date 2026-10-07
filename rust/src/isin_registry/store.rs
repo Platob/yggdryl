@@ -83,9 +83,17 @@ impl Store {
     }
 
     /// The options a commit writes under: the holder's own, declaring the
-    /// registry's row.
+    /// registry's row - its country partition and its order where the store
+    /// keeps its row, a leaf or an Iceberg table; a plain folder is laid out
+    /// by the layout it spells, partitioning by columns alone, so it takes
+    /// the row declaring nothing, which no `column=value` layout contradicts.
     fn write_options(&self) -> RecordOptions {
-        self.options.clone().with_field(IsinEntry::field())
+        let field = if self.container && !self.keeps_row {
+            super::ROW.clone()
+        } else {
+            IsinEntry::field()
+        };
+        self.options.clone().with_field(field)
     }
 
     /// Reads off the row `stored` - what the load read - the registry
@@ -150,6 +158,9 @@ impl IsinRegistry {
     /// ([`Self::set_holder`]); a store holding nothing yet is an empty first
     /// run, laid out by the first [`Self::commit`]. Clean after the load.
     ///
+    /// Unseeded: the registry holds the store's rows and nothing else.
+    /// [`Self::seeded_from_holder`] lays them over the seed instead.
+    ///
     /// # Errors
     ///
     /// What the holder's read or [`Self::extend_from_arrow_reader`] refuses.
@@ -161,6 +172,9 @@ impl IsinRegistry {
     /// ([`Holder::from_url`]): any scheme this build holds, a `with (...)`
     /// clause's pairs beside it.
     ///
+    /// Unseeded, as [`Self::from_holder`] is: [`Self::seeded_from_url`]
+    /// lays the store's rows over the seed instead.
+    ///
     /// # Errors
     ///
     /// What [`Holder::from_url`] or [`Self::from_holder`] refuses.
@@ -170,6 +184,86 @@ impl IsinRegistry {
         V: AsRef<str>,
     {
         Self::from_holder(Holder::from_url(url, properties)?)
+    }
+
+    /// The seed ([`Self::seeded`]) with the rows `holder` stores laid over
+    /// it, bound to that store: the layering [`Self::from_env`] gives the
+    /// store the environment names, for a store the caller names. The
+    /// store's rows fold over the seed's by the update rule, so a value the
+    /// store states wins and a fact only the seed states stands beside it,
+    /// a seed row the store has no row of stands, and a row only the store
+    /// holds is the store's; a store holding nothing yet loads as the seed
+    /// bound to it. The store is read once, as [`Self::from_holder`] reads
+    /// it, and the seed costs it no call.
+    ///
+    /// Clean after the load, so nothing is written until something moves:
+    /// the first [`Self::commit`] after a learn or a merge that moved a row
+    /// writes the whole snapshot, the seed's rows with the store's.
+    ///
+    /// # Errors
+    ///
+    /// What the holder's read or [`Self::extend_from_arrow_reader`] refuses.
+    pub fn seeded_from_holder(holder: impl Into<Holder>) -> Result<Self> {
+        let mut registry = Self::seeded();
+        registry.set_holder_over(holder.into())?;
+        Ok(registry)
+    }
+
+    /// [`Self::seeded_from_holder`] over the holder `url` names under
+    /// `properties` ([`Holder::from_url`]): the seed with the store's rows
+    /// laid over it, bound to the store, clean after the load.
+    ///
+    /// ```
+    /// use yggdryl::local::LocalFolder;
+    /// use yggdryl::{Ccy, IdType, Isin, IsinEntry, IsinRegistry, Mic, Url};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let root = LocalFolder::temporary()?
+    ///     .path()?
+    ///     .join(format!("yggdryl-isin-seeded-doc-{}", std::process::id()));
+    /// let url = Url::from_path(root.join("instruments.arrows"))?;
+    /// let none: [(&str, &str); 0] = [];
+    /// // A store stating Apple, a seed instrument, under another currency, and
+    /// // one instrument the seed has no row of.
+    /// let mut store = IsinRegistry::from_url(&url, none)?;
+    /// store.merge(
+    ///     IsinEntry::new(Isin::new("US0378331005")?)
+    ///         .with_miccode(Some(Mic::new("XNAS")?))
+    ///         .with_ticker(Some("AAPL".into()))
+    ///         .with_currency(Some(Ccy::new("CHF")?)),
+    /// )?;
+    /// store.merge(IsinEntry::new(Isin::new("GB0002634946")?).with_miccode(Some(Mic::new("XLON")?)))?;
+    /// store.commit()?;
+    ///
+    /// let seed = IsinRegistry::seeded();
+    /// let mut registry = IsinRegistry::seeded_from_url(&url, none)?;
+    /// assert_eq!(registry.len(), seed.len() + 1, "the seed, and the store's other row");
+    /// assert!(!registry.is_dirty());
+    /// let apple = registry.get("US0378331005").expect("the seed's and the store's");
+    /// assert_eq!(apple.currency().map(Ccy::as_str), Some("CHF"), "the store's value wins");
+    /// assert_eq!(apple.fisn(), seed.get("US0378331005").and_then(IsinEntry::fisn), "the seed's stands");
+    ///
+    /// // The first commit that moves anything writes every row.
+    /// registry.merge(IsinEntry::new(Isin::new("CH0012214059")?).try_with_code(IdType::Ric, "HOLN.S")?)?;
+    /// assert_eq!(registry.commit()?.written_rows, registry.len() as u64);
+    /// assert!(IsinRegistry::from_url(&url, none)?.iter().eq(registry.iter()));
+    /// std::fs::remove_dir_all(&root)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// What [`Holder::from_url`] or [`Self::seeded_from_holder`] refuses.
+    pub fn seeded_from_url<K, V>(
+        url: &Url,
+        properties: impl IntoIterator<Item = (K, V)>,
+    ) -> Result<Self>
+    where
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        Self::seeded_from_holder(Holder::from_url(url, properties)?)
     }
 
     /// Binds the registry to `holder`: the holder's rows are loaded, the
@@ -213,8 +307,8 @@ impl IsinRegistry {
     /// Binds the registry to `holder` with the precedence of
     /// [`Self::set_holder`] turned over: the holder's rows fold over the
     /// rows the registry holds by the update rule, so a value the store
-    /// states wins, and the registry is clean after - what the process
-    /// default loads, the seed beneath its store ([`Self::from_env`]).
+    /// states wins, and the registry is clean after - the seed beneath a
+    /// store ([`Self::seeded_from_holder`], what [`Self::from_env`] loads).
     /// Answers how many rows the holder held.
     ///
     /// # Errors

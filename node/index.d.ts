@@ -5794,7 +5794,10 @@ export declare class IsinRegistry {
    * `forexcode`, `underlyingisin`, `eusipacode`, `miccode`, `ticker`,
    * `fisn`, `currency`, then one column per `SecurityIDSource(22)` type
    * but the ISIN: forty-three columns - what a table holding the
-   * registry is created from.
+   * registry is created from. Its root declares `PARTITION:by`
+   * `["truncate(isin, 2)"]` - an Iceberg table created from it partitions
+   * by the ISIN's country prefix, storing no column - and `SORT:by`
+   * `["isin"]`, the order the snapshot streams in.
    */
   static field(): Field
   /**
@@ -5815,9 +5818,22 @@ export declare class IsinRegistry {
    * object store - under the `properties` a `with (...)` clause would
    * state, its columns named by the registry's own names or any spelling
    * of an identifier type; a store holding nothing yet is an empty first
-   * run, laid out by the first `commit`. Clean after the load.
+   * run, laid out by the first `commit`. Clean after the load. Unseeded:
+   * the store's rows and nothing else - `seededFromUrl` lays them over
+   * the seed.
    */
   static fromUrl(location: LocationInput, maxInstruments?: number | undefined | null, properties?: Record<string, string> | undefined | null): IsinRegistry
+  /**
+   * `fromUrl` laid over the seed (`seeded`): the store `location` names,
+   * read the same way, its rows folded over the seed's by the update
+   * rule - a value the store states wins, a fact only the seed states
+   * stands beside it, a seed row it has no row of stands - and a store
+   * holding nothing yet the seed bound to it. Clean after the load, so
+   * the first `commit` after something moved writes the seed's rows with
+   * the store's. `maxInstruments` bounds what is learned and merged
+   * after the load, as `fromArrowReader`'s does.
+   */
+  static seededFromUrl(location: LocationInput, maxInstruments?: number | undefined | null, properties?: Record<string, string> | undefined | null): IsinRegistry
   /**
    * The registry the process environment names, loaded on the first
    * call and shared with every later one and with `FixCodec.fromEnv`:

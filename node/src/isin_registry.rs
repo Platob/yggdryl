@@ -34,6 +34,27 @@ fn bound_of(max_instruments: Option<f64>) -> Result<usize> {
     usize::try_from(max).map_err(|_| napi_error("maxInstruments must not be negative"))
 }
 
+/// The store `location` names: an `IOBase` already built, rebuilt, or the
+/// holder a location names under `properties`.
+fn store_of(
+    location: LocationInput<'_>,
+    properties: Option<HashMap<String, String>>,
+) -> Result<Holder> {
+    match location_target(location)? {
+        Either::A(handle) => {
+            if properties.as_ref().is_some_and(|held| !held.is_empty()) {
+                return Err(napi_error(
+                    "properties apply to a location, not to a handle already built",
+                ));
+            }
+            Ok(handle.rebuilt()?.into_core())
+        }
+        Either::B(url) => {
+            Holder::from_url(&url, properties.unwrap_or_default()).map_err(napi_error)
+        }
+    }
+}
+
 /// A table of instruments keyed by ISIN - each row the instrument's CFI
 /// code, its country of issue, its currency pair, the instrument it is
 /// written on, its market, its ticker, its ISO 18774 short name
@@ -91,7 +112,10 @@ impl JsIsinRegistry {
     /// `forexcode`, `underlyingisin`, `eusipacode`, `miccode`, `ticker`,
     /// `fisn`, `currency`, then one column per `SecurityIDSource(22)` type
     /// but the ISIN: forty-three columns - what a table holding the
-    /// registry is created from.
+    /// registry is created from. Its root declares `PARTITION:by`
+    /// `["truncate(isin, 2)"]` - an Iceberg table created from it partitions
+    /// by the ISIN's country prefix, storing no column - and `SORT:by`
+    /// `["isin"]`, the order the snapshot streams in.
     #[napi]
     pub fn field() -> JsField {
         JsField::from_core(IsinEntry::field())
@@ -116,30 +140,41 @@ impl JsIsinRegistry {
     /// object store - under the `properties` a `with (...)` clause would
     /// state, its columns named by the registry's own names or any spelling
     /// of an identifier type; a store holding nothing yet is an empty first
-    /// run, laid out by the first `commit`. Clean after the load.
+    /// run, laid out by the first `commit`. Clean after the load. Unseeded:
+    /// the store's rows and nothing else - `seededFromUrl` lays them over
+    /// the seed.
     #[napi(factory)]
     pub fn from_url(
         location: LocationInput<'_>,
         max_instruments: Option<f64>,
         properties: Option<HashMap<String, String>>,
     ) -> Result<Self> {
-        let holder = match location_target(location)? {
-            Either::A(handle) => {
-                if properties.as_ref().is_some_and(|held| !held.is_empty()) {
-                    return Err(napi_error(
-                        "properties apply to a location, not to a handle already built",
-                    ));
-                }
-                handle.rebuilt()?.into_core()
-            }
-            Either::B(url) => {
-                Holder::from_url(&url, properties.unwrap_or_default()).map_err(napi_error)?
-            }
-        };
+        let holder = store_of(location, properties)?;
         let registry = IsinRegistry::new()
             .with_max_instruments(bound_of(max_instruments)?)
             .try_with_holder(holder)
             .map_err(napi_error)?;
+        Ok(Self::from_core(registry))
+    }
+
+    /// `fromUrl` laid over the seed (`seeded`): the store `location` names,
+    /// read the same way, its rows folded over the seed's by the update
+    /// rule - a value the store states wins, a fact only the seed states
+    /// stands beside it, a seed row it has no row of stands - and a store
+    /// holding nothing yet the seed bound to it. Clean after the load, so
+    /// the first `commit` after something moved writes the seed's rows with
+    /// the store's. `maxInstruments` bounds what is learned and merged
+    /// after the load, as `fromArrowReader`'s does.
+    #[napi(factory)]
+    pub fn seeded_from_url(
+        location: LocationInput<'_>,
+        max_instruments: Option<f64>,
+        properties: Option<HashMap<String, String>>,
+    ) -> Result<Self> {
+        let bound = bound_of(max_instruments)?;
+        let registry = IsinRegistry::seeded_from_holder(store_of(location, properties)?)
+            .map_err(napi_error)?
+            .with_max_instruments(bound);
         Ok(Self::from_core(registry))
     }
 

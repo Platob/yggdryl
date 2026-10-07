@@ -191,7 +191,7 @@ def test_the_underlying_crosses_the_pipelines_iceberg_table(tmp_path: pathlib.Pa
     silver = IcebergCatalog.open_or_create("silver", tmp_path / "silver")
     registry = medallion.instruments(silver)
     assert registry.merge({"isin": "CH0012005267", "underlyingisin": HOLCIM})
-    assert registry.commit().written_rows == 1
+    assert registry.commit().written_rows == len(registry) == len(IsinRegistry.seeded()), "the seed's rows, one moved"
     stored = silver.table("record_keeping.instruments")
     field = stored.field()
     assert field.index_of("underlyingisin") == field.index_of("forexcode") + 1
@@ -403,6 +403,41 @@ def test_the_seed_holds_the_common_instruments_clean_and_bound_to_nothing() -> N
     assert IsinRegistry.seeded() != seeded, "each call is a registry of its own"
     with pytest.raises(ValueError, match="unbound registry"):
         seeded.commit()
+
+
+def test_a_store_bound_seeded_is_laid_over_the_seed(tmp_path: pathlib.Path) -> None:
+    target = tmp_path / "instruments.arrows"
+    store = IsinRegistry.from_url(target)
+    assert store.merge({"isin": APPLE, "miccode": "XNAS", "ticker": "AAPL", "currency": "CHF"})
+    bae = "GB0002634946"
+    assert store.merge({"isin": bae, "miccode": "XLON"})
+    store.commit()
+    seed = IsinRegistry.seeded()
+    assert seed.get(bae) is None
+    registry = IsinRegistry.seeded_from_url(target, max_instruments=1024)
+    assert len(registry) == len(seed) + 1 and not registry.is_dirty and registry.max_instruments == 1024
+    apple = registry.get(APPLE)
+    assert apple is not None and apple["currency"] == "CHF", "the store's value wins"
+    seeded = seed.get(APPLE)
+    assert seeded is not None and apple["fisn"] == seeded["fisn"] == "APPLE INC/SH SH", "the seed's fact stands"
+    assert registry.get(bae) == store.get(bae), "a row only the store holds"
+    assert registry.commit() == IOResult(0, 0), "clean after the load"
+    assert len(IsinRegistry.from_url(target)) == 2, "unseeded: the store's rows alone"
+    assert registry.merge({"isin": HOLCIM, "ric": "HOLN.S"})
+    assert registry.commit().written_rows == len(registry), "the seed's rows with the store's"
+    assert len(IsinRegistry.from_url(target)) == len(registry)
+    assert len(IsinRegistry.seeded_from_url(LocalFile(target))) == len(registry), "a handle names the store too"
+    with pytest.raises(TypeError, match="properties"):
+        IsinRegistry.seeded_from_url(LocalFile(target), media_type="x")
+    first = IsinRegistry.seeded_from_url(str(tmp_path / "isin") + os.sep)
+    assert len(first) == len(seed) and not first.is_dirty, "a first run: the seed bound to the store"
+    assert first.commit() == IOResult(0, 0) and not (tmp_path / "isin").exists()
+
+
+def test_the_row_declares_the_country_partition_and_the_isin_order() -> None:
+    field = IsinRegistry.field()
+    assert field.metadata["PARTITION:by"] == '["truncate(isin, 2)"]'
+    assert field.metadata["SORT:by"] == '["isin"]'
 
 
 def test_the_short_name_is_the_column_after_the_ticker_and_merges_by_the_update_rule() -> None:

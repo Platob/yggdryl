@@ -16,6 +16,7 @@ const withProperties: IsinRegistry = IsinRegistry.fromUrl('instruments/', undefi
 const committed: IOResult = fromUrl.commit()
 const fromEnv: IsinRegistry = IsinRegistry.fromEnv()
 const seeded: IsinRegistry = IsinRegistry.seeded()
+const seededFromUrl: IsinRegistry = IsinRegistry.seededFromUrl('instruments.arrows', 16, { media_type: 'application/vnd.apache.arrow.stream' })
 IsinRegistry.installEnv(registry)
 const same: boolean = registry.equals(loaded)
 const text: string = registry.toString()
@@ -32,4 +33,4 @@ registry.length = 2
 // @ts-expect-error an ISIN is text
 registry.get(1)
 
-void [merged, row, dirty, removed, count, bound, read, fromUrl, withProperties, committed, fromEnv, seeded, same, text, shared, learned, filled, enriched]
+void [merged, row, dirty, removed, count, bound, read, fromUrl, withProperties, committed, fromEnv, seeded, seededFromUrl, same, text, shared, learned, filled, enriched]

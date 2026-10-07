@@ -110,6 +110,35 @@ fn properties_of(properties: Option<&Bound<'_, PyDict>>) -> PyResult<Vec<(String
         .collect()
 }
 
+/// Binds a registry to the store `location` names - an `IOBase` already
+/// built, or anything a location is read from, under `properties` - through
+/// `load`, which runs detached from the GIL with the store's holder.
+fn bound(
+    py: Python<'_>,
+    location: &Bound<'_, PyAny>,
+    properties: Option<&Bound<'_, PyDict>>,
+    load: impl FnOnce(Holder) -> yggdryl::Result<IsinRegistry> + Send,
+) -> PyResult<PyIsinRegistry> {
+    let properties = properties_of(properties)?;
+    if let Ok(handle) = location.extract::<PyRef<'_, PyIOBase>>() {
+        if !properties.is_empty() {
+            return Err(PyTypeError::new_err(
+                "properties apply to a location, not to a handle already built",
+            ));
+        }
+        let holder = handle.rebuilt()?;
+        drop(handle);
+        return py
+            .detach(move || load(holder))
+            .map(PyIsinRegistry::from_core)
+            .map_err(value_error);
+    }
+    let url = core_url_from_value(location)?;
+    py.detach(|| load(Holder::from_url(&url, properties)?))
+        .map(PyIsinRegistry::from_core)
+        .map_err(value_error)
+}
+
 /// Reads `location` - an `IOBase`, or anything a location is read from -
 /// through `read` on the holder it names, detached from the GIL.
 fn read_located<T: Send>(
@@ -146,7 +175,10 @@ impl PyIsinRegistry {
     /// code `Eusipa` reads), `miccode`, `ticker`, `fisn` (the ISO 18774
     /// short name), `currency`, then one column per `SecurityIDSource(22)`
     /// type but the ISIN: forty-three columns - what a table holding the
-    /// registry is created from.
+    /// registry is created from. Its root declares `PARTITION:by`
+    /// `["truncate(isin, 2)"]` - an Iceberg table created from it partitions
+    /// by the ISIN's country prefix, storing no column - and `SORT:by`
+    /// `["isin"]`, the order the snapshot streams in.
     #[staticmethod]
     fn field() -> PyField {
         PyField::from_inner(IsinEntry::field())
@@ -171,7 +203,8 @@ impl PyIsinRegistry {
     /// the `**properties` a `with (...)` clause would state, its columns
     /// named by the registry's own names or any spelling of an identifier
     /// type; a store holding nothing yet is an empty first run, laid out by
-    /// the first `commit`. Clean after the load.
+    /// the first `commit`. Clean after the load. Unseeded: the store's rows
+    /// and nothing else - `seeded_from_url` lays them over the seed.
     #[staticmethod]
     #[pyo3(signature = (location, max_instruments=IsinRegistry::DEFAULT_MAX_INSTRUMENTS, **properties))]
     fn from_url(
@@ -180,34 +213,33 @@ impl PyIsinRegistry {
         max_instruments: usize,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Self> {
-        let properties = properties_of(properties)?;
-        if let Ok(handle) = location.extract::<PyRef<'_, PyIOBase>>() {
-            if !properties.is_empty() {
-                return Err(PyTypeError::new_err(
-                    "properties apply to a location, not to a handle already built",
-                ));
-            }
-            let holder = handle.rebuilt()?;
-            drop(handle);
-            return py
-                .detach(move || {
-                    IsinRegistry::new()
-                        .with_max_instruments(max_instruments)
-                        .try_with_holder(holder)
-                })
-                .map(Self::from_core)
-                .map_err(value_error);
-        }
-        let url = core_url_from_value(location)?;
-        let registry = py
-            .detach(|| {
-                let holder = Holder::from_url(&url, properties)?;
-                IsinRegistry::new()
-                    .with_max_instruments(max_instruments)
-                    .try_with_holder(holder)
-            })
-            .map_err(value_error)?;
-        Ok(Self::from_core(registry))
+        bound(py, location, properties, |holder| {
+            IsinRegistry::new()
+                .with_max_instruments(max_instruments)
+                .try_with_holder(holder)
+        })
+    }
+
+    /// `from_url` laid over the seed (`seeded`): the store `location` names,
+    /// read the same way, its rows folded over the seed's by the update
+    /// rule - a value the store states wins, a fact only the seed states
+    /// stands beside it, a seed row it has no row of stands - and a store
+    /// holding nothing yet the seed bound to it. Clean after the load, so
+    /// the first `commit` after something moved writes the seed's rows with
+    /// the store's. `max_instruments` bounds what is learned and merged
+    /// after the load, as `from_arrow_reader`'s does.
+    #[staticmethod]
+    #[pyo3(signature = (location, max_instruments=IsinRegistry::DEFAULT_MAX_INSTRUMENTS, **properties))]
+    fn seeded_from_url(
+        py: Python<'_>,
+        location: &Bound<'_, PyAny>,
+        max_instruments: usize,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Self> {
+        bound(py, location, properties, |holder| {
+            IsinRegistry::seeded_from_holder(holder)
+                .map(|registry| registry.with_max_instruments(max_instruments))
+        })
     }
 
     /// The registry the process environment names, loaded on the first

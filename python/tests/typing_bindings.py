@@ -2811,6 +2811,7 @@ isin_registry_dirty: bool = isin_registry.is_dirty
 isin_registry_committed: yggdryl.IOResult = yggdryl.IsinRegistry.from_url("instruments.arrows", 8).commit()
 isin_registry_default: yggdryl.IsinRegistry = yggdryl.IsinRegistry.from_env()
 isin_registry_seeded: yggdryl.IsinRegistry = yggdryl.IsinRegistry.seeded()
+isin_registry_seeded_store: yggdryl.IsinRegistry = yggdryl.IsinRegistry.seeded_from_url("instruments.arrows", 16384)
 isin_registry_short_name: object = (isin_registry_seeded.get("US0378331005") or {}).get("fisn")
 isin_registry_listed: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN")
 isin_registry_on_market: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN", "XSWX")

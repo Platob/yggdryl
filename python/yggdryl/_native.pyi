@@ -7212,14 +7212,20 @@ class IsinRegistry:
     def field() -> Field:
         """The registry's row: the required struct ``isinregistry`` of
         forty-three columns every row is laid out as, what a table holding the
-        registry is created from."""
+        registry is created from; its root declares ``PARTITION:by``
+        ``["truncate(isin, 2)"]`` - the ISIN's country prefix, storing no
+        column - and ``SORT:by`` ``["isin"]``."""
     @staticmethod
     def seeded() -> IsinRegistry:
         """A registry holding the seed - the common instruments ``config/isin/instruments.json`` states, embedded at build time - clean and bound to no store; each seed row an ordinary statement, its derived facts filled."""
         ...
     @staticmethod
     def from_url(location: object, max_instruments: int = 16384, **properties: str) -> IsinRegistry:
-        """A registry bound to the store a URL or path names and loaded from it: an Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an object store; a store holding nothing yet an empty first run."""
+        """A registry bound to the store a URL or path names and loaded from it: an Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an object store; a store holding nothing yet an empty first run. Unseeded: ``seeded_from_url`` lays the store over the seed."""
+        ...
+    @staticmethod
+    def seeded_from_url(location: object, max_instruments: int = 16384, **properties: str) -> IsinRegistry:
+        """``from_url`` laid over the seed (``seeded``): the store's rows fold over the seed's - a value the store states wins, a seed row it has none of stands - and a store holding nothing yet loads as the seed bound to it; clean after the load, so the first ``commit`` after something moved writes the seed's rows with the store's."""
         ...
     @staticmethod
     def from_env() -> IsinRegistry:

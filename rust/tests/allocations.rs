@@ -8626,8 +8626,10 @@ fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
 }
 
 /// A snapshot stream shares the table rather than copying it: opening one
-/// costs the same five allocations at 64 instruments as at 4,096 - the
-/// reader, its schema and its field - and draining it lays each row out
+/// costs the same eleven allocations at 64 instruments as at 4,096 - the
+/// reader, its schema and its field, and the two root declarations the
+/// schema carries, `PARTITION:by` and `SORT:by`, six more than the five
+/// before the row declared them - and draining it lays each row out
 /// once, eight allocations a row - the named row, a B-tree of its
 /// forty-three cells inserted in column order, which takes six leaf nodes
 /// behind one `Arc` as the forty-two before `fisn` and the forty-one before
@@ -8643,7 +8645,7 @@ fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
         let registry = isin_registry_of(size);
         let (opening, reader) = counted(|| registry.into_arrow_reader().unwrap());
         drop(reader);
-        assert_eq!(opening, 5, "opening a snapshot of {size} instruments");
+        assert_eq!(opening, 11, "opening a snapshot of {size} instruments");
     }
     let drain = |size: usize| {
         let reader = isin_registry_of(size).into_arrow_reader().unwrap();

@@ -19,8 +19,10 @@
 //! ([`securityid::embedded`](crate::securityid::embedded)) and the currency
 //! of its market's country - so a default never displaces a statement.
 //! The registry holds its table apart from the store it is bound to:
-//! [`IsinRegistry::from_holder`] loads one, [`IsinRegistry::commit`] writes
-//! the table back as one snapshot where it moved, and
+//! [`IsinRegistry::from_holder`] loads one,
+//! [`IsinRegistry::seeded_from_holder`] lays one over the seed,
+//! [`IsinRegistry::commit`] writes the table back as one snapshot where it
+//! moved, and
 //! [`IsinRegistry::from_env`] is the process's own, located by
 //! `YGGDRYL_ISIN_REGISTRY_URI` and laid over the seed
 //! ([`IsinRegistry::seeded`]): the common instruments
@@ -200,7 +202,35 @@ pub struct IsinEntry {
     codes: SmallVec<[(IdType, SmolStr); 4]>,
 }
 
+/// What a stored table partitions by: the country prefix of the ISIN every
+/// row carries - Iceberg's native truncation of the key, which adds no
+/// column.
+const PARTITION_BY: &str = "truncate(isin, 2)";
+
+/// The order the rows keep: the ISIN, the table's own order.
+const SORT_BY: &str = "isin";
+
+/// The registry's row, declaring how a stored table partitions
+/// ([`PARTITION_BY`]) and the order its rows keep ([`SORT_BY`]): what
+/// [`IsinEntry::field`] answers, what a commit writes and what the snapshot
+/// stream is laid out under, where the order holds by construction.
 static FIELD: LazyLock<Field> = LazyLock::new(|| {
+    let mut field = ROW.clone();
+    field
+        .as_partition_mut()
+        .set_by_texts([PARTITION_BY])
+        .expect("the registry's partition declaration reads");
+    field
+        .as_sort_mut()
+        .set_by_texts([SORT_BY])
+        .expect("the registry's order reads");
+    field
+});
+
+/// The registry's row declaring nothing: what a load lands foreign rows
+/// under, since a stream read in, a golden file's included, keeps no order
+/// the landing could prove.
+static ROW: LazyLock<Field> = LazyLock::new(|| {
     let mut fields = vec![
         Field::new(NAMES[0], DataType::isin(), false),
         Field::new(
@@ -263,6 +293,28 @@ impl IsinEntry {
     /// per `SecurityIDSource(22)` type but the ISIN, in the code set's
     /// order, each of its type's [`IdType::value_dtype`]: forty-three
     /// columns.
+    ///
+    /// The root declares how a stored table partitions and the order its
+    /// rows keep: `PARTITION:by` `["truncate(isin, 2)"]`, the country prefix
+    /// of the ISIN every row carries - an Iceberg table created from the
+    /// field partitions by Iceberg's own truncation of the key, which
+    /// stores no column, so the row stays forty-three columns, and a leaf or
+    /// a plain folder, which partition by marked columns alone, are laid out
+    /// flat - and `SORT:by` `["isin"]`, the order the snapshot
+    /// ([`IsinRegistry::into_arrow_reader`]) streams in.
+    ///
+    /// ```
+    /// use yggdryl::IsinEntry;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let field = IsinEntry::field();
+    /// assert_eq!(field.field_len(), 43);
+    /// assert_eq!(field.get_metadata("PARTITION:by"), Some(r#"["truncate(isin, 2)"]"#));
+    /// assert_eq!(field.get_metadata("SORT:by"), Some(r#"["isin"]"#));
+    /// assert_eq!(field.partition_field_names().count(), 0, "no column is marked");
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn field() -> Field {
         FIELD.clone()
@@ -1284,8 +1336,9 @@ impl IsinRegistry {
     /// and every row folded by [`Self::merge`], so the facts a row implies -
     /// the national number its ISIN embeds, the currency of its market's
     /// country - are derived as for any other. Making one shares that table: no row
-    /// is copied until one moves. [`Self::from_env`] lays what the
-    /// environment names over it; [`Self::new`] holds none of it.
+    /// is copied until one moves. [`Self::seeded_from_url`] lays a store the
+    /// caller names over it and [`Self::from_env`] the one the environment
+    /// names; [`Self::new`] holds none of it.
     ///
     /// ```
     /// use yggdryl::{IdType, IsinRegistry, Mic};
@@ -1717,7 +1770,7 @@ impl IsinRegistry {
             )
         });
         let records = StreamChunkedSerie::from_arrow_reader(
-            Some(&*FIELD),
+            Some(&*ROW),
             Box::new(RecordBatchIterator::new(batches, renamed)),
             ArrowCastOptions::default(),
         )?;
