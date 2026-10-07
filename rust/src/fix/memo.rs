@@ -29,6 +29,7 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use smol_str::SmolStr;
 
 use super::FixId;
+use super::field::FixShape;
 use super::registry::FixMap;
 use crate::xxhash::Xxh64;
 use crate::{Field, IdKey, IdSource, IdType, Metadata};
@@ -125,10 +126,12 @@ pub enum PartyWord {
 type Translations = FixMap<usize, TextMap<SmolStr, Option<SmolStr>>>;
 
 /// What one field states about the values it takes, read off its metadata
-/// once: the spellings it declares as an absence, and its code set.
+/// once: the spellings it declares as an absence, its code set, and the
+/// shape its declared FIX datatype gives its text.
 pub struct Facts {
     nulls: Box<[SmolStr]>,
     codes: Option<Arc<str>>,
+    shape: FixShape,
     /// The metadata a child aliasing the field carries, built the first
     /// time one is and shared after: one storage, so every message that
     /// builds such a child has the shape the first one had.
@@ -147,6 +150,13 @@ impl Facts {
     /// when the field was first asked about.
     pub(super) fn codes(&self) -> Option<&str> {
         self.codes.as_deref()
+    }
+
+    /// The shape the field's declared FIX datatype gives its wire text,
+    /// exactly as [`FixField::shape`](super::field) read it off the field
+    /// once: what the FIX dispatch branches on for every value.
+    pub(super) fn shape(&self) -> FixShape {
+        self.shape
     }
 
     /// The metadata a child aliasing `source` - the field these facts are
@@ -297,6 +307,7 @@ impl Memo {
                 let view = source.as_fix();
                 let facts = Arc::new(Facts {
                     nulls: view.nulls().map(SmolStr::new).collect(),
+                    shape: view.shape(),
                     // The set the field names, resolved once here rather than
                     // once per entry: a run translates a million spellings
                     // through one document and looks its name up once.

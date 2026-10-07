@@ -357,7 +357,7 @@ fn builtin_ids_in_cellxfs_classify_their_cells() {
     );
     let (format, value) = cell_of(&bytes, "C1");
     assert_eq!(format, NumberFormat::DateTime);
-    assert_eq!(value.into_json().unwrap(), "\"2024-01-01T06:00:00.000\"");
+    assert_eq!(value.into_json().unwrap(), "\"2024-01-01T06:00:00\"");
     let (format, value) = cell_of(&bytes, "D1");
     assert_eq!(format, NumberFormat::Duration);
     assert_eq!(
@@ -457,7 +457,7 @@ fn only_cellxfs_indexes_a_cell_style_and_an_xf_without_an_id_is_general() {
     ]);
     let (format, value) = cell_of(&bytes, "A1");
     assert_eq!(format, NumberFormat::DateTime);
-    assert_eq!(value.into_json().unwrap(), "\"2024-01-01T12:00:00.000\"");
+    assert_eq!(value.into_json().unwrap(), "\"2024-01-01T12:00:00\"");
     assert_eq!(
         cell_of(&bytes, "B1"),
         (NumberFormat::General, Scalar::from(45_292.0))
@@ -610,8 +610,5 @@ fn overwriting_one_sheet_keeps_the_formats_the_other_sheets_state() {
     assert_eq!(day.value(), &Scalar::date32(19_723));
     let when = other.cell(CellRef::new(0, 1)).unwrap();
     assert_eq!(when.format(), NumberFormat::DateTime);
-    assert_eq!(
-        when.value().into_json().unwrap(),
-        "\"2024-01-01T12:00:00.000\""
-    );
+    assert_eq!(when.value().into_json().unwrap(), "\"2024-01-01T12:00:00\"");
 }

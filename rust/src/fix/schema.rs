@@ -1896,7 +1896,9 @@ fn covers_entry(
             let Some(occurrences) = value.as_serie() else {
                 return false;
             };
-            if entry.value().and_then(|count| count.parse::<usize>().ok())
+            if entry
+                .value()
+                .and_then(crate::integer::integer_from_text_as::<usize>)
                 != Some(occurrences.len())
                 || entry.entries().len() != occurrences.len()
             {

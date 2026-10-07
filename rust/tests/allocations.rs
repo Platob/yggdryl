@@ -7088,6 +7088,112 @@ fn a_fix_message_read_from_a_line_costs_what_its_pairs_cost() {
     }
 }
 
+/// A line carrying a `UTCTimeOnly` and a `TZTimeOnly` beside its integers
+/// costs exactly what the same line carrying two more integers costs: the
+/// FIX clock doors (`Time64::from_fix_text`, `DateTime64::from_fix_clock`)
+/// read on the stack, the typed scalar is inline, and the restating at the
+/// column's unit allocates nothing. The two dictionaries differ only in the
+/// datatype and the `FIX:datatype` of two tags no market fact lifts, so the
+/// comparison isolates the readers.
+#[test]
+fn a_fix_line_carrying_a_clock_and_a_time_of_day_costs_what_a_line_of_integers_costs() {
+    let typed = |dtype: DataType, tag: i32, datatype: &str| {
+        let mut field = dtype.nullable_field(format!("Typed{tag}"));
+        field.as_fix_mut().set_tag(tag).expect("a static tag");
+        field
+            .as_fix_mut()
+            .set_datatype(datatype)
+            .expect("a FIX datatype name");
+        field
+    };
+    let registry = |clocks: bool| {
+        let mut msgtype = DataType::utf8().nullable_field("MsgType");
+        msgtype.as_fix_mut().set_tag(35).expect("a static tag");
+        let (time, clock) = if clocks {
+            (
+                typed(
+                    DataType::time64(TimeUnit::Nanosecond).expect("a clock"),
+                    9_100,
+                    "UTCTimeOnly",
+                ),
+                typed(
+                    DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).expect("an instant"),
+                    9_101,
+                    "TZTimeOnly",
+                ),
+            )
+        } else {
+            (
+                typed(DataType::Int32, 9_100, "int"),
+                typed(DataType::Int32, 9_101, "int"),
+            )
+        };
+        let integers = (0..8).map(|index| typed(DataType::Int32, 1_100 + index, "int"));
+        Arc::new(
+            FixRegistry::from_fields([msgtype, time, clock].into_iter().chain(integers))
+                .expect("a dictionary"),
+        )
+    };
+    let line = |clocks: bool| {
+        let value = if clocks { "093000" } else { "93000" };
+        let mut line = b"35=D".to_vec();
+        for index in 0..8 {
+            line.extend_from_slice(format!("|{}={index}", 1_100 + index).as_bytes());
+        }
+        line.extend_from_slice(format!("|9100={value}|9101={value}|").as_bytes());
+        line
+    };
+    let measure = |clocks: bool| {
+        let codec = FixCodec::new(registry(clocks));
+        let held = line(clocks);
+        let (once, repeated) = counted_once_and_repeated(|| {
+            black_box(
+                codec
+                    .parse_fix_line(black_box(&held))
+                    .expect("a readable line"),
+            );
+        });
+        assert_eq!(repeated, once * 1_000, "a read costs the same every time");
+        once
+    };
+    assert_eq!(
+        measure(true),
+        measure(false),
+        "a UTCTimeOnly and a TZTimeOnly cost what two integers cost"
+    );
+}
+
+/// The FIX clock doors allocate nothing: every FIX spelling of a time of
+/// day - colon-separated, compact, stopping at its minutes, run into its
+/// fraction - is read into a `Time64` on the stack, and a `TZTimeOnly` into
+/// a `DateTime64` the same, zoned by the text or by the column. A refusal
+/// may build its reason; the success path is what is pinned.
+#[cfg(feature = "internals")]
+#[test]
+fn a_fix_clock_reads_without_allocating() {
+    use yggdryl::internals::datetime::from_fix_clock;
+    use yggdryl::internals::time::time64_from_fix_text;
+
+    for text in [
+        "09:30:00",
+        "093000",
+        "0930",
+        "09:30",
+        "093000123",
+        "093000123456789",
+        "09:30:00.123456",
+    ] {
+        free(&format!("the FIX clock {text:?}"), || {
+            black_box(time64_from_fix_text(black_box(text)).expect("a clock"));
+        });
+    }
+    for text in ["093000", "07:39:12.123+05:30", "07:39Z", "0930+0530"] {
+        free(&format!("the TZTimeOnly {text:?}"), || {
+            black_box(from_fix_clock(black_box(text), Timezone::UTC).expect("a clock"));
+        });
+    }
+}
+
 /// What a key costs the residual record: nothing of its own. Every pair
 /// past `MsgType(35)` in [`fix_pairs_line`] is a dictionary field no column
 /// of the fixed row represents, so each is filed in `fixentries` under its
@@ -8048,13 +8154,34 @@ struct StageCosts {
 /// rose by two to 12; the packed frame's `EZ` ISIN embeds none, and its
 /// walk rose by one to 11. No other stage moved.
 ///
+/// Every FIX value then came to be read by its type's own door - a
+/// `TZTimeOnly` stating no zone as the wall clock in its column's zone, a
+/// bridge's `Aggressor` as the flag `Y` is, a word no code of its set spells
+/// refused naming the set rather than the integer it is not - and only the
+/// parse and the packed frame's row moved, each value measured against the
+/// same line with that one value spelled as both readings type it. The
+/// packed frame's two `AGGRESSORINDICATOR=Aggressor` and its
+/// `LEGMATURITYTIME=093000` type now, and the refusals they cost went -
+/// fifteen, sixteen and eighteen - and what the line's refusals cost
+/// together past their sum fell by one, four to three; its four words
+/// still refused (`TraderName`,
+/// `publishername`, `UniqueTransactionIDLeg`, `UniqueTransactionIDHedge`)
+/// cost one more each, the refusal naming the set where it named the
+/// integer, but the last, whose cost stands: 1016 less fifty plus three is
+/// 969. The bridge row's four words still refused cost the same one more
+/// each, two for `orderoriginatorsystem`, as each measures on a line of
+/// that one pair: 543 to 548. The packed frame's row rose by the one its
+/// side's typed `AggressorIndicator(1057)` costs - the former reading's row
+/// of the same line with that value spelled `Y` stood at 251 too - to 251.
+/// A frame's line states none of these values, and no other stage moved.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 543,
+            parse: 548,
             into_row: 88,
             landing: 1523,
             batch: 213,
@@ -8078,8 +8205,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_packed",
         111,
         StageCosts {
-            parse: 1016,
-            into_row: 250,
+            parse: 969,
+            into_row: 251,
             landing: 1541,
             batch: 213,
             digest: 1,

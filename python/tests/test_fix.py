@@ -5616,7 +5616,7 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
 
 
 def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
-    seed_batch: FixRegistry, tmp_path: pathlib.Path
+    seed_batch: FixRegistry, tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     import datetime as dt
 
@@ -5653,7 +5653,29 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         medallion.window_filter(end, start)
 
     lake = medallion.Lake(bronze, silver, codec, IOBase(logs / "*.log"))
+    caplog.set_level(logging.WARNING)
     written = medallion.run(lake, start, end)
+    # Every value the parse defaults to null is said once as a warning naming
+    # its field: the only values the capture states that their fields' types
+    # refuse are the bridge's own words under five code sets, each refusal
+    # naming the set. `legmaturitytime` (a `TZTimeOnly` sent `093000`) and
+    # `aggressorindicator` (`Aggressor`) type and are not among them. The
+    # warnings deduplicate per process on the field, so a run after another
+    # test that met one of these fields says it no second time: the pin is
+    # that nothing outside the five is said, never that all five are.
+    defaulted = {
+        record.getMessage().split("(", 1)[1].split(")", 1)[0]
+        for record in caplog.records
+        if record.name.startswith("yggdryl")
+        and record.levelno == logging.WARNING
+        and record.getMessage().startswith("FIX value defaulted to null")
+    }
+    assert defaulted <= {"partyrole", "partyrolequalifier", "partysubidtype", "pricetype", "trdregtimestamptype"}, defaulted
+    assert all(
+        "no code of " in record.getMessage() and "codeset is spelled " in record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith("FIX value defaulted to null") and "seen " not in record.getMessage()
+    ), [record.getMessage() for record in caplog.records if record.getMessage().startswith("FIX value defaulted to null")]
     assert list(written) == [
         "bronze.log_messages",
         "bronze.fix_messages",

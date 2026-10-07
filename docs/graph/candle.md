@@ -453,7 +453,7 @@ A candle laid out as one row under `Candle::field()` and read back as the same v
     // The JSON is the flat row: ISO 8601 instants, decimal text, counts as numbers.
     const json = candle.toJSON()
     assert.deepEqual([json.start, json.bidclose, json.askopen, json.bidqty, json.books],
-      ['1970-01-01T00:01:00.000000000Z', '99.5', null, '300', 1])
+      ['1970-01-01T00:01:00Z', '99.5', null, '300', 1])
     assert.ok(graph.Candle.fromJSON(JSON.stringify(candle)).equals(candle))
     // A reading states its four cells or none.
     assert.throws(() => graph.Candle.fromScalar({ ...json, bidhigh: null }), /\$\.candle/)

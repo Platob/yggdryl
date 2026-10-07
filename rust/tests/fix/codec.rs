@@ -2295,12 +2295,15 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
     );
     assert_eq!(latest("07:39Z", 1079), instant(27_540_000_000_000));
     assert_eq!(latest("00:30+05:30", 1079), instant(-18_000_000_000_000));
-    // FIX means local time by stating no offset, which an instant cannot
-    // hold, so that reads as nothing rather than as a guessed UTC. It is the
-    // same declared datatype rule that rejects a dateless `UTCTimestamp`.
-    // The latter is an event clock, so it is left unstated beside the
+    // A `TZTimeOnly` stating no offset is read as every other zoneless FIX
+    // datetime is - a wall clock in the column's zone, UTC here - on the
+    // epoch day: 07:39:12 is the 27552nd second of it. The dictionary
+    // declares the field a `TZTimeOnly` (`FIX:datatype`), which is what
+    // confines the reading to it: a dateless `UTCTimestamp` below is an
+    // event clock, read by the datetime's own door, which refuses a clock
+    // stating neither a date nor a zone, so it is left unstated beside the
     // anomaly naming what arrived.
-    assert_eq!(latest("07:39:12", 1079), Scalar::Null);
+    assert_eq!(latest("07:39:12", 1079), instant(27_552_000_000_000));
     let unstated = reader
         .parse_fix_line(b"8=FIX.4.4|35=D|60=10:15:30.000|10=0|")
         .expect("a message");

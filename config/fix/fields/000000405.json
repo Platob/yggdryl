@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40500",
       "description": "The business center calendar used to adjust the instrument leg's provision's option expiration date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionOptionExpirationDateBusinessCenter"
@@ -18,6 +19,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40501",
       "description": "Specifies the anchor date when the option expiration date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegProvisionOptionExpirationDateRelativeTo"
@@ -30,6 +32,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40502",
       "description": "Time unit multiplier for the relative option expiration date offset.",
       "display": "LegProvisionOptionExpirationDateOffsetPeriod"
@@ -43,6 +46,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40503",
       "description": "Time unit associated with the relative option expiration date offset.",
       "display": "LegProvisionOptionExpirationDateOffsetUnit"
@@ -56,6 +60,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40504",
       "description": "Specifies the day type of the provision's relative option expiration date offset.",
       "display": "LegProvisionOptionExpirationDateOffsetDayType"
@@ -69,6 +74,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40505",
       "description": "The adjusted last date within an exercise period for an American style option. For a European style option it is the only date within the exercise period.",
       "display": "LegProvisionOptionExpirationDateAdjusted"
@@ -82,6 +88,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "40506",
       "description": "The latest time for exercise on the expiration date.",
       "display": "LegProvisionOptionExpirationTime"
@@ -94,6 +101,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40507",
       "description": "Identifies the business center calendar used with the provision's latest exercise time on expiration date. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionOptionExpirationTimeBusinessCenter"
@@ -107,6 +115,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40508",
       "description": "The unadjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date).",
       "display": "LegProvisionOptionRelevantUnderlyingDateUnadjusted"
@@ -120,6 +129,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40509",
       "description": "The business day convention used to adjust the instrument leg's provision's option relevant underlying date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegProvisionOptionRelevantUnderlyingDateBusinessDayConvention"
@@ -132,6 +142,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40510",
       "description": "The business center calendar used to adjust the instrument leg's provision's option underlying date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionOptionRelevantUnderlyingDateBusinessCenter"
@@ -144,6 +155,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40511",
       "description": "Specifies the anchor date when the date relevant to the underlying trade on exercise is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegProvisionOptionRelevantUnderlyingDateRelativeTo"
@@ -156,6 +168,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40512",
       "description": "Time unit multiplier for the relative option relevant underlying date offset.",
       "display": "LegProvisionOptionRelevantUnderlyingDateOffsetPeriod"
@@ -169,6 +182,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40513",
       "description": "Time unit associated with the relative option relevant underlying date offset.",
       "display": "LegProvisionOptionRelevantUnderlyingDateOffsetUnit"
@@ -182,6 +196,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40514",
       "description": "Specifies the day type of the provision's relative option relevant underlying date offset.",
       "display": "LegProvisionOptionRelevantUnderlyingDateOffsetDayType"
@@ -195,6 +210,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40515",
       "description": "The adjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date).",
       "display": "LegProvisionOptionRelevantUnderlyingDateAdjusted"
@@ -208,6 +224,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40516",
       "description": "The business day convention used to adjust the provisional cash settlement payment's termination, or relative termination, date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegProvisionCashSettlPaymentDateBusinessDayConvention"
@@ -220,6 +237,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40517",
       "description": "The business center calendar used to adjust the provisional cash settlement payment's termination, or relative termination, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionCashSettlPaymentDateBusinessCenter"
@@ -232,6 +250,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40518",
       "description": "Specifies the anchor date when the cash settlement payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegProvisionCashSettlPaymentDateRelativeTo"
@@ -244,6 +263,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40519",
       "description": "Time unit multiplier for the relative cash settlement payment date offset.",
       "display": "LegProvisionCashSettlPaymentDateOffsetPeriod"
@@ -257,6 +277,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40520",
       "description": "Time unit associated with the relative cash settlement payment date offset.",
       "display": "LegProvisionCashSettlPaymentDateOffsetUnit"
@@ -270,6 +291,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40521",
       "description": "Specifies the day type of the provision's relative cash settlement payment date offset.",
       "display": "LegProvisionCashSettlPaymentDateOffsetDayType"
@@ -283,6 +305,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40522",
       "description": "The first date in range when a settlement date range is provided.",
       "display": "LegProvisionCashSettlPaymentDateRangeFirst"
@@ -296,6 +319,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40523",
       "description": "The last date in range when a settlement date range is provided.",
       "display": "LegProvisionCashSettlPaymentDateRangeLast"
@@ -309,6 +333,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "40524",
       "description": "A time specified in 24-hour format, e.g. 11am would be represented as 11:00:00. The time of the cash settlement valuation date when the cash settlement amount will be determined according to the cash settlement method if the parties have not otherwise been able to agree to the cash settlement amount.",
       "display": "LegProvisionCashSettlValueTime"
@@ -321,6 +346,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40525",
       "description": "Identifies the business center calendar used with the provision's cash settlement valuation time. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionCashSettlValueTimeBusinessCenter"
@@ -334,6 +360,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40526",
       "description": "The business day convention used to adjust the provision's cash settlement valuation date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegProvisionCashSettlValueDateBusinessDayConvention"
@@ -346,6 +373,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40527",
       "description": "The business center calendar used to adjust the provision's cash settlement valuation date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionCashSettlValueDateBusinessCenter"
@@ -358,6 +386,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40528",
       "description": "Specifies the anchor date when the cash settlement value date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegProvisionCashSettlValueDateRelativeTo"
@@ -370,6 +399,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40529",
       "description": "Time unit multiplier for the relative cash settlement value date offset.",
       "display": "LegProvisionCashSettlValueDateOffsetPeriod"
@@ -383,6 +413,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40530",
       "description": "Time unit associated with the relative cash settlement value date offset.",
       "display": "LegProvisionCashSettlValueDateOffsetUnit"
@@ -396,6 +427,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40531",
       "description": "Specifies the day type of the provision's relative cash settlement value date offset.",
       "display": "LegProvisionCashSettlValueDateOffsetDayType"
@@ -409,6 +441,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40532",
       "description": "The adjusted cash settlement value date.",
       "display": "LegProvisionCashSettlValueDateAdjusted"
@@ -421,6 +454,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "40533",
       "description": "Number of parties identified in the contract provision.",
       "display": "NoLegProvisionPartyIDs"
@@ -433,6 +467,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40534",
       "description": "The party identifier/code for the payment settlement party.",
       "display": "LegProvisionPartyID"
@@ -446,6 +481,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyidsourcecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "40535",
       "description": "Identifies the class or source of LegProvisionPartyID(40534).",
       "display": "LegProvisionPartyIDSource"
@@ -459,6 +495,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrolecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40536",
       "description": "Identifies the type or role of LegProvisionPartyID(40534) specified.",
       "display": "LegProvisionPartyRole"
@@ -471,6 +508,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "40537",
       "description": "Number of sub-party IDs to be reported for the party.",
       "display": "NoLegProvisionPartySubIDs"
@@ -483,6 +521,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40538",
       "description": "Party sub-identifier, if applicable, for LegProvisionPartyRole(40536).",
       "display": "LegProvisionPartySubID"
@@ -496,6 +535,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partysubidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40539",
       "description": "The type of LegProvisionPartySubID(40538) value.",
       "display": "LegProvisionPartySubIDType"
@@ -508,6 +548,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "40540",
       "description": "Number of swap streams in the repeating group.",
       "display": "NoUnderlyingStreams"
@@ -521,6 +562,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "streamtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40541",
       "description": "Type of swap stream.",
       "display": "UnderlyingStreamType"
@@ -533,6 +575,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40542",
       "description": "A short descriptive name given to payment stream. Eg. CDS, Fixed, Float, Float2, GBP. The description has no intrinsic meaning but should be arbitrarily chosen by the remitter as a reference.",
       "display": "UnderlyingStreamDesc"
@@ -546,6 +589,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentpaysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40543",
       "description": "The side of the party paying the stream.",
       "display": "UnderlyingStreamPaySide"
@@ -559,6 +603,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentpaysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40544",
       "description": "The side of the party receiving the stream.",
       "display": "UnderlyingStreamReceiveSide"
@@ -573,6 +618,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "40545",
       "description": "Notional, or initial notional value for the payment stream. Use SwapSchedule for steps.",
       "display": "UnderlyingStreamNotional"
@@ -585,6 +631,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "40546",
       "description": "Specifies the currency the UnderlyingStreamNotional(40545) is denominated in. Uses ISO 4217 currency codes.",
       "display": "UnderlyingStreamCurrency"
@@ -597,6 +644,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40547",
       "description": "Free form text to specify additional information or enumeration description when a standard value does not apply.",
       "display": "UnderlyingStreamText"
@@ -610,6 +658,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40548",
       "description": "The unadjusted termination date.",
       "display": "UnderlyingStreamTerminationDateUnadjusted"
@@ -623,6 +672,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40549",
       "description": "The business day convention used to adjust the underlying instrument's stream's termination, or relative termination, date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingStreamTerminationDateBusinessDayConvention"
@@ -635,6 +685,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40550",
       "description": "The business center calendar used to adjust the underlying instrument's stream's termination, or relative termination, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingStreamTerminationDateBusinessCenter"
@@ -647,6 +698,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40551",
       "description": "Specifies the anchor date when the termination date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingStreamTerminationDateRelativeTo"
@@ -659,6 +711,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40552",
       "description": "Time unit multiplier for the relative termination date offset.",
       "display": "UnderlyingStreamTerminationDateOffsetPeriod"
@@ -672,6 +725,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40553",
       "description": "Time unit associated with the relative termination date offset.",
       "display": "UnderlyingStreamTerminationDateOffsetUnit"
@@ -685,6 +739,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40554",
       "description": "Specifies the day type of the relative termination date offset.",
       "display": "UnderlyingStreamTerminationDateOffsetDayType"
@@ -698,6 +753,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40555",
       "description": "The adjusted termination date.",
       "display": "UnderlyingStreamTerminationDateAdjusted"
@@ -711,6 +767,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40556",
       "description": "The business day convention used to adjust the calculation periods. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingStreamCalculationPeriodBusinessDayConvention"
@@ -723,6 +780,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40557",
       "description": "The business center calendar used to adjust the calculation periods, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingStreamCalculationPeriodBusinessCenter"
@@ -736,6 +794,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40558",
       "description": "The unadjusted first calculation period start date if before the effective date.",
       "display": "UnderlyingStreamFirstPeriodStartDateUnadjusted"
@@ -749,6 +808,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40559",
       "description": "The business day convention used to adjust the underlying instrument's stream's first calculation period start date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingStreamFirstPeriodStartDateBusinessDayConvention"
@@ -761,6 +821,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40560",
       "description": "The business center calendar used to adjust the underlying instrument's stream's first calculation period start date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingStreamFirstPeriodStartDateBusinessCenter"
@@ -774,6 +835,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40561",
       "description": "The adjusted first calculation period start date, if it is before the effective date.",
       "display": "UnderlyingStreamFirstPeriodStartDateAdjusted"
@@ -787,6 +849,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40562",
       "description": "The unadjusted first start date of the regular calculation period, if there is an initial stub period.",
       "display": "UnderlyingStreamFirstRegularPeriodStartDateUnadjusted"
@@ -800,6 +863,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40563",
       "description": "The unadjusted end date of the initial compounding period.",
       "display": "UnderlyingStreamFirstCompoundingPeriodEndDateUnadjusted"
@@ -813,6 +877,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40564",
       "description": "The unadjusted last regular period end date if there is a final stub period.",
       "display": "UnderlyingStreamLastRegularPeriodEndDateUnadjusted"
@@ -825,6 +890,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40565",
       "description": "Time unit multiplier for the frequency at which calculation period end dates occur.",
       "display": "UnderlyingStreamCalculationFrequencyPeriod"
@@ -838,6 +904,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "couponfrequencyunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40566",
       "description": "Time unit associated with the frequency at which calculation period end dates occur.",
       "display": "UnderlyingStreamCalculationFrequencyUnit"
@@ -851,6 +918,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "daterollconventioncodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40567",
       "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingStreamCalculationRollConvention"
@@ -864,6 +932,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40568",
       "description": "Identifies the type of payment stream applicable to the swap stream associated with the underlying instrument.",
       "display": "UnderlyingPaymentStreamType"
@@ -876,6 +945,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40569",
       "description": "Used only for credit index trade. This contains the credit spread (\"fair value\") at which the trade was executed. The market rate varies over the life of the index depending on market conditions. This is the price of the index as quoted by trading desks.",
       "display": "UnderlyingPaymentStreamMarketRate"
@@ -888,6 +958,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "40570",
       "description": "Applicable to credit default swaps on mortgage backed securities to specify whether payment delays are applicable to the fixed amount.",
       "display": "UnderlyingPaymentStreamDelayIndicator"
@@ -900,6 +971,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "40571",
       "description": "Specifies the currency that the stream settles in (to support swaps that settle in a currency different from the notional currency). Uses ISO 4217 currency codes.",
       "display": "UnderlyingPaymentStreamSettlCurrency"
@@ -913,6 +985,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "coupondaycountcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40572",
       "description": "The day count convention used in the payment stream calculations.",
       "display": "UnderlyingPaymentStreamDayCount"
@@ -925,6 +998,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40573",
       "description": "The number of days from the adjusted calculation period start date to the adjusted value date, calculated in accordance with the applicable day count fraction.",
       "display": "UnderlyingPaymentStreamAccrualDays"
@@ -938,6 +1012,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamdiscounttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40574",
       "description": "The method of calculating discounted payment amounts",
       "display": "UnderlyingPaymentStreamDiscountType"
@@ -950,6 +1025,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40575",
       "description": "Discount rate. The rate is expressed in decimal, e.g. 5% is expressed as 0.05.",
       "display": "UnderlyingPaymentStreamDiscountRate"
@@ -963,6 +1039,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "coupondaycountcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40576",
       "description": "The day count convention applied to the UnderlyingPaymentStreamDiscountRate(40575).",
       "display": "UnderlyingPaymentStreamDiscountRateDayCount"
@@ -976,6 +1053,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamcompoundingmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40577",
       "description": "Compounding Method.",
       "display": "UnderlyingPaymentStreamCompoundingMethod"
@@ -988,6 +1066,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "40578",
       "description": "Indicates whether there is an initial exchange of principal on the effective date.",
       "display": "UnderlyingPaymentStreamInitialPrincipalExchangeIndicator"
@@ -1000,6 +1079,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "40579",
       "description": "Indicates whether there are intermediate or interim exchanges of principal during the term of the swap.",
       "display": "UnderlyingPaymentStreamInterimPrincipalExchangeIndicator"
@@ -1012,6 +1092,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "40580",
       "description": "Indicates whether there is a final exchange of principal on the termination date.",
       "display": "UnderlyingPaymentStreamFinalPrincipalExchangeIndicator"
@@ -1025,6 +1106,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40581",
       "description": "The business day convention used to adjust the payment stream's payment date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentStreamPaymentDateBusinessDayConvention"
@@ -1037,6 +1119,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40582",
       "description": "The business center calendar used to adjust the payment stream's payment date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingPaymentStreamPaymentDateBusinessCenter"
@@ -1049,6 +1132,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40583",
       "description": "Time unit multiplier for the frequency of payments.",
       "display": "UnderlyingPaymentStreamPaymentFrequencyPeriod"
@@ -1062,6 +1146,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentfrequencyunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40584",
       "description": "Time unit associated with the frequency of payments.",
       "display": "UnderlyingPaymentStreamPaymentFrequencyUnit"
@@ -1075,6 +1160,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "daterollconventioncodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40585",
       "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentStreamPaymentRollConvention"
@@ -1088,6 +1174,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40586",
       "description": "The unadjusted first payment date.",
       "display": "UnderlyingPaymentStreamFirstPaymentDateUnadjusted"
@@ -1101,6 +1188,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40587",
       "description": "The unadjusted last regular payment date.",
       "display": "UnderlyingPaymentStreamLastRegularPaymentDateUnadjusted"
@@ -1113,6 +1201,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40588",
       "description": "Specifies the anchor date when payment dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingPaymentStreamPaymentDateRelativeTo"
@@ -1125,6 +1214,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40589",
       "description": "Time unit multiplier for the relative payment date offset.",
       "display": "UnderlyingPaymentStreamPaymentDateOffsetPeriod"
@@ -1138,6 +1228,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40590",
       "description": "Time unit associated with the relative payment date offset.",
       "display": "UnderlyingPaymentStreamPaymentDateOffsetUnit"
@@ -1151,6 +1242,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40591",
       "description": "Specifies the day type of the relative payment date offset.",
       "display": "UnderlyingPaymentStreamPaymentDateOffsetDayType"
@@ -1163,6 +1255,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40592",
       "description": "Specifies the anchor date when the reset dates are relative to an anchor date. If the reset frequency is specified as daily this element must not be included. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingPaymentStreamResetDateRelativeTo"
@@ -1176,6 +1269,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40593",
       "description": "The business day convention used to adjust the payment stream's reset date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentStreamResetDateBusinessDayConvention"
@@ -1188,6 +1282,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40594",
       "description": "The business center calendar used to adjust the payment stream's reset date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingPaymentStreamResetDateBusinessCenter"
@@ -1200,6 +1295,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40595",
       "description": "Time unit multiplier for frequency of resets.",
       "display": "UnderlyingPaymentStreamResetFrequencyPeriod"
@@ -1213,6 +1309,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "couponfrequencyunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40596",
       "description": "Time unit associated with frequency of resets.",
       "display": "UnderlyingPaymentStreamResetFrequencyUnit"
@@ -1226,6 +1323,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamresetweeklyrollconventioncodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40597",
       "description": "Used to specify the day of the week in which the reset occurs for payments that reset on a weekly basis.",
       "display": "UnderlyingPaymentStreamResetWeeklyRollConvention"
@@ -1238,6 +1336,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40598",
       "description": "Specifies the anchor date when the initial fixing date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingPaymentStreamInitialFixingDateRelativeTo"
@@ -1251,6 +1350,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40599",
       "description": "The business day convention used to adjust the payment stream's initial fixing date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentStreamInitialFixingDateBusinessDayConvention"

@@ -427,7 +427,7 @@ fn a_query_reads_its_parameters_and_refuses_each_by_name() {
     );
     assert_eq!(
         refusal("table=books&ticker=ACME&from=2026-01-05T11:00:00Z&to=2026-01-05T11:00:00Z"),
-        "invalid record value at $.to: expected an instant after `from` (2026-01-05T11:00:00.000000000Z), got 2026-01-05T11:00:00.000000000Z"
+        "invalid record value at $.to: expected an instant after `from` (2026-01-05T11:00:00Z), got 2026-01-05T11:00:00Z"
     );
     assert!(refusal("table=books&ticker=ACME&from=2026-01-05T10:00:00Z&to=2026-01-05T11:00:00Z&tz=Mars/Olympus").starts_with("invalid record value at $.tz:"));
     assert!(
@@ -982,9 +982,9 @@ fn tickers_state_the_span_of_a_book_at_either_end_of_the_instants() {
     assert_eq!(tickers.len(), 2);
     assert_eq!(text(&tickers[0], "ticker"), "EARLY");
     assert_eq!(text(&tickers[0], "from"), "1677-09-21T00:12:43.145224192Z");
-    assert_eq!(text(&tickers[0], "to"), "1677-09-21T00:12:44.000000000Z");
+    assert_eq!(text(&tickers[0], "to"), "1677-09-21T00:12:44Z");
     assert_eq!(text(&tickers[1], "ticker"), "LATE");
-    assert_eq!(text(&tickers[1], "from"), "2262-04-11T23:47:16.000000000Z");
+    assert_eq!(text(&tickers[1], "from"), "2262-04-11T23:47:16Z");
     assert_eq!(text(&tickers[1], "to"), "2262-04-11T23:47:16.854775807Z");
 }
 
@@ -1066,7 +1066,7 @@ fn events_answer_the_earliest_rows_of_a_store_holding_them_out_of_order() {
     ));
     assert_eq!(member(&first, "truncated"), &Scalar::from(true));
     let rows = items(member(&first, "rows"));
-    assert_eq!(text(&rows[0], "bookunix"), "2026-01-05T10:00:05.000000000Z");
+    assert_eq!(text(&rows[0], "bookunix"), "2026-01-05T10:00:05Z");
 }
 
 #[test]
@@ -1094,17 +1094,17 @@ fn tickers_span_the_books_of_each_ticker() {
         "3:0:ACME",
         "the book's stored code"
     );
-    assert_eq!(text(acme, "from"), "2026-01-05T10:00:05.000000000Z");
+    assert_eq!(text(acme, "from"), "2026-01-05T10:00:05Z");
     assert_eq!(
         text(acme, "to"),
-        "2026-01-05T10:02:06.000000000Z",
+        "2026-01-05T10:02:06Z",
         "the second after the last book"
     );
     assert_eq!(member(acme, "books"), &Scalar::from(4_u64));
     let beta = &tickers[1];
     assert_eq!(text(beta, "ticker"), "BETA");
-    assert_eq!(text(beta, "from"), "2026-01-05T10:00:30.000000000Z");
-    assert_eq!(text(beta, "to"), "2026-01-05T10:01:31.000000000Z");
+    assert_eq!(text(beta, "from"), "2026-01-05T10:00:30Z");
+    assert_eq!(text(beta, "to"), "2026-01-05T10:01:31Z");
     assert_eq!(member(beta, "books"), &Scalar::from(2_u64));
 
     assert_eq!(
@@ -1128,14 +1128,14 @@ fn candles_fold_the_books_of_the_range_by_the_minute() {
     assert_eq!(text(&answer, "ticker"), "ACME");
     assert_eq!(text(&answer, "timezone"), "UTC");
     assert_eq!(text(&answer, "interval"), "1m");
-    assert_eq!(text(&answer, "from"), "2026-01-05T10:00:00.000000000Z");
-    assert_eq!(text(&answer, "to"), "2026-01-05T10:03:00.000000000Z");
+    assert_eq!(text(&answer, "from"), "2026-01-05T10:00:00Z");
+    assert_eq!(text(&answer, "to"), "2026-01-05T10:03:00Z");
     let candles = items(member(&answer, "candles"));
     assert_eq!(candles.len(), 3);
 
     let first = &candles[0];
-    assert_eq!(text(first, "start"), "2026-01-05T10:00:00.000000000Z");
-    assert_eq!(text(first, "end"), "2026-01-05T10:01:00.000000000Z");
+    assert_eq!(text(first, "start"), "2026-01-05T10:00:00Z");
+    assert_eq!(text(first, "end"), "2026-01-05T10:01:00Z");
     let bid = member(first, "bid");
     assert_eq!(text(bid, "open"), "100");
     assert_eq!(text(bid, "close"), "100");
@@ -1159,14 +1159,14 @@ fn candles_fold_the_books_of_the_range_by_the_minute() {
     );
 
     let second = &candles[1];
-    assert_eq!(text(second, "start"), "2026-01-05T10:01:00.000000000Z");
+    assert_eq!(text(second, "start"), "2026-01-05T10:01:00Z");
     assert_eq!(text(member(second, "bid"), "open"), "100.5");
     assert_eq!(text(member(second, "bid"), "high"), "100.5");
     assert_eq!(text(member(second, "spread"), "close"), "0.5");
     assert_eq!(member(second, "books"), &Scalar::from(2_u64));
 
     let third = &candles[2];
-    assert_eq!(text(third, "start"), "2026-01-05T10:02:00.000000000Z");
+    assert_eq!(text(third, "start"), "2026-01-05T10:02:00Z");
     assert_eq!(
         text(member(third, "ask"), "close"),
         "101",
@@ -1192,7 +1192,7 @@ fn a_one_sided_range_states_no_mid_and_the_to_is_exclusive() {
     let candles = items(member(&beta, "candles"));
     // `to` is exclusive: the 10:01:30 book is not in [10:00, 10:01:30).
     assert_eq!(candles.len(), 1);
-    assert_eq!(text(&candles[0], "start"), "2026-01-05T10:00:30.000000000Z");
+    assert_eq!(text(&candles[0], "start"), "2026-01-05T10:00:30Z");
     assert_eq!(text(member(&candles[0], "bid"), "open"), "50");
     assert_eq!(member(&candles[0], "ask"), &Scalar::Null);
     assert_eq!(member(&candles[0], "mid"), &Scalar::Null);
@@ -1235,17 +1235,17 @@ fn candles_align_to_the_zone_asked_and_render_in_it() {
     // A naive `from` is a Zurich wall clock: 11:00 there is 10:00Z.
     assert_eq!(
         text(&answer, "from"),
-        "2026-01-05T11:00:00.000000000+01:00[Europe/Zurich]"
+        "2026-01-05T11:00:00+01:00[Europe/Zurich]"
     );
     let candles = items(member(&answer, "candles"));
     assert_eq!(candles.len(), 1);
     assert_eq!(
         text(&candles[0], "start"),
-        "2026-01-05T11:00:00.000000000+01:00[Europe/Zurich]"
+        "2026-01-05T11:00:00+01:00[Europe/Zurich]"
     );
     assert_eq!(
         text(&candles[0], "end"),
-        "2026-01-05T12:00:00.000000000+01:00[Europe/Zurich]"
+        "2026-01-05T12:00:00+01:00[Europe/Zurich]"
     );
     assert_eq!(member(&candles[0], "books"), &Scalar::from(4_u64));
 }
@@ -1280,7 +1280,7 @@ fn candles_refuse_what_they_cannot_read() {
             &send(with("to", "2026-01-05T10:00:00Z")),
             Status::BAD_REQUEST
         ),
-        "invalid record value at $.to: expected an instant after `from` (2026-01-05T10:00:00.000000000Z), got 2026-01-05T10:00:00.000000000Z"
+        "invalid record value at $.to: expected an instant after `from` (2026-01-05T10:00:00Z), got 2026-01-05T10:00:00Z"
     );
     assert!(
         refused(&send(with("from", "10 o'clock")), Status::BAD_REQUEST)
@@ -1332,7 +1332,7 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
     ));
     assert_eq!(
         text(&book, "currunix"),
-        "2026-01-05T10:01:10.000000000Z",
+        "2026-01-05T10:01:10Z",
         "the execution at 10:01:10 folded a book of its own, the last at or before"
     );
     assert_eq!(text(&book, "ticker"), "ACME");
@@ -1414,7 +1414,7 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
     ));
     assert_eq!(
         text(&zoned, "currunix"),
-        "2026-01-05T11:00:05.000000000+01:00[Europe/Zurich]"
+        "2026-01-05T11:00:05+01:00[Europe/Zurich]"
     );
     assert_eq!(member(&zoned, "alive"), &Scalar::from(2_u64));
 
@@ -1431,7 +1431,7 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
             ),
             Status::NOT_FOUND
         ),
-        "expected a book at \"books/ACME at or before 2026-01-05T10:00:01.000000000Z\", got nothing"
+        "expected a book at \"books/ACME at or before 2026-01-05T10:00:01Z\", got nothing"
     );
     assert!(
         refused(
@@ -1464,10 +1464,10 @@ fn events_list_every_entry_delta_and_event_of_the_books_in_range() {
     assert_eq!(
         instants,
         BTreeSet::from([
-            "2026-01-05T10:00:05.000000000Z".to_owned(),
-            "2026-01-05T10:01:05.000000000Z".to_owned(),
-            "2026-01-05T10:01:10.000000000Z".to_owned(),
-            "2026-01-05T10:02:05.000000000Z".to_owned(),
+            "2026-01-05T10:00:05Z".to_owned(),
+            "2026-01-05T10:01:05Z".to_owned(),
+            "2026-01-05T10:01:10Z".to_owned(),
+            "2026-01-05T10:02:05Z".to_owned(),
         ]),
         "the execution's instant folds a book of its own"
     );
@@ -1487,7 +1487,7 @@ fn events_list_every_entry_delta_and_event_of_the_books_in_range() {
     );
     let first_book: Vec<&Scalar> = rows
         .iter()
-        .filter(|row| text(row, "bookunix") == "2026-01-05T10:00:05.000000000Z")
+        .filter(|row| text(row, "bookunix") == "2026-01-05T10:00:05Z")
         .collect();
     // The two quotes of the first book's delta that placed its two entries.
     assert_eq!(first_book.len(), 2);
@@ -1522,11 +1522,11 @@ fn events_list_every_entry_delta_and_event_of_the_books_in_range() {
     let zoned = items(member(&ok_json(&get(&endpoint, "events", &zoned)), "rows"));
     assert_eq!(
         text(&zoned[0], "bookunix"),
-        "2026-01-05T11:00:05.000000000+01:00[Europe/Zurich]"
+        "2026-01-05T11:00:05+01:00[Europe/Zurich]"
     );
     assert_eq!(
         text(&zoned[0], "currunix"),
-        "2026-01-05T11:00:05.000000000+01:00[Europe/Zurich]"
+        "2026-01-05T11:00:05+01:00[Europe/Zurich]"
     );
 }
 
@@ -1878,7 +1878,7 @@ fn an_execution_is_an_event_row_after_the_delta_rows_of_its_book() {
     };
     let row = |seconds: u8, role: &str, kind: &str| {
         (
-            format!("2026-01-05T10:00:{seconds:02}.000000000Z"),
+            format!("2026-01-05T10:00:{seconds:02}Z"),
             role.to_owned(),
             kind.to_owned(),
         )

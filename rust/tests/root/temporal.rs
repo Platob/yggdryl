@@ -7,7 +7,7 @@ mod internal {
     use yggdryl::internals::temporal::{
         format_date, format_datetime, format_duration, format_time, format_timestamp,
         from_temporal_text, parse_date, parse_datetime, parse_duration, parse_fix_instant,
-        parse_instant, parse_time, parse_timestamp,
+        parse_instant, parse_time, parse_timestamp, spelling_keeps_unit,
     };
     use yggdryl::{Error, TimeUnit, Timezone};
 
@@ -24,6 +24,76 @@ mod internal {
             DataType::duration64(TimeUnit::Millisecond).unwrap(),
         ] {
             assert!(from_temporal_text(&dtype, "").is_err(), "{dtype}");
+        }
+    }
+
+    /// The dispatch reads each family through that family's own door and
+    /// restates what it answers at the column's unit before narrowing, so a
+    /// spelling the column holds is never refused at the unit its digits
+    /// happened to name.
+    #[test]
+    fn the_dispatch_reads_each_family_through_its_own_door() {
+        use yggdryl::{DataType, Scalar, Timezone};
+
+        let time32 = |unit| DataType::time32(unit).unwrap();
+        let time64 = |unit| DataType::time64(unit).unwrap();
+        let duration32 = |unit| DataType::duration32(unit).unwrap();
+        for (dtype, text, expected) in [
+            (
+                time32(TimeUnit::Millisecond),
+                "10:00:00.000000",
+                Scalar::time32(36_000_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+            ),
+            (
+                time32(TimeUnit::Second),
+                "10:00:00.000",
+                Scalar::time32(36_000, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+            ),
+            (
+                time64(TimeUnit::Nanosecond),
+                "10:00:00",
+                Scalar::time64(36_000_000_000_000, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
+            ),
+            (DataType::date32(), "20260930", Scalar::date32(20_726)),
+            (
+                DataType::date64(),
+                "2026-09-30",
+                Scalar::date64(20_726 * 86_400_000),
+            ),
+            // Twenty-five thousand days of seconds pass `i32` at the digits'
+            // unit and fit at the column's.
+            (
+                duration32(TimeUnit::Day),
+                "PT2160000000S",
+                Scalar::duration32(25_000, TimeUnit::Day).unwrap(),
+            ),
+            (
+                duration32(TimeUnit::Millisecond),
+                "-00:00:01.5",
+                Scalar::duration32(-1_500, TimeUnit::Millisecond).unwrap(),
+            ),
+        ] {
+            assert_eq!(
+                from_temporal_text(&dtype, text).unwrap(),
+                expected,
+                "{dtype} {text:?}"
+            );
+        }
+        // A count the column's unit does not hold exactly is refused, as is
+        // a zone on a time of day and a date spelled with a clock.
+        for (dtype, text) in [
+            (time32(TimeUnit::Second), "10:00:00.5"),
+            (time32(TimeUnit::Millisecond), "10:00:00.000001"),
+            (time64(TimeUnit::Microsecond), "10:00:00.000000001"),
+            (time64(TimeUnit::Microsecond), "10:00:00Z"),
+            (DataType::date32(), "20260930T00:00"),
+            (duration32(TimeUnit::Second), "PT3000000000S"),
+            (duration32(TimeUnit::Second), "30s"),
+        ] {
+            assert!(
+                from_temporal_text(&dtype, text).is_err(),
+                "{dtype} {text:?}"
+            );
         }
     }
 
@@ -46,7 +116,7 @@ mod internal {
     }
 
     #[test]
-    fn times_print_the_fraction_at_the_unit_width() {
+    fn times_print_no_fraction_where_it_is_zero_and_the_shortest_exact_one_otherwise() {
         assert_eq!(
             format_time(0, TimeUnit::Second).as_deref(),
             Some("00:00:00")
@@ -63,6 +133,55 @@ mod internal {
             format_time(1, TimeUnit::Nanosecond).as_deref(),
             Some("00:00:00.000000001")
         );
+        // A zero fraction spells nothing whatever the unit, and any other
+        // the shortest of three, six or nine digits that is exact: the
+        // spelling is a reader's, not the column's width.
+        assert_eq!(
+            format_time(36_000_000, TimeUnit::Millisecond).as_deref(),
+            Some("10:00:00")
+        );
+        assert_eq!(
+            format_time(36_000_000_000, TimeUnit::Microsecond).as_deref(),
+            Some("10:00:00")
+        );
+        assert_eq!(
+            format_time(36_000_000_000_000, TimeUnit::Nanosecond).as_deref(),
+            Some("10:00:00")
+        );
+        assert_eq!(
+            format_time(36_000_500_000, TimeUnit::Microsecond).as_deref(),
+            Some("10:00:00.500")
+        );
+        assert_eq!(
+            format_time(36_000_500_000_000, TimeUnit::Nanosecond).as_deref(),
+            Some("10:00:00.500")
+        );
+        assert_eq!(
+            format_time(36_000_000_001_000, TimeUnit::Nanosecond).as_deref(),
+            Some("10:00:00.000001")
+        );
+        assert_eq!(
+            format_time(36_000_000_000_001, TimeUnit::Nanosecond).as_deref(),
+            Some("10:00:00.000000001")
+        );
+
+        // Whether a spelling reads back at the unit it was written at is
+        // what the scalar wire asks before it writes the spelling.
+        for (count, unit, keeps) in [
+            (36_000, TimeUnit::Second, true),
+            (36_000_000, TimeUnit::Millisecond, false),
+            (36_000_500, TimeUnit::Millisecond, true),
+            (36_000_000_000, TimeUnit::Microsecond, false),
+            (36_000_500_000, TimeUnit::Microsecond, false),
+            (36_000_000_001, TimeUnit::Microsecond, true),
+            (36_000_000_000_000, TimeUnit::Nanosecond, false),
+            (36_000_000_001_000, TimeUnit::Nanosecond, false),
+            (36_000_000_000_001, TimeUnit::Nanosecond, true),
+            (1, TimeUnit::Day, false),
+            (1, TimeUnit::MonthDayNano, false),
+        ] {
+            assert_eq!(spelling_keeps_unit(count, unit), keeps, "{count} {unit}");
+        }
 
         // The digit count is the unit on the way back.
         assert_eq!(
@@ -586,7 +705,11 @@ mod internal {
         let fixed = Timezone::from_str("-08:00").unwrap();
         assert_eq!(
             format_timestamp(3_600_000, TimeUnit::Millisecond, &fixed).as_deref(),
-            Some("1969-12-31T17:00:00.000-08:00")
+            Some("1969-12-31T17:00:00-08:00")
+        );
+        assert_eq!(
+            format_timestamp(3_600_250, TimeUnit::Millisecond, &fixed).as_deref(),
+            Some("1969-12-31T17:00:00.250-08:00")
         );
 
         // The offset recovers the instant; the bracket recovers the name.

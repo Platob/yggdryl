@@ -394,7 +394,7 @@ fn the_1904_system_counts_from_1904_01_01_with_no_phantom_day_both_ways() {
             .unwrap_err()
             .to_string(),
         "invalid record value at $: expected an instant the 1904 date system spells, from its \
-         first day to 9999-12-31, got 1903-12-31T00:00:00.000"
+         first day to 9999-12-31, got 1903-12-31T00:00:00"
     );
 }
 
@@ -428,7 +428,7 @@ fn writing_a_1900_date_skips_the_phantom_day_and_refuses_a_day_the_system_does_n
             .unwrap_err()
             .to_string(),
         "invalid record value at $: expected an instant the 1900 date system spells, from its \
-         first day to 9999-12-31, got 1899-12-30T00:00:00.000"
+         first day to 9999-12-31, got 1899-12-30T00:00:00"
     );
     let past = system
         .serial_from_millis(2_932_897 * DAY)
@@ -571,7 +571,7 @@ fn scalar_from_serial_reads_the_value_each_number_format_spells() {
     );
     assert_eq!(
         read(1.5, NumberFormat::Time).into_json().unwrap(),
-        "\"1900-01-01T12:00:00.000\""
+        "\"1900-01-01T12:00:00\""
     );
     assert_eq!(
         read(1.5, NumberFormat::Duration),
@@ -765,7 +765,7 @@ fn serial_of_writes_each_naive_temporal_with_the_format_that_reads_it_back() {
             .unwrap_err()
             .to_string(),
         "invalid record value at $: expected an instant the 1900 date system spells, from its \
-         first day to 9999-12-31, got 1899-12-30T00:00:00.000"
+         first day to 9999-12-31, got 1899-12-30T00:00:00"
     );
 }
 
@@ -843,7 +843,7 @@ fn a_cell_from_a_value_states_the_kind_and_format_it_writes_as_and_keeps_the_val
             Scalar::duration64(129_600_000, TimeUnit::Millisecond).unwrap(),
             CellKind::Number,
             NumberFormat::Duration,
-            "PT129600.000S",
+            "PT129600S",
         ),
         (
             Scalar::datetime64(noon, TimeUnit::Second, Timezone::UTC).unwrap(),
@@ -917,7 +917,7 @@ fn a_cell_refuses_text_past_the_character_limit_and_an_instant_the_system_does_n
         .unwrap_err()
         .to_string(),
         "invalid record value at B2: expected an instant the 1900 date system spells, \
-         from its first day to 9999-12-31, got 1899-12-30T00:00:00.000"
+         from its first day to 9999-12-31, got 1899-12-30T00:00:00"
     );
     assert_eq!(
         Cell::from_scalar(
@@ -928,7 +928,7 @@ fn a_cell_refuses_text_past_the_character_limit_and_an_instant_the_system_does_n
         .unwrap_err()
         .to_string(),
         "invalid record value at D7: expected an instant the 1904 date system spells, \
-         from its first day to 9999-12-31, got 1903-12-31T00:00:00.000"
+         from its first day to 9999-12-31, got 1903-12-31T00:00:00"
     );
     let first = Cell::from_scalar(
         reference("D7"),

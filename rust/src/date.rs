@@ -271,6 +271,45 @@ temporal_leaf!(
     "Date64 requires millisecond units and the NAIVE timezone",
 );
 
+impl Date32 {
+    /// The calendar day `text` spells.
+    ///
+    /// The ISO 8601 door of the date family, over the one reader every date
+    /// in the crate reads through: the extended `YYYY-MM-DD`, and the
+    /// compact `YYYYMMDD` a wire writes when every byte counts - FIX's
+    /// `UTCDateOnly` and `LocalMktDate` are that spelling, so the FIX codec
+    /// reads a date field through this door and has none of its own. A day
+    /// the calendar does not have is refused, and so is a clock after the
+    /// date: a date states the day and stops, and a datetime is where
+    /// `20260930T00:00` reads. A `Date64` is this day's midnight in
+    /// milliseconds, the count times `86_400_000`.
+    ///
+    /// ```
+    /// use yggdryl::{Date32, TimeUnit};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let day = Date32::from_text("2026-09-30")?;
+    /// assert_eq!((day.count(), day.unit()), (20_726, TimeUnit::Day));
+    /// assert_eq!(Date32::from_text("20260930")?, day);
+    /// assert!(Date32::from_text("2026-02-30").is_err());
+    /// assert!(Date32::from_text("20260930T00:00").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] naming the byte the text stopped being a
+    /// date at.
+    pub fn from_text(text: &str) -> Result<Self> {
+        Self::new(
+            crate::temporal::parse_date(text)?,
+            TimeUnit::Day,
+            Timezone::NAIVE,
+        )
+    }
+}
+
 impl Scalar {
     /// Build the exact date width selected by its unit.
     ///

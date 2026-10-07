@@ -431,7 +431,7 @@ Hold these facts:
   `at` from the last complete book, or the first following none, and answers
   `"complete": false` - with no entries or levels - where it cannot.
 - The display's routes render instants as RFC 9557 text with a bracketed zone,
-  `2026-08-14T14:00:00.000000000+02:00[Europe/Zurich]`, which `Date.parse`
+  `2026-08-14T14:00:00+02:00[Europe/Zurich]`, which `Date.parse`
   does not read: hand a candle's `start`/`end` back as the next question's
   `from`, `to` or `at` - percent-encoded, as `URLSearchParams` does - rather
   than re-parsing them. A naive `from`/`to` is a wall clock in `tz`, and `to`

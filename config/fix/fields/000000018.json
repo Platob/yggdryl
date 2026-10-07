@@ -8,6 +8,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1800",
       "description": "Quantity associated with the event.",
       "display": "OrderEventQty"
@@ -21,6 +22,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "lastliquidityindcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1801",
       "description": "Indicator to identify whether this fill was a result of a liquidity provider providing or liquidity taker taking the liquidity. Applicable only for OrderEventType(1796) values of 4(Partially Filled) or 5(Filled).",
       "display": "OrderEventLiquidityIndicator"
@@ -33,6 +35,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1802",
       "description": "Additional information about the event.",
       "display": "OrderEventText"
@@ -46,6 +49,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "auctiontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1803",
       "description": "Type of auction order.",
       "display": "AuctionType"
@@ -58,6 +62,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1804",
       "description": "Percentage of matched quantity to be allocated to the submitter of the response to an auction order.",
       "display": "AuctionAllocationPct"
@@ -71,6 +76,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "auctioninstructioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1805",
       "description": "Instruction related to system generated auctions, e.g. flash order auctions.",
       "display": "AuctionInstruction"
@@ -83,6 +89,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1806",
       "description": "Used to reference an order via ClOrdID(11).",
       "display": "RefClOrdID"
@@ -96,6 +103,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "locktypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1807",
       "description": "Indicates whether an order is locked and for what reason.",
       "display": "LockType"
@@ -110,6 +118,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1808",
       "description": "Locked order quantity.",
       "display": "LockedQty"
@@ -124,6 +133,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1809",
       "description": "Locked order quantity in addition to LockedQty (1808), e.g. to distinguish total locked quantity from currently locked quantity.",
       "display": "SecondaryLockedQty"
@@ -137,6 +147,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "releaseinstructioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1810",
       "description": "Instruction to define conditions under which to release a locked order or parts of it.",
       "display": "ReleaseInstruction"
@@ -151,6 +162,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1811",
       "description": "Quantity to be made available, i.e. released from a lock.",
       "display": "ReleaseQty"
@@ -163,6 +175,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1812",
       "description": "Number of disclosure instructions.",
       "display": "NoDisclosureInstructions"
@@ -176,6 +189,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "disclosuretypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1813",
       "description": "Information subject to disclosure.",
       "display": "DisclosureType"
@@ -189,6 +203,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "disclosureinstructioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1814",
       "description": "Instruction to disclose information or to use default value of the receiver.",
       "display": "DisclosureInstruction"
@@ -202,6 +217,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradingcapacitycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1815",
       "description": "Designates the capacity in which the order is submitted for trading by the market participant.",
       "display": "TradingCapacity"
@@ -215,6 +231,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "clearingaccounttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1816",
       "description": "Designates the account type to be used for the order when submitted to clearing.",
       "display": "ClearingAccountType"
@@ -228,6 +245,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "clearingaccounttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1817",
       "description": "Designates the capacity in which the order will be submitted to clearing.",
       "display": "LegClearingAccountType"
@@ -241,6 +259,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1818",
       "description": "Qualifies the value of TargetPartyRole (1464).",
       "display": "TargetPartyRoleQualifier"
@@ -255,6 +274,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1819",
       "description": "Upper boundary for the price of a related entity, e.g. price of the underlying instrument in an Underlying Price Contingency (UPC) order.",
       "display": "RelatedHighPrice"
@@ -269,6 +289,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1820",
       "description": "Lower boundary for the price of a related entity, e.g. price of the underlying instrument in an Underlying Price Contingency (UPC) order.",
       "display": "RelatedLowPrice"
@@ -282,6 +303,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "relatedpricesourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1821",
       "description": "Source for the price of a related entity, e.g. price of the underlying instrument in an Underlying Price Contingency (UPC) order. Can be used together with RelatedHighPrice (1819) and/or RelatedLowPrice (1820).",
       "display": "RelatedPriceSource"
@@ -295,6 +317,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "minqtymethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1822",
       "description": "Indicates how the minimum quantity should be applied when executing the order.",
       "display": "MinQtyMethod"
@@ -308,6 +331,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "triggeredcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1823",
       "description": "Indicates whether order has been triggered during its lifetime. Applies to cases where original information, e.g. OrdType(40), is modified when the order is triggered.",
       "display": "Triggered"
@@ -320,6 +344,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1824",
       "description": "OrigClOrdID(41) of an order affected by a mass cancel or mass action request.",
       "display": "AffectedOrigClOrdID"
@@ -332,6 +357,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1825",
       "description": "SecondaryOrderID (198) of an order not affected by a mass cancel or mass action request.",
       "display": "NotAffSecondaryOrderID"
@@ -344,6 +370,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1826",
       "description": "Time unit multiplier for the event.",
       "display": "EventTimePeriod"
@@ -357,6 +384,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "eventtimeunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1827",
       "description": "Time unit associated with the event.",
       "display": "EventTimeUnit"
@@ -371,6 +399,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1828",
       "description": "When LastQty is an estimated value, e.g. for a Repo \"circled\" trade, LastQtyVariance specifies the absolute amount that the size may vary up or down when finalized. Omitted when LastQty(32) is already final.",
       "display": "LastQtyVariance"
@@ -383,6 +412,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1829",
       "description": "Number of legs in the side of a cross order.",
       "display": "NoCrossLegs"
@@ -397,6 +427,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1830",
       "description": "Settlement price increment for stated price range.",
       "display": "SettlPriceIncrement"
@@ -411,6 +442,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1831",
       "description": "Secondary settlement price increment for stated price range. The meaning of secondary is left to bilateral agreement, e.g. it may refer to final settlement for a contract.",
       "display": "SettlPriceSecondaryIncrement"
@@ -424,6 +456,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "clearedindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1832",
       "description": "Indicates whether the trade or position being reported was cleared through a clearing organization.",
       "display": "ClearedIndicator"
@@ -437,6 +470,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "contractrefpostypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1833",
       "description": "Additional information related to the pricing of a commodity swaps position, specifically an indicator referring to the position type.",
       "display": "ContractRefPosType"
@@ -450,6 +484,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "positioncapacitycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1834",
       "description": "Used to describe the ownership of the position.",
       "display": "PositionCapacity"
@@ -462,6 +497,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "1835",
       "description": "Indicates the currency of the unit of measure if position quantity is expressed in valuation rather than contracts. Conditionally required when PosQtyUnitOfMeasure(1836)=Ccy.",
       "display": "PosQtyUnitOfMeasureCurrency"
@@ -475,6 +511,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1836",
       "description": "Indicates the unit of measure of the position quantity when not expressed in contracts.",
       "display": "PosQtyUnitOfMeasure"
@@ -489,6 +526,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "MonthYear",
       "FIX:tag": "1837",
       "description": "Reference month if there is no applicable UnderlyingMaturityMonth(313) value for the contract or security.",
       "display": "UnderlyingContractPriceRefMonth"
@@ -501,6 +539,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1838",
       "description": "Number of trade price conditions.",
       "display": "NoTradePriceConditions"
@@ -514,6 +553,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradepriceconditioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1839",
       "description": "Price conditions in effect at the time of the trade. Multiple price conditions can be in effect at the same time. Price conditions are usually required to be reported in markets that have regulations on price execution at a market or national best bid or offer, and the trade price differs from the best bid or offer.",
       "display": "TradePriceCondition"
@@ -527,6 +567,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradeallocstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1840",
       "description": "Identifies the status of an allocation when using a pre-clear workflow.",
       "display": "TradeAllocStatus"
@@ -539,6 +580,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1841",
       "description": "Number of trade quantities.",
       "display": "NoTradeQtys"
@@ -552,6 +594,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradeqtytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1842",
       "description": "Indicates the type of trade quantity in TradeQty(1843).",
       "display": "TradeQtyType"
@@ -566,6 +609,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1843",
       "description": "Trade quantity.",
       "display": "TradeQty"
@@ -578,6 +622,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1844",
       "description": "Number of trade allocation amount entries.",
       "display": "NoTradeAllocAmts"
@@ -591,6 +636,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "posamttypecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1845",
       "description": "Type of the amount associated with a trade allocation.",
       "display": "TradeAllocAmtType"
@@ -605,6 +651,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "1846",
       "description": "The amount associated with a trade allocation.",
       "display": "TradeAllocAmt"
@@ -617,6 +664,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "1847",
       "description": "Currency denomination of the trade allocation amount.",
       "display": "TradeAllocCurrency"
@@ -630,6 +678,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradeallocgroupinstructioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1848",
       "description": "Instruction on how to add a trade to an allocation group when it is being given-up.",
       "display": "TradeAllocGroupInstruction"
@@ -643,6 +692,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "offsetinstructioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1849",
       "description": "Indicates the trade is a result of an offset or onset.",
       "display": "OffsetInstruction"
@@ -656,6 +706,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "posamtreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1850",
       "description": "Specifies the reason for an amount type when reported on an allocation. Useful when multiple instances of the same amount type are reported.",
       "display": "TradeAllocAmtReason"
@@ -668,6 +719,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1851",
       "description": "Identifies the multileg strategy (e.g. spread) to which the trade belongs. This links together trade legs executed as part of a strategy during a single match event.",
       "display": "StrategyLinkID"
@@ -682,6 +734,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1852",
       "description": "Calculated average price for this side of the trade.",
       "display": "SideAvgPx"
@@ -695,6 +748,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "sideavgpxindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1853",
       "description": "Used to indicate whether a trade or a sub-allocation should be allocated at the trade price (e.g. no average pricing), or whether it should be grouped with other trades/sub-allocations and allocated at the average price of the group.",
       "display": "SideAvgPxIndicator"
@@ -707,6 +761,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1854",
       "description": "The identifier for the average price group for the trade side. See also AvgPxGroupID(1731).",
       "display": "SideAvgPxGroupID"
@@ -719,6 +774,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1855",
       "description": "Number of related trades.",
       "display": "NoRelatedTrades"
@@ -731,6 +787,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1856",
       "description": "Identifier of a related trade.",
       "display": "RelatedTradeID"
@@ -744,6 +801,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "relatedtradeidsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1857",
       "description": "Describes the source of the identifier that RelatedTradeID(1856) represents.",
       "display": "RelatedTradeIDSource"
@@ -757,6 +815,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "1858",
       "description": "Date of a related trade.",
       "display": "RelatedTradeDate"
@@ -769,6 +828,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Exchange",
       "FIX:tag": "1859",
       "description": "Market of execution of related trade.",
       "display": "RelatedTradeMarketID"
@@ -783,6 +843,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1860",
       "description": "Quantity of the related trade which can be less than or equal to the actual quantity of the related trade. For example, when one trade offsets another across asset classes.",
       "display": "RelatedTradeQuantity"
@@ -795,6 +856,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1861",
       "description": "Number of related positions.",
       "display": "NoRelatedPositions"
@@ -807,6 +869,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1862",
       "description": "Identifier of a related position.",
       "display": "RelatedPositionID"
@@ -820,6 +883,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "relatedpositionidsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1863",
       "description": "Describes the source of the identifier that RelatedPositionID(1862) represents.",
       "display": "RelatedPositionIDSource"
@@ -833,6 +897,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "1864",
       "description": "Used to help identify the position when RelatedPositionID(1862) is not unique across multiple days. This date is generally the creation date of the identifier.",
       "display": "RelatedPositionDate"
@@ -846,6 +911,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "quoteackstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1865",
       "description": "Acknowledgement status of a Quote(35=S) or QuoteCancel(35=Z) message submission.",
       "display": "QuoteAckStatus"
@@ -858,6 +924,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1866",
       "description": "Specifies the index used to calculate the strike price.",
       "display": "StrikeIndex"
@@ -870,6 +937,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1867",
       "description": "Unique identifier for the ask side of the quote assigned by the quote issuer.",
       "display": "OfferID"
@@ -882,6 +950,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1868",
       "description": "Number of value check entries.",
       "display": "NoValueChecks"
@@ -895,6 +964,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "valuechecktypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1869",
       "description": "Type of value to be checked.",
       "display": "ValueCheckType"
@@ -908,6 +978,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "valuecheckactioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1870",
       "description": "Action to be taken for the ValueCheckType(1869).",
       "display": "ValueCheckAction"
@@ -920,6 +991,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "1871",
       "description": "The length of the LegSecurityXML(1872) data block.",
       "display": "LegSecurityXMLLen"
@@ -932,6 +1004,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XMLData",
       "FIX:tag": "1872",
       "description": "XML definition for the leg security.",
       "display": "LegSecurityXML"
@@ -944,6 +1017,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1873",
       "description": "The schema used to validate the contents of LegSecurityXML(1872).",
       "display": "LegSecurityXMLSchema"
@@ -956,6 +1030,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "1874",
       "description": "The length of the UnderlyingSecurityXML(1875) data block.",
       "display": "UnderlyingSecurityXMLLen"
@@ -968,6 +1043,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XMLData",
       "FIX:tag": "1875",
       "description": "XML definition for the underlying security.",
       "display": "UnderlyingSecurityXML"
@@ -980,6 +1056,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1876",
       "description": "The schema used to validate the contents of UnderlyingSecurityXML(1875).",
       "display": "UnderlyingSecurityXMLSchema"
@@ -993,6 +1070,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrequestresultcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1877",
       "description": "Result party detail definition request.",
       "display": "PartyDetailRequestResult"
@@ -1006,6 +1084,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrequeststatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1878",
       "description": "Status of party details definition request.",
       "display": "PartyDetailRequestStatus"
@@ -1019,6 +1098,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetaildefinitionstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1879",
       "description": "Status of party detail definition for one party.",
       "display": "PartyDetailDefinitionStatus"
@@ -1032,6 +1112,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrequestresultcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1880",
       "description": "Result of party detail definition for one party.",
       "display": "PartyDetailDefinitionResult"
@@ -1045,6 +1126,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "entitlementrequestresultcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1881",
       "description": "Result of risk limit definition request.",
       "display": "EntitlementRequestResult"
@@ -1058,6 +1140,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrequeststatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1882",
       "description": "Status of party entitlements definition request.",
       "display": "EntitlementRequestStatus"
@@ -1071,6 +1154,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "entitlementstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1883",
       "description": "Status of entitlement definition for one party.",
       "display": "EntitlementStatus"
@@ -1084,6 +1168,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "entitlementrequestresultcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1884",
       "description": "Result of entitlement definition for one party.",
       "display": "EntitlementResult"
@@ -1096,6 +1181,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1885",
       "description": "Reference to an EntitlementID(1776). Used for modification or deletion of an entitlement.",
       "display": "EntitlementRefID"
@@ -1109,6 +1195,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1886",
       "description": "Used to express the unit of measure of the settlement price if different from the contract.",
       "display": "SettlPriceUnitOfMeasure"
@@ -1121,6 +1208,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "1887",
       "description": "Indicates the currency of the settlement price unit of measure if expressed in another currency than the base currency.",
       "display": "SettlPriceUnitOfMeasureCurrency"
@@ -1135,6 +1223,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "1888",
       "description": "Timestamp of the match event. For off-exchange trades the time at which the deal was matched by the exchange.",
       "display": "TradeMatchTimestamp"
@@ -1147,6 +1236,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1889",
       "description": "Number of instrument match sides.",
       "display": "NoInstrmtMatchSides"
@@ -1159,6 +1249,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1890",
       "description": "Number of trade match sides.",
       "display": "NoTrdMatchSides"
@@ -1171,6 +1262,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1891",
       "description": "Used to identify each price level, step or clip within a match event.",
       "display": "TrdMatchSubID"
@@ -1183,6 +1275,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1892",
       "description": "Number of instrument leg executions.",
       "display": "NoLegExecs"
@@ -1195,6 +1288,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1893",
       "description": "The ExecID(17) value corresponding to a trade leg.",
       "display": "LegExecID"
@@ -1207,6 +1301,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1894",
       "description": "The TradeID(1003) value corresponding to a trade leg.",
       "display": "LegTradeID"
@@ -1219,6 +1314,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1895",
       "description": "The TradeReportID(571) value corresponding to a trade leg.",
       "display": "LegTradeReportID"
@@ -1232,6 +1328,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradematchackstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1896",
       "description": "Used to indicate the status of the trade match report submission.",
       "display": "TradeMatchAckStatus"
@@ -1245,6 +1342,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradematchrejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1897",
       "description": "Reason the trade match report submission was rejected.",
       "display": "TradeMatchRejectReason"
@@ -1257,6 +1355,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1898",
       "description": "Identifies the market segment of the side.",
       "display": "SideMarketSegmentID"
@@ -1270,6 +1369,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "venuetypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1899",
       "description": "Identifies the type of venue where the trade was executed for the side.",
       "display": "SideVenueType"

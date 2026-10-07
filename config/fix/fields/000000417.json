@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XID",
       "FIX:tag": "41700",
       "description": "Identifier of this LegStream for cross referencing elsewhere in the message.",
       "display": "LegStreamXID"
@@ -19,6 +20,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41701",
       "description": "Identifies the source scheme of the UnderlyingAdditionalTermBondSecurityID(41341) value.",
       "display": "UnderlyingAdditionalTermBondSecurityIDSource"
@@ -31,6 +33,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "41702",
       "description": "Cross reference to another LegStream notional for duplicating its properties.",
       "display": "LegStreamNotionalXIDRef"
@@ -43,6 +46,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41703",
       "description": "Time unit multiplier for the swap stream's notional frequency.",
       "display": "LegStreamNotionalFrequencyPeriod"
@@ -56,6 +60,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "timeunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41704",
       "description": "Time unit associated with the swap stream's notional frequency.",
       "display": "LegStreamNotionalFrequencyUnit"
@@ -69,6 +74,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "streamnotionalcommodityfrequencycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41705",
       "description": "The commodity's notional or quantity delivery frequency.",
       "display": "LegStreamNotionalCommodityFrequency"
@@ -82,6 +88,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41706",
       "description": "Specifies the delivery quantity unit of measure (UOM).",
       "display": "LegStreamNotionalUnitOfMeasure"
@@ -96,6 +103,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "41707",
       "description": "Specifies the total notional or delivery quantity over the term of the contract.",
       "display": "LegStreamTotalNotional"
@@ -109,6 +117,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41708",
       "description": "Specifies the unit of measure (UOM) for the total notional or delivery quantity over the term of the contract.",
       "display": "LegStreamTotalNotionalUnitOfMeasure"
@@ -121,6 +130,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41709",
       "description": "Description of the bond.",
       "display": "UnderlyingAdditionalTermBondDesc"
@@ -133,6 +143,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "41710",
       "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingAdditionalTermBondDesc(41711) field.",
       "display": "EncodedUnderlyingAdditionalTermBondDescLen"
@@ -145,6 +156,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "41711",
       "description": "Encoded (non-ASCII characters) representation of the UnderlyingAdditionalTermBondDesc(41709) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingAdditionalTermBondDesc(41709) field.",
       "display": "EncodedUnderlyingAdditionalTermBondDesc"
@@ -157,6 +169,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41712",
       "description": "Specifies the currency the bond value is denominated in. Uses ISO 4217 currency codes.",
       "display": "UnderlyingAdditionalTermBondCurrency"
@@ -169,6 +182,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41713",
       "description": "The number of averaging observations in the repeating group.",
       "display": "NoUnderlyingComplexEventAveragingObservations"
@@ -181,6 +195,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41714",
       "description": "Cross reference to the ordinal observation as specified either in the UnderlyingComplexEventScheduleGrp or UnderlyingComplexEventPeriodDateGrp components.",
       "display": "UnderlyingComplexEventAveragingObservationNumber"
@@ -193,6 +208,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "41715",
       "description": "The weight factor to be applied to the observation.",
       "display": "UnderlyingComplexEventAveragingWeight"
@@ -205,6 +221,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41716",
       "description": "The number of credit events specified in the repeating group.",
       "display": "NoUnderlyingComplexEventCreditEvents"
@@ -217,6 +234,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41717",
       "description": "Specifies the type of credit event. See https://fixtrading.org/packages/credit-event-type for code list of applicable event types.",
       "display": "UnderlyingComplexEventCreditEventType"
@@ -229,6 +247,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41718",
       "description": "The credit event value appropriate to UnderlyingComplexEventCreditEventType(41717). See https://fixtrading.org/packages/credit-event-type for applicable event type values.",
       "display": "UnderlyingComplexEventCreditEventValue"
@@ -241,6 +260,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41719",
       "description": "Specifies the applicable currency when UnderlyingComplexEventCreditEventValue(41718) is an amount. Uses ISO 4217 currency codes.",
       "display": "UnderlyingComplexEventCreditEventCurrency"
@@ -253,6 +273,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41720",
       "description": "Time unit multiplier for complex credit events.",
       "display": "UnderlyingComplexEventCreditEventPeriod"
@@ -266,6 +287,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "protectiontermeventunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41721",
       "description": "Time unit associated with complex credit events.",
       "display": "UnderlyingComplexEventCreditEventUnit"
@@ -279,6 +301,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41722",
       "description": "Specifies the day type for the complex credit events.",
       "display": "UnderlyingComplexEventCreditEventDayType"
@@ -291,6 +314,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41723",
       "description": "Identifies the source of rate information used for credit events. See https://fixtrading.org/packages/credit-event-rate-source for code list of applicable sources.",
       "display": "UnderlyingComplexEventCreditEventRateSource"
@@ -303,6 +327,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41724",
       "description": "Number of qualifiers in the repeating group.",
       "display": "NoUnderlyingComplexEventCreditEventQualifiers"
@@ -316,6 +341,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "protectiontermeventqualifiercodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "41725",
       "description": "Specifies a complex event qualifier. Used to further qualify UnderlyingComplexEventCreditEventType(41717).",
       "display": "UnderlyingComplexEventCreditEventQualifier"
@@ -328,6 +354,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41726",
       "description": "Number of entries in the date-time repeating group.",
       "display": "NoUnderlyingComplexEventPeriodDateTimes"
@@ -341,6 +368,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41727",
       "description": "The averaging date for an Asian option.",
       "display": "UnderlyingComplexEventPeriodDate"
@@ -354,6 +382,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "41728",
       "description": "The averaging time for an Asian option.",
       "display": "UnderlyingComplexEventPeriodTime"
@@ -366,6 +395,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41729",
       "description": "Number of periods in the repeating group.",
       "display": "NoUnderlyingComplexEventPeriods"
@@ -379,6 +409,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventperiodtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41730",
       "description": "Specifies the period type.",
       "display": "UnderlyingComplexEventPeriodType"
@@ -391,6 +422,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41731",
       "description": "The business center for adjusting dates and times in the schedule or date-time group. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingComplexEventBusinessCenter"
@@ -403,6 +435,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41732",
       "description": "Number of rate sources in the repeating group.",
       "display": "NoUnderlyingComplexEventRateSources"
@@ -416,6 +449,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ratesourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41733",
       "description": "Identifies the source of rate information.",
       "display": "UnderlyingComplexEventRateSource"
@@ -429,6 +463,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ratesourcetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41734",
       "description": "Indicates whether the rate source specified is a primary or secondary source.",
       "display": "UnderlyingComplexEventRateSourceType"
@@ -441,6 +476,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41735",
       "description": "Identifies the reference page from the rate source. For FX, the reference page to the spot rate is to be used for the reference FX spot rate. When UnderlyingComplexEventRateSource(41733) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option.",
       "display": "UnderlyingComplexEventReferencePage"
@@ -453,6 +489,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41736",
       "description": "Identifies the reference page heading from the rate source.",
       "display": "UnderlyingComplexEventReferencePageHeading"
@@ -465,6 +502,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41737",
       "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingComplexEventDateBusinessCenters"
@@ -477,6 +515,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41738",
       "description": "The business center calendar is used to adjust the event date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingComplexEventDateBusinessCenter"
@@ -490,6 +529,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41739",
       "description": "The unadjusted complex event date.",
       "display": "UnderlyingComplexEventDateUnadjusted"
@@ -502,6 +542,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41740",
       "description": "Specifies the anchor date when the complex event date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingComplexEventDateRelativeTo"
@@ -514,6 +555,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41741",
       "description": "Time unit multiplier for the relative date offset.",
       "display": "UnderlyingComplexEventDateOffsetPeriod"
@@ -527,6 +569,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41742",
       "description": "Time unit associated with the relative date offset.",
       "display": "UnderlyingComplexEventDateOffsetUnit"
@@ -540,6 +583,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41743",
       "description": "Specifies the day type of the relative date offset.",
       "display": "UnderlyingComplexEventDateOffsetDayType"
@@ -553,6 +597,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41744",
       "description": "The business day convention used to adjust the event date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingComplexEventDateBusinessDayConvention"
@@ -566,6 +611,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41745",
       "description": "The adjusted complex event date.",
       "display": "UnderlyingComplexEventDateAdjusted"
@@ -579,6 +625,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "41746",
       "description": "The local market fixing time.",
       "display": "UnderlyingComplexEventFixingTime"
@@ -591,6 +638,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41747",
       "description": "The business center for determining the actual fixing times. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingComplexEventFixingTimeBusinessCenter"
@@ -603,6 +651,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41748",
       "description": "Number of event sources in the repeating group.",
       "display": "NoUnderlyingComplexEventCreditEventSources"
@@ -615,6 +664,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41749",
       "description": "A newspaper or electronic news service that may publish relevant information used in the determination of whether or not a credit event has occurred.",
       "display": "UnderlyingComplexEventCreditEventSource"
@@ -627,6 +677,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41750",
       "description": "Number of schedules in the repeating group.",
       "display": "NoUnderlyingComplexEventSchedules"
@@ -640,6 +691,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41751",
       "description": "The start date of the schedule.",
       "display": "UnderlyingComplexEventScheduleStartDate"
@@ -653,6 +705,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41752",
       "description": "The end date of the schedule.",
       "display": "UnderlyingComplexEventScheduleEndDate"
@@ -665,6 +718,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41753",
       "description": "Time unit multiplier for the schedule date frequency.",
       "display": "UnderlyingComplexEventScheduleFrequencyPeriod"
@@ -678,6 +732,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "protectiontermeventunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41754",
       "description": "Time unit associated with the schedule date frequency.",
       "display": "UnderlyingComplexEventScheduleFrequencyUnit"
@@ -691,6 +746,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "daterollconventioncodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41755",
       "description": "The convention for determining the sequence of dates. It is used in conjunction with a specified frequency. Used only to override the roll convention defined in the UnderlyingDateAdjustment component in UnderlyingInstrument.",
       "display": "UnderlyingComplexEventScheduleRollConvention"
@@ -703,6 +759,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41756",
       "description": "Number of delivery schedules in the repeating group.",
       "display": "NoUnderlyingDeliverySchedules"
@@ -716,6 +773,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliveryscheduletypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41757",
       "description": "Specifies the type of delivery schedule.",
       "display": "UnderlyingDeliveryScheduleType"
@@ -728,6 +786,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XID",
       "FIX:tag": "41758",
       "description": "Identifier for this instance of delivery schedule for cross referencing elsewhere in the message.",
       "display": "UnderlyingDeliveryScheduleXID"
@@ -742,6 +801,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "41759",
       "description": "Physical delivery quantity.",
       "display": "UnderlyingDeliveryScheduleNotional"
@@ -755,6 +815,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41760",
       "description": "Specifies the delivery quantity unit of measure (UOM).",
       "display": "UnderlyingDeliveryScheduleNotionalUnitOfMeasure"
@@ -768,6 +829,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "streamnotionalcommodityfrequencycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41761",
       "description": "The frequency of notional delivery.",
       "display": "UnderlyingDeliveryScheduleNotionalCommodityFrequency"
@@ -780,6 +842,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "41762",
       "description": "Specifies the negative tolerance value. The value may be an absolute quantity or a percentage, as specified in UnderlyingDeliveryScheduleToleranceType(41765). Percentage value is to be expressed relative to \"1.0\" representing 100% (e.g. a value of \"0.0575\" represents 5.75%).",
       "display": "UnderlyingDeliveryScheduleNegativeTolerance"
@@ -792,6 +855,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "41763",
       "description": "Specifies the positive tolerance value. The value may be an absolute quantity or a percentage, as specified in UnderlyingDeliveryScheduleToleranceType(41765). Value may exceed agreed upon value. Percentage value is to be expressed relative to \"1.0\" representing 100% (e.g. a value of \"0.0575\" represents 5.75%).",
       "display": "UnderlyingDeliverySchedulePositiveTolerance"
@@ -805,6 +869,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41764",
       "description": "Specifies the tolerance value's unit of measure (UOM).",
       "display": "UnderlyingDeliveryScheduleToleranceUnitOfMeasure"
@@ -818,6 +883,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliveryscheduletolerancetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41765",
       "description": "Specifies the tolerance value type.",
       "display": "UnderlyingDeliveryScheduleToleranceType"
@@ -830,6 +896,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Country",
       "FIX:tag": "41766",
       "description": "Specifies the country where delivery takes place. Uses ISO 3166 2-character country code.",
       "display": "UnderlyingDeliveryScheduleSettlCountry"
@@ -842,6 +909,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41767",
       "description": "Delivery timezone specified as \"prevailing\" rather than \"standard\" or \"daylight\". See https://fixtrading.org/packages/prevailing-timezones for code list of applicable prevailing timezones.",
       "display": "UnderlyingDeliveryScheduleSettlTimeZone"
@@ -855,6 +923,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliveryschedulesettlflowtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41768",
       "description": "Specifies the delivery flow type.",
       "display": "UnderlyingDeliveryScheduleSettlFlowType"
@@ -868,6 +937,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliveryschedulesettlholidaysprocessinginstructioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41769",
       "description": "Indicates whether holidays are included in the settlement periods. Required for electricity contracts.",
       "display": "UnderlyingDeliveryScheduleSettlHolidaysProcessingInstruction"
@@ -880,6 +950,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41770",
       "description": "Number of delivery schedules in the repeating group.",
       "display": "NoUnderlyingDeliveryScheduleSettlDays"
@@ -893,6 +964,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliveryschedulesettldaycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41771",
       "description": "Specifies the day or group of days for delivery.",
       "display": "UnderlyingDeliveryScheduleSettlDay"
@@ -905,6 +977,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41772",
       "description": "The sum of the total hours specified in the UnderlyingDeliveryScheduleSettlTimeGrp component.",
       "display": "UnderlyingDeliveryScheduleSettlTotalHours"
@@ -917,6 +990,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41773",
       "description": "Number of hour ranges in the repeating group.",
       "display": "NoUnderlyingDeliveryScheduleSettlTimes"
@@ -929,6 +1003,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41774",
       "description": "The scheduled start time for the delivery of the commodity where delivery occurs over specified times. The format of the time value is specified in UnderlyingDeliveryScheduleSettlTimeType(41776).",
       "display": "UnderlyingDeliveryScheduleSettlStart"
@@ -941,6 +1016,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41775",
       "description": "The scheduled end time for the delivery of the commodity where delivery occurs over specified times. The format of the time value is specified in UnderlyingDeliveryScheduleSettlTimeType(41776).",
       "display": "UnderlyingDeliveryScheduleSettlEnd"
@@ -954,6 +1030,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliveryschedulesettltimetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41776",
       "description": "Specifies the format of the delivery start and end time values.",
       "display": "UnderlyingDeliveryScheduleSettlTimeType"
@@ -967,6 +1044,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliverystreamtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41777",
       "description": "Specifies the type of delivery stream.",
       "display": "UnderlyingDeliveryStreamType"
@@ -979,6 +1057,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41778",
       "description": "The name of the oil delivery pipeline.",
       "display": "UnderlyingDeliveryStreamPipeline"
@@ -991,6 +1070,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41779",
       "description": "The point at which the commodity will enter the delivery mechanism or pipeline.",
       "display": "UnderlyingDeliveryStreamEntryPoint"
@@ -1003,6 +1083,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41780",
       "description": "The point at which the commodity product will be withdrawn prior to delivery.",
       "display": "UnderlyingDeliveryStreamWithdrawalPoint"
@@ -1015,6 +1096,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41781",
       "description": "The point at which the commodity product will be delivered and received. Value specified should follow market convention appropriate for the commodity product. For bullion see https://fpml.org/coding-scheme/bullion-delivery-location for values.",
       "display": "UnderlyingDeliveryStreamDeliveryPoint"
@@ -1028,6 +1110,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliverystreamdeliveryrestrictioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41782",
       "description": "Specifies under what conditions the buyer and seller should be excused of their delivery obligations.",
       "display": "UnderlyingDeliveryStreamDeliveryRestriction"
@@ -1040,6 +1123,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41783",
       "description": "Specifies the electricity delivery contingency. See https://fpml.org/coding-scheme/electricity-transmission-contingency for values.",
       "display": "UnderlyingDeliveryStreamDeliveryContingency"
@@ -1053,6 +1137,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliverystreamelectingpartysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41784",
       "description": "The trade side value of the party responsible for electricity delivery contingency.",
       "display": "UnderlyingDeliveryStreamDeliveryContingentPartySide"
@@ -1065,6 +1150,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "41785",
       "description": "When this element is specified and set to 'Y', delivery of the coal product is to be at its source.",
       "display": "UnderlyingDeliveryStreamDeliverAtSourceIndicator"
@@ -1077,6 +1163,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41786",
       "description": "Specifies how the parties to the trade apportion responsibility for the delivery of the commodity product. See https://fixtrading.org/packages/risk-apportionment for the details of the external code list.",
       "display": "UnderlyingDeliveryStreamRiskApportionment"
@@ -1089,6 +1176,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41787",
       "description": "Specifies the title transfer location.",
       "display": "UnderlyingDeliveryStreamTitleTransferLocation"
@@ -1102,6 +1190,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliverystreamtitletransferconditioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41788",
       "description": "Specifies the title transfer condition.",
       "display": "UnderlyingDeliveryStreamTitleTransferCondition"
@@ -1114,6 +1203,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41789",
       "description": "A party, not necessarily of the trade, who is the Importer of Record for the purposes of paying customs duties and applicable taxes or costs related to importation.",
       "display": "UnderlyingDeliveryStreamImporterOfRecord"
@@ -1126,6 +1216,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "41790",
       "description": "Specifies the negative tolerance value. The value may be an absolute quantity or a percentage, as specified in UnderlyingDeliveryStreamToleranceType(41793). Percentage value is to be expressed relative to \"1.0\" representing 100% (e.g. a value of \"0.0575\" represents 5.75%).",
       "display": "UnderlyingDeliveryStreamNegativeTolerance"
@@ -1138,6 +1229,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "41791",
       "description": "Specifies the positive tolerance value. The value may be an absolute quantity or a percentage, as specified in UnderlyingDeliveryStreamToleranceType(41793). Value may exceed agreed upon value. Percentage value is to be expressed relative to \"1.0\" representing 100% (e.g. a value of \"0.0575\" represents 5.75%).",
       "display": "UnderlyingDeliveryStreamPositiveTolerance"
@@ -1151,6 +1243,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41792",
       "description": "Specifies the tolerance value's unit of measure (UOM).",
       "display": "UnderlyingDeliveryStreamToleranceUnitOfMeasure"
@@ -1164,6 +1257,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliveryscheduletolerancetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41793",
       "description": "Specifies the tolerance value type.",
       "display": "UnderlyingDeliveryStreamToleranceType"
@@ -1177,6 +1271,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliverystreamtoleranceoptionsidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41794",
       "description": "Indicates whether the tolerance is at the seller's or buyer's option.",
       "display": "UnderlyingDeliveryStreamToleranceOptionSide"
@@ -1189,6 +1284,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "41795",
       "description": "The positive percent tolerance which applies to the total quantity delivered over all shipment periods.",
       "display": "UnderlyingDeliveryStreamTotalPositiveTolerance"
@@ -1201,6 +1297,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "41796",
       "description": "The negative percent tolerance which applies to the total quantity delivered over all shipment periods.",
       "display": "UnderlyingDeliveryStreamTotalNegativeTolerance"
@@ -1213,6 +1310,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "41797",
       "description": "If the notional quantity is specified in a unit that does not match the unit in which the commodity reference price is quoted, the scaling or conversion factor used to convert the commodity reference price unit into the notional quantity unit should be stated here. If there is no conversion, this field is not intended to be used.",
       "display": "UnderlyingDeliveryStreamNotionalConversionFactor"
@@ -1225,6 +1323,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41798",
       "description": "The transportation equipment with which the commodity product will be delivered and received.",
       "display": "UnderlyingDeliveryStreamTransportEquipment"
@@ -1238,6 +1337,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliverystreamelectingpartysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41799",
       "description": "A reference to the party able to choose whether the gas is delivered for a particular period e.g. a swing or interruptible contract.",
       "display": "UnderlyingDeliveryStreamElectingPartySide"

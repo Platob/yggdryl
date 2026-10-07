@@ -267,11 +267,27 @@ a `date64` one a `Date64Serie`: the family has no single column type, so
 
 Text is `YYYY-MM-DD`, and the compact `YYYYMMDD` a wire writes reads as the
 same day. A year outside four digits has no spelling and keeps its count.
+`Date32::from_text` is the date's own door over that reader, Rust only; a
+`Date64` is the same day times its milliseconds. A clock after the date is
+refused - a date is a day, and a day with a clock is a
+[datetime](datetime.md).
+
+| spelling | example | reads as |
+| --- | --- | --- |
+| `YYYY-MM-DD` | `2026-09-30` | that day |
+| compact `YYYYMMDD` | `20260930` | the same day |
+| a day no calendar has | `2026-02-30` | refused, not guessed |
+| FIX spellings | `20260930` | FIX's `UTCDateOnly` and `LocalMktDate` are the compact spelling, which this door reads whole, so the [FIX codec](../../fix/message.md#anomalies) reads a date field through it and has no FIX door of its own for a date |
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Scalar};
+    use yggdryl::{DataType, Date32, Scalar};
+
+    // The date's own door, and the day it reads.
+    assert_eq!(Date32::from_text("2024-01-02")?.count(), 19_724);
+    assert_eq!(Date32::from_text("20240102")?, Date32::from_text("2024-01-02")?);
+    assert!(Date32::from_text("20260930T00:00").is_err());
 
     // One day, two spellings, both widths.
     assert_eq!(DataType::date32().scalar("1970-01-02")?, Scalar::date32(1));

@@ -328,10 +328,14 @@ canonicalizes what it finds, so `Asia/Calcutta` in a foreign schema arrives as
 
 ## Text
 
-A wall clock writes `YYYY-MM-DDTHH:MM:SS[.fraction]`. A zoned instant writes
-its local reading, the offset that recovers the instant - `Z` for UTC - and the
-zone's name in brackets when the name is a place rather than an offset, because
-`+02:00` cannot say `Europe/Paris`.
+A wall clock writes `YYYY-MM-DDTHH:MM:SS[.fraction]`, the fraction written
+short: nothing where it is zero, else the shortest of three, six or nine digits
+that spells the count exactly, so a nanosecond column's midnight is
+`2026-08-14T00:00:00` and half a second past it `2026-08-14T00:00:00.500`. A
+zoned instant writes its local reading, the offset that recovers the instant -
+`Z` for UTC - and the zone's name in brackets when the name is a place rather
+than an offset, because `+02:00` cannot say `Europe/Paris`. A column restates
+the count it reads at its own unit, so a value reads back as it printed.
 
 === "Rust"
 
@@ -402,7 +406,7 @@ zone's name in brackets when the name is a place rather than an offset, because
     // A place is named in brackets, because an offset cannot say which zone.
     assert.equal(
       json.loads(json.dumps(new DataType('datetime64(ms,"Europe/Paris")').scalar(1786797000000n))),
-      '2026-08-15T14:30:00.000+02:00[Europe/Paris]',
+      '2026-08-15T14:30:00+02:00[Europe/Paris]',
     )
     ```
 
@@ -443,7 +447,17 @@ assert!(naive.scalar(Scalar::from("20240102Z")).is_err());
 | no zone, `T` or a blank before the clock | `2026-10-03 03:20:00.250` | a wall clock in `naive` |
 | a bare date | `2026-10-03` | that day's midnight, a wall clock in `naive` |
 
-The FIX codec reads every datetime field through the same reader, beside four spellings only FIX and the bridges that carry it write: one digit run - the date, the time and three, six or nine digits of fraction (`20240102101530123`) - a clock that stops at its minutes, as a `TZTimestamp` may (`20060901-07:39Z`), a `TZTimeOnly`, a zoned clock with no date (`07:39:12.123+05:30`), read on the epoch day, and a numeric offset closed by `s` (`20260101-10:00:00 +0400s`), read as the offset it is - the letter follows the offset's last digit and adds nothing to it, so `+0400` and `+0400s` are one instant. A value stating no zone is a wall clock in its column's zone - which is what `UTCTimestamp` means by saying nothing - and a clock stating neither a date nor a zone is local time, which no instant holds, so it reads as null.
+The [FIX codec](../../fix/message.md#anomalies) reads every datetime field through the datetime's own FIX doors, crate-private, over the same reader, and parses no datetime itself:
+
+| FIX spellings | example | reads as |
+| --- | --- | --- |
+| one digit run - the date, the time and three, six or nine digits of fraction | `20240102101530123` | the instant, at the unit the digits spell (`DateTime64::from_fix_text`) |
+| a clock that stops at its minutes, as a `TZTimestamp` may | `20060901-07:39Z` | the instant, at seconds |
+| a zoned clock with no date | `07:39:12.123+05:30` | the instant on the epoch day, the offset resolved in: `-18_000` seconds for `00:30+05:30` |
+| a numeric offset closed by `s` | `20260101-10:00:00 +0400s` | the offset it is - the letter follows the offset's last digit and adds nothing to it, so `+0400` and `+0400s` are one instant |
+| a `TZTimeOnly` field's clock stating no zone | `093000`, `09:30`, `07:39:12` | the wall clock in the column's zone on the epoch day - `1970-01-01T09:30:00Z` under `datetime64(ns,"UTC")` - through `DateTime64::from_fix_clock`, the clock door a field the dictionary declares a `TZTimeOnly` (`FIX:datatype`) is read by; it reads the zoned clock too, and refuses a dated value by its shape. Written back to the wire it is the clock it is - its UTC time of day closed by `Z`, `09:30:00Z` - which the same door reads back to the same instant |
+
+A value stating no zone is a wall clock in its column's zone - which is what `UTCTimestamp` means by saying nothing. A clock stating neither a date nor a zone is local time, which no instant holds, so under every other datetime field it is refused and the row holds null beside the anomaly: only a `TZTimeOnly` field, whose column zones the clock, reads it, which is why the FIX datatype rides the field as `FIX:datatype` - four FIX datatypes are one `datetime64(ns,"UTC")` and the crate datatype cannot tell the one clock from the three instants.
 
 The resolution is the one the digits spell - seconds for `03:20:00`, milliseconds for `.250`, microseconds for `.000250`, nanoseconds for `.000000250`. It reads exactly what those readers read: text with a blank before or after it is refused, as the value door of a datetime refuses it, so a cell and the door never disagree, and a tool's own habit - the trailing `UTC` the AWS CLI's caches write for `Z` - is taken off by the intake that meets it, never here. A spelling that states a zone is that instant whatever `naive` is. One that states none is a wall clock in `naive`: `Timezone::UTC` makes it that instant, a named zone places it by that zone's rules, and `Timezone::NAIVE` keeps it a wall clock, its count the clock's own.
 

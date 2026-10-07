@@ -914,6 +914,7 @@ impl Crated {
         // is no group of any message: the event answers it whole.
         let counts_itself =
             !self.derived && matches!(dtype, DataType::Map(_) | DataType::SortedMap(_));
+        let fix_datatype = fix_datatype_of(&dtype);
         let mut field = Field::new(name, dtype, !is_always_stated(tag));
         field.as_fix_mut().set_tag(tag)?;
         field.set_display(display)?;
@@ -927,11 +928,43 @@ impl Crated {
         if let Some(codeset) = self.codeset {
             field.as_fix_mut().set_codeset(codeset)?;
         }
+        if let Some(datatype) = fix_datatype {
+            field.as_fix_mut().set_datatype(datatype)?;
+        }
         if SETTLED_TO_ONE_MESSAGE.contains(&tag) {
             field.as_fix_mut().set_transient(false)?;
         }
         Ok(field)
     }
+}
+
+/// The FIX datatype a crate column states as its `FIX:datatype`: the
+/// specification's name for the family the column's datatype is in, since
+/// FIX declares none of these columns and the name is what a reader of the
+/// dictionary compares across its fields. Every crate clock is an instant,
+/// so none is the one datatype the crate datatype does not recover; nothing
+/// for a nested column, which is a group or a component and no scalar FIX
+/// datatype, and nothing for a family FIX has no name for.
+fn fix_datatype_of(dtype: &DataType) -> Option<&'static str> {
+    use crate::DataTypeKind as Kind;
+    Some(match dtype {
+        DataType::Ccy => "Currency",
+        DataType::Country => "Country",
+        DataType::Mic => "Exchange",
+        DataType::DateTime64 { timezone, .. } if timezone.is_naive() => return None,
+        DataType::DateTime64 { .. } => "UTCTimestamp",
+        DataType::Time32(_) | DataType::Time64(_) => "UTCTimeOnly",
+        DataType::Date32 | DataType::Date64 => "UTCDateOnly",
+        _ => match dtype.kind() {
+            Kind::Boolean => "Boolean",
+            // The crate's enums store their codes as the numbers they are.
+            Kind::Integer | Kind::Enum => "int",
+            Kind::Floating | Kind::Decimal => "float",
+            Kind::Bytes => "data",
+            Kind::Text | Kind::Code | Kind::Uuid => "String",
+            _ => return None,
+        },
+    })
 }
 
 /// Every definition this crate invents, in tag order.

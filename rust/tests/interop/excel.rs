@@ -181,13 +181,13 @@ fn assert_trades(workbook: &Workbook) {
     assert_eq!(cell("E5"), Scalar::Null);
     assert_eq!(json("E6"), "\"2024-02-29\"");
     assert_eq!(json("F2"), "\"2024-01-02T03:04:05.678\"");
-    assert_eq!(json("F3"), "\"1970-01-01T00:00:00.000\"");
-    assert_eq!(json("F4"), "\"2000-02-29T23:59:59.000\"");
-    assert_eq!(json("F5"), "\"9999-12-31T00:00:00.000\"");
-    assert_eq!(json("F6"), "\"2024-02-29T12:00:00.000\"");
+    assert_eq!(json("F3"), "\"1970-01-01T00:00:00\"");
+    assert_eq!(json("F4"), "\"2000-02-29T23:59:59\"");
+    assert_eq!(json("F5"), "\"9999-12-31T00:00:00\"");
+    assert_eq!(json("F6"), "\"2024-02-29T12:00:00\"");
     // A timedelta openpyxl wrote under `[h]:mm:ss` is a duration.
-    assert_eq!(json("G2"), "\"PT3600.000S\"");
-    assert_eq!(json("G4"), "\"PT90000.000S\"");
+    assert_eq!(json("G2"), "\"PT3600S\"");
+    assert_eq!(json("G4"), "\"PT90000S\"");
     assert_eq!(json("G6"), "\"PT43200.500S\"");
 }
 

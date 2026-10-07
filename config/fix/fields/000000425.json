@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42500",
       "description": "Time unit multiplier for the relative stub start date offset.",
       "display": "LegPaymentStubStartDateOffsetPeriod"
@@ -19,6 +20,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42501",
       "description": "Time unit associated with the relative stub start date offset.",
       "display": "LegPaymentStubStartDateOffsetUnit"
@@ -32,6 +34,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42502",
       "description": "Specifies the day type of the relative stub start date offset.",
       "display": "LegPaymentStubStartDateOffsetDayType"
@@ -45,6 +48,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42503",
       "description": "The adjusted stub start date.",
       "display": "LegPaymentStubStartDateAdjusted"
@@ -57,6 +61,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42504",
       "description": "Number of business centers in the repeating group.",
       "display": "NoLegPaymentStubStartDateBusinessCenters"
@@ -69,6 +74,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42505",
       "description": "The business center calendar used for date adjustment of the payment stub start date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegPaymentStubStartDateBusinessCenter"
@@ -82,6 +88,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisionbreakfeeelectioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42506",
       "description": "Type of fee elected for the break provision.",
       "display": "LegProvisionBreakFeeElection"
@@ -94,6 +101,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "42507",
       "description": "Break fee election rate when the break fee is proportional to the notional. A fee rate of 5% would be represented as \"0.05\".",
       "display": "LegProvisionBreakFeeRate"
@@ -106,6 +114,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42508",
       "description": "Number of iterations in the return rate date repeating group.",
       "display": "NoLegReturnRateDates"
@@ -119,6 +128,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "returnratedatemodecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42509",
       "description": "Specifies the valuation type applicable to the return rate date.",
       "display": "LegReturnRateDateMode"
@@ -131,6 +141,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42510",
       "description": "Specifies the anchor date when the return rate valuation dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegReturnRateValuationDateRelativeTo"
@@ -143,6 +154,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42511",
       "description": "Time unit multiplier for the relative return rate valuation date offset.",
       "display": "LegReturnRateValuationDateOffsetPeriod"
@@ -156,6 +168,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42512",
       "description": "Time unit associated with the relative return rate valuation date offset.",
       "display": "LegReturnRateValuationDateOffsetUnit"
@@ -169,6 +182,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42513",
       "description": "Specifies the day type of the relative return rate valuation date offset.",
       "display": "LegReturnRateValuationDateOffsetDayType"
@@ -182,6 +196,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42514",
       "description": "The unadjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
       "display": "LegReturnRateValuationStartDateUnadjusted"
@@ -194,6 +209,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42515",
       "description": "Specifies the anchor date when the return rate valuation start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegReturnRateValuationStartDateRelativeTo"
@@ -206,6 +222,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42516",
       "description": "Time unit multiplier for the relative return rate valuation start date offset.",
       "display": "LegReturnRateValuationStartDateOffsetPeriod"
@@ -219,6 +236,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42517",
       "description": "Time unit associated with the relative return rate valuation start date offset.",
       "display": "LegReturnRateValuationStartDateOffsetUnit"
@@ -232,6 +250,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42518",
       "description": "Specifies the day type of the relative return rate valuation start date offset.",
       "display": "LegReturnRateValuationStartDateOffsetDayType"
@@ -245,6 +264,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42519",
       "description": "The adjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
       "display": "LegReturnRateValuationStartDateAdjusted"
@@ -258,6 +278,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42520",
       "description": "The unadjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
       "display": "LegReturnRateValuationEndDateUnadjusted"
@@ -270,6 +291,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42521",
       "description": "Specifies the anchor date when the return rate valuation end date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegReturnRateValuationEndDateRelativeTo"
@@ -282,6 +304,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42522",
       "description": "Time unit multiplier for the relative return rate valuation end date offset.",
       "display": "LegReturnRateValuationEndDateOffsetPeriod"
@@ -295,6 +318,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42523",
       "description": "Time unit associated with the relative return rate valuation end date offset.",
       "display": "LegReturnRateValuationEndDateOffsetUnit"
@@ -308,6 +332,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42524",
       "description": "Specifies the day type of the relative return rate valuation end date offset.",
       "display": "LegReturnRateValuationEndDateOffsetDayType"
@@ -321,6 +346,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42525",
       "description": "The adjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
       "display": "LegReturnRateValuationEndDateAdjusted"
@@ -333,6 +359,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42526",
       "description": "Time unit multiplier for the frequency at which return rate valuation dates occur.",
       "display": "LegReturnRateValuationFrequencyPeriod"
@@ -346,6 +373,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "couponfrequencyunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42527",
       "description": "Time unit associated with the frequency at which return rate valuation dates occur.",
       "display": "LegReturnRateValuationFrequencyUnit"
@@ -359,6 +387,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "daterollconventioncodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42528",
       "description": "The convention for determining the sequence of return rate valuation dates. It is used in conjunction with a specified frequency.",
       "display": "LegReturnRateValuationFrequencyRollConvention"
@@ -372,6 +401,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42529",
       "description": "The return rate valuation dates business day convention.",
       "display": "LegReturnRateValuationDateBusinessDayConvention"
@@ -384,6 +414,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42530",
       "description": "Number of iterations in the return rate FX conversion repeating group.",
       "display": "NoLegReturnRateFXConversions"
@@ -396,6 +427,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42531",
       "description": "Specifies the currency pair for the FX conversion expressed using the CCY1/CCY2 convention. Uses ISO 4217 currency codes.",
       "display": "LegReturnRateFXCurrencySymbol"
@@ -408,6 +440,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "42532",
       "description": "The rate of exchange between the two currencies specified in LegReturnRateFXCurrencySymbol(42531).",
       "display": "LegReturnRateFXRate"
@@ -421,6 +454,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "settlcurrfxratecalccodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "42533",
       "description": "The rate of exchange between the two currencies specified in LegReturnRateFXCurrencySymbol(42531).",
       "display": "LegReturnRateFXRateCalc"
@@ -433,6 +467,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42534",
       "description": "Number of iterations in the return rate repeating group.",
       "display": "NoLegReturnRates"
@@ -446,6 +481,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "returnratepricesequencecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42535",
       "description": "Specifies the type of price sequence of the return rate.",
       "display": "LegReturnRatePriceSequence"
@@ -459,6 +495,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "commtypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "42536",
       "description": "Specifies the basis or unit used to calculate the commission.",
       "display": "LegReturnRateCommissionBasis"
@@ -473,6 +510,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "42537",
       "description": "The commission amount.",
       "display": "LegReturnRateCommissionAmount"
@@ -485,6 +523,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "42538",
       "description": "Specifies the currency the commission amount is denominated in. Uses ISO 4217 currency codes.",
       "display": "LegReturnRateCommissionCurrency"
@@ -499,6 +538,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "42539",
       "description": "The total commission per trade.",
       "display": "LegReturnRateTotalCommissionPerTrade"
@@ -511,6 +551,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42540",
       "description": "Specifies the method by which the underlier prices are determined. See https://fpml.org/coding-scheme/determination-method for values.",
       "display": "LegReturnRateDeterminationMethod"
@@ -523,6 +564,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42541",
       "description": "Specifies the reference amount when the return rate amount is relative to another amount in the trade. See https://fixtrading.org/packages/amount-relative-to for code list of relative amounts.",
       "display": "LegReturnRateAmountRelativeTo"
@@ -535,6 +577,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42542",
       "description": "Specifies the type of the measure applied to the return rate's asset, e.g. valuation, sensitivity risk. This could be an NPV, a cash flow, a clean price, etc. See https://fpml.org/coding-scheme/asset-measure for values.",
       "display": "LegReturnRateQuoteMeasureType"
@@ -547,6 +590,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42543",
       "description": "Specifies the units that the measure is expressed in. If not specified, the default is a price/value in currency units. See https://fpml.org/coding-scheme/price-quote-units for values.",
       "display": "LegReturnRateQuoteUnits"
@@ -560,6 +604,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "cashsettlquotemethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42544",
       "description": "Specifies the type of quote used to determine the return rate of the swap.",
       "display": "LegReturnRateQuoteMethod"
@@ -572,6 +617,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "42545",
       "description": "Specifies the currency the return rate quote is denominated in. Uses ISO 4217 Currency Code.",
       "display": "LegReturnRateQuoteCurrency"
@@ -584,6 +630,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42546",
       "description": "Specifies the type of currency, e.g. settlement currency, base currency, etc., that the quote is reported in. See https://fpml.org/coding-scheme/reporting-currency-type for values.",
       "display": "LegReturnRateQuoteCurrencyType"
@@ -597,6 +644,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "returnratequotetimetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42547",
       "description": "Specifies how or the timing when the quote is to be obtained.",
       "display": "LegReturnRateQuoteTimeType"
@@ -610,6 +658,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "42548",
       "description": "The time when the quote is to be generated.",
       "display": "LegReturnRateQuoteTime"
@@ -623,6 +672,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42549",
       "description": "The date when the quote is to be generated.",
       "display": "LegReturnRateQuoteDate"
@@ -636,6 +686,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "42550",
       "description": "The time when the quote ceases to be valid.",
       "display": "LegReturnRateQuoteExpirationTime"
@@ -648,6 +699,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42551",
       "description": "The business center calendar used for adjustments associated with LegReturnRateQuoteTimeType(42547) or LegReturnRateQuoteTime(42548) and LegReturnRateQuoteDate(42549), e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegReturnRateQuoteBusinessCenter"
@@ -660,6 +712,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Exchange",
       "FIX:tag": "42552",
       "description": "Specifies the exchange (e.g. stock or listed futures/options exchange) from which the quote is obtained.",
       "display": "LegReturnRateQuoteExchange"
@@ -672,6 +725,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42553",
       "description": "Specifies the pricing model used to evaluate the underlying asset price. See https://fpml.org/coding-scheme/pricing-model for values.",
       "display": "LegReturnRateQuotePricingModel"
@@ -684,6 +738,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42554",
       "description": "Specifies the type of cash flows, e.g. coupon payment, premium fee, settlement fee, etc. See https://fpml.org/coding-scheme/cashflow-type for values.",
       "display": "LegReturnRateCashFlowType"
@@ -697,6 +752,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "returnratequotetimetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42555",
       "description": "Specifies the timing at which the calculation agent values the underlying.",
       "display": "LegReturnRateValuationTimeType"
@@ -710,6 +766,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "42556",
       "description": "The time at which the calculation agent values the underlying asset.",
       "display": "LegReturnRateValuationTime"
@@ -722,6 +779,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42557",
       "description": "The business center calendar used for adjustments associated with LegReturnRateValuationTimeType(42555) or LegReturnRateValuationTime(42556), e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegReturnRateValuationTimeBusinessCenter"
@@ -735,6 +793,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "returnratevaluationpriceoptioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42558",
       "description": "Indicates whether an ISDA price option applies, and if applicable which type of price.",
       "display": "LegReturnRateValuationPriceOption"
@@ -748,6 +807,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventpvfinalpriceelectionfallbackcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42559",
       "description": "Specifies the fallback provision for the hedging party in the determination of the final price.",
       "display": "LegReturnRateFinalPriceFallback"
@@ -760,6 +820,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42560",
       "description": "Number of iterations in the return rate information source repeating group.",
       "display": "NoLegReturnRateInformationSources"
@@ -773,6 +834,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ratesourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42561",
       "description": "Identifies the source of rate information. For FX the references source to be used for the FX spot rate.",
       "display": "LegReturnRateInformationSource"
@@ -785,6 +847,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42562",
       "description": "Identifies the reference \"page\" from the rate source. For FX, the reference page to the spot rate to be used for the reference FX spot rate. When LegReturnRateInformationSource(42561) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option.",
       "display": "LegReturnRateReferencePage"
@@ -797,6 +860,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42563",
       "description": "Identifies the page heading from the rate source.",
       "display": "LegReturnRateReferencePageHeading"
@@ -809,6 +873,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42564",
       "description": "Number of iterations in the return rate price repeating group.",
       "display": "NoLegReturnRatePrices"
@@ -822,6 +887,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "returnratepricebasiscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42565",
       "description": "The basis of the return price.",
       "display": "LegReturnRatePriceBasis"
@@ -836,6 +902,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "42566",
       "description": "Specifies the price of the underlying swap asset.",
       "display": "LegReturnRatePrice"
@@ -848,6 +915,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "42567",
       "description": "Specifies the currency of the price of the leg swap asset. Uses ISO 4217 currency codes.",
       "display": "LegReturnRatePriceCurrency"
@@ -861,6 +929,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "returnratepricetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42568",
       "description": "Specifies whether the LegReturnRatePrice(42566) is expressed in absolute or relative terms.",
       "display": "LegReturnRatePriceType"
@@ -873,6 +942,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42569",
       "description": "Number of iterations in the return rate valuation date business center repeating group.",
       "display": "NoLegReturnRateValuationDateBusinessCenters"
@@ -885,6 +955,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42570",
       "description": "The business center calendar used for date adjustment of the return rate valuation unadjusted or relative dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegReturnRateValuationDateBusinessCenter"
@@ -897,6 +968,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42571",
       "description": "Number of iterations in the return rate valuation date repeating group.",
       "display": "NoLegReturnRateValuationDates"
@@ -910,6 +982,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42572",
       "description": "The return rate valuation date. The type of date is specified in LegReturnRateValuationDateType(42573).",
       "display": "LegReturnRateValuationDate"
@@ -923,6 +996,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "nondeliverablefixingdatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42573",
       "description": "Specifies the type of return rate valuation date (e.g. adjusted for holidays).",
       "display": "LegReturnRateValuationDateType"
@@ -936,6 +1010,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42574",
       "description": "The unadjusted settlement method election date.",
       "display": "LegSettlMethodElectionDateUnadjusted"
@@ -949,6 +1024,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42575",
       "description": "The settlement method election date adjustment business day convention.",
       "display": "LegSettlMethodElectionDateBusinessDayConvention"
@@ -961,6 +1037,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42576",
       "description": "Specifies the anchor date when the settlement method election date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegSettlMethodElectionDateRelativeTo"
@@ -973,6 +1050,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42577",
       "description": "Time unit multiplier for the relative settlement method election date offset.",
       "display": "LegSettlMethodElectionDateOffsetPeriod"
@@ -986,6 +1064,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42578",
       "description": "Time unit associated with the relative settlement method election date offset.",
       "display": "LegSettlMethodElectionDateOffsetUnit"
@@ -999,6 +1078,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42579",
       "description": "Specifies the day type of the relative settlement method election date offset.",
       "display": "LegSettlMethodElectionDateOffsetDayType"
@@ -1012,6 +1092,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42580",
       "description": "The adjusted settlement method election date.",
       "display": "LegSettlMethodElectionDateAdjusted"
@@ -1024,6 +1105,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42581",
       "description": "Number of business centers in the repeating group.",
       "display": "NoLegSettlMethodElectionDateBusinessCenters"
@@ -1036,6 +1118,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42582",
       "description": "The business center calendar used for date adjustment of the settlement method election unadjusted or relative date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegSettlMethodElectionDateBusinessCenter"
@@ -1048,6 +1131,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42583",
       "description": "The stream version identifier when there have been modifications to the contract over time. Helps signal when there are embedded changes.",
       "display": "LegStreamVersion"
@@ -1061,6 +1145,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42584",
       "description": "The effective date of the LegStreamVersion(42583).",
       "display": "LegStreamVersionEffectiveDate"
@@ -1073,6 +1158,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42585",
       "description": "Specifies the method for determining the floating notional value for equity swaps. See https://fpml.org/coding-scheme/determination-method for values.",
       "display": "LegStreamNotionalDeterminationMethod"
@@ -1086,6 +1172,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "streamnotionaladjustmentscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42586",
       "description": "For equity swaps this specifies the conditions that govern the adjustment to the number of units of the swap.",
       "display": "LegStreamNotionalAdjustments"
@@ -1098,6 +1185,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42587",
       "description": "The delivery or pricing region associated with the commodity swap. See http://www.ecfr.gov/cgi-bin/text-idx?SID=660d6a40f836aa6ddf213cba080c5b22&node=ap17.2.43_17.e&rgn=div9 for the external code list.",
       "display": "StreamCommodityDeliveryPricingRegion"
@@ -1110,6 +1198,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42588",
       "description": "The delivery or pricing region associated with the commodity swap. See http://www.ecfr.gov/cgi-bin/text-idx?SID=660d6a40f836aa6ddf213cba080c5b22&node=ap17.2.43_17.e&rgn=div9 for the external code list.",
       "display": "LegStreamCommodityDeliveryPricingRegion"
@@ -1122,6 +1211,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42589",
       "description": "The delivery or pricing region associated with the commodity swap. See http://www.ecfr.gov/cgi-bin/text-idx?SID=660d6a40f836aa6ddf213cba080c5b22&node=ap17.2.43_17.e&rgn=div9 for the external code list.",
       "display": "UnderlyingStreamCommodityDeliveryPricingRegion"
@@ -1135,6 +1225,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentpaysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42590",
       "description": "Side value of the party electing the settlement method.",
       "display": "SettlMethodElectingPartySide"
@@ -1148,6 +1239,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42591",
       "description": "The date through which option cannot be exercised without penalty.",
       "display": "MakeWholeDate"
@@ -1162,6 +1254,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "42592",
       "description": "Amount to be paid by the buyer of the option if the option is exercised prior to the MakeWholeDate(42591).",
       "display": "MakeWholeAmount"
@@ -1174,6 +1267,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42593",
       "description": "Identifies the benchmark floating rate index.",
       "display": "MakeWholeBenchmarkCurveName"
@@ -1186,6 +1280,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42594",
       "description": "The point on the floating rate index curve.",
       "display": "MakeWholeBenchmarkCurvePoint"
@@ -1200,6 +1295,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "42595",
       "description": "Spread over the floating rate index.",
       "display": "MakeWholeRecallSpread"
@@ -1213,6 +1309,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "strikeindexquotecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42596",
       "description": "The quote side of the benchmark to be used for calculating the \"make whole\" amount.",
       "display": "MakeWholeBenchmarkQuote"
@@ -1226,6 +1323,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreaminflationinterpolationmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42597",
       "description": "The method used when calculating the \"make whole\" amount. The most common is linear method.",
       "display": "MakeWholeInterpolationMethod"
@@ -1238,6 +1336,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42598",
       "description": "Specifies the reference amount when the payment amount is relative to another amount in the message. See https://fixtrading.org/packages/payment-amount-relative-to for code list of relative amounts.",
       "display": "PaymentAmountRelativeTo"
@@ -1250,6 +1349,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42599",
       "description": "Specifies the method by which a payment amount is determined. See https://fpml.org/coding-scheme/determination-method for values.",
       "display": "PaymentAmountDeterminationMethod"

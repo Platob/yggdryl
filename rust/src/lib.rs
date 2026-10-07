@@ -425,6 +425,7 @@ pub mod internals {
     pub use crate::charset::reader::internals as charset_reader;
     pub use crate::code::internals as code;
     pub use crate::country::internals as country;
+    pub use crate::datetime::internals as datetime;
     pub use crate::decimal::internals as decimal;
     pub use crate::diff::internals as diff;
     pub use crate::duration::internals as duration;
@@ -552,6 +553,7 @@ pub mod internals {
     pub use crate::text::line::internals as text_line;
     pub use crate::text::position::internals as text_position;
     pub use crate::text::reader::internals as text_reader;
+    pub use crate::time::internals as time;
     pub use crate::timezone::internals as timezone;
     pub use crate::toml::wire::internals as toml_wire;
     pub use crate::txhash::arrow::internals as txhash_arrow;

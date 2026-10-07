@@ -445,8 +445,8 @@ test('a candle round trips through its scalar and its JSON', () => {
   // and `fromJSON` reads back, as the object or as its text.
   const json = candle.toJSON()
   assert.equal(json.crosscode, '3:0:ACME')
-  assert.equal(json.start, '1970-01-01T00:00:00.000000000Z')
-  assert.equal(json.end, '1970-01-01T00:01:00.000000000Z')
+  assert.equal(json.start, '1970-01-01T00:00:00Z')
+  assert.equal(json.end, '1970-01-01T00:01:00Z')
   assert.equal(json.bidopen, '100')
   assert.equal(json.midlow, '100.75')
   assert.equal(json.books, 4)

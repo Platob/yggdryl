@@ -113,7 +113,7 @@ def test_a_field_types_the_document_element_and_a_class_is_that_field() -> None:
     )
     encoded = xml.dumps({"order": value})
     assert encoded == (
-        b"<order><fill><observed_at>2026-08-15T08:00:00.000000Z</observed_at>"
+        b"<order><fill><observed_at>2026-08-15T08:00:00Z</observed_at>"
         b"<price>12.5</price></fill><labels>urgent</labels><labels>auction</labels>"
         b"<order_id>7</order_id></order>"
     )

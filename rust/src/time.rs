@@ -396,6 +396,177 @@ temporal_leaf!(
     "Time64 requires microsecond or nanosecond units and the NAIVE timezone",
 );
 
+/// Refuse a clock that states a zone, naming the type that reads one.
+///
+/// An offset makes a clock an instant, and the message says so rather than
+/// reporting the offset as trailing text: `09:30:00Z` is no time of day
+/// and a `DateTime64` is where it reads.
+fn require_zoneless(text: &str) -> Result<()> {
+    let zoned = text.ends_with(['Z', 'z'])
+        || text
+            .len()
+            .checked_sub(6)
+            .is_some_and(|start| matches!(text.as_bytes()[start], b'+' | b'-'));
+    require(
+        !zoned,
+        "time-of-day cannot carry a timezone; use DateTime64 for a zoned instant",
+    )
+}
+
+impl Time32 {
+    /// The time of day `text` spells, at the width's resolution.
+    ///
+    /// The ISO 8601 door of the 32-bit clock, over the one reader every
+    /// time of day in the crate reads through:
+    ///
+    /// | Spelling | Example | Reads as |
+    /// | --- | --- | --- |
+    /// | `HH:MM:SS` | `09:30:00` | the clock at seconds |
+    /// | compact `HHMMSS` | `093000` | the same clock |
+    /// | a fraction after `.` or `,`, one to nine digits | `09:30:00.5`, `09:30:00,500` | the clock at milliseconds |
+    /// | an hour past the day, to `99` | `25:00:00` | folded into the day: `01:00:00` |
+    ///
+    /// The resolution is the one the digits spell, held at this width's
+    /// floor and ceiling: no fraction is seconds, up to three digits are
+    /// milliseconds, and a finer fraction is narrowed to milliseconds where
+    /// it is exact - `.000000` is a fraction of zero, which the width holds -
+    /// and refused where it is not, because a `Time32` holds no finer count.
+    /// [`Time64::from_text`] is the width that does.
+    ///
+    /// ```
+    /// use yggdryl::{Time32, TimeUnit};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let clock = Time32::from_text("09:30:00")?;
+    /// assert_eq!((clock.count(), clock.unit()), (34_200, TimeUnit::Second));
+    /// assert_eq!(Time32::from_text("093000")?, clock);
+    /// let half = Time32::from_text("09:30:00.5")?;
+    /// assert_eq!((half.count(), half.unit()), (34_200_500, TimeUnit::Millisecond));
+    /// assert_eq!(Time32::from_text("09:30:00.000000")?.unit(), TimeUnit::Millisecond);
+    /// // A finer fraction is no 32-bit clock; a zone is no time of day.
+    /// assert!(Time32::from_text("09:30:00.000001").is_err());
+    /// assert!(Time32::from_text("09:30:00Z").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] naming the byte the text stopped being a
+    /// clock at, and [`Error::InvalidRecord`] for a stated zone or a fraction
+    /// the width cannot hold.
+    pub fn from_text(text: &str) -> Result<Self> {
+        require_zoneless(text)?;
+        Self::from_reading(crate::temporal::parse_time(text)?)
+    }
+
+    /// The time of day `text` spells as FIX spells one: everything
+    /// [`Self::from_text`] reads, and the clock half of the two FIX datetime
+    /// spellings that have one - a clock that stops at its minutes (`09:30`,
+    /// `0930`), and the compact clock running straight into three, six or
+    /// nine fraction digits with no decimal sign (`093000123`). A stated zone
+    /// is refused as [`Self::from_text`] refuses it, and so are `60` seconds,
+    /// a leap second no Arrow clock holds, and a run of ten to twelve
+    /// fraction digits. The FIX codec reads every `UTCTimeOnly` and
+    /// `LocalMktTime` field through this door and parses none itself.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::from_text`]'s.
+    pub(crate) fn from_fix_text(text: &str) -> Result<Self> {
+        require_zoneless(text)?;
+        Self::from_reading(crate::temporal::parse_fix_time(text)?)
+    }
+
+    /// The 32-bit value one reading is: seconds and milliseconds as spelled,
+    /// a finer fraction narrowed to milliseconds where it is exact.
+    fn from_reading((count, unit): (i64, TimeUnit)) -> Result<Self> {
+        let (count, unit) = match unit {
+            TimeUnit::Second | TimeUnit::Millisecond => (count, unit),
+            finer => {
+                let per_millisecond = crate::temporal::per_second(finer)
+                    .expect("a clock reads at a resolution unit")
+                    / 1_000;
+                require(
+                    count % per_millisecond == 0,
+                    "time32 holds no fraction finer than a millisecond; use Time64 for one",
+                )?;
+                (count / per_millisecond, TimeUnit::Millisecond)
+            }
+        };
+        Self::new(narrow_i32(count, "time32")?, unit, Timezone::NAIVE)
+    }
+}
+
+impl Time64 {
+    /// The time of day `text` spells, at the width's resolution.
+    ///
+    /// The ISO 8601 door of the 64-bit clock, reading what
+    /// [`Time32::from_text`] reads - `HH:MM:SS`, the compact `HHMMSS`, a
+    /// fraction of one to nine digits after `.` or `,`, an hour past the day
+    /// folded into it - at the resolution the digits spell, widened to this
+    /// width's floor: no fraction and up to three digits are microseconds,
+    /// four to six microseconds, seven to nine nanoseconds. A column
+    /// restates the count at its own unit, which is exact at every width
+    /// here because the floor is the coarsest unit the width holds.
+    ///
+    /// ```
+    /// use yggdryl::{Time64, TimeUnit};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let clock = Time64::from_text("09:30:00")?;
+    /// assert_eq!((clock.count(), clock.unit()), (34_200_000_000, TimeUnit::Microsecond));
+    /// assert_eq!(Time64::from_text("093000")?, clock);
+    /// let nanos = Time64::from_text("09:30:00.000000001")?;
+    /// assert_eq!((nanos.count(), nanos.unit()), (34_200_000_000_001, TimeUnit::Nanosecond));
+    /// assert_eq!(Time64::from_text("25:00:00")?.count(), 3_600_000_000);
+    /// // A zone is no time of day: a `DateTime64` reads one.
+    /// assert!(Time64::from_text("09:30:00Z").is_err());
+    /// assert!(Time64::from_text("09:30").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] naming the byte the text stopped being a
+    /// clock at, and [`Error::InvalidRecord`] for a stated zone.
+    pub fn from_text(text: &str) -> Result<Self> {
+        require_zoneless(text)?;
+        Self::from_reading(crate::temporal::parse_time(text)?)
+    }
+
+    /// The time of day `text` spells as FIX spells one: everything
+    /// [`Self::from_text`] reads, and the clock half of the two FIX datetime
+    /// spellings that have one - a clock that stops at its minutes (`09:30`,
+    /// `0930`), and the compact clock running straight into three, six or
+    /// nine fraction digits with no decimal sign (`093000123`, the clock of
+    /// `20240102101530123`). A stated zone is refused as [`Self::from_text`]
+    /// refuses it, and so are `60` seconds - a leap second no Arrow clock
+    /// holds - and a run of ten to twelve fraction digits. The FIX codec
+    /// reads every `UTCTimeOnly` and `LocalMktTime` field through this door
+    /// and parses none itself.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::from_text`]'s.
+    pub(crate) fn from_fix_text(text: &str) -> Result<Self> {
+        require_zoneless(text)?;
+        Self::from_reading(crate::temporal::parse_fix_time(text)?)
+    }
+
+    /// The 64-bit value one reading is: microseconds and nanoseconds as
+    /// spelled, a coarser reading widened to microseconds, the width's floor.
+    fn from_reading((count, unit): (i64, TimeUnit)) -> Result<Self> {
+        let (count, unit) = match unit {
+            TimeUnit::Second => (count * 1_000_000, TimeUnit::Microsecond),
+            TimeUnit::Millisecond => (count * 1_000, TimeUnit::Microsecond),
+            finer => (count, finer),
+        };
+        Self::new(count, unit, Timezone::NAIVE)
+    }
+}
+
 impl Scalar {
     /// Build the exact time-of-day width selected by its unit.
     ///
@@ -468,5 +639,24 @@ impl Scalar {
             Self::Time64(value) => Some((value.count(), value.unit(), &value.timezone)),
             _ => None,
         }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/time.rs` pins and a caller cannot reach: the
+    //! FIX doors of the two clocks, which the FIX codec alone reads through.
+
+    use crate::{Result, Time32, Time64};
+
+    /// Read a time of day as FIX spells one, at 32 bits.
+    pub fn time32_from_fix_text(text: &str) -> Result<Time32> {
+        Time32::from_fix_text(text)
+    }
+
+    /// Read a time of day as FIX spells one, at 64 bits.
+    pub fn time64_from_fix_text(text: &str) -> Result<Time64> {
+        Time64::from_fix_text(text)
     }
 }

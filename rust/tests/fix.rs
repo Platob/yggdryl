@@ -442,6 +442,8 @@ mod aliases;
 mod anomaly;
 #[path = "fix/batch.rs"]
 mod batch;
+#[path = "fix/build.rs"]
+mod build;
 #[cfg(feature = "internals")]
 #[path = "fix/catalog.rs"]
 mod catalog;

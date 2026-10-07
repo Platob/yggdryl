@@ -595,10 +595,13 @@ impl DateTime64 {
     /// Read a datetime as FIX spells one: everything [`Self::from_text`]
     /// reads, and the four spellings only FIX and the bridges that carry it
     /// write - one digit run with its fraction, a clock that stops at its
-    /// minutes, a `TZTimeOnly`, a zoned clock with no date, read on the
-    /// epoch day, and a numeric offset closed by `s` (`+0400s`), read as the
-    /// offset it is. The FIX codec reads every datetime field through this
-    /// door and parses none of them itself.
+    /// minutes, a zoned clock with no date read on the epoch day, and a
+    /// numeric offset closed by `s` (`+0400s`), read as the offset it is. A
+    /// clock stating neither a date nor a zone is local time, which no
+    /// instant holds, and is refused: a `TZTimeOnly` field, whose clock the
+    /// column zones, reads through [`Self::from_fix_clock`] instead. The FIX
+    /// codec reads every other datetime field through this door and parses
+    /// none of them itself.
     ///
     /// # Errors
     ///
@@ -606,6 +609,33 @@ impl DateTime64 {
     /// an error when a wall clock does not exist in `naive`'s rules.
     pub(crate) fn from_fix_text(text: &str, naive: Timezone) -> Result<Self> {
         Self::from_reading(crate::temporal::parse_fix_instant(text)?, naive)
+    }
+
+    /// Read a `TZTimeOnly` as FIX spells one: a clock and no date, on the
+    /// epoch day.
+    ///
+    /// | Spelling | Example | Reads as |
+    /// | --- | --- | --- |
+    /// | `HH:MM[:SS[.f]]`, compact `HHMM[SS[.f]]`, the compact run into its fraction | `07:39:12.123`, `0739`, `093000123` | that clock on the epoch day, a wall clock in `naive` - the column's zone |
+    /// | the clock closed by `Z` or `±hh[:mm]`, one blank allowed before a numeric offset | `07:39:12.123+05:30`, `07:39Z`, `0930 +0530` | the instant that clock is in that zone on the epoch day, which an offset may carry behind the epoch: `00:30+05:30` is `-18_000` seconds |
+    ///
+    /// The epoch day is the one choice that costs nothing for a time of
+    /// day: the count is the clock itself where the zone is UTC
+    /// ([`crate::Scalar::temporal_count`] reads it back), and two readings
+    /// still subtract. A clock stating no zone is read as every other
+    /// zoneless FIX datetime is - a wall clock in the column's zone - which
+    /// is what makes a `TZTimeOnly` sent as `093000` a value and not a
+    /// refusal; what that reading loses, that no offset was stated, is what
+    /// [`Self::from_fix_text`] throws the whole value away for, and this door
+    /// is reached for `TZTimeOnly` fields alone. A dated value is refused by
+    /// its shape, and what is no clock is refused naming the byte.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] for a dated value or text that is no clock,
+    /// and an error when a wall clock does not exist in `naive`'s rules.
+    pub(crate) fn from_fix_clock(text: &str, naive: Timezone) -> Result<Self> {
+        Self::from_reading(crate::temporal::parse_fix_clock(text)?, naive)
     }
 
     /// The value one reading is: the instant in the zone it states, else
@@ -679,5 +709,24 @@ impl Scalar {
             Self::DateTime64(value) => Some((value.count(), value.unit(), &value.timezone)),
             _ => None,
         }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/datetime.rs` pins and a caller cannot reach:
+    //! the two FIX doors, which the FIX codec alone reads through.
+
+    use crate::{DateTime64, Result, Timezone};
+
+    /// Read a datetime as FIX spells one.
+    pub fn from_fix_text(text: &str, naive: Timezone) -> Result<DateTime64> {
+        DateTime64::from_fix_text(text, naive)
+    }
+
+    /// Read a `TZTimeOnly` as FIX spells one: a clock and no date.
+    pub fn from_fix_clock(text: &str, naive: Timezone) -> Result<DateTime64> {
+        DateTime64::from_fix_clock(text, naive)
     }
 }

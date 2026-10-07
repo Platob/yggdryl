@@ -7,6 +7,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42100",
       "description": "The cash settlement payment date, unadjusted or adjusted depending on UnderlyingProvisionCashSettlPaymentDateType(42101).",
       "display": "UnderlyingProvisionCashSettlPaymentDate"
@@ -20,6 +21,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisioncashsettlpaymentdatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42101",
       "description": "Specifies the type of date (e.g. adjusted for holidays).",
       "display": "UnderlyingProvisionCashSettlPaymentDateType"
@@ -33,6 +35,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamrateindexsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42102",
       "description": "Identifies the source of quote information.",
       "display": "UnderlyingProvisionCashSettlQuoteSource"
@@ -45,6 +48,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42103",
       "description": "Identifies the reference \"page\" from the quote source.",
       "display": "UnderlyingProvisionCashSettlQuoteReferencePage"
@@ -58,6 +62,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "42104",
       "description": "A time specified in 24-hour format, e.g. 11am would be represented as 11:00:00. The time of the cash settlement valuation date when the cash settlement amount will be determined according to the cash settlement method if the parties have not otherwise been able to agree to the cash settlement amount.",
       "display": "UnderlyingProvisionCashSettlValueTime"
@@ -70,6 +75,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42105",
       "description": "Identifies the business center calendar used with the provision's cash settlement valuation time. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingProvisionCashSettlValueTimeBusinessCenter"
@@ -83,6 +89,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42106",
       "description": "The business day convention used to adjust the cash settlement valuation date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingProvisionCashSettlValueDateBusinessDayConvention"
@@ -95,6 +102,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42107",
       "description": "Specifies the anchor date when the cash settlement value date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingProvisionCashSettlValueDateRelativeTo"
@@ -107,6 +115,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42108",
       "description": "Time unit multiplier for the relative cash settlement value date offset.",
       "display": "UnderlyingProvisionCashSettlValueDateOffsetPeriod"
@@ -120,6 +129,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42109",
       "description": "Time unit associated with the relative cash settlement value date offset.",
       "display": "UnderlyingProvisionCashSettlValueDateOffsetUnit"
@@ -133,6 +143,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42110",
       "description": "Specifies the day type of the provision's relative cash settlement value date offset.",
       "display": "UnderlyingProvisionCashSettlValueDateOffsetDayType"
@@ -146,6 +157,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42111",
       "description": "The adjusted cash settlement value date.",
       "display": "UnderlyingProvisionCashSettlValueDateAdjusted"
@@ -158,6 +170,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42112",
       "description": "Number of UnderlyingProvision option exercise fixed dates in the repeating group.",
       "display": "NoUnderlyingProvisionOptionExerciseFixedDates"
@@ -171,6 +184,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42113",
       "description": "A predetermined option exercise date, unadjusted or adjusted depending on UnderlyingProvisionOptionExerciseFixedDateType(42114).",
       "display": "UnderlyingProvisionOptionExerciseFixedDate"
@@ -184,6 +198,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisionoptionexercisefixeddatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42114",
       "description": "Specifies the type of date (e.g. adjusted for holidays).",
       "display": "UnderlyingProvisionOptionExerciseFixedDateType"
@@ -197,6 +212,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42115",
       "description": "The business day convention used to adjust the underlying instrument's provision's option exercise date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingProvisionOptionExerciseBusinessDayConvention"
@@ -209,6 +225,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42116",
       "description": "Time unit multiplier for the interval to the first (and possibly only) exercise date in the exercise period.",
       "display": "UnderlyingProvisionOptionExerciseEarliestDateOffsetPeriod"
@@ -222,6 +239,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisionoptionexerciseearliestdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42117",
       "description": "Time unit associated with the interval to the first (and possibly only) exercise date in the exercise period.",
       "display": "UnderlyingProvisionOptionExerciseEarliestDateOffsetUnit"
@@ -234,6 +252,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42118",
       "description": "Time unit multiplier for the frequency of subsequent exercise dates in the exercise period following the earliest exercise date. An interval of 1 day should be used to indicate an American style exercise frequency.",
       "display": "UnderlyingProvisionOptionExerciseFrequencyPeriod"
@@ -247,6 +266,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "couponfrequencyunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42119",
       "description": "Time unit associated with the frequency of subsequent exercise dates in the exercise period following the earliest exercise date.",
       "display": "UnderlyingProvisionOptionExerciseFrequencyUnit"
@@ -260,6 +280,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42120",
       "description": "The unadjusted first day of the exercise period for an American style option.",
       "display": "UnderlyingProvisionOptionExerciseStartDateUnadjusted"
@@ -272,6 +293,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42121",
       "description": "Specifies the anchor date when the option exercise start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingProvisionOptionExerciseStartDateRelativeTo"
@@ -284,6 +306,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42122",
       "description": "Time unit multiplier for the relative option exercise start date offset.",
       "display": "UnderlyingProvisionOptionExerciseStartDateOffsetPeriod"
@@ -297,6 +320,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42123",
       "description": "Time unit associated with the relative option exercise start date offset.",
       "display": "UnderlyingProvisionOptionExerciseStartDateOffsetUnit"
@@ -310,6 +334,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42124",
       "description": "Specifies the day type of the provision's relative option exercise start date offset.",
       "display": "UnderlyingProvisionOptionExerciseStartDateOffsetDayType"
@@ -323,6 +348,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42125",
       "description": "The adjusted first day of the exercise period for an American style option.",
       "display": "UnderlyingProvisionOptionExerciseStartDateAdjusted"
@@ -335,6 +361,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42126",
       "description": "The number of periods in the referenced date schedule that are between each date in the relative date schedule. Thus a skip of 2 would mean that dates are relative to every second date in the referenced schedule. If present this should have a value greater than 1.",
       "display": "UnderlyingProvisionOptionExercisePeriodSkip"
@@ -348,6 +375,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42127",
       "description": "The unadjusted first date of a schedule. This can be used to restrict the range of exercise dates when they are relative.",
       "display": "UnderlyingProvisionOptionExerciseBoundsFirstDateUnadjusted"
@@ -361,6 +389,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42128",
       "description": "The unadjusted last date of a schedule. This can be used to restrict the range of exercise dates when they are relative.",
       "display": "UnderlyingProvisionOptionExerciseBoundsLastDateUnadjusted"
@@ -374,6 +403,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "42129",
       "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) i) on the expriation date, in the case of a European style option, (ii) on each bermuda option exercise date and the expiration date, in the case of a Bermuda style option the commencement date to, and including, the expiration date, in the case of an American option.",
       "display": "UnderlyingProvisionOptionExerciseEarliestTime"
@@ -386,6 +416,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42130",
       "description": "Identifies the business center calendar used with the provision's earliest time for notice of exercise. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingProvisionOptionExerciseEarliestTimeBusinessCenter"
@@ -399,6 +430,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "42131",
       "description": "For a Bermuda or American style option, the latest time on an exercise business day (excluding the expiration date) within the exercise period that notice can be given by the buyer to the seller or seller's agent. Notice of exercise given after this time will be deemed to have been given on the next exercise business day.",
       "display": "UnderlyingProvisionOptionExerciseLatestTime"
@@ -411,6 +443,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42132",
       "description": "Identifies the business center calendar used with the provision's latest time for notice of exercise. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingProvisionOptionExerciseLatestTimeBusinessCenter"
@@ -424,6 +457,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42133",
       "description": "The unadjusted last day within an exercise period for an American style option. For a European style option it is the only day within the exercise period.",
       "display": "UnderlyingProvisionOptionExpirationDateUnadjusted"
@@ -437,6 +471,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42134",
       "description": "The business day convention used to adjust the underlying instrument's provision's option expiration date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingProvisionOptionExpirationDateBusinessDayConvention"
@@ -449,6 +484,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42135",
       "description": "Specifies the anchor date when the option expiration date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingProvisionOptionExpirationDateRelativeTo"
@@ -461,6 +497,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42136",
       "description": "Time unit multiplier for the relative option expiration date offset.",
       "display": "UnderlyingProvisionOptionExpirationDateOffsetPeriod"
@@ -474,6 +511,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42137",
       "description": "Time unit associated with the relative option expiration date offset.",
       "display": "UnderlyingProvisionOptionExpirationDateOffsetUnit"
@@ -487,6 +525,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42138",
       "description": "Specifies the day type of the provision's relative option expiration date offset.",
       "display": "UnderlyingProvisionOptionExpirationDateOffsetDayType"
@@ -500,6 +539,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42139",
       "description": "The adjusted last date within an exercise period for an American style option. For a European style option it is the only date within the exercise period.",
       "display": "UnderlyingProvisionOptionExpirationDateAdjusted"
@@ -513,6 +553,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "42140",
       "description": "The latest time for exercise on the expiration date.",
       "display": "UnderlyingProvisionOptionExpirationTime"
@@ -525,6 +566,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42141",
       "description": "Identifies the business center calendar used with the provision's latest exercise time on expiration date. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingProvisionOptionExpirationTimeBusinessCenter"
@@ -538,6 +580,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42142",
       "description": "The unadjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date).",
       "display": "UnderlyingProvisionOptionRelevantUnderlyingDateUnadjusted"
@@ -551,6 +594,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42143",
       "description": "The business day convnetion used to adjust the underlying instrument provision's option underlying date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingProvisionOptionRelevantUnderlyingDateBizDayConvention"
@@ -563,6 +607,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42144",
       "description": "Specifies the anchor date when the date relevant to the underlying trade on exercise is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingProvisionOptionRelevantUnderlyingDateRelativeTo"
@@ -575,6 +620,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42145",
       "description": "Time unit multiplier for the relative option relevant underlying date offset.",
       "display": "UnderlyingProvisionOptionRelevantUnderlyingDateOffsetPeriod"
@@ -588,6 +634,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42146",
       "description": "Time unit associated with the relative option relevant underlying date offset.",
       "display": "UnderlyingProvisionOptionRelevantUnderlyingDateOffsetUnit"
@@ -601,6 +648,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42147",
       "description": "Specifies the day type of the provision's relative option relevant underlying date offset.",
       "display": "UnderlyingProvisionOptionRelevantUnderlyingDateOffsetDayType"
@@ -614,6 +662,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42148",
       "description": "The adjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date).",
       "display": "UnderlyingProvisionOptionRelevantUnderlyingDateAdjusted"
@@ -626,6 +675,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42149",
       "description": "Number of provisions in the repeating group.",
       "display": "NoUnderlyingProvisions"
@@ -639,6 +689,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisiontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42150",
       "description": "Type of provision.",
       "display": "UnderlyingProvisionType"
@@ -652,6 +703,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42151",
       "description": "The unadjusted date of the provision.",
       "display": "UnderlyingProvisionDateUnadjusted"
@@ -665,6 +717,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42152",
       "description": "The business day convention used to adjust the underlying instrument's provision's date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingProvisionDateBusinessDayConvention"
@@ -678,6 +731,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "42153",
       "description": "The adjusted date of the provision.",
       "display": "UnderlyingProvisionDateAdjusted"
@@ -690,6 +744,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42154",
       "description": "Time unit multiplier for the provision's tenor period.",
       "display": "UnderlyingProvisionDateTenorPeriod"
@@ -703,6 +758,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisiondatetenorunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "42155",
       "description": "Time unit associated with the provision's tenor period.",
       "display": "UnderlyingProvisionDateTenorUnit"
@@ -716,6 +772,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisioncalculationagentcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42156",
       "description": "Used to identify the calculation agent. The calculation agent may be identified in UnderlyingProvisionCalculationAgent(42156) or in the underlying provision parties component.",
       "display": "UnderlyingProvisionCalculationAgent"
@@ -729,6 +786,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisionoptionsinglepartybuyersidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42157",
       "description": "If optional early termination is not available to both parties then this component identifies the buyer of the option through its side of the trade.",
       "display": "UnderlyingProvisionOptionSinglePartyBuyerSide"
@@ -742,6 +800,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisionoptionsinglepartybuyersidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42158",
       "description": "If optional early termination is not available to both parties then this component identifies the seller of the option through its side of the trade.",
       "display": "UnderlyingProvisionOptionSinglePartySellerSide"
@@ -755,6 +814,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "exercisestylecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42159",
       "description": "The instrument provision's exercise style.",
       "display": "UnderlyingProvisionOptionExerciseStyle"
@@ -769,6 +829,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "42160",
       "description": "A notional amount which restricts the amount of notional that can be exercised when partial exercise or multiple exercise is applicable. The integral multiple amount defines a lower limit of notional that can be exercised and also defines a unit multiple of notional that can be exercised, i.e. only integer multiples of this amount can be exercised.",
       "display": "UnderlyingProvisionOptionExerciseMultipleNotional"
@@ -783,6 +844,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "42161",
       "description": "The minimum notional amount that can be exercised on a given exercise date.",
       "display": "UnderlyingProvisionOptionExerciseMinimumNotional"
@@ -797,6 +859,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "42162",
       "description": "The maximum notional amount that can be exercised on a given exercise date.",
       "display": "UnderlyingProvisionOptionExerciseMaximumNotional"
@@ -809,6 +872,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42163",
       "description": "The minimum number of options that can be exercised on a given exercise date.",
       "display": "UnderlyingProvisionOptionMinimumNumber"
@@ -821,6 +885,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "42164",
       "description": "The maximum number of options that can be exercised on a given exercise date. If the number is not specified, it means that the maximum number of options corresponds to the remaining unexercised options.",
       "display": "UnderlyingProvisionOptionMaximumNumber"
@@ -833,6 +898,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "42165",
       "description": "Used to indicate whether follow-up confirmation of exercise (written or electronic) is required following telephonic notice by the buyer to the seller or seller's agent.",
       "display": "UnderlyingProvisionOptionExerciseConfirmation"
@@ -846,6 +912,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisioncashsettlmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42166",
       "description": "An ISDA defined cash settlement method used for the determination of the applicable cash settlement amount. The method is defined in the 2006 ISDA Definitions, Section 18.3. Cash Settlement Methods, paragraph (e).",
       "display": "UnderlyingProvisionCashSettlMethod"
@@ -858,6 +925,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "42167",
       "description": "Specifies the currency of settlement. Uses ISO 4217 currency codes.",
       "display": "UnderlyingProvisionCashSettlCurrency"
@@ -870,6 +938,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "42168",
       "description": "Specifies the currency of settlement for a cross-currency provision. Uses ISO 4217 currency codes.",
       "display": "UnderlyingProvisionCashSettlCurrency2"
@@ -883,6 +952,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisioncashsettlquotetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42169",
       "description": "Identifies the type of quote to be used.",
       "display": "UnderlyingProvisionCashSettlQuoteType"
@@ -895,6 +965,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42170",
       "description": "Free form text to specify additional information or enumeration description when a standard value does not apply.",
       "display": "UnderlyingProvisionText"
@@ -907,6 +978,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "42171",
       "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingProvisionText(42712) field.",
       "display": "EncodedUnderlyingProvisionTextLen"
@@ -919,6 +991,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "42172",
       "description": "Encoded (non-ASCII characters) representation of the UnderlyingProvisionText(42170) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingProvisionText(42170) field.",
       "display": "EncodedUnderlyingProvisionText"
@@ -931,6 +1004,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42173",
       "description": "Number of parties identified in the contract provision.",
       "display": "NoUnderlyingProvisionPartyIDs"
@@ -943,6 +1017,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42174",
       "description": "The party identifier for the payment settlement party.",
       "display": "UnderlyingProvisionPartyID"
@@ -956,6 +1031,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyidsourcecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "42175",
       "description": "Identifies the class or source of the UnderlyingProvisionPartyID(42174) value.",
       "display": "UnderlyingProvisionPartyIDSource"
@@ -969,6 +1045,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrolecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42176",
       "description": "Identifies the type or role of UnderlyingProvisionPartyID(42174) specified.",
       "display": "UnderlyingProvisionPartyRole"
@@ -981,6 +1058,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42177",
       "description": "Number of sub-party IDs to be reported for the party.",
       "display": "NoUnderlyingProvisionPartySubIDs"
@@ -993,6 +1071,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42178",
       "description": "Underlying provision party sub-identifier, if applicable for UnderlyingProvisionPartyID(42174).",
       "display": "UnderlyingProvisionPartySubID"
@@ -1006,6 +1085,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partysubidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42179",
       "description": "The type of UnderlyingProvisionPartySubID(42178).",
       "display": "UnderlyingProvisionPartySubIDType"
@@ -1018,6 +1098,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42180",
       "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingProvisionCashSettlPaymentDateBusinessCenters"
@@ -1030,6 +1111,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42181",
       "description": "The business center calendar used to adjust the provision's cash settlement payment's termination, or relative termination, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingProvisionCashSettlPaymentDateBusinessCenter"
@@ -1042,6 +1124,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42182",
       "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingProvisionCashSettlValueDateBusinessCenters"
@@ -1054,6 +1137,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42183",
       "description": "The business center calendar used to adjust the cash settlement valuation date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingProvisionCashSettlValueDateBusinessCenter"
@@ -1066,6 +1150,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42184",
       "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingProvisionOptionExerciseBusinessCenters"
@@ -1078,6 +1163,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42185",
       "description": "The business center calendar used to adjust the underlying instrument's provision's option exercise date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingProvisionOptionExerciseBusinessCenter"
@@ -1090,6 +1176,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42186",
       "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingProvisionOptionExpirationDateBusinessCenters"
@@ -1102,6 +1189,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42187",
       "description": "The business center calendar used to adjust the underlying instrument's provision's option expiration date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingProvisionOptionExpirationDateBusinessCenter"
@@ -1114,6 +1202,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42188",
       "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingProvisionOptionRelevantUnderlyingDateBusinessCenters"
@@ -1126,6 +1215,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42189",
       "description": "The business center calendar used to adjust the underlying instrument's provision's option underlying date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingProvisionOptionRelevantUnderlyingDateBusinessCenter"
@@ -1138,6 +1228,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42190",
       "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingProvisionDateBusinessCenters"
@@ -1150,6 +1241,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42191",
       "description": "The business center calendar used to adjust the underlying instrument's provision's date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingProvisionDateBusinessCenter"
@@ -1163,6 +1255,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliverystreamdeliverypointsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42192",
       "description": "Identifies the class or source of DeliveryStreamDeliveryPoint(41062).",
       "display": "DeliveryStreamDeliveryPointSource"
@@ -1175,6 +1268,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42193",
       "description": "Description of the delivery point identified in DeliveryStreamDeliveryPoint(41062).",
       "display": "DeliveryStreamDeliveryPointDesc"
@@ -1188,6 +1282,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliverystreamdeliverypointsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42194",
       "description": "Identifies the class or source of LegDeliveryStreamDeliveryPoint(41433).",
       "display": "LegDeliveryStreamDeliveryPointSource"
@@ -1200,6 +1295,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42195",
       "description": "Description of the delivery point identified in LegDeliveryStreamDeliveryPoint(41433).",
       "display": "LegDeliveryStreamDeliveryPointDesc"
@@ -1213,6 +1309,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliverystreamdeliverypointsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "42196",
       "description": "Identifies the class or source of UnderlyingDeliveryStreamDeliveryPoint(41781).",
       "display": "UnderlyingDeliveryStreamDeliveryPointSource"
@@ -1225,6 +1322,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42197",
       "description": "Description of the delivery point identified in UnderlyingDeliveryStreamDeliveryPoint(41781).",
       "display": "UnderlyingDeliveryStreamDeliveryPointDesc"
@@ -1237,6 +1335,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "42198",
       "description": "Number of financing definitions in the repeating group.",
       "display": "NoLegContractualDefinitions"
@@ -1249,6 +1348,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "42199",
       "description": "Specifies which contract definition, such as those published by ISDA, will apply for the terms of the trade. See https://fpml.org/coding-scheme/contractual-definitions for values.",
       "display": "LegContractualDefinition"

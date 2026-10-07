@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2500",
       "description": "Describes the type of broker confirmation executed between the parties. Can be used as an alternative to MasterConfirmationDesc(1962). See https://fpml.org/coding-scheme/broker-confirmation-type for values.",
       "display": "LegBrokerConfirmationDesc"
@@ -19,6 +20,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2501",
       "description": "The date of the ISDA Credit Support Agreement executed between the parties and intended to govern collateral arrangements for all OTC derivatives transactions between those parties.",
       "display": "LegCreditSupportAgreementDate"
@@ -31,6 +33,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2502",
       "description": "The type of ISDA Credit Support Agreement. See https://fpml.org/coding-scheme/credit-support-agreement-type for values.",
       "display": "LegCreditSupportAgreementDesc"
@@ -43,6 +46,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2503",
       "description": "A common reference or unique identifier to identify the ISDA Credit Support Agreement executed between the parties.",
       "display": "LegCreditSupportAgreementID"
@@ -56,6 +60,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliverytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2504",
       "description": "Identifies type of settlement.",
       "display": "LegDeliveryType"
@@ -68,6 +73,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2505",
       "description": "A sentence or phrase pertinent to the trade, not a reference to an external document. E.g. \"To be registered with the U.S. Environmental Protection Agency, Acid Rain Division, SO2 Allowance Tracking System\".",
       "display": "LegDocumentationText"
@@ -81,6 +87,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2506",
       "description": "End date of a financing deal, i.e. the date the seller reimburses the buyer and takes back control of the collateral.",
       "display": "LegEndDate"
@@ -93,6 +100,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2507",
       "description": "Identification of the law governing the transaction. See https://fpml.org/coding-scheme/governing-law for values.",
       "display": "LegGoverningLaw"
@@ -105,6 +113,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2508",
       "description": "The fraction of the cash consideration that must be collateralized, expressed as a percent. A MarginRatio of 2% indicates that the value of the collateral (after deducting for \"haircut\") must exceed the cash consideration by 2%.",
       "display": "LegMarginRatio"
@@ -118,6 +127,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2509",
       "description": "The date that an annexation to the master confirmation was executed between the parties.",
       "display": "LegMasterConfirmationAnnexDate"
@@ -131,6 +141,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2510",
       "description": "Alternative to broker confirmation. The date of the confirmation executed between the parties and intended to govern all relevant transactions between those parties.",
       "display": "LegMasterConfirmationDate"
@@ -143,6 +154,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2511",
       "description": "The type of master confirmation executed between the parties. See https://fpml.org/coding-scheme/master-confirmation-type for values.",
       "display": "LegMasterConfirmationDesc"
@@ -155,6 +167,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2512",
       "description": "The type of master confirmation annexation executed between the parties. See https://fpml.org/coding-scheme/master-confirmation-annex-type for values.",
       "display": "LegMasterConfirmationAnnexDesc"
@@ -168,6 +181,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2513",
       "description": "Start date of a financing deal, i.e. the date the buyer pays the seller cash and takes control of the collateral.",
       "display": "LegStartDate"
@@ -181,6 +195,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "terminationtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2514",
       "description": "Type of financing termination.",
       "display": "LegTerminationType"
@@ -195,6 +210,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2515",
       "description": "Used for the calculated quantity of the other side of the currency trade applicable to the allocation instance.",
       "display": "AllocCalculatedCcyQty"
@@ -207,6 +223,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2516",
       "description": "An encoded collateral request processing instruction to the receiver.",
       "display": "CollateralRequestInstruction"
@@ -219,6 +236,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2517",
       "description": "A unique identifier to link together a set or group of requests.",
       "display": "CollateralRequestLinkID"
@@ -231,6 +249,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2518",
       "description": "Ordinal number of the request within a set or group of requests.",
       "display": "CollateralRequestNumber"
@@ -243,6 +262,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2519",
       "description": "Total number of request messages within a set or group of requests.",
       "display": "TotNumCollateralRequests"
@@ -255,6 +275,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2520",
       "description": "Communicates the underlying condition when the request response indicates \"warning\".",
       "display": "WarningText"
@@ -267,6 +288,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2521",
       "description": "Encoded (non-ASCII characters) representation of the WarningText(2520) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the WarningText(2520) field.",
       "display": "EncodedWarningText"
@@ -279,6 +301,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2522",
       "description": "Byte length of encoded (non-ASCII characters) EncodedWarningtText(2521) field.",
       "display": "EncodedWarningTextLen"
@@ -292,6 +315,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "crossedindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2523",
       "description": "Indicates whether the order or quote was crossed with another order or quote having the same context, e.g. having accounts with a common ownership.",
       "display": "CrossedIndicator"
@@ -305,6 +329,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradereportingindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2524",
       "description": "Used between parties to convey trade reporting status.",
       "display": "TradeReportingIndicator"
@@ -317,6 +342,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2525",
       "description": "Indicates whether the transaction or position was entered into between two affiliated firms. I.e. one counterparty has an ownership interest in the other counterparty but less than the majority interest.",
       "display": "AffiliatedFirmsTradeIndicator"
@@ -329,6 +355,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2526",
       "description": "Identifies the swap trade as an \"international\" transaction.",
       "display": "InternationalSwapIndicator"
@@ -341,6 +368,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2527",
       "description": "Indicates a swap that does not have one easily identifiable primary underlying asset, but instead involves multiple underlying assets within one trade repository's jurisdiction that belong to different asset classes.",
       "display": "MultiAssetSwapIndicator"
@@ -355,6 +383,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2528",
       "description": "Clearing settlement price.",
       "display": "ClearingSettlPrice"
@@ -367,6 +396,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2529",
       "description": "Number of relative value metrics entries in the repeating group.",
       "display": "NoRelativeValues"
@@ -380,6 +410,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "relativevaluetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2530",
       "description": "Indicates the type of relative value measurement being specified.",
       "display": "RelativeValueType"
@@ -392,6 +423,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2531",
       "description": "The valuation of an instrument relative to a base measurement specified in RelativeValueType(2530). This value can be negative.",
       "display": "RelativeValue"
@@ -405,6 +437,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "relativevaluesidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2532",
       "description": "Specifies the side of the relative value.",
       "display": "RelativeValueSide"
@@ -417,6 +450,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2533",
       "description": "Basis points relative to a benchmark curve on the bid side, such as LIBOR, or a known security, such as 10Y US Treasury bond. The benchmark security or curve name is specified in the SpreadOrBenchmarkCurveData component.",
       "display": "BidSpread"
@@ -429,6 +463,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2534",
       "description": "Basis points relative to a benchmark curve on the offer side, such as LIBOR, or a known security, such as 10Y US Treasury bond. The benchmark security or curve name is specified in the SpreadOrBenchmarkCurveData component.",
       "display": "OfferSpread"
@@ -442,6 +477,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdreporteventcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2535",
       "description": "Technical event within market data feed.",
       "display": "MDReportEvent"
@@ -454,6 +490,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2536",
       "description": "Number of reference and market data messages in-between two MarketDataReport(35=DR) messages.",
       "display": "MDReportCount"
@@ -466,6 +503,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2537",
       "description": "Total number of reports related to market segments.",
       "display": "TotNoMarketSegmentReports"
@@ -478,6 +516,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2538",
       "description": "Total number of reports related to instruments.",
       "display": "TotNoInstrumentReports"
@@ -490,6 +529,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2539",
       "description": "Total number of reports related to party detail information.",
       "display": "TotNoPartyDetailReports"
@@ -502,6 +542,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2540",
       "description": "Total number of reports related to party entitlement information.",
       "display": "TotNoEntitlementReports"
@@ -514,6 +555,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2541",
       "description": "Total number of reports related to party risk limit information.",
       "display": "TotNoRiskLimitReports"
@@ -527,6 +569,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "marketsegmentstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2542",
       "description": "Status of market segment.",
       "display": "MarketSegmentStatus"
@@ -540,6 +583,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "marketsegmenttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2543",
       "description": "Used to classify the type of market segment.",
       "display": "MarketSegmentType"
@@ -553,6 +597,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "marketsegmentsubtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2544",
       "description": "Used to further categorize market segments within a MarketSegmentType(2543).",
       "display": "MarketSegmentSubType"
@@ -565,6 +610,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2545",
       "description": "Number of related market segments.",
       "display": "NoRelatedMarketSegments"
@@ -577,6 +623,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2546",
       "description": "Identifies a related market segment.",
       "display": "RelatedMarketSegmentID"
@@ -590,6 +637,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "marketsegmentrelationshipcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2547",
       "description": "Type of relationship between two or more market segments.",
       "display": "MarketSegmentRelationship"
@@ -602,6 +650,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2548",
       "description": "Number of auction order types.",
       "display": "NoAuctionTypeRules"
@@ -614,6 +663,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2549",
       "description": "Identifies an entire suite of products for which the auction order type rule applies.",
       "display": "AuctionTypeProductComplex"
@@ -626,6 +676,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2550",
       "description": "Number of rules related to price ranges.",
       "display": "NoPriceRangeRules"
@@ -640,6 +691,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2551",
       "description": "Lower boundary for price range.",
       "display": "StartPriceRange"
@@ -654,6 +706,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2552",
       "description": "Upper boundary for price range.",
       "display": "EndPriceRange"
@@ -668,6 +721,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2553",
       "description": "Maximum range expressed as absolute value.",
       "display": "PriceRangeValue"
@@ -680,6 +734,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2554",
       "description": "Maximum range expressed as percentage.",
       "display": "PriceRangePercentage"
@@ -692,6 +747,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2555",
       "description": "Identifies an entire suite of products in the context of trading rules related to price ranges.",
       "display": "PriceRangeProductComplex"
@@ -704,6 +760,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2556",
       "description": "Identifier for a price range rule.",
       "display": "PriceRangeRuleID"
@@ -716,6 +773,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2557",
       "description": "The percentage factor to be applied to trading rule parameters (e.g. price ranges, size ranges, etc.) when fast market conditions are applicable.",
       "display": "FastMarketPercentage"
@@ -728,6 +786,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2558",
       "description": "Number of rules related to quote sizes.",
       "display": "NoQuoteSizeRules"
@@ -741,6 +800,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "quotesideindicatorcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2559",
       "description": "Indicates whether single sided quotes are allowed.",
       "display": "QuoteSideIndicator"
@@ -753,6 +813,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2560",
       "description": "Number of eligibility indicators for the creation of flexible securities.",
       "display": "NoFlexProductEligibilities"
@@ -765,6 +826,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2561",
       "description": "Identifies an entire suite of products which are eligible for the creation of flexible securities.",
       "display": "FlexProductEligibilityComplex"
@@ -777,6 +839,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2562",
       "description": "Represents the total number of multileg securities or user defined securities that make up the security.",
       "display": "NumOfComplexInstruments"
@@ -789,6 +852,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2563",
       "description": "Specifies the time interval used for netting market data in a price depth feed.",
       "display": "MarketDepthTimeInterval"
@@ -802,6 +866,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderdelayunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2564",
       "description": "The time unit associated with the time interval of the netting of market data in a price depth feed.",
       "display": "MarketDepthTimeIntervalUnit"
@@ -814,6 +879,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2565",
       "description": "Specifies the time interval between two repetitions of the same market data for cyclic recovery feeds.",
       "display": "MDRecoveryTimeInterval"
@@ -827,6 +893,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderdelayunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2566",
       "description": "The time unit associated with the time interval between two cycles of the same market data in cyclic data recovery feeds.",
       "display": "MDRecoveryTimeIntervalUnit"
@@ -839,6 +906,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2567",
       "description": "Primary service location identifier.",
       "display": "PrimaryServiceLocationID"
@@ -851,6 +919,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2568",
       "description": "Secondary or alternate service location identifier.",
       "display": "SecondaryServiceLocationID"
@@ -863,6 +932,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2569",
       "description": "Identifies an entire suite of products for which the matching rule applies.",
       "display": "MatchRuleProductComplex"
@@ -876,6 +946,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "customerprioritycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2570",
       "description": "Specifies the kind of priority given to customers.",
       "display": "CustomerPriority"
@@ -888,6 +959,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2571",
       "description": "Identifies an entire suite of products for which the price tick rule applies.",
       "display": "TickRuleProductComplex"
@@ -902,6 +974,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2572",
       "description": "Previous day's adjusted open interest.",
       "display": "PreviousAdjustedOpenInterest"
@@ -916,6 +989,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2573",
       "description": "Previous day's unadjusted open interest.",
       "display": "PreviousUnadjustedOpenInterest"
@@ -928,6 +1002,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2574",
       "description": "Indicates if a given option instrument permits low exercise prices (LEPO).",
       "display": "LowExercisePriceOptionIndicator"
@@ -940,6 +1015,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2575",
       "description": "Indicates if a given instrument is eligible for block trading.",
       "display": "BlockTradeEligibilityIndicator"
@@ -952,6 +1028,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2576",
       "description": "Specifies the number of decimal places for instrument prices.",
       "display": "InstrumentPricePrecision"
@@ -964,6 +1041,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2577",
       "description": "Specifies the number of decimal places for exercise price.",
       "display": "StrikePricePrecision"
@@ -978,6 +1056,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2578",
       "description": "Original exercise price, e.g. after corporate action requiring changes.",
       "display": "OrigStrikePrice"
@@ -991,6 +1070,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "settlsubmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2579",
       "description": "Specifies a suitable settlement sub-method for a given settlement method.",
       "display": "SettlSubMethod"
@@ -1003,6 +1083,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2580",
       "description": "Number of parameter sets for clearing prices.",
       "display": "NoClearingPriceParameters"
@@ -1016,6 +1097,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2581",
       "description": "Relative identification of a business day.",
       "display": "BusinessDayType"
@@ -1030,6 +1112,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "2582",
       "description": "Constant value required for the calculation of the clearing price, e.g. for variance futures.",
       "display": "ClearingPriceOffset"
@@ -1042,6 +1125,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2583",
       "description": "Constant value required for the calculation of the clearing quantity, e.g. for variance futures.",
       "display": "VegaMultiplier"
@@ -1054,6 +1138,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2584",
       "description": "Number of trading business days in a year.",
       "display": "AnnualTradingBusinessDays"
@@ -1066,6 +1151,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2585",
       "description": "Number of trading business days over the lifetime of an instrument.",
       "display": "TotalTradingBusinessDays"
@@ -1078,6 +1164,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2586",
       "description": "Number of actual trading business days of an instrument.",
       "display": "TradingBusinessDays"
@@ -1090,6 +1177,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2587",
       "description": "Actual or realized variance of an instrument used to calculate settlement prices, e.g. for variance futures.",
       "display": "RealizedVariance"
@@ -1102,6 +1190,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2588",
       "description": "Standard variance (over the lifetime of an instrument) or initial variance used to calculate settlement prices, e.g. for variance futures.",
       "display": "StandardVariance"
@@ -1116,6 +1205,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2589",
       "description": "Closing price of the underlying required to calculate the RealizedVariance(2587).",
       "display": "RelatedClosePrice"
@@ -1128,6 +1218,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2590",
       "description": "Overnight interest rate.",
       "display": "OvernightInterestRate"
@@ -1140,6 +1231,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2591",
       "description": "The economic cost of the variation margin from one trading day to the next.",
       "display": "AccumulatedReturnModifiedVariationMargin"
@@ -1153,6 +1245,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "calculationmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2592",
       "description": "Specifies how the calculation will be made.",
       "display": "CalculationMethod"
@@ -1165,6 +1258,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2593",
       "description": "Number of order attribute entries.",
       "display": "NoOrderAttributes"
@@ -1178,6 +1272,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderattributetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2594",
       "description": "The type of order attribute.",
       "display": "OrderAttributeType"
@@ -1190,6 +1285,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2595",
       "description": "The value associated with the order attribute type specified in OrderAttributeType(2594).",
       "display": "OrderAttributeValue"
@@ -1202,6 +1298,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2596",
       "description": "Indicates that the party has taken a position on both a put and a call on the same underlying asset.",
       "display": "DeltaCrossed"
@@ -1214,6 +1311,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2597",
       "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to futures contracts.",
       "display": "ComplexEventFuturesPriceValuation"
@@ -1226,6 +1324,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2598",
       "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to options contracts.",
       "display": "ComplexEventOptionsPriceValuation"
@@ -1239,6 +1338,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventpvfinalpriceelectionfallbackcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2599",
       "description": "Specifies the fallback provisions for the hedging party in the determination of the final settlement price.",
       "display": "ComplexEventPVFinalPriceElectionFallback"

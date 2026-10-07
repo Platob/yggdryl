@@ -7,6 +7,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2400",
       "description": "Specifies an explicit business date for associated reference data or transaction. Used when an implicit date is not sufficiently specific.",
       "display": "EffectiveBusinessDate"
@@ -19,6 +20,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2401",
       "description": "Indicates if the list of orders was initially received manually (as opposed to electronically) or if it was entered manually (as opposed to entered by automated trading software).",
       "display": "ListManualOrderIndicator"
@@ -32,6 +34,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "entitlementsubtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2402",
       "description": "Subtype of an entitlement specified in EntitlementType(1775).",
       "display": "EntitlementSubType"
@@ -45,6 +48,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "quotemodeltypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2403",
       "description": "Quote model type",
       "display": "QuoteModelType"
@@ -57,6 +61,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2404",
       "description": "Free text for compliance information required for regulatory reporting.",
       "display": "ComplianceText"
@@ -70,6 +75,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "execmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2405",
       "description": "Specifies how the transaction was executed, e.g. via an automated execution platform or other method.",
       "display": "ExecMethod"
@@ -82,6 +88,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2406",
       "description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
       "display": "AllocRegulatoryLegRefID"
@@ -96,6 +103,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2407",
       "description": "FX spot rate.",
       "display": "ComplexEventSpotRate"
@@ -110,6 +118,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "2408",
       "description": "FX forward points added to spot rate. May be a negative value.",
       "display": "ComplexEventForwardPoints"
@@ -124,6 +133,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2409",
       "description": "FX spot rate.",
       "display": "LegComplexEventSpotRate"
@@ -138,6 +148,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "2410",
       "description": "FX forward points added to spot rate. May be a negative value.",
       "display": "LegComplexEventForwardPoints"
@@ -150,6 +161,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2411",
       "description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
       "display": "RegulatoryLegRefID"
@@ -162,6 +174,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:names": [
         "ratesourcereferemcepageheading"
       ],
@@ -177,6 +190,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2413",
       "description": "The security identifier of the instrument, instrument leg or underlying instrument with which the related instrument has correlation.",
       "display": "RelatedToSecurityID"
@@ -190,6 +204,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2414",
       "description": "Identifies class or source of the RelatedToSecurityID(2413) value.",
       "display": "RelatedToSecurityIDSource"
@@ -202,6 +217,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "2415",
       "description": "StreamXID(41303), LegStreamXID(41700) or UnderlyingStreamXID(42016) of the stream with which the related instrument has correlation.",
       "display": "RelatedToStreamXIDRef"
@@ -214,6 +230,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2416",
       "description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
       "display": "SideRegulatoryLegRefID"
@@ -226,6 +243,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "2417",
       "description": "The DividendPeriodXID(42293) of the stream dividend period with which the related instrument has correlation.",
       "display": "RelatedToDividendPeriodXIDRef"
@@ -238,6 +256,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2418",
       "description": "An identifier created by the trading party for the life cycle event associated with this report.",
       "display": "FirmTradeEventID"
@@ -252,6 +271,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2419",
       "description": "FX spot rate.",
       "display": "UnderlyingComplexEventSpotRate"
@@ -266,6 +286,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "2420",
       "description": "FX forward points added to spot rate. May be a negative value.",
       "display": "UnderlyingComplexEventForwardPoints"
@@ -278,6 +299,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2421",
       "description": "A reference to either the value of the FillExecID(1363) or an implicit position of a fills instance in the FillsGrp component.",
       "display": "FillRefID"
@@ -290,6 +312,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2422",
       "description": "Unique message identifier for an order request as assigned by the submitter of the request.",
       "display": "OrderRequestID"
@@ -302,6 +325,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2423",
       "description": "Unique message identifier for a mass order request as assigned by the submitter of the orders.",
       "display": "MassOrderRequestID"
@@ -314,6 +338,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2424",
       "description": "Unique message identifier for the response to a mass order request as assigned by the receiver of the orders.",
       "display": "MassOrderReportID"
@@ -327,6 +352,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "massorderrequeststatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2425",
       "description": "Status of mass order request.",
       "display": "MassOrderRequestStatus"
@@ -340,6 +366,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "massorderrequestresultcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2426",
       "description": "Request result of mass order request.",
       "display": "MassOrderRequestResult"
@@ -353,6 +380,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderresponselevelcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2427",
       "description": "The level of response requested from receiver of mass order messages. A default value should be bilaterally agreed.",
       "display": "OrderResponseLevel"
@@ -365,6 +393,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2428",
       "description": "Number of order entries.",
       "display": "NoOrderEntries"
@@ -378,6 +407,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderentryactioncodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "2429",
       "description": "Specifies the action to be taken for the given order.",
       "display": "OrderEntryAction"
@@ -390,6 +420,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2430",
       "description": "Unique identifier for an order within a single MassOrder(35=DJ) message that can be used as a reference in the MassOrderAck(35=DK) message.",
       "display": "OrderEntryID"
@@ -403,6 +434,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "exectypereasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2431",
       "description": "The initiating event when an ExecutionReport(35=8) is sent.",
       "display": "ExecTypeReason"
@@ -415,6 +447,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2432",
       "description": "Totals number of orders for a mass order or its acknowledgment being fragmented across multiple messages.",
       "display": "TotNoOrderEntries"
@@ -427,6 +460,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2433",
       "description": "Number of target party sub IDs in the repeating group.",
       "display": "NoTargetPartySubIDs"
@@ -439,6 +473,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2434",
       "description": "Party sub-identifier value within a target party repeating group.",
       "display": "TargetPartySubID"
@@ -452,6 +487,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partysubidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2435",
       "description": "Type of TargetPartySubID(2434) value.",
       "display": "TargetPartySubIDType"
@@ -464,6 +500,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2436",
       "description": "Unique identifier for the transfer instruction assigned by the submitter.",
       "display": "TransferInstructionID"
@@ -476,6 +513,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2437",
       "description": "The unique identifier assigned to the transfer entity once it is received, for example, by the CCP or the party governing the transfer process. Generally this same identifier for the transfer is used by all parties involved.",
       "display": "TransferID"
@@ -488,6 +526,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2438",
       "description": "Unique identifier for the transfer report message.",
       "display": "TransferReportID"
@@ -501,6 +540,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "transfertranstypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2439",
       "description": "Indicates the type of transfer transaction.",
       "display": "TransferTransType"
@@ -514,6 +554,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "transfertypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2440",
       "description": "Indicates the type of transfer request.",
       "display": "TransferType"
@@ -527,6 +568,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "transferscopecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2441",
       "description": "Indicates the type of transfer.",
       "display": "TransferScope"
@@ -540,6 +582,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "transferstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2442",
       "description": "Status of the transfer.",
       "display": "TransferStatus"
@@ -553,6 +596,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "transferrejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2443",
       "description": "Reason the transfer instruction was rejected.",
       "display": "TransferRejectReason"
@@ -566,6 +610,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "transferreporttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2444",
       "description": "Indicates the type of transfer report.",
       "display": "TransferReportType"
@@ -580,6 +625,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "2445",
       "description": "Timestamp of aggressive order or quote resulting in match event.",
       "display": "AggressorTime"
@@ -593,6 +639,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "sidecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "2446",
       "description": "Side of aggressive order or quote resulting in match event.",
       "display": "AggressorSide"
@@ -605,6 +652,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2447",
       "description": "Indicates if the instrument is in \"fast market\" state.",
       "display": "FastMarketIndicator"
@@ -617,6 +665,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2448",
       "description": "Indicate whether linkage handling is in effect for an instrument or not.",
       "display": "LinkageHandlingIndicator"
@@ -629,6 +678,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2449",
       "description": "Number of buy orders involved in a trade.",
       "display": "NumberOfBuyOrders"
@@ -641,6 +691,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2450",
       "description": "Number of sell orders involved in a trade.",
       "display": "NumberOfSellOrders"
@@ -654,6 +705,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "settlpricedeterminationmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2451",
       "description": "Calculation method used to determine settlement price.",
       "display": "SettlPriceDeterminationMethod"
@@ -666,6 +718,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2452",
       "description": "Message identifier for a statistics request.",
       "display": "MDStatisticReqID"
@@ -678,6 +731,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2453",
       "description": "Message identifier for a statistics report.",
       "display": "MDStatisticRptID"
@@ -690,6 +744,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2454",
       "description": "The short name or acronym for a set of statistic parameters.",
       "display": "MDStatisticName"
@@ -702,6 +757,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2455",
       "description": "Can be used to provide an optional textual description for a statistic.",
       "display": "MDStatisticDesc"
@@ -715,6 +771,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdstatistictypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2456",
       "description": "Type of statistic value.",
       "display": "MDStatisticType"
@@ -728,6 +785,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdstatisticscopecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2457",
       "description": "Entities used as basis for the statistics.",
       "display": "MDStatisticScope"
@@ -741,6 +799,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdstatisticsubscopecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2458",
       "description": "Sub-scope of the statistics to further reduce the entities used as basis for the statistics.",
       "display": "MDStatisticSubScope"
@@ -754,6 +813,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdstatisticscopetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2459",
       "description": "Scope details of the statistics to reduce the number of events being used as basis for the statistics.",
       "display": "MDStatisticScopeType"
@@ -766,6 +826,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2460",
       "description": "Dissemination frequency of statistics.",
       "display": "MDStatisticFrequencyPeriod"
@@ -779,6 +840,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderdelayunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2461",
       "description": "Time unit for MDStatisticFrequencyPeriod(2460).",
       "display": "MDStatisticFrequencyUnit"
@@ -791,6 +853,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2462",
       "description": "Number of time units between the calculation of the statistic and its dissemination. Can be used to defer or delay publication.",
       "display": "MDStatisticDelayPeriod"
@@ -804,6 +867,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderdelayunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2463",
       "description": "Time unit for MDStatisticDelayPeriod(2462).",
       "display": "MDStatisticDelayUnit"
@@ -817,6 +881,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdstatisticintervaltypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2464",
       "description": "Type of interval over which statistic is calculated.",
       "display": "MDStatisticIntervalType"
@@ -830,6 +895,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "timeunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2465",
       "description": "Time unit for MDStatisticIntervalType(2464).",
       "display": "MDStatisticIntervalTypeUnit"
@@ -842,6 +908,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2466",
       "description": "Length of time over which the statistic is calculated. Special meaning for a value of zero to express that there is no aggregation over time. Can be used with other interval types expressing relative date and time ranges to combine them with sliding window peaks, e.g. highest volume across 1 minute intervals of the previous day.",
       "display": "MDStatisticIntervalPeriod"
@@ -855,6 +922,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderdelayunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2467",
       "description": "Time unit for MDStatisticIntervalPeriod(2466).",
       "display": "MDStatisticIntervalUnit"
@@ -869,6 +937,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "2468",
       "description": "First day of range for which statistical data is collected.",
       "display": "MDStatisticStartDate"
@@ -883,6 +952,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "2469",
       "description": "Last day of range for which statistical data is collected.",
       "display": "MDStatisticEndDate"
@@ -896,6 +966,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimeOnly",
       "FIX:tag": "2470",
       "description": "Start time of the time range for which statistical data is collected.",
       "display": "MDStatisticStartTime"
@@ -909,6 +980,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimeOnly",
       "FIX:tag": "2471",
       "description": "End time of the time range for which statistical data is collected.",
       "display": "MDStatisticEndTime"
@@ -922,6 +994,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdstatisticratiotypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2472",
       "description": "Ratios between various entities.",
       "display": "MDStatisticRatioType"
@@ -935,6 +1008,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdstatisticrequestresultcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2473",
       "description": "Result returned in response to MarketDataStatisticsRequest (35=DO).",
       "display": "MDStatisticRequestResult"
@@ -947,6 +1021,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2474",
       "description": "Number of market data statistics.",
       "display": "NoMDStatistics"
@@ -959,6 +1034,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2475",
       "description": "Unique identifier for a statistic.",
       "display": "MDStatisticID"
@@ -973,6 +1049,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "2476",
       "description": "Time of calculation of a statistic.",
       "display": "MDStatisticTime"
@@ -986,6 +1063,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdstatisticstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2477",
       "description": "Status for a statistic to indicate its availability.",
       "display": "MDStatisticStatus"
@@ -998,6 +1076,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2478",
       "description": "Statistical value.",
       "display": "MDStatisticValue"
@@ -1011,6 +1090,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdstatisticvaluetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2479",
       "description": "Type of statistical value.",
       "display": "MDStatisticValueType"
@@ -1024,6 +1104,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderdelayunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2480",
       "description": "Unit of time for statistical value.",
       "display": "MDStatisticValueUnit"
@@ -1036,6 +1117,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2481",
       "description": "Byte length of encoded (non-ASCII characters) EncodedMDStatisticDesc(2482) field.",
       "display": "EncodedMDStatisticDescLen"
@@ -1048,6 +1130,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2482",
       "description": "Encoded (non-ASCII characters) representation of the MDStatisticDesc(2455) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the MDStatisticDesc(2455) field.",
       "display": "EncodedMDStatisticDesc"
@@ -1061,6 +1144,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "risklimitcheckstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2483",
       "description": "Indicates the status of the risk limit check performed on a trade for this allocation instance.",
       "display": "AllocRiskLimitCheckStatus"
@@ -1073,6 +1157,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2484",
       "description": "The unique transaction entity identifier assigned by the firm.",
       "display": "FirmTransactionID"
@@ -1085,6 +1170,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2485",
       "description": "The unique transaction entity identifier.",
       "display": "TransactionID"
@@ -1097,6 +1183,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2486",
       "description": "The reference to a wire transfer associated with the transaction. Wire references done via wire services such as Fedwire Output Message Accountabilitty Data \"OMAD\" or SWIFT Output Sequence Number \"OSN\".",
       "display": "WireReference"
@@ -1110,6 +1197,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collrptrejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2487",
       "description": "Reject reason code for rejecting the collateral report.",
       "display": "CollRptRejectReason"
@@ -1123,6 +1211,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collrptstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2488",
       "description": "The status of the collateral report.",
       "display": "CollRptStatus"
@@ -1135,6 +1224,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2489",
       "description": "Identifier assigned to a collection of trades so that they can be analyzed as one atomic unit for risk assessment and clearing.",
       "display": "PackageID"
@@ -1147,6 +1237,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2490",
       "description": "Ordinal number of the trade within a series of related trades.",
       "display": "TradeNumber"
@@ -1160,6 +1251,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "assetgroupcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2491",
       "description": "Indicates the broad product or asset classification. May be used to provide grouping for the product taxonomy (Product(460), SecurityType(167), etc.) and/or the risk taxonomy (AssetClass(1938), AssetSubClass(1939), AssetType(1940), etc.).",
       "display": "UnderlyingAssetGroup"
@@ -1174,6 +1266,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "2492",
       "description": "Used in pricing a group of individual Trade at Settlement (TAS) and Trade At Marker (TAM) contracts as an atomic unit. The value is the negotiated currency offset either at settlement (TAS) or at the time specified in the product definition (TAM). The final contract price is reported in LegLastPx(637).",
       "display": "LegDifferentialPrice"
@@ -1186,6 +1279,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2493",
       "description": "Encoded (non-ASCII characters) representation of the LegDocumentationText(2505) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the LegDocumentationText(2505) field.",
       "display": "EncodedLegDocumentationText"
@@ -1198,6 +1292,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2494",
       "description": "Byte length of encoded (non-ASCII characters) EncodedLegDocumentationText(2493) field.",
       "display": "EncodedLegDocumentationTextLen"
@@ -1210,6 +1305,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2495",
       "description": "Contractual currency forming the basis of a financing agreement and associated transactions. Usually, but not always, the same as the trade currency.",
       "display": "LegAgreementCurrency"
@@ -1223,6 +1319,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2496",
       "description": "A reference to the date the underlying agreement specified by LegAgreementID(2498) and LegAgreementDesc(2497) was executed.",
       "display": "LegAgreementDate"
@@ -1235,6 +1332,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2497",
       "description": "The full name of the base standard agreement, annexes and amendments in place between the principals applicable to a financing transaction. See https://fpml.org/coding-scheme/master-agreement-type for derivative values.",
       "display": "LegAgreementDesc"
@@ -1247,6 +1345,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2498",
       "description": "A common reference to the applicable standing agreement between the counterparties to a financing transaction.",
       "display": "LegAgreementID"
@@ -1259,6 +1358,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2499",
       "description": "The version of the master agreement.",
       "display": "LegAgreementVersion"

@@ -1385,12 +1385,12 @@ fn excluded_side(trade: &mut FixMsg, group: &str, index: usize, error: &Error) {
 }
 
 /// A side member's text as the root tag it is written under reads it: a
-/// quantity or a price as its decimal, anything else as the text.
+/// quantity or a price as its decimal, through the decimal's one text
+/// reader, anything else as the text.
 fn side_value(root: i32, value: &str) -> Scalar {
     match root {
-        32 | 6 => value
-            .parse::<Decimal>()
-            .map_or_else(|_| Scalar::from(value), Scalar::from),
+        32 | 6 => Scalar::from_decimal_text(&DataType::Decimal, value)
+            .unwrap_or_else(|_| Scalar::from(value)),
         _ => Scalar::from(value),
     }
 }
@@ -2060,14 +2060,19 @@ fn build_book_operation(
 }
 
 /// An entry's decimal: the typed value where the row holds one, else the
-/// text the entry states.
+/// text the entry states, read through the decimal's one text reader.
 fn decimal(typed: Option<&Scalar>, rendered: Option<&str>) -> Reading<Decimal> {
     match typed.filter(|value| !value.is_null()) {
         Some(value) => Decimal::from_scalar(value)
             .map(Some)
             .ok_or_else(|| format!("{value:?}")),
         None => rendered.map_or(Ok(None), |text| {
-            text.parse().map(Some).map_err(|_| format!("{text:?}"))
+            Scalar::from_decimal_text(&DataType::Decimal, text)
+                .ok()
+                .as_ref()
+                .and_then(Decimal::from_scalar)
+                .map(Some)
+                .ok_or_else(|| format!("{text:?}"))
         }),
     }
 }

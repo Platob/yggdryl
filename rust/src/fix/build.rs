@@ -34,6 +34,7 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 use smol_str::{SmolStr, format_smolstr};
 
+use super::field::FixShape;
 use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
@@ -1360,7 +1361,13 @@ impl<'registry> Builder<'registry> {
         match (&facts, source) {
             (Some(facts), Some(source)) => {
                 let translated = self.memo.translation(source, facts, text);
-                typed_translation(field, facts.codes(), text, translated.as_deref())
+                typed_translation(
+                    field,
+                    facts.shape(),
+                    facts.codes(),
+                    text,
+                    translated.as_deref(),
+                )
             }
             _ => typed_spelling_checked(self.registry, field, text),
         }
@@ -2503,39 +2510,61 @@ fn serie_of(field: &Field, item: Field) -> Field {
     )
 }
 
-/// The value one FIX wire spelling states, where FIX spells it its own way.
+/// The value one FIX wire spelling states, where FIX spells it its own way:
+/// the one dispatch, by the field's datatype, to the type's own FIX door.
 ///
-/// A boolean is not one: `Y`, `N` and a bridge's `yes` or `no` are spellings
-/// the generic value contract reads, as a column cast does. A datetime is,
-/// and the codec parses none of it: every datetime field is read by
+/// The codec parses no value itself. A datetime column is read by
 /// [`DateTime64::from_fix_text`](crate::DateTime64), the datetime's own
 /// reader, which takes the crate's ISO spellings as they stand -
 /// `20260821-10:30:00.123456`, the bare `20260821`, a stated zone, an offset
-/// after one blank - and the four only FIX writes: a bridge's one digit
-/// run, a clock that stops at its minutes, a `TZTimeOnly` read on the epoch
-/// day, and a numeric offset closed by `s`.
+/// after one blank - and the spellings only FIX writes: a bridge's one
+/// digit run, a clock that stops at its minutes, a zoned clock with no date
+/// read on the epoch day, and a numeric offset closed by `s`; a column the
+/// dictionary declares a `TZTimeOnly` ([`FixShape::TzTimeOnly`], the one
+/// FIX datatype the crate datatype does not recover) is read by
+/// [`DateTime64::from_fix_clock`](crate::DateTime64), the clock door, which
+/// also reads a clock stating no zone as a wall clock in the column's zone,
+/// on the epoch day. A time-of-day column is read by
+/// [`Time32::from_fix_text`](crate::Time32) or
+/// [`Time64::from_fix_text`](crate::Time64), which add the clock half of
+/// those two spellings to the ISO clock. Every other datatype answers
+/// `None`: a date, a duration, a number, a flag, a code and a string spell
+/// nothing FIX's own, and the field's value contract reads them through
+/// each type's one text reader.
 ///
-/// Three FIX datatypes land on `DateTime64` and this reads all three, because
-/// only their spelling differs: `UTCTimestamp` states a date and no zone,
-/// `TZTimestamp` states both, and `TZTimeOnly` states a zone and no date. The
-/// zone a value states outranks the column's; a value stating none is a wall
-/// clock in the column's zone, which is what `UTCTimestamp` means by saying
-/// nothing; and a column stating no zone - a `LocalMktDate`, a
-/// `LocalMktDatetime` - holds a local market value, so a reading that states
-/// a zone is not one and is left to the value contract, which refuses it.
+/// The zone a value states outranks the column's; a value stating none is
+/// a wall clock in the column's zone, which is what `UTCTimestamp` means by
+/// saying nothing; and a column stating no zone - a `LocalMktDate`, a
+/// `LocalMktDatetime` - holds a local market value, so a reading that
+/// states a zone is refused here by name. A refusal is the type's own,
+/// naming the byte the text stopped being a spelling at, and is what the
+/// row's anomaly carries.
 ///
-/// What is answered is the typed value, in the column's own zone - the
-/// instant is the same under any - so the value contract restates the unit
-/// and reads no text a second time.
-pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
-    let DataType::DateTime64 { timezone, .. } = dtype else {
-        return None;
+/// What is answered is the typed value, in the column's own zone and at the
+/// unit the text spelled - the instant is the same under any - so the value
+/// contract restates the unit and reads no text a second time.
+pub(super) fn wire_spelling(field: &Field, shape: FixShape, text: &str) -> Option<Result<Scalar>> {
+    let read = match field.dtype() {
+        DataType::DateTime64 { timezone, .. } => {
+            let read = match shape {
+                FixShape::TzTimeOnly => crate::DateTime64::from_fix_clock(text, *timezone),
+                FixShape::Typed => crate::DateTime64::from_fix_text(text, *timezone),
+            };
+            read.and_then(|read| {
+                if timezone.is_naive() && !read.timezone().is_naive() {
+                    return Err(invalid_value(
+                        field,
+                        "expected a local market value stating no zone, got a zoned reading",
+                    ));
+                }
+                Scalar::datetime64(read.count(), read.unit(), *timezone)
+            })
+        }
+        DataType::Time32(_) => crate::Time32::from_fix_text(text).map(Scalar::Time32),
+        DataType::Time64(_) => crate::Time64::from_fix_text(text).map(Scalar::Time64),
+        _ => return None,
     };
-    let read = crate::DateTime64::from_fix_text(text, *timezone).ok()?;
-    if timezone.is_naive() != read.timezone().is_naive() {
-        return None;
-    }
-    Scalar::datetime64(read.count(), read.unit(), *timezone).ok()
+    Some(read)
 }
 
 /// Types one wire spelling under one field, translating its code first.
@@ -2557,7 +2586,7 @@ pub(super) fn typed_spelling_checked(
 ) -> Result<Scalar> {
     let codes = registry.codes_document(field);
     let translated = codes.and_then(|codes| super::codes::translate(codes, text));
-    typed_translation(field, codes, text, translated)
+    typed_translation(field, field.as_fix().shape(), codes, text, translated)
 }
 
 /// [`typed_spelling`] for a field the registry keeps, the translation
@@ -2572,14 +2601,24 @@ pub(super) fn typed_spelling_remembered(
     let memo = registry.memo();
     let facts = memo.facts(field, || registry.codes_document_shared(field));
     let translated = memo.translation(field, &facts, text);
-    typed_translation(field, facts.codes(), text, translated.as_deref()).unwrap_or(Scalar::Null)
+    typed_translation(
+        field,
+        facts.shape(),
+        facts.codes(),
+        text,
+        translated.as_deref(),
+    )
+    .unwrap_or(Scalar::Null)
 }
 
 /// [`typed_spelling`], the translation already made: `translated` is the wire
 /// value the field's code set gives `text` at `at`, or nothing where the set
-/// gives none, exactly as the builder's own table answers it.
+/// gives none, exactly as the builder's own table answers it; `shape` is
+/// what the field's declared FIX datatype says of its text, read off the
+/// field once by whoever holds it.
 fn typed_translation(
     field: &Field,
+    shape: FixShape,
     codes: Option<&str>,
     text: &str,
     translated: Option<&str>,
@@ -2603,19 +2642,42 @@ fn typed_translation(
     {
         return Ok(member);
     }
-    // Every wire value is text, and the generic value contract reads it
-    // best effort - a number, a flag, an ISO instant - exactly as a column
-    // cast does. Only a datetime is read first, by the datetime's own FIX
-    // door: the zone a column implies and the spellings only FIX writes are
-    // what the generic contract must not learn.
-    let candidate =
-        wire_spelling(field.dtype(), spelling).unwrap_or_else(|| Scalar::from(spelling));
-    // The text contract reads the spelling and hands the value through
-    // the field's own contract, so what it answers is already the stored
-    // form and is not checked a second time. A spelling it refuses is
-    // offered to the field as it stands, which is where a raw payload
-    // that is not a spelling of anything still lands.
-    crate::text::prepare_text(candidate, field).or_else(|_| field.scalar(Scalar::from(spelling)))
+    // A byte leaf's text is the decode a row holds of its bytes - the
+    // entry's own spelling of a `data` field - and those bytes are the
+    // value, never a base64 reading of the text, which the generic text
+    // contract would try first.
+    if is_binary(dtype) {
+        return field.scalar(Scalar::from(spelling));
+    }
+    // Every wire value is text, and the field's value contract reads it
+    // best effort - a number, a flag, a date, an ISO instant - through the
+    // type's one text reader, exactly as a column cast does. A clock is
+    // read first, by its type's own FIX door: the zone a column implies and
+    // the spellings only FIX writes are what the generic contract must not
+    // learn, and the door's refusal - naming the byte - is the one the row
+    // carries.
+    let candidate = match wire_spelling(field, shape, spelling) {
+        Some(read) => read?,
+        None => Scalar::from(spelling),
+    };
+    // The text contract reads the spelling and hands the value through the
+    // field's own contract, so what it answers is already the stored form
+    // and is not checked a second time. A coded field's text that names no
+    // code of its set and is no value of its type missed the vocabulary,
+    // not the type: the refusal names the set - `no code of
+    // partysubidtypecodeset is spelled "TraderName"` - where an uncoded
+    // field keeps the type's own.
+    match crate::text::prepare_text(candidate, field) {
+        Ok(value) => Ok(value),
+        Err(_) if codes.is_some() && translated.is_none() => {
+            let set = field.as_fix().codeset().unwrap_or("its code set");
+            Err(invalid_value(
+                field,
+                format_args!("no code of {set} is spelled {spelling:?}"),
+            ))
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn invalid_value(field: &Field, error: impl std::fmt::Display) -> Error {

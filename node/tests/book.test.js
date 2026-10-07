@@ -273,7 +273,7 @@ test('layoutCandles over nothing, or over rows it cannot read, is the empty layo
 test('layoutCandles places every column from its own edges, so buckets of unequal length never share a place', async () => {
   const { layoutCandles, parseInstant } = await load('chart.js')
   // Daily Zurich candles from the day saving time ends: the first is 25 hours, the rest 24.
-  const midnight = (day) => (day === 25 ? `2026-10-${day}T00:00:00.000000000+02:00[Europe/Zurich]` : `${new Date(Date.UTC(2026, 9, day)).toISOString().slice(0, 10)}T00:00:00.000000000+01:00[Europe/Zurich]`)
+  const midnight = (day) => (day === 25 ? `2026-10-${day}T00:00:00+02:00[Europe/Zurich]` : `${new Date(Date.UTC(2026, 9, day)).toISOString().slice(0, 10)}T00:00:00+01:00[Europe/Zurich]`)
   const days = Array.from({ length: 21 }, (_, index) => ({
     start: midnight(25 + index),
     end: midnight(26 + index),
@@ -1233,9 +1233,9 @@ const SERVICE = Object.freeze({
   // One book per key, by key: a ticker-keyed one, an ISIN-keyed one stating
   // its ticker, and the one keyed by the ISIN that states none.
   'api/tickers': [
-    { key: 'ABBN.S', ticker: 'ABBN.S', crosscode: '3:0:ABBN.S', from: '2026-08-14T12:46:39.000000000Z', to: '2026-08-14T21:59:47.000000000Z', books: 33 },
-    { key: 'CH0012214059', ticker: 'HOLN', crosscode: '3:0:CH0012214059', from: '2026-08-14T12:46:39.000000000Z', to: '2026-08-14T12:49:40.000000000Z', books: 9 },
-    { key: 'XX0000000000', ticker: null, crosscode: '3:0:XX0000000000', from: '2026-08-14T12:46:39.000000000Z', to: '2026-08-14T12:47:00.000000000Z', books: 2 },
+    { key: 'ABBN.S', ticker: 'ABBN.S', crosscode: '3:0:ABBN.S', from: '2026-08-14T12:46:39Z', to: '2026-08-14T21:59:47Z', books: 33 },
+    { key: 'CH0012214059', ticker: 'HOLN', crosscode: '3:0:CH0012214059', from: '2026-08-14T12:46:39Z', to: '2026-08-14T12:49:40Z', books: 9 },
+    { key: 'XX0000000000', ticker: null, crosscode: '3:0:XX0000000000', from: '2026-08-14T12:46:39Z', to: '2026-08-14T12:47:00Z', books: 2 },
   ],
   'api/candles': (request) => ({ table: request.params.table, ticker: request.params.ticker, candles: serviceCandles(request.params.tz) }),
   'api/book': (request) => {

@@ -296,7 +296,7 @@ fn data_end(
     let opens = entry.key_bytes().end() as usize + 1;
     let stated = stated
         .and_then(|value| std::str::from_utf8(value).ok())
-        .and_then(|text| text.parse::<usize>().ok());
+        .and_then(crate::integer::integer_from_text_as::<usize>);
     if let Some(span) = stated.and_then(|length| opens.checked_add(length))
         && cut_at(entry, &entries[after..], span)
     {

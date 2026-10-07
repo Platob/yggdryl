@@ -377,6 +377,11 @@ fn datatype_disagreement(stored: &Field, tag: i32, incoming: &Field) -> Error {
         stored.dtype().id().temporal_family(),
         incoming.dtype().id().temporal_family(),
     ) {
+        (Some("datetime"), Some("time"))
+            if stored.as_fix().shape() == super::field::FixShape::TzTimeOnly =>
+        {
+            ": the stored instant reads a clock on the epoch day, at the offset it states or else as a wall clock in the column's zone"
+        }
         (Some("datetime"), Some("time")) => {
             ": the stored instant reads a clock only with its offset, a bare time of day as null"
         }

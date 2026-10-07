@@ -76,7 +76,7 @@ No answer carries what authenticates a location: a table's `url` and the text of
 | `side` | `bid` or `ask`, any case, keeping the entries alive on that side and the `delta` and `events` rows about it - the leg one states there, or the side it takes or tags, resting there or not, so an order taking an entry off the side is kept; a two-sided quote is on both; absent keeps both |
 | `limit` | the most `events` rows, default and cap `max_event_rows` |
 
-Instants in an answer are the crate's canonical zoned spelling, RFC 9557 - nine fraction digits and, for a place zone, the offset with the bracketed name, `2026-08-14T14:00:00.000000000+02:00[Europe/Zurich]`, UTC as `2026-08-14T12:00:00.000000000Z` - and are what a display sends straight back as the `from`, `to` and `at` of its next question. Decimals are text, so nothing is rounded; UUIDs are their canonical text; the counts - `books`, `alive`, `delta`, `events` - and an `events` row's integer columns are JSON integers.
+Instants in an answer are the crate's canonical zoned spelling, RFC 9557 - no fraction where it is zero, else the shortest of three, six or nine digits that spells it exactly, and, for a place zone, the offset with the bracketed name, `2026-08-14T14:00:00+02:00[Europe/Zurich]`, UTC as `2026-08-14T12:00:00Z` - and are what a display sends straight back as the `from`, `to` and `at` of its next question. Decimals are text, so nothing is rounded; UUIDs are their canonical text; the counts - `books`, `alive`, `delta`, `events` - and an `events` row's integer columns are JSON integers.
 
 ## The audit download
 
@@ -174,8 +174,8 @@ Two minutes of `ACME` quotes folded into delta books and written as `marketdata`
     // No ISIN stated: the ticker is the key.
     assert_eq!((acme["key"].as_str(), acme["ticker"].as_str()), (Some("ACME"), Some("ACME")));
     assert_eq!(acme["crosscode"].as_str(), Some("3:0:ACME"));
-    assert_eq!(acme["from"].as_str(), Some("2026-01-05T10:00:05.000000000Z"));
-    assert_eq!(acme["to"].as_str(), Some("2026-01-05T10:01:06.000000000Z"));
+    assert_eq!(acme["from"].as_str(), Some("2026-01-05T10:00:05Z"));
+    assert_eq!(acme["to"].as_str(), Some("2026-01-05T10:01:06Z"));
     assert_eq!(acme["books"], Scalar::from(2_u64));
 
     // The minute candles of the range, `to` exclusive.
@@ -190,7 +190,7 @@ Two minutes of `ACME` quotes folded into delta books and written as `marketdata`
     let candles = answer["candles"].sequence_rows().expect("a list");
     assert_eq!(candles.len(), 2);
     let first = candles[0].as_struct().expect("an object");
-    assert_eq!(first["start"].as_str(), Some("2026-01-05T10:00:00.000000000Z"));
+    assert_eq!(first["start"].as_str(), Some("2026-01-05T10:00:00Z"));
     let bid = first["bid"].as_struct().expect("a reading");
     assert_eq!((bid["open"].as_str(), bid["close"].as_str()), (Some("100"), Some("100")));
     assert_eq!(first["ask"].as_struct().and_then(|ask| ask["open"].as_str()), Some("101"));
@@ -281,12 +281,12 @@ curl 'http://127.0.0.1:40799/api/tickers?table=books'
 ```
 
 ```json
-[{"books":3,"crosscode":"3:0:CH0012005267","from":"2026-08-14T12:46:39.000000000Z","key":"CH0012005267","ticker":"NOVN","to":"2026-08-14T16:25:01.000000000Z"},
- {"books":2,"crosscode":"3:0:CH0012214059","from":"2026-08-14T12:46:39.000000000Z","key":"CH0012214059","ticker":"HOLN","to":"2026-08-14T12:46:41.000000000Z"},
- {"books":2,"crosscode":"3:0:CH0012221716","from":"2026-08-14T12:46:39.000000000Z","key":"CH0012221716","ticker":"ABBN.S","to":"2026-08-14T12:46:40.000000000Z"},
- {"books":1,"crosscode":"3:0:TW0001605004","from":"2026-08-14T01:03:17.000000000Z","key":"TW0001605004","ticker":"1605","to":"2026-08-14T01:03:18.000000000Z"},
- {"books":1,"crosscode":"3:0:TW0002454006","from":"2026-08-14T21:59:46.000000000Z","key":"TW0002454006","ticker":"2454","to":"2026-08-14T21:59:47.000000000Z"},
- {"books":1,"crosscode":"3:0:XX0000000001","from":"2026-08-14T12:46:58.000000000Z","key":"XX0000000001","ticker":"EXAMPLECO.S","to":"2026-08-14T12:46:59.000000000Z"}]
+[{"books":3,"crosscode":"3:0:CH0012005267","from":"2026-08-14T12:46:39Z","key":"CH0012005267","ticker":"NOVN","to":"2026-08-14T16:25:01Z"},
+ {"books":2,"crosscode":"3:0:CH0012214059","from":"2026-08-14T12:46:39Z","key":"CH0012214059","ticker":"HOLN","to":"2026-08-14T12:46:41Z"},
+ {"books":2,"crosscode":"3:0:CH0012221716","from":"2026-08-14T12:46:39Z","key":"CH0012221716","ticker":"ABBN.S","to":"2026-08-14T12:46:40Z"},
+ {"books":1,"crosscode":"3:0:TW0001605004","from":"2026-08-14T01:03:17Z","key":"TW0001605004","ticker":"1605","to":"2026-08-14T01:03:18Z"},
+ {"books":1,"crosscode":"3:0:TW0002454006","from":"2026-08-14T21:59:46Z","key":"TW0002454006","ticker":"2454","to":"2026-08-14T21:59:47Z"},
+ {"books":1,"crosscode":"3:0:XX0000000001","from":"2026-08-14T12:46:58Z","key":"XX0000000001","ticker":"EXAMPLECO.S","to":"2026-08-14T12:46:59Z"}]
 ```
 
 The masked number one line states, `XX0000000001`, keys a book of its own; a line stating Holcim's ticker and no ISIN stands in Holcim's book, `CH0012214059`, through the lifecycle's [registry](isin-registry.md). A `ticker` parameter is a key first, and one naming no key is resolved to the one key whose books state it as their ticker: `HOLN` below is Holcim's key. Novartis's three books are the order the venue acknowledged, its restatement and its expiry at its `ExpireTime(126)`.
@@ -299,10 +299,10 @@ curl 'http://127.0.0.1:40799/api/candles?table=books&ticker=HOLN&from=2026-08-14
 
 ```json
 {"candles":[{"ask":null,"askqty":null,"bid":{"close":"72.3","high":"72.3","low":"72.3","open":"72.3"},"bidqty":"50","books":2,
-             "end":"2026-08-14T15:00:00.000000000+02:00[Europe/Zurich]","mid":null,"spread":null,
-             "start":"2026-08-14T14:00:00.000000000+02:00[Europe/Zurich]"}],
- "from":"2026-08-14T00:00:00.000000000+02:00[Europe/Zurich]","interval":"1h","table":"books","ticker":"HOLN","timezone":"Europe/Zurich",
- "to":"2026-08-15T00:00:00.000000000+02:00[Europe/Zurich]"}
+             "end":"2026-08-14T15:00:00+02:00[Europe/Zurich]","mid":null,"spread":null,
+             "start":"2026-08-14T14:00:00+02:00[Europe/Zurich]"}],
+ "from":"2026-08-14T00:00:00+02:00[Europe/Zurich]","interval":"1h","table":"books","ticker":"HOLN","timezone":"Europe/Zurich",
+ "to":"2026-08-15T00:00:00+02:00[Europe/Zurich]"}
 ```
 
 The book standing at the end of the day, rebuilt from the key's first book over the empty book a walk starts from: complete, one entry alive, the bid level it makes, no ask:
@@ -314,15 +314,15 @@ curl 'http://127.0.0.1:40799/api/book?table=books&ticker=HOLN&at=2026-08-15T00:0
 ```json
 {"alive":1,"asklimits":[],"askqty":null,"bestask":null,"bestbid":"72.3",
  "bidlimits":[{"price":"72.3","quantity":"50","tradable":true,"uuids":["01a0004f-6b94-7000-910a-dde30e7da6b6"]}],
- "bidqty":"50","complete":true,"crosscode":"3:0:CH0012214059","currunix":"2026-08-14T14:46:40.020000000+02:00[Europe/Zurich]","delta":1,
+ "bidqty":"50","complete":true,"crosscode":"3:0:CH0012214059","currunix":"2026-08-14T14:46:40.020+02:00[Europe/Zurich]","delta":1,
  "events":0,"imbalance":"1","iscrossed":false,"isincode":"CH0012214059","islocked":false,"midpoint":null,"spread":null,"ticker":"HOLN"}
 ```
 
-The audit of the day, gzip-coded and named after the book key and the range in UTC; the header line and one row per order of the books' `delta` - no book of the day is whole, so no row is an alive entry, and none recorded an execution, so no row is an event - cut to their first 120 characters here. Its `content-length` is this checkout's: a row's `srcuuids` are the UUIDs of the capture lines its message was read from, and a line's UUID derives from the URL of the log it was read from, so a checkout standing elsewhere compresses to a few bytes more or fewer:
+The audit of the day, gzip-coded and named after the book key and the range in UTC; the header line and one row per order of the books' `delta` - no book of the day is whole, so no row is an alive entry, and none recorded an execution, so no row is an event - cut to their first 114 characters here. Its `content-length` is this checkout's: a row's `srcuuids` are the UUIDs of the capture lines its message was read from, and a line's UUID derives from the URL of the log it was read from, so a checkout standing elsewhere compresses to a few bytes more or fewer:
 
 ```bash
 curl -s -D - -o audit.csv.gz 'http://127.0.0.1:40799/api/audit.csv.gz?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-15T00:00:00&tz=Europe/Zurich'
-gunzip -c audit.csv.gz | head -3 | cut -c1-120
+gunzip -c audit.csv.gz | head -3 | cut -c1-114
 gunzip -c audit.csv.gz | wc -l
 ```
 
@@ -335,9 +335,9 @@ content-type: application/gzip
 date: Sat, 03 Oct 2026 12:47:03 GMT
 server: yggdryl/0.1.19
 
-bookunix,role,curruuid,crossuuid,crosscode,currhashcode,crosshashcode,srcuuids,currunix,creaunix,recdunix,exprunix,prevu
-2026-08-14T12:46:39.743000000Z,delta,01a0004f-6a7f-7000-bf6b-1827df1245d3,00000000-0000-8000-9618-3c1c758ba489,10:1:0007
-2026-08-14T12:46:40.020000000Z,delta,01a0004f-6b94-7000-910a-dde30e7da6b6,00000000-0000-8000-af7f-b667691dd2c5,10:1:XM8N
+bookunix,role,curruuid,crossuuid,crosscode,currhashcode,crosshashcode,srcuuids,currunix,creaunix,recdunix,exprunix
+2026-08-14T12:46:39.743Z,delta,01a0004f-6a7f-7000-bf6b-1827df1245d3,00000000-0000-8000-9618-3c1c758ba489,10:1:0007
+2026-08-14T12:46:40.020Z,delta,01a0004f-6b94-7000-910a-dde30e7da6b6,00000000-0000-8000-af7f-b667691dd2c5,10:1:XM8N
 3
 ```
 
@@ -350,7 +350,7 @@ curl -s 'http://127.0.0.1:40799/api/candles?table=books&ticker=HOLN&from=2026-08
 
 ```text
 HTTP/1.1 400 Bad Request
-{"error":"invalid record value at $.to: expected an instant after `from` (2026-08-13T22:00:00.000000000Z), got 2026-08-13T22:00:00.000000000Z"}
+{"error":"invalid record value at $.to: expected an instant after `from` (2026-08-13T22:00:00Z), got 2026-08-13T22:00:00Z"}
 ```
 
 The display itself answers at the endpoint:

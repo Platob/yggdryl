@@ -888,7 +888,7 @@ fn a_built_workbook_round_trips_every_sheet_cell_by_cell() {
             .scalar(at("E2"))
             .into_json()
             .unwrap(),
-        "\"2024-01-01T12:00:00.000\""
+        "\"2024-01-01T12:00:00\""
     );
 }
 

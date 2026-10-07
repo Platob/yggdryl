@@ -287,7 +287,7 @@ use yggdryl::{DataType, Scalar, TimeUnit};
 let span = Scalar::interval(1, 2, 3, TimeUnit::MonthDayNano)?;
 assert!(DataType::utf8().scalar(span).is_err());
 
-// A duration has one, at the unit's own width.
+// A duration has one, its fraction written short: none where it is zero.
 assert_eq!(
     DataType::utf8().scalar(Scalar::duration64(90, TimeUnit::Second)?)?,
     Scalar::from("PT90S")

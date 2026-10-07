@@ -8,6 +8,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2300",
       "description": "Total amount traded for this account (i.e. quantity * price) expressed in units of currency.",
       "display": "AllocGrossTradeAmt"
@@ -22,6 +23,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2301",
       "description": "The positive or negative change in quantity when this report is a trade correction or continuation.",
       "display": "LastQtyChanged"
@@ -34,6 +36,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2302",
       "description": "Specifies the version of a trade or contract. This is used by systems or trading platforms in conjunction with TradeID(1003) to uniquely identify the version of a trade or contract. If used the conditions for a change of version are subject to bilateral agreement. It is recommended to change the version only for significant updates to the business entity rather than for minor changes to trade details or systematic distribution of reports. Examples where the version would change are trade quantity modification, customer account assignment or trade novation.",
       "display": "TradeVersion"
@@ -46,6 +49,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2303",
       "description": "Indicates that the trade or event being reported occurred in the past and the trade is terminated or no longer active.",
       "display": "HistoricalReportIndicator"
@@ -58,6 +62,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2304",
       "description": "The number of asset attribute entries in the group.",
       "display": "NoAssetAttributes"
@@ -70,6 +75,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2305",
       "description": "Specifies the name of the attribute. See https://fixtrading.org/packages/asset-attribute-type for code list of applicable asset attribute types.",
       "display": "AssetAttributeType"
@@ -82,6 +88,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2306",
       "description": "Specifies the value of the asset attribute.",
       "display": "AssetAttributeValue"
@@ -94,6 +101,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2307",
       "description": "Limit or lower acceptable value of the attribute.",
       "display": "AssetAttributeLimit"
@@ -106,6 +114,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2308",
       "description": "Number of asset attribute entries in the group.",
       "display": "NoLegAssetAttributes"
@@ -118,6 +127,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2309",
       "description": "Specifies the name of the attribute. See https://fixtrading.org/packages/asset-attribute-type for code list of applicable asset attribute types.",
       "display": "LegAssetAttributeType"
@@ -130,6 +140,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2310",
       "description": "Specifies the value of the attribute.",
       "display": "LegAssetAttributeValue"
@@ -142,6 +153,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2311",
       "description": "Limit or lower acceptable value of the attribute.",
       "display": "LegAssetAttributeLimit"
@@ -154,6 +166,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2312",
       "description": "Number of asset attribute entries in the group.",
       "display": "NoUnderlyingAssetAttributes"
@@ -166,6 +179,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2313",
       "description": "Specifies the name of the attribute. See https://fixtrading.org/packages/asset-attribute-type for code list of applicable asset attribute types.",
       "display": "UnderlyingAssetAttributeType"
@@ -178,6 +192,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2314",
       "description": "Specifies the value of the attribute.",
       "display": "UnderlyingAssetAttributeValue"
@@ -190,6 +205,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2315",
       "description": "Limit or lower acceptable value of the attribute.",
       "display": "UnderlyingAssetAttributeLimit"
@@ -203,6 +219,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "risklimitreportstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2316",
       "description": "Status of risk limit report.",
       "display": "RiskLimitReportStatus"
@@ -216,6 +233,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "risklimitreportrejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2317",
       "description": "The reason for rejecting the PartyRiskLimitsReport(35=CM) or PartyRiskLimitsUpdateReport(35=CR).",
       "display": "RiskLimitReportRejectReason"
@@ -228,6 +246,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2318",
       "description": "The unique identifier of the PartyRiskLimitCheckRequest(35=DF) message.",
       "display": "RiskLimitCheckRequestID"
@@ -240,6 +259,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2319",
       "description": "The unique and static identifier, at the business entity level, of a risk limit check request.",
       "display": "RiskLimitCheckID"
@@ -253,6 +273,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "risklimitchecktranstypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2320",
       "description": "Specifies the transaction type of the risk limit check request.",
       "display": "RiskLimitCheckTransType"
@@ -266,6 +287,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "risklimitchecktypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2321",
       "description": "Specifies the type of limit check message.",
       "display": "RiskLimitCheckType"
@@ -278,6 +300,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2322",
       "description": "Specifies the message reference identifier of the risk limit check request message.",
       "display": "RiskLimitCheckRequestRefID"
@@ -291,6 +314,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "risklimitcheckrequesttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2323",
       "description": "Specifies the type of limit amount check being requested.",
       "display": "RiskLimitCheckRequestType"
@@ -305,6 +329,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2324",
       "description": "Specifies the amount being requested for approval.",
       "display": "RiskLimitCheckAmount"
@@ -318,6 +343,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "risklimitcheckrequeststatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2325",
       "description": "Indicates the status of the risk limit check request.",
       "display": "RiskLimitCheckRequestStatus"
@@ -331,6 +357,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "risklimitcheckrequestresultcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2326",
       "description": "Result of the credit limit check request.",
       "display": "RiskLimitCheckRequestResult"
@@ -345,6 +372,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2327",
       "description": "The credit/risk limit amount approved.",
       "display": "RiskLimitApprovedAmount"
@@ -357,6 +385,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2328",
       "description": "The unique identifier of the PartyActionRequest(35=DH) message.",
       "display": "PartyActionRequestID"
@@ -370,6 +399,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyactiontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2329",
       "description": "Specifies the type of action to take or was taken for a given party.",
       "display": "PartyActionType"
@@ -382,6 +412,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2330",
       "description": "Used to indicate whether the message being sent is to test the receiving application's availability to process the message. When set to \"Y\" the message is a test message. If not specified, the message is by default not a test message.",
       "display": "ApplTestMessageIndicator"
@@ -394,6 +425,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2331",
       "description": "The unique identifier of the PartyActionReport(35=DI) message as assigned by the message sender.",
       "display": "PartyActionReportID"
@@ -407,6 +439,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyactionresponsecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2332",
       "description": "Specifies the action taken as a result of the PartyActionType(2239) of the PartyActionRequest(35=DH) message.",
       "display": "PartyActionResponse"
@@ -420,6 +453,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyactionrejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2333",
       "description": "Specifies the reason the PartyActionRequest(35=DH) was rejected.",
       "display": "PartyActionRejectReason"
@@ -432,6 +466,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2334",
       "description": "The reference identifier of the PartyRiskLimitCheckRequest(35=DF) message, or a similar out of band message, that contained the approval for the risk/credit limit check request.",
       "display": "RefRiskLimitCheckID"
@@ -445,6 +480,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "refrisklimitcheckidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2335",
       "description": "Specifies which type of identifier is specified in RefRiskLimitCheckID(2334) field.",
       "display": "RefRiskLimitCheckIDType"
@@ -457,6 +493,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2336",
       "description": "The time interval for which the clip size limit applies. The velocity time unit is expressed in RiskLimitVelocityUnit(2337).",
       "display": "RiskLimitVelocityPeriod"
@@ -470,6 +507,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "timeunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2337",
       "description": "Unit of time in which RiskLimitVelocityPeriod(2336) is expressed.",
       "display": "RiskLimitVelocityUnit"
@@ -483,6 +521,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2338",
       "description": "Qualifies the value of RequestingPartyRole(1660).",
       "display": "RequestingPartyRoleQualifier"
@@ -496,6 +535,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "risklimitcheckmodeltypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2339",
       "description": "Specifies the type of credit limit check model workflow to apply for the specified party",
       "display": "RiskLimitCheckModelType"
@@ -510,6 +550,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "MonthYear",
       "FIX:tag": "2340",
       "description": "Used with derivatives when an event is express as a month-year with optional day or month or week of month.",
       "display": "EventMonthYear"
@@ -524,6 +565,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "MonthYear",
       "FIX:tag": "2341",
       "description": "Used with derivatives when an event is express as a month-year with optional day or month or week of month.",
       "display": "LegEventMonthYear"
@@ -538,6 +580,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "MonthYear",
       "FIX:tag": "2342",
       "description": "Used with derivatives when an event is express as a month-year with optional day or month or week of month.",
       "display": "UnderlyingEventMonthYear"
@@ -551,6 +594,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "risklimitcheckstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2343",
       "description": "Indicates the status of the risk limit check performed on a trade.",
       "display": "RiskLimitCheckStatus"
@@ -564,6 +608,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "risklimitcheckstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2344",
       "description": "Indicates the status of the risk limit check performed on the side of a trade.",
       "display": "SideRiskLimitCheckStatus"
@@ -576,6 +621,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2345",
       "description": "Number of entitlement types in the repeating group.",
       "display": "NoEntitlementTypes"
@@ -590,6 +636,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2346",
       "description": "Leg Mid price/rate.",
       "display": "LegMidPx"
@@ -603,6 +650,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytransactiontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2347",
       "description": "Specifies the regulatory mandate or rule that the transaction complies with.",
       "display": "RegulatoryTransactionType"
@@ -616,6 +664,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "assetgroupcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2348",
       "description": "Indicates the broad product or asset classification. May be used to provide grouping for the product taxonomy (Product(460), SecurityType(167), etc.) and/or the risk taxonomy (AssetClass(1938), AssetSubClass(1939), AssetType(1940), etc.).",
       "display": "LegAssetGroup"
@@ -628,6 +677,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2349",
       "description": "Specifies the price decimal precision of the instrument.",
       "display": "PricePrecision"
@@ -640,6 +690,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2350",
       "description": "Identifier of the collateral portfolio when reporting on a portfolio basis.",
       "display": "CollateralPortfolioID"
@@ -652,6 +703,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2351",
       "description": "Byte length of encoded (non-ASCII characters) EncodedComplianceText(2352) field.",
       "display": "EncodedComplianceTextLen"
@@ -664,6 +716,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2352",
       "description": "Encoded (non-ASCII characters) representation of the ComplianceText(2404) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the ComplianceText(2404) field.",
       "display": "EncodedComplianceText"
@@ -676,6 +729,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2353",
       "description": "Indicates the number of contract periods associated with the minimum trading unit for a given contract duration resulting in the number of total traded contracts.",
       "display": "TradingUnitPeriodMultiplier"
@@ -688,6 +742,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2354",
       "description": "Indicates the number of contract periods associated with the minimum trading unit for a given contract duration resulting in the number of total traded contracts.",
       "display": "LegTradingUnitPeriodMultiplier"
@@ -701,6 +756,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrisklimitstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2355",
       "description": "The status of risk limits for a party.",
       "display": "PartyRiskLimitStatus"
@@ -714,6 +770,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "remunerationindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2356",
       "description": "Indicates whether the trade price was adjusted for compensation (i.e. includes a mark-up, mark-down or commission) in the price paid.",
       "display": "RemunerationIndicator"
@@ -728,6 +785,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2357",
       "description": "Expresses the total quantity traded over the life of the contract when LegLastQty(1418) is to be repeated periodically over the term of the contract. The value is the product of LegLastQty(1418) and LegTradingUnitPeriodMultiplier(2353).",
       "display": "LegTotalTradeQty"
@@ -742,6 +800,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2358",
       "description": "Expresses the quantity bought/sold when LastQty is expressed in contracts. Used in addition to LegLastQty(1418), it is the product of LegLastQty(1418) and LegContractMultiplier(614).",
       "display": "LegLastMultipliedQty"
@@ -756,6 +815,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2359",
       "description": "Expresses the full total monetary value of the traded contract. The value is the product of LegLastPx(637) and LegTotalTradeQty(2357) or LegTotalTradeMultipliedQty(2360), if priced in units instead of contracts.",
       "display": "LegTotalGrossTradeAmt"
@@ -770,6 +830,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2360",
       "description": "Expresses the total trade quantity in units where LegContractMultiplier(614) is not 1. The value is the product of LegTotalTradeQty(2357) and LegContractMultiplier(614).",
       "display": "LegTotalTradeMultipliedQty"
@@ -782,6 +843,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2361",
       "description": "Use to identify a netting or compression group where trades in the group were netted or compressed. This includes both terminating trades and any remnant trades that result from the operation.",
       "display": "CompressionGroupID"
@@ -794,6 +856,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2362",
       "description": "Identifies an order or trade that should not be matched to an opposite order or trade if both buy and sell orders for the same asset contain the same SelfMatchPreventionID(2362) and submitted by the same firm.",
       "display": "SelfMatchPreventionID"
@@ -806,6 +869,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2363",
       "description": "Indicates the number of contract periods associated with the minimum trading unit for a given contract duration resulting in the number of total traded contracts.",
       "display": "UnderlyingTradingUnitPeriodMultiplier"
@@ -819,6 +883,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "posmaintactioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2364",
       "description": "Indicates action that triggered the Position Report.",
       "display": "PosReportAction"
@@ -833,6 +898,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "2365",
       "description": "FX forward points added to SettlPrice(730). The value is expressed in decimal form and may be a negative.",
       "display": "SettlForwardPoints"
@@ -846,6 +912,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "settlcurrfxratecalccodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "2366",
       "description": "Specifies whether LastPx(31) [TradeCaptureReport] or SettlPrice(730) [PositionReport] should be multiplied or divided.",
       "display": "SettlPriceFxRateCalc"
@@ -860,6 +927,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2367",
       "description": "Expresses the total quantity traded over the life of the contract when LastQty(32) is repeated periodically over the term of the contract. The value is the product of LastQty(32) and TradingUnitPeriodMultiplier(2353).",
       "display": "TotalTradeQty"
@@ -874,6 +942,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2368",
       "description": "Expresses the quantity bought or sold when LastQty(32) is expressed in number of contracts. Used in addition to LastQty(32). It is the product of LastQty(32) and ContractMultiplier(231).",
       "display": "LastMultipliedQty"
@@ -888,6 +957,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2369",
       "description": "Expresses the full total monetary value of the traded contract. The value is the product of LastPx(31) and TotalTradeQty(2367) or TotalTradeMultipliedQty(2370), if priced in units instead of contracts.",
       "display": "TotalGrossTradeAmt"
@@ -902,6 +972,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2370",
       "description": "Expresses the total trade quantity in units where ContractMultiplier(231) is not 1. The value is the product of TotalTradeQty(2367) and ContractMultiplier(231).",
       "display": "TotalTradeMultipliedQty"
@@ -914,6 +985,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2371",
       "description": "Encoded (non-ASCII characters) representation of the TradeContinuationText(2374) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the TradeContinuationText(2374) field.",
       "display": "EncodedTradeContinuationText"
@@ -926,6 +998,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2372",
       "description": "Byte length of encoded (non-ASCII characters) EncodedTradeContinuationText(2371) field.",
       "display": "EncodedTradeContinuationTextLen"
@@ -938,6 +1011,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2373",
       "description": "Indicates whether the trade or position was entered into as an intra-group transaction, i.e. between two units of the same parent entity having majority ownership interest in both counterparties.",
       "display": "IntraFirmTradeIndicator"
@@ -950,6 +1024,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2374",
       "description": "Free form text to specify additional trade continuation information or data.",
       "display": "TradeContinuationText"
@@ -963,6 +1038,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "taxonomytypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "2375",
       "description": "The type of identification taxonomy used to identify the security.",
       "display": "TaxonomyType"
@@ -976,6 +1052,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2376",
       "description": "Used to further qualify the value of PartyRole(452).",
       "display": "PartyRoleQualifier"
@@ -989,6 +1066,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2377",
       "description": "Used to further qualify the value of DerivativeInstrumentPartyRole(1295).",
       "display": "DerivativeInstrumentPartyRoleQualifier"
@@ -1002,6 +1080,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2378",
       "description": "Used to further qualify the value of InstrumentPartyRole(1051).",
       "display": "InstrumentPartyRoleQualifier"
@@ -1015,6 +1094,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2379",
       "description": "Used to further qualify the value of LegInstrumentPartyRole(2257).",
       "display": "LegInstrumentPartyRoleQualifier"
@@ -1028,6 +1108,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2380",
       "description": "Used to further qualify the value of LegProvisionPartyRole(40536).",
       "display": "LegProvisionPartyRoleQualifier"
@@ -1041,6 +1122,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2381",
       "description": "Used to further qualify the value of Nested2PartyRole(759).",
       "display": "Nested2PartyRoleQualifier"
@@ -1054,6 +1136,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2382",
       "description": "Used to further qualify the value of Nested3PartyRole(951).",
       "display": "Nested3PartyRoleQualifier"
@@ -1067,6 +1150,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2383",
       "description": "Used to further qualify the value of Nested4PartyRole(1417).",
       "display": "Nested4PartyRoleQualifier"
@@ -1080,6 +1164,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2384",
       "description": "Used to further qualify the value of NestedPartyRole(538).",
       "display": "NestedPartyRoleQualifier"
@@ -1093,6 +1178,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2385",
       "description": "Used to further qualify the value of ProvisionPartyRole(40177).",
       "display": "ProvisionPartyRoleQualifier"
@@ -1106,6 +1192,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2386",
       "description": "Used to further qualify the value of RequestedPartyRole(1509).",
       "display": "RequestedPartyRoleQualifier"
@@ -1119,6 +1206,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradecontingencycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2387",
       "description": "Indicates the contingency attribute for a trade in an asset class that may be contingent on the clearing of a corresponding paired trade (for example Exchange for Physical (EFP), Exchange for Swap (EFS), Exchange for Related (EFR) or Exchange for Option (EFO), collectively called EFRPs). Once the paired trade clears or fails to clear, the related trade (the trade which carries this attribute) ceases to exist.",
       "display": "TradeContingency"
@@ -1132,6 +1220,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2388",
       "description": "Used to further qualify the value of RootPartyRole(1119).",
       "display": "RootPartyRoleQualifier"
@@ -1145,6 +1234,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2389",
       "description": "Used to further qualify the value of SettlPartyRole(784).",
       "display": "SettlPartyRoleQualifier"
@@ -1157,6 +1247,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2390",
       "description": "A reference or control identifier or number used as a trade confirmation key.",
       "display": "TradeConfirmationReferenceID"
@@ -1170,6 +1261,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partydetailrolequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2391",
       "description": "Used to further qualify the value of UnderlyingInstrumentPartyRole(1061).",
       "display": "UnderlyingInstrumentPartyRoleQualifier"
@@ -1182,6 +1274,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2392",
       "description": "The reference identifier to the PartyRiskLimitCheckRequest(35=DF), or a similar out of band message, message that contained the approval or rejection for risk/credit limit check for this allocation.",
       "display": "AllocRefRiskLimitCheckID"
@@ -1195,6 +1288,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "refrisklimitcheckidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2393",
       "description": "Specifies which type of identifier is specified in AllocRefRiskLimitCheckID(2392) field.",
       "display": "AllocRefRiskLimitCheckIDType"
@@ -1209,6 +1303,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2394",
       "description": "The total amount of the limit that has been drawn down against the counterparty. This includes the amount for prior trades. It may or may not include the amount for the given trade, specified in LastLimitAmt(1632), depending upon whether the given trade is considered pending.",
       "display": "LimitUtilizationAmt"
@@ -1223,6 +1318,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2395",
       "description": "The limit for the counterparty. This represents the total limit amount, independent of any amount already utilized.",
       "display": "LimitAmt"
@@ -1236,6 +1332,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrolecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2396",
       "description": "Indicates the scope of the limit by role.",
       "display": "LimitRole"
@@ -1249,6 +1346,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytradeidscopecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2397",
       "description": "Specifies the scope to which the RegulatoryTradeID(1903) applies. Used when a trade must be assigned more than one identifier, e.g. one for the clearing member and another for the client on a cleared trade as with the principal model in Europe.",
       "display": "RegulatoryTradeIDScope"
@@ -1262,6 +1360,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytradeidscopecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2398",
       "description": "Specifies the scope to which the SideRegulatoryTradeID(1972) applies. Used when a trade must be assigned more than one identifier, e.g. one for the clearing member and another for the client on a cleared trade as with the principal model in Europe.",
       "display": "SideRegulatoryTradeIDScope"
@@ -1275,6 +1374,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytradeidscopecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2399",
       "description": "Specifies the scope to which the AllocRegulatoryTradeID(1909) applies. Used when a trade must be assigned more than one identifier, e.g. one for the clearing member and another for the client on a cleared trade as with the principal model in Europe.",
       "display": "AllocRegulatoryTradeIDScope"

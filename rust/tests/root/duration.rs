@@ -217,3 +217,107 @@ mod internal {
         );
     }
 }
+
+/// `Duration32::from_text` and `Duration64::from_text`, the ISO doors of
+/// the duration family, and the short spelling a duration renders through.
+mod from_text {
+    use yggdryl::{Duration32, Duration64, Error, Scalar, TimeUnit, Timezone};
+
+    #[test]
+    fn a_settings_grammar_is_no_cell_and_a_count_past_the_width_is_refused() {
+        // The refusal first: `30s` and `1.5` are what a setting spells, and
+        // a cell reads neither - two grammars, each refusing the other's
+        // spelling where it is read.
+        for text in [
+            "30s", "1.5", "250ms", "1d", "1e3", "", "later", "PT1.5M", "01:30",
+        ] {
+            let error = Duration64::from_text(text).unwrap_err();
+            assert!(
+                matches!(
+                    &error,
+                    Error::Parse {
+                        target: "duration",
+                        ..
+                    }
+                ),
+                "{text:?}: {error}"
+            );
+            assert!(Duration32::from_text(text).is_err(), "{text:?}");
+        }
+        // The narrow width refuses a count it cannot hold by name.
+        for text in ["PT3000000000S", "-PT2147483649S", "PT2147483.648S"] {
+            let error = Duration32::from_text(text).unwrap_err();
+            assert!(
+                matches!(&error, Error::InvalidRecord { reason, .. } if reason.contains("duration32")),
+                "{text:?}: {error}"
+            );
+            assert!(Duration64::from_text(text).is_ok(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn both_grammars_read_the_same_count_at_the_fractions_unit() {
+        for (text, count, unit) in [
+            ("PT90S", 90, TimeUnit::Second),
+            ("00:01:30", 90, TimeUnit::Second),
+            ("-P1DT2H3M4.5S", -93_784_500, TimeUnit::Millisecond),
+            ("-26:03:04.500", -93_784_500, TimeUnit::Millisecond),
+            ("25:30:00", 91_800, TimeUnit::Second),
+            ("PT1,5S", 1_500, TimeUnit::Millisecond),
+            ("PT0.000001S", 1, TimeUnit::Microsecond),
+            ("-PT0.000000001S", -1, TimeUnit::Nanosecond),
+            ("PT2147483647S", i64::from(i32::MAX), TimeUnit::Second),
+        ] {
+            let read =
+                Duration64::from_text(text).unwrap_or_else(|error| panic!("{text:?}: {error}"));
+            assert_eq!((read.count(), read.unit()), (count, unit), "{text:?}");
+            assert!(read.timezone().is_naive());
+            let narrow =
+                Duration32::from_text(text).unwrap_or_else(|error| panic!("{text:?}: {error}"));
+            assert_eq!(
+                (i64::from(narrow.count()), narrow.unit()),
+                (count, unit),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_duration_prints_no_fraction_where_it_is_zero_and_the_shortest_exact_one_otherwise() {
+        for (count, unit, spelled) in [
+            (90, TimeUnit::Second, "PT90S"),
+            (90_000, TimeUnit::Millisecond, "PT90S"),
+            (90_000_000, TimeUnit::Microsecond, "PT90S"),
+            (90_000_000_000, TimeUnit::Nanosecond, "PT90S"),
+            (1_500, TimeUnit::Millisecond, "PT1.500S"),
+            (1_500_000, TimeUnit::Microsecond, "PT1.500S"),
+            (1_500_000_000, TimeUnit::Nanosecond, "PT1.500S"),
+            (-1_500, TimeUnit::Millisecond, "-PT1.500S"),
+            (1, TimeUnit::Microsecond, "PT0.000001S"),
+            (1_000, TimeUnit::Nanosecond, "PT0.000001S"),
+            (1, TimeUnit::Nanosecond, "PT0.000000001S"),
+            (0, TimeUnit::Nanosecond, "PT0S"),
+        ] {
+            let value = Duration64::new(count, unit, Timezone::NAIVE).unwrap();
+            assert_eq!(value.to_string(), spelled, "{count} {unit}");
+            // The round trip: the spelling read at the column's unit is the count.
+            let read = Duration64::from_text(spelled).unwrap();
+            assert_eq!(
+                Scalar::Duration64(read).temporal_count_at(unit),
+                Some(count),
+                "{spelled}"
+            );
+            if let Ok(narrow) = i32::try_from(count) {
+                let value = Duration32::new(narrow, unit, Timezone::NAIVE).unwrap();
+                assert_eq!(value.to_string(), spelled, "{count} {unit} at 32 bits");
+            }
+        }
+        // A day count has no classic spelling and keeps its structural form.
+        assert!(
+            Duration64::new(1, TimeUnit::Day, Timezone::NAIVE)
+                .unwrap()
+                .to_string()
+                .starts_with("1@d["),
+        );
+    }
+}

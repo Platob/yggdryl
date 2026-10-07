@@ -5,7 +5,8 @@
       "value": "Y",
       "name": "OrderInitiatorIsAggressor",
       "aliases": [
-        "Yes"
+        "Yes",
+        "Aggressor"
       ],
       "doc": "Order initiator is aggressor"
     },
@@ -13,7 +14,8 @@
       "value": "N",
       "name": "OrderInitiatorIsPassive",
       "aliases": [
-        "No"
+        "No",
+        "Passive"
       ],
       "doc": "Order initiator is passive"
     }

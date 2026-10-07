@@ -286,7 +286,7 @@ fn a_d_cell_reads_its_iso_8601_text() {
     assert_eq!(day.value().into_json().unwrap(), "\"2024-01-02\"");
     assert_eq!(
         sheet.scalar(at("B1")).into_json().unwrap(),
-        "\"2024-01-02T12:30:00.000\""
+        "\"2024-01-02T12:30:00\""
     );
     assert_eq!(
         sheet.scalar(at("C1")),

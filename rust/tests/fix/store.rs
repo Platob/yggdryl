@@ -3408,10 +3408,21 @@ mod committed {
     /// the published description carried a run of spaces at each of its five
     /// line breaks - `issued          in` - and the crate's field shard was
     /// written again over that one text. No count of the census below moved.
+    /// It last moved when every field took its declared FIX datatype as
+    /// `FIX:datatype` - the specification's own spelling, `TZTimeOnly`,
+    /// `UTCTimestamp`, `Qty`, a code-set field its set's base type - the one
+    /// fact the crate datatype does not recover, which the parse reads a
+    /// `TZTimeOnly`'s dateless clock by: the generator wrote it on all 6,241
+    /// fields and `aggressorindicatorcodeset` gained the bridge's `Aggressor`
+    /// and `Passive` as aliases of its two members, and the crate's own
+    /// registered fields state their family's (`UTCTimestamp` for a clock,
+    /// `int` for a count, `Exchange` for the MIC), so the crate's field
+    /// shard, its `metadata` group and the fixed row component were written
+    /// again. No count of the census below moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 10_979_937_492_620_481_597);
+        assert_eq!(registry.stable_hash(), 8_131_206_900_106_093_781);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

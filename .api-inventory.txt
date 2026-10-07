@@ -511,6 +511,7 @@ impl<'field> FixField<'field>
   pub fn msgcat(&self) -> Option<&'field str>  (the symbolic four-character `FIX:msgcat` business-category metadata a message definition declares; `MarketDataKind::from_name` resolves it, and the fixed row stores the member's `int32` code)
   pub fn counter(&self) -> Result<Option<i32>>  (positive decimal digits only)
   pub fn codeset(&self) -> Option<&'field str>  (the name of the FIX:codeset set this field's values are drawn from; the dictionary holds the members, and FixRegistry::codeset_of answers them)
+  pub fn datatype(&self) -> Option<&'field str>  (the FIX:datatype the field was declared under, as the specification spells it - `UTCTimestamp`, `TZTimeOnly`, `Qty`; a field typed by a code set states the set's base type; the fact the crate datatype does not recover, which the codec reads a `TZTimeOnly`'s dateless clock by)
   pub fn directions(&self) -> FixDirections<'field>  (tag 385's FIX:directions rules in document order; nothing where absent, which reads by the defaults)
   pub fn idmap(&self) -> FixIdSources<'field>  (the FIX:idmap entries in document order: the identifier map, key, follow flag and PartyID(448) role this field's value states; nothing where absent)
   pub fn parents(&self) -> Words<'field>  (the FIX:parents array of identifier types - folded words, nearest first - holding the parents of the identifier this field states, `["origclordid"]` on `ClOrdID(11)`; borrowed, nothing where absent; a registry answers it, or the name's, through `parents_of`)
@@ -539,6 +540,8 @@ impl<'field> FixField<'field>
   pub fn remove_counter(&mut self) -> Result<Option<i32>>
   pub fn set_codeset(&mut self, name: &str) -> Result<()>  (names the set this field reads its values by; a name no store can file is InvalidRecord; empty removes; the members are stated with FixRegistry::set_codeset)
   pub fn remove_codeset(&mut self) -> Option<String>  (answers the name it held)
+  pub fn set_datatype(&mut self, name: &str) -> Result<()>  (one word of ASCII letters and digits, else InvalidMetadataValue naming FIX:datatype; empty removes)
+  pub fn remove_datatype(&mut self) -> Option<String>  (answers the name it held)
   pub fn set_directions(&mut self, directions: &[FixDirection]) -> Result<()>  (empty removes; refuses a code named twice under a folded spelling, an empty code, no pattern, an empty pattern, or a pattern regex::bytes refuses; the field is unchanged. Whether a code is one of the set is the dictionary's question: MsgDirection::from_registry resolves each against the set in force and drops one outside it with this setter's own refusal as the warning)
   pub fn remove_directions(&mut self) -> Result<Option<Vec<FixDirection>>>
   pub fn set_idmap(&mut self, sources: &[FixIdSource]) -> Result<()>  (empty removes; refuses a role that is not ASCII letters and digits, or one map and key twice - Error::Parse, the field unchanged; the stored key is the folded word an `IdType` spells, an upper-case key or an alias of a member refused when a document is read; a registry refuses a role on any tag but 448)
@@ -6590,6 +6593,7 @@ impl DataType
   pub const fn date_type(&self) -> Option<DateType>
 pub struct Date32  (an i32 day count since the Unix epoch beside TimeUnit::Day and Timezone::NAIVE; Copy, Eq/Ord/Hash, Display, serde; Value, TemporalValue)
   pub fn new(count: i32, unit: TimeUnit, timezone: Timezone) -> Result<Self>
+  pub fn from_text(text: &str) -> Result<Self>  (the date's ISO door over the one date reader: `YYYY-MM-DD` and the compact `YYYYMMDD` - FIX's UTCDateOnly and LocalMktDate - a clock after the date and a day no calendar has refused; Date64 is the day times its milliseconds)
   pub const fn count(&self) -> i32
   pub const fn unit(&self) -> TimeUnit
   pub const fn timezone(&self) -> Timezone
@@ -6626,11 +6630,13 @@ impl DataType
   pub const fn time_type(&self) -> Option<TimeType>
 pub struct Time32  (an i32 count since midnight at second or millisecond resolution, Timezone::NAIVE; Copy, Eq/Ord/Hash, Display, serde; Value, TemporalValue)
   pub fn new(count: i32, unit: TimeUnit, timezone: Timezone) -> Result<Self>
+  pub fn from_text(text: &str) -> Result<Self>  (the 32-bit clock's ISO door over the one time reader: `HH:MM:SS[.f]`, the compact `HHMMSS[.f]`, one to nine fraction digits, an hour past the day folded; the resolution the digits spell, seconds or milliseconds, a finer exact fraction narrowed to milliseconds and an inexact one refused; a zone refused naming DateTime64)
   pub const fn count(&self) -> i32
   pub const fn unit(&self) -> TimeUnit
   pub const fn timezone(&self) -> Timezone
 pub struct Time64  (an i64 count since midnight at microsecond or nanosecond resolution; the same derives and impls)
   pub fn new(count: i64, unit: TimeUnit, timezone: Timezone) -> Result<Self>
+  pub fn from_text(text: &str) -> Result<Self>  (the 64-bit clock's ISO door: what Time32::from_text reads, at the resolution the digits spell widened to microseconds, the width's floor)
   pub const fn count(&self) -> i64
   pub const fn unit(&self) -> TimeUnit
   pub const fn timezone(&self) -> Timezone
@@ -6686,11 +6692,13 @@ impl DataType
   pub const fn duration_type(&self) -> Option<DurationType>
 pub struct Duration32  (an i32 elapsed count at a scalar unit, Timezone::NAIVE; Copy, Eq/Ord/Hash, Display, serde; Value, TemporalValue)
   pub fn new(count: i32, unit: TimeUnit, timezone: Timezone) -> Result<Self>
+  pub fn from_text(text: &str) -> Result<Self>  (the 32-bit duration's ISO door over the one cell reader: `[-]PnDTnHnMn.nS` and the plain `[-]H+:MM:SS[.f]`, hours never folded; the setting grammar `30s` is no cell and refused)
   pub const fn count(&self) -> i32
   pub const fn unit(&self) -> TimeUnit
   pub const fn timezone(&self) -> Timezone
 pub struct Duration64  (an i64 elapsed count at a scalar unit; the same derives and impls)
   pub fn new(count: i64, unit: TimeUnit, timezone: Timezone) -> Result<Self>
+  pub fn from_text(text: &str) -> Result<Self>  (the 64-bit duration's ISO door: what Duration32::from_text reads, at the width the count needs)
   pub const fn count(&self) -> i64
   pub const fn unit(&self) -> TimeUnit
   pub const fn timezone(&self) -> Timezone

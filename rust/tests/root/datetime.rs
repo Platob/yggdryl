@@ -387,3 +387,235 @@ mod from_text {
         }
     }
 }
+
+/// The short spelling every datetime renders through: no fraction where it
+/// is zero, the shortest exact one otherwise, the zone suffix unchanged.
+mod text {
+    use yggdryl::{DateTime64, Scalar, TimeUnit, Timezone};
+
+    /// 2026-08-14T14:52:55Z.
+    const INSTANT: i64 = 1_786_719_175;
+
+    fn zone(name: &str) -> Timezone {
+        Timezone::from_str(name).expect("a zone the registry knows")
+    }
+
+    #[test]
+    fn a_datetime_prints_no_fraction_where_it_is_zero_and_the_shortest_exact_one_otherwise() {
+        let per = |unit: TimeUnit| match unit {
+            TimeUnit::Second => 1,
+            TimeUnit::Millisecond => 1_000,
+            TimeUnit::Microsecond => 1_000_000,
+            _ => 1_000_000_000,
+        };
+        // The fractions a spelling may carry, in nanoseconds, and the digits
+        // each spells: nothing, three, six, nine.
+        let fractions = [
+            (0, ""),
+            (500_000_000, ".500"),
+            (1_000, ".000001"),
+            (1, ".000000001"),
+        ];
+        // The zones, and the suffix each writes after the local reading - the
+        // 14th of August is summer time in Zurich.
+        let zones = [
+            (Timezone::UTC, "2026-08-14T14:52:55", "Z"),
+            (Timezone::NAIVE, "2026-08-14T14:52:55", ""),
+            (zone("+02:00"), "2026-08-14T16:52:55", "+02:00"),
+            (
+                zone("Europe/Zurich"),
+                "2026-08-14T16:52:55",
+                "+02:00[Europe/Zurich]",
+            ),
+            (zone("-08:00"), "2026-08-14T06:52:55", "-08:00"),
+        ];
+        for unit in [
+            TimeUnit::Second,
+            TimeUnit::Millisecond,
+            TimeUnit::Microsecond,
+            TimeUnit::Nanosecond,
+        ] {
+            for (nanos, digits) in fractions {
+                // A fraction the unit cannot hold is not a count at it.
+                if nanos % (1_000_000_000 / per(unit)) != 0 {
+                    continue;
+                }
+                let count = INSTANT * per(unit) + nanos / (1_000_000_000 / per(unit));
+                for (held, local, suffix) in &zones {
+                    let value = DateTime64::new(count, unit, *held).unwrap();
+                    let spelled = format!("{local}{digits}{suffix}");
+                    assert_eq!(value.to_string(), spelled, "{count} {unit} {held}");
+                    // The round trip: the spelling read in the column's zone
+                    // and restated at its unit is the count, and the zone is
+                    // the one the text states or, stating none, the column's.
+                    let read = DateTime64::from_text(&spelled, *held).unwrap();
+                    assert_eq!(
+                        Scalar::DateTime64(read).temporal_count_at(unit),
+                        Some(count),
+                        "{spelled}"
+                    );
+                    assert_eq!(read.timezone(), *held, "{spelled}");
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    //! The two FIX doors, which the FIX codec alone reaches.
+
+    use yggdryl::internals::datetime::{from_fix_clock, from_fix_text};
+    use yggdryl::{Error, TimeUnit, Timezone};
+
+    fn zone(name: &str) -> Timezone {
+        Timezone::from_str(name).expect("a zone the registry knows")
+    }
+
+    #[test]
+    fn the_clock_door_refuses_a_dated_value_and_what_is_no_clock() {
+        // The refusal first: a `TZTimeOnly` states a clock and no date, so a
+        // date is refused by its shape and the rest naming the byte.
+        for (text, position) in [
+            ("20060901-07:39Z", 0),
+            ("20060901-07:39:12", 0),
+            ("20260930", 6),
+            ("7:39Z", 0),
+            ("07:60Z", 0),
+            ("07:39:61", 0),
+            ("07:39:12 Z", 8),
+            ("0930001", 6),
+            ("", 0),
+            ("soon", 0),
+        ] {
+            let error = from_fix_clock(text, Timezone::UTC).unwrap_err();
+            assert!(
+                matches!(&error, Error::Parse { position: held, .. } if *held == position),
+                "{text:?}: {error}"
+            );
+        }
+        // An extended date opens as a minute clock and breaks at the zone
+        // its `-` is taken for; whatever the byte, it is no clock.
+        assert!(from_fix_clock("2026-09-30", Timezone::UTC).is_err());
+        // The datetime door keeps refusing a clock stating neither a date
+        // nor a zone: a `TZTimeOnly` is the one field that reads one.
+        for text in ["07:39:12", "07:39", "093000"] {
+            assert!(from_fix_text(text, Timezone::UTC).is_err(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn the_clock_door_reads_a_clock_on_the_epoch_day_zoned_by_the_text_or_the_column() {
+        // A stated zone resolves into the instant, which the offset may
+        // carry behind the epoch; the zone held is the text's.
+        for (text, count, unit, held) in [
+            (
+                "07:39:12.123+05:30",
+                7_752_123,
+                TimeUnit::Millisecond,
+                "+05:30",
+            ),
+            ("07:39Z", 27_540, TimeUnit::Second, "UTC"),
+            ("0739Z", 27_540, TimeUnit::Second, "UTC"),
+            ("00:30+05:30", -18_000, TimeUnit::Second, "+05:30"),
+            ("07:39:12 +0530", 7_752, TimeUnit::Second, "+05:30"),
+            (
+                "093000123+05:30",
+                14_400_123,
+                TimeUnit::Millisecond,
+                "+05:30",
+            ),
+        ] {
+            for naive in [Timezone::UTC, Timezone::NAIVE, zone("Asia/Tokyo")] {
+                let read =
+                    from_fix_clock(text, naive).unwrap_or_else(|error| panic!("{text:?}: {error}"));
+                assert_eq!((read.count(), read.unit()), (count, unit), "{text:?}");
+                assert_eq!(read.timezone(), zone(held), "{text:?}");
+            }
+        }
+        // A clock stating no zone is the wall clock in the zone given, on
+        // the epoch day: in UTC the count is the clock itself.
+        for (text, count, unit) in [
+            ("093000", 34_200, TimeUnit::Second),
+            ("09:30:00", 34_200, TimeUnit::Second),
+            ("09:30", 34_200, TimeUnit::Second),
+            ("0930", 34_200, TimeUnit::Second),
+            ("093000123", 34_200_123, TimeUnit::Millisecond),
+            (
+                "09:30:00.000000001",
+                34_200_000_000_001,
+                TimeUnit::Nanosecond,
+            ),
+            // An hour past the day carries into the next, as a datetime's does.
+            ("25:00:00", 90_000, TimeUnit::Second),
+        ] {
+            let utc = from_fix_clock(text, Timezone::UTC)
+                .unwrap_or_else(|error| panic!("{text:?}: {error}"));
+            assert_eq!(
+                (utc.count(), utc.unit(), utc.timezone()),
+                (count, unit, Timezone::UTC),
+                "{text:?}"
+            );
+            let wall = from_fix_clock(text, Timezone::NAIVE).unwrap();
+            assert_eq!(
+                (wall.count(), wall.timezone()),
+                (count, Timezone::NAIVE),
+                "{text:?}"
+            );
+        }
+        // In a place zone the wall clock is placed by the zone's rules on
+        // the epoch day: Kolkata was five and a half hours ahead.
+        let kolkata = from_fix_clock("093000", zone("Asia/Kolkata")).unwrap();
+        assert_eq!(
+            (kolkata.count(), kolkata.timezone()),
+            (34_200 - 19_800, zone("Asia/Kolkata"))
+        );
+        // The typed `TZTimeOnly` prints as the instant it is.
+        assert_eq!(
+            from_fix_clock("093000", Timezone::UTC).unwrap().to_string(),
+            "1970-01-01T09:30:00Z"
+        );
+    }
+
+    #[test]
+    fn the_datetime_door_stands_as_it_was() {
+        // 2026-08-14T14:52:55Z.
+        let at = from_fix_text("20260814-14:52:55", Timezone::UTC).unwrap();
+        assert_eq!(
+            (at.count(), at.unit(), at.timezone()),
+            (1_786_719_175, TimeUnit::Second, Timezone::UTC)
+        );
+        assert_eq!(at.to_string(), "2026-08-14T14:52:55Z");
+        // A bare date under a naive column is that day's midnight, a wall clock.
+        let day = from_fix_text("20260930", Timezone::NAIVE).unwrap();
+        assert_eq!(
+            (day.count(), day.timezone()),
+            (20_726 * 86_400, Timezone::NAIVE)
+        );
+        assert_eq!(day.to_string(), "2026-09-30T00:00:00");
+        // The digit run, the minute clock, the zoned dateless clock and the
+        // closed offset read as `rust/tests/root/temporal.rs` pins them.
+        assert_eq!(
+            from_fix_text("20240102101530123", Timezone::UTC)
+                .unwrap()
+                .count(),
+            1_704_190_530_123
+        );
+        assert_eq!(
+            from_fix_text("20060901-07:39Z", Timezone::NAIVE)
+                .unwrap()
+                .count(),
+            1_157_096_340
+        );
+        assert_eq!(
+            from_fix_text("07:39Z", Timezone::NAIVE).unwrap().count(),
+            27_540
+        );
+        assert_eq!(
+            from_fix_text("20260101-10:00:00 +0400s", Timezone::UTC)
+                .unwrap()
+                .count(),
+            1_767_247_200
+        );
+    }
+}

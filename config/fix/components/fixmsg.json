@@ -263,6 +263,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "float",
           "FIX:tag": "65019",
           "FIX:transient": "false",
           "description": "The part of the quantity an iceberg keeps from the market: the quantity past DisplayQty, else past MaxFloor, where it shows less than all of it. Derived from the message's fields; a row stating one is the row's word.",
@@ -276,6 +277,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "String",
           "FIX:tag": "65020",
           "FIX:transient": "false",
           "description": "The unit the quantity is counted in: UnitOfMeasure, the empty unit where none is stated. Derived from the message's fields; a row stating one is the row's word.",
@@ -450,6 +452,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "float",
           "FIX:tag": "65025",
           "FIX:transient": "false",
           "description": "The price the step before the message settled on: PrevClosePx, the one its lifecycle moved from once followed. Derived from the message's fields; a row stating one is the row's word.",
@@ -463,6 +466,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "float",
           "FIX:tag": "65026",
           "FIX:transient": "false",
           "description": "The quantity the step before the message settled on, which only a lifecycle states. Derived; a row stating one is the row's word.",
@@ -476,6 +480,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "float",
           "FIX:tag": "65027",
           "FIX:transient": "false",
           "description": "The spot part of an FX forward price: LastSpotRate. Derived from the message's fields; a row stating one is the row's word.",
@@ -489,6 +494,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "float",
           "FIX:tag": "65028",
           "FIX:transient": "false",
           "description": "The forward points of an FX forward price: LastForwardPoints. Derived from the message's fields; a row stating one is the row's word.",
@@ -513,6 +519,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "float",
           "FIX:tag": "65029",
           "FIX:transient": "false",
           "description": "The quantity bid: BidSize. Derived from the message's fields; a row stating one is the row's word.",
@@ -526,6 +533,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "Currency",
           "FIX:tag": "65030",
           "FIX:transient": "false",
           "description": "The currency the bid is stated in: a bridge's bid currency, else the message's own where it states a bid. Derived from the message's fields; a row stating one is the row's word.",
@@ -539,6 +547,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "float",
           "FIX:tag": "65031",
           "FIX:transient": "false",
           "description": "The ask price: OfferPx. Derived from the message's fields; a row stating one is the row's word.",
@@ -552,6 +561,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "float",
           "FIX:tag": "65032",
           "FIX:transient": "false",
           "description": "The quantity offered: OfferSize. Derived from the message's fields; a row stating one is the row's word.",
@@ -565,6 +575,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "Currency",
           "FIX:tag": "65033",
           "FIX:transient": "false",
           "description": "The currency the ask is stated in: a bridge's ask currency, else the message's own where it states an ask. Derived from the message's fields; a row stating one is the row's word.",
@@ -618,6 +629,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "String",
           "FIX:tag": "65035",
           "FIX:transient": "false",
           "description": "The ticker the instrument goes by: Symbol, trimmed. Derived from the message's fields; a row stating one is the row's word.",
@@ -631,6 +643,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "float",
           "FIX:tag": "65036",
           "FIX:transient": "false",
           "description": "The strike price of the option the message identifies: StrikePrice, the one its chain names for the same instrument once followed. Derived from the message's fields; a row stating one is the row's word.",
@@ -654,6 +667,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "float",
           "FIX:tag": "65038",
           "FIX:transient": "false",
           "description": "The quantity the operation ordered: OrderQty; working, CumQty plus LeavesQty where it states none. Derived from the message's fields; a row stating one is the row's word.",
@@ -678,6 +692,7 @@
         },
         "nullable": true,
         "metadata": {
+          "FIX:datatype": "Boolean",
           "FIX:tag": "65039",
           "FIX:transient": "false",
           "description": "Whether the instrument can trade: SecurityTradingStatus, else TradingSessionStatus or SecurityStatus. Derived from the message's fields; a row stating one is the row's word.",

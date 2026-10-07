@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2800",
       "description": "Used to provide the reason for disputing a request or report.",
       "display": "PayDisputeReason"
@@ -18,6 +19,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2801",
       "description": "Encoded (non-ASCII characters) representation of the ReplaceText(2805) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the ReplaceText(2805) field.",
       "display": "EncodedReplaceText"
@@ -30,6 +32,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2802",
       "description": "Byte length of encoded (non-ASCII characters) EncodedReplaceText(2801) field.",
       "display": "EncodedReplaceTextLen"
@@ -42,6 +45,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2803",
       "description": "Reference identifier of the PayManagementReport(35=EA). To be used with PayReportTransType(2804)=1 (Replace).",
       "display": "PayReportRefID"
@@ -55,6 +59,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "payreporttranstypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2804",
       "description": "Identifies the message transaction type.",
       "display": "PayReportTransType"
@@ -67,6 +72,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2805",
       "description": "Identifies the reason for amendment.",
       "display": "ReplaceText"
@@ -80,6 +86,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "payreportstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2806",
       "description": "Identifies status of the payment report.",
       "display": "PayReportStatus"
@@ -92,6 +99,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2807",
       "description": "Identifies the reason for cancelation.",
       "display": "CancelText"
@@ -104,6 +112,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2808",
       "description": "Encoded (non-ASCII characters) representation of the CancelText(2807) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the CancelText(2807) field.",
       "display": "EncodedCancelText"
@@ -116,6 +125,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2809",
       "description": "Byte length of encoded (non-ASCII characters) EncodedCancelText(2808) field.",
       "display": "EncodedCancelTextLen"
@@ -128,6 +138,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2810",
       "description": "Reference identifier of the PayManagementRequest(35=DY). To be used with PayRequestTransType(2811)=1 (Cancel).",
       "display": "PayRequestRefID"
@@ -141,6 +152,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "payrequesttranstypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2811",
       "description": "Identifies the message transaction type.",
       "display": "PayRequestTransType"
@@ -153,6 +165,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2812",
       "description": "Unique ID of the PayManagementRequest(35=DY) message.",
       "display": "PayRequestID"
@@ -166,6 +179,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "payrequeststatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2813",
       "description": "Identifies status of the request being responded to.",
       "display": "PayRequestStatus"
@@ -178,6 +192,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2814",
       "description": "Encoded (non-ASCII characters) representation of the PostTradePaymentDesc(2820) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the PostTradePaymentDesc(2820) field.",
       "display": "EncodedPostTradePaymentDesc"
@@ -190,6 +205,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2815",
       "description": "Byte length of encoded (non-ASCII characters) EncodedPostTradePaymentDesc(2814) field.",
       "display": "EncodedPostTradePaymentDescLen"
@@ -202,6 +218,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2816",
       "description": "The cash account on the books of the receiver of the request or the sender of the report to be debited or credited.",
       "display": "PostTradePaymentAccount"
@@ -216,6 +233,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2817",
       "description": "The payment amount for the specified PostTradePaymentType(2824).",
       "display": "PostTradePaymentAmount"
@@ -228,6 +246,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2818",
       "description": "Specifies the currency in which PostTradePaymentAmount(2817) is denominated.",
       "display": "PostTradePaymentCurrency"
@@ -241,6 +260,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "posttradepaymentdebitorcreditcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2819",
       "description": "Payment side of this individual payment from the requesting firm's perspective.",
       "display": "PostTradePaymentDebitOrCredit"
@@ -253,6 +273,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2820",
       "description": "A short descriptive name given to the payment, e.g. Premium, Upfront, etc. The description may be used as reference.",
       "display": "PostTradePaymentDesc"
@@ -265,6 +286,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2821",
       "description": "The identifier for the individual payment.",
       "display": "PostTradePaymentID"
@@ -277,6 +299,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2822",
       "description": "Used to link a group of payments together, e.g. cross-currency payments associated with a swap.",
       "display": "PostTradePaymentLinkID"
@@ -290,6 +313,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "posttradepaymentstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2823",
       "description": "Used to indicate the status of a post-trade payment.",
       "display": "PostTradePaymentStatus"
@@ -302,6 +326,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2824",
       "description": "Type of post-trade payment.",
       "display": "PostTradePaymentType"
@@ -315,6 +340,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2825",
       "description": "The (actual) date the periodic payments calculations are made.",
       "display": "PostTradePaymentCalculationDate"
@@ -328,6 +354,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2826",
       "description": "The adjusted (for holidays and other non-business days) payment date on which the payment is expected to settle.",
       "display": "PostTradePaymentValueDate"
@@ -341,6 +368,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2827",
       "description": "The actual or final payment date on which the payment was made.",
       "display": "PostTradePaymentFinalValueDate"
@@ -355,6 +383,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2828",
       "description": "Price at which the order is currently displayed to the market. Can be used on order messages, e.g. NewOrderSingle(35=D), to provide the current displayed price of a parent order when splitting it into smaller child orders.",
       "display": "CurrentDisplayPrice"
@@ -368,6 +397,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "duplicateclordidindicatorcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2829",
       "description": "Used to indicate that a ClOrdID(11) value is an intentional duplicate of a previously sent value. Allows to avoid the rejection of an order with OrdRejReason(103) = 6 (Duplicate Order).",
       "display": "DuplicateClOrdIDIndicator"
@@ -381,6 +411,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "eventinitiatortypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "2830",
       "description": "Indicates the type of entity who initiated an event, e.g. modification or cancellation of an order or quote.",
       "display": "EventInitiatorType"
@@ -394,6 +425,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "nbboentrytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2831",
       "description": "Type of NBBO information.",
       "display": "NBBOEntryType"
@@ -408,6 +440,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2832",
       "description": "Price related to NBBO. NBBOEntryType(2831) may be used to indicate entry type, e.g. bid or offer.",
       "display": "NBBOPrice"
@@ -422,6 +455,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2833",
       "description": "Quantity related to NBBO. NBBOEntryType(2831) may be used to indicte entry type, e.g. bid or offer.",
       "display": "NBBOQty"
@@ -435,6 +469,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "nbbosourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2834",
       "description": "Source of NBBO information.",
       "display": "NBBOSource"
@@ -447,6 +482,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2835",
       "description": "Identifier for the original owner of an order as part of the RelatedOrderGrp component. Use the Parties component with PartyRole(452) = 13 (Order Origination Firm) to identify the original owner of an individual order.",
       "display": "OrderOriginationFirmID"
@@ -461,6 +497,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "2836",
       "description": "Timestamp for the assignment of a (unique) identifier to an order.",
       "display": "RelatedOrderTime"
@@ -474,6 +511,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "singlequoteindicatorcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2837",
       "description": "Used to indicate whether the quoting system allows only one quote to be active at a time for the quote issuer or market maker.",
       "display": "SingleQuoteIndicator"
@@ -488,6 +526,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2838",
       "description": "Current working price of the order relative to the state of the order.",
       "display": "CurrentWorkingPrice"
@@ -501,6 +540,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "trdregtimestampmanualindicatorcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2839",
       "description": "Indicates whether a given timestamp was manually captured.",
       "display": "TrdRegTimestampManualIndicator"
@@ -513,6 +553,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2840",
       "description": "Interest rate received for collateral reinvestment.",
       "display": "CollateralReinvestmentRate"
@@ -525,6 +566,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2841",
       "description": "Identifies the underlying instrument the entity applies to by referencing the underlying instrument's UnderlyingID(2874).",
       "display": "UnderlyingRefID"
@@ -539,6 +581,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2842",
       "description": "The cash amount of the specified re-investment type.",
       "display": "CollateralReinvestmentAmount"
@@ -551,6 +594,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2843",
       "description": "The currency denomination of the re-invested cash amount.",
       "display": "CollateralReinvestmentCurrency"
@@ -564,6 +608,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collateralreinvestmenttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2844",
       "description": "Indicates the type of investment the cash collateral is re-invested in.",
       "display": "CollateralReinvestmentType"
@@ -576,6 +621,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2845",
       "description": "Number of instances of CollateralReinvestmentType(2844) in the repeating group.",
       "display": "NoCollateralReinvestments"
@@ -589,6 +635,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "fundingsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2846",
       "description": "Specifies the funding source used to finance margin or collateralized loan.",
       "display": "FundingSource"
@@ -601,6 +648,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2847",
       "description": "Currency denomination of the market value of the funding source.",
       "display": "FundingSourceCurrency"
@@ -615,6 +663,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2848",
       "description": "Market value of the funding source.",
       "display": "FundingSourceMarketValue"
@@ -627,6 +676,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2849",
       "description": "Number of instances of FundingSource(2846) in the repeating group.",
       "display": "NoFundingSources"
@@ -640,6 +690,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "margindirectioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2851",
       "description": "Indicates whether the margin described is posted or received.",
       "display": "MarginDirection"
@@ -652,6 +703,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2862",
       "description": "Interest rate received for collateral reinvestment.",
       "display": "SideCollateralReinvestmentRate"
@@ -664,6 +716,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2863",
       "description": "Identifies the underlying instrument the entity applies to by referencing the underlying instrument's UnderlyingID(2874).",
       "display": "SideUnderlyingRefID"
@@ -676,6 +729,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2864",
       "description": "Number of instances of SideCollateralReinvestmentType(2867) in the repeating group.",
       "display": "NoSideCollateralReinvestments"
@@ -690,6 +744,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2865",
       "description": "The cash amount of the specified re-investment type.",
       "display": "SideCollateralReinvestmentAmount"
@@ -702,6 +757,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2866",
       "description": "The currency denomination of the re-invested cash amount.",
       "display": "SideCollateralReinvestmentCurrency"
@@ -715,6 +771,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collateralreinvestmenttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2867",
       "description": "Indicates the type of investment the cash collateral is re-invested in.",
       "display": "SideCollateralReinvestmentType"
@@ -728,6 +785,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2868",
       "description": "Date when the collateral is to be assessed or assigned.",
       "display": "CollateralizationValueDate"
@@ -741,6 +799,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2869",
       "description": "The business date on which the event identified in RegulatoryReportType(1934) took place.",
       "display": "RegulatoryReportTypeBusinessDate"
@@ -753,6 +812,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2870",
       "description": "When the transaction is cleared and included in a portfolio of transactions this identifies the portfolio by its unique identifier.",
       "display": "ClearingPortfolioID"
@@ -765,6 +825,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2871",
       "description": "Number of instances of TransactionAttributeType(2872) in the repeating group.",
       "display": "NoTransactionAttributes"
@@ -778,6 +839,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "transactionattributetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2872",
       "description": "Type of attribute(s) or characteristic(s) associated with the transaction.",
       "display": "TransactionAttributeType"
@@ -790,6 +852,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2873",
       "description": "Value associated with the specificed TransactionAttributeType(2872).",
       "display": "TransactionAttributeValue"
@@ -802,6 +865,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2874",
       "description": "Unique identifier for the underlying instrument within the context of a message.",
       "display": "UnderlyingID"
@@ -816,6 +880,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2876",
       "description": "The price used to calculate the PosAmt(708).",
       "display": "PosAmtPrice"
@@ -829,6 +894,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "posamtpricetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2877",
       "description": "Specifies the type of price for PosAmtPrice(2876).",
       "display": "PosAmtPriceType"
@@ -842,6 +908,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2878",
       "description": "The date of a contract's early termination or other post-trade event when the event is prior to the contract natural end or maturity not defined as part of the security's reference data or contractual terms/agreement.",
       "display": "TerminationDate"
@@ -854,6 +921,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2879",
       "description": "The industry name of the day count convention not listed in CouponDayCount(1950).",
       "display": "CouponOtherDayCount"
@@ -866,6 +934,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2880",
       "description": "The industry name of the day count convention not listed in LegCouponDayCount(2165).",
       "display": "LegCouponOtherDayCount"
@@ -878,6 +947,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2881",
       "description": "The industry name of the day count convention not listed in UnderlyingCouponDayCount(1993).",
       "display": "UnderlyingCouponOtherDayCount"
@@ -891,6 +961,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderoriginationcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2882",
       "description": "Identifies the origin of the order from the counterparty of the execution or trade.",
       "display": "ContraOrderOrigination"
@@ -904,6 +975,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "routingarrangementindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:names": [
         "routingarrangmentindicator"
       ],
@@ -920,6 +992,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "contraroutingarrangementindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:names": [
         "contraroutingarrangmentindicator"
       ],
@@ -937,6 +1010,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2885",
       "description": "Amount of accrued interest of underlying security.",
       "display": "UnderlyingAccruedInterestAmt"
@@ -949,6 +1023,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2886",
       "description": "Number of days of interest for underlying security.",
       "display": "UnderlyingNumDaysInterest"
@@ -961,6 +1036,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2887",
       "description": "Identifier of a related order.",
       "display": "RelatedOrderID"
@@ -974,6 +1050,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "relatedorderidsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2888",
       "description": "Describes the source of the identifier that RelatedOrderID(2887) represents.",
       "display": "RelatedOrderIDSource"
@@ -988,6 +1065,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2889",
       "description": "Quantity of the related order which can be less than its total quantity. For example, when only parts of an order contribute to an aggregated order.",
       "display": "RelatedOrderQty"
@@ -1001,6 +1079,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderrelationshipcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2890",
       "description": "Describes the type of relationship between the order identified by RelatedOrderID(2887) and the order outside of the RelatedOrderGrp component.",
       "display": "OrderRelationship"
@@ -1013,6 +1092,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2891",
       "description": "Uniquely identifies the product of a security using ISO 4914 standard, Unique Product Identifier (UPI). The DSB (Derivative Service Bureau Ltd) is acting as designated service provider for UPI System.",
       "display": "UPICode"
@@ -1025,6 +1105,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2892",
       "description": "Uniquely identifies the product of a derivative instrument using ISO 4914. See UPICode(2891) for complete definition.",
       "display": "DerivativeUPICode"
@@ -1037,6 +1118,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2893",
       "description": "Uniquely identifies the product of a leg instrument using ISO 4914. See UPICode(2891) for further detail.",
       "display": "LegUPICode"
@@ -1049,6 +1131,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2894",
       "description": "Uniquely identifies the product of an underlying instrument using ISO 4914. See UPICode(2891) for further detail.",
       "display": "UnderlyingUPICode"
@@ -1061,6 +1144,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2895",
       "description": "Uniquely identifies the product of a security using ISO 4914 as filter criteria. See UPICode(2891) for further detail.",
       "display": "InstrumentScopeUPICode"
@@ -1074,6 +1158,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "trdtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2896",
       "description": "Type of trade assigned to a trade. Used in addition to TrdType(828) and SecondaryTrdType(855). Must not be used when only one additional trade type needs to be assigned.",
       "display": "TertiaryTrdType"
@@ -1087,6 +1172,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2897",
       "description": "Identifies class or source of the Currency(15) value.",
       "display": "CurrencyCodeSource"
@@ -1100,6 +1186,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2898",
       "description": "Identifies class or source of the LegCurrency(556) value.",
       "display": "LegCurrencyCodeSource"
@@ -1113,6 +1200,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2899",
       "description": "Identifies class or source of the SettlCurrency(120) value.",
       "display": "SettlCurrencyCodeSource"

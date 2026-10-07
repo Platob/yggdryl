@@ -282,9 +282,16 @@ assert!(DataType::duration64(TimeUnit::Day)?.into_arrow_datatype().is_err());
 
 Text is the ISO duration `PT<seconds>[.fraction]S`, the sign leading: seconds
 are the one component every unit restates exactly, so the writer never
-decomposes into hours a reader would multiply back. Reading takes the general
-form `P1DT2H3M4.5S` and a plain clock `-25:30:00.5`, whose hours never fold -
-that is a [time of day](time.md)'s rule, not a length's.
+decomposes into hours a reader would multiply back, and the fraction is written
+short - nothing where it is zero, else the shortest of three, six or nine
+digits that spells it exactly: `PT90S` for ninety seconds at any unit,
+`PT1.500S` for a second and a half. Reading takes the general form
+`P1DT2H3M4.5S` and a plain clock `-25:30:00.5`, whose hours never fold - that
+is a [time of day](time.md)'s rule, not a length's. `Duration32::from_text` and
+`Duration64::from_text` are the two widths' own doors over that reader, Rust
+only; a setting's lifetime (`30s`, `1.5`) is a setting's grammar and no cell's,
+and the two never read each other. No FIX field is a duration, so the FIX codec
+reaches this door only through a dictionary that declares one.
 
 === "Rust"
 

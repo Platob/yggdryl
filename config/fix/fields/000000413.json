@@ -7,6 +7,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliveryschedulesettlholidaysprocessinginstructioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41300",
       "description": "Indicates whether holidays are included in the settlement periods. Required for electricity contracts.",
       "display": "StreamCommoditySettlHolidaysProcessingInstruction"
@@ -19,6 +20,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XID",
       "FIX:tag": "41301",
       "description": "Identifier of this settlement period for cross referencing elsewhere in the message.",
       "display": "StreamCommoditySettlPeriodXID"
@@ -31,6 +33,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "41302",
       "description": "Cross reference to another settlement period for duplicating its properties.",
       "display": "StreamCommoditySettlPeriodXIDRef"
@@ -43,6 +46,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XID",
       "FIX:tag": "41303",
       "description": "Identifier of this Stream for cross referencing elsewhere in the message.",
       "display": "StreamXID"
@@ -55,6 +59,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41304",
       "description": "Identifies the instrument leg in which this payment applies to by referencing the leg's LegID(1788).",
       "display": "PaymentLegRefID"
@@ -67,6 +72,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "41305",
       "description": "Cross reference to another Stream notional for duplicating its properties.",
       "display": "StreamNotionalXIDRef"
@@ -79,6 +85,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41306",
       "description": "Time unit multiplier for the swap stream's notional frequency.",
       "display": "StreamNotionalFrequencyPeriod"
@@ -92,6 +99,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "timeunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41307",
       "description": "Time unit associated with the swap stream's notional frequency.",
       "display": "StreamNotionalFrequencyUnit"
@@ -105,6 +113,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "streamnotionalcommodityfrequencycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41308",
       "description": "The commodity's notional or quantity delivery frequency.",
       "display": "StreamNotionalCommodityFrequency"
@@ -118,6 +127,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41309",
       "description": "Specifies the delivery stream quantity unit of measure (UOM).",
       "display": "StreamNotionalUnitOfMeasure"
@@ -132,6 +142,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "41310",
       "description": "Total notional or delivery quantity over the term of the contract.",
       "display": "StreamTotalNotional"
@@ -145,6 +156,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41311",
       "description": "Specifies the unit of measure (UOM) for the total notional or delivery quantity over the term of the contract.",
       "display": "StreamTotalNotionalUnitOfMeasure"
@@ -157,6 +169,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41312",
       "description": "Number of mandatory clearing jurisdictions.",
       "display": "NoMandatoryClearingJurisdictions"
@@ -169,6 +182,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41313",
       "description": "Identifier of the regulatory jurisdiction requiring the trade to be cleared.",
       "display": "MandatoryClearingJurisdiction"
@@ -181,6 +195,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "41314",
       "description": "Reference to the protection terms applicable to this entity or obligation. Contains the same XID named string value of the instance in the ProtectionTerms repeating group that applies to this Underlying.",
       "display": "UnderlyingProtectionTermXIDRef"
@@ -193,6 +208,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "41315",
       "description": "Reference to the cash or physical settlement terms applicable to this entity or obligation. Contains the same XID named string value of the instance in the appropriate repeating group that applies to this Underlying.",
       "display": "UnderlyingSettlTermXIDRef"
@@ -205,6 +221,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41316",
       "description": "Number of bonds in the repeating group.",
       "display": "NoLegAdditionalTermBondRefs"
@@ -217,6 +234,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41317",
       "description": "Security identifier of the bond.",
       "display": "LegAdditionalTermBondSecurityID"
@@ -230,6 +248,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41318",
       "description": "Identifies the source scheme of the LegAdditionalTermBondSecurityID(41317) value.",
       "display": "LegAdditionalTermBondSecurityIDSource"
@@ -242,6 +261,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41319",
       "description": "Description of the bond.",
       "display": "LegAdditionalTermBondDesc"
@@ -254,6 +274,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "41320",
       "description": "Byte length of encoded (non-ASCII characters) EncodedLegAdditionalTermBondDesc(41321) field.",
       "display": "EncodedLegAdditionalTermBondDescLen"
@@ -266,6 +287,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "41321",
       "description": "Encoded (non-ASCII characters) representation of the LegAdditionalTermBondDesc(41319) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegAdditionalTermBondDesc(41319) field.",
       "display": "EncodedLegAdditionalTermBondDesc"
@@ -278,6 +300,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41322",
       "description": "Specifies the currency the bond value is denominated in. Uses ISO 4217 currency codes.",
       "display": "LegAdditionalTermBondCurrency"
@@ -290,6 +313,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41323",
       "description": "Issuer of the bond.",
       "display": "LegAdditionalTermBondIssuer"
@@ -302,6 +326,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "41324",
       "description": "Byte length of encoded (non-ASCII characters) EncodedLegAdditionalTermBondIssuer(41325) field.",
       "display": "EncodedLegAdditionalTermBondIssuerLen"
@@ -314,6 +339,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "41325",
       "description": "Encoded (non-ASCII characters) representation of the LegAdditionalTermBondIssuer(41323) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegAdditionalTermBondIssuer(41323) field.",
       "display": "EncodedLegAdditionalTermBondIssuer"
@@ -327,6 +353,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "senioritycodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41326",
       "description": "Specifies the bond's payment priority in the event of a default.",
       "display": "LegAdditionalTermBondSeniority"
@@ -340,6 +367,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "coupontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41327",
       "description": "Specifies the coupon type of the bond.",
       "display": "LegAdditionalTermBondCouponType"
@@ -352,6 +380,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "41328",
       "description": "Coupon rate of the bond. See also CouponRate(223).",
       "display": "LegAdditionalTermBondCouponRate"
@@ -365,6 +394,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41329",
       "description": "The maturity date of the bond.",
       "display": "LegAdditionalTermBondMaturityDate"
@@ -379,6 +409,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "41330",
       "description": "The par value of the bond.",
       "display": "LegAdditionalTermBondParValue"
@@ -393,6 +424,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "41331",
       "description": "Total issued amount of the bond.",
       "display": "LegAdditionalTermBondCurrentTotalIssuedAmount"
@@ -405,6 +437,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41332",
       "description": "Time unit multiplier for the frequency of the bond's coupon payment.",
       "display": "LegAdditionalTermBondCouponFrequencyPeriod"
@@ -418,6 +451,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "couponfrequencyunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41333",
       "description": "Time unit associated with the frequency of the bond's coupon payment.",
       "display": "LegAdditionalTermBondCouponFrequencyUnit"
@@ -431,6 +465,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "coupondaycountcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41334",
       "description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
       "display": "LegAdditionalTermBondDayCount"
@@ -443,6 +478,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41335",
       "description": "Number of additional terms in the repeating group.",
       "display": "NoLegAdditionalTerms"
@@ -455,6 +491,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "41336",
       "description": "Indicates whether the condition precedent bond is applicable. The swap contract is only valid if the bond is issued and if there is any dispute over the terms of fixed stream then the bond terms would be used.",
       "display": "LegAdditionalTermConditionPrecedentBondIndicator"
@@ -467,6 +504,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "41337",
       "description": "Indicates whether the discrepancy clause is applicable.",
       "display": "LegAdditionalTermDiscrepancyClauseIndicator"
@@ -479,6 +517,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41338",
       "description": "Applicable value for UnderlyingMarketDisruptionEvent(41865).",
       "display": "UnderlyingMarketDisruptionValue"
@@ -491,6 +530,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41339",
       "description": "Applicable value for UnderlyingMarketDisruptionFallbackType(41867).",
       "display": "UnderlyingMarketDisruptionFallbackValue"
@@ -503,6 +543,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41340",
       "description": "Number of bonds in the repeating group.",
       "display": "NoUnderlyingAdditionalTermBondRefs"
@@ -515,6 +556,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41341",
       "description": "Security identifier of the bond.",
       "display": "UnderlyingAdditionalTermBondSecurityID"
@@ -527,6 +569,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41342",
       "description": "Number of dealers in the repeating group.",
       "display": "NoLegCashSettlDealers"
@@ -539,6 +582,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41343",
       "description": "Identifies the dealer from whom price quotations for the reference obligation are obtained for the purpose of cash settlement valuation calculation.",
       "display": "LegCashSettlDealer"
@@ -551,6 +595,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41344",
       "description": "Number of elements in the repeating group.",
       "display": "NoLegCashSettlTerms"
@@ -563,6 +608,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41345",
       "description": "Specifies the currency the LegCashSettlAmount(41357) is denominated in. Uses ISO 4217 currency codes.",
       "display": "LegCashSettlCurrency"
@@ -575,6 +621,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41346",
       "description": "The number of business days after settlement conditions have been satisfied, when the calculation agent is to obtain a price quotation on the reference obligation for purposes of cash settlement.",
       "display": "LegCasSettlValuationFirstBusinessDayOffset"
@@ -587,6 +634,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41347",
       "description": "The number of business days between successive valuation dates when multiple valuation dates are applicable for cash settlement.",
       "display": "LegCashSettlValuationSubsequentBusinessDaysOffset"
@@ -599,6 +647,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41348",
       "description": "Where multiple valuation dates are specified as being applicable for cash settlement, this element specifies the number of applicable valuation dates.",
       "display": "LegCashSettlNumOfValuationDates"
@@ -612,6 +661,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "41349",
       "description": "Time of valuation.",
       "display": "LegCashSettlValuationTime"
@@ -624,6 +674,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41350",
       "description": "Identifies the business center calendar used at valuation time for cash settlement purposes e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegCashSettlBusinessCenter"
@@ -637,6 +688,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "cashsettlquotemethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41351",
       "description": "The type of quote used to determine the cash settlement price.",
       "display": "LegCashSettlQuoteMethod"
@@ -651,6 +703,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "41352",
       "description": "When determining the cash settlement amount, if weighted average price quotes are to be obtained for the reference obligation, this is the upper limit to the outstanding principal balance of the reference obligation for which the quote should be obtained. If not specified, the ISDA definitions provide for a fallback amount equal to floating rate payer calculation amount.",
       "display": "LegCashSettlQuoteAmount"
@@ -663,6 +716,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41353",
       "description": "Specifies the currency the LegCashSettlQuoteAmount(41352) is denominated in. Uses ISO 4217 Currency Code.",
       "display": "LegCashSettlQuoteCurrency"
@@ -677,6 +731,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "41354",
       "description": "When determining the cash settlement amount, if weighted average price quotes are to be obtained for the reference obligation, this is the minimum intended threshold amount of outstanding principal balance of the reference obligation for which the quote should be obtained. If not specified, the ISDA definitions provide for a fallback amount of the lower of either USD1,000,000 (or its equivalent in the relevant obligation currency) or the (minimum) quoted amount.",
       "display": "LegCashSettlMinimumQuoteAmount"
@@ -689,6 +744,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41355",
       "description": "Specifies the currency the LegCashSettlQuoteMinimumAmount(41354) is denominated in. Uses ISO 4217 Currency Code.",
       "display": "LegCashSettlMinimumQuoteCurrency"
@@ -701,6 +757,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41356",
       "description": "The number of business days used in the determination of the cash settlement payment date.",
       "display": "LegCashSettlBusinessDays"
@@ -715,6 +772,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "41357",
       "description": "The amount paid between the trade parties, seller to the buyer, for cash settlement on the cash settlement date.",
       "display": "LegCashSettlAmount"
@@ -727,6 +785,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "41358",
       "description": "Used for fixed recovery, this specifies the recovery level as determined at contract inception, to be applied in the event of a default. The factor is used to calculate the amount paid by the seller to the buyer for cash settlement on the cash settlement date. The amount calculated is (1 - LegCashSettlRecoveryFactor(41358)) x floating rate payer calculation amount. The currency is derived from the floating rate payer calculation amount.",
       "display": "LegCashSettlRecoveryFactor"
@@ -739,6 +798,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "41359",
       "description": "Indicates whether fixed settlement is applicable or not applicable in a recovery lock.",
       "display": "LegCashSettlFixedTermIndicator"
@@ -751,6 +811,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "41360",
       "description": "Indicates whether accrued interest is included or not in the value provided in LegCashSettlAmount(41357).",
       "display": "LegCashSettlAccruedInterestIndicator"
@@ -764,6 +825,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "cashsettlvaluationmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41361",
       "description": "The ISDA defined methodology for determining the final price of the reference obligation for purposes of cash settlement.",
       "display": "LegCashSettlValuationMethod"
@@ -776,6 +838,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XID",
       "FIX:tag": "41362",
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "LegCashSettlTermXID"
@@ -788,6 +851,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41363",
       "description": "The number of averaging observations in the repeating group.",
       "display": "NoLegComplexEventAveragingObservations"
@@ -800,6 +864,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41364",
       "description": "Cross reference to the ordinal observation as specified either in the LegComplexEventScheduleGrp or LegComplexEventPeriodDateGrp components.",
       "display": "LegComplexEventAveragingObservationNumber"
@@ -812,6 +877,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "41365",
       "description": "The weight factor to be applied to the observation.",
       "display": "LegComplexEventAveragingWeight"
@@ -824,6 +890,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41366",
       "description": "The number of credit events specified in the repeating group.",
       "display": "NoLegComplexEventCreditEvents"
@@ -836,6 +903,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41367",
       "description": "Specifies the type of credit event. See https://fixtrading.org/packages/credit-event-type for code list of applicable event types.",
       "display": "LegComplexEventCreditEventType"
@@ -848,6 +916,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41368",
       "description": "The credit event value appropriate to LegComplexEventCreditEventType(41367). See https://fixtrading.org/packages/credit-event-type for applicable event type values.",
       "display": "LegComplexEventCreditEventValue"
@@ -860,6 +929,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41369",
       "description": "Specifies the applicable currency when LegComplexEventCreditEventCurrency(41368) is an amount. Uses ISO 4217 currency codes.",
       "display": "LegComplexEventCreditEventCurrency"
@@ -872,6 +942,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41370",
       "description": "Time unit multiplier for complex credit events.",
       "display": "LegComplexEventCreditEventPeriod"
@@ -885,6 +956,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "protectiontermeventunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41371",
       "description": "Time unit associated with complex credit events.",
       "display": "LegComplexEventCreditEventUnit"
@@ -898,6 +970,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41372",
       "description": "Specifies the day type for the complex credit events.",
       "display": "LegComplexEventCreditEventDayType"
@@ -910,6 +983,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41373",
       "description": "Identifies the source of rate information used for credit events. See https://fixtrading.org/packages/credit-event-rate-source for code list of applicable sources.",
       "display": "LegComplexEventCreditEventRateSource"
@@ -922,6 +996,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41374",
       "description": "Number of qualifiers in the repeating group.",
       "display": "NoLegComplexEventCreditEventQualifiers"
@@ -935,6 +1010,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "protectiontermeventqualifiercodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "41375",
       "description": "Specifies a complex event qualifier. Used to further qualify LegComplexEventCreditEventType(41367).",
       "display": "LegComplexEventCreditEventQualifier"
@@ -947,6 +1023,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41376",
       "description": "Number of entries in the date-time repeating group.",
       "display": "NoLegComplexEventPeriodDateTimes"
@@ -960,6 +1037,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41377",
       "description": "Averaging date for an Asian option.",
       "display": "LegComplexEventPeriodDate"
@@ -973,6 +1051,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "41378",
       "description": "Averaging time for an Asian option.",
       "display": "LegComplexEventPeriodTime"
@@ -985,6 +1064,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41379",
       "description": "Number of periods in the repeating group.",
       "display": "NoLegComplexEventPeriods"
@@ -998,6 +1078,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventperiodtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41380",
       "description": "Specifies the period type.",
       "display": "LegComplexEventPeriodType"
@@ -1010,6 +1091,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41381",
       "description": "The business center for adjusting dates and times in the schedule or date-time group. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegComplexEventBusinessCenter"
@@ -1022,6 +1104,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41382",
       "description": "Number of rate sources in the repeating group.",
       "display": "NoLegComplexEventRateSources"
@@ -1035,6 +1118,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ratesourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41383",
       "description": "Identifies the source of rate information.",
       "display": "LegComplexEventRateSource"
@@ -1048,6 +1132,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ratesourcetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41384",
       "description": "Indicates whether the rate source specified is a primary or secondary source.",
       "display": "LegComplexEventRateSourceType"
@@ -1060,6 +1145,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41385",
       "description": "Identifies the reference page from the rate source. For FX, the reference page to the spot rate is to be used for the reference FX spot rate. When LegComplexEventRateSource(41383) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option.",
       "display": "LegComplexEventReferencePage"
@@ -1072,6 +1158,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41386",
       "description": "Identifies the reference page heading from the rate source.",
       "display": "LegComplexEvenReferencePageHeading"
@@ -1084,6 +1171,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41387",
       "description": "Number of business centers in the repeating group.",
       "display": "NoLegComplexEventDateBusinessCenters"
@@ -1096,6 +1184,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41388",
       "description": "The business center calendar used to adjust the event date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegComplexEventDateBusinessCenter"
@@ -1109,6 +1198,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41389",
       "description": "The unadjusted complex event date.",
       "display": "LegComplexEventDateUnadjusted"
@@ -1121,6 +1211,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41390",
       "description": "Specifies the anchor date when the complex event date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegComplexEventDateRelativeTo"
@@ -1133,6 +1224,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41391",
       "description": "Time unit multiplier for the relative date offset.",
       "display": "LegComplexEventDateOffsetPeriod"
@@ -1146,6 +1238,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41392",
       "description": "Time unit associated with the relative date offset.",
       "display": "LegComplexEventDateOffsetUnit"
@@ -1159,6 +1252,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41393",
       "description": "Specifies the day type of the relative date offset.",
       "display": "LegComplexEventDateOffsetDayType"
@@ -1172,6 +1266,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41394",
       "description": "The business day convention used to adjust the event date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegComplexEventDateBusinessDayConvention"
@@ -1185,6 +1280,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41395",
       "description": "The adjusted complex event date.",
       "display": "LegComplexEventDateAdjusted"
@@ -1198,6 +1294,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "41396",
       "description": "The local market fixing time.",
       "display": "LegComplexEventFixingTime"
@@ -1210,6 +1307,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41397",
       "description": "The business center for determining the actual fixing times. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegComplexEventFixingTimeBusinessCenter"
@@ -1222,6 +1320,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41398",
       "description": "Number of event sources in the repeating group.",
       "display": "NoLegComplexEventCreditEventSources"
@@ -1234,6 +1333,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41399",
       "description": "A newspaper or electronic news service that may publish relevant information used in the determination of whether or not a credit event has occurred.",
       "display": "LegComplexEventCreditEventSource"

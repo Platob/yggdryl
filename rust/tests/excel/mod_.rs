@@ -95,10 +95,7 @@ fn a_foreign_package_reads_its_shared_strings_styles_and_inline_text() {
     assert_eq!(sheet.scalar("B2".parse().unwrap()), Scalar::from("AAPL"));
     let when = sheet.cell("C2".parse().unwrap()).unwrap();
     assert_eq!(when.format(), NumberFormat::DateTime);
-    assert_eq!(
-        when.value().into_json().unwrap(),
-        "\"2024-01-01T12:00:00.000\""
-    );
+    assert_eq!(when.value().into_json().unwrap(), "\"2024-01-01T12:00:00\"");
     let day = sheet.cell("C3".parse().unwrap()).unwrap();
     assert_eq!(day.format(), NumberFormat::Date);
     assert_eq!(day.value().into_json().unwrap(), "\"2024-01-02\"");

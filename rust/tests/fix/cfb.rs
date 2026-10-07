@@ -5139,10 +5139,11 @@ fn a_group_counted_by_another_field_s_alternate_tag_is_passed_over_and_the_field
 #[test]
 fn a_time_of_day_against_a_held_instant_is_passed_over_saying_why() {
     // MaturityTime(1079) is a TZTimeOnly, which the dictionary reads as an
-    // instant on the epoch day - and a bare clock as null. A CBlock has no
-    // word for it but `utc-time-only`, a time of day: the two read disjoint
-    // spellings, so the declaration stays a contradiction, and the reason
-    // says what each reading accepts.
+    // instant on the epoch day - at its offset, or a bare clock as the wall
+    // clock in the column's zone. A CBlock has no word for it but
+    // `utc-time-only`, a time of day, which holds no zone: the two are
+    // different values, so the declaration stays a contradiction, and the
+    // reason says what each reading accepts.
     let body = r#"<cplugin-configuration fix-version="4.4">
       <vocabulary><vocabulary-tag name="1079" alt="MaturityTime" type="utc-time-only" /></vocabulary>
     </cplugin-configuration>"#;
@@ -5151,7 +5152,7 @@ fn a_time_of_day_against_a_held_instant_is_passed_over_saying_why() {
     let passed: Vec<String> = merge.dropped.iter().map(ToString::to_string).collect();
     assert_eq!(passed.len(), 1, "{passed:?}");
     assert!(
-        passed[0].contains(r#"expected the datatype datetime64(ns,"UTC") stored for maturitytime (1079), got time64(ns): the stored instant reads a clock only with its offset, a bare time of day as null"#),
+        passed[0].contains(r#"expected the datatype datetime64(ns,"UTC") stored for maturitytime (1079), got time64(ns): the stored instant reads a clock on the epoch day, at the offset it states or else as a wall clock in the column's zone"#),
         "{passed:?}"
     );
     assert_eq!(

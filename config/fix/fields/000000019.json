@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1900",
       "description": "Used to reference the value from SideExecID(1427).",
       "display": "SideExecRefID"
@@ -18,6 +19,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1901",
       "description": "Used to reference the value from LegExecID(1893).",
       "display": "LegExecRefID"
@@ -30,6 +32,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1902",
       "description": "Indicates, if \"Y\", that a stated valuation includes a haircut, e.g. that the stated value reflects the subtraction of the haircut. Note that a value of \"N\" does not imply a haircut is not applicable, only that the haircut (if any) is not reflected in the stated valuation.",
       "display": "HaircutIndicator"
@@ -42,6 +45,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1903",
       "description": "Trade identifier required by government regulators or other regulatory organizations for regulatory reporting purposes. For example, unique swap identifer (USI) as required by the U.S. Commodity Futures Trading Commission.",
       "display": "RegulatoryTradeID"
@@ -55,6 +59,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytradeideventcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1904",
       "description": "Identifies the event which caused origination of the identifier in RegulatoryTradeID(1903). When more than one event is the cause, use the higher enumeration value. For example, if the identifier is originated due to an allocated trade which was cleared and reported, use the enumeration value 2 (Clearing).",
       "display": "RegulatoryTradeIDEvent"
@@ -68,6 +73,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytradeidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1905",
       "description": "Identifies the reporting entity that originated the value in RegulatoryTradeID(1903). The reporting entity identifier may be assigned by a regulator or from a supported standard identifier source scheme.",
       "display": "RegulatoryTradeIDSource"
@@ -81,6 +87,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytradeidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1906",
       "description": "Specifies the type of trade identifier provided in RegulatoryTradeID(1903).",
       "display": "RegulatoryTradeIDType"
@@ -93,6 +100,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1907",
       "description": "Number of regulatory IDs in the repeating group.",
       "display": "NoRegulatoryTradeIDs"
@@ -105,6 +113,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1908",
       "description": "Number of regulatory IDs in the repeating group.",
       "display": "NoAllocRegulatoryTradeIDs"
@@ -117,6 +126,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1909",
       "description": "Trade identifier required by government regulators or other regulatory organizations for regulatory reporting purposes. For example, unique swap identifer (USI) as required by the U.S. Commodity Futures Trading Commission.",
       "display": "AllocRegulatoryTradeID"
@@ -130,6 +140,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytradeidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1910",
       "description": "Identifies the reporting entity that originated the value in RegulatoryTradeID(1903). The reporting entity identifier may be assigned by a regulator or from a supported standard identifier source scheme.",
       "display": "AllocRegulatoryTradeIDSource"
@@ -143,6 +154,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytradeideventcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1911",
       "description": "Identifies the event which caused the origination of the identifier in AllocRegulatoryTradeID(1909). When more than one event is the cause, use the higher enumeration value. For example, if the identifier is originated due to an allocated trade which was cleared and reported, use the enumeration value 2(Clearing).",
       "display": "AllocRegulatoryTradeIDEvent"
@@ -156,6 +168,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytradeidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1912",
       "description": "Specifies the type of trade identifier provided in AllocRegulatoryTradeID(1909), within the context of the hierarchy of trade events.",
       "display": "AllocRegulatoryTradeIDType"
@@ -168,6 +181,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1913",
       "description": "The number of competing Respondents (e.g. dealers) to receive a quote request (either via the QuoteRequest(35=R) or via other means).",
       "display": "NumOfCompetitors"
@@ -182,6 +196,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "1914",
       "description": "The time by which a meaningful response should arrive back (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\").",
       "display": "ResponseTime"
@@ -196,6 +211,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "1915",
       "description": "Time by which the quote will be displayed.",
       "display": "QuoteDisplayTime"
@@ -209,6 +225,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderdelayunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1916",
       "description": "Time unit in which the ExposureDuration(1629) is expressed.",
       "display": "ExposureDurationUnit"
@@ -223,6 +240,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1917",
       "description": "The best quoted price received among those not traded.",
       "display": "CoverPrice"
@@ -235,6 +253,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1918",
       "description": "Number of clearing account type entries.",
       "display": "NoClearingAccountTypes"
@@ -247,6 +266,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1919",
       "description": "Number of price movement entries.",
       "display": "NoPriceMovements"
@@ -259,6 +279,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1920",
       "description": "Number of price movement value entries.",
       "display": "NoPriceMovementValues"
@@ -271,6 +292,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1921",
       "description": "Value at specific price movement point.",
       "display": "PriceMovementValue"
@@ -283,6 +305,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1922",
       "description": "Price movement point up (positive integer) or down (negative integer) relative to the underlying price of the instrument.",
       "display": "PriceMovementPoint"
@@ -296,6 +319,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "pricemovementtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1923",
       "description": "Describes the format of the PriceMovementValue(1921).",
       "display": "PriceMovementType"
@@ -309,6 +333,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "clearingintentioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1924",
       "description": "Specifies the party's or parties' intention to clear the trade.",
       "display": "ClearingIntention"
@@ -322,6 +347,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "clearinginstructioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1925",
       "description": "Specifies the eligibility of this trade for clearing and central counterparty processing.",
       "display": "TradeClearingInstruction"
@@ -334,6 +360,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1926",
       "description": "Indicates that the trade being reported occurred in the past and is still in effect or active.",
       "display": "BackloadedTradeIndicator"
@@ -347,6 +374,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "confirmationmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1927",
       "description": "Specifies how a trade was confirmed.",
       "display": "ConfirmationMethod"
@@ -359,6 +387,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1928",
       "description": "An indication that the trade is flagged for mandatory clearing.",
       "display": "MandatoryClearingIndicator"
@@ -371,6 +400,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1929",
       "description": "An indication that the trade is a mixed swap.",
       "display": "MixedSwapIndicator"
@@ -383,6 +413,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1930",
       "description": "An indication that the price is off-market.",
       "display": "OffMarketPriceIndicator"
@@ -396,6 +427,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "verificationmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1931",
       "description": "Indication of how a trade was verified.",
       "display": "VerificationMethod"
@@ -409,6 +441,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "clearingrequirementexceptioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1932",
       "description": "Specifies whether a party to a swap is using an exception to a clearing requirement. In the US, one such clearing requirement is CFTC's rule pursuant to CEA Section 2(h)(1).",
       "display": "ClearingRequirementException"
@@ -422,6 +455,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "irsdirectioncodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1933",
       "description": "Used to specify whether the principal is paying or receiving the fixed rate in an interest rate swap.",
       "display": "IRSDirection"
@@ -435,6 +469,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatoryreporttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1934",
       "description": "Type of regulatory report.",
       "display": "RegulatoryReportType"
@@ -447,6 +482,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1935",
       "description": "Used in conjunction with RegulatoryReportType(1934) to indicate whether the trade report is a voluntary regulatory report. If not specified, the default for a regulatory report is \"N\".",
       "display": "VoluntaryRegulatoryReport"
@@ -460,6 +496,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradecollateralizationcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1936",
       "description": "Specifies how the trade is collateralized.",
       "display": "TradeCollateralization"
@@ -473,6 +510,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradecontinuationcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1937",
       "description": "Specifies the post-execution trade continuation or lifecycle event. Additional values may be used by mutual agreement of the counterparties.",
       "display": "TradeContinuation"
@@ -486,6 +524,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "assetclasscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1938",
       "description": "The broad asset category for assessing risk exposure.",
       "display": "AssetClass"
@@ -499,6 +538,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "assetsubclasscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1939",
       "description": "The subcategory description of the asset class.",
       "display": "AssetSubClass"
@@ -511,6 +551,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1940",
       "description": "Used to provide more specific description of the asset specified in AssetSubClass(1939). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
       "display": "AssetType"
@@ -524,6 +565,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "swapclasscodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1941",
       "description": "The classification or type of swap. Additional values may be used by mutual agreement of the counterparties.",
       "display": "SwapClass"
@@ -536,6 +578,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1942",
       "description": "The Nth reference obligation to default in a CDS reference basket. If specified without MthToDefault(1943) the default will trigger a CDS payout. If MthToDefault(1943) is also present then payout occurs between the Nth and Mth obligations to default.",
       "display": "NthToDefault"
@@ -548,6 +591,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1943",
       "description": "The Mth reference obligation to default in a CDS reference basket. When NthToDefault(1942) and MthToDefault(1943) are represented then the CDS payout occurs between the Nth and Mth obligations to default.",
       "display": "MthToDefault"
@@ -560,6 +604,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1944",
       "description": "Relevant settled entity matrix source.",
       "display": "SettledEntityMatrixSource"
@@ -573,6 +618,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "1945",
       "description": "The publication date of the applicable version of the matrix. If not specified, the Standard Terms Supplement defines rules for which version of the matrix is applicable.",
       "display": "SettledEntityMatrixPublicationDate"
@@ -586,6 +632,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "coupontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1946",
       "description": "Coupon type of the bond.",
       "display": "CouponType"
@@ -600,6 +647,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "1947",
       "description": "Specifies the total amount of the issue. Corresponds to the par value multiplied by the number of issued securities.",
       "display": "TotalIssuedAmount"
@@ -612,6 +660,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1948",
       "description": "Time unit multiplier for the frequency of the bond's coupon payment.",
       "display": "CouponFrequencyPeriod"
@@ -625,6 +674,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "couponfrequencyunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1949",
       "description": "Time unit associated with the frequency of the bond's coupon payment.",
       "display": "CouponFrequencyUnit"
@@ -638,6 +688,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "coupondaycountcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1950",
       "description": "The day count convention used in interest calculations for a bond or an interest bearing security. Absence of this field for a bond or an interest bearing security transaction implies a \"flat\" trade, i.e. no accrued interest determined at time of the transaction.",
       "display": "CouponDayCount"
@@ -650,6 +701,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1951",
       "description": "Identifies the equity in which a convertible bond can be converted to.",
       "display": "ConvertibleBondEquityID"
@@ -663,6 +715,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1952",
       "description": "Identifies class or source of the ConvertibleBondEquityID(1951) value.",
       "display": "ConvertibleBondEquityIDSource"
@@ -677,6 +730,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "MonthYear",
       "FIX:tag": "1953",
       "description": "Reference month if there is no applicable MaturityMonthYear(200) value for the contract or security.",
       "display": "ContractPriceRefMonth"
@@ -690,6 +744,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "liensenioritycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1954",
       "description": "Indicates the seniority level of the lien in a loan.",
       "display": "LienSeniority"
@@ -703,6 +758,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "loanfacilitycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1955",
       "description": "Specifies the type of loan when the credit default swap's reference obligation is a loan.",
       "display": "LoanFacility"
@@ -716,6 +772,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "referenceentitytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1956",
       "description": "Specifies the type of reference entity for first-to-default CDS basket contracts.",
       "display": "ReferenceEntityType"
@@ -728,6 +785,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1957",
       "description": "The series identifier of a credit default swap index.",
       "display": "IndexSeries"
@@ -740,6 +798,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1958",
       "description": "The version of a credit default swap index annex.",
       "display": "IndexAnnexVersion"
@@ -753,6 +812,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "1959",
       "description": "The date of a credit default swap index series annex.",
       "display": "IndexAnnexDate"
@@ -765,6 +825,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1960",
       "description": "The source of a credit default swap series annex.",
       "display": "IndexAnnexSource"
@@ -777,6 +838,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1961",
       "description": "The version of the master agreement",
       "display": "AgreementVersion"
@@ -789,6 +851,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1962",
       "description": "The type of master confirmation executed between the parties. See https://fpml.org/coding-scheme/master-confirmation-type for values.",
       "display": "MasterConfirmationDesc"
@@ -802,6 +865,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "1963",
       "description": "Alternative to broker confirmation. The date of the confirmation executed between the parties and intended to govern all relevant transactions between those parties.",
       "display": "MasterConfirmationDate"
@@ -814,6 +878,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1964",
       "description": "The type of master confirmation annex executed between the parties. See https://fpml.org/coding-scheme/master-confirmation-annex-type for values.",
       "display": "MasterConfirmationAnnexDesc"
@@ -827,6 +892,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "1965",
       "description": "The date that an annex to the master confirmation was executed between the parties.",
       "display": "MasterConfirmationAnnexDate"
@@ -839,6 +905,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1966",
       "description": "Describes the type of broker confirmation executed between the parites. Can be used as an alterative to MasterConfirmationDesc(1962). See https://fpml.org/coding-scheme/broker-confirmation-type for values.",
       "display": "BrokerConfirmationDesc"
@@ -851,6 +918,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1967",
       "description": "The type of ISDA Credit Support Agreement. See https://fpml.org/coding-scheme/credit-support-agreement-type for values.",
       "display": "CreditSupportAgreementDesc"
@@ -864,6 +932,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "1968",
       "description": "The date of the ISDA Credit Support Agreement executed between the parties and intended to govern collateral arrangements for all OTC derivatives transactions between those parties.",
       "display": "CreditSupportAgreementDate"
@@ -876,6 +945,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1969",
       "description": "A common reference or unique identifier to identify the ISDA Credit Support Agreement executed between the parties.",
       "display": "CreditSupportAgreementID"
@@ -888,6 +958,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1970",
       "description": "Identification of the law governing the transaction. See https://fpml.org/coding-scheme/governing-law for values.",
       "display": "GoverningLaw"
@@ -900,6 +971,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1971",
       "description": "Number of regulatory IDs in the repeating group.",
       "display": "NoSideRegulatoryTradeIDs"
@@ -912,6 +984,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1972",
       "description": "Trade identifier required by government regulators or other regulatory organziations for regulatory reporting purposes. For example, unique swap identifier (USI) as required by the U.S. Commodity Futures Trading Commission.",
       "display": "SideRegulatoryTradeID"
@@ -925,6 +998,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytradeidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1973",
       "description": "Identifies the reporting entity that originated the value in RegulatoryTradeID(1903). The reporting entity identifier may be assigned by a regulator or from a supported standard identifier source scheme.",
       "display": "SideRegulatoryTradeIDSource"
@@ -938,6 +1012,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytradeideventcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1974",
       "description": "Identifies the event which caused origination of the identifier in SideRegulatoryTradeID(1972). When more than one event is the cause, use the higher enumeration value. For example, if the identifier is originated due to an allocated trade which was cleared and reported, use the enumeration value 2 (Clearing).",
       "display": "SideRegulatoryTradeIDEvent"
@@ -951,6 +1026,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "regulatorytradeidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1975",
       "description": "Specifies the type of trade identifier provided in SideRegulatoryTradeID(1972), within the context of the hierarchy of trade events.",
       "display": "SideRegulatoryTradeIDType"
@@ -963,6 +1039,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1976",
       "description": "Number of secondary asset classes in the repeating group.",
       "display": "NoSecondaryAssetClasses"
@@ -976,6 +1053,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "assetclasscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1977",
       "description": "The broad asset category for assessing risk exposure for a multi-asset trade.",
       "display": "SecondaryAssetClass"
@@ -989,6 +1067,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "assetsubclasscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1978",
       "description": "An indication of the general description of the asset class.",
       "display": "SecondaryAssetSubClass"
@@ -1001,6 +1080,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1979",
       "description": "Used to provide more specific description of the asset specified in SecondaryAssetSubClass(1978). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
       "display": "SecondaryAssetType"
@@ -1014,6 +1094,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "blocktrdallocindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1980",
       "description": "Indication that a block trade will be allocated.",
       "display": "BlockTrdAllocIndicator"
@@ -1026,6 +1107,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1981",
       "description": "Number of events in the repeating group.",
       "display": "NoUnderlyingEvents"
@@ -1039,6 +1121,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "eventtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1982",
       "description": "Code to represent the type of event.",
       "display": "UnderlyingEventType"
@@ -1052,6 +1135,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "1983",
       "description": "The date of the event.",
       "display": "UnderlyingEventDate"
@@ -1066,6 +1150,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "1984",
       "description": "The time of the event. To be used in combination with UnderlyingEventDate(1983).",
       "display": "UnderlyingEventTime"
@@ -1078,6 +1163,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1985",
       "description": "Time unit associated with the event.",
       "display": "UnderlyingEventTimeUnit"
@@ -1090,6 +1176,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1986",
       "description": "Time unit multiplier for the event.",
       "display": "UnderlyingEventTimePeriod"
@@ -1104,6 +1191,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1987",
       "description": "Predetermined price of issue at event, if applicable.",
       "display": "UnderlyingEventPx"
@@ -1116,6 +1204,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1988",
       "description": "For a basket, or pool, describes the weight of each of the constituents within the basket. If not provided, it is assumed to be equal weighted.",
       "display": "UnderlyingConstituentWeight"
@@ -1129,6 +1218,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "coupontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1989",
       "description": "Specifies the coupon type of the underlying bond.",
       "display": "UnderlyingCouponType"
@@ -1143,6 +1233,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "1990",
       "description": "Specifies the total amount of the issue. Corresponds to the par value multiplied by the number of issued security.",
       "display": "UnderlyingTotalIssuedAmount"
@@ -1155,6 +1246,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1991",
       "description": "Time unit multiplier for the frequency of the bond's coupon payment.",
       "display": "UnderlyingCouponFrequencyPeriod"
@@ -1168,6 +1260,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "couponfrequencyunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1992",
       "description": "Time unit associated with the frequency of the bond's coupon payment.",
       "display": "UnderlyingCouponFrequencyUnit"
@@ -1181,6 +1274,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "coupondaycountcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1993",
       "description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
       "display": "UnderlyingCouponDayCount"
@@ -1193,6 +1287,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1994",
       "description": "For a CDS basket or pool identifies the reference obligation.",
       "display": "UnderlyingObligationID"
@@ -1206,6 +1301,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1995",
       "description": "Identifies the source scheme of the UnderlyingObligationID(1994).",
       "display": "UnderlyingObligationIDSource"
@@ -1218,6 +1314,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1996",
       "description": "Specifies the equity in which a convertible bond can be converted.",
       "display": "UnderlyingEquityID"
@@ -1231,6 +1328,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1997",
       "description": "Identifies the source of the UnderlyingEquityID(1996).",
       "display": "UnderlyingEquityIDSource"
@@ -1244,6 +1342,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "liensenioritycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1998",
       "description": "Indicates the seniority level of the lien in a loan.",
       "display": "UnderlyingLienSeniority"
@@ -1257,6 +1356,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "loanfacilitycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1999",
       "description": "Specifies the type of loan when the credit default swap's reference obligation is a loan.",
       "display": "UnderlyingLoanFacility"

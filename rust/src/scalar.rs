@@ -473,8 +473,11 @@ impl Serialize for Scalar {
             }
             Self::Geometry(value) => tagged(serializer, "geometry", &value.as_bytes()),
             Self::Geography(value) => tagged(serializer, "geography", &value.as_bytes()),
-            // A temporal is its classic ISO spelling wherever it has one; a
-            // reading with no classic spelling keeps its structural parts.
+            // A temporal is its classic ISO spelling wherever it has one and
+            // the spelling reads back at the unit it is held at - the
+            // fraction is the shortest exact one, so `09:30:00` under a
+            // nanosecond count spells seconds - and its structural parts
+            // otherwise, so the wire restores the unit from the text alone.
             Self::Date32(value) => match crate::temporal::format_date(value.count()) {
                 Some(spelled) if value.unit() == TimeUnit::Day && value.timezone().is_naive() => {
                     tagged(serializer, "date32", &spelled)
@@ -492,7 +495,13 @@ impl Serialize for Scalar {
             ),
             Self::Time32(value) => {
                 match crate::temporal::format_time(i64::from(value.count()), value.unit()) {
-                    Some(spelled) if value.timezone().is_naive() => {
+                    Some(spelled)
+                        if value.timezone().is_naive()
+                            && crate::temporal::spelling_keeps_unit(
+                                i64::from(value.count()),
+                                value.unit(),
+                            ) =>
+                    {
                         tagged(serializer, "time32", &spelled)
                     }
                     _ => tagged(
@@ -504,7 +513,13 @@ impl Serialize for Scalar {
             }
             Self::Time64(value) => {
                 match crate::temporal::format_time(value.count(), value.unit()) {
-                    Some(spelled) if value.timezone().is_naive() => {
+                    Some(spelled)
+                        if value.timezone().is_naive()
+                            && crate::temporal::spelling_keeps_unit(
+                                value.count(),
+                                value.unit(),
+                            ) =>
+                    {
                         tagged(serializer, "time64", &spelled)
                     }
                     _ => tagged(
@@ -525,8 +540,12 @@ impl Serialize for Scalar {
                     )
                 };
                 match spelled {
-                    Some(spelled) => tagged(serializer, "datetime64", &spelled),
-                    None => tagged(
+                    Some(spelled)
+                        if crate::temporal::spelling_keeps_unit(value.count(), value.unit()) =>
+                    {
+                        tagged(serializer, "datetime64", &spelled)
+                    }
+                    _ => tagged(
                         serializer,
                         "datetime64",
                         &Triple(&value.count(), &value.unit(), &value.timezone()),
@@ -535,7 +554,13 @@ impl Serialize for Scalar {
             }
             Self::Duration32(value) => {
                 match crate::temporal::format_duration(i64::from(value.count()), value.unit()) {
-                    Some(spelled) if value.timezone().is_naive() => {
+                    Some(spelled)
+                        if value.timezone().is_naive()
+                            && crate::temporal::spelling_keeps_unit(
+                                i64::from(value.count()),
+                                value.unit(),
+                            ) =>
+                    {
                         tagged(serializer, "duration32", &spelled)
                     }
                     _ => tagged(
@@ -547,7 +572,13 @@ impl Serialize for Scalar {
             }
             Self::Duration64(value) => {
                 match crate::temporal::format_duration(value.count(), value.unit()) {
-                    Some(spelled) if value.timezone().is_naive() => {
+                    Some(spelled)
+                        if value.timezone().is_naive()
+                            && crate::temporal::spelling_keeps_unit(
+                                value.count(),
+                                value.unit(),
+                            ) =>
+                    {
                         tagged(serializer, "duration64", &spelled)
                     }
                     _ => tagged(

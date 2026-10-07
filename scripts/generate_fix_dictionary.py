@@ -16,7 +16,12 @@ is written into ``components/`` beside the others. Only wire
 fields have tags. A group states its ordinary int32 counter as its own
 ``FIX:counter`` - the tag that frames it on the wire - and contains a non-null
 component; no member lists the counter beside the group, whose length is its
-count. Datatypes resolve through the crate's logical-name table.
+count. Datatypes resolve through the crate's logical-name table, and every
+field also states the FIX datatype it was declared under as ``FIX:datatype``,
+spelled as the specification spells it - a field typed by a code set states
+the set's base type - because the crate datatype does not recover it: four
+FIX datatypes are one ``datetime64``, and only ``TZTimeOnly`` is a clock with
+no date.
 
 ``codesets/`` is the fourth directory, and it holds vocabularies rather than
 fields. A code set is named by the specification - ``SideCodeSet``,
@@ -506,6 +511,19 @@ def quickfix_type(name: str) -> str:
     return replacements.get(folded_name, "String")
 
 
+def fix_datatype(fix_type: str, code_sets: dict[str, Any]) -> str:
+    """The FIX datatype name a field states, as the specification spells it.
+
+    A field typed by a code set takes that set's own base type: the set is a
+    vocabulary over a datatype, never a datatype of its own. Written on every
+    field as ``FIX:datatype``, because it is the fact the crate datatype
+    cannot recover - `UTCTimestamp`, `TZTimestamp`, `UTCDateOnly` and
+    `TZTimeOnly` are one `datetime64`, and only the last is a time of day.
+    """
+    held = code_sets.get(fix_type)
+    return held["type"] if held is not None else fix_type
+
+
 def dtype_of(fix_type: str, tag: int, code_sets: dict[str, Any]) -> str:
     """The crate datatype spelling one FIX datatype name resolves through.
 
@@ -515,11 +533,7 @@ def dtype_of(fix_type: str, tag: int, code_sets: dict[str, Any]) -> str:
     """
     if tag in CODED_TAGS:
         return CODED_TAGS[tag]
-    # A field typed by a code set takes that set's own base type: the set is
-    # a vocabulary over a datatype, never a datatype of its own.
-    held = code_sets.get(fix_type)
-    if held is not None:
-        fix_type = held["type"]
+    fix_type = fix_datatype(fix_type, code_sets)
     if folded(fix_type) not in LOGICAL_NAMES:
         raise SystemExit(f"unmapped FIX datatype {fix_type!r} on tag {tag}")
     return fix_type
@@ -568,20 +582,40 @@ def camel_case(description: str) -> str:
 # knows `PartiallyFilled` and `Filled`; it does not know `PartialFill`.
 LEGACY_NAMES = {(150, "1"): "PartiallyFilled", (150, "2"): "Filled"}
 
+# The bridge spellings a vocabulary takes beside the specification's own,
+# keyed by the family the set is read by - the folded field name's tail, or
+# the set's folded name less `codeset` - then by the code's value and name.
+# A word is listed only where it has exactly one meaning in its set: a
+# bridge's `Aggressor` can mean one member of a two-member indicator, and a
+# word two codes could claim is left to a CBlock map, which states which.
 # PartyIDSource is copied into every Party family member but reads one shared
-# vocabulary. The bridge spelling belongs to that family alone; another
+# vocabulary, so its spelling belongs to that family alone; another
 # Proprietary code keeps the standard spelling it declares.
-PARTY_ID_SOURCE_ALIASES = {("D", "Proprietary"): ("proprietary/customcode",)}
+BRIDGE_ALIASES: dict[str, dict[tuple[str, str], tuple[str, ...]]] = {
+    "partyidsource": {("D", "Proprietary"): ("proprietary/customcode",)},
+    "aggressorindicator": {
+        ("Y", "OrderInitiatorIsAggressor"): ("Aggressor",),
+        ("N", "OrderInitiatorIsPassive"): ("Passive",),
+    },
+}
 
 
-def party_id_source_aliases(
+def bridge_aliases(
     name: str, declared: str | None, codes: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """Add the bridge spelling to the shared PartyIDSource vocabulary."""
-    if not name.endswith("partyidsource") and folded(declared or "") != "partyidsourcecodeset":
+    """Add the bridge spellings the vocabulary `name` reads by takes."""
+    family = next(
+        (
+            family
+            for family in BRIDGE_ALIASES
+            if name.endswith(family) or folded(declared or "") == f"{family}codeset"
+        ),
+        None,
+    )
+    if family is None:
         return codes
     for code in codes:
-        aliases = PARTY_ID_SOURCE_ALIASES.get((code["value"], code["name"]))
+        aliases = BRIDGE_ALIASES[family].get((code["value"], code["name"]))
         if aliases is None:
             continue
         current = code.setdefault("aliases", [])
@@ -1058,7 +1092,7 @@ def build(
         and what the field carries is the name alone.
         """
         folded_codes = fold_legacy_codes(tag, codes, listings.get(tag, []), latest["version"])
-        folded_codes = party_id_source_aliases(name, declared, folded_codes)
+        folded_codes = bridge_aliases(name, declared, folded_codes)
         if not folded_codes:
             return None
         code_values[tag] = {code["value"] for code in folded_codes}
@@ -1077,7 +1111,11 @@ def build(
             for source in reversed(SOURCES)
             if source.format == "quickfix" and tag in parsed[source.source_id]["fields"]
         )
-        metadata = {"FIX:tag": str(tag), "display": display}
+        metadata = {
+            "FIX:datatype": fix_datatype(fix_type, latest["code_sets"]),
+            "FIX:tag": str(tag),
+            "display": display,
+        }
         names = [entry["name"] for entry in entries if entry.get("name") not in (None, name)]
         if names:
             metadata["FIX:names"] = list(dict.fromkeys(names))
@@ -1121,7 +1159,10 @@ def build(
                 entries[-1] = current
             else:
                 entries.append(current)
-        metadata: dict[str, str] = {"FIX:tag": str(tag)}
+        metadata: dict[str, str] = {
+            "FIX:datatype": fix_datatype(field["type"], latest["code_sets"]),
+            "FIX:tag": str(tag),
+        }
         if field["name"] != name:
             metadata["display"] = field["name"]
         if field["doc"]:

@@ -346,7 +346,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `marketdatatype.rs` | the `enum` family's `MarketDataType`: what type of its kind an element is, one generic set over the eight FIX code sets that type one - `OrdType(40)` as the order types `ORD*` (1xx), `QuoteType(537)` the quote types `QUO*` (2xx), `TrdType(828)` the trade types `TRD*` (3xx), `MDEntryType(269)` the book entry types `BOOK*` (4xx), `TradeReportType(856)` the trade report types `TRPT*` (5xx), `QuoteRequestType(303)` `QRQ*` (6xx), `MassCancelRequestType(530)` `MCX*` (7xx) and `SubscriptionRequestType(263)` `MDR*` (8xx), each set closing with its `*OTHER` catch-all and `UKNW` (0) none stated - stored as the `uint16` code under `yggdryl.marketdatatype`; `from_fix`/`fix_code` the crate's reading of the wire, `fix_tags_of(msgtype, kind)` which fields type a message - its message type's own rule in `MARKETDATATYPE_MSGTYPE_RULES` (a trade capture report by `TradeReportType`, a mass cancel by `MassCancelRequestType`, a market data request by `SubscriptionRequestType`) before its kind's (`fix_tags`) - which a dictionary overrides per field with `FIX:marketdatatype` (`value=MEMBER` words, `FixRegistry::marketdatatype_of`), the intrinsic `marketdatatypecodeset` rendered from it |
 | `side.rs` | the `enum` family's `Side`: FIX `Side(54)`, `UKNW` (0) then the seventeen sides in wire order to `SELU` (17), and `BOTH` (99) - both sides at once, a book's and a two-sided quote's, with no wire character - each spelled by a fixed four-letter code - `BUYS`, `SELL`, `SSHT` - and described by its long name, the stored names before the codes (`BUY`, `SSHORT`) read and never written, one byte in memory and the `uint8` code under `yggdryl.side` in a column - the number (`BUYS` 1, `SELL` 2) a sided element's stored cross code carries; never null - `UKNW` (stored `0`) is a side nobody stated, which a merge takes the other side over and which takes neither the bid nor the ask |
 | `timeinforce.rs` | the `enum` family's `TimeInForce`: FIX `TimeInForce(59)`, `UKNW` (0) then one member per wire value in wire order - `DAY` (1) for `0` to `GFM` (13) for `C` - and `OTHER` (99) for a venue's own value, stored as the `uint8` code under `yggdryl.timeinforce`; `from_fix`/`fix_code` the crate's reading of the wire, `from_spelling` a stored name, the standard's name folded or the wire value itself; a dictionary maps any field's values onto members with `FIX:timeinforce` (`value=MEMBER` words, `FixRegistry::timeinforce_of`), what an operation's `timeinforce` - `TimeInForce(59)` itself in the fixed row - reads through |
-| `temporal.rs` | what the five temporal families share and nothing any one of them owns: the crate-private `TemporalKind` tag the arithmetic, the digests and canonicalization branch on - public only as `DataTypeId::temporal_family`, `date`, `time`, `datetime`, `duration` or `interval` - the `temporal_leaf!` macro the family files build their count-unit-zone values with, the unit validators the constructors call, the ISO 8601 spellings every text codec and the scalar renderer write through, the Arrow casts that take any temporal, and the `Scalar` readers that answer across the families (`temporal_unit`, `temporal_timezone`, `temporal_count`); `TemporalValue`, the contract every leaf answers, is in `value/`; no datatype, no field and no leaf value live here |
+| `temporal.rs` | what the five temporal families share and nothing any one of them owns: the crate-private `TemporalKind` tag the arithmetic, the digests and canonicalization branch on - public only as `DataTypeId::temporal_family`, `date`, `time`, `datetime`, `duration` or `interval` - the `temporal_leaf!` macro the family files build their count-unit-zone values with, the unit validators the constructors call, the ISO 8601 spellings every text codec and the scalar renderer write through - a clock's or a duration's fraction written short by `push_fraction`: nothing where it is zero, else the shortest of three, six or nine digits that spells it exactly, so `09:30:00` under a nanosecond column prints as a reader writes it and reads back at the column's unit - the Arrow casts that take any temporal, and the `Scalar` readers that answer across the families (`temporal_unit`, `temporal_timezone`, `temporal_count`); `TemporalValue`, the contract every leaf answers, is in `value/`; no datatype, no field and no leaf value live here |
 | `date.rs` | the date family: `DateType` - `Date32`, `Date64`, no parameter, the unit being what the leaf is - the typed field's payload over the flat `DataType::Date32` and `DataType::Date64` leaves, with `date32()`, `date64()` and `date_type()`, the `Date32` and `Date64` values with their `Scalar` constructors, one Arrow projection (`Date32`, `Date64`) |
 | `time.rs` | the time family: `TimeType` - `Time32(unit)`, `Time64(unit)`, the resolution a parameter of the leaf and `for_unit` the one rule `DataType::time` picks a width by - the typed field's payload over the flat `DataType::Time32(TimeUnit)` and `DataType::Time64(TimeUnit)` leaves, with `time`, `time32`, `time64`, `time_of` and `time_type`, SQL's `time(p)` grammar, the `Time32` and `Time64` values, one Arrow projection (`Time32`, `Time64`) |
 | `datetime.rs` | the datetime family: `DateTimeType` - one leaf, `DateTime64 { unit, timezone }` - the typed field's payload over the flat `DataType::DateTime64 { unit, timezone }` leaf, with `datetime64` and `datetime_type`, every `timestamp` spelling of the grammar, the `DateTime64` value, one Arrow projection (`Timestamp`, carrying the zone only when the datatype states one) |
@@ -541,12 +541,24 @@ the JavaScript files beside it, `node/src/text/line.rs` by
   an offset may follow one blank (`10:00:00 +0400`), a blank around the text
   is refused as a datetime's value door refuses it, and a tool's habit (the
   AWS CLI's trailing `UTC`) is taken off by the intake that meets it
-  (`auth::instant`); no module pairs those readers for itself. A FIX datetime
-  field is read by `DateTime64::from_fix_text` - the same reader, and the
-  four spellings only FIX writes: one digit run with its fraction, a clock
-  that stops at its minutes, a zoned clock with no date on the epoch day, a
-  numeric offset closed by `s` (`+0400s`) - so the codec parses no datetime
-  of its own.
+  (`auth::instant`); no module pairs those readers for itself. Every FIX
+  value is read by its field's type and nothing in `fix/` parses one: the
+  type's FIX door where FIX spells a value its own way, the type's one text
+  reader through the value door otherwise, a code-set word by the set under
+  the crate's fold with the refusal naming the set. A datetime field is
+  read by `DateTime64::from_fix_text` - the same reader, and the four
+  spellings only FIX writes: one digit run with its fraction, a clock that
+  stops at its minutes, a zoned clock with no date on the epoch day, a
+  numeric offset closed by `s` (`+0400s`); a field the dictionary declares a
+  `TZTimeOnly` (`FIX:datatype`, the one FIX datatype the crate datatype does
+  not recover, hoisted once per field into the codec's memo) by
+  `DateTime64::from_fix_clock` - a clock and no date, zoned or a wall clock
+  in the column's zone, on the epoch day; a time of day by
+  `Time32::from_fix_text`/`Time64::from_fix_text` - the ISO clock plus the
+  clock half of those two spellings; a date by `Date32::from_text` and a
+  duration by `Duration32::from_text`/`Duration64::from_text`, the public
+  ISO doors of `date.rs`, `time.rs` and `duration.rs` over the shared
+  grammar in `temporal.rs`, which the value door reaches on its own.
 
 ## Patterns
 

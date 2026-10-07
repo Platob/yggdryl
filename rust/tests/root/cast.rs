@@ -446,7 +446,7 @@ mod coverage {
         let elapsed: ArrayRef = Arc::new(DurationMillisecondArray::from(vec![90_000, -1_500]));
         let text = cast(&DataType::utf8().nullable_field("took"), elapsed).unwrap();
         let text = text.as_any().downcast_ref::<StringArray>().unwrap();
-        assert_eq!((text.value(0), text.value(1)), ("PT90.000S", "-PT1.500S"));
+        assert_eq!((text.value(0), text.value(1)), ("PT90S", "-PT1.500S"));
 
         let clock: ArrayRef = Arc::new(Time64NanosecondArray::from(vec![Some(1), None]));
         let text = cast(&DataType::utf8().nullable_field("clock"), clock).unwrap();

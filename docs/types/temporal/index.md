@@ -91,7 +91,7 @@ The leaf is the storage and its unit the parameter; the family is what a reader 
         DataType::duration64(TimeUnit::Millisecond)?
     );
 
-    // Text reads and writes the classic ISO spelling, at the unit's width.
+    // Text reads and writes the classic ISO spelling, its fraction written short.
     assert_eq!(day.scalar("1970-01-02")?, Scalar::date32(1));
     assert_eq!(clock.scalar("10:15:30.5")?, Scalar::time32(36_930_500, TimeUnit::Millisecond, Timezone::NAIVE)?);
     assert_eq!(DataType::utf8().scalar(Scalar::duration64(90, TimeUnit::Second)?)?, Scalar::from("PT90S"));
