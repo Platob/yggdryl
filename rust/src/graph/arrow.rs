@@ -134,8 +134,8 @@ impl MarketData {
     /// assert!(field.fields()[6].is_nullable());
     /// assert_eq!(field.fields()[15].name(), "marketdatakind");
     /// assert!(!field.fields()[15].is_nullable());
-    /// assert_eq!(field.field_len(), 6 + 9 + 35 + 5 + 3 + 6);
-    /// let nested: Vec<&str> = field.fields()[58..].iter().map(|field| field.name()).collect();
+    /// assert_eq!(field.field_len(), 6 + 9 + 36 + 5 + 3 + 6);
+    /// let nested: Vec<&str> = field.fields()[59..].iter().map(|field| field.name()).collect();
     /// assert_eq!(nested, ["alive", "delta", "events", "executions", "bidlimits", "asklimits"]);
     /// # Ok(())
     /// # }

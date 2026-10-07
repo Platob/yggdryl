@@ -92,6 +92,7 @@ def test_the_graph_enum_listings_mirror_the_native_vocabulary() -> None:
         "price",
         "stoppx",
         "currency",
+        "origccy",
         "quantity",
         "displayqty",
         "hiddenqty",
