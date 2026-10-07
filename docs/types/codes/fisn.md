@@ -203,7 +203,7 @@ for refused in ["ACME CORP SH", "/SH", "ACME CORP/", "ACME\tCORP/SH", "SOCIÉTÉ
 
 ## In the instrument registry
 
-An [`IsinRegistry`](../../graph/isin-registry.md) row holds an instrument's short name in its `fisn` column, typed `fisn`, right after `ticker`: an instrument fact, filled on any market and cleared by no listing switch. A lifecycle learns it where a message states one - `FinancialInstrumentShortName(2737)`, or a `fisn` security identifier - and fills it into an element stating none as a `derived` identifier; the [seed](../../graph/isin-registry.md#seed) states it where FIRDS spells one. A merge replaces a held name by one that differs, as every column.
+An [`IsinRegistry`](../../graph/isin-registry.md) row holds an instrument's short name in its `fisn` column, typed `fisn`, right after `ticker`: an instrument fact, held alike on every [listing](../../graph/isin-registry.md#listings) of its ISIN - one row per market - and filled into an element on any market. A lifecycle learns it where a message states one - `FinancialInstrumentShortName(2737)`, or a `fisn` security identifier - and fills it into an element stating none as a `derived` identifier; the [seed](../../graph/isin-registry.md#seed) states it where FIRDS spells one. A merge replaces a held name by one that differs, as every column.
 
 === "Rust"
 

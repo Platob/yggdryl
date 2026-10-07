@@ -1,6 +1,6 @@
 """`python/yggdryl/isin_registry.py` and `python/src/isin_registry.rs`: the
-instrument registry, one row per ISIN of every fact it is known by, learned
-from and filled into FIX messages, bound to the store it is loaded from and
+instrument registry, one row per ISIN and market of every fact it is known by,
+learned from and filled into FIX messages, bound to the store it is loaded from and
 committed back to, redirected to the core."""
 
 from __future__ import annotations
@@ -43,7 +43,10 @@ def test_a_registry_learns_a_message_and_fills_a_later_one_named_by_its_ticker(c
     assert registry.is_dirty
     row = registry.get(HOLCIM)
     assert row is not None
-    assert {key: value for key, value in row.items() if value is not None and key != "updunix"} == {
+    # The two stamps are the message's instant, which the undated line takes
+    # from the clock: present, and left out of the facts compared.
+    assert row["updunix"] is not None and row["lastunix"] is not None
+    assert {key: value for key, value in row.items() if value is not None and key not in ("updunix", "lastunix")} == {
         "cficode": "ESVUFR",
         "currency": "CHF",
         "isin": HOLCIM,
@@ -72,6 +75,49 @@ def test_a_registry_learns_a_message_and_fills_a_later_one_named_by_its_ticker(c
     assert not registry.fill(by_ric) and by_ric.isincode is None
 
 
+def test_one_isin_on_two_markets_is_two_listings_and_every_learn_moves_lastunix(codec: FixCodec) -> None:
+    registry = IsinRegistry()
+    utc = datetime.timezone.utc
+    first, second, later = (datetime.datetime(2026, 1, 2, hour, tzinfo=utc) for hour in (9, 10, 11))
+
+    def at(instant: datetime.datetime, line: bytes) -> object:
+        return FixCodec(codec.registry, default_sending_time=instant).parse_fix_line(line)
+
+    isin = b"|22=4|48=" + HOLCIM.encode()
+    assert registry.learn(at(first, b"8=FIX.4.4|35=D|11=A" + isin + b"|55=HOLN|207=XSWX|15=CHF|10=0|"))
+    assert registry.learn(at(second, b"8=FIX.4.4|35=D|11=B" + isin + b"|55=HOLNL|207=XLON|15=GBP|10=0|"))
+    assert (len(registry), registry.rows) == (1, 2), "one instrument, two listings"
+    listings = registry.listings(HOLCIM)
+    assert [(row["miccode"], row["ticker"], row["currency"]) for row in listings] == [
+        ("XLON", "HOLNL", "GBP"),
+        ("XSWX", "HOLN", "CHF"),
+    ], "in MIC order, each its own listing facts"
+    assert registry.get(HOLCIM) == listings[0], "the first listing in MIC order"
+    assert registry.get_listing(HOLCIM, "XSWX") == listings[1] and registry.get_listing(HOLCIM, "XLON") == listings[0]
+    assert registry.get_listing(HOLCIM, "XNAS") is None and registry.get_listing(APPLE, "XSWX") is None
+    assert registry.listings(APPLE) == []
+    with pytest.raises(ValueError):
+        registry.get_listing(HOLCIM, "TOOLONG")
+    assert registry.get_by_ticker("HOLNL", "XLON") == listings[0] and registry.get_by_ticker("HOLN", "XLON") is None
+    # `lastunix` is an instrument fact - every listing holds the latest
+    # instant - and `updunix` the instant a fact last moved.
+    assert {row["lastunix"] for row in listings} == {second}
+    stamps = {row["miccode"]: row["updunix"] for row in listings}
+    # A later message stating the ISIN alone teaches no fact, yet moves
+    # `lastunix` on every listing and leaves `updunix` where it was.
+    assert registry.learn(at(later, b"8=FIX.4.4|35=D|11=C" + isin + b"|10=0|")), "the instant moved"
+    assert registry.is_dirty
+    relisted = registry.listings(HOLCIM)
+    assert [row["lastunix"] for row in relisted] == [later, later]
+    assert {row["miccode"]: row["updunix"] for row in relisted} == stamps, "no fact moved"
+    assert not registry.learn(at(first, b"8=FIX.4.4|35=D|11=D" + isin + b"|10=0|")), "an earlier instant keeps the later"
+    removed = registry.remove_listing(HOLCIM, "XLON")
+    assert removed is not None and removed["miccode"] == "XLON"
+    assert (len(registry), registry.rows) == (1, 1) and registry.remove_listing(HOLCIM, "XLON") is None
+    assert registry.remove_listing(HOLCIM, "XSWX") is not None
+    assert (len(registry), registry.rows) == (0, 0), "the instrument goes with its last listing"
+
+
 def test_enrich_learns_then_fills(codec: FixCodec) -> None:
     registry = IsinRegistry()
     assert registry.enrich(stated(codec))
@@ -93,13 +139,22 @@ def test_a_row_merges_by_the_update_rule(codec: FixCodec) -> None:
     assert registry.merge({"isin": HOLCIM, "underlyingisin": APPLE}), "an instrument fact fills"
     assert not registry.merge({"isin": HOLCIM, "underlyingisin": HOLCIM}), "the row's own ISIN states nothing"
     assert not registry.merge({"isin": HOLCIM, "underlyingisin": "US0378331006"}), "a typo is dropped"
-    assert registry.merge({"isin": HOLCIM, "miccode": "XLON", "ticker": "HOLNL"}), "a listing switch"
-    row = registry.get(HOLCIM)
-    assert row is not None and (row["underlyingisin"], row["miccode"]) == (APPLE, "XLON"), "an instrument fact no listing switch clears"
+    # The ISIN's one row states no market yet, so the first market a
+    # statement names becomes that row's; a second market is a second
+    # listing row, carrying the instrument facts beside its own.
+    assert registry.merge({"isin": HOLCIM, "miccode": "XLON", "ticker": "HOLNL"}), "the unlisted row takes its market"
+    assert (len(registry), registry.rows) == (1, 1)
+    assert registry.merge({"isin": HOLCIM, "miccode": "XSWX", "ticker": "HOLN"}), "a second market, a second listing"
+    assert (len(registry), registry.rows) == (1, 2)
+    assert [(row["miccode"], row["ticker"], row["underlyingisin"]) for row in registry.listings(HOLCIM)] == [
+        ("XLON", "HOLNL", APPLE),
+        ("XSWX", "HOLN", APPLE),
+    ], "an instrument fact every listing carries"
     with pytest.raises(ValueError, match="isin"):
         registry.merge({"ric": "HOLN.S"})
     removed = registry.remove(HOLCIM)
-    assert removed is not None and removed["isin"] == HOLCIM and registry.remove(HOLCIM) is None
+    assert [(row["isin"], row["miccode"]) for row in removed] == [(HOLCIM, "XLON"), (HOLCIM, "XSWX")], "every listing, in MIC order"
+    assert registry.remove(HOLCIM) == [] and registry.rows == 0
     registry.merge({"isin": HOLCIM})
     registry.clear()
     assert len(registry) == 0
@@ -138,9 +193,11 @@ def test_the_product_category_is_an_instrument_fact_merged_by_the_update_rule(co
     assert registry.merge({"isin": HOLCIM, "eusipacode": 2301}), "a category neither map lists is a category"
     assert registry.merge({"isin": HOLCIM, "eusipacode": "1260", "updunix": 1}), "text of the number, whatever the time"
     assert not registry.merge({"isin": HOLCIM, "eusipacode": 3100}), "a number of no category's shape is dropped"
-    assert registry.merge({"isin": HOLCIM, "miccode": "XLON", "ticker": "HOLNL"}), "a listing switch"
-    row = registry.get(HOLCIM)
-    assert row is not None and (row["miccode"], row["eusipacode"]) == ("XLON", 1260), "no listing switch clears it"
+    assert registry.merge({"isin": HOLCIM, "miccode": "XLON", "ticker": "HOLNL"}), "a second listing"
+    assert [(row["miccode"], row["eusipacode"]) for row in registry.listings(HOLCIM)] == [
+        ("XLON", 1260),
+        ("XSWX", 1260),
+    ], "an instrument fact the new listing carries too"
     # A golden file states it under either map's name, as a number or its text.
     for name in ("EUSIPA_Code", "eusipa", "EUSIPACategory", "SSPA", "sspa_code", "SSPACategory"):
         for cells in ([2300, 3100, None], ["2300", "3100", ""]):
@@ -175,7 +232,7 @@ def test_a_store_written_before_the_product_category_loads_it_null(tmp_path: pat
     registry = IsinRegistry()
     registry.merge({"isin": HOLCIM, "ric": "HOLN.S"})
     older = registry.into_arrow_reader().read_all().drop_columns(["eusipacode"])
-    assert len(older.schema.names) == 42, "the forty-three columns but the product category"
+    assert len(older.schema.names) == 43, "the forty-four columns but the product category"
     target = tmp_path / "instruments.arrow"
     LocalFile(target).overwrite_arrow_reader(pa.RecordBatchReader.from_batches(older.schema, older.to_batches()))
     loaded = IsinRegistry.from_url(target)
@@ -191,7 +248,8 @@ def test_the_underlying_crosses_the_pipelines_iceberg_table(tmp_path: pathlib.Pa
     silver = IcebergCatalog.open_or_create("silver", tmp_path / "silver")
     registry = medallion.instruments(silver)
     assert registry.merge({"isin": "CH0012005267", "underlyingisin": HOLCIM})
-    assert registry.commit().written_rows == len(registry) == len(IsinRegistry.seeded()), "the seed's rows, one moved"
+    seed = IsinRegistry.seeded()
+    assert len(registry) == len(seed) and registry.commit().written_rows == registry.rows == seed.rows, "the seed's listing rows, one moved"
     stored = silver.table("record_keeping.instruments")
     field = stored.field()
     assert field.index_of("underlyingisin") == field.index_of("forexcode") + 1
@@ -221,7 +279,7 @@ def test_a_ticker_leads_back_to_its_isin_on_the_same_market() -> None:
     assert registry.merge({"isin": novartis, "ticker": "HOLN", "miccode": "XLON"})
     assert (isin("HOLN", "XLON"), isin("HOLN", "XSWX")) == (novartis, HOLCIM)
     assert isin("HOLN") is None, "ambiguous"
-    assert registry.remove(novartis) is not None
+    assert [row["miccode"] for row in registry.remove(novartis)] == ["XLON"]
     assert isin("HOLN") == HOLCIM
     registry.clear()
     assert isin("HOLN") is None
@@ -289,9 +347,10 @@ def test_a_registry_round_trips_through_a_holder(tmp_path: pathlib.Path) -> None
     table = snapshot.read_all()
     assert table.num_rows == 2, "the stream is a snapshot a later write does not move"
     assert table.column("isin").to_pylist() == [HOLCIM, APPLE], "in ISIN order"
-    assert table.schema.names[:11] == [
+    assert table.schema.names[:12] == [
         "isin",
         "updunix",
+        "lastunix",
         "cficode",
         "countrycode",
         "forexcode",
@@ -302,7 +361,7 @@ def test_a_registry_round_trips_through_a_holder(tmp_path: pathlib.Path) -> None
         "fisn",
         "currency",
     ]
-    assert len(table.schema.names) == 43, "the ISO 18774 short name is the forty-third column"
+    assert len(table.schema.names) == 44, "the latest instant an event stated the ISIN is the forty-fourth column"
     target = tmp_path / "instruments.arrow"
     LocalFile(target).overwrite_arrow_reader(IsinRegistry.from_arrow_reader(table).into_arrow_reader())
     loaded = IsinRegistry.from_url(target)
@@ -388,7 +447,8 @@ def test_the_process_registry_is_the_sealed_store_and_the_codec_the_environment_
 
 def test_the_seed_holds_the_common_instruments_clean_and_bound_to_nothing() -> None:
     seeded = IsinRegistry.seeded()
-    assert len(seeded) == 208 and not seeded.is_dirty
+    assert (len(seeded), seeded.rows) == (208, 209) and not seeded.is_dirty, "HSBC lists on XHKG and XLON"
+    assert [row["miccode"] for row in seeded.listings("GB0005405286")] == ["XHKG", "XLON"]
     assert len(IsinRegistry()) == 0, "a registry built by hand holds none of it"
     apple = seeded.get(APPLE)
     assert apple is not None
@@ -424,7 +484,7 @@ def test_a_store_bound_seeded_is_laid_over_the_seed(tmp_path: pathlib.Path) -> N
     assert registry.commit() == IOResult(0, 0), "clean after the load"
     assert len(IsinRegistry.from_url(target)) == 2, "unseeded: the store's rows alone"
     assert registry.merge({"isin": HOLCIM, "ric": "HOLN.S"})
-    assert registry.commit().written_rows == len(registry), "the seed's rows with the store's"
+    assert registry.commit().written_rows == registry.rows, "the seed's listing rows with the store's"
     assert len(IsinRegistry.from_url(target)) == len(registry)
     assert len(IsinRegistry.seeded_from_url(LocalFile(target))) == len(registry), "a handle names the store too"
     with pytest.raises(TypeError, match="properties"):
@@ -437,7 +497,7 @@ def test_a_store_bound_seeded_is_laid_over_the_seed(tmp_path: pathlib.Path) -> N
 def test_the_row_declares_the_country_partition_and_the_isin_order() -> None:
     field = IsinRegistry.field()
     assert field.metadata["PARTITION:by"] == '["truncate(isin, 2)"]'
-    assert field.metadata["SORT:by"] == '["isin"]'
+    assert field.metadata["SORT:by"] == '["isin","miccode"]', "a listing row per ISIN and market"
 
 
 def test_the_short_name_is_the_column_after_the_ticker_and_merges_by_the_update_rule() -> None:

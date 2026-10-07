@@ -1,19 +1,24 @@
-//! One row per ISIN: every fact an instrument is known by, learned from the
-//! statements that name it and filled into the ones that leave it unsaid.
+//! One row per ISIN and market: every fact an instrument is known by,
+//! learned from the statements that name it and filled into the ones that
+//! leave it unsaid.
 //!
 //! The ISIN is the one key: an [`IsinRegistry`] holds one [`IsinEntry`] per
-//! canonical ISIN - its detailed CFI code, its country of issue, the pair an
-//! FX or referential number names, the instrument it is written on - its
-//! underlying - its EUSIPA product category, the market its listing facts
-//! were stated on, its ticker and trading currency, and one code per FIX
-//! `SecurityIDSource(22)` type - and a ticker leads back to its ISIN through
-//! an exact inverse index, gated by the market. A RIC, a Bloomberg symbol, a
-//! FIGI, a CUSIP are equivalents the ISIN fills, never keys a lookup reads.
+//! canonical ISIN and market it is listed on - its listings, in MIC order,
+//! or its unlisted row alone while no market is known. Each row holds the
+//! instrument's facts - its detailed CFI code, its country of issue, the
+//! pair an FX or referential number names, its underlying (the instrument
+//! it is written on), its EUSIPA product category, the stamps, and every
+//! code that is no listing code - and its own: its market, its ticker and
+//! trading currency, and its listing codes. A ticker leads back to its
+//! listing through an exact inverse index, gated by the market. A RIC, a
+//! Bloomberg symbol, a FIGI, a CUSIP are equivalents the ISIN fills, never
+//! keys a lookup reads.
 //!
 //! A row is updated on differences and no clock gates it: a statement's
 //! non-null valid value fills a column the row lacks and replaces one it
-//! holds that differs, an invalid value moves nothing, and `updunix` is a
-//! stamp ([`IsinRegistry::merge`]). Wherever a row is created or moves, the
+//! holds that differs, an invalid value moves nothing, and `updunix` and
+//! `lastunix` are stamps ([`IsinRegistry::merge`]). Wherever a row is
+//! created or moves, the
 //! facts it implies fill, once the statement has landed, the columns it
 //! leaves empty - the national number its ISIN embeds
 //! ([`securityid::embedded`](crate::securityid::embedded)) and the currency
@@ -60,9 +65,10 @@ pub(crate) use store::Store;
 const ROOT: &str = "isinregistry";
 
 /// The columns a row opens with, before one per equivalent type.
-const NAMES: [&str; 11] = [
+const NAMES: [&str; 12] = [
     "isin",
     "updunix",
+    "lastunix",
     "cficode",
     "countrycode",
     "forexcode",
@@ -74,11 +80,19 @@ const NAMES: [&str; 11] = [
     "currency",
 ];
 
-/// The place of the `fisn` column in [`NAMES`].
-const FISN: usize = 9;
-
-/// The place of the `currency` column in [`NAMES`].
-const CURRENCY: usize = 10;
+/// The place of each column of [`NAMES`] in a row.
+const ISIN: usize = 0;
+const UPDUNIX: usize = 1;
+const LASTUNIX: usize = 2;
+const CFICODE: usize = 3;
+const COUNTRYCODE: usize = 4;
+const FOREXCODE: usize = 5;
+const UNDERLYINGISIN: usize = 6;
+const EUSIPACODE: usize = 7;
+const MICCODE: usize = 8;
+const TICKER: usize = 9;
+const FISN: usize = 10;
+const CURRENCY: usize = 11;
 
 /// The most bytes a ticker holds.
 const MAX_TICKER_WIDTH: usize = 64;
@@ -88,17 +102,19 @@ const MAX_TICKER_WIDTH: usize = 64;
 const MAX_VALUE_HEAP_ALLOWANCE: usize =
     IDENTIFIER_VALUE_WIDTH + 2 * size_of::<usize>() + 2 * align_of::<usize>();
 
-/// What one instrument's row may take at most: its key and entry twice over
-/// for the B-tree's slack - the entry holding its codes inline, a country,
-/// a pair, an underlying, a product category, a short name and a currency
-/// among them - its codes spilled to the heap with every value at the
-/// widest heap a value takes, its ticker's heap, its short name's heap, and
-/// its one ticker slot in the ticker index with that ticker's heap.
+/// What one listing row may take at most: its key and its listings twice
+/// over for the B-tree's slack - which bounds the row inline in its
+/// listings, or spilled with them to a buffer that doubles - the entry
+/// holding its codes inline, a country, a pair, an underlying, a product
+/// category, a short name and a currency among them - its codes spilled to
+/// the heap with every value at the widest heap a value takes, its ticker's
+/// heap, its short name's heap, and its one ticker slot in the ticker index
+/// with that ticker's heap.
 const ENTRY_CHARGE: usize = 3 * 1024;
 
 const _: () = assert!(
     ENTRY_CHARGE
-        >= 2 * (size_of::<SmolStr>() + size_of::<IsinEntry>())
+        >= 2 * (size_of::<SmolStr>() + size_of::<Listings>())
             + IsinRegistry::MAX_EQUIVALENTS
                 * (size_of::<(IdType, SmolStr)>() + MAX_VALUE_HEAP_ALLOWANCE)
             + MAX_TICKER_WIDTH
@@ -108,9 +124,18 @@ const _: () = assert!(
             + 2 * size_of::<usize>()
             + 2 * align_of::<usize>()
             + MAX_TICKER_WIDTH
-            + size_of::<(SmolStr, SmallVec<[SmolStr; 1]>)>()
+            + size_of::<(SmolStr, TickerSlots)>()
             + 2 * size_of::<usize>()
 );
+
+/// The listing rows of one ISIN, in MIC order: one row per market its
+/// listing facts were stated on, or the unlisted row alone while no market
+/// is known. One listing sits inline, so an instrument of one market costs
+/// its row and nothing beside it.
+type Listings = SmallVec<[IsinEntry; 1]>;
+
+/// The listing rows stating one ticker, by ISIN and market, in that order.
+type TickerSlots = SmallVec<[(SmolStr, Option<Mic>); 1]>;
 
 /// The table a parse reads crosses to every worker thread as it is.
 const fn crosses_threads<T: Send + Sync>() {}
@@ -136,20 +161,27 @@ fn later(left: Option<i64>, right: Option<i64>) -> Option<i64> {
     left.max(right)
 }
 
-/// One instrument: its ISIN and everything it is known by.
+/// One listing of one instrument: its ISIN, its market and everything it is
+/// known by there.
 ///
-/// The row of an [`IsinRegistry`]: `isin`, `updunix` - when the statement
-/// that last moved it happened, nanoseconds since the epoch, UTC - the
-/// detailed `cficode`, the `countrycode` of issue where one was stated, the
-/// `forexcode` an FX or referential number names, the `underlyingisin` it is
-/// written on - FIX's underlying, a real ISIN other than its own - its
-/// `eusipacode`, the EUSIPA product category of a structured product
-/// ([`Eusipa`]), the `miccode` its listing facts belong to, the `ticker`,
-/// the ISO 18774 short name `fisn` the instrument states ([`Fisn`]), the
-/// trading `currency` of that listing, and one code per
+/// The row of an [`IsinRegistry`], one per ISIN and market: `isin`,
+/// `updunix` - when the statement that last moved a fact of the instrument
+/// happened, nanoseconds since the epoch, UTC - `lastunix` - the latest
+/// instant of an event the registry learned this instrument from, the
+/// same clock - the detailed `cficode`, the `countrycode` of issue where
+/// one was stated, the `forexcode` an FX or referential number names, the
+/// `underlyingisin` it is written on - FIX's underlying, a real ISIN other
+/// than its own - its `eusipacode`, the EUSIPA product category of a
+/// structured product ([`Eusipa`]), the `miccode` the row is the listing
+/// of, the `ticker`, the ISO 18774 short name `fisn` the instrument states
+/// ([`Fisn`]), the trading `currency` of that listing, and one code per
 /// `SecurityIDSource(22)` type but the ISIN, at most
 /// [`IsinRegistry::MAX_EQUIVALENTS`] of them, each held as its type stores
-/// it.
+/// it. The instrument facts - the stamps, the CFI code, the country, the
+/// pair, the underlying, the product category, the short name and every
+/// code that is no listing code ([`IdType::is_listing`]) - are the ISIN's,
+/// and every listing row of it holds the same; `miccode`, `ticker`,
+/// `currency` and the listing codes are the row's own.
 ///
 /// A row the registry folds - created or moved by a statement - fills,
 /// once the statement has landed, the columns its own facts imply where it
@@ -160,11 +192,9 @@ fn later(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 /// ([`Mic::country`], [`Country::currency`]); a row of no market, or of a
 /// market of no single country, takes no currency, since a currency is a
 /// listing's. A default never displaces a statement: it fills only what the
-/// statement left empty, a later statement replaces it as it replaces any
-/// value, and a listing switch that clears the currency and the listing
-/// codes derives them again for the new market. A statement derives
-/// nothing - an entry built here and never folded holds only what it was
-/// given.
+/// statement left empty, and a later statement replaces it as it replaces
+/// any value. A statement derives nothing - an entry built here and never
+/// folded holds only what it was given.
 ///
 /// ```
 /// use yggdryl::{Country, IdType, Isin, IsinEntry};
@@ -190,6 +220,7 @@ fn later(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 pub struct IsinEntry {
     isin: Isin,
     updunix: Option<i64>,
+    lastunix: Option<i64>,
     cficode: Option<Cfi>,
     countrycode: Option<Country>,
     forexcode: Option<Forex>,
@@ -207,8 +238,10 @@ pub struct IsinEntry {
 /// column.
 const PARTITION_BY: &str = "truncate(isin, 2)";
 
-/// The order the rows keep: the ISIN, the table's own order.
-const SORT_BY: &str = "isin";
+/// The order the rows keep: the ISIN, then the market of each of its
+/// listings - the table's own order. An unlisted row stands alone under its
+/// ISIN, so where a null market sorts never moves a row.
+const SORT_BY: [&str; 2] = ["isin", "miccode"];
 
 /// The registry's row, declaring how a stored table partitions
 /// ([`PARTITION_BY`]) and the order its rows keep ([`SORT_BY`]): what
@@ -222,7 +255,7 @@ static FIELD: LazyLock<Field> = LazyLock::new(|| {
         .expect("the registry's partition declaration reads");
     field
         .as_sort_mut()
-        .set_by_texts([SORT_BY])
+        .set_by_texts(SORT_BY)
         .expect("the registry's order reads");
     field
 });
@@ -231,25 +264,23 @@ static FIELD: LazyLock<Field> = LazyLock::new(|| {
 /// under, since a stream read in, a golden file's included, keeps no order
 /// the landing could prove.
 static ROW: LazyLock<Field> = LazyLock::new(|| {
+    let instant = || DataType::DateTime64 {
+        unit: TimeUnit::Nanosecond,
+        timezone: Timezone::UTC,
+    };
     let mut fields = vec![
-        Field::new(NAMES[0], DataType::isin(), false),
-        Field::new(
-            NAMES[1],
-            DataType::DateTime64 {
-                unit: TimeUnit::Nanosecond,
-                timezone: Timezone::UTC,
-            },
-            true,
-        ),
-        Field::new(NAMES[2], DataType::cfi(), true),
-        Field::new(NAMES[3], DataType::country(), true),
-        Field::new(NAMES[4], DataType::forex(), true),
-        Field::new(NAMES[5], DataType::isin(), true),
+        Field::new(NAMES[ISIN], DataType::isin(), false),
+        Field::new(NAMES[UPDUNIX], instant(), true),
+        Field::new(NAMES[LASTUNIX], instant(), true),
+        Field::new(NAMES[CFICODE], DataType::cfi(), true),
+        Field::new(NAMES[COUNTRYCODE], DataType::country(), true),
+        Field::new(NAMES[FOREXCODE], DataType::forex(), true),
+        Field::new(NAMES[UNDERLYINGISIN], DataType::isin(), true),
         // A category is four digits; `int32` is the narrowest integer every
         // store the registry binds to - an Iceberg table among them - holds.
-        Field::new(NAMES[6], DataType::Int32, true),
-        Field::new(NAMES[7], DataType::Mic, true),
-        Field::new(NAMES[8], DataType::utf8(), true),
+        Field::new(NAMES[EUSIPACODE], DataType::Int32, true),
+        Field::new(NAMES[MICCODE], DataType::Mic, true),
+        Field::new(NAMES[TICKER], DataType::utf8(), true),
         Field::new(NAMES[FISN], DataType::fisn(), true),
         Field::new(NAMES[CURRENCY], DataType::ccy(), true),
     ];
@@ -268,6 +299,7 @@ impl IsinEntry {
         Self {
             isin,
             updunix: None,
+            lastunix: None,
             cficode: None,
             countrycode: None,
             forexcode: None,
@@ -288,19 +320,20 @@ impl IsinEntry {
     }
 
     /// The required struct `isinregistry` a row is: `isin`, `updunix`,
-    /// `cficode`, `countrycode`, `forexcode`, `underlyingisin`, `eusipacode`
-    /// (`int32`), `miccode`, `ticker`, `fisn`, `currency`, then one column
-    /// per `SecurityIDSource(22)` type but the ISIN, in the code set's
-    /// order, each of its type's [`IdType::value_dtype`]: forty-three
+    /// `lastunix`, `cficode`, `countrycode`, `forexcode`, `underlyingisin`,
+    /// `eusipacode` (`int32`), `miccode`, `ticker`, `fisn`, `currency`, then
+    /// one column per `SecurityIDSource(22)` type but the ISIN, in the code
+    /// set's order, each of its type's [`IdType::value_dtype`]: forty-four
     /// columns.
     ///
     /// The root declares how a stored table partitions and the order its
     /// rows keep: `PARTITION:by` `["truncate(isin, 2)"]`, the country prefix
     /// of the ISIN every row carries - an Iceberg table created from the
     /// field partitions by Iceberg's own truncation of the key, which
-    /// stores no column, so the row stays forty-three columns, and a leaf or
-    /// a plain folder, which partition by marked columns alone, are laid out
-    /// flat - and `SORT:by` `["isin"]`, the order the snapshot
+    /// stores no column, so the row stays forty-four columns and every
+    /// listing of one ISIN lands in one partition, and a leaf or a plain
+    /// folder, which partition by marked columns alone, are laid out flat -
+    /// and `SORT:by` `["isin","miccode"]`, the order the snapshot
     /// ([`IsinRegistry::into_arrow_reader`]) streams in.
     ///
     /// ```
@@ -308,9 +341,9 @@ impl IsinEntry {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let field = IsinEntry::field();
-    /// assert_eq!(field.field_len(), 43);
+    /// assert_eq!(field.field_len(), 44);
     /// assert_eq!(field.get_metadata("PARTITION:by"), Some(r#"["truncate(isin, 2)"]"#));
-    /// assert_eq!(field.get_metadata("SORT:by"), Some(r#"["isin"]"#));
+    /// assert_eq!(field.get_metadata("SORT:by"), Some(r#"["isin","miccode"]"#));
     /// assert_eq!(field.partition_field_names().count(), 0, "no column is marked");
     /// # Ok(())
     /// # }
@@ -330,15 +363,16 @@ impl IsinEntry {
     /// [`Self::field`]: the ISIN always, any other where it is held.
     pub(crate) fn states_column(&self, at: usize) -> bool {
         match at {
-            0 => true,
-            1 => self.updunix.is_some(),
-            2 => self.cficode.is_some(),
-            3 => self.countrycode.is_some(),
-            4 => self.forexcode.is_some(),
-            5 => self.underlyingisin.is_some(),
-            6 => self.eusipacode.is_some(),
-            7 => self.miccode.is_some(),
-            8 => self.ticker.is_some(),
+            ISIN => true,
+            UPDUNIX => self.updunix.is_some(),
+            LASTUNIX => self.lastunix.is_some(),
+            CFICODE => self.cficode.is_some(),
+            COUNTRYCODE => self.countrycode.is_some(),
+            FOREXCODE => self.forexcode.is_some(),
+            UNDERLYINGISIN => self.underlyingisin.is_some(),
+            EUSIPACODE => self.eusipacode.is_some(),
+            MICCODE => self.miccode.is_some(),
+            TICKER => self.ticker.is_some(),
             FISN => self.fisn.is_some(),
             CURRENCY => self.currency.is_some(),
             at => equivalents()
@@ -347,12 +381,24 @@ impl IsinEntry {
         }
     }
 
-    /// When the statement that last moved the row happened, nanoseconds
-    /// since the epoch, UTC; `None` for an undated row. A stamp: it gates
-    /// nothing.
+    /// When the statement that last moved a fact of the instrument
+    /// happened, nanoseconds since the epoch, UTC; `None` for an undated
+    /// row. A stamp: it gates nothing, and a move of [`Self::lastunix`]
+    /// alone leaves it.
     #[must_use]
     pub fn updunix(&self) -> Option<i64> {
         self.updunix
+    }
+
+    /// The latest instant, nanoseconds since the epoch, UTC, of an event the
+    /// registry learned this instrument from - moved by every learn, whether
+    /// or not the event taught anything else, so a run that only meets an
+    /// instrument still records when; `None` where nothing was learned. An
+    /// instrument fact, the later of two statements kept. A stamp: it gates
+    /// nothing.
+    #[must_use]
+    pub fn lastunix(&self) -> Option<i64> {
+        self.lastunix
     }
 
     /// The detailed CFI classification.
@@ -397,7 +443,7 @@ impl IsinEntry {
     /// The ISIN of the instrument this one is written on - FIX's
     /// underlying, `UnderlyingSecurityID(309)` under an ISIN source - held
     /// only where it is real and not the row's own ISIN. An instrument
-    /// fact: it fills on any market and no listing switch clears it.
+    /// fact: every listing of the ISIN holds it.
     #[must_use]
     pub fn underlyingisin(&self) -> Option<&Isin> {
         self.underlyingisin.as_ref()
@@ -405,15 +451,17 @@ impl IsinEntry {
 
     /// The EUSIPA product category of the structured product the ISIN
     /// numbers - `2300` a Constant Leverage Certificate - held by its shape
-    /// ([`Eusipa`]). An instrument fact: it fills on any market and no
-    /// listing switch clears it.
+    /// ([`Eusipa`]). An instrument fact: every listing of the ISIN holds
+    /// it.
     #[must_use]
     pub fn eusipacode(&self) -> Option<Eusipa> {
         self.eusipacode
     }
 
-    /// The market the listing facts - the ticker, the currency and every
-    /// listing code ([`IdType::is_listing`]) - were stated on.
+    /// The market this row is the listing of: the one its listing facts -
+    /// the ticker, the currency and every listing code
+    /// ([`IdType::is_listing`]) - were stated on; none for the unlisted
+    /// row, which an ISIN holds alone while no market is known.
     #[must_use]
     pub fn miccode(&self) -> Option<&Mic> {
         self.miccode.as_ref()
@@ -427,8 +475,7 @@ impl IsinEntry {
 
     /// The ISO 18774 Financial Instrument Short Name the instrument states -
     /// FIX's `FinancialInstrumentShortName(2737)`, `ACME CORP/SH` - an
-    /// instrument fact: it fills on any market and no listing switch clears
-    /// it.
+    /// instrument fact: every listing of the ISIN holds it.
     #[must_use]
     pub fn fisn(&self) -> Option<&Fisn> {
         self.fisn.as_ref()
@@ -462,6 +509,13 @@ impl IsinEntry {
     #[must_use]
     pub fn with_updunix(mut self, unix: Option<i64>) -> Self {
         self.updunix = unix;
+        self
+    }
+
+    /// The instrument last learned from an event at `unix`.
+    #[must_use]
+    pub fn with_lastunix(mut self, unix: Option<i64>) -> Self {
+        self.lastunix = unix;
         self
     }
 
@@ -633,7 +687,7 @@ impl IsinEntry {
             if !real {
                 warned!(
                     "instrument registry value dropped: it is no real code of its type",
-                    NAMES[5],
+                    NAMES[UNDERLYINGISIN],
                     "{:?} under {}",
                     underlying.as_str(),
                     self.isin.as_str()
@@ -644,6 +698,7 @@ impl IsinEntry {
         Statement {
             isin: self.isin.clone(),
             updunix: self.updunix,
+            lastunix: self.lastunix,
             cficode: self.cficode.as_ref(),
             countrycode: self.countrycode.as_ref(),
             forexcode: self.forexcode.as_ref(),
@@ -693,6 +748,7 @@ impl IsinEntry {
             .and_then(|stated| Self::country_beside(&statement.isin, stated));
         let mut entry = Self::new(statement.isin.clone())
             .with_updunix(statement.updunix)
+            .with_lastunix(statement.lastunix)
             .with_cficode(statement.cficode.cloned())
             .with_countrycode(countrycode)
             .with_forexcode(statement.forexcode.cloned())
@@ -708,49 +764,58 @@ impl IsinEntry {
         entry
     }
 
+    /// A new listing row of this row's instrument on `market`: the
+    /// instrument facts this row holds, and no listing fact but the market.
+    fn new_listing(&self, market: &Mic) -> Self {
+        let mut entry = self.clone();
+        entry.miccode = Some(market.clone());
+        entry.ticker = None;
+        entry.currency = None;
+        entry.codes.retain(|(kind, _)| !kind.is_listing());
+        entry
+    }
+
     /// The row as the named struct of its cells, a fact it does not state a
     /// null.
     #[must_use]
     pub fn into_scalar(&self) -> Scalar {
         let text = |value: Option<&str>| value.map_or(Scalar::Null, Scalar::from);
+        let instant = |unix: Option<i64>| {
+            unix.and_then(|unix| Scalar::datetime64(unix, TimeUnit::Nanosecond, Timezone::UTC).ok())
+                .unwrap_or(Scalar::Null)
+        };
         let opening = [
-            (NAMES[0], Scalar::from(self.isin.clone())),
+            (NAMES[ISIN], Scalar::from(self.isin.clone())),
+            (NAMES[UPDUNIX], instant(self.updunix)),
+            (NAMES[LASTUNIX], instant(self.lastunix)),
             (
-                NAMES[1],
-                self.updunix
-                    .and_then(|unix| {
-                        Scalar::datetime64(unix, TimeUnit::Nanosecond, Timezone::UTC).ok()
-                    })
-                    .unwrap_or(Scalar::Null),
-            ),
-            (
-                NAMES[2],
+                NAMES[CFICODE],
                 self.cficode.clone().map_or(Scalar::Null, Scalar::from),
             ),
             (
-                NAMES[3],
+                NAMES[COUNTRYCODE],
                 self.countrycode.clone().map_or(Scalar::Null, Scalar::from),
             ),
             (
-                NAMES[4],
+                NAMES[FOREXCODE],
                 self.forexcode.clone().map_or(Scalar::Null, Scalar::from),
             ),
             (
-                NAMES[5],
+                NAMES[UNDERLYINGISIN],
                 self.underlyingisin
                     .clone()
                     .map_or(Scalar::Null, Scalar::from),
             ),
             (
-                NAMES[6],
+                NAMES[EUSIPACODE],
                 self.eusipacode
                     .map_or(Scalar::Null, |code| Scalar::from(i32::from(code.code()))),
             ),
             (
-                NAMES[7],
+                NAMES[MICCODE],
                 self.miccode.clone().map_or(Scalar::Null, Scalar::from),
             ),
-            (NAMES[8], text(self.ticker())),
+            (NAMES[TICKER], text(self.ticker())),
             (
                 NAMES[FISN],
                 self.fisn.clone().map_or(Scalar::Null, Scalar::from),
@@ -809,6 +874,7 @@ impl IsinEntry {
         let [
             isin,
             updunix,
+            lastunix,
             cficode,
             countrycode,
             forexcode,
@@ -828,6 +894,7 @@ impl IsinEntry {
         };
         let mut entry = Self::new(isin.clone())
             .with_updunix(updunix.temporal_count_at(TimeUnit::Nanosecond))
+            .with_lastunix(lastunix.temporal_count_at(TimeUnit::Nanosecond))
             .with_cficode(match cficode {
                 Scalar::Cfi(code) => Some(code.clone()),
                 _ => None,
@@ -881,6 +948,7 @@ impl IsinEntry {
 struct Statement<'s> {
     isin: Isin,
     updunix: Option<i64>,
+    lastunix: Option<i64>,
     cficode: Option<&'s Cfi>,
     countrycode: Option<&'s Country>,
     forexcode: Option<&'s Forex>,
@@ -894,35 +962,76 @@ struct Statement<'s> {
 }
 
 impl Statement<'_> {
-    /// Whether it states a listing fact that moves a listing: a ticker or a
-    /// listing code. A currency alone names no listing.
-    fn states_listing(&self) -> bool {
-        self.ticker.is_some() || self.codes.iter().any(|(kind, _)| kind.is_listing())
+    /// Warns, once per column, of each listing fact it states - the ticker,
+    /// the currency, a listing code - where it names no market and its ISIN
+    /// has several listings: the fact belongs to one of them, and the
+    /// statement does not say which, so it lands on none.
+    fn warn_withheld(&self) {
+        let withheld = |column: &str, value: &str| {
+            warned!(
+                "instrument registry listing fact dropped: the statement names no market of the instrument's several listings",
+                column,
+                "{value:?} under {}",
+                self.isin.as_str()
+            );
+        };
+        if let Some(ticker) = self.ticker {
+            withheld(NAMES[TICKER], ticker);
+        }
+        if let Some(currency) = self.currency {
+            withheld(NAMES[CURRENCY], currency.as_str());
+        }
+        for (kind, value) in self.codes.iter().filter(|(kind, _)| kind.is_listing()) {
+            withheld(kind.as_str(), value);
+        }
     }
+}
 
-    /// Whether it states anything past its ISIN.
-    fn states_anything(&self) -> bool {
-        self.cficode.is_some()
-            || self.countrycode.is_some()
-            || self.forexcode.is_some()
-            || self.underlyingisin.is_some()
-            || self.eusipacode.is_some()
-            || self.miccode.is_some()
-            || self.ticker.is_some()
-            || self.fisn.is_some()
-            || self.currency.is_some()
-            || !self.codes.is_empty()
+/// The listing row of an ISIN a statement's listing facts belong to.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Target {
+    /// The row at this place among the ISIN's listings: the one of the
+    /// statement's market, the unlisted row its market takes over, or the
+    /// single row where the statement names no market.
+    Row(usize),
+    /// A new row, at this place: the statement names a market the ISIN has
+    /// no listing on, and a listing besides.
+    New(usize),
+    /// None: the statement names no market and the ISIN has several
+    /// listings ([`Statement::warn_withheld`]).
+    Withheld,
+}
+
+impl Target {
+    /// Where the listing facts of a statement naming `market` land among
+    /// `listings`, an ISIN's rows in MIC order.
+    fn of(listings: &[IsinEntry], market: Option<&Mic>) -> Self {
+        match market {
+            Some(market) => {
+                match listings.binary_search_by(|row| row.miccode.as_ref().cmp(&Some(market))) {
+                    Ok(at) => Self::Row(at),
+                    // The unlisted row stands alone, and becomes the first
+                    // listing's.
+                    Err(_) if matches!(listings, [row] if row.miccode.is_none()) => Self::Row(0),
+                    Err(at) => Self::New(at),
+                }
+            }
+            None if listings.len() == 1 => Self::Row(0),
+            None => Self::Withheld,
+        }
     }
 }
 
 /// `row` with `statement` folded in by the update rule, or `None` where
 /// nothing moves: a stated value fills a column the row lacks and replaces
 /// one it holds that differs; a CFI code compatible with the held one
-/// refines it and a contradicting one replaces it; a listing fact stated on
-/// another market switches the listing whole. Nothing is derived here: the
-/// registry derives the defaults of the row this answers
-/// ([`IsinEntry::derive_defaults`]).
-fn folded(row: &IsinEntry, statement: &Statement<'_>) -> Option<IsinEntry> {
+/// refines it and a contradicting one replaces it. The instrument facts fold
+/// into every row; the listing facts - the market where the row has none,
+/// the ticker, the currency and the listing codes - only where `listing`,
+/// the row being the statement's [`Target`]. The stamps are the caller's,
+/// and nothing is derived here: the registry derives the defaults of the
+/// row this answers ([`IsinEntry::derive_defaults`]).
+fn folded(row: &IsinEntry, statement: &Statement<'_>, listing: bool) -> Option<IsinEntry> {
     let mut next = Cow::Borrowed(row);
     // A code lands where its type is held or the row has room for one more;
     // past the bound a new type is passed over, and the row is owned only
@@ -967,7 +1076,6 @@ fn folded(row: &IsinEntry, statement: &Statement<'_>) -> Option<IsinEntry> {
     {
         next.to_mut().forexcode = Some(stated.clone());
     }
-    // Instrument facts: the listing switch below leaves them.
     if let Some(stated) = statement.underlyingisin
         && row.underlyingisin.as_ref() != Some(stated)
     {
@@ -983,49 +1091,29 @@ fn folded(row: &IsinEntry, statement: &Statement<'_>) -> Option<IsinEntry> {
     {
         next.to_mut().fisn = Some(stated.clone());
     }
-    match (statement.miccode, &row.miccode) {
-        (Some(stated), Some(held)) if stated != held => {
-            // Another market: a ticker or a listing code stated there
-            // switches the listing whole, and what the statement does not
-            // restate is cleared; a currency alone leaves the listing.
-            if statement.states_listing() {
-                let entry = next.to_mut();
-                entry.miccode = Some(stated.clone());
-                entry.ticker = statement.ticker.map(SmolStr::new);
-                entry.currency = statement.currency.cloned();
-                entry.codes.retain(|(kind, _)| !kind.is_listing());
-                for (kind, value) in statement.codes.iter().filter(|(kind, _)| kind.is_listing()) {
-                    entry.put_code(kind, value);
-                }
-            }
+    if listing {
+        if row.miccode.is_none()
+            && let Some(stated) = statement.miccode
+        {
+            next.to_mut().miccode = Some(stated.clone());
         }
-        _ => {
-            if row.miccode.is_none()
-                && let Some(stated) = statement.miccode
-            {
-                next.to_mut().miccode = Some(stated.clone());
-            }
-            for (kind, value) in statement.codes.iter().filter(|(kind, _)| kind.is_listing()) {
-                fill(&mut next, kind, value);
-            }
-            if let Some(stated) = statement.ticker
-                && row.ticker() != Some(stated)
-            {
-                next.to_mut().ticker = Some(SmolStr::new(stated));
-            }
-            if let Some(stated) = statement.currency
-                && row.currency.as_ref() != Some(stated)
-            {
-                next.to_mut().currency = Some(stated.clone());
-            }
+        for (kind, value) in statement.codes.iter().filter(|(kind, _)| kind.is_listing()) {
+            fill(&mut next, kind, value);
+        }
+        if let Some(stated) = statement.ticker
+            && row.ticker() != Some(stated)
+        {
+            next.to_mut().ticker = Some(SmolStr::new(stated));
+        }
+        if let Some(stated) = statement.currency
+            && row.currency.as_ref() != Some(stated)
+        {
+            next.to_mut().currency = Some(stated.clone());
         }
     }
     match next {
         Cow::Borrowed(_) => None,
-        Cow::Owned(mut entry) => {
-            entry.updunix = later(row.updunix, statement.updunix);
-            Some(entry)
-        }
+        Cow::Owned(entry) => Some(entry),
     }
 }
 
@@ -1050,23 +1138,23 @@ pub(crate) fn warn_full(max: usize) {
     );
 }
 
-/// The table a registry holds, shared: the rows by ISIN and the ticker
-/// index, two counted pointers that cross threads as they are. What a parse
-/// door fixes once and every worker fills from, and what a lifecycle fills
-/// from under the registry's lock.
+/// The table a registry holds, shared: the listing rows by ISIN and the
+/// ticker index, two counted pointers that cross threads as they are. What a
+/// parse door fixes once and every worker fills from, and what a lifecycle
+/// fills from under the registry's lock.
 #[derive(Clone, Debug)]
 pub(crate) struct IsinTable {
-    /// The rows, keyed by the canonical ISIN text.
-    rows: Arc<BTreeMap<SmolStr, IsinEntry>>,
-    /// Each ticker to the ISINs of the rows listing it, one per listing,
-    /// in ISIN order: the exact inverse of the rows' `ticker`.
-    tickers: Arc<HashMap<SmolStr, SmallVec<[SmolStr; 1]>>>,
+    /// The listing rows of each ISIN, keyed by the canonical ISIN text,
+    /// never empty.
+    rows: Arc<BTreeMap<SmolStr, Listings>>,
+    /// Each ticker to the listing rows stating it, by ISIN and market: the
+    /// exact inverse of the rows' `ticker`.
+    tickers: Arc<HashMap<SmolStr, TickerSlots>>,
 }
 
 /// The table every empty registry shares, so making one allocates nothing.
-static EMPTY_ROWS: LazyLock<Arc<BTreeMap<SmolStr, IsinEntry>>> = LazyLock::new(Arc::default);
-static EMPTY_TICKERS: LazyLock<Arc<HashMap<SmolStr, SmallVec<[SmolStr; 1]>>>> =
-    LazyLock::new(Arc::default);
+static EMPTY_ROWS: LazyLock<Arc<BTreeMap<SmolStr, Listings>>> = LazyLock::new(Arc::default);
+static EMPTY_TICKERS: LazyLock<Arc<HashMap<SmolStr, TickerSlots>>> = LazyLock::new(Arc::default);
 
 impl Default for IsinTable {
     fn default() -> Self {
@@ -1078,30 +1166,49 @@ impl Default for IsinTable {
 }
 
 impl IsinTable {
-    /// The row of `isin`, borrowed.
+    /// The first listing of `isin`, in MIC order, borrowed.
     pub(crate) fn get(&self, isin: &str) -> Option<&IsinEntry> {
-        self.rows.get(isin)
+        self.rows.get(isin)?.first()
     }
 
-    /// The row the ticker `ticker` names on `market`
+    /// Every listing row of `isin`, in MIC order; none where it is unknown.
+    pub(crate) fn listings(&self, isin: &str) -> &[IsinEntry] {
+        self.rows
+            .get(isin)
+            .map_or(&[], |listings| listings.as_slice())
+    }
+
+    /// The listing row of `isin` on `market`, the unlisted one where
+    /// `market` is none.
+    fn listing(&self, isin: &str, market: Option<&Mic>) -> Option<&IsinEntry> {
+        self.listings(isin)
+            .iter()
+            .find(|row| row.miccode.as_ref() == market)
+    }
+
+    /// The listing row the ticker `ticker` names on `market`
     /// ([`IsinRegistry::get_by_ticker`]).
     pub(crate) fn get_by_ticker(&self, ticker: &str, market: Option<&Mic>) -> Option<&IsinEntry> {
-        let market = market.filter(|code| !code.is_none());
-        let mut found = None;
-        for isin in self.tickers.get(ticker.trim())? {
-            let row = self.rows.get(isin)?;
-            let listed = match (market, &row.miccode) {
-                (Some(stated), Some(held)) => stated == held,
-                _ => true,
-            };
-            if listed {
-                if found.is_some() {
-                    return None;
+        let slots = self.tickers.get(ticker.trim())?;
+        // The one slot `matching` answers, none where two do.
+        let one = |matching: &dyn Fn(Option<&Mic>) -> bool| {
+            let mut found = slots.iter().filter(|(_, held)| matching(held.as_ref()));
+            let slot = found.next()?;
+            found.next().is_none().then_some(slot)
+        };
+        let slot = match market.filter(|code| !code.is_none()) {
+            Some(market) => {
+                let exact = |held: Option<&Mic>| held == Some(market);
+                if slots.iter().any(|(_, held)| exact(held.as_ref())) {
+                    one(&exact)?
+                } else {
+                    // No listing on that market: a row listed on none.
+                    one(&|held: Option<&Mic>| held.is_none())?
                 }
-                found = Some(row);
             }
-        }
-        found
+            None => one(&|_| true)?,
+        };
+        self.listing(&slot.0, slot.1.as_ref())
     }
 
     /// How many instruments it holds.
@@ -1109,26 +1216,50 @@ impl IsinTable {
         self.rows.len()
     }
 
+    /// How many listing rows it holds.
+    pub(crate) fn rows(&self) -> usize {
+        self.rows.values().map(SmallVec::len).sum()
+    }
+
     /// Whether it holds none.
     pub(crate) fn is_empty(&self) -> bool {
         self.rows.is_empty()
     }
 
-    /// The row `element` names, and whether its ISIN is derived from it: the
-    /// row of its real ISIN - stated or derived - a miss ending the fill;
-    /// else the row its ticker names on its market, whose ISIN is derived
-    /// first.
-    fn row_of<E: Market + ?Sized>(&self, element: &E) -> Option<(&IsinEntry, bool)> {
+    /// Every listing row, in ISIN then MIC order.
+    fn iter(&self) -> impl Iterator<Item = &IsinEntry> {
+        self.rows.values().flatten()
+    }
+
+    /// The listing row `element` names, whether its ISIN is derived from
+    /// it, and whether its listing facts are the element's to take. By its
+    /// real ISIN - stated or derived - a miss ending the fill: the row of
+    /// its stated market, else the ISIN's single row, else its first, for
+    /// its instrument facts alone. With none, the row its ticker names on
+    /// its market ([`Self::get_by_ticker`]), whose ISIN is derived first.
+    fn listing_of<E: Market + ?Sized>(&self, element: &E) -> Option<(&IsinEntry, bool, bool)> {
         let ids = element.get_securityids();
+        let market = element.get_miccode().filter(|code| !code.is_none());
         match ids.get(&IdType::Isin) {
-            Some(isin) if IdType::Isin.is_real(isin) => self.rows.get(isin).map(|row| (row, false)),
-            _ => {
-                let market = element.get_miccode().filter(|code| !code.is_none());
-                element
-                    .get_ticker()
-                    .and_then(|ticker| self.get_by_ticker(ticker, market))
-                    .map(|row| (row, true))
+            Some(isin) if IdType::Isin.is_real(isin) => {
+                let listings = self.listings(isin);
+                if let Some(row) = market.and_then(|market| {
+                    listings
+                        .iter()
+                        .find(|row| row.miccode.as_ref() == Some(market))
+                }) {
+                    return Some((row, false, true));
+                }
+                match listings {
+                    [row] => Some((row, false, true)),
+                    [first, ..] => Some((first, false, false)),
+                    [] => None,
+                }
             }
+            _ => element
+                .get_ticker()
+                .and_then(|ticker| self.get_by_ticker(ticker, market))
+                .map(|row| (row, true, true)),
         }
     }
 
@@ -1146,13 +1277,13 @@ impl IsinTable {
 
     /// Derives into `element` each security identifier `row` holds of a
     /// type it holds none of - the ISIN itself where `derived`, every
-    /// instrument code, the listing codes only on the same market, the pair
-    /// and the short name - through [`Market::derive_securityid`]. Whether
+    /// instrument code, the listing codes only where `listed`, the pair and
+    /// the short name - through [`Market::derive_securityid`]. Whether
     /// anything moved.
     fn derive_into<E: Market + ?Sized>(
         row: &IsinEntry,
         derived: bool,
-        same_market: bool,
+        listed: bool,
         element: &mut E,
     ) -> bool {
         let mut moved = false;
@@ -1160,8 +1291,7 @@ impl IsinTable {
             moved |= element.derive_securityid(&IdType::Isin, row.isin.as_str());
         }
         for (kind, value) in &row.codes {
-            if (kind.is_listing() && !same_market) || element.get_securityids().contains_kind(kind)
-            {
+            if (kind.is_listing() && !listed) || element.get_securityids().contains_kind(kind) {
                 continue;
             }
             moved |= element.derive_securityid(kind, value);
@@ -1179,16 +1309,17 @@ impl IsinTable {
         moved
     }
 
-    /// Fills the security identifiers `element` leaves unsaid from the row
-    /// it names ([`Self::row_of`]): what a parse takes from the table its
-    /// door fixed - derived identifiers only, which reach no field, no
-    /// wire and no digest. Whether anything moved; nothing is settled.
+    /// Fills the security identifiers `element` leaves unsaid from the
+    /// listing row it names ([`Self::listing_of`]): what a parse takes from
+    /// the table its door fixed - derived identifiers only, which reach no
+    /// field, no wire and no digest. Whether anything moved; nothing is
+    /// settled.
     pub(crate) fn fill_identifiers<E: Market + ?Sized>(&self, element: &mut E) -> bool {
-        let Some((row, derived)) = self.row_of(element) else {
+        let Some((row, derived, listing)) = self.listing_of(element) else {
             return false;
         };
-        let same_market = Self::same_market(row, element);
-        Self::derive_into(row, derived, same_market, element)
+        let listed = listing && Self::same_market(row, element);
+        Self::derive_into(row, derived, listed, element)
     }
 
     /// [`Self::fill_identifiers`], then the market facts a lifecycle fills:
@@ -1198,19 +1329,20 @@ impl IsinTable {
     /// row's and the element states none. Whether anything moved; nothing
     /// is settled.
     pub(crate) fn fill_unsettled<E: Market + ?Sized>(&self, element: &mut E) -> bool {
-        let Some((row, derived)) = self.row_of(element) else {
+        let Some((row, derived, listing)) = self.listing_of(element) else {
             return false;
         };
-        let same_market = Self::same_market(row, element);
-        let markets_equal = match (
-            element.get_miccode().filter(|code| !code.is_none()),
-            &row.miccode,
-        ) {
-            (Some(stated), Some(held)) => stated == held,
-            _ => false,
-        };
-        let mut moved = Self::derive_into(row, derived, same_market, element);
-        if same_market
+        let listed = listing && Self::same_market(row, element);
+        let markets_equal = listing
+            && match (
+                element.get_miccode().filter(|code| !code.is_none()),
+                &row.miccode,
+            ) {
+                (Some(stated), Some(held)) => stated == held,
+                _ => false,
+            };
+        let mut moved = Self::derive_into(row, derived, listed, element);
+        if listed
             && element.get_ticker().is_none()
             && let Some(ticker) = &row.ticker
         {
@@ -1241,18 +1373,21 @@ impl IsinTable {
     }
 }
 
-/// Every instrument's facts, one row per ISIN.
+/// Every instrument's facts, one row per ISIN and market.
 ///
 /// The key is a real ISIN - closing under a listed prefix
-/// ([`CodeValue::is_real`]) - and a ticker leads back to its row through an
-/// exact inverse index, gated by the market the listing was stated on; a
-/// RIC, a Bloomberg symbol, a FIGI are equivalents the ISIN fills. Learning
-/// is the ordered lifecycle's, or an explicit [`Self::learn`],
-/// [`Self::fill`] or [`Self::enrich`]; a parse fills derived identifiers
-/// from the table its door fixed and learns nothing. The table is held
-/// apart from the store the registry is bound to ([`Self::from_holder`],
-/// [`Self::commit`]), and a write marks the registry dirty
-/// ([`Self::is_dirty`]) until it is committed.
+/// ([`CodeValue::is_real`]) - and an instrument holds one listing row per
+/// market its listing facts were stated on, in MIC order ([`Self::listings`]),
+/// or the unlisted row alone while no market is known; its instrument facts
+/// are every row's ([`IsinEntry`]). A ticker leads back to its listing
+/// through an exact inverse index, gated by the market; a RIC, a Bloomberg
+/// symbol, a FIGI are equivalents the ISIN fills. Learning is the ordered
+/// lifecycle's, or an explicit [`Self::learn`], [`Self::fill`] or
+/// [`Self::enrich`]; a parse fills derived identifiers from the table its
+/// door fixed and learns nothing. The table is held apart from the store
+/// the registry is bound to ([`Self::from_holder`], [`Self::commit`]), and
+/// a write marks the registry dirty ([`Self::is_dirty`]) until it is
+/// committed.
 ///
 /// ```
 /// use yggdryl::graph::{Event, Market, OrderEvent};
@@ -1280,6 +1415,18 @@ impl IsinTable {
 /// assert_eq!(later.get_isincode(), Some("CH0012214059"));
 /// assert_eq!(later.get_securityids().get(&IdType::Ric), Some("HOLN.S"));
 /// assert_eq!(later.get_cficode().map(|code| code.as_str()), Some("ESVUFR"));
+///
+/// // The instrument stated on another market is a second listing of it.
+/// let mut london = OrderEvent::default();
+/// london.set_currunix(2);
+/// london.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "CH0012214059")?)?;
+/// london.insert_securityid(Identifier::new(IdKey::base(IdType::Ric), "HOLN.L")?)?;
+/// london.set_miccode(Some(Mic::new("XLON")?), true);
+/// assert!(registry.learn(&london));
+/// assert_eq!((registry.len(), registry.rows()), (1, 2));
+/// let rics: Vec<_> = registry.listings("CH0012214059").iter().map(|row| row.get(&IdType::Ric)).collect();
+/// assert_eq!(rics, [Some("HOLN.L"), Some("HOLN.S")], "MIC order: XLON, then XSWX");
+/// assert_eq!(registry.get_listing("CH0012214059", &Mic::new("XLON")?).and_then(|row| row.cficode()), Some(&Cfi::new("ESVUFR")?));
 /// # Ok(())
 /// # }
 /// ```
@@ -1374,10 +1521,17 @@ impl IsinRegistry {
         self.max_instruments
     }
 
-    /// How many instruments it holds.
+    /// How many instruments it holds: its ISINs.
     #[must_use]
     pub fn len(&self) -> usize {
         self.table.len()
+    }
+
+    /// How many listing rows it holds: one per ISIN and market, an
+    /// unlisted row one - what [`Self::iter`] walks and a commit writes.
+    #[must_use]
+    pub fn rows(&self) -> usize {
+        self.table.rows()
     }
 
     /// Whether it holds none.
@@ -1401,17 +1555,34 @@ impl IsinRegistry {
         &self.table
     }
 
-    /// The row of `isin`, borrowed.
+    /// The first listing row of `isin`, in MIC order - the unlisted row
+    /// where that is all it holds - borrowed. Its instrument facts are every
+    /// listing's; [`Self::listings`] answers them all.
     #[must_use]
     pub fn get(&self, isin: &str) -> Option<&IsinEntry> {
         self.table.get(isin)
     }
 
-    /// The row the ticker `ticker` - trimmed of blanks, as a learn stores
-    /// it - names on `market`, through the ticker index: the one row
-    /// listing the ticker whose market is `market`, or
-    /// whose market or `market` - none and `XXXX` unstated - is unstated.
-    /// Two rows answering is ambiguous, and answers none.
+    /// Every listing row of `isin`, in MIC order, borrowed; empty where the
+    /// ISIN is unknown.
+    #[must_use]
+    pub fn listings(&self, isin: &str) -> &[IsinEntry] {
+        self.table.listings(isin)
+    }
+
+    /// The listing row of `isin` on `market`, borrowed.
+    #[must_use]
+    pub fn get_listing(&self, isin: &str, market: &Mic) -> Option<&IsinEntry> {
+        self.table.listing(isin, Some(market))
+    }
+
+    /// The listing row the ticker `ticker` - trimmed of blanks, as a learn
+    /// stores it - names on `market`, through the ticker index: the one row
+    /// listing the ticker on `market`, else - no row listing it there - the
+    /// one listing it on no market; where `market` is unstated - none and
+    /// `XXXX` - the one row listing it on any. Two rows answering is
+    /// ambiguous, and answers none: one ticker on two markets names each
+    /// listing on its own, and neither where no market is stated.
     ///
     /// ```
     /// use yggdryl::graph::{Market, OrderEvent};
@@ -1438,23 +1609,28 @@ impl IsinRegistry {
         self.table.get_by_ticker(ticker, market)
     }
 
-    /// Every row, in ISIN order.
+    /// Every listing row, in ISIN then MIC order.
     pub fn iter(&self) -> impl Iterator<Item = &IsinEntry> {
-        self.table.rows.values()
+        self.table.iter()
     }
 
-    /// Folds `entry` into the row of its ISIN by the update rule: a stated
-    /// value fills a column the row lacks and replaces one it holds that
-    /// differs, whatever the time; a code that is no real value of its
+    /// Folds `entry` into the listings of its ISIN by the update rule: a
+    /// stated value fills a column a row lacks and replaces one it holds
+    /// that differs, whatever the time; a code that is no real value of its
     /// type is dropped with one warning per column; a CFI code compatible
-    /// with the held one refines it and a contradicting one replaces it;
-    /// a ticker or a listing code stated on another market switches the
-    /// listing whole - market, ticker, currency and listing codes - and a
-    /// currency alone never does; `updunix` becomes the later of the two
-    /// where something moved. A row created or moved then fills what its
-    /// own facts imply where the statement left it empty - the national
-    /// number its ISIN embeds, the currency of its market's country
-    /// ([`IsinEntry`]). Whether anything moved.
+    /// with the held one refines it and a contradicting one replaces it.
+    /// The instrument facts fold into every listing row of the ISIN; the
+    /// listing facts - the ticker, the currency, the listing codes - into
+    /// the row of the market the entry names, created where the ISIN has
+    /// none there, the unlisted row taken over where that is all it holds;
+    /// and, where the entry names no market, into the ISIN's single row, or
+    /// into none, with one warning per column, where it has several.
+    /// `updunix` becomes the later of the two on every row where a fact
+    /// moved, and `lastunix` the later of the two whatever moved. A row
+    /// created or moved then fills what its own facts imply where the
+    /// statement left it empty - the national number its ISIN embeds, the
+    /// currency of its market's country ([`IsinEntry`]). Whether anything
+    /// moved.
     ///
     /// # Errors
     ///
@@ -1474,14 +1650,46 @@ impl IsinRegistry {
         self.fold(&entry.statement())
     }
 
-    /// Removes the row of `isin`, answering it.
-    pub fn remove(&mut self, isin: &str) -> Option<IsinEntry> {
+    /// Removes every listing row of `isin`, answering them in MIC order;
+    /// none where the ISIN is unknown.
+    pub fn remove(&mut self, isin: &str) -> Vec<IsinEntry> {
         if !self.table.rows.contains_key(isin) {
-            return None;
+            return Vec::new();
         }
-        let removed = Arc::make_mut(&mut self.table.rows).remove(isin)?;
+        let Some(removed) = Arc::make_mut(&mut self.table.rows).remove(isin) else {
+            return Vec::new();
+        };
+        let tickers = Arc::make_mut(&mut self.table.tickers);
+        for row in &removed {
+            if let Some(ticker) = row.ticker() {
+                unlist_ticker(tickers, ticker, isin, row.miccode.as_ref());
+            }
+        }
+        self.dirty = true;
+        removed.into_vec()
+    }
+
+    /// Removes the listing row of `isin` on `market`, answering it; the
+    /// instrument goes with its last listing.
+    pub fn remove_listing(&mut self, isin: &str, market: &Mic) -> Option<IsinEntry> {
+        let at = self
+            .table
+            .listings(isin)
+            .iter()
+            .position(|row| row.miccode.as_ref() == Some(market))?;
+        let rows = Arc::make_mut(&mut self.table.rows);
+        let listings = rows.get_mut(isin)?;
+        let removed = listings.remove(at);
+        if listings.is_empty() {
+            rows.remove(isin);
+        }
         if let Some(ticker) = removed.ticker() {
-            unlist_ticker(Arc::make_mut(&mut self.table.tickers), ticker, isin);
+            unlist_ticker(
+                Arc::make_mut(&mut self.table.tickers),
+                ticker,
+                isin,
+                Some(market),
+            );
         }
         self.dirty = true;
         Some(removed)
@@ -1495,63 +1703,135 @@ impl IsinRegistry {
         self.table = IsinTable::default();
     }
 
-    /// Folds one statement into its row, keyed by its ISIN, then derives
-    /// the defaults of the row it leaves - once, after the statement
-    /// landed, so a default only fills a column the statement left empty
-    /// and never travels as a statement itself.
+    /// Folds one statement into the listings of its ISIN ([`Self::merge`]),
+    /// then derives the defaults of each row it moved - once, after the
+    /// statement landed, so a default only fills a column the statement left
+    /// empty and never travels as a statement itself. Nothing is built, and
+    /// the table is not copied, where nothing moves.
     fn fold(&mut self, statement: &Statement<'_>) -> Result<bool> {
-        let current = self.table.rows.get(statement.isin.as_str());
-        let mut next = match current {
-            Some(row) => match folded(row, statement) {
-                Some(next) => next,
-                None => return Ok(false),
-            },
-            None => {
-                if self.table.rows.len() >= self.max_instruments {
-                    return Err(Error::InvalidRecord {
-                        path: format_smolstr!("$['{}']", statement.isin.as_str()),
-                        reason: format_smolstr!(
-                            "expected at most {} instruments, got one more",
-                            self.max_instruments
-                        ),
-                    });
-                }
-                IsinEntry::from_statement(statement)
+        let isin = statement.isin.as_str();
+        let Some(listings) = self.table.rows.get(isin) else {
+            if self.table.rows.len() >= self.max_instruments {
+                return Err(Error::InvalidRecord {
+                    path: format_smolstr!("$['{isin}']"),
+                    reason: format_smolstr!(
+                        "expected at most {} instruments, got one more",
+                        self.max_instruments
+                    ),
+                });
             }
+            let mut entry = IsinEntry::from_statement(statement);
+            entry.derive_defaults();
+            let key = SmolStr::new(isin);
+            if let Some(ticker) = &entry.ticker {
+                list_ticker(
+                    Arc::make_mut(&mut self.table.tickers),
+                    ticker,
+                    &key,
+                    entry.miccode.as_ref(),
+                );
+            }
+            Arc::make_mut(&mut self.table.rows).insert(key, Listings::from_buf([entry]));
+            self.dirty = true;
+            return Ok(true);
         };
-        next.derive_defaults();
-        let held_ticker = current.and_then(|row| row.ticker.clone());
-        let ticker = next.ticker.clone();
-        let isin = SmolStr::new(next.isin.as_str());
-        Arc::make_mut(&mut self.table.rows).insert(isin.clone(), next);
-        // The ticker index follows the row's ticker: one slot per listing.
-        if held_ticker != ticker {
-            let tickers = Arc::make_mut(&mut self.table.tickers);
-            if let Some(held) = &held_ticker {
-                unlist_ticker(tickers, held, &isin);
+        let target = Target::of(listings, statement.miccode);
+        if target == Target::Withheld {
+            statement.warn_withheld();
+        }
+        let held_updunix = listings.iter().filter_map(|row| row.updunix).max();
+        let lastunix = later(
+            listings.iter().filter_map(|row| row.lastunix).max(),
+            statement.lastunix,
+        );
+        let key = SmolStr::new(isin);
+        let mut facts = false;
+        for at in 0..listings.len() {
+            let row = &self.table.listings(isin)[at];
+            let Some(mut next) = folded(row, statement, target == Target::Row(at)) else {
+                continue;
+            };
+            next.derive_defaults();
+            self.put_listing(&key, at, next);
+            facts = true;
+        }
+        if let (Target::New(at), Some(market)) = (target, statement.miccode) {
+            let mut entry = self.table.listings(isin)[0].new_listing(market);
+            if let Some(next) = folded(&entry, statement, true) {
+                entry = next;
             }
-            if let Some(ticker) = ticker {
-                let listed = tickers.entry(ticker).or_default();
-                if let Err(at) = listed.binary_search(&isin) {
-                    listed.insert(at, isin);
+            entry.derive_defaults();
+            let rows = Arc::make_mut(&mut self.table.rows);
+            let listings = rows.get_mut(isin).expect("a held ISIN");
+            listings.insert(at, entry);
+            let row = &listings[at];
+            if let Some(ticker) = &row.ticker {
+                list_ticker(
+                    Arc::make_mut(&mut self.table.tickers),
+                    ticker,
+                    &key,
+                    row.miccode.as_ref(),
+                );
+            }
+            facts = true;
+        }
+        // The stamps are the instrument's: every listing row holds the same.
+        let updunix = if facts {
+            later(held_updunix, statement.updunix)
+        } else {
+            held_updunix
+        };
+        let stamps =
+            |row: &IsinEntry| (!facts || row.updunix == updunix) && row.lastunix == lastunix;
+        let stamped = !self.table.listings(isin).iter().all(stamps);
+        if stamped {
+            let rows = Arc::make_mut(&mut self.table.rows);
+            for row in rows.get_mut(isin).expect("a held ISIN") {
+                if facts {
+                    row.updunix = updunix;
                 }
+                row.lastunix = lastunix;
             }
         }
-        self.dirty = true;
-        Ok(true)
+        let moved = facts || stamped;
+        self.dirty |= moved;
+        Ok(moved)
+    }
+
+    /// Puts `next` at `at` among the listings of `isin`, keeping the
+    /// ticker index on the rows' tickers and markets: one slot per listing
+    /// row stating a ticker.
+    fn put_listing(&mut self, isin: &SmolStr, at: usize, next: IsinEntry) {
+        let rows = Arc::make_mut(&mut self.table.rows);
+        let row = &mut rows.get_mut(isin.as_str()).expect("a held ISIN")[at];
+        let held = std::mem::replace(row, next);
+        if (held.ticker.as_ref(), held.miccode.as_ref())
+            == (row.ticker.as_ref(), row.miccode.as_ref())
+        {
+            return;
+        }
+        let tickers = Arc::make_mut(&mut self.table.tickers);
+        if let Some(ticker) = &held.ticker {
+            unlist_ticker(tickers, ticker, isin, held.miccode.as_ref());
+        }
+        if let Some(ticker) = &row.ticker {
+            list_ticker(tickers, ticker, isin, row.miccode.as_ref());
+        }
     }
 
     /// Learns what `event` states about its instrument: keyed by its stated
-    /// ISIN (a real one, closing under a listed prefix, never a derivation)
-    /// and dated at its `currunix`; reading its detailed CFI code, its
-    /// market but `XXXX`, its ticker, its currency but `XXX` (unless it
-    /// holds a currency pair, where `Currency(15)` is the dealt currency
-    /// and not the listing's), the pair it states as a `forex` identifier,
-    /// the short name it states as a `fisn` identifier, and each
-    /// equivalent type its map answers with a real value
-    /// ([`IdType::is_real`]), never one it only derived, a masked number or
-    /// a typo. A new ISIN past [`Self::max_instruments`] is not learned,
-    /// with one warning. Whether anything moved. What a FIX message names
+    /// ISIN (a real one, closing under a listed prefix, never a derivation),
+    /// its market but `XXXX` naming the listing row its listing facts land
+    /// on ([`Self::merge`]), and dated at its `currunix` - its `lastunix`
+    /// on every learn, so an event that teaches nothing else still records
+    /// when the instrument was last met; reading its detailed CFI code, its
+    /// ticker, its currency but `XXX` (unless it holds a currency pair,
+    /// where `Currency(15)` is the dealt currency and not the listing's),
+    /// the pair it states as a `forex` identifier, the short name it states
+    /// as a `fisn` identifier, and each equivalent type its map answers with
+    /// a real value ([`IdType::is_real`]), never one it only derived, a
+    /// masked number or a typo. A new ISIN past [`Self::max_instruments`] is
+    /// not learned, with one warning. Whether anything moved. What a FIX message names
     /// as its underlying and its EUSIPA product category is learned only by
     /// the lifecycle, beside the message
     /// ([`FixCodec::lifecycle`](crate::FixCodec::lifecycle)).
@@ -1567,7 +1847,7 @@ impl IsinRegistry {
     /// EUSIPA product category `event` stated - an underlying that is no
     /// real ISIN or is the event's own ISIN states nothing - and what it
     /// answers in full:
-    /// whether the row moved, and the bound a new
+    /// whether a listing row moved, and the bound a new
     /// ISIN was passed over at the first time one is, which the caller
     /// warns of itself ([`warn_full`]) - after it has let go of any lock it
     /// holds the registry under, since a warning reaches a host that may
@@ -1592,6 +1872,7 @@ impl IsinRegistry {
         let statement = Statement {
             isin: Isin::from_proven(isin),
             updunix: Some(event.get_currunix()),
+            lastunix: Some(event.get_currunix()),
             cficode: event
                 .get_cficode()
                 .filter(|code| Cfi::is_detailed(code.as_str())),
@@ -1617,9 +1898,6 @@ impl IsinRegistry {
                 .take(Self::MAX_EQUIVALENTS)
                 .collect(),
         };
-        if !statement.states_anything() {
-            return Learned::default();
-        }
         if !self.table.rows.contains_key(statement.isin.as_str())
             && self.table.rows.len() >= self.max_instruments
         {
@@ -1633,19 +1911,21 @@ impl IsinRegistry {
         }
     }
 
-    /// Fills what `element` leaves unsaid about its instrument from the row
-    /// its real ISIN - stated or derived - names, a miss ending the fill,
-    /// else the row its ticker names on its market
-    /// ([`Self::get_by_ticker`]), whose ISIN is derived first - over none,
-    /// or over a number ranking below it, a masked one or a typo: each
-    /// equivalent of a type it holds none of as a derived identifier, the
-    /// listing codes only where its market - none and `XXXX` unstated - is
-    /// the row's or either is unstated, the pair, the short name, the
-    /// ticker on the same market, its CFI code where it states none or the
-    /// row's refines it, and the currency only where both markets are
-    /// stated and equal, the ticker is the row's and it states none. The
-    /// element is finalized
-    /// where anything moved, and nothing is built where nothing is filled.
+    /// Fills what `element` leaves unsaid about its instrument from the
+    /// listing row it names: by its real ISIN - stated or derived, a miss
+    /// ending the fill - the row of its market, else the ISIN's single row,
+    /// else - its market unstated or listing none of several - the first,
+    /// for the instrument's facts alone; with none, the row its ticker names
+    /// on its market ([`Self::get_by_ticker`]), whose ISIN is derived first -
+    /// over none, or over a number ranking below it, a masked one or a
+    /// typo. It takes each equivalent of a type it holds none of as a
+    /// derived identifier, the listing codes only where its market - none
+    /// and `XXXX` unstated - is the row's or either is unstated, the pair,
+    /// the short name, the ticker on the same market, its CFI code where it
+    /// states none or the row's refines it, and the currency only where both
+    /// markets are stated and equal, the ticker is the row's and it states
+    /// none. The element is finalized where anything moved, and nothing is
+    /// built where nothing is filled.
     /// Whether anything moved.
     pub fn fill<E: Market + Element + ?Sized>(&self, element: &mut E) -> bool {
         let moved = self.table.fill_unsettled(element);
@@ -1675,9 +1955,10 @@ impl IsinRegistry {
         Ok(registry)
     }
 
-    /// Folds `reader`'s rows in, each through [`Self::merge`], so rows of
-    /// one ISIN fold in the order they are read; answers how many rows it
-    /// read.
+    /// Folds `reader`'s rows in, each through [`Self::merge`] as a
+    /// statement, so rows of one ISIN fold in the order they are read and
+    /// its rows on several markets load as several listings; answers how
+    /// many rows it read.
     ///
     /// Each column of the reader's schema is read as the registry column it
     /// names, resolved once: its canonical name, a spelling or alias of an
@@ -1685,6 +1966,7 @@ impl IsinRegistry {
     /// `ccypair` - a field name a security type is read from (`#ISINCODE`,
     /// `cusip_code`), or `cfi`, `country`, `mic`, `symbol`, `ccy` for the
     /// CFI code, the country, the market, the ticker and the currency, or
+    /// `lastseen` and `lastseenunix` for `lastunix`, or
     /// `underlyingisin` and any key naming an underlying's ISIN - the
     /// identifier name past `underlying`, as `UnderlyingISIN` is - or
     /// `eusipa`, `eusipacode`, `eusipacategory`, `sspa`, `sspacode` or
@@ -1727,7 +2009,7 @@ impl IsinRegistry {
             }
             resolved.push((at, target));
         }
-        if !resolved.iter().any(|(_, target)| *target == 0) {
+        if !resolved.iter().any(|(_, target)| *target == ISIN) {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.isin"),
                 reason: format_smolstr!(
@@ -1815,58 +2097,93 @@ impl IsinRegistry {
         Ok(self.extend_from_arrow_reader(reader)?)
     }
 
-    /// The rows as a stream under [`IsinEntry::field`], in ISIN order: a
-    /// snapshot of the table as it stands, laid out one bounded batch at a
-    /// time, which a learn while it streams does not move.
+    /// The listing rows as a stream under [`IsinEntry::field`], in ISIN then
+    /// MIC order: a snapshot of the table as it stands, laid out one bounded
+    /// batch at a time, which a learn while it streams does not move.
     ///
     /// # Errors
     ///
     /// What laying the rows out refuses, which no registry value causes.
     pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader> {
-        crate::arrow::rows::reader(
-            &FIELD,
-            Snapshot {
-                rows: Arc::clone(&self.table.rows),
-                after: None,
-            },
-            None,
-            None,
-            None,
-        )
+        crate::arrow::rows::reader(&FIELD, Snapshot::of(&self.table), None, None, None)
     }
 }
 
-/// Drops `isin` from the listings of `ticker` in the ticker index, and the
-/// ticker with it once nothing lists it.
-fn unlist_ticker(tickers: &mut HashMap<SmolStr, SmallVec<[SmolStr; 1]>>, ticker: &str, isin: &str) {
+/// Drops the listing row of `isin` on `market` from the slots of `ticker`
+/// in the ticker index, and the ticker with it once no row states it.
+fn unlist_ticker(
+    tickers: &mut HashMap<SmolStr, TickerSlots>,
+    ticker: &str,
+    isin: &str,
+    market: Option<&Mic>,
+) {
     if let Some(listed) = tickers.get_mut(ticker) {
-        listed.retain(|held| held.as_str() != isin);
+        listed.retain(|(held, mic)| held.as_str() != isin || mic.as_ref() != market);
         if listed.is_empty() {
             tickers.remove(ticker);
         }
     }
 }
 
-/// The rows of one snapshot, in ISIN order, each as its scalar.
+/// Adds the listing row of `isin` on `market` to the slots of `ticker` in
+/// the ticker index, in ISIN then MIC order.
+fn list_ticker(
+    tickers: &mut HashMap<SmolStr, TickerSlots>,
+    ticker: &SmolStr,
+    isin: &SmolStr,
+    market: Option<&Mic>,
+) {
+    let slot = (isin.clone(), market.cloned());
+    let listed = tickers.entry(ticker.clone()).or_default();
+    if let Err(at) = listed.binary_search(&slot) {
+        listed.insert(at, slot);
+    }
+}
+
+/// The listing rows of one snapshot, in ISIN then MIC order, each as its
+/// scalar.
 struct Snapshot {
-    rows: Arc<BTreeMap<SmolStr, IsinEntry>>,
-    after: Option<SmolStr>,
+    rows: Arc<BTreeMap<SmolStr, Listings>>,
+    /// The ISIN of the row last answered, and its place among the ISIN's
+    /// listings.
+    after: Option<(SmolStr, usize)>,
+}
+
+impl Snapshot {
+    /// The rows `table` holds, from the first.
+    fn of(table: &IsinTable) -> Self {
+        Self {
+            rows: Arc::clone(&table.rows),
+            after: None,
+        }
+    }
 }
 
 impl Iterator for Snapshot {
     type Item = Scalar;
 
     fn next(&mut self) -> Option<Scalar> {
-        let next = match &self.after {
-            None => self.rows.iter().next(),
-            Some(after) => self
-                .rows
-                .range::<str, _>((Bound::Excluded(after.as_str()), Bound::Unbounded))
-                .next(),
+        let (isin, at) = match &self.after {
+            Some((isin, at))
+                if self
+                    .rows
+                    .get(isin)
+                    .is_some_and(|listings| at + 1 < listings.len()) =>
+            {
+                (isin.clone(), at + 1)
+            }
+            Some((isin, _)) => {
+                let (next, _) = self
+                    .rows
+                    .range::<str, _>((Bound::Excluded(isin.as_str()), Bound::Unbounded))
+                    .next()?;
+                (next.clone(), 0)
+            }
+            None => (self.rows.keys().next()?.clone(), 0),
         };
-        let (isin, entry) = next?;
-        self.after = Some(isin.clone());
-        Some(entry.into_scalar())
+        let row = self.rows.get(&isin)?.get(at)?.into_scalar();
+        self.after = Some((isin, at));
+        Some(row)
     }
 }
 
@@ -1885,25 +2202,28 @@ fn column_name(at: usize) -> &'static str {
 /// the market spellings; `None` for any other.
 fn registry_column(name: &str) -> Option<usize> {
     /// The spellings of the columns no identifier type names.
-    const MARKET: [(&str, usize); 25] = [
-        ("isin", 0),
-        ("updunix", 1),
-        ("cfi", 2),
-        ("cficode", 2),
-        ("country", 3),
-        ("countrycode", 3),
-        ("countryofissue", 3),
-        ("eusipa", 6),
-        ("eusipacode", 6),
-        ("eusipacategory", 6),
-        ("sspa", 6),
-        ("sspacode", 6),
-        ("sspacategory", 6),
-        ("mic", 7),
-        ("miccode", 7),
-        ("ticker", 8),
-        ("symbol", 8),
-        ("tickersymbol", 8),
+    const MARKET: [(&str, usize); 28] = [
+        ("isin", ISIN),
+        ("updunix", UPDUNIX),
+        ("lastunix", LASTUNIX),
+        ("lastseen", LASTUNIX),
+        ("lastseenunix", LASTUNIX),
+        ("cfi", CFICODE),
+        ("cficode", CFICODE),
+        ("country", COUNTRYCODE),
+        ("countrycode", COUNTRYCODE),
+        ("countryofissue", COUNTRYCODE),
+        ("eusipa", EUSIPACODE),
+        ("eusipacode", EUSIPACODE),
+        ("eusipacategory", EUSIPACODE),
+        ("sspa", EUSIPACODE),
+        ("sspacode", EUSIPACODE),
+        ("sspacategory", EUSIPACODE),
+        ("mic", MICCODE),
+        ("miccode", MICCODE),
+        ("ticker", TICKER),
+        ("symbol", TICKER),
+        ("tickersymbol", TICKER),
         ("fisn", FISN),
         ("fisncode", FISN),
         ("shortname", FISN),
@@ -1918,7 +2238,7 @@ fn registry_column(name: &str) -> Option<usize> {
         return Some(*at);
     }
     if IdType::underlying_security(folded) == Some(IdType::Isin) {
-        return Some(5);
+        return Some(UNDERLYINGISIN);
     }
     let kind = folded
         .parse::<IdType>()
@@ -1926,9 +2246,9 @@ fn registry_column(name: &str) -> Option<usize> {
         .filter(IdType::is_known)
         .or_else(|| IdType::from_field_name(name))?;
     match kind {
-        IdType::Isin => Some(0),
-        IdType::Cfi => Some(2),
-        IdType::Forex => Some(4),
+        IdType::Isin => Some(ISIN),
+        IdType::Cfi => Some(CFICODE),
+        IdType::Forex => Some(FOREXCODE),
         IdType::Fisn => Some(FISN),
         kind => equivalents()
             .position(|held| *held == kind)
@@ -1940,6 +2260,7 @@ fn registry_column(name: &str) -> Option<usize> {
 struct Columns {
     isin: Arc<Utf8StringSerie>,
     updunix: Arc<DateTimeNanosecondSerie>,
+    lastunix: Arc<DateTimeNanosecondSerie>,
     cficode: Arc<Utf8StringSerie>,
     countrycode: Arc<Utf8StringSerie>,
     forexcode: Arc<Utf8StringSerie>,
@@ -1987,24 +2308,26 @@ impl Columns {
             (held, true) => Ok(held),
             (_, false) => Err(unlanded(at)),
         };
+        let instant = |at: usize| match children.get(at) {
+            Some(Serie::DateTimeNanosecond(held)) => Ok(Arc::clone(held)),
+            _ => Err(unlanded(at)),
+        };
         Ok(Self {
-            isin: code(0)?,
-            updunix: match children.get(1) {
-                Some(Serie::DateTimeNanosecond(held)) => Arc::clone(held),
-                _ => return Err(unlanded(1)),
-            },
-            cficode: code(2)?,
-            countrycode: code(3)?,
-            forexcode: code(4)?,
-            underlyingisin: code(5)?,
-            eusipacode: match children.get(6) {
+            isin: code(ISIN)?,
+            updunix: instant(UPDUNIX)?,
+            lastunix: instant(LASTUNIX)?,
+            cficode: code(CFICODE)?,
+            countrycode: code(COUNTRYCODE)?,
+            forexcode: code(FOREXCODE)?,
+            underlyingisin: code(UNDERLYINGISIN)?,
+            eusipacode: match children.get(EUSIPACODE) {
                 Some(Serie::Int32(held)) => Arc::clone(held),
-                _ => return Err(unlanded(6)),
+                _ => return Err(unlanded(EUSIPACODE)),
             },
-            miccode: code(7)?,
-            ticker: match text(8)? {
+            miccode: code(MICCODE)?,
+            ticker: match text(TICKER)? {
                 (held, false) => held,
-                (_, true) => return Err(unlanded(8)),
+                (_, true) => return Err(unlanded(TICKER)),
             },
             fisn: code(FISN)?,
             currency: code(CURRENCY)?,
@@ -2027,6 +2350,7 @@ impl Columns {
         })?;
         let mut entry = IsinEntry::new(Isin::from_proven(isin))
             .with_updunix(self.updunix.value(row))
+            .with_lastunix(self.lastunix.value(row))
             .with_cficode(self.cficode.value(row).map(Cfi::from_proven))
             .with_countrycode(
                 self.countrycode
@@ -2075,7 +2399,7 @@ fn product_category(code: i32, isin: &str) -> Option<Eusipa> {
     if category.is_none() {
         warned!(
             "instrument registry value dropped: it is no real code of its type",
-            NAMES[6],
+            NAMES[EUSIPACODE],
             "{code} under {isin}"
         );
     }

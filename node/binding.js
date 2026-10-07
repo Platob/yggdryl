@@ -5612,19 +5612,25 @@ binding.FixCodec.prototype.writeArrowReader = function writeArrowReader(source, 
 // native `BatchReader`, as every `fromArrowReader` takes one.
 {
   const NativeIsinRegistry = binding.IsinRegistry
-  for (const name of ['get', 'remove']) {
+  // One row or none: `get` by ISIN, `getByTicker`, `getListing` and
+  // `removeListing` by an ISIN or a ticker and a market.
+  for (const name of ['get', 'getByTicker', 'getListing', 'removeListing']) {
     const native = NativeIsinRegistry.prototype[name]
     NativeIsinRegistry.prototype[name] = {
-      [name](key) {
-        const row = native.call(this, key)
+      [name](...args) {
+        const row = Reflect.apply(native, this, args)
         return row === null ? null : row.asJs()
       },
     }[name]
   }
-  const nativeGetByTicker = NativeIsinRegistry.prototype.getByTicker
-  NativeIsinRegistry.prototype.getByTicker = function getByTicker(ticker, market) {
-    const row = nativeGetByTicker.call(this, ticker, market)
-    return row === null ? null : row.asJs()
+  // Every listing of an ISIN, in MIC order.
+  for (const name of ['listings', 'remove']) {
+    const native = NativeIsinRegistry.prototype[name]
+    NativeIsinRegistry.prototype[name] = {
+      [name](isin) {
+        return native.call(this, isin).map((row) => row.asJs())
+      },
+    }[name]
   }
   const nativeMerge = NativeIsinRegistry.prototype.merge
   NativeIsinRegistry.prototype.merge = function merge(entry) {

@@ -1,11 +1,13 @@
 //! The seed: the common instruments every process default starts from.
 //!
-//! `config/isin/instruments.json` is one JSON array of rows sorted by ISIN,
-//! each keyed as the registry's columns are - `isin`, `ticker`, `miccode`
-//! (absent for an index, which trades on no market), `currency`,
-//! `countrycode`, `cficode` and, where one is known, `fisn` - and nothing
-//! else. That file is the one maintained by hand; `seed.json` beside this
-//! module is its copy inside the crate's package, written byte for byte by
+//! `config/isin/instruments.json` is one JSON array of listing rows sorted
+//! by ISIN then market - an instrument listed on several markets one row
+//! per market, as the registry holds it - each keyed as the registry's
+//! columns are - `isin`, `ticker`, `miccode` (absent for an index, which
+//! trades on no market), `currency`, `countrycode`, `cficode` and, where
+//! one is known, `fisn` - and nothing else. That file is the one maintained
+//! by hand; `seed.json` beside this module is its copy inside the crate's
+//! package, written byte for byte by
 //! `python scripts/check_isin_seed.py --sync`, so the published crate and a
 //! source distribution embed it too. It is embedded at build time and read
 //! once per process: the

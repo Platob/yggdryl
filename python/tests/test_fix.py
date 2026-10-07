@@ -5672,12 +5672,14 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     assert written["bronze.log_messages"] == IOResult(144, 144)
     # The lifecycle learned the capture's instruments into the registry, and
     # the first commit wrote them with the seed as one snapshot: the table
-    # holds the registry, the seed's rows and what the lifecycle learned.
+    # holds the registry's listing rows - one per ISIN and market - the
+    # seed's instruments and those the lifecycle learned.
     instruments = written["silver.instruments"].written_rows
     isins = registry.into_arrow_reader().read_all().column("isin").to_pylist()
-    learned = [isin for isin in isins if seed.get(isin) is None]
+    learned = {isin for isin in isins if seed.get(isin) is None}
     assert learned, "the capture names instruments the seed does not hold"
-    assert instruments == len(registry) == len(seed) + len(learned)
+    assert instruments == registry.rows == len(isins)
+    assert len(registry) == len(seed) + len(learned) == len(set(isins))
     assert not registry.is_dirty
     stored = silver.table("record_keeping.instruments")
     assert stored.row_size() == instruments
@@ -5689,7 +5691,7 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     field = stored.field()
     assert field.index_of("underlyingisin") == field.index_of("forexcode") + 1
     reloaded = IsinRegistry.from_url(stored.url)
-    assert len(reloaded) == instruments
+    assert (len(reloaded), reloaded.rows) == (len(registry), instruments)
     assert reloaded.get("CH0012214059") == registry.get("CH0012214059") is not None
     for stage, result in written.items():
         assert result.read_rows == result.written_rows, stage
@@ -5769,7 +5771,9 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     # Running every stage again over the window rewrites what it wrote: the
     # same rows under one more snapshot, never the two runs together.
     again = medallion.run(lake, start, end)
-    # The registry learned no new instrument, so its bound table commits nothing.
+    # The registry learned no new fact and met no instrument later than it
+    # had - the same messages at the same instants leave every `lastunix` -
+    # so its bound table commits nothing.
     assert again.pop("silver.instruments") == IOResult(0, 0)
     assert len(silver.table("record_keeping.instruments").snapshots) == 1
     written.pop("silver.instruments")

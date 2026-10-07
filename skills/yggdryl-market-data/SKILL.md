@@ -164,6 +164,8 @@ Hold these facts:
 | a market-data entry's book control | `event.with_book(BookRef { .. })` | `event.with_book(graph.BookRef(action="new", position=1))` | `event.withBook(new graph.BookRef({ action: 'new', position: 1 }))` |
 | an identifier | `Identifier::new(IdKey::base(IdType::Isin), value)?`, `"ullink:isin".parse::<IdKey>()?`, `Identifiers` | `Identifier(key, value)` - `"isin"`, `"ullink:isin"` - `Identifiers([...])`, `Identifiers.from_dict({...})`, `into_dict()` | `new Identifier(key, value)`, `new Identifiers([...])`, `Identifiers.fromObject({...})`, `intoObject()` |
 | what instruments are known by | `IsinRegistry::from_url(&url, props)?`, `registry.enrich(&mut event)`, `get("CH0012214059")`, `get_by_ticker("HOLN", Some(&mic))`, `commit()?` | `IsinRegistry.from_url(path)`, `registry.get("CH0012214059")` (a `dict`), `get_by_ticker("HOLN", "XSWX")`, `enrich(fix_msg)`, `commit()` | `IsinRegistry.fromUrl(path)`, `registry.get('CH0012214059')` (a plain object), `getByTicker('HOLN', 'XSWX')`, `enrich(fixMsg)`, `commit()` |
+| an instrument's listings, one row per market | `registry.listings(isin)` (MIC order; `get` the first), `get_listing(isin, &mic)`, `rows()` (`len()` counts ISINs), `remove_listing(isin, &mic)`, `remove(isin)` -> every listing | `listings(isin)`, `get_listing(isin, "XSWX")`, `rows` (a property), `remove_listing(isin, "XSWX")`, `remove(isin)` -> `list[dict]` | `listings(isin)`, `getListing(isin, 'XSWX')`, `rows` (a getter), `removeListing(isin, 'XSWX')`, `remove(isin)` -> objects |
+| when an instrument was last met, and last changed | `entry.lastunix()` (every `learn` moves it), `entry.updunix()` (only a moved fact does) | `row["lastunix"]`, `row["updunix"]` (a `datetime`) | `row.lastunix`, `row.updunix` (a `Date`, or a datetime `Scalar` past millisecond precision) |
 | security, own and party identifiers | `insert_securityid(id)?`, `insert_identifier(id)?`, `insert_partyid(id)?` (Rust-only verbs) | `securityids=[Identifier("isin", ...)]`, `identifiers=[...]`, `partyids=[...]` at build | `securityids: [new Identifier('isin', ...)]`, `identifiers: [...]`, `partyids: [...]` at build |
 | read an identifier map | `get_securityids().get(&IdType::Isin)`, `get_from(&src, &kind)` | `order.securityids.get("isin")`, `get_from(src, type)`, iterate `Identifier`s | `order.securityids.get('isin')`, `getFrom(src, type)`, `toArray()` |
 | FX rates (nothing fills them) | `insert_fxrate(ccy, rate)`, `set_fxrates(map)` | `fxrates={"EUR": Decimal("1.1")}` at build | `fxrates: { EUR: '1.1' }` at build |
@@ -368,8 +370,14 @@ Hold these facts:
   valid stated value fills and replaces whatever the time; a row also holds
   the `underlyingisin` and the `eusipacode` - a structured product's EUSIPA
   category, `int32`, read as an `Eusipa` (`yggdryl-types`) - a FIX lifecycle
-  learned - never the bindings' `learn` - which nothing fills, and which no
-  listing switch clears; `merge` takes either as stated. A store written
+  learned - never the bindings' `learn` - which nothing fills; `merge` takes
+  either as stated. A row is one listing - one per (ISIN, market): the
+  instrument's facts (`cficode`, `fisn`, `underlyingisin`, `eusipacode`,
+  `updunix`, `lastunix`, the non-listing codes) are every listing's, the
+  ticker, currency and listing codes one market's; a listing fact stated on
+  no market lands on the ISIN's single listing, or with a warning on none of
+  several. Every `learn` moves `lastunix`, so meeting a known instrument
+  later dirties the registry and the next `commit()` writes it. A store written
   before `eusipacode` was a column loads it null and keeps its own row on
   `commit()`, so the category reaches only a store laid out afresh. The bindings'
   `learn`/`fill`/`enrich` take a `FixMsg`, a FIX lifecycle runs them on every

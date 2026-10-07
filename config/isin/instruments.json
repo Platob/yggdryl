@@ -60,6 +60,7 @@
   {"isin": "GB0001383545", "ticker": "UKX", "currency": "GBP", "countrycode": "GB", "cficode": "TIEXXX"},
   {"isin": "GB0002374006", "ticker": "DGE", "miccode": "XLON", "currency": "GBP", "countrycode": "GB", "cficode": "ESVUFR", "fisn": "DIAGEO/PAR VTG FPD 0.28935"},
   {"isin": "GB0002875804", "ticker": "BATS", "miccode": "XLON", "currency": "GBP", "countrycode": "GB", "cficode": "ESVUFR", "fisn": "BRIH AMER/PAR VTG FPD 0.25"},
+  {"isin": "GB0005405286", "ticker": "0005", "miccode": "XHKG", "currency": "HKD", "countrycode": "GB", "cficode": "ESVUFR", "fisn": "HSBC HLDG/PAR VTG FPD 0.5"},
   {"isin": "GB0005405286", "ticker": "HSBA", "miccode": "XLON", "currency": "GBP", "countrycode": "GB", "cficode": "ESVUFR", "fisn": "HSBC HLDG/PAR VTG FPD 0.5"},
   {"isin": "GB0007188757", "ticker": "RIO", "miccode": "XLON", "currency": "GBP", "countrycode": "GB", "cficode": "ESVUFR", "fisn": "RIO TINT/PAR VTG FPD 0.1"},
   {"isin": "GB0007980591", "ticker": "BP", "miccode": "XLON", "currency": "GBP", "countrycode": "GB", "cficode": "ESVUFR", "fisn": "BP/PAR VTG FPD 0.25"},

@@ -1,7 +1,7 @@
 'use strict'
 
-// `node/src/isin_registry.rs`: the instrument registry, one row per ISIN of
-// every fact it is known by, learned from and filled into FIX messages,
+// `node/src/isin_registry.rs`: the instrument registry, one row per ISIN and
+// market of every fact it is known by, learned from and filled into FIX messages,
 // bound to the store it is loaded from and committed back to, redirected to
 // the core.
 
@@ -27,9 +27,17 @@ function stated(reader = codec) {
   ))
 }
 
-/** The columns a row states. */
+/**
+ * The nanoseconds a row's instant holds: a `Date` where the instant is a
+ * whole millisecond, else the datetime `Scalar` that keeps the nanoseconds.
+ */
+function nanos(instant) {
+  return instant instanceof Date ? BigInt(instant.getTime()) * 1_000_000n : instant.count
+}
+
+/** The columns a row states, its two instants aside. */
 function statedColumns(row) {
-  return Object.fromEntries(Object.entries(row).filter(([key, value]) => value !== null && key !== 'updunix'))
+  return Object.fromEntries(Object.entries(row).filter(([key, value]) => value !== null && key !== 'updunix' && key !== 'lastunix'))
 }
 
 test('a registry learns a message and fills a later one named by its ticker', () => {
@@ -82,8 +90,9 @@ test('a row merges by the update rule', () => {
   assert.ok(!registry.merge({ isin: HOLCIM, underlyingisin: 'US0378331006' }), 'a typo is dropped')
   assert.equal(registry.get(HOLCIM).underlyingisin, APPLE)
   assert.throws(() => registry.merge({ ric: 'HOLN.S' }), /isin/)
-  assert.equal(registry.remove(HOLCIM).isin, HOLCIM)
-  assert.equal(registry.remove(HOLCIM), null)
+  // `remove` answers every listing of the ISIN, in MIC order.
+  assert.deepEqual(registry.remove(HOLCIM).map((held) => held.isin), [HOLCIM])
+  assert.deepEqual(registry.remove(HOLCIM), [])
   registry.merge({ isin: HOLCIM })
   registry.clear()
   assert.equal(registry.length, 0)
@@ -109,9 +118,69 @@ test('a row takes the defaults its ISIN and its market imply', () => {
   assert.equal(registry.get(APPLE).cusip, '037833100')
 })
 
+test('an ISIN holds one listing per market', () => {
+  // Instrument facts are every listing's; listing facts belong to the
+  // market a statement names, and a statement naming none lands them on no
+  // listing of an ISIN listed on two.
+  const registry = new IsinRegistry()
+  assert.ok(registry.merge({ isin: HOLCIM, miccode: 'XSWX', ticker: 'HOLN', updunix: 10n }))
+  assert.ok(registry.merge({ isin: HOLCIM, miccode: 'XLON', ticker: '0QKY' }), 'a new market is a new listing')
+  assert.equal(registry.length, 1, 'one instrument')
+  assert.equal(registry.rows, 2, 'two listings')
+  assert.deepEqual(registry.listings(HOLCIM).map((row) => [row.miccode, row.ticker, row.currency]), [
+    ['XLON', '0QKY', 'GBP'],
+    ['XSWX', 'HOLN', 'CHF'],
+  ], 'in MIC order, each with its own market default')
+  assert.deepEqual(registry.listings(APPLE), [])
+  assert.deepEqual(registry.get(HOLCIM), registry.listings(HOLCIM)[0], 'get is the first listing')
+  assert.equal(registry.getListing(HOLCIM, 'XSWX').ticker, 'HOLN')
+  assert.equal(registry.getListing(HOLCIM, 'XNAS'), null)
+  assert.throws(() => registry.getListing(HOLCIM, 'TOOLONG'))
+  assert.equal(registry.getByTicker('0QKY', 'XLON').miccode, 'XLON')
+  assert.equal(registry.getByTicker('HOLN').miccode, 'XSWX', 'the one listing of the ticker on any market')
+  assert.ok(registry.merge({ isin: HOLCIM, cficode: 'ESVUFR' }), 'an instrument fact')
+  assert.deepEqual(registry.listings(HOLCIM).map((row) => row.cficode), ['ESVUFR', 'ESVUFR'], 'on every listing')
+  assert.ok(!registry.merge({ isin: HOLCIM, ric: 'HOLN.S' }), 'a listing fact naming no market on two listings')
+  assert.deepEqual(registry.listings(HOLCIM).map((row) => row.ric), [null, null], 'lands on none')
+  assert.ok(registry.merge({ isin: HOLCIM, miccode: 'XSWX', ric: 'HOLN.S' }))
+  assert.deepEqual(registry.listings(HOLCIM).map((row) => row.ric), [null, 'HOLN.S'], 'on the listing it names')
+  const [london, zurich] = registry.listings(HOLCIM)
+  assert.equal(nanos(london.updunix), nanos(zurich.updunix), 'updunix is an instrument fact')
+  assert.equal(registry.removeListing(HOLCIM, 'XLON').miccode, 'XLON')
+  assert.equal(registry.removeListing(HOLCIM, 'XLON'), null)
+  assert.deepEqual([registry.length, registry.rows], [1, 1])
+  assert.equal(registry.removeListing(HOLCIM, 'XSWX').ticker, 'HOLN')
+  assert.deepEqual([registry.length, registry.rows], [0, 0], 'the instrument goes with its last listing')
+  assert.equal(registry.get(HOLCIM), null)
+})
+
+test('a learn moves lastunix to the latest instant and updunix only where a fact moved', () => {
+  const at = (stamp) => codec.parseFixLine(Buffer.from(
+    `8=FIX.4.4|35=D|52=${stamp}|11=A|22=4|48=${HOLCIM}|461=ESVUFR|55=HOLN|207=XSWX|15=CHF|10=0|`,
+  ))
+  const first = at('20260102-10:00:00')
+  const later = at('20260102-11:00:00')
+  const earlier = at('20260102-09:00:00')
+  const registry = new IsinRegistry()
+  assert.ok(registry.learn(first))
+  const learned = registry.get(HOLCIM)
+  assert.equal(nanos(learned.lastunix), first.currunix, 'lastunix is the instant of the event that stated the ISIN')
+  assert.equal(nanos(learned.updunix), first.currunix)
+  const clean = IsinRegistry.fromArrowReader(registry.intoArrowReader())
+  assert.equal(clean.isDirty, false)
+  assert.ok(clean.learn(later), 'meeting a known instrument later moves the registry')
+  assert.equal(clean.isDirty, true)
+  const met = clean.get(HOLCIM)
+  assert.equal(nanos(met.lastunix), later.currunix)
+  assert.equal(nanos(met.updunix), first.currunix, 'no fact moved, so updunix stays')
+  assert.ok(!clean.learn(earlier), 'an earlier instant moves nothing')
+  assert.equal(nanos(clean.get(HOLCIM).lastunix), later.currunix)
+})
+
 test('the seed holds the common instruments, clean and bound to no store', () => {
   const seeded = IsinRegistry.seeded()
   assert.equal(seeded.length, 208)
+  assert.equal(seeded.rows, 209, 'HSBC is listed on XHKG and XLON')
   assert.equal(seeded.isDirty, false)
   assert.equal(seeded.maxInstruments, 16384)
   assert.throws(() => seeded.commit(), /holder/, 'bound to no store')
@@ -128,7 +197,9 @@ test('the seed holds the common instruments, clean and bound to no store', () =>
   assert.equal(seeded.isDirty, true)
   assert.equal(IsinRegistry.seeded().get(APPLE).ric, null, 'each seeded registry is its own')
   const field = IsinRegistry.field()
-  assert.equal(field.fieldLen, 43, 'the short name is the forty-third column')
+  // `lastunix` after `updunix` is the forty-fourth column.
+  assert.equal(field.fieldLen, 44)
+  assert.equal(field.indexOf('lastunix'), field.indexOf('updunix') + 1)
   assert.equal(field.indexOf('fisn'), field.indexOf('ticker') + 1)
 })
 
@@ -153,7 +224,7 @@ test('a store bound seeded is laid over the seed', (t) => {
   assert.equal(registry.commit().writtenRows, 0, 'clean after the load')
   assert.equal(IsinRegistry.fromUrl(target).length, 2, "unseeded: the store's rows alone")
   assert.ok(registry.merge({ isin: HOLCIM, ric: 'HOLN.S' }))
-  assert.equal(registry.commit().writtenRows, registry.length, "the seed's rows with the store's")
+  assert.equal(registry.commit().writtenRows, registry.rows, "every listing of the seed's with the store's")
   assert.equal(IsinRegistry.fromUrl(target).length, registry.length)
   assert.equal(IsinRegistry.seededFromUrl(new IOBase(target)).length, registry.length, 'a handle names the store too')
   assert.throws(() => IsinRegistry.seededFromUrl(new IOBase(target), undefined, { media_type: 'x' }), /properties/)
@@ -163,7 +234,7 @@ test('a store bound seeded is laid over the seed', (t) => {
   assert.ok(!fs.existsSync(path.join(root, 'isin')))
   const field = IsinRegistry.field()
   assert.equal(field.get('PARTITION:by'), '["truncate(isin, 2)"]')
-  assert.equal(field.get('SORT:by'), '["isin"]')
+  assert.equal(field.get('SORT:by'), '["isin","miccode"]', 'a listing row is keyed by its ISIN and its market')
 })
 
 test('a golden table loads by any spelling of its columns', () => {
@@ -285,7 +356,7 @@ test('a ticker leads back to its ISIN on the same market', () => {
   assert.ok(registry.merge({ isin: novartis, ticker: 'HOLN', miccode: 'XLON' }))
   assert.deepEqual([isin('HOLN', 'XLON'), isin('HOLN', 'XSWX')], [novartis, HOLCIM])
   assert.equal(isin('HOLN'), null, 'ambiguous')
-  assert.notEqual(registry.remove(novartis), null)
+  assert.equal(registry.remove(novartis).length, 1)
   assert.equal(isin('HOLN'), HOLCIM)
   registry.clear()
   assert.equal(isin('HOLN'), null)
@@ -309,7 +380,7 @@ test('the process registry is the store the environment names, shared with the c
     assert.ok(IsinRegistry.fromEnv().equals(registry), 'resolved once')
     assert.throws(() => IsinRegistry.installEnv(new IsinRegistry()), /already resolved/)
     assert.ok(registry.merge({ isin: '${HOLCIM}', ric: 'HOLN.S' }))
-    assert.equal(registry.commit().writtenRows, 208, 'the seed rides the first commit')
+    assert.equal(registry.commit().writtenRows, 209, "the seed's listings ride the first commit")
     assert.ok(fs.existsSync(path.join(process.argv[2], 'part-0.arrows')))
     const codec = fix.FixCodec.fromEnv()
     assert.ok(codec.isinRegistry.equals(registry))

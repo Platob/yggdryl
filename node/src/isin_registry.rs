@@ -1,5 +1,5 @@
-//! The instrument registry: one row per ISIN of every fact it is known by,
-//! learned from and filled into market data, bound to a store it is loaded
+//! The instrument registry: one row per ISIN and market of every fact it is
+//! known by, learned from and filled into market data, bound to a store it is loaded
 //! from and committed back to. Shared behind one lock, so a codec handed the
 //! registry and the caller holding it see one table.
 
@@ -55,11 +55,14 @@ fn store_of(
     }
 }
 
-/// A table of instruments keyed by ISIN - each row the instrument's CFI
-/// code, its country of issue, its currency pair, the instrument it is
-/// written on, its market, its ticker, its ISO 18774 short name
-/// and trading currency and one code per `SecurityIDSource(22)` type - that
-/// a lifecycle learns into and fills from, and a parse fills from. Bound to
+/// A table of instruments keyed by ISIN, one listing row per market - the
+/// instrument facts every listing of an ISIN shares (its CFI code, its
+/// country of issue, its currency pair, the instrument it is written on,
+/// its product category, its ISO 18774 short name, `updunix` and
+/// `lastunix`), and the listing facts of one market (its ticker, its
+/// trading currency, its listing codes) beside one code per
+/// `SecurityIDSource(22)` type - that a lifecycle learns into and fills
+/// from, and a parse fills from. Bound to
 /// the store it was loaded from, committed back only where it moved.
 /// Mutable and shared: equal only to itself; its rows cross out as an Arrow
 /// stream.
@@ -93,6 +96,14 @@ impl JsIsinRegistry {
     fn row(entry: Option<&IsinEntry>) -> Option<JsScalar> {
         entry.map(|held| JsScalar::from_core(held.into_scalar()))
     }
+
+    /// Rows as the struct `Scalar`s of their columns, in the order given.
+    fn rows_of<'a>(entries: impl IntoIterator<Item = &'a IsinEntry>) -> Vec<JsScalar> {
+        entries
+            .into_iter()
+            .map(|held| JsScalar::from_core(held.into_scalar()))
+            .collect()
+    }
 }
 
 #[napi]
@@ -107,15 +118,16 @@ impl JsIsinRegistry {
         ))
     }
 
-    /// The registry's row: the required struct `isinregistry` every row is
-    /// laid out as - `isin`, `updunix`, `cficode`, `countrycode`,
-    /// `forexcode`, `underlyingisin`, `eusipacode`, `miccode`, `ticker`,
-    /// `fisn`, `currency`, then one column per `SecurityIDSource(22)` type
-    /// but the ISIN: forty-three columns - what a table holding the
-    /// registry is created from. Its root declares `PARTITION:by`
-    /// `["truncate(isin, 2)"]` - an Iceberg table created from it partitions
-    /// by the ISIN's country prefix, storing no column - and `SORT:by`
-    /// `["isin"]`, the order the snapshot streams in.
+    /// The registry's row: the required struct `isinregistry` every listing
+    /// row is laid out as - `isin`, `updunix`, `lastunix`, `cficode`,
+    /// `countrycode`, `forexcode`, `underlyingisin`, `eusipacode`,
+    /// `miccode`, `ticker`, `fisn`, `currency`, then one column per
+    /// `SecurityIDSource(22)` type but the ISIN: forty-four columns - what a
+    /// table holding the registry is created from. Its root declares
+    /// `PARTITION:by` `["truncate(isin, 2)"]` - an Iceberg table created
+    /// from it partitions by the ISIN's country prefix, storing no column -
+    /// and `SORT:by` `["isin", "miccode"]`, the order the snapshot streams
+    /// in.
     #[napi]
     pub fn field() -> JsField {
         JsField::from_core(IsinEntry::field())
@@ -241,11 +253,11 @@ impl JsIsinRegistry {
         Ok(u32::try_from(read).unwrap_or(u32::MAX))
     }
 
-    /// The rows as a `BatchReader` under the registry's row field, in ISIN
-    /// order: a snapshot taken under the lock, which a learn while it
-    /// streams does not move. Write it with an `IOBase`'s
+    /// Every listing row as a `BatchReader` under the registry's row field,
+    /// in ISIN then MIC order: a snapshot taken under the lock, which a
+    /// learn while it streams does not move. Write it with an `IOBase`'s
     /// `writeArrowReader` - an overwrite saves a snapshot, a merge by `isin`
-    /// upserts - or `commit` the registry.
+    /// and `miccode` upserts - or `commit` the registry.
     #[napi]
     #[allow(clippy::wrong_self_convention)]
     pub fn into_arrow_reader(&self) -> Result<JsBatchReader> {
@@ -274,16 +286,35 @@ impl JsIsinRegistry {
         self.lock().is_dirty()
     }
 
-    /// The row of `isin` as a plain object of its columns, or `null`.
+    /// The first listing row of `isin` in MIC order - the unlisted row
+    /// where that is all it holds - as a plain object of its columns, or
+    /// `null`. Its instrument facts are every listing's; `listings` answers
+    /// them all.
     #[napi(ts_return_type = "Record<string, unknown> | null")]
     pub fn get(&self, isin: String) -> Option<JsScalar> {
         Self::row(self.lock().get(&isin))
     }
 
-    /// The row the ticker `ticker` names on `market`, as a plain object of
-    /// its columns, or `null`: the one row listing the ticker whose market
-    /// is `market` - a MIC, checked by the `mic` datatype - or whose market
-    /// or `market` is unstated (`null` or `XXXX`). Two rows answering is
+    /// Every listing row of `isin` in MIC order, each a plain object of its
+    /// columns; empty where the ISIN is unknown.
+    #[napi(ts_return_type = "Record<string, unknown>[]")]
+    pub fn listings(&self, isin: String) -> Vec<JsScalar> {
+        Self::rows_of(self.lock().listings(&isin))
+    }
+
+    /// The listing row of `isin` on `market` - a MIC, checked by the `mic`
+    /// datatype - as a plain object of its columns, or `null`.
+    #[napi(ts_return_type = "Record<string, unknown> | null")]
+    pub fn get_listing(&self, isin: String, market: String) -> Result<Option<JsScalar>> {
+        let market = mic_of(&market)?;
+        Ok(Self::row(self.lock().get_listing(&isin, &market)))
+    }
+
+    /// The listing row the ticker `ticker` names on `market`, as a plain
+    /// object of its columns, or `null`: the one row listing the ticker on
+    /// `market` - a MIC, checked by the `mic` datatype - else the one
+    /// listing it on no market; where `market` is unstated (`null` or
+    /// `XXXX`), the one row listing it on any. Two rows answering is
     /// ambiguous, and answers none.
     #[napi(ts_return_type = "Record<string, unknown> | null")]
     pub fn get_by_ticker(
@@ -298,23 +329,39 @@ impl JsIsinRegistry {
     }
 
     /// Folds one row - an object of column names to cells, `isin` required
-    /// - into the row of its ISIN by the update rule: a stated valid value
-    /// fills a column the row lacks and replaces one it holds that
+    /// - into the listings of its ISIN by the update rule: a stated valid
+    /// value fills a column a row lacks and replaces one it holds that
     /// differs, whatever the time, a code that is no real value of its
     /// type dropped; a compatible CFI code refines the held one and a
-    /// contradicting one replaces it; a ticker or a listing code stated on
-    /// another market switches the listing whole. Whether anything moved.
+    /// contradicting one replaces it. The instrument facts fold into every
+    /// listing of the ISIN; the listing facts - the ticker, the currency,
+    /// the listing codes - into the listing of the market the row names,
+    /// created where the ISIN has none there, and, where it names none,
+    /// into the ISIN's single listing, or into none, with one warning per
+    /// column, where it has several. `updunix` moves where a fact moved,
+    /// `lastunix` becomes the later of the two. Whether anything moved.
     #[napi(ts_args_type = "entry: Record<string, unknown>")]
     pub fn merge(&self, entry: &JsScalar) -> Result<bool> {
         let entry = IsinEntry::from_scalar(&entry.inner).map_err(napi_error)?;
         self.lock().merge(entry).map_err(napi_error)
     }
 
-    /// Removes the row of `isin`, answering it as a plain object, or `null`.
-    #[napi(ts_return_type = "Record<string, unknown> | null")]
-    pub fn remove(&self, isin: String) -> Option<JsScalar> {
+    /// Removes every listing row of `isin`, answering them in MIC order as
+    /// plain objects; empty where the ISIN is unknown.
+    #[napi(ts_return_type = "Record<string, unknown>[]")]
+    pub fn remove(&self, isin: String) -> Vec<JsScalar> {
         let removed = self.lock().remove(&isin);
-        Self::row(removed.as_ref())
+        Self::rows_of(&removed)
+    }
+
+    /// Removes the listing row of `isin` on `market` - a MIC, checked by
+    /// the `mic` datatype - answering it as a plain object, or `null`; the
+    /// instrument goes with its last listing.
+    #[napi(ts_return_type = "Record<string, unknown> | null")]
+    pub fn remove_listing(&self, isin: String, market: String) -> Result<Option<JsScalar>> {
+        let market = mic_of(&market)?;
+        let removed = self.lock().remove_listing(&isin, &market);
+        Ok(Self::row(removed.as_ref()))
     }
 
     /// Removes every row.
@@ -323,10 +370,17 @@ impl JsIsinRegistry {
         self.lock().clear();
     }
 
-    /// How many instruments it holds.
+    /// How many instruments it holds: its ISINs.
     #[napi(getter)]
     pub fn length(&self) -> u32 {
         u32::try_from(self.lock().len()).unwrap_or(u32::MAX)
+    }
+
+    /// How many listing rows it holds - one per ISIN and market, an
+    /// unlisted row one: what the snapshot streams and a commit writes.
+    #[napi(getter)]
+    pub fn rows(&self) -> u32 {
+        u32::try_from(self.lock().rows()).unwrap_or(u32::MAX)
     }
 
     /// The most instruments it holds.
@@ -340,7 +394,9 @@ impl JsIsinRegistry {
     /// Learns what a message states about its instrument - keyed by its
     /// stated real ISIN, dated at its `currunix`: its CFI code, its market,
     /// its ticker, its currency, the pair it states and its real
-    /// equivalents. Whether anything moved.
+    /// equivalents, onto the listing its market names - and moves
+    /// `lastunix` to its `currunix` where that is later, so meeting a known
+    /// instrument later moves the registry too. Whether anything moved.
     #[napi]
     pub fn learn(&self, message: &JsFixMsg) -> bool {
         self.lock().learn(message.as_core())

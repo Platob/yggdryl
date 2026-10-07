@@ -5,8 +5,12 @@ const unbounded: IsinRegistry = new IsinRegistry()
 const merged: boolean = registry.merge({ isin: 'CH0012214059', ric: 'HOLN.S' })
 const row: Record<string, unknown> | null = registry.get('CH0012214059')
 const dirty: boolean = registry.isDirty
-const removed: Record<string, unknown> | null = registry.remove('CH0012214059')
+const listings: Record<string, unknown>[] = registry.listings('CH0012214059')
+const listing: Record<string, unknown> | null = registry.getListing('CH0012214059', 'XSWX')
+const removedListing: Record<string, unknown> | null = registry.removeListing('CH0012214059', 'XSWX')
+const removed: Record<string, unknown>[] = registry.remove('CH0012214059')
 const count: number = registry.length
+const rowCount: number = registry.rows
 const bound: number = registry.maxInstruments
 const stream: BatchReader = registry.intoArrowReader()
 const loaded: IsinRegistry = IsinRegistry.fromArrowReader(stream)
@@ -32,5 +36,9 @@ registry.clear()
 registry.length = 2
 // @ts-expect-error an ISIN is text
 registry.get(1)
+// @ts-expect-error the listing count is read-only
+registry.rows = 2
+// @ts-expect-error a listing names its market
+registry.getListing('CH0012214059')
 
-void [merged, row, dirty, removed, count, bound, read, fromUrl, withProperties, committed, fromEnv, seeded, seededFromUrl, same, text, shared, learned, filled, enriched]
+void [merged, row, dirty, listings, listing, removedListing, removed, count, rowCount, bound, read, fromUrl, withProperties, committed, fromEnv, seeded, seededFromUrl, same, text, shared, learned, filled, enriched]

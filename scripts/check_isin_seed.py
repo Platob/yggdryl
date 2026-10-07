@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Check the instrument registry's seed, `config/isin/instruments.json`.
 
-The seed is one JSON array of instruments sorted by ISIN, each an object
-keyed as the registry's columns are. It is the one file maintained by hand;
+The seed is one JSON array of listings sorted by ISIN then market, each an
+object keyed as the registry's columns are: an instrument listed on several
+markets is one row per market, as the registry holds it. It is the one file maintained by hand;
 the crate embeds a copy of it inside its own package,
 `rust/src/isin_registry/seed.json` (`rust/src/isin_registry/seed.rs`), so a
 published crate and a source distribution carry it too, and
@@ -17,7 +18,12 @@ byte.
   `ticker`, `miccode`, `currency`, `countrycode`, `cficode` and `fisn`,
   `isin`, `ticker`, `currency` and `cficode` required;
 - an ISIN is twelve upper-case ASCII letters and digits closing on its
-  ISO 6166 check digit, unique, and the array is sorted by it;
+  ISO 6166 check digit; a row is unique on its ISIN and its `miccode`, and
+  the array is sorted by the ISIN, then the `miccode`;
+- a row of no `miccode` - an index, which trades on no market - is its
+  ISIN's only row, since the registry holds an unlisted row alone;
+- the rows of one ISIN agree on the instrument's facts - `countrycode`,
+  `cficode` and `fisn` - which the registry holds on every listing;
 - `countrycode` is two upper-case letters, the ISIN's own prefix unless that
   prefix is an agency's (`EU EZ XA XB XC XD XF XK XS XT`), where it may name
   another country or be absent - an index of no one country;
@@ -171,6 +177,10 @@ def check_row(at: int, row: object, mics: set[str]) -> list[str]:
     return failures
 
 
+# The facts of an instrument the registry holds on every listing of it.
+INSTRUMENT_KEYS = ("countrycode", "cficode", "fisn")
+
+
 def check(seed: Path, mics_path: Path) -> list[str]:
     """Every failure of the seed at `seed`."""
     try:
@@ -181,20 +191,44 @@ def check(seed: Path, mics_path: Path) -> list[str]:
         return [f"$: expected a JSON array, got {type(document).__name__}"]
     mics = assigned_mics(mics_path)
     failures = []
-    seen: dict[str, int] = {}
+    # The first row of each ISIN, and of each ISIN and market.
+    first: dict[str, int] = {}
+    seen: dict[tuple[str, str], int] = {}
     previous = None
     for at, row in enumerate(document):
         failures.extend(check_row(at, row, mics))
         isin = row.get("isin") if isinstance(row, dict) else None
         if not isinstance(isin, str):
             continue
-        if isin in seen:
-            failures.append(f"$[{at}].isin: {isin} is the ISIN of $[{seen[isin]}] too")
+        mic = row.get("miccode")
+        key = (isin, mic if isinstance(mic, str) else "")
+        if key in seen:
+            failures.append(
+                f"$[{at}]: {isin} on {mic or 'no market'} is the listing of $[{seen[key]}] too"
+            )
         else:
-            seen[isin] = at
-        if previous is not None and isin < previous:
-            failures.append(f"$[{at}].isin: expected the rows sorted by ISIN, got {isin} after {previous}")
-        previous = isin
+            seen[key] = at
+        if isin in first:
+            held = document[first[isin]]
+            if "miccode" not in row or "miccode" not in held:
+                failures.append(
+                    f"$[{at}].miccode: {isin} of no market is the ISIN of $[{first[isin]}] too; "
+                    "a row of no market is its ISIN's only row"
+                )
+            for name in INSTRUMENT_KEYS:
+                if row.get(name) != held.get(name):
+                    failures.append(
+                        f"$[{at}].{name}: expected the instrument's {held.get(name)!r} of "
+                        f"$[{first[isin]}], got {row.get(name)!r}"
+                    )
+        else:
+            first[isin] = at
+        if previous is not None and key < previous:
+            failures.append(
+                f"$[{at}]: expected the rows sorted by ISIN then market, got "
+                f"{isin} {mic or ''} after {previous[0]} {previous[1]}"
+            )
+        previous = key
     return failures
 
 
@@ -232,8 +266,9 @@ def main() -> int:
     if failures:
         print(f"{len(failures)} failure(s) in {arguments.seed}", file=sys.stderr)
         return 1
-    count = len(json.loads(arguments.seed.read_text(encoding="utf-8")))
-    print(f"{arguments.seed}: {count} instruments")
+    rows = json.loads(arguments.seed.read_text(encoding="utf-8"))
+    instruments = len({row["isin"] for row in rows})
+    print(f"{arguments.seed}: {instruments} instruments, {len(rows)} listings")
     return 0
 
 

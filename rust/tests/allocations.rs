@@ -16,6 +16,9 @@
 //! The counting allocator is a global and a program has exactly one, which is
 //! why this is its own test target rather than a case in another file.
 
+#[path = "support/ulbridge.rs"]
+mod ulbridge;
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::fmt;
@@ -117,20 +120,28 @@ static ALLOCATOR: Counting = Counting;
 
 /// Count the allocations `work` performs, and return them with its answer.
 fn counted<T>(work: impl FnOnce() -> T) -> (usize, T) {
-    let (counted, _, answer) = armed(work);
+    let (counted, _, _, answer) = armed(work);
     (counted, answer)
 }
 
 /// The most bytes `work` held at once beyond what its thread held before,
 /// with its answer.
 fn peaked<T>(work: impl FnOnce() -> T) -> (usize, T) {
-    let (_, peak, answer) = armed(work);
+    let (_, peak, _, answer) = armed(work);
     (peak, answer)
 }
 
-/// Run `work` armed: its allocations, the most bytes it held at once and
-/// its answer.
-fn armed<T>(work: impl FnOnce() -> T) -> (usize, usize, T) {
+/// The bytes `work` left allocated when it returned - what it made and
+/// kept, its answer's included, less what it freed of what its thread held
+/// before - with its answer.
+fn retained<T>(work: impl FnOnce() -> T) -> (isize, T) {
+    let (_, _, live, answer) = armed(work);
+    (live, answer)
+}
+
+/// Run `work` armed: its allocations, the most bytes it held at once, the
+/// bytes it still held when it returned and its answer.
+fn armed<T>(work: impl FnOnce() -> T) -> (usize, usize, isize, T) {
     let guard = COUNTING
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -145,8 +156,9 @@ fn armed<T>(work: impl FnOnce() -> T) -> (usize, usize, T) {
     ARMED.set(false);
     let counted = ALLOCATIONS.load(Ordering::Relaxed);
     let peak = usize::try_from(PEAK.load(Ordering::Relaxed)).unwrap_or(0);
+    let live = LIVE.load(Ordering::Relaxed);
     drop(guard);
-    (counted, peak, answer)
+    (counted, peak, live, answer)
 }
 
 /// Count `work` run once and run a thousand times.
@@ -8175,6 +8187,185 @@ fn the_native_derivations_cost_every_parse_the_same() {
     );
     eprintln!("native_derivations: {once} allocations per parse");
 }
+
+/// The text options a capture's copies are read under, as the scale
+/// harness reads them: the bridge's row header, each line numbered and
+/// classified, and its clock - which a rendered copy writes in UTC - read
+/// in UTC.
+fn capture_reading() -> TextOptions {
+    let mut options = TextOptions::new()
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+        .expect("the row header compiles")
+        .with_timezone(Timezone::UTC);
+    options.start_rownum = Some(1);
+    options.parse_mimetype = true;
+    options
+}
+
+/// Every line of `capture`, as the text reader decodes it.
+fn capture_lines(capture: &[u8]) -> Vec<TextLine> {
+    let source = Buffer::from_bytes(capture.to_vec())
+        .with_media_type(MediaType::from_file_name("ulbridge.log"));
+    read_text_lines(&source, &capture_reading())
+        .expect("a line reader")
+        .map(|line| line.expect("a line"))
+        .collect()
+}
+
+/// `copies` copies of the capture, each with its identifiers stepped and
+/// its clocks moved by the copy, every one a second after the one before
+/// inside one span as the scale run stacks them: no copy repeats another,
+/// so each is chains of its own.
+fn rendered_capture(copies: u64) -> Vec<u8> {
+    let template = ulbridge::Template::new(copies);
+    let mut rendered = Vec::new();
+    for copy in 0..copies {
+        template.render(copy, &mut rendered);
+    }
+    rendered
+}
+
+/// The codec the capture's memory pins read on: the committed dictionary
+/// under the codec's own refusals, the row header's captures by name, and
+/// one thread, because the counter observes the thread it is armed on.
+fn capture_codec() -> FixCodec {
+    FixCodec::new(Arc::new(committed_registry().clone()))
+        .with_threads(1)
+        .with_capture_names(capture_reading().capture_names())
+}
+
+/// What a parsed message keeps allocated while it is held: the bytes a
+/// `Vec<FixMsg>` the line door parsed still holds - its own buffer, each
+/// message's heap and the page its keys and values are ranges of - over the
+/// capture and over two rendered copies of it. A message's bytes are its
+/// own, so a second copy holds as many again; this is the figure step 0 of
+/// `.design/bench/OPTIMIZATION-DESIGN.md` measures a message by.
+#[test]
+fn a_parsed_fix_message_holds_the_same_bytes_at_one_and_two_captures() {
+    let codec = capture_codec();
+    let bodies = |capture: &[u8]| -> Vec<Vec<u8>> {
+        capture_lines(capture)
+            .iter()
+            .map(|line| line.body_bytes().to_vec())
+            .collect()
+    };
+    let parse = |bodies: &[Vec<u8>]| {
+        let mut messages: Vec<FixMsg> = codec
+            .parse_lines(bodies)
+            .collect::<yggdryl::Result<_>>()
+            .expect("every line reads");
+        messages.shrink_to_fit();
+        messages
+    };
+    let one = bodies(ULBRIDGE);
+    let two = bodies(&rendered_capture(2));
+    // Each once outside every count, so the dictionary's memo and every
+    // process-wide first use are no message's: warmed by the capture alone,
+    // its next parse still kept some sixty-four kilobytes no later one does.
+    drop(parse(&one));
+    drop(parse(&two));
+    let held = |bodies: &[Vec<u8>]| {
+        let (bytes, messages) = retained(|| parse(bodies));
+        let bytes = usize::try_from(bytes).expect("a parse keeps what it built");
+        (bytes, messages.len())
+    };
+    let (one_bytes, one_messages) = held(&one);
+    let (two_bytes, two_messages) = held(&two);
+    assert_eq!(one_messages, 79 + 57, "the capture's messages");
+    assert_eq!(
+        two_messages,
+        2 * one_messages,
+        "two copies, twice the messages"
+    );
+    let per_message = |bytes: usize, messages: usize| bytes as f64 / messages as f64;
+    let (one_each, two_each) = (
+        per_message(one_bytes, one_messages),
+        per_message(two_bytes, two_messages),
+    );
+    eprintln!(
+        "parsed_fix_message: one capture {one_bytes} bytes over {one_messages} messages \
+         ({one_each:.0} each), two copies {two_bytes} bytes over {two_messages} messages \
+         ({two_each:.0} each); a FixMsg is {} bytes inline",
+        std::mem::size_of::<FixMsg>()
+    );
+    assert!(
+        (two_each - one_each).abs() <= one_each * 0.02,
+        "a message holds {one_each:.0} bytes at one capture and {two_each:.0} at two"
+    );
+}
+
+/// What the sorted lifecycle holds beyond its input while it walks copies
+/// that repeat nothing: every copy's chains live at once, a second apart
+/// inside one span, so the walk's live set - the hour it holds, the live
+/// message of every chain, the identities its deduplication keeps - grows
+/// with the copies, and per input message it stays where it was. The input
+/// is parsed outside the walk's count and measured on its own, the way
+/// [`a_parsed_fix_message_holds_the_same_bytes_at_one_and_two_captures`]
+/// measures a message, so the peak is what the walk adds to holding it.
+#[test]
+fn a_sorted_lifecycle_walk_over_distinct_chains_holds_what_its_live_set_costs() {
+    let codec = capture_codec();
+    let hourly = codec.clone().with_sorted_lifecycle(true);
+    let parse = |capture: &[u8]| {
+        let mut messages: Vec<FixMsg> = codec
+            .parse_text_lines(capture_lines(capture))
+            .collect::<yggdryl::Result<_>>()
+            .expect("every line reads");
+        messages.shrink_to_fit();
+        messages
+    };
+    let walk = |messages: Vec<FixMsg>| {
+        hourly
+            .lifecycle(messages)
+            .try_fold(0_usize, |walked, message: yggdryl::Result<FixMsg>| {
+                message.map(|_| walked + 1)
+            })
+            .expect("a walked message")
+    };
+    // Once outside every count, so every process-wide first use is no
+    // walk's.
+    let mut warm = parse(&rendered_capture(1));
+    warm.sort_by_key(Event::get_currunix);
+    walk(warm);
+    let mut figures = Vec::new();
+    for copies in [32_u64, 64] {
+        let capture = rendered_capture(copies);
+        let (input_bytes, mut messages) = retained(|| parse(&capture));
+        let input_bytes = usize::try_from(input_bytes).expect("a parse keeps what it built");
+        messages.sort_by_key(Event::get_currunix);
+        let input = messages.len();
+        let (peak, yielded) = peaked(|| walk(messages));
+        let per_input = peak as f64 / input as f64;
+        let per_yielded = peak as f64 / yielded as f64;
+        eprintln!(
+            "sorted_lifecycle_walk: {copies} copies, {input} messages holding {input_bytes} \
+             bytes ({:.0} each), {yielded} yielded; the walk's peak over its input {peak} \
+             bytes, {per_input:.0} per input message, {per_yielded:.0} per yielded message",
+            input_bytes as f64 / input as f64
+        );
+        figures.push((input, yielded, per_input));
+    }
+    let [
+        (small_input, small_yielded, small),
+        (large_input, large_yielded, large),
+    ] = figures[..]
+    else {
+        unreachable!("two sizes")
+    };
+    assert_eq!(
+        large_input,
+        2 * small_input,
+        "twice the copies, twice the input"
+    );
+    assert!(
+        large_yielded > small_yielded,
+        "distinct chains yield more at more copies: {small_yielded}, {large_yielded}"
+    );
+    assert!(
+        (large - small).abs() <= small * 0.25,
+        "the walk holds {small:.0} bytes per input message at 32 copies and {large:.0} at 64"
+    );
+}
 #[test]
 fn instrument_codes_construct_and_classify_without_allocating() {
     use yggdryl::{Bbg, Cfi, Cusip, Figi, Isin, Ric, Sedol};
@@ -8386,8 +8577,10 @@ fn identifier_reads_and_inline_inserts_allocate_nothing() {
 }
 
 /// An ISIN registry learns a statement of a known instrument that says
-/// nothing new, fills an element that leaves nothing unsaid and looks a row
-/// up by its ISIN without allocating, whatever its size.
+/// nothing new but the instant it was met - its `lastunix`, moved in place
+/// on the row it holds - then the same statement again, which moves
+/// nothing, fills an element that leaves nothing unsaid and looks a row up
+/// by its ISIN without allocating, whatever its size.
 #[test]
 fn an_isin_registry_reads_and_learns_a_known_instrument_without_allocating() {
     use yggdryl::graph::{Market, OrderEvent};
@@ -8422,6 +8615,12 @@ fn an_isin_registry_reads_and_learns_a_known_instrument_without_allocating() {
                 .insert_securityid(Identifier::new(IdKey::base(kind), value).unwrap())
                 .unwrap();
         }
+        let (meeting, met) = counted(|| registry.learn(black_box(&stated)));
+        assert!(met, "the instant the instrument was met moves");
+        assert_eq!(
+            meeting, 0,
+            "learning only the instant at {size} instruments"
+        );
         free(
             &format!("learning nothing new at {size} instruments"),
             || {
@@ -8628,15 +8827,17 @@ fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
 /// A snapshot stream shares the table rather than copying it: opening one
 /// costs the same eleven allocations at 64 instruments as at 4,096 - the
 /// reader, its schema and its field, and the two root declarations the
-/// schema carries, `PARTITION:by` and `SORT:by`, six more than the five
-/// before the row declared them - and draining it lays each row out
-/// once, eight allocations a row - the named row, a B-tree of its
-/// forty-three cells inserted in column order, which takes six leaf nodes
-/// behind one `Arc` as the forty-two before `fisn` and the forty-one before
-/// `eusipacode` did, where the thirty-seven
-/// cells of the row before `countrycode`, `forexcode` and `currency` were
-/// added took five, and its canonical run -
-/// plus one doubling of the batch's row vector each time the rows double.
+/// schema carries, `PARTITION:by` and `SORT:by` - its two keys, `isin` and
+/// `miccode`, one text as its one key was - six more than the five before
+/// the row declared them - and draining it lays each row out once, eight
+/// allocations a row - the named row, a B-tree of its forty-four cells
+/// inserted in column order, which takes six leaf nodes behind one `Arc`
+/// as the forty-three before `lastunix`, the forty-two before `fisn` and
+/// the forty-one before `eusipacode` did, where the thirty-seven cells of
+/// the row before `countrycode`, `forexcode` and `currency` were added took
+/// five, and its canonical run - plus one doubling of the batch's row vector
+/// each time the rows double. The cursor that walks one instrument's
+/// listings holds its ISIN inline, so it allocates nothing a row.
 #[test]
 fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
     // The row's Arrow projection is built once per process, on first use.
@@ -8666,13 +8867,15 @@ fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
 /// Reloading rows the registry already holds - a golden file read again -
 /// costs each batch the same whatever its rows: one cast plan for the
 /// stream, the landing per batch - one narrowing per column of the
-/// forty-three, one more than the forty-two before `fisn` was added, two
-/// more than the forty-one before `eusipacode` was and three more than the
-/// forty before `underlyingisin` was, five more than the thirty-seven
-/// before `countrycode`, `forexcode` and `currency` were - and a code cell
-/// adopted as the landing proved it, so a row that moves nothing allocates
-/// nothing. The 43rd column, `fisn`, lands one more buffer per batch: one
-/// column, one allocation, at both corpus sizes.
+/// forty-four, one more than the forty-three before `lastunix` was added,
+/// two more than the forty-two before `fisn` was, three more than the
+/// forty-one before `eusipacode` was and four more than the forty before
+/// `underlyingisin` was, six more than the thirty-seven before
+/// `countrycode`, `forexcode` and `currency` were - and a code cell adopted
+/// as the landing proved it, so a row that moves nothing allocates nothing.
+/// The 43rd column, `fisn`, landed one more buffer per batch, and the 44th,
+/// `lastunix`, one more again: one column, one allocation, at both corpus
+/// sizes - a row that states no `lastunix` folds no instant.
 #[test]
 fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     let mut each_at = Vec::new();
@@ -8703,7 +8906,7 @@ fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     }
     assert_eq!(
         each_at,
-        [53, 53],
+        [54, 54],
         "a batch of 64 and of 512 known rows: a cost per row"
     );
 }

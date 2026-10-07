@@ -22,9 +22,17 @@
 //! names, the derivations, the identifiers, the identity - so
 //! there is no pass after it but the walk.
 //!
+//! One walk reads other bytes of the same length: `decoded_lifecycle_distinct`
+//! walks copies rendered by `rust/tests/support/ulbridge.rs`, every copy's
+//! identifiers stepped and clocks moved, so its chains are distinct where the
+//! repeated corpus is retransmissions the walk's deduplication drops.
+//!
 //! The registry is the shipped dictionary: the framed FIX lands on FIX's own
 //! tags, and a JSON document the bridge wrote is one `unknown` row carrying
 //! only what the row stated.
+
+#[path = "../../tests/support/ulbridge.rs"]
+mod ulbridge;
 
 use std::hint::black_box;
 use std::sync::Arc;
@@ -304,6 +312,47 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("decoded_lifecycle_sorted", |bencher| {
         bencher.iter_batched(
             || ordered.clone(),
+            |held| {
+                hourly
+                    .lifecycle(held)
+                    .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                        message.map(|_| read + 1)
+                    })
+                    .expect("a walked message")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The same sorted walk over copies that repeat nothing: each rendered
+    // from the capture with its identifiers stepped and its clocks moved by
+    // the copy, every copy a second after the one before inside one span,
+    // as the scale run stacks them. The copies above are one capture's
+    // bytes again, which the walk's deduplication drops as retransmissions,
+    // so that case is the deduplication's rate; here every copy is chains
+    // of its own, and this is the walk's.
+    let copies = u64::try_from(REPEATS).expect("a copy count");
+    let template = ulbridge::Template::new(copies);
+    let mut rendered = Vec::with_capacity(bytes.len());
+    for copy in 0..copies {
+        template.render(copy, &mut rendered);
+    }
+    assert_eq!(
+        rendered.len(),
+        bytes.len(),
+        "a rendered copy keeps every line's width: the group's throughput is its bytes too"
+    );
+    let rendered_source = handle(&rendered);
+    let mut distinct: Vec<FixMsg> = composed
+        .parse_text_lines(
+            read_text_lines(&rendered_source, &options).expect("a decoded line stream"),
+        )
+        .collect::<yggdryl::Result<_>>()
+        .expect("the decoded copies");
+    assert_eq!(distinct.len(), MESSAGES * REPEATS);
+    distinct.sort_by_key(yggdryl::graph::Event::get_currunix);
+    group.bench_function("decoded_lifecycle_distinct", |bencher| {
+        bencher.iter_batched(
+            || distinct.clone(),
             |held| {
                 hourly
                     .lifecycle(held)

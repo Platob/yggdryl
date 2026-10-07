@@ -2816,12 +2816,19 @@ isin_registry_short_name: object = (isin_registry_seeded.get("US0378331005") or 
 isin_registry_listed: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN")
 isin_registry_on_market: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN", "XSWX")
 isin_registry_bound: int = isin_registry.max_instruments
+isin_registry_rows: int = isin_registry.rows
+isin_registry_listings: list[dict[str, Any]] = isin_registry.listings("CH0012214059")
+isin_registry_listing: dict[str, Any] | None = isin_registry.get_listing("CH0012214059", "XSWX")
+isin_registry_removed: list[dict[str, Any]] = yggdryl.IsinRegistry().remove("CH0012214059")
+isin_registry_removed_listing: dict[str, Any] | None = yggdryl.IsinRegistry().remove_listing("CH0012214059", "XSWX")
 isin_registry_reader: pa.RecordBatchReader = isin_registry.into_arrow_reader()
 isin_registry_loaded: int = yggdryl.IsinRegistry().extend_from_arrow_reader(isin_registry.into_arrow_reader())
 isin_registry_codec: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, isin_registry=isin_registry)
 isin_registry_shared: yggdryl.IsinRegistry | None = isin_registry_codec.isin_registry
 assert isin_registry_merged and isin_registry_row is not None and isin_registry_bound == 8
 assert isin_registry_loaded == 1 and isin_registry_shared == isin_registry and len(isin_registry) == 1
+assert isin_registry_rows == len(isin_registry_listings) == 1 and isin_registry_listing is None
+assert isin_registry_removed == [] and isin_registry_removed_listing is None
 eusipa: yggdryl.Eusipa = yggdryl.Eusipa(2300)
 eusipa_text: yggdryl.Eusipa = yggdryl.Eusipa("1260")
 eusipa_code: int = eusipa.code

@@ -16,7 +16,7 @@ const EMBEDDED: &str = include_str!(concat!(
     "/src/isin_registry/seed.json"
 ));
 
-/// The embedded seed document: one named row per instrument.
+/// The embedded seed document: one named row per listing.
 fn document() -> Vec<BTreeMap<SmolStr, Scalar>> {
     yggdryl::from_json_scalar(EMBEDDED)
         .expect("a JSON document")
@@ -58,23 +58,34 @@ fn the_embedded_seed_is_the_config_file_byte_for_byte() {
     );
 }
 
-/// Every row of the document reaches the seed once, in ISIN order, keyed by
-/// a real ISIN, with every value it states: none is refused or lands null.
+/// Every row of the document reaches the seed once, as the listing of its
+/// ISIN on its market, in ISIN then MIC order, keyed by a real ISIN, with
+/// every value it states: none is refused or lands null.
 #[test]
-fn the_seed_holds_every_row_of_the_document_once_in_isin_order() {
+fn the_seed_holds_every_row_of_the_document_once_in_isin_and_mic_order() {
     let rows = document();
     let seeded = IsinRegistry::seeded();
-    assert_eq!(rows.len(), 208);
-    assert_eq!(seeded.len(), rows.len());
-    let stated: Vec<&str> = rows.iter().map(|row| cell(row, "isin").unwrap()).collect();
-    let held: Vec<&str> = seeded.iter().map(|row| row.isin().as_str()).collect();
-    assert_eq!(held, stated, "unique and sorted by ISIN");
-    assert_eq!(held.first(), Some(&"AU000000BHP4"));
-    assert_eq!(held.last(), Some(&"XC0006013624"));
+    assert_eq!(rows.len(), 209);
+    assert_eq!(seeded.rows(), rows.len());
+    assert_eq!(seeded.len(), 208, "HSBC on two markets");
+    let stated: Vec<(&str, Option<&str>)> = rows
+        .iter()
+        .map(|row| (cell(row, "isin").unwrap(), cell(row, "miccode")))
+        .collect();
+    let held: Vec<(&str, Option<&str>)> = seeded
+        .iter()
+        .map(|row| (row.isin().as_str(), row.miccode().map(Mic::as_str)))
+        .collect();
+    assert_eq!(held, stated, "unique and sorted by ISIN then market");
+    assert_eq!(held.first(), Some(&("AU000000BHP4", Some("XASX"))));
+    assert_eq!(held.last(), Some(&("XC0006013624", None)));
     assert!(seeded.iter().all(|row| row.isin().is_real()));
     for row in &rows {
         let isin = cell(row, "isin").unwrap();
-        let entry = seeded.get(isin).unwrap();
+        let entry = match cell(row, "miccode") {
+            Some(market) => seeded.get_listing(isin, &mic(market)).unwrap(),
+            None => seeded.get(isin).unwrap(),
+        };
         assert_eq!(entry.ticker(), cell(row, "ticker"), "{isin}");
         assert_eq!(
             entry.miccode().map(Mic::as_str),
@@ -115,8 +126,54 @@ fn the_seed_holds_every_row_of_the_document_once_in_isin_order() {
     );
     assert_eq!(
         seeded.iter().filter(|row| row.fisn().is_some()).count(),
-        181
+        182
     );
+}
+
+/// An instrument listed on two markets is two listing rows of one ISIN:
+/// HSBC on the London Stock Exchange and in Hong Kong, each listing its own
+/// ticker and currency, the instrument's facts on both.
+#[test]
+fn hsbc_is_one_instrument_listed_in_london_and_hong_kong() {
+    const HSBC: &str = "GB0005405286";
+    let seeded = IsinRegistry::seeded();
+    let [hong_kong, london] = seeded.listings(HSBC) else {
+        panic!("two listings")
+    };
+    assert_eq!(
+        (
+            hong_kong.miccode().map(Mic::as_str),
+            hong_kong.ticker(),
+            hong_kong.currency().map(|code| code.as_str())
+        ),
+        (Some("XHKG"), Some("0005"), Some("HKD"))
+    );
+    assert_eq!(
+        (
+            london.miccode().map(Mic::as_str),
+            london.ticker(),
+            london.currency().map(|code| code.as_str())
+        ),
+        (Some("XLON"), Some("HSBA"), Some("GBP"))
+    );
+    for row in [hong_kong, london] {
+        assert_eq!(row.cficode().map(|code| code.as_str()), Some("ESVUFR"));
+        assert_eq!(
+            row.fisn().map(yggdryl::Fisn::as_str),
+            Some("HSBC HLDG/PAR VTG FPD 0.5")
+        );
+        assert_eq!(row.get(&IdType::Sedol), Some("0540528"));
+    }
+    assert_eq!(seeded.get(HSBC), Some(hong_kong), "the first in MIC order");
+    for (ticker, market) in [("0005", "XHKG"), ("HSBA", "XLON")] {
+        assert_eq!(
+            seeded
+                .get_by_ticker(ticker, None)
+                .and_then(IsinEntry::miccode)
+                .map(Mic::as_str),
+            Some(market)
+        );
+    }
 }
 
 /// The seed is clean and bound to no store, and every seeded registry

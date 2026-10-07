@@ -1,7 +1,8 @@
-//! `rust/src/isin_registry.rs`: one row per ISIN of every fact an
-//! instrument is known by - learned from statements, filled into the ones
-//! that leave it unsaid, a valid value filling and replacing whatever the
-//! time, a ticker leading back to its ISIN on its market - read from and
+//! `rust/src/isin_registry.rs`: one row per ISIN and market of every fact
+//! an instrument is known by - learned from statements, filled into the
+//! ones that leave it unsaid, a valid value filling and replacing whatever
+//! the time, the instrument's facts on every listing and a listing's on its
+//! own row, a ticker leading back to its ISIN on its market - read from and
 //! written to a holder through the Arrow record surface.
 
 use std::sync::Arc;
@@ -22,6 +23,7 @@ const APPLE: &str = "US0378331005";
 const NOVARTIS: &str = "CH0012005267";
 const DIAGEO: &str = "GB0002374006";
 const SAP: &str = "DE0007164600";
+const HSBC: &str = "GB0005405286";
 
 fn isin(text: &str) -> Isin {
     Isin::new(text).unwrap()
@@ -126,8 +128,13 @@ fn a_statement_is_learned_by_its_isin_and_filled_into_one_naming_it() {
         "the currency fills only where the markets are stated and equal"
     );
     assert!(!registry.fill(&mut named), "nothing left to fill");
-    // What a fill derived is never learned back.
-    assert!(!registry.learn(&named));
+    // What a fill derived is never learned back: learning the element moves
+    // the instant the instrument was met, and no fact.
+    assert!(registry.learn(&named));
+    let row = registry.get(HOLCIM).unwrap();
+    assert_eq!((row.updunix(), row.lastunix()), (Some(10), Some(20)));
+    assert_eq!(row.get(&IdType::Ric), Some("HOLN.S"));
+    assert!(!registry.learn(&named), "met again at the same instant");
 
     // On the listing's market, with the row's ticker, the currency fills too.
     let mut listed = order(20, &[(IdType::Isin, HOLCIM)]);
@@ -294,8 +301,8 @@ fn a_valid_statement_fills_and_replaces_whatever_the_time() {
     );
     moved.merge(entry(APPLE, None, &[])).unwrap();
     assert!(moved.is_dirty());
-    assert!(moved.remove(APPLE).is_some());
-    assert!(moved.remove(APPLE).is_none());
+    assert_eq!(moved.remove(APPLE).len(), 1);
+    assert!(moved.remove(APPLE).is_empty());
     assert!(moved.is_dirty());
 }
 
@@ -501,7 +508,7 @@ fn a_registry_fills_the_isin_a_ticker_names_on_the_same_market() {
             .map(|row| row.isin().as_str()),
         Some(HOLCIM)
     );
-    assert!(registry.remove(HOLCIM).is_some());
+    assert_eq!(registry.remove(HOLCIM).len(), 1);
     assert!(registry.get_by_ticker("HOLN", None).is_none());
     registry.clear();
     assert!(registry.get_by_ticker("NOVN", None).is_none());
@@ -545,12 +552,12 @@ fn a_cfi_code_refines_and_a_conflict_replaces_whatever_the_time() {
     );
 }
 
-/// A ticker or a listing code stated on another market switches the
-/// listing whole - market, ticker, currency, listing codes - whatever the
-/// time, clearing what it does not restate; a currency alone on another
-/// market moves nothing; the instrument's own columns stay.
+/// A statement naming another market is another listing of the instrument,
+/// a currency alone among its facts too, created with the instrument's
+/// facts and holding the listing facts it states; each listing keeps its
+/// own, whatever the time, and the instrument's facts fold into every one.
 #[test]
-fn a_listing_fact_on_another_market_switches_the_listing_whole() {
+fn a_statement_on_another_market_is_another_listing_of_the_instrument() {
     let mut registry = IsinRegistry::new();
     let listing = |unix: i64, market: &str, codes: &[(IdType, &str)]| {
         entry(HOLCIM, Some(unix), codes).with_miccode(mic(market))
@@ -566,74 +573,78 @@ fn a_listing_fact_on_another_market_switches_the_listing_whole() {
             .with_currency(ccy("CHF")),
         )
         .unwrap();
-    // A currency alone on another market names no listing.
+    // A currency alone on another market is a listing there.
     assert!(
-        !registry
-            .merge(listing(20, "XLON", &[]).with_currency(ccy("GBP")))
+        registry
+            .merge(listing(20, "XLON", &[]).with_currency(ccy("USD")))
             .unwrap()
     );
-    let row = registry.get(HOLCIM).unwrap();
-    assert_eq!(row.miccode().map(|code| code.as_str()), Some("XSWX"));
-    assert_eq!(row.currency().map(|code| code.as_str()), Some("CHF"));
-    // A listing fact there - older, even - switches the listing whole.
+    assert_eq!((registry.len(), registry.rows()), (1, 2));
+    let london = registry.get_listing(HOLCIM, &mic("XLON").unwrap()).unwrap();
+    assert_eq!(london.currency().map(Ccy::as_str), Some("USD"));
+    assert_eq!(london.ticker(), None, "a listing's own facts");
+    assert_eq!(london.get(&IdType::Ric), None);
+    assert_eq!(london.get(&IdType::Common), Some("C"), "the instrument's");
+    assert_eq!(
+        registry.get(HOLCIM),
+        Some(london),
+        "the first listing, in MIC order"
+    );
+    let swiss = registry.get_listing(HOLCIM, &mic("XSWX").unwrap()).unwrap();
+    assert_eq!(swiss.ticker(), Some("HOLN"));
+    assert_eq!(swiss.currency().map(Ccy::as_str), Some("CHF"));
+    assert_eq!(swiss.get(&IdType::Ric), Some("HOLN.S"));
+    // A listing fact there - older, even - lands on that listing alone.
     assert!(
         registry
             .merge(listing(5, "XLON", &[(IdType::Ric, "HOLN.L")]))
             .unwrap()
     );
-    let row = registry.get(HOLCIM).unwrap();
-    assert_eq!(row.miccode().map(|code| code.as_str()), Some("XLON"));
-    assert_eq!(row.get(&IdType::Ric), Some("HOLN.L"));
-    assert_eq!(row.ticker(), None, "cleared: the statement restated none");
+    let rics: Vec<_> = registry
+        .listings(HOLCIM)
+        .iter()
+        .map(|row| (row.miccode().map(Mic::as_str), row.get(&IdType::Ric)))
+        .collect();
     assert_eq!(
-        row.currency().map(|code| code.as_str()),
-        Some("GBP"),
-        "cleared, then the new listing's default: XLON is in GB"
+        rics,
+        [
+            (Some("XLON"), Some("HOLN.L")),
+            (Some("XSWX"), Some("HOLN.S"))
+        ]
     );
-    assert_eq!(row.get(&IdType::Common), Some("C"), "the instrument's");
-    assert_eq!(row.updunix(), Some(10));
-    assert!(
-        registry.get_by_ticker("HOLN", None).is_none(),
-        "the index follows"
-    );
-    // Back with a ticker and a currency: the listing switches again.
+    // The instrument's facts fold into every listing, and the stamp is the
+    // instrument's.
     assert!(
         registry
-            .merge(
-                listing(30, "XSWX", &[])
-                    .with_ticker(Some(SmolStr::new("HOLN")))
-                    .with_currency(ccy("CHF"))
-            )
+            .merge(entry(HOLCIM, Some(40), &[(IdType::Common, "C-2")]))
             .unwrap()
     );
-    let row = registry.get(HOLCIM).unwrap();
-    assert_eq!(row.miccode().map(|code| code.as_str()), Some("XSWX"));
-    assert_eq!(row.get(&IdType::Ric), None);
-    assert_eq!(row.ticker(), Some("HOLN"));
-    assert_eq!(row.currency().map(|code| code.as_str()), Some("CHF"));
-    // No market: listing facts fold under the row's.
+    for row in registry.listings(HOLCIM) {
+        assert_eq!(row.get(&IdType::Common), Some("C-2"), "{:?}", row.miccode());
+        assert_eq!(row.updunix(), Some(40), "{:?}", row.miccode());
+    }
     assert!(
-        registry
-            .merge(entry(HOLCIM, Some(40), &[(IdType::Ric, "HOLN.S")]))
-            .unwrap()
-    );
-    assert_eq!(
-        registry.get(HOLCIM).unwrap().get(&IdType::Ric),
-        Some("HOLN.S")
+        registry.get_by_ticker("HOLN", None).is_some(),
+        "the one listing stating the ticker"
     );
 
     // A fill never carries one market's listing onto another's message.
-    let mut elsewhere = order(50, &[(IdType::Isin, HOLCIM)]);
-    elsewhere.set_miccode(mic("XLON"), true);
-    assert!(registry.fill(&mut elsewhere));
-    assert_eq!(elsewhere.get_securityids().get(&IdType::Ric), None);
-    assert_eq!(elsewhere.get_ticker(), None);
-    assert!(elsewhere.get_currency().is_none());
+    let mut paris = order(50, &[(IdType::Isin, HOLCIM)]);
+    paris.set_miccode(mic("XPAR"), true);
+    assert!(registry.fill(&mut paris));
+    assert_eq!(paris.get_securityids().get(&IdType::Ric), None);
+    assert_eq!(paris.get_ticker(), None);
+    assert!(paris.get_currency().is_none());
     assert_eq!(
-        elsewhere.get_securityids().get(&IdType::Common),
-        Some("C"),
+        paris.get_securityids().get(&IdType::Common),
+        Some("C-2"),
         "the instrument's own columns fill everywhere"
     );
+    let mut london = order(50, &[(IdType::Isin, HOLCIM)]);
+    london.set_miccode(mic("XLON"), true);
+    assert!(registry.fill(&mut london));
+    assert_eq!(london.get_securityids().get(&IdType::Ric), Some("HOLN.L"));
+    assert_eq!(london.get_currency().as_str(), "USD");
 }
 
 /// The country of issue, the currency pair and the trading currency are
@@ -721,10 +732,12 @@ fn the_country_the_pair_and_the_currency_are_learned_and_filled() {
     assert!(registry.fill(&mut later));
     assert_eq!(later.get_securityids().get(&IdType::Forex), Some("EUR/USD"));
     assert!(later.get_securityids().is_derived(&IdType::Forex));
-    assert!(
-        !registry.learn(&later),
-        "a derived pair is never learned back"
-    );
+    // A derived pair is never learned back: the learn moves the instant the
+    // number was met, and no fact.
+    assert!(registry.learn(&later));
+    let row = registry.get(&fx).unwrap();
+    assert_eq!((row.updunix(), row.lastunix()), (Some(10), Some(20)));
+    assert_eq!(row.forexcode().map(|pair| pair.as_str()), Some("EUR/USD"));
     // A pair stated otherwise replaces.
     let other = order(
         30,
@@ -850,10 +863,15 @@ fn the_bound_refuses_a_new_isin_and_learning_passes_one_over() {
     );
     assert!(!holding.is_dirty(), "nothing moved");
     assert_eq!(holding.get(HOLCIM).unwrap().updunix(), Some(1));
-    assert!(!holding.learn(&order(
+    // Learned, it moves the instant the instrument was met alone.
+    assert!(holding.learn(&order(
         99,
         &[(IdType::Isin, HOLCIM), (IdType::RedPair, "X-1")]
     )));
+    assert!(holding.is_dirty());
+    let held = holding.get(HOLCIM).unwrap();
+    assert_eq!((held.updunix(), held.lastunix()), (Some(1), Some(99)));
+    assert_eq!(held.get(&IdType::RedPair), None);
     assert!(
         holding
             .merge(entry(HOLCIM, Some(99), &[(IdType::Quik, "X-2")]))
@@ -872,6 +890,7 @@ fn an_entry_reads_back_from_its_scalar() {
         Some(7),
         &[(IdType::Ric, "HOLN.S"), (IdType::Valor, "1221405")],
     )
+    .with_lastunix(Some(9))
     .with_cficode(cfi("ESVUFR"))
     .with_countrycode(Some(Country::new("CH").unwrap()))
     .with_forexcode(Some(Forex::new("EUR/CHF").unwrap()))
@@ -881,6 +900,7 @@ fn an_entry_reads_back_from_its_scalar() {
     .with_fisn(fisn("HOLCIM/REG SHS"))
     .with_currency(ccy("CHF"));
     assert_eq!(entry.ticker(), Some("HOLN"));
+    assert_eq!(entry.lastunix(), Some(9));
     assert_eq!(entry.underlyingisin().map(Isin::as_str), Some(APPLE));
     assert_eq!(entry.fisn().map(Fisn::as_str), Some("HOLCIM/REG SHS"));
     assert_eq!(IsinEntry::from_scalar(&entry.into_scalar()).unwrap(), entry);
@@ -906,14 +926,15 @@ fn an_entry_reads_back_from_its_scalar() {
         .iter()
         .map(|field| field.name().to_string())
         .collect();
-    // The eleven facts, the product category and the short name among the
-    // instrument's, then the thirty-two equivalents.
-    assert_eq!(columns.len(), 43);
+    // The twelve facts, the two stamps, the product category and the short
+    // name among the instrument's, then the thirty-two equivalents.
+    assert_eq!(columns.len(), 44);
     assert_eq!(
-        &columns[..12],
+        &columns[..13],
         [
             "isin",
             "updunix",
+            "lastunix",
             "cficode",
             "countrycode",
             "forexcode",
@@ -931,13 +952,14 @@ fn an_entry_reads_back_from_its_scalar() {
         .as_fields()
         .unwrap()
         .iter()
-        .take(11)
+        .take(12)
         .map(|field| field.dtype().to_string())
         .collect();
     assert_eq!(
         types,
         [
             "isin",
+            "datetime64(ns,\"UTC\")",
             "datetime64(ns,\"UTC\")",
             "cfi",
             "country",
@@ -953,7 +975,7 @@ fn an_entry_reads_back_from_its_scalar() {
 }
 
 /// The underlying is an instrument fact: a real ISIN other than the row's
-/// own fills and replaces on any market and no listing switch clears it; the
+/// own fills and replaces on any market and a new listing holds it; the
 /// row's own ISIN or a typo states nothing; `learn` never states one, since
 /// what a FIX message names as its underlying is the lifecycle's reading.
 #[test]
@@ -1023,7 +1045,7 @@ fn the_underlying_is_an_instrument_fact_merged_by_the_update_rule() {
             .unwrap()
     );
     assert_eq!(underlying(&registry).as_deref(), Some(NOVARTIS));
-    // A listing switch on another market keeps it: an instrument fact.
+    // A listing on another market holds it too: an instrument fact.
     assert!(
         registry
             .merge(
@@ -1036,7 +1058,9 @@ fn the_underlying_is_an_instrument_fact_merged_by_the_update_rule() {
     let row = registry.get(HOLCIM).unwrap();
     assert_eq!(row.miccode().map(Mic::as_str), Some("XLON"));
     assert_eq!(row.ticker(), Some("HOLNL"));
-    assert_eq!(row.underlyingisin().map(Isin::as_str), Some(NOVARTIS));
+    for row in registry.listings(HOLCIM) {
+        assert_eq!(row.underlyingisin().map(Isin::as_str), Some(NOVARTIS));
+    }
     // `learn` never states one.
     let mut fresh = IsinRegistry::new();
     assert!(fresh.learn(&order(
@@ -1059,8 +1083,8 @@ fn the_underlying_is_an_instrument_fact_merged_by_the_update_rule() {
 }
 
 /// The EUSIPA product category is an instrument fact: a category of its
-/// shape fills and replaces on any market whatever either map lists, no
-/// listing switch clears it, `learn` never states one, and it crosses the
+/// shape fills and replaces on any market whatever either map lists, a new
+/// listing holds it, `learn` never states one, and it crosses the
 /// row's scalar as its number - a number of no category's shape read as
 /// none.
 #[test]
@@ -1113,7 +1137,7 @@ fn the_product_category_is_an_instrument_fact_merged_by_the_update_rule() {
             .unwrap(),
         "a different category replaces whatever the time"
     );
-    // A listing switch on another market keeps it.
+    // A listing on another market holds it too.
     assert!(
         registry
             .merge(
@@ -1126,6 +1150,12 @@ fn the_product_category_is_an_instrument_fact_merged_by_the_update_rule() {
     let row = registry.get(HOLCIM).unwrap();
     assert_eq!(row.miccode().map(Mic::as_str), Some("XLON"));
     assert_eq!(row.eusipacode(), category(1260));
+    assert_eq!(
+        registry
+            .get_listing(HOLCIM, &mic("XSWX").unwrap())
+            .and_then(IsinEntry::eusipacode),
+        category(1260)
+    );
     // `learn` never states one.
     let mut fresh = IsinRegistry::new();
     assert!(fresh.learn(&order(
@@ -1367,8 +1397,9 @@ fn a_merge_by_isin_upserts_the_stored_rows() {
 
 /// A folder of parts reads as one stream, its rows of one ISIN folded in
 /// part order whichever part holds them: a part written by an overwrite
-/// and grown by an append, then a second part of older rows, which still
-/// fill and replace.
+/// and grown by an append of another market's listing, then a second part
+/// of older rows of no market, whose instrument facts still fill and
+/// replace on every listing and whose listing facts land on none.
 #[test]
 fn a_folder_of_parts_loads_in_part_order() {
     let mut root = yggdryl::local::LocalFolder::temporary()
@@ -1431,25 +1462,37 @@ fn a_folder_of_parts_loads_in_part_order() {
             .unwrap(),
         4
     );
-    let holcim = loaded.get(HOLCIM).unwrap();
-    assert_eq!(holcim.updunix(), Some(30), "the stamp is the latest");
+    assert_eq!((loaded.len(), loaded.rows()), (2, 3));
+    let listings = loaded.listings(HOLCIM);
+    let markets: Vec<_> = listings
+        .iter()
+        .map(|row| row.miccode().map(Mic::as_str))
+        .collect();
     assert_eq!(
-        holcim.miccode().map(|code| code.as_str()),
-        Some("XLON"),
-        "the first part's appended listing switched the market"
+        markets,
+        [Some("XLON"), Some("XSWX")],
+        "the first part's appended listing is a second one"
     );
+    for row in listings {
+        assert_eq!(row.updunix(), Some(30), "the stamp is the latest");
+        assert_eq!(
+            row.get(&IdType::Common),
+            Some("C-5"),
+            "filled on every listing"
+        );
+        assert_eq!(row.get(&IdType::Valor), Some("1221405"));
+        assert_eq!(row.cficode().map(|code| code.as_str()), Some("ESVUFR"));
+    }
+    let [london, swiss] = listings else {
+        panic!("two listings")
+    };
     assert_eq!(
-        holcim.get(&IdType::Ric),
-        Some("HOLN.Z"),
-        "the second part's RIC, folded under the row's market, replaced"
+        (london.get(&IdType::Ric), swiss.get(&IdType::Ric)),
+        (Some("HOLN.L"), Some("HOLN.S")),
+        "the second part's RIC names no market of two, and lands on neither"
     );
-    assert_eq!(holcim.get(&IdType::Common), Some("C-5"), "filled");
-    assert_eq!(holcim.get(&IdType::Valor), Some("1221405"));
-    assert_eq!(
-        holcim.currency().map(|code| code.as_str()),
-        Some("GBP"),
-        "the switched listing's currency: the part of no market stated none to replace it"
-    );
+    assert_eq!(london.currency().map(|code| code.as_str()), Some("GBP"));
+    assert_eq!(swiss.currency().map(|code| code.as_str()), Some("CHF"));
     assert!(loaded.get(APPLE).is_some());
     // The folder's own record stream is the same door.
     let mut from_folder = IsinRegistry::new();
@@ -1695,7 +1738,7 @@ fn a_load_refuses_a_row_past_twelve_equivalents() {
 /// The short name is an instrument fact: learned where an element states
 /// it as a `fisn` security identifier - never where it was only derived -
 /// filled into one naming the ISIN on any market as a derived identifier,
-/// replaced by another whatever the time, kept by a listing switch, and
+/// replaced by another whatever the time, held by a new listing, and
 /// carried by the scalar, the snapshot stream and a golden file's column.
 #[test]
 fn the_short_name_is_an_instrument_fact_learned_filled_and_read_back() {
@@ -1735,7 +1778,7 @@ fn the_short_name_is_an_instrument_fact_learned_filled_and_read_back() {
         Some("APPLE INC/COM")
     );
 
-    // Another replaces whatever the time; a listing switch keeps it.
+    // Another replaces whatever the time; a new listing holds it.
     assert!(
         registry
             .merge(
@@ -1889,10 +1932,11 @@ fn a_folded_row_holds_the_national_number_its_isin_embeds() {
 /// the legal tender of the country its market is in - its market alone,
 /// never its ISIN's country - and a row of no market, or of a market of no
 /// single country, takes none; a stated currency stands, a later statement
-/// replaces a default as it replaces any value, and a market arriving later
-/// sets it. A default never travels as a statement: a stored row read back
-/// over another listing moves no currency it did not state. A ticker-keyed
-/// element on the listing is filled with it.
+/// replaces a default as it replaces any value, a market arriving later
+/// sets it, and a listing on another market takes that market's. A default
+/// never travels as a statement: a stored row read back over two listings
+/// moves no currency it did not state. A ticker-keyed element on the
+/// listing is filled with it.
 #[test]
 fn a_folded_row_defaults_its_currency_to_its_markets_country() {
     let currency = |registry: &IsinRegistry, key: &str| {
@@ -1959,7 +2003,7 @@ fn a_folded_row_defaults_its_currency_to_its_markets_country() {
             .unwrap()
     );
     assert_eq!(currency(&registry, SAP).as_deref(), Some("USD"));
-    // A listing switch clears the currency and derives the new market's.
+    // A listing on another market derives that market's.
     assert!(
         registry
             .merge(
@@ -1969,7 +2013,14 @@ fn a_folded_row_defaults_its_currency_to_its_markets_country() {
             )
             .unwrap()
     );
-    assert_eq!(currency(&registry, HOLCIM).as_deref(), Some("CHF"));
+    let listed = |registry: &IsinRegistry, market: &str| {
+        registry
+            .get_listing(HOLCIM, &mic(market).unwrap())
+            .and_then(IsinEntry::currency)
+            .map(|code| code.as_str().to_owned())
+    };
+    assert_eq!(listed(&registry, "XSWX").as_deref(), Some("CHF"));
+    assert_eq!(listed(&registry, "XLON").as_deref(), Some("USD"));
     // A row read back states what its store held - nothing derived travels
     // with a statement it was not part of: an entry merged over another
     // listing moves only the facts it states.
@@ -1980,9 +2031,12 @@ fn a_folded_row_defaults_its_currency_to_its_markets_country() {
     assert_eq!(currency(&other, HOLCIM), None);
     assert!(registry.merge(other.get(HOLCIM).unwrap().clone()).unwrap());
     assert_eq!(
-        currency(&registry, HOLCIM).as_deref(),
-        Some("CHF"),
-        "a row of no market states no currency to replace the listing's"
+        (
+            listed(&registry, "XLON").as_deref(),
+            listed(&registry, "XSWX").as_deref()
+        ),
+        (Some("USD"), Some("CHF")),
+        "a row of no market states no currency to replace either listing's"
     );
 
     // An element naming the ticker on the listing takes the ISIN, the
@@ -2028,10 +2082,520 @@ fn a_seeded_registry_is_clean_and_unbound_and_new_holds_none_of_it() {
     );
 }
 
+/// One instrument stated on two markets holds two listing rows, in MIC
+/// order: each listing's ticker, currency and listing codes on its own row,
+/// the instrument's facts and stamps on both; `get` answers the first, the
+/// ticker index leads to each listing on its market, a fill takes the
+/// listing of the element's market, and the snapshot streams every row.
+#[test]
+fn an_instrument_learned_on_two_markets_holds_one_listing_on_each() {
+    let stated = |unix: i64, market: &str, ticker: &str, ric: &str, currency: &str| {
+        let mut event = order(
+            unix,
+            &[
+                (IdType::Isin, HOLCIM),
+                (IdType::Ric, ric),
+                (IdType::Common, "C-1"),
+            ],
+        );
+        event.set_miccode(mic(market), true);
+        event.set_ticker(Some(SmolStr::new(ticker)), true);
+        event.set_currency(Ccy::new(currency).unwrap(), true);
+        event.set_cficode(cfi("ESVUFR"), true);
+        event
+    };
+    let mut registry = IsinRegistry::new();
+    assert!(registry.learn(&stated(10, "XSWX", "HOLN", "HOLN.S", "CHF")));
+    assert!(registry.learn(&stated(20, "XLON", "0QKY", "HOLN.L", "GBP")));
+    assert_eq!((registry.len(), registry.rows()), (1, 2));
+    assert_eq!(registry.iter().count(), 2, "every listing row");
+    let [london, swiss] = registry.listings(HOLCIM) else {
+        panic!("two listings")
+    };
+    assert_eq!(
+        registry.get(HOLCIM),
+        Some(london),
+        "the first listing: XLON sorts before XSWX"
+    );
+    assert_eq!(london.miccode().map(Mic::as_str), Some("XLON"));
+    assert_eq!(
+        (
+            london.ticker(),
+            london.get(&IdType::Ric),
+            london.currency().map(Ccy::as_str)
+        ),
+        (Some("0QKY"), Some("HOLN.L"), Some("GBP"))
+    );
+    assert_eq!(
+        (
+            swiss.ticker(),
+            swiss.get(&IdType::Ric),
+            swiss.currency().map(Ccy::as_str)
+        ),
+        (Some("HOLN"), Some("HOLN.S"), Some("CHF"))
+    );
+    for row in [london, swiss] {
+        assert_eq!(row.cficode().map(|code| code.as_str()), Some("ESVUFR"));
+        assert_eq!(row.get(&IdType::Common), Some("C-1"));
+        assert_eq!(row.get(&IdType::Valor), Some("1221405"));
+        assert_eq!(
+            (row.updunix(), row.lastunix()),
+            (Some(20), Some(20)),
+            "the instrument's stamps"
+        );
+    }
+    assert_eq!(
+        registry.get_listing(HOLCIM, &mic("XSWX").unwrap()),
+        Some(swiss)
+    );
+    assert_eq!(registry.get_listing(HOLCIM, &mic("XPAR").unwrap()), None);
+    assert!(registry.listings(APPLE).is_empty());
+
+    // The ticker index leads to each listing on its market.
+    assert_eq!(
+        registry.get_by_ticker("HOLN", mic("XSWX").as_ref()),
+        Some(swiss)
+    );
+    assert_eq!(registry.get_by_ticker("0QKY", None), Some(london));
+    assert_eq!(
+        registry.get_by_ticker("HOLN", mic("XLON").as_ref()),
+        None,
+        "listed on XSWX alone"
+    );
+
+    // A fill takes the listing of the element's market; an element of no
+    // market, or of a market the instrument is not listed on, takes the
+    // instrument's facts alone.
+    let mut on_swiss = order(30, &[(IdType::Isin, HOLCIM)]);
+    on_swiss.set_miccode(mic("XSWX"), true);
+    assert!(registry.fill(&mut on_swiss));
+    assert_eq!(on_swiss.get_securityids().get(&IdType::Ric), Some("HOLN.S"));
+    assert_eq!(on_swiss.get_ticker(), Some("HOLN"));
+    assert_eq!(on_swiss.get_currency().as_str(), "CHF");
+    for market in [None, mic("XPAR")] {
+        let mut element = order(30, &[(IdType::Isin, HOLCIM)]);
+        element.set_miccode(market.clone(), true);
+        assert!(registry.fill(&mut element), "{market:?}");
+        let ids = element.get_securityids();
+        assert_eq!(ids.get(&IdType::Common), Some("C-1"), "{market:?}");
+        assert_eq!(ids.get(&IdType::Ric), None, "{market:?}");
+        assert_eq!(element.get_ticker(), None, "{market:?}");
+        assert!(element.get_currency().is_none(), "{market:?}");
+        assert_eq!(
+            element.get_cficode().map(|code| code.as_str()),
+            Some("ESVUFR"),
+            "{market:?}"
+        );
+    }
+
+    // The snapshot streams every listing row, in ISIN then MIC order, and
+    // reads back as the same listings.
+    let back = IsinRegistry::from_arrow_reader(registry.into_arrow_reader().unwrap()).unwrap();
+    assert!(back.iter().eq(registry.iter()));
+    assert_eq!((back.len(), back.rows()), (1, 2));
+
+    // One ticker on both markets names each listing on its own, and
+    // neither where no market is stated.
+    assert!(registry.learn(&stated(40, "XLON", "HOLN", "HOLN.L", "GBP")));
+    for market in ["XLON", "XSWX"] {
+        assert_eq!(
+            registry
+                .get_by_ticker("HOLN", mic(market).as_ref())
+                .and_then(IsinEntry::miccode),
+            mic(market).as_ref()
+        );
+    }
+    assert!(registry.get_by_ticker("HOLN", None).is_none(), "ambiguous");
+    assert!(registry.get_by_ticker("0QKY", None).is_none(), "renamed");
+}
+
+/// A statement naming no market lands its listing facts on its ISIN's
+/// single row, and on none where the ISIN has several - its instrument
+/// facts on every one.
+#[test]
+fn a_statement_of_no_market_lands_on_a_single_listing_and_none_of_several() {
+    let mut registry = IsinRegistry::new();
+    registry
+        .merge(entry(HOLCIM, Some(1), &[]).with_miccode(mic("XSWX")))
+        .unwrap();
+    assert!(
+        registry
+            .merge(
+                entry(HOLCIM, Some(2), &[(IdType::Ric, "HOLN.S")])
+                    .with_ticker(Some(SmolStr::new("HOLN")))
+            )
+            .unwrap()
+    );
+    let swiss = registry.get(HOLCIM).unwrap();
+    assert_eq!(
+        (swiss.get(&IdType::Ric), swiss.ticker()),
+        (Some("HOLN.S"), Some("HOLN")),
+        "the single listing takes them"
+    );
+    registry
+        .merge(entry(HOLCIM, Some(3), &[]).with_miccode(mic("XLON")))
+        .unwrap();
+    assert!(
+        !registry
+            .merge(
+                entry(HOLCIM, Some(4), &[(IdType::Ric, "HOLN.X")])
+                    .with_ticker(Some(SmolStr::new("HOLX")))
+                    .with_currency(ccy("EUR"))
+            )
+            .unwrap(),
+        "of two listings, it lands on none"
+    );
+    assert!(registry.get_by_ticker("HOLX", None).is_none());
+    assert!(
+        registry
+            .merge(entry(
+                HOLCIM,
+                Some(5),
+                &[(IdType::Ric, "HOLN.X"), (IdType::Common, "C-1")]
+            ))
+            .unwrap()
+    );
+    let mut unmarked = order(6, &[(IdType::Isin, HOLCIM), (IdType::Belgian, "B-1")]);
+    unmarked.set_ticker(Some(SmolStr::new("HOLY")), true);
+    assert!(registry.learn(&unmarked));
+    for row in registry.listings(HOLCIM) {
+        let market = row.miccode();
+        assert_eq!(row.get(&IdType::Common), Some("C-1"), "{market:?}");
+        assert_eq!(row.get(&IdType::Belgian), Some("B-1"), "{market:?}");
+        assert_ne!(row.get(&IdType::Ric), Some("HOLN.X"), "{market:?}");
+        assert_ne!(row.currency().map(Ccy::as_str), Some("EUR"), "{market:?}");
+        assert_ne!(row.ticker(), Some("HOLY"), "{market:?}");
+        assert_eq!((row.updunix(), row.lastunix()), (Some(6), Some(6)));
+    }
+    assert!(registry.get_by_ticker("HOLY", None).is_none());
+}
+
+/// While no market is known an ISIN holds its unlisted row alone, and the
+/// first listing takes it over - its market filled, nothing duplicated - a
+/// ticker it stated leading to any market until then and to that listing's
+/// alone after; a second market is a second listing.
+#[test]
+fn the_unlisted_row_is_taken_over_by_the_first_listing() {
+    let mut registry = IsinRegistry::new();
+    registry
+        .merge(
+            entry(DIAGEO, Some(1), &[(IdType::Common, "C-1")])
+                .with_ticker(Some(SmolStr::new("DGE"))),
+        )
+        .unwrap();
+    let unlisted = registry.get(DIAGEO).unwrap();
+    assert_eq!((unlisted.miccode(), unlisted.currency()), (None, None));
+    assert!(
+        registry
+            .get_by_ticker("DGE", mic("XPAR").as_ref())
+            .is_some(),
+        "a row listed on no market answers any"
+    );
+    assert!(
+        registry
+            .merge(IsinEntry::new(isin(DIAGEO)).with_miccode(mic("XLON")))
+            .unwrap()
+    );
+    assert_eq!(registry.rows(), 1, "taken over, nothing duplicated");
+    let listed = registry.get(DIAGEO).unwrap();
+    assert_eq!(
+        (
+            listed.miccode().map(Mic::as_str),
+            listed.ticker(),
+            listed.currency().map(Ccy::as_str)
+        ),
+        (Some("XLON"), Some("DGE"), Some("GBP"))
+    );
+    assert_eq!(listed.get(&IdType::Common), Some("C-1"));
+    assert!(
+        registry
+            .get_by_ticker("DGE", mic("XPAR").as_ref())
+            .is_none()
+    );
+    assert_eq!(
+        registry
+            .get_by_ticker("DGE", mic("XLON").as_ref())
+            .and_then(IsinEntry::miccode),
+        mic("XLON").as_ref()
+    );
+    assert!(
+        registry
+            .merge(
+                IsinEntry::new(isin(DIAGEO))
+                    .with_miccode(mic("XNYS"))
+                    .with_ticker(Some(SmolStr::new("DEO")))
+            )
+            .unwrap()
+    );
+    assert_eq!(registry.rows(), 2);
+    assert!(
+        registry
+            .listings(DIAGEO)
+            .iter()
+            .all(|row| row.miccode().is_some())
+    );
+    assert_eq!(
+        registry
+            .get_by_ticker("DEO", None)
+            .and_then(IsinEntry::miccode),
+        mic("XNYS").as_ref()
+    );
+}
+
+/// `remove_listing` removes one listing row, its ticker with it, and the
+/// instrument with its last; `remove` answers every listing in MIC order.
+#[test]
+fn a_listing_is_removed_alone_and_the_instrument_with_its_last() {
+    let two = || {
+        let mut registry = IsinRegistry::new();
+        for (market, ticker) in [("XSWX", "HOLN"), ("XLON", "0QKY")] {
+            registry
+                .merge(
+                    entry(HOLCIM, Some(1), &[(IdType::Common, "C-1")])
+                        .with_miccode(mic(market))
+                        .with_ticker(Some(SmolStr::new(ticker))),
+                )
+                .unwrap();
+        }
+        registry
+    };
+    let mut registry = two();
+    assert_eq!(registry.remove_listing(HOLCIM, &mic("XPAR").unwrap()), None);
+    let removed = registry
+        .remove_listing(HOLCIM, &mic("XLON").unwrap())
+        .unwrap();
+    assert_eq!(removed.ticker(), Some("0QKY"));
+    assert_eq!((registry.len(), registry.rows()), (1, 1));
+    assert!(registry.get_by_ticker("0QKY", None).is_none());
+    assert_eq!(
+        registry.get(HOLCIM).and_then(IsinEntry::ticker),
+        Some("HOLN")
+    );
+    assert!(registry.is_dirty());
+    assert!(
+        registry
+            .remove_listing(HOLCIM, &mic("XSWX").unwrap())
+            .is_some()
+    );
+    assert!(registry.is_empty() && registry.get(HOLCIM).is_none());
+    assert!(registry.get_by_ticker("HOLN", None).is_none());
+
+    let mut registry = two();
+    let removed: Vec<_> = registry
+        .remove(HOLCIM)
+        .iter()
+        .map(|row| row.miccode().map(Mic::as_str).map(str::to_owned))
+        .collect();
+    assert_eq!(removed, [Some("XLON".into()), Some("XSWX".into())]);
+    assert!(registry.is_empty());
+    assert!(registry.get_by_ticker("HOLN", None).is_none());
+}
+
+/// `lastunix` is the latest instant an event the registry learned an
+/// instrument from: every learn moves it - one stating the ISIN alone
+/// included, which makes a new instrument's row - so the registry is dirty
+/// and the next commit writes it; an earlier event moves nothing, a stated
+/// one merges later-wins, every listing holds it, and `updunix` moves only
+/// with a fact.
+#[test]
+fn every_learn_moves_lastunix_and_only_a_fact_moves_updunix() {
+    let met = |unix: i64| order(unix, &[(IdType::Isin, APPLE)]);
+    let mut registry = IsinRegistry::new();
+    assert!(registry.learn(&met(10)), "an instrument met is learned");
+    let row = registry.get(APPLE).unwrap();
+    assert_eq!((row.updunix(), row.lastunix()), (Some(10), Some(10)));
+    assert_eq!(row.get(&IdType::Cusip), Some("037833100"));
+
+    let mut loaded =
+        IsinRegistry::from_arrow_reader(registry.into_arrow_reader().unwrap()).unwrap();
+    assert!(!loaded.is_dirty());
+    assert_eq!(
+        loaded.get(APPLE).unwrap().lastunix(),
+        Some(10),
+        "the snapshot carries it"
+    );
+    assert!(loaded.learn(&met(20)), "met later");
+    assert!(loaded.is_dirty(), "and committed next");
+    let row = loaded.get(APPLE).unwrap();
+    assert_eq!(
+        (row.updunix(), row.lastunix()),
+        (Some(10), Some(20)),
+        "no fact moved"
+    );
+
+    let mut clean = IsinRegistry::from_arrow_reader(loaded.into_arrow_reader().unwrap()).unwrap();
+    assert!(!clean.learn(&met(15)), "met earlier");
+    assert!(!clean.learn(&met(20)), "met again at the same instant");
+    assert!(!clean.is_dirty());
+    let mut classified = met(25);
+    classified.set_cficode(cfi("ESVUFR"), true);
+    assert!(clean.learn(&classified));
+    let row = clean.get(APPLE).unwrap();
+    assert_eq!((row.updunix(), row.lastunix()), (Some(25), Some(25)));
+
+    // A stated one merges later-wins, moving no `updunix`.
+    assert!(
+        !clean
+            .merge(IsinEntry::new(isin(APPLE)).with_lastunix(Some(5)))
+            .unwrap()
+    );
+    assert!(
+        clean
+            .merge(IsinEntry::new(isin(APPLE)).with_lastunix(Some(40)))
+            .unwrap()
+    );
+    let row = clean.get(APPLE).unwrap();
+    assert_eq!((row.updunix(), row.lastunix()), (Some(25), Some(40)));
+
+    // Every listing holds it.
+    for market in ["XNAS", "XETR"] {
+        clean
+            .merge(IsinEntry::new(isin(APPLE)).with_miccode(mic(market)))
+            .unwrap();
+    }
+    assert_eq!(clean.rows(), 2);
+    assert!(clean.learn(&met(50)));
+    for row in clean.listings(APPLE) {
+        assert_eq!(row.lastunix(), Some(50), "{:?}", row.miccode());
+    }
+    // A learn past the bound makes no row.
+    let mut bounded = IsinRegistry::new().with_max_instruments(1);
+    assert!(bounded.learn(&met(1)));
+    assert!(!bounded.learn(&order(1, &[(IdType::Isin, HOLCIM)])));
+    assert_eq!(bounded.len(), 1);
+}
+
+/// A golden file states one ISIN on several markets as several rows, which
+/// load as its listings - the instrument's facts any row states on every
+/// one - and `lastunix` under any of its spellings, the later of two kept.
+#[test]
+fn a_golden_file_with_two_rows_of_one_isin_loads_two_listings() {
+    use arrow_array::TimestampNanosecondArray;
+    for name in ["lastunix", "LastSeen", "last_seen_unix"] {
+        let schema = Arc::new(Schema::new(vec![
+            ArrowField::new("ISIN", ArrowType::Utf8, false),
+            ArrowField::new("MIC", ArrowType::Utf8, true),
+            ArrowField::new("Ticker", ArrowType::Utf8, true),
+            ArrowField::new("Currency", ArrowType::Utf8, true),
+            ArrowField::new("CFI", ArrowType::Utf8, true),
+            ArrowField::new(
+                name,
+                ArrowType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into())),
+                true,
+            ),
+        ]));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(StringArray::from(vec![HSBC, HSBC, APPLE])),
+                Arc::new(StringArray::from(vec![
+                    Some("XLON"),
+                    Some("XHKG"),
+                    Some("XNAS"),
+                ])),
+                Arc::new(StringArray::from(vec![
+                    Some("HSBA"),
+                    Some("0005"),
+                    Some("AAPL"),
+                ])),
+                Arc::new(StringArray::from(vec![Some("GBP"), Some("HKD"), None])),
+                Arc::new(StringArray::from(vec![Some("ESVUFR"), None, None])),
+                Arc::new(
+                    TimestampNanosecondArray::from(vec![Some(30), Some(20), None])
+                        .with_timezone("UTC"),
+                ),
+            ],
+        )
+        .unwrap();
+        let registry =
+            IsinRegistry::from_arrow_reader(yggdryl::arrow::batch_reader(schema, [batch])).unwrap();
+        assert_eq!((registry.len(), registry.rows()), (2, 3), "{name}");
+        let listings: Vec<_> = registry
+            .listings(HSBC)
+            .iter()
+            .map(|row| {
+                (
+                    row.miccode().map(Mic::as_str),
+                    row.ticker(),
+                    row.currency().map(Ccy::as_str),
+                )
+            })
+            .collect();
+        assert_eq!(
+            listings,
+            [
+                (Some("XHKG"), Some("0005"), Some("HKD")),
+                (Some("XLON"), Some("HSBA"), Some("GBP"))
+            ],
+            "{name}"
+        );
+        for row in registry.listings(HSBC) {
+            assert_eq!(
+                row.cficode().map(|code| code.as_str()),
+                Some("ESVUFR"),
+                "{name}"
+            );
+            assert_eq!(row.get(&IdType::Sedol), Some("0540528"), "{name}");
+            assert_eq!(row.lastunix(), Some(30), "{name}: the later");
+        }
+        assert_eq!(registry.get(APPLE).unwrap().lastunix(), None, "{name}");
+        assert_eq!(
+            registry
+                .get_by_ticker("0005", None)
+                .and_then(IsinEntry::miccode)
+                .map(Mic::as_str),
+            Some("XHKG"),
+            "{name}"
+        );
+    }
+}
+
 #[cfg(feature = "internals")]
 mod internal {
-    use yggdryl::IsinRegistry;
     use yggdryl::internals::isin_registry::ENTRY_CHARGE;
+    use yggdryl::internals::logging_warning::count;
+    use yggdryl::{IdType, IsinRegistry};
+
+    use super::{NOVARTIS, SAP, entry, mic};
+
+    /// A statement naming no market warns, once per column, of each listing
+    /// fact it states where its ISIN has several listings - the fact lands
+    /// on none - and says nothing where the ISIN has one, which takes it.
+    #[test]
+    fn a_listing_fact_of_no_market_on_several_listings_is_warned_per_column() {
+        const SITE: &str = "yggdryl::isin_registry";
+        const WHAT: &str = "instrument registry listing fact dropped: the statement names no market of the instrument's several listings";
+        // A listing code no other test states without a market.
+        let seen = || count(SITE, WHAT, "umtf");
+        let before = seen();
+        let mut registry = IsinRegistry::new();
+        registry
+            .merge(entry(SAP, Some(1), &[]).with_miccode(mic("XETR")))
+            .unwrap();
+        assert!(
+            registry
+                .merge(entry(SAP, Some(2), &[(IdType::Umtf, "U-1")]))
+                .unwrap()
+        );
+        assert_eq!(seen(), before, "a single listing takes it");
+        for market in ["XSWX", "XLON"] {
+            registry
+                .merge(entry(NOVARTIS, Some(1), &[]).with_miccode(mic(market)))
+                .unwrap();
+        }
+        assert!(
+            !registry
+                .merge(entry(NOVARTIS, Some(2), &[(IdType::Umtf, "U-2")]))
+                .unwrap()
+        );
+        assert_eq!(seen(), before + 1);
+        assert!(
+            registry
+                .listings(NOVARTIS)
+                .iter()
+                .all(|row| row.get(&IdType::Umtf).is_none())
+        );
+    }
 
     #[test]
     fn the_default_bound_holds_at_most_forty_eight_mebibytes() {

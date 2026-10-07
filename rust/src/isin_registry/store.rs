@@ -122,11 +122,7 @@ impl Store {
     /// laid out afresh. The column and the store are the warning's key.
     fn warn_lacking(&self, table: &IsinTable) {
         for &at in &self.lacking {
-            let held = table
-                .rows
-                .values()
-                .filter(|row| row.states_column(at))
-                .count();
+            let held = table.iter().filter(|row| row.states_column(at)).count();
             if held == 0 {
                 continue;
             }
@@ -245,7 +241,7 @@ impl IsinRegistry {
     ///
     /// // The first commit that moves anything writes every row.
     /// registry.merge(IsinEntry::new(Isin::new("CH0012214059")?).try_with_code(IdType::Ric, "HOLN.S")?)?;
-    /// assert_eq!(registry.commit()?.written_rows, registry.len() as u64);
+    /// assert_eq!(registry.commit()?.written_rows, registry.rows() as u64);
     /// assert!(IsinRegistry::from_url(&url, none)?.iter().eq(registry.iter()));
     /// std::fs::remove_dir_all(&root)?;
     /// # Ok(())
@@ -286,7 +282,7 @@ impl IsinRegistry {
             store.read_lacking(&reader.schema());
             let read = self.extend_from_arrow_reader(reader)?;
             self.dirty = false;
-            for row in held.rows.values() {
+            for row in held.iter() {
                 self.merge(row.clone())?;
             }
             Ok(read)
@@ -358,9 +354,10 @@ impl IsinRegistry {
     /// Writes the table to the holder it is bound to, only where it moved
     /// since it was loaded or last committed, so the store holds exactly
     /// the snapshot ([`Self::into_arrow_reader`]) whatever its layout: a
-    /// leaf rewritten whole in one overwrite, an emptied registry
-    /// truncating it; an Iceberg table replaced in one atomic snapshot,
-    /// every row of every partition, an emptied registry one empty
+    /// leaf rewritten whole in one overwrite, every listing row of every
+    /// instrument, an emptied registry truncating it; an Iceberg table
+    /// replaced in one atomic snapshot, every row of every partition - the
+    /// listings of one ISIN in one - an emptied registry one empty
     /// snapshot that keeps the table a table; a plain folder's record parts
     /// of the store's encoding removed - a leaf of another encoding or a
     /// file that is no record part never touched - then the snapshot laid
@@ -370,7 +367,7 @@ impl IsinRegistry {
     ///
     /// A leaf or an Iceberg table keeps the row it was laid out with, so a
     /// store written before a column the registry now has - `eusipacode`,
-    /// `fisn` - is written without it, and the commit warns, naming the column and
+    /// `fisn`, `lastunix` - is written without it, and the commit warns, naming the column and
     /// the store, wherever the registry holds a value there; the store is
     /// never migrated - an emptied leaf, or a new store, is laid out with
     /// the row as it is now.
@@ -407,7 +404,7 @@ impl IsinRegistry {
                 store.warn_lacking(&self.table);
             }
             self.dirty = false;
-            let rows = self.table.len() as u64;
+            let rows = self.table.rows() as u64;
             return Ok(IOResult::new(rows, rows));
         }
         if container {
@@ -440,10 +437,7 @@ impl IsinRegistry {
     fn snapshot_reader(table: &IsinTable) -> Result<crate::arrow::BatchReader> {
         Ok(crate::arrow::rows::reader(
             &super::FIELD,
-            super::Snapshot {
-                rows: std::sync::Arc::clone(&table.rows),
-                after: None,
-            },
+            super::Snapshot::of(table),
             None,
             None,
             None,

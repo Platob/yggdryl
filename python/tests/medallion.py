@@ -251,8 +251,9 @@ def commit_instruments(registry: IsinRegistry) -> IOResult:
     """What the lifecycle learned of the instruments it met, with the seed and
     what earlier runs committed, to the table the registry is bound to -
     `silver.record_keeping.instruments` - as one snapshot replacing every row
-    of every country partition, only where the registry moved: a run that
-    learned nothing new writes nothing."""
+    of every country partition, one row per ISIN and market, only where the
+    registry moved: a run that learned no new fact and met no instrument later
+    than its `lastunix` writes nothing."""
     return registry.commit()
 
 

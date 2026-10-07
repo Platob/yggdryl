@@ -1,5 +1,5 @@
-//! The instrument registry: one row per ISIN of every fact it is known by,
-//! learned from and filled into market data, bound to a store it is loaded
+//! The instrument registry: one row per ISIN and market of every fact it is
+//! known by, learned from and filled into market data, bound to a store it is loaded
 //! from and committed back to. Shared behind one lock, so a codec handed the
 //! registry and the caller holding it see one table.
 //!
@@ -28,12 +28,15 @@ use crate::scalar::{as_py, from_py, struct_from_entries};
 use crate::uri::core_url_from_value;
 use crate::value_error;
 
-/// A table of instruments keyed by ISIN - each row the instrument's CFI
-/// code, its country of issue, its currency pair, the instrument it is
-/// written on, its EUSIPA product category, its market, its ticker, its
-/// ISO 18774 short name and trading currency and one code per `SecurityIDSource(22)` type - that
-/// a lifecycle learns into and fills from, and a parse fills from. Bound to
-/// the store it was loaded from, committed back only where it moved.
+/// A table of instruments keyed by ISIN, one row per listing - per ISIN and
+/// market. The instrument facts - the CFI code, the country of issue, the
+/// currency pair, the instrument it is written on, the EUSIPA product
+/// category, the ISO 18774 short name, `updunix`, `lastunix` and every code
+/// that is no listing code - are the ISIN's and every listing row of it
+/// carries them; the listing facts - the market, the ticker, the trading
+/// currency and the listing codes - are each row's own. A lifecycle learns
+/// into it and fills from it, and a parse fills from it. Bound to the store
+/// it was loaded from, committed back only where it moved.
 /// Mutable and shared: equal only to itself, never hashed or pickled; its
 /// rows cross out as an Arrow stream.
 #[pyclass(name = "IsinRegistry", module = "yggdryl._native", frozen)]
@@ -169,16 +172,18 @@ impl PyIsinRegistry {
         Self::from_core(IsinRegistry::new().with_max_instruments(max_instruments))
     }
 
-    /// The registry's row: the required struct `isinregistry` every row is
-    /// laid out as - `isin`, `updunix`, `cficode`, `countrycode`,
-    /// `forexcode`, `underlyingisin`, `eusipacode` (`int32`, the four-digit
-    /// code `Eusipa` reads), `miccode`, `ticker`, `fisn` (the ISO 18774
-    /// short name), `currency`, then one column per `SecurityIDSource(22)`
-    /// type but the ISIN: forty-three columns - what a table holding the
-    /// registry is created from. Its root declares `PARTITION:by`
-    /// `["truncate(isin, 2)"]` - an Iceberg table created from it partitions
-    /// by the ISIN's country prefix, storing no column - and `SORT:by`
-    /// `["isin"]`, the order the snapshot streams in.
+    /// The registry's row: the required struct `isinregistry` every listing
+    /// row is laid out as - `isin`, `updunix`, `lastunix` (the latest
+    /// instant an event the registry learned from stated the ISIN),
+    /// `cficode`, `countrycode`, `forexcode`, `underlyingisin`, `eusipacode`
+    /// (`int32`, the four-digit code `Eusipa` reads), `miccode`, `ticker`,
+    /// `fisn` (the ISO 18774 short name), `currency`, then one column per
+    /// `SecurityIDSource(22)` type but the ISIN: forty-four columns - what a
+    /// table holding the registry is created from. Its root declares
+    /// `PARTITION:by` `["truncate(isin, 2)"]` - an Iceberg table created
+    /// from it partitions by the ISIN's country prefix, storing no column -
+    /// and `SORT:by` `["isin", "miccode"]`, the order the snapshot streams
+    /// in.
     #[staticmethod]
     fn field() -> PyField {
         PyField::from_inner(IsinEntry::field())
@@ -268,7 +273,9 @@ impl PyIsinRegistry {
 
     /// A registry read from any Arrow stream - a `pyarrow` reader, table or
     /// batch, or anything exporting `__arrow_c_stream__` - its columns
-    /// named as `from_url` reads them; bound to no store, and clean.
+    /// named as `from_url` reads them, `lastunix` also as `lastseen` or
+    /// `lastseenunix`, and several rows of one ISIN on several markets its
+    /// several listings; bound to no store, and clean.
     #[staticmethod]
     #[pyo3(signature = (reader, max_instruments=IsinRegistry::DEFAULT_MAX_INSTRUMENTS))]
     fn from_arrow_reader(
@@ -309,11 +316,12 @@ impl PyIsinRegistry {
             .map_err(value_error)
     }
 
-    /// The rows as a `pyarrow.RecordBatchReader` under the registry's row
-    /// field, in ISIN order: a snapshot taken under the lock, streamed after
-    /// it is released, which a learn while it streams does not move. Write
-    /// it with an `IOBase`'s `write_arrow_reader` - an overwrite saves a
-    /// snapshot, a merge by `isin` upserts - or `commit` the registry.
+    /// The listing rows as a `pyarrow.RecordBatchReader` under the
+    /// registry's row field, in ISIN then MIC order: a snapshot taken under
+    /// the lock, streamed after it is released, which a learn while it
+    /// streams does not move. Write it with an `IOBase`'s
+    /// `write_arrow_reader` - an overwrite saves a snapshot, a merge by
+    /// `isin` and `miccode` upserts - or `commit` the registry.
     #[allow(clippy::wrong_self_convention)]
     fn into_arrow_reader<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let reader = self
@@ -342,17 +350,43 @@ impl PyIsinRegistry {
         self.with(py, |registry| registry.is_dirty())
     }
 
-    /// The row of `isin` as a `dict` of its columns, or `None`.
+    /// The first listing row of `isin` in MIC order - the unlisted row where
+    /// that is all it holds - as a `dict` of its columns, or `None`; its
+    /// instrument facts are every listing's, and `listings` answers them
+    /// all.
     fn get(&self, py: Python<'_>, isin: &str) -> PyResult<Option<Py<PyAny>>> {
         let entry = self.with(py, |registry| registry.get(isin).cloned());
         Self::entry_as_py(py, entry)
     }
 
-    /// The row the ticker `ticker` names on `market`, as a `dict` of its
-    /// columns, or `None`: the one row listing the ticker whose market is
-    /// `market` - a MIC, checked by the `mic` datatype - or whose market or
-    /// `market` is unstated (`None` or `XXXX`). Two rows answering is
-    /// ambiguous, and answers none.
+    /// Every listing row of `isin` in MIC order, each a `dict` of its
+    /// columns; empty where the ISIN is unknown.
+    fn listings(&self, py: Python<'_>, isin: &str) -> PyResult<Vec<Py<PyAny>>> {
+        let rows = self.with(py, |registry| registry.listings(isin).to_vec());
+        rows.into_iter()
+            .map(|row| as_py(py, &row.into_scalar()))
+            .collect()
+    }
+
+    /// The listing row of `isin` on `market` - a MIC, checked by the `mic`
+    /// datatype - as a `dict` of its columns, or `None`.
+    fn get_listing(
+        &self,
+        py: Python<'_>,
+        isin: &str,
+        market: &Bound<'_, PyAny>,
+    ) -> PyResult<Option<Py<PyAny>>> {
+        let market = mic_of(market)?;
+        let entry = self.with(py, |registry| registry.get_listing(isin, &market).cloned());
+        Self::entry_as_py(py, entry)
+    }
+
+    /// The listing row the ticker `ticker` names on `market`, as a `dict`
+    /// of its columns, or `None`: the one row listing the ticker on
+    /// `market` - a MIC, checked by the `mic` datatype - else, none listing
+    /// it there, the one listing it on no market; where `market` is
+    /// unstated (`None` or `XXXX`), the one row listing it on any. Two rows
+    /// answering is ambiguous, and answers none.
     #[pyo3(signature = (ticker, market=None))]
     fn get_by_ticker(
         &self,
@@ -368,30 +402,60 @@ impl PyIsinRegistry {
     }
 
     /// Folds one row - a mapping of column names to cells, `isin` required
-    /// - into the row of its ISIN by the update rule: a stated valid value
-    /// fills a column the row lacks and replaces one it holds that
+    /// - into the listings of its ISIN by the update rule: a stated valid
+    /// value fills a column a row lacks and replaces one it holds that
     /// differs, whatever the time, a code that is no real value of its
     /// type dropped; a compatible CFI code refines the held one and a
-    /// contradicting one replaces it; a ticker or a listing code stated on
-    /// another market switches the listing whole. The row then carries the
-    /// defaults its facts imply where it states none: the CUSIP, SEDOL, WKN
-    /// or Valor its ISIN embeds, and the currency of its market's country,
-    /// else of its own. Whether anything moved.
+    /// contradicting one replaces it. The instrument facts fold into every
+    /// listing row of the ISIN; the listing facts - the ticker, the
+    /// currency, the listing codes - into the row of the market the entry
+    /// names, created where the ISIN has none there; with no market, into
+    /// the ISIN's single row, or into none, one warning per column, where
+    /// it has several. `updunix` moves where a fact moved, `lastunix` to
+    /// the later of the two whatever moved. A row then carries the defaults
+    /// its facts imply where it states none: the CUSIP, SEDOL, WKN or Valor
+    /// its ISIN embeds, and the currency of its market's country. Whether
+    /// anything moved.
     fn merge(&self, py: Python<'_>, entry: &Bound<'_, PyAny>) -> PyResult<bool> {
         let entry = IsinEntry::from_scalar(&struct_from_entries(entry)?).map_err(value_error)?;
         self.with(py, |registry| registry.merge(entry))
             .map_err(value_error)
     }
 
-    /// Removes the row of `isin`, answering it as a `dict`, or `None`.
-    fn remove(&self, py: Python<'_>, isin: &str) -> PyResult<Option<Py<PyAny>>> {
+    /// Removes every listing row of `isin`, answering them in MIC order,
+    /// each a `dict`; empty where the ISIN is unknown.
+    fn remove(&self, py: Python<'_>, isin: &str) -> PyResult<Vec<Py<PyAny>>> {
         let removed = self.with(py, |registry| registry.remove(isin));
+        removed
+            .into_iter()
+            .map(|row| as_py(py, &row.into_scalar()))
+            .collect()
+    }
+
+    /// Removes the listing row of `isin` on `market` - a MIC, checked by
+    /// the `mic` datatype - answering it as a `dict`, or `None`; the
+    /// instrument goes with its last listing.
+    fn remove_listing(
+        &self,
+        py: Python<'_>,
+        isin: &str,
+        market: &Bound<'_, PyAny>,
+    ) -> PyResult<Option<Py<PyAny>>> {
+        let market = mic_of(market)?;
+        let removed = self.with(py, |registry| registry.remove_listing(isin, &market));
         Self::entry_as_py(py, removed)
     }
 
     /// Removes every row.
     fn clear(&self, py: Python<'_>) {
         self.with(py, IsinRegistry::clear);
+    }
+
+    /// How many listing rows it holds - one per ISIN and market - what a
+    /// commit writes; `len` is how many instruments.
+    #[getter]
+    fn rows(&self, py: Python<'_>) -> usize {
+        self.with(py, |registry| registry.rows())
     }
 
     /// The most instruments it holds.
@@ -401,18 +465,21 @@ impl PyIsinRegistry {
     }
 
     /// Learns what a message states about its instrument - keyed by its
-    /// stated real ISIN, dated at its `currunix`: its CFI code, its market,
-    /// its ticker, its currency, the pair it states and its real
-    /// equivalents. Whether anything moved.
+    /// stated real ISIN, its market naming the listing row its listing
+    /// facts land on, dated at its `currunix`: its CFI code, its ticker, its
+    /// currency, the pair it states and its real equivalents, and its
+    /// `lastunix` on every learn, so a message teaching nothing else still
+    /// records when the instrument was last met. Whether anything moved.
     #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `PyRef`.
     fn learn(&self, py: Python<'_>, message: PyRef<'_, PyFixMsg>) -> bool {
         let message = message.as_inner();
         self.with(py, |registry| registry.learn(message))
     }
 
-    /// Fills what a message leaves unsaid about its instrument from the row
-    /// its ISIN names, else its ticker on its market - each equivalent and
-    /// the pair as a `derived` identifier, the ticker on its own market,
+    /// Fills what a message leaves unsaid about its instrument from the
+    /// listing row its ISIN and market name, else its ticker on its
+    /// market - each equivalent and the pair as a `derived` identifier,
+    /// the ticker on its own market,
     /// its CFI code where the row's refines it, the currency on the same
     /// stated market under the row's ticker - never its wire. Whether
     /// anything moved; a hashed message is frozen and refuses with

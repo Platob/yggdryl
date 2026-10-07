@@ -7185,18 +7185,25 @@ class Identifiers:
     def __reduce__(self) -> tuple[object, tuple[dict[str, str]]]: ...
 
 class IsinRegistry:
-    """A table of instruments keyed by ISIN, shared behind one lock.
+    """A table of instruments keyed by ISIN, one row per listing - per ISIN
+    and market - shared behind one lock.
 
     Each row holds the instrument's ``isin``, ``updunix`` (when the statement
-    that last moved it happened, a stamp), detailed ``cficode``, its
-    ``countrycode`` of issue, its ``forexcode`` pair, the ``underlyingisin``
-    it is written on, its ``eusipacode`` - the four-digit EUSIPA product
-    category ``Eusipa`` reads, an ``int`` - the ``miccode`` its listing facts
-    belong to, its ``ticker``, its ``fisn`` (the ISO 18774 short name) and
-    trading ``currency`` and one code per ``SecurityIDSource(22)`` type but
-    the ISIN; a row carries the CUSIP, SEDOL, WKN or Valor its ISIN embeds
-    and the currency of its listing market's country alone - a row with no market keeps none, where it
-    states none. ``seeded`` holds the embedded common instruments. A lifecycle learns
+    that last moved a fact of it happened, a stamp), ``lastunix`` (the latest
+    instant an event the registry learned from stated the ISIN, moved by every
+    learn), detailed ``cficode``, its ``countrycode`` of issue, its
+    ``forexcode`` pair, the ``underlyingisin`` it is written on, its
+    ``eusipacode`` - the four-digit EUSIPA product category ``Eusipa`` reads,
+    an ``int`` - the ``miccode`` of the listing, its ``ticker``, its ``fisn``
+    (the ISO 18774 short name) and trading ``currency`` and one code per
+    ``SecurityIDSource(22)`` type but the ISIN. The instrument facts are the
+    ISIN's and every listing row of it carries them; the market, the ticker,
+    the currency and the listing codes are each row's own, a statement naming
+    a new market a new row, one naming none landing on the ISIN's single row
+    or, where it has several, warned off every row. ``len`` counts
+    instruments, ``rows`` listing rows. A row carries the CUSIP, SEDOL, WKN or
+    Valor its ISIN embeds and the currency of its listing market's country
+    alone - a row with no market keeps none, where it states none. ``seeded`` holds the embedded common instruments. A lifecycle learns
     into it - keyed by a stated real ISIN - and fills from it what a message
     leaves unsaid, a parse fills derived identifiers from it, and a valid
     stated value fills and replaces whatever the time. Bound to the store it
@@ -7211,10 +7218,11 @@ class IsinRegistry:
     @staticmethod
     def field() -> Field:
         """The registry's row: the required struct ``isinregistry`` of
-        forty-three columns every row is laid out as, what a table holding the
-        registry is created from; its root declares ``PARTITION:by``
-        ``["truncate(isin, 2)"]`` - the ISIN's country prefix, storing no
-        column - and ``SORT:by`` ``["isin"]``."""
+        forty-four columns every listing row is laid out as, ``lastunix`` right
+        after ``updunix``, what a table holding the registry is created from;
+        its root declares ``PARTITION:by`` ``["truncate(isin, 2)"]`` - the
+        ISIN's country prefix, storing no column - and ``SORT:by``
+        ``["isin", "miccode"]``."""
     @staticmethod
     def seeded() -> IsinRegistry:
         """A registry holding the seed - the common instruments ``config/isin/instruments.json`` states, embedded at build time - clean and bound to no store; each seed row an ordinary statement, its derived facts filled."""
@@ -7237,27 +7245,44 @@ class IsinRegistry:
         ...
     @staticmethod
     def from_arrow_reader(reader: object, max_instruments: int = 16384) -> IsinRegistry:
-        """A registry read from any Arrow stream, bound to no store."""
+        """A registry read from any Arrow stream, bound to no store; several rows of one ISIN on several markets load as its listings."""
         ...
     def extend_from_handle(self, location: object) -> int: ...
     def extend_from_arrow_reader(self, reader: object) -> int: ...
     def into_arrow_reader(self) -> pyarrow.RecordBatchReader:
-        """The rows as a snapshot stream in ISIN order, under the registry's row field."""
+        """The listing rows as a snapshot stream in ISIN then MIC order, under the registry's row field."""
         ...
     def commit(self) -> IOResult:
         """Writes the table to the store it is bound to, only where it moved: one overwrite of the snapshot; a clean registry costs no call."""
         ...
     @property
     def is_dirty(self) -> bool: ...
-    def get(self, isin: str) -> dict[str, Any] | None: ...
+    def get(self, isin: str) -> dict[str, Any] | None:
+        """The first listing row of ``isin`` in MIC order, or ``None``."""
+        ...
+    def listings(self, isin: str) -> list[dict[str, Any]]:
+        """Every listing row of ``isin`` in MIC order; empty where it is unknown."""
+        ...
+    def get_listing(self, isin: str, market: str) -> dict[str, Any] | None:
+        """The listing row of ``isin`` on ``market``, or ``None``."""
+        ...
     def get_by_ticker(self, ticker: str, market: str | None = None) -> dict[str, Any] | None:
-        """The row the ticker names on ``market``: the one row listing it whose
-        market is ``market``, or whose market or ``market`` is unstated; two
-        rows answering is ambiguous, and answers ``None``."""
+        """The listing row the ticker names on ``market``: the one row listing
+        it there, else the one listing it on no market; with ``market``
+        unstated, the one row listing it on any. Two rows answering is
+        ambiguous, and answers ``None``."""
         ...
     def merge(self, entry: Mapping[str, object]) -> bool: ...
-    def remove(self, isin: str) -> dict[str, Any] | None: ...
+    def remove(self, isin: str) -> list[dict[str, Any]]:
+        """Removes every listing row of ``isin``, answering them in MIC order."""
+        ...
+    def remove_listing(self, isin: str, market: str) -> dict[str, Any] | None:
+        """Removes the listing row of ``isin`` on ``market``; the instrument goes with its last listing."""
+        ...
     def clear(self) -> None: ...
+    @property
+    def rows(self) -> int:
+        """How many listing rows it holds - what a commit writes; ``len`` counts instruments."""
     @property
     def max_instruments(self) -> int: ...
     def learn(self, message: FixMsg) -> bool: ...
