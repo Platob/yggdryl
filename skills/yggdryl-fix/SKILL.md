@@ -440,8 +440,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   registry folds carries the CUSIP, SEDOL, WKN or Valor its ISIN embeds and
   its market's country's currency where it states none - defaults a
   statement replaces. In a medallion pipeline commit the codec's registry
-  once, at the end of the refined FIX parsing stage, after its write has
-  drained the lifecycle: one snapshot, nothing where clean.
+  once, as the stage right after the FIX-message parse, after the refined
+  write has drained the lifecycle: one snapshot, nothing where clean. The
+  capture's own lines are appended by key (`append_serie` on a table whose
+  `identifier-field-ids` is the row's key: a line already stored in its
+  partition is skipped, no file rewritten); every derived table is
+  overwritten partition by partition.
 - `StrikePrice(202)` is read into the market fact `strikepx` (`Market`), the
   fixed row's `strikepx` column right after `ticker` (crate tag `65036`), so
   a graph leaf carries no `strikeprice` metadata key; `msg.set(202, v)`

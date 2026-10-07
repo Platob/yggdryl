@@ -5635,8 +5635,8 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     (logs / "bridge-1.log").write_bytes(b"".join(captured[72:]))
     # The instruments the pipeline meets, bound to a table of the silver
     # catalog and laid over the seed: the codec's lifecycle learns into it,
-    # and the refined parse commits it once its messages are written - no
-    # stage of its own. A first run holds the seed, clean.
+    # and the stage right after the FIX-message parse commits it. A first run
+    # holds the seed, clean.
     registry = medallion.instruments(silver)
     seed = IsinRegistry.seeded()
     assert len(registry) == len(seed) and not registry.is_dirty
@@ -5668,6 +5668,7 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         "bronze.log_messages",
         "bronze.fix_messages",
         "silver.fix_messages",
+        "silver.instruments",
         "silver.books",
         "silver.events",
     ]
@@ -5770,8 +5771,11 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         "quotes",
     ]
 
-    # Running every stage again over the window rewrites what it wrote: the
-    # same rows under one more snapshot, never the two runs together.
+    # Running every stage again over the window: the first stage is the
+    # keyed append, so every line it reads again is already stored in its
+    # quarter and is skipped - nothing written, no snapshot - while every
+    # later stage rewrites what it wrote, the same rows under one more
+    # snapshot, never the two runs together.
     again = medallion.run(lake, start, end)
     # The registry learned no new fact and met no instrument later than it
     # had - the same messages at the same instants leave every `lastunix` -
@@ -5779,8 +5783,11 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     assert again.pop("silver.instruments") == IOResult(0, 0)
     assert len(silver.table("record_keeping.instruments").snapshots) == 1
     written.pop("silver.instruments")
-    assert again == written
-    for catalog, name in ((bronze, "log_messages"), (silver, "books"), (silver, "executions")):
+    assert again.pop("bronze.log_messages") == IOResult(144, 0, 144)
+    assert len(bronze.table("record_keeping.log_messages").snapshots) == 1
+    assert bronze.table("record_keeping.log_messages").row_size() == 144
+    assert again == {stage: result for stage, result in written.items() if stage != "bronze.log_messages"}
+    for catalog, name in ((silver, "books"), (silver, "executions")):
         table = catalog.table(f"record_keeping.{name}")
         assert table.row_size() == written[f"{catalog.name}.{name}"].written_rows, name
         assert len(table.snapshots) == 2, name
@@ -5790,7 +5797,11 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     half = dt.datetime(2026, 8, 14, 19, 0, tzinfo=utc)
     partial = medallion.run(lake, start, half)
     assert partial["silver.instruments"] == IOResult(0, 0)
-    assert 0 < partial["bronze.log_messages"].written_rows < 144
+    # The keyed append reads the quarters the window covers and finds every
+    # line stored: nothing written, every read line skipped, the table whole.
+    lines = partial["bronze.log_messages"]
+    assert 0 < lines.read_rows < 144
+    assert (lines.written_rows, lines.skipped_rows) == (0, lines.read_rows)
     assert bronze.table("record_keeping.log_messages").row_size() == 144
     assert partial["silver.books"].written_rows <= books
     assert silver.table("record_keeping.books").row_size() == books

@@ -6,25 +6,37 @@ live, two local Iceberg warehouse folders in the suite - and
 the :class:`Lake` the run writes through and a UTC window, half-open on
 `currunix`; every read is `read_serie` with the window pushed into it, so
 the scan prunes by the quarter hour each table is partitioned by, every
-stage runs through the codec's serie doors, and every write is
-`overwrite_serie`, which replaces the partitions its rows fall in and no
-other: running a stage again over a window rewrites that window.
+stage runs through the codec's serie doors, and the writes are of two
+kinds. The first stage - the capture's lines into
+`bronze.record_keeping.log_messages` - is the keyed append, `append_serie`
+on a table whose `identifier-field-ids` is the pipeline's primary key: a
+quarter-hour partition takes only the lines whose key it does not hold,
+a line read again is skipped and no stored file is rewritten, so running
+it again over a window appends what the window lacks and nothing else.
+Every later stage writes with `overwrite_serie`, which replaces the
+partitions its rows fall in and no other: its rows are derived, a
+derivation can change, and running the stage again over a window rewrites
+that window.
 
 ```text
 capture                              -> parse_log_messages         -> bronze.record_keeping.log_messages
 bronze.record_keeping.log_messages   -> parse_fix_messages_raw     -> bronze.record_keeping.fix_messages
 bronze.record_keeping.fix_messages   -> parse_fix_messages_refined -> silver.record_keeping.fix_messages
-                                                                   -> silver.record_keeping.instruments
+the codec's registry                 -> commit_instruments         -> silver.record_keeping.instruments
 silver.record_keeping.fix_messages   -> parse_books                -> silver.record_keeping.books
 silver.record_keeping.books          -> parse_events               -> silver.record_keeping.orders
                                                                    -> silver.record_keeping.quotes
                                                                    -> silver.record_keeping.executions
 ```
 
-The refined parse commits what its lifecycle learned of the instruments it
-met to `silver.record_keeping.instruments`, where the codec holds a bound
-registry, once the refined messages are written: the registry is no stage
-of its own, since nothing but the lifecycle teaches it.
+What the lifecycle learned of the instruments it met is committed right
+after the FIX-message parse, as the stage `silver.instruments` between
+`silver.fix_messages` and the books: `commit_instruments` writes the
+codec's bound registry to `silver.record_keeping.instruments` once the
+refined messages are stored, so every instrument the window taught is in
+the silver catalog before anything reads the refined messages. When the
+parse itself learns the instruments (the instrument phase's SPEC §10a) the
+stage follows the raw parse instead.
 
 The window rule: a row is windowed by `currunix`, and a stage reads the
 rows of its source inside the window alone. A walk - the lifecycle, the book
@@ -267,13 +279,21 @@ def parse_log_messages(
     """The capture - log objects under a glob, read through the native backend
     their location selects, one request per object - to
     `bronze.record_keeping.log_messages`: one stream of text rows, the row
-    header lifting each line's captures."""
+    header lifting each line's captures.
+
+    The write is the keyed append: the table states the pipeline's primary
+    key as its ``identifier-field-ids``, so each quarter-hour partition takes
+    only the lines whose key it does not hold yet - a line read again lands
+    nowhere, counted in ``skipped_rows`` - and no stored file is rewritten,
+    the partition groups reading the key columns of the files the key
+    bounds keep alone. Every later stage overwrites the partitions its rows
+    reach instead, because its rows are derived and a derivation can change."""
     options = TextOptions()
     options.rowheader = rowheader
     options.timezone = "UTC"
     options.start_rownum = 1
     lines = StreamChunkedSerie.from_serie(lake.logs.read_serie(options=options, filter=window_filter(start, end)))
-    return lake.table_of("bronze", "log_messages", lines.field).overwrite_serie(lines)
+    return lake.table_of("bronze", "log_messages", lines.field).append_serie(lines)
 
 
 def parse_fix_messages_raw(lake: Lake, start: dt.datetime, end: dt.datetime) -> IOResult:
@@ -283,22 +303,25 @@ def parse_fix_messages_raw(lake: Lake, start: dt.datetime, end: dt.datetime) -> 
     return lake.table_of("bronze", "fix_messages", parsed.field).overwrite_serie(parsed)
 
 
-def parse_fix_messages_refined(lake: Lake, start: dt.datetime, end: dt.datetime) -> dict[str, IOResult]:
+def parse_fix_messages_refined(lake: Lake, start: dt.datetime, end: dt.datetime) -> IOResult:
     """`bronze.record_keeping.fix_messages`, read in its order, walked by the
-    lifecycle over sorted input, to `silver.record_keeping.fix_messages`; then
-    what the lifecycle learned of the instruments, where the codec holds a
-    bound registry, to `silver.record_keeping.instruments`.
-
-    Answers the refined write under `silver.fix_messages` and, where a
-    registry is bound, its commit under `silver.instruments`: the commit
-    runs once the write has drained the walk, so it holds every instrument
-    the window taught."""
+    lifecycle over sorted input, to `silver.record_keeping.fix_messages`. The
+    lifecycle learns the instruments it meets into the codec's bound
+    registry as it walks; the stage after this one commits them."""
     walked = lake.codec.lifecycle_serie(stored_rows(lake.source_of("bronze", "fix_messages"), start, end))
-    written = {"silver.fix_messages": lake.table_of("silver", "fix_messages", walked.field).overwrite_serie(walked)}
+    return lake.table_of("silver", "fix_messages", walked.field).overwrite_serie(walked)
+
+
+def commit_instruments_stage(lake: Lake, start: dt.datetime, end: dt.datetime) -> dict[str, IOResult]:
+    """The stage right after the FIX-message parse: the codec's bound registry
+    committed to `silver.record_keeping.instruments` (`commit_instruments`),
+    once `silver.fix_messages` has drained the walk, so it holds every
+    instrument the window taught. Answers nothing where the codec holds no
+    registry; the window is read by nothing here - a commit is whole."""
     registry = lake.codec.isin_registry
-    if registry is not None:
-        written["silver.instruments"] = commit_instruments(registry)
-    return written
+    if registry is None:
+        return {}
+    return {"silver.instruments": commit_instruments(registry)}
 
 
 def parse_books(lake: Lake, start: dt.datetime, end: dt.datetime) -> IOResult:
@@ -346,7 +369,8 @@ Stage = Callable[[Lake, dt.datetime, dt.datetime], dict[str, IOResult]]
 STAGES_OF: dict[str, Stage] = {
     "bronze.log_messages": lambda lake, start, end: {"bronze.log_messages": parse_log_messages(lake, start, end)},
     "bronze.fix_messages": lambda lake, start, end: {"bronze.fix_messages": parse_fix_messages_raw(lake, start, end)},
-    "silver.fix_messages": parse_fix_messages_refined,
+    "silver.fix_messages": lambda lake, start, end: {"silver.fix_messages": parse_fix_messages_refined(lake, start, end)},
+    "silver.instruments": commit_instruments_stage,
     "silver.books": lambda lake, start, end: {"silver.books": parse_books(lake, start, end)},
     "silver.events": parse_events,
 }
