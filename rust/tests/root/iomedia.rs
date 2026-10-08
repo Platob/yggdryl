@@ -1475,6 +1475,33 @@ mod write {
         assert!(message.contains("application/vnd.apache.orc"), "{message}");
     }
 
+    /// A Parquet file's key-value pairs and a declared root's own metadata
+    /// ride its footer, and its reader lands the rows under a root stating
+    /// none of them: the schema a leaf answers is that root, never a richer
+    /// one the rows then contradict.
+    #[cfg(feature = "parquet")]
+    #[test]
+    fn a_parquet_leaf_answers_the_root_its_rows_land_under() {
+        let mut handle = handle("t.parquet");
+        let RecordOptions::Parquet(parquet) = handle.record_options().unwrap() else {
+            panic!("a .parquet name reads as Parquet");
+        };
+        let mut declared = schema();
+        declared.set_metadata([("comment", "trades")]).unwrap();
+        let options = RecordOptions::Parquet(parquet.with_key_value("writer", "rust"))
+            .with_field(declared)
+            .with_safe(true);
+        handle.overwrite_arrow_reader(reader(), &options).unwrap();
+
+        let plain = handle.record_options().unwrap();
+        let field = handle.read_arrow_field(&plain).unwrap();
+        assert_eq!(field, schema());
+        assert_eq!(
+            Some(&field),
+            handle.read_serie(Some(&plain)).unwrap().field()
+        );
+    }
+
     #[test]
     fn batches_round_trip_through_a_bare_handle() {
         let mut names = vec!["t.arrows", "t.arrows.zst"];

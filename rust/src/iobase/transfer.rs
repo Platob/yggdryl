@@ -1232,8 +1232,16 @@ pub(crate) fn leaf_field(
     }
     match options {
         RecordOptions::Ipc(ipc) => Ok(crate::ipc::read_field(handle, ipc)?),
+        // The Parquet reader lands its rows under a root stating no
+        // metadata - neither the file's key-value pairs nor the root's own
+        // the Arrow schema message carries - so the schema answers that
+        // same root, and a schema read and the rows never disagree.
         #[cfg(feature = "parquet")]
-        RecordOptions::Parquet(parquet) => Ok(crate::parquet::read_field(handle, parquet)?),
+        RecordOptions::Parquet(parquet) => {
+            let mut field = crate::parquet::read_field(handle, parquet)?;
+            field.clear_metadata();
+            Ok(field)
+        }
         RecordOptions::Avro(avro) => Ok(crate::avro::read_field(handle, avro)?),
         RecordOptions::Text(text) => text.source_field(),
         RecordOptions::Xmla(xmla) => crate::xmla::read_field(handle, xmla),
