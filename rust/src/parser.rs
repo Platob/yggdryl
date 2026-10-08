@@ -882,7 +882,6 @@ impl fmt::Display for DataType {
             | D::MarketDataKind
             | D::MarketDataType
             | D::TimeInForce
-            | D::PluginSide
             | D::Unit
             | D::Forex
             | D::Lei

@@ -457,7 +457,6 @@ mod arrow {
             DataType::Side,
             DataType::State,
             DataType::TimeInForce,
-            DataType::PluginSide,
             DataType::Uuid,
             DataType::Version,
             DataType::url(),

@@ -10,7 +10,7 @@
 //! Some names resolve to their own datatype: `ccy`, `country`, `mic`,
 //! `cfi` and `unit` are registered codes, carrying an identity as well as
 //! their storage width, and `side`, `state`, `marketdatakind`,
-//! `marketdatatype`, `timeinforce` and `pluginside` are the enum leaves,
+//! `marketdatatype` and `timeinforce` are the enum leaves,
 //! each the code of a member of its closed set.
 //!
 //! The vocabulary follows the FIX Latest datatype table, plus `mic` -
@@ -138,7 +138,6 @@ impl DataType {
         ("marketdatakind", DataType::MarketDataKind),
         ("marketdatatype", DataType::MarketDataType),
         ("timeinforce", DataType::TimeInForce),
-        ("pluginside", DataType::PluginSide),
         // The unit a quantity is stated in: FIX's `UnitOfMeasure(996)`.
         ("unit", DataType::Unit),
         // The currency pair a foreign exchange instrument is: two legs of

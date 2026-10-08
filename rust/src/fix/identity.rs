@@ -8,7 +8,7 @@ use crate::graph::Market;
 use crate::graph::facts::OperationEventFacts;
 use crate::{
     Bbg, DataType, Error, Field, Figi, Forex, IdType, Identifiers, Isin, MarketDataKind, Mic,
-    PluginSide, Result, Scalar, TimeUnit, Timezone, Value,
+    Result, Scalar, Side, TimeUnit, Timezone, Value,
 };
 
 use super::schema::CLOCK_DATATYPE;
@@ -243,7 +243,7 @@ pub(super) fn integer_of<T: TryFrom<i128> + TryFrom<u128>>(value: &Scalar) -> Op
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixCapture {
     msgpluginid: Option<SmolStr>,
-    msgpluginside: PluginSide,
+    msgpluginside: Side,
     msgctxid: Option<SmolStr>,
     msgsessionid: Option<SmolStr>,
     msgsesseventid: Option<SmolStr>,
@@ -264,12 +264,12 @@ impl FixCapture {
     /// where the codec read under no source or one stating no role. Never
     /// absent: the neutral member is a stated value.
     #[must_use]
-    pub const fn msgpluginside(&self) -> PluginSide {
+    pub const fn msgpluginside(&self) -> Side {
         self.msgpluginside
     }
 
     /// States the plugin's role, the codec's stamp at build.
-    pub(super) const fn set_msgpluginside(&mut self, side: PluginSide) {
+    pub(super) const fn set_msgpluginside(&mut self, side: Side) {
         self.msgpluginside = side;
     }
 
@@ -344,7 +344,7 @@ impl FixCapture {
         if is(MSGPLUGINID_TAG_NAME) {
             text(&self.msgpluginid)
         } else if is(MSGPLUGINSIDE_TAG_NAME) {
-            Some(Scalar::PluginSide(self.msgpluginside))
+            Some(Scalar::Side(self.msgpluginside))
         } else if is(MSGCTXID_TAG_NAME) {
             text(&self.msgctxid)
         } else if is(MSGSESSIONID_TAG_NAME) {
@@ -374,7 +374,7 @@ impl FixCapture {
             // The member the cell names, in any spelling the enum reads; a
             // null, or a value naming no member, is the neutral member.
             self.msgpluginside =
-                <PluginSide as crate::EnumValue>::from_scalar_value(value).unwrap_or_default();
+                <Side as crate::EnumValue>::from_scalar_value(value).unwrap_or_default();
         } else if is(MSGCTXID_TAG_NAME) {
             self.msgctxid = text();
         } else if is(MSGSESSIONID_TAG_NAME) {

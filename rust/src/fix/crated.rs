@@ -147,14 +147,14 @@ pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_045, "msgctxid");
 pub const MSGPLUGINID_TAG_NAME: (i32, &str) = (65_042, "msgpluginid");
 
 /// The tag and name carrying the role of the FIX plugin whose session
-/// produced the message, as the member of [`crate::PluginSide`] its code
-/// stores: `BUYS` for a Buy-Side plugin, `SELL` for a Sell-Side one,
-/// `UKNW` where the dialect states none. A session fact read off the
-/// dialect's source entry ([`FixSource::pluginside`](super::FixSource::pluginside))
-/// by the codec that reads under it ([`FixCodec::with_source`](super::FixCodec::with_source)),
-/// never off a FIX tag, and independent of `Side(54)`; every row states
-/// it, and a row stating one is the row's word. The intrinsic
-/// `msgpluginsidecodeset` names what each code stands for.
+/// produced the message, as the [`crate::Side`] its code stores: `BUYS`
+/// for a Buy-Side plugin, `SELL` for a Sell-Side one, `UKNW` where the
+/// dialect states none. A session fact read off the dialect's source entry
+/// ([`FixSource::pluginside`](super::FixSource::pluginside)) by the codec
+/// that reads under it ([`FixCodec::with_source`](super::FixCodec::with_source)),
+/// never off a FIX tag, and a column of its own beside `Side(54)`, the
+/// order's side; every row states it, and a row stating one is the row's
+/// word. The intrinsic `msgpluginsidecodeset` names what each code stands for.
 pub const MSGPLUGINSIDE_TAG_NAME: (i32, &str) = (65_043, "msgpluginside");
 
 /// The tag and name carrying the code the message's content digests to:
@@ -392,13 +392,15 @@ pub(super) fn marketdatatype_codeset() -> Option<Arc<str>> {
 }
 
 /// The crate-owned vocabulary the `msgpluginside` column reads by: every
-/// member of [`crate::PluginSide`], its stored name, the code it stores
-/// and what it stands for. Intrinsic and immutable in a registry.
+/// member of [`crate::Side`] - the column is a `side`, so every side it
+/// can store stands in it, the two roles a plugin plays (`BUYS`, `SELL`)
+/// and `UKNW` among them - its stored name, the code it stores and what it
+/// stands for. Intrinsic and immutable in a registry.
 pub(super) const MSGPLUGINSIDE_CODESET_NAME: &str = "msgpluginsidecodeset";
 
 /// The canonical plugin side document every registry shares.
 static MSGPLUGINSIDE_CODESET: LazyLock<Option<Arc<str>>> = LazyLock::new(|| {
-    let codes = crate::PluginSide::ALL
+    let codes = crate::Side::ALL
         .iter()
         .map(|side| {
             super::FixCode::new(side.as_str(), side.code().to_string())
@@ -1220,12 +1222,13 @@ const CRATED: [Crated; 52] = [
     ),
     Crated::own(
         MSGPLUGINSIDE_TAG_NAME,
-        || Ok(DataType::pluginside()),
+        || Ok(DataType::Side),
         "Message Plugin Side",
-        "The role of the FIX plugin whose session produced the message: BUYS \
-         for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the \
-         dialect states none; a session fact read off the dialect's source \
-         entry, never off a FIX tag, and independent of Side(54).",
+        "The role of the FIX plugin whose session produced the message, as a \
+         side: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW \
+         where the dialect states none; a session fact read off the \
+         dialect's source entry, never off a FIX tag, a column of its own \
+         beside Side(54), the order's side.",
     )
     .reading(MSGPLUGINSIDE_CODESET_NAME),
     Crated::own(

@@ -237,7 +237,7 @@ A FIX `Side(54)` wire code, the specification's own name, and the four-letter co
 | `17` | `H` | `SELU` | `SellUndisclosed` | Sell undisclosed. |
 | `99` | - | `BOTH` | - | Both sides at once: a book, or a quote holding its bid and its ask and tagging neither. |
 
-`from_spelling` answers the member or nothing and `read` is the same reading as a refusal; `fix_code` is the wire character, `None` for `UKNW` and `BOTH`, which no message carries. A dialect's own code maps as its dictionary says, because FIX's `Side(54)` reaches these members through the name the [code set it reads by](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) gives each code.
+`from_spelling` answers the member or nothing and `read` is the same reading as a refusal; `fix_code` is the wire character, `None` for `UKNW` and `BOTH`, which no message carries. A dialect's own code maps as its dictionary says, because FIX's `Side(54)` reaches these members through the name the [code set it reads by](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) gives each code. Two more names reach `BUYS` and `SELL`: `BuySide` and `SellSide`, the roles a FIX plugin plays, folded like a name - because a plugin's role is the side of the market its session stands on ([below](#a-fix-plugins-role-is-a-side)).
 
 === "Rust"
 
@@ -401,6 +401,109 @@ assert_eq!(Side::Buy.merge_with(Side::Unknown), Side::Buy);
     assert.equal(Side.BOTH, 99)
     ```
 
+## A FIX plugin's role is a side
+
+A FIX plugin stands on one side of its session: a Buy-Side plugin originates orders and cancels and receives execution reports, a Sell-Side one receives them and answers. That role is a side - `BUYS`, `SELL`, or `UKNW` where none is stated - so `BuySide` and `SellSide` are two spellings of the two members, folded the way every name folds (`buy-side`, `sell_side`, `SELL SIDE`), and there is no second enum for it. An Ullink CBlock names its plugin's class in its root's `type` attribute - `com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.SellSideFIXCPluginCBlock` - and `yggdryl::fix::plugin_side` (Python `yggdryl.fix.plugin_side`, JavaScript `fix.pluginSide`) reads the role off that class: the last `.`-separated segment alone, folded, so `BuySide` anywhere in it is `BUYS` and `SellSide` is `SELL`; a class naming neither, a package naming a role rather than the class, and no attribute at all are `UKNW`, never a refusal, because a plugin whose class states no role is a plugin of no stated role - the one reading that turns an unknown spelling into `UKNW` where the value door refuses it. Reading a CBlock under a dialect (`FixRegistry::from_cfb_file`, `add_cfb_file`, `add_cfb_files`, [`yggdryl fix ingest`](../../fix/cli.md#ingest-and-sync)) records that role on the dialect's [catalog entry](../../fix/registry.md#membership), beside the file it was read from, and a codec reading under that source stamps it on every message as the required [`msgpluginside`](../../fix/capture.md#the-plugins-role-is-the-sources) column, tag 65043 - the session's role, never the order's `Side(54)`. The role is the entry's and never a field's: a field states only which sources contributed it.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::fix::plugin_side;
+    use yggdryl::local::LocalFile;
+    use yggdryl::{DataType, FixRegistry, Scalar, Side};
+
+    let cblock = "com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock";
+    assert_eq!(plugin_side(&format!("{cblock}.BuySideFIXCPluginCBlock")), Side::Buy);
+    assert_eq!(plugin_side(&format!("{cblock}.SellSideFIXCPluginCBlock")), Side::Sell);
+    assert_eq!(plugin_side("x.Buy_Side_FIXCPluginCBlock"), Side::Buy);
+    // Only the last segment names the role, and a class naming none is `UKNW`.
+    assert_eq!(plugin_side("buyside.FIXCPluginCBlock"), Side::Unknown);
+    assert_eq!(plugin_side(""), Side::Unknown);
+    // The role's own name is a spelling of the side.
+    assert_eq!(DataType::Side.scalar("sell-side")?, Scalar::Side(Side::Sell));
+    assert_eq!(Side::from_spelling("BuySide"), Some(Side::Buy));
+
+    // A CBlock read under a dialect records the role on the dialect's entry.
+    let path = std::env::temp_dir().join(format!("ygg-doc-side-plugin-{}.cfb", std::process::id()));
+    std::fs::write(&path, format!(r#"<?xml version="1.0" encoding="US-ASCII"?>
+    <cplugin-configuration fix-version="4.4" type="{cblock}.SellSideFIXCPluginCBlock">
+      <vocabulary><vocabulary-tag name="20001" alt="VenueFlag" type="string" /></vocabulary>
+    </cplugin-configuration>
+    "#))?;
+    let (venue, _) = FixRegistry::from_cfb_file(&LocalFile::new(&path)?, Some("venue"))?;
+    let (bare, _) = FixRegistry::from_cfb_file(&LocalFile::new(&path)?, None)?;
+    std::fs::remove_file(&path)?;
+    let entry = venue.get_source("venue").expect("the dialect's entry");
+    assert_eq!(entry.pluginside(), Side::Sell);
+    assert_eq!(bare.sources().len(), 0, "no dialect, no entry");
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import DataType, Side
+    from yggdryl.fix import FixRegistry, plugin_side
+
+    cblock = "com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock"
+    assert plugin_side(f"{cblock}.BuySideFIXCPluginCBlock") is Side.BUYS
+    assert plugin_side(f"{cblock}.SellSideFIXCPluginCBlock") is Side.SELL
+    # Only the last segment names the role, and a class naming none is `UKNW`.
+    assert plugin_side("buyside.FIXCPluginCBlock") is Side.UKNW
+    # The role's own name is a spelling of the side.
+    assert DataType("side").scalar("sell-side").as_py() is Side.SELL
+    assert Side.from_spelling("BuySide") is Side.BUYS
+
+    # A CBlock read under a dialect records the role on the dialect's entry.
+    with tempfile.TemporaryDirectory() as directory:
+        path = pathlib.Path(directory) / "venue.cfb"
+        path.write_text(
+            '<?xml version="1.0" encoding="US-ASCII"?>\n'
+            f'<cplugin-configuration fix-version="4.4" type="{cblock}.SellSideFIXCPluginCBlock">\n'
+            '  <vocabulary><vocabulary-tag name="20001" alt="VenueFlag" type="string" /></vocabulary>\n'
+            "</cplugin-configuration>\n"
+        )
+        venue, _ = FixRegistry.from_cfb_file(path, "venue")
+        bare, _ = FixRegistry.from_cfb_file(path)
+    assert venue.get_source("venue")["pluginside"] is Side.SELL
+    assert bare.sources() == [], "no dialect, no entry"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { DataType, Side, fix } = require('yggdryl')
+
+    const cblock = 'com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock'
+    assert.equal(fix.pluginSide(`${cblock}.BuySideFIXCPluginCBlock`), 'BUYS')
+    assert.equal(fix.pluginSide(`${cblock}.SellSideFIXCPluginCBlock`), 'SELL')
+    // Only the last segment names the role, and a class naming none is `UKNW`.
+    assert.equal(fix.pluginSide('buyside.FIXCPluginCBlock'), 'UKNW')
+    // The role's own name is a spelling of the side.
+    assert.equal(new DataType('side').scalar('sell-side').asJs(), 'SELL')
+    assert.equal(Side[fix.pluginSide(`${cblock}.BuySideFIXCPluginCBlock`)], 1)
+
+    // A CBlock read under a dialect records the role on the dialect's entry.
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
+    const file = path.join(folder, 'venue.cfb')
+    fs.writeFileSync(file, `<?xml version="1.0" encoding="US-ASCII"?>
+    <cplugin-configuration fix-version="4.4" type="${cblock}.SellSideFIXCPluginCBlock">
+      <vocabulary><vocabulary-tag name="20001" alt="VenueFlag" type="string" /></vocabulary>
+    </cplugin-configuration>
+    `)
+    const [venue] = fix.FixRegistry.fromCfbFile(file, 'venue')
+    const [bare] = fix.FixRegistry.fromCfbFile(file)
+    fs.rmSync(folder, { recursive: true, force: true })
+    assert.deepEqual(venue.sources(), [{ id: 'venue', file: 'venue.cfb', pluginside: 'SELL' }])
+    assert.deepEqual(bare.sources(), [])
+    ```
+
 ## Edges
 
 - A spelling that names no side, or an integer that is the code of none -> refused naming `side`, never stored; a column typed `side` therefore holds members only, and a value that names none leaves a nullable column null under `safe`.
@@ -413,6 +516,7 @@ assert_eq!(Side::Buy.merge_with(Side::Unknown), Side::Buy);
 - A Hive partition over a `side` column is named by the member, `side=BUYS`.
 - JSON, TOML, YAML and XML write a side as its four-letter code, the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under the side's own identifier, so a side, a [state](state.md) and an integer of one code are three values.
 - `utf8` under `yggdryl.side` is a foreign field wearing the name and imports as the text it is; a side packs into no US-ASCII integer, because its column already holds its code.
+- A FIX plugin's role is a side ([above](#a-fix-plugins-role-is-a-side)): `BuySide` and `SellSide` are spellings of `BUYS` and `SELL`, `fix::plugin_side` reads a CBlock's class into one and refuses nothing - a class naming no role is `UKNW` - where the value door refuses a spelling that names none. A FIX dictionary renders the nineteen members as its intrinsic `msgpluginsidecodeset`, which no [registry](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) write may change and a [store](../../fix/store.md#edges) document is held to member for member; `msgpluginside` is outside a FIX message's `currhashcode`, `curruuid` and wire, so one line read under two sources is one message stamped two ways.
 - `StringEnum::SIDES` is the listing of the nineteen four-letter codes, sorted, reached by the logical name `side` for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("side")` is this enum. Python's `yggdryl.enums` declares no side: `yggdryl.Side` is the vocabulary.
 
 ## Commands

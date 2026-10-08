@@ -283,3 +283,79 @@ fn a_text_column_of_free_spellings_lands_as_codes() {
         ]
     );
 }
+
+/// The column cast keeps two enum leaves apart as the value door does: a
+/// side stores `BUYS` as `1` and a time in force stores `DAY` as `1`, and the
+/// engine never reads one leaf's codes as the other's - a side column cast
+/// into times in force is refused by name, and so is the reverse, whatever
+/// `safe` says and whether the cast is compiled once or run on the column.
+/// The rule is the enum family's, not the pair's: a state column is refused
+/// the same way. Its own leaf passes untouched, and an integer reads the
+/// codes.
+#[test]
+fn a_column_of_one_enum_leaf_is_never_cast_into_another() {
+    use yggdryl::{ArrowCastPlan, Side, State, TimeInForce};
+
+    let sides = Serie::from_scalars(
+        Field::new("s", DataType::Side, false),
+        [Scalar::Side(Side::Buy), Scalar::Side(Side::Sell)],
+    )
+    .unwrap();
+    let tifs = Serie::from_scalars(
+        Field::new("t", DataType::TimeInForce, false),
+        [
+            Scalar::TimeInForce(TimeInForce::Day),
+            Scalar::TimeInForce(TimeInForce::GoodTillCancel),
+        ],
+    )
+    .unwrap();
+    let states = Serie::from_scalars(
+        Field::new("st", DataType::State, false),
+        [Scalar::State(State::New), Scalar::State(State::Filled)],
+    )
+    .unwrap();
+    for (source, target) in [
+        (&sides, DataType::TimeInForce),
+        (&tifs, DataType::Side),
+        (&states, DataType::Side),
+        (&tifs, DataType::State),
+    ] {
+        let target = Field::new("x", target, false);
+        for safe in [true, false] {
+            let refusal = source
+                .cast(&target, ArrowCastOptions::new().with_safe(safe))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                refusal.contains(&source.field().unwrap().dtype().to_string())
+                    && refusal.contains(&target.dtype().to_string()),
+                "{refusal}"
+            );
+            assert!(
+                ArrowCastPlan::compile(
+                    source.field().unwrap(),
+                    &target,
+                    ArrowCastOptions::new().with_safe(safe)
+                )
+                .is_err(),
+                "a plan onto {} from {}",
+                target.dtype(),
+                source.field().unwrap().dtype()
+            );
+        }
+    }
+    let same = sides
+        .cast(
+            &Field::new("same", DataType::Side, false),
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+    assert_eq!(same.scalar(1).unwrap(), Scalar::Side(Side::Sell));
+    let codes = sides
+        .cast(
+            &Field::new("codes", DataType::Int32, false),
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+    assert_eq!(codes.scalar(1).unwrap(), Scalar::from(2_i32));
+}

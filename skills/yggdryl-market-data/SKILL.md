@@ -486,7 +486,7 @@ Read the one for the language you write; recipes appear in the same order in eac
 - `MarketData`, columns, Arrow row, views: https://platob.github.io/yggdryl/graph/market-data/
 - Candles, buckets and zones, the candle row: https://platob.github.io/yggdryl/graph/candle/
 - The book display, `yggdryl market serve`, the routes, the components: https://platob.github.io/yggdryl/graph/serve/
-- `Side`, `MarketDataKind`, `MarketDataType`, `TimeInForce` and `PluginSide`: https://platob.github.io/yggdryl/types/enum/
+- `Side`, `MarketDataKind`, `MarketDataType` and `TimeInForce`: https://platob.github.io/yggdryl/types/enum/
 - Sibling skills: `yggdryl-fix` (FIX captures into market data and books),
   `yggdryl-expressions` (the `Plan` a view is), `yggdryl-records` (persisting
   `marketdata` batches), `yggdryl-arrow` (`BatchReader`, casts),

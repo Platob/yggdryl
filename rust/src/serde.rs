@@ -594,8 +594,6 @@ enum DataTypeRef<'a> {
     MarketDataType {},
     #[serde(rename = "timeinforce")]
     TimeInForce {},
-    #[serde(rename = "pluginside")]
-    PluginSide {},
     Unit {},
     Ric {},
     Forex {},
@@ -761,7 +759,6 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::MarketDataKind => Self::MarketDataKind {},
             D::MarketDataType => Self::MarketDataType {},
             D::TimeInForce => Self::TimeInForce {},
-            D::PluginSide => Self::PluginSide {},
             D::Unit => Self::Unit {},
             D::Forex => Self::Forex {},
             D::Lei => Self::Lei {},
@@ -919,8 +916,6 @@ enum DataTypeWire {
     MarketDataType {},
     #[serde(rename = "timeinforce")]
     TimeInForce {},
-    #[serde(rename = "pluginside")]
-    PluginSide {},
     Unit {},
     Ric {},
     Forex {},
@@ -1069,7 +1064,6 @@ impl TryFrom<DataTypeWire> for DataType {
             DataTypeWire::MarketDataKind {} => Self::MarketDataKind,
             DataTypeWire::MarketDataType {} => Self::MarketDataType,
             DataTypeWire::TimeInForce {} => Self::TimeInForce,
-            DataTypeWire::PluginSide {} => Self::PluginSide,
             DataTypeWire::Unit {} => Self::Unit,
             DataTypeWire::Forex {} => Self::Forex,
             DataTypeWire::Lei {} => Self::Lei,
@@ -1218,7 +1212,6 @@ impl DataType {
             D::MarketDataKind => tag("marketdatakind"),
             D::MarketDataType => tag("marketdatatype"),
             D::TimeInForce => tag("timeinforce"),
-            D::PluginSide => tag("pluginside"),
             D::Unit => tag("unit"),
             D::Forex => tag("forex"),
             D::Lei => tag("lei"),
@@ -1495,7 +1488,6 @@ impl DataType {
             "marketdatakind" => Self::MarketDataKind,
             "marketdatatype" => Self::MarketDataType,
             "timeinforce" => Self::TimeInForce,
-            "pluginside" => Self::PluginSide,
             "unit" => Self::Unit,
             "forex" => Self::Forex,
             "lei" => Self::Lei,

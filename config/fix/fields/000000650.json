@@ -335,14 +335,14 @@
   {
     "name": "msgpluginside",
     "dtype": {
-      "type": "pluginside"
+      "type": "side"
     },
     "nullable": false,
     "metadata": {
       "FIX:codeset": "msgpluginsidecodeset",
       "FIX:datatype": "int",
       "FIX:tag": "65043",
-      "description": "The role of the FIX plugin whose session produced the message: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, and independent of Side(54).",
+      "description": "The role of the FIX plugin whose session produced the message, as a side: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, a column of its own beside Side(54), the order's side.",
       "display": "Message Plugin Side"
     }
   },

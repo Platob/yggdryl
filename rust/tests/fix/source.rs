@@ -1,7 +1,8 @@
 //! `rust/src/fix/source.rs`: one source a dictionary was built from - the
 //! entry a `FIX:sources` id names - its id grammar and its stored entry.
 
-use yggdryl::{Error, FixSource, PluginSide};
+use yggdryl::fix::plugin_side;
+use yggdryl::{Error, FixSource, Side};
 
 #[test]
 fn an_id_is_a_word_folded_to_ascii_lowercase() {
@@ -115,12 +116,12 @@ fn entries_order_by_id_then_by_file() {
 #[test]
 fn an_entry_states_the_role_of_its_plugin_and_absent_reads_as_none() {
     let bare = FixSource::new("venue").unwrap();
-    assert_eq!(bare.pluginside(), PluginSide::Unknown);
+    assert_eq!(bare.pluginside(), Side::Unknown);
     let sell = FixSource::new("venue")
         .unwrap()
         .with_file("Venue.cfb")
-        .with_pluginside(PluginSide::SellSide);
-    assert_eq!(sell.pluginside(), PluginSide::SellSide);
+        .with_pluginside(Side::Sell);
+    assert_eq!(sell.pluginside(), Side::Sell);
     assert_ne!(bare, sell);
     assert_eq!(
         yggdryl::into_json_scalar(&sell.into_scalar()).unwrap(),
@@ -128,25 +129,22 @@ fn an_entry_states_the_role_of_its_plugin_and_absent_reads_as_none() {
     );
     assert_eq!(FixSource::from_scalar(&sell.into_scalar()).unwrap(), sell);
     for (document, expected) in [
-        (
-            r#"{"id": "venue", "file": "Venue.cfb"}"#,
-            PluginSide::Unknown,
-        ),
+        (r#"{"id": "venue", "file": "Venue.cfb"}"#, Side::Unknown),
         (
             r#"{"id": "venue", "file": "Venue.cfb", "pluginside": "SELL"}"#,
-            PluginSide::SellSide,
+            Side::Sell,
         ),
         (
             r#"{"id": "venue", "file": "Venue.cfb", "pluginside": "buy-side"}"#,
-            PluginSide::BuySide,
+            Side::Buy,
         ),
         (
             r#"{"id": "venue", "file": "Venue.cfb", "pluginside": "uknw"}"#,
-            PluginSide::Unknown,
+            Side::Unknown,
         ),
         (
             r#"{"id": "venue", "file": "Venue.cfb", "pluginside": 2}"#,
-            PluginSide::SellSide,
+            Side::Sell,
         ),
     ] {
         let value = yggdryl::from_json_scalar(document).unwrap();
@@ -157,10 +155,10 @@ fn an_entry_states_the_role_of_its_plugin_and_absent_reads_as_none() {
     for (document, expected) in [
         (
             r#"{"id": "venue", "pluginside": "X"}"#,
-            "as a member - BUYS, SELL or UKNW - got \"X\"",
+            "as a side - a stored name such as BUYS, SELL or UKNW, a wire code or a name - got \"X\"",
         ),
         (r#"{"id": "venue", "pluginside": "UNKN"}"#, "got \"UNKN\""),
-        (r#"{"id": "venue", "pluginside": 7}"#, "got 7"),
+        (r#"{"id": "venue", "pluginside": 98}"#, "got 98"),
         (r#"{"id": "venue", "pluginside": -1}"#, "got -1"),
         (r#"{"id": "venue", "pluginside": null}"#, "got null"),
     ] {
@@ -179,21 +177,64 @@ fn an_entry_states_the_role_of_its_plugin_and_absent_reads_as_none() {
     }
     // The role orders an entry after its id and its file.
     let mut held = [
-        FixSource::new("a")
-            .unwrap()
-            .with_pluginside(PluginSide::SellSide),
+        FixSource::new("a").unwrap().with_pluginside(Side::Sell),
         FixSource::new("a").unwrap(),
-        FixSource::new("a")
-            .unwrap()
-            .with_pluginside(PluginSide::BuySide),
+        FixSource::new("a").unwrap().with_pluginside(Side::Buy),
     ];
     held.sort();
     assert_eq!(
         held.iter().map(FixSource::pluginside).collect::<Vec<_>>(),
-        [
-            PluginSide::Unknown,
-            PluginSide::BuySide,
-            PluginSide::SellSide
-        ]
+        [Side::Unknown, Side::Buy, Side::Sell]
     );
+}
+
+/// A CBlock's root `type` names the plugin's class, and the role is read
+/// off its last segment alone, folded as every name folds - case, `_`, `-`
+/// and blanks dropped: `BuySide` in it is `BUYS`, `SellSide` is `SELL`, and
+/// anything else - a package naming a side, a class naming neither, no
+/// attribute - is `UKNW`, never a refusal. The role is a side, so the names
+/// the role goes by read as sides everywhere a side is read.
+#[test]
+fn plugin_side_reads_the_role_off_the_last_segment_of_the_class() {
+    for (class, side) in [
+        (
+            "com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.BuySideFIXCPluginCBlock",
+            Side::Buy,
+        ),
+        (
+            "com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.SellSideFIXCPluginCBlock",
+            Side::Sell,
+        ),
+        ("BuySideFIXCPluginCBlock", Side::Buy),
+        ("SELLSIDEFIXCPLUGINCBLOCK", Side::Sell),
+        ("a.b.sellside", Side::Sell),
+        ("x.MyBuySidePlugin", Side::Buy),
+        // The fold every name in the crate reads by, not a lowercase alone.
+        ("x.Buy_Side_FIXCPluginCBlock", Side::Buy),
+        ("Sell-Side FIXCPluginCBlock", Side::Sell),
+        ("BUY SIDE", Side::Buy),
+        // Only the last segment names the role.
+        ("buyside.FIXCPluginCBlock", Side::Unknown),
+        ("com.x.cblock.FIXCPluginCBlock", Side::Unknown),
+        ("", Side::Unknown),
+        ("buy.side", Side::Unknown),
+    ] {
+        assert_eq!(plugin_side(class), side, "{class:?}");
+    }
+    for spelling in ["BuySide", "buy-side", "buy_side", "BUY SIDE", "buyside"] {
+        assert_eq!(Side::from_spelling(spelling), Some(Side::Buy), "{spelling}");
+    }
+    for spelling in [
+        "SellSide",
+        "sell-side",
+        "sell_side",
+        "SELL SIDE",
+        "sellside",
+    ] {
+        assert_eq!(
+            Side::from_spelling(spelling),
+            Some(Side::Sell),
+            "{spelling}"
+        );
+    }
 }

@@ -2533,7 +2533,7 @@ impl super::FixMsg {
         row: &crate::Scalar,
     ) -> Result<Self> {
         let value = schema.canonicalize_value(row.clone())?;
-        Self::rebuilt(registry, schema, &value, crate::PluginSide::Unknown)
+        Self::rebuilt(registry, schema, &value, crate::Side::Unknown)
     }
 
     /// [`Self::from_row`] for a row of a record column landed under
@@ -2549,7 +2549,7 @@ impl super::FixMsg {
         registry: Arc<FixRegistry>,
         schema: &Field,
         row: &crate::Scalar,
-        pluginside: crate::PluginSide,
+        pluginside: crate::Side,
     ) -> Result<Self> {
         Self::rebuilt(registry, schema, row, pluginside)
     }
@@ -2560,7 +2560,7 @@ impl super::FixMsg {
         registry: Arc<FixRegistry>,
         schema: &Field,
         value: &crate::Scalar,
-        pluginside: crate::PluginSide,
+        pluginside: crate::Side,
     ) -> Result<Self> {
         let plan = column_plan_of(schema, &registry)?;
         let mut members: Vec<Field> = Vec::with_capacity(schema.fields().len());

@@ -76,7 +76,7 @@ use crate::isin_registry::IsinTable;
 use crate::logging::warning::warned;
 use crate::mime_type::line;
 use crate::text::{TextBytes, TextEntries, TextEntry, TextLine, TextOptions};
-use crate::{Error, Field, IsinRegistry, PluginSide, Result, Scalar, Version};
+use crate::{Error, Field, IsinRegistry, Result, Scalar, Side, Version};
 
 use super::build::{BEGINSTRING_COLUMN, Builder, Fill, FixPair, RowExtras, root_name, version_of};
 use super::{FixMessages, FixMsg, FixRegistry};
@@ -489,7 +489,7 @@ pub struct FixCodec {
     source: Option<SmolStr>,
     /// The role of that source's plugin, stamped on every message built:
     /// the entry's, and `UKNW` where no source was named.
-    pluginside: PluginSide,
+    pluginside: Side,
     /// The message types this run reads, resolved to their wire codes, and
     /// the ones it refuses. Empty inclusions read every type the exclusions
     /// leave; `exclude_stated` remembers whether the refusals are this
@@ -706,7 +706,7 @@ impl FixCodec {
             direction,
             msgdirection: Arc::new(msgdirection),
             source: None,
-            pluginside: PluginSide::Unknown,
+            pluginside: Side::Unknown,
             include_msgtypes: Arc::from([]),
             exclude_msgtypes: DEFAULT_REFUSED_MSGTYPES
                 .iter()
@@ -1239,7 +1239,7 @@ impl FixCodec {
     /// The role of the source's plugin every message this run builds is
     /// stamped with: the entry's under [`Self::with_source`], `UKNW` under
     /// none.
-    pub(super) const fn pluginside(&self) -> PluginSide {
+    pub(super) const fn pluginside(&self) -> Side {
         self.pluginside
     }
 

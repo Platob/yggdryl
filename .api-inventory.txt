@@ -220,7 +220,7 @@ pub struct ValueStream  (Iterator<Item = Vec<u8>> + FusedIterator: one chunk per
 
 ### yggdryl::root::datatype_id  [rust/src/datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 97] = [all exact datatype identifiers in canonical declaration order, including Lei, Bic, Elf, Dti, Fisn at 0x6b..=0x6f, Figi, Decimal, BigDecimal, Ric at 0x7e and Forex at 0x7f, and ending State, MarketDataKind, Side, MarketDataType, TimeInForce, PluginSide at 0xc1..=0xc6];  (every discriminant is explicit; values are partitioned by DataTypeKind rather than declaration position; 0x75, 0x76 and 0x77 - side, state and timeinforce while each was a code - are retired and never reused; the code family took the text family's never-used tail 0x6a..=0x6f, so Text is 0x50..=0x69 and Code 0x6a..=0x7f)
+  pub const ALL: [Self; 96] = [all exact datatype identifiers in canonical declaration order, including Lei, Bic, Elf, Dti, Fisn at 0x6b..=0x6f, Figi, Decimal, BigDecimal, Ric at 0x7e and Forex at 0x7f, and ending State, MarketDataKind, Side, MarketDataType, TimeInForce at 0xc1..=0xc5];  (every discriminant is explicit; values are partitioned by DataTypeKind rather than declaration position; 0x75, 0x76 and 0x77 - side, state and timeinforce while each was a code - and 0xc6 - pluginside, until the plugin's role became a side - are retired and never reused; the code family took the text family's never-used tail 0x6a..=0x6f, so Text is 0x50..=0x69 and Code 0x6a..=0x7f)
   pub fn from_str(value: &str) -> Result<Self>  (an identifier's as_str name or one of its LEGACY_NAMES, ignoring case)
   pub const fn as_str(self) -> &'static str  (the serie family spells serie, serie_view, fixed_size_serie, large_serie, large_serie_view)
   pub const LEGACY_NAMES: [(&'static str, Self); 5]  (the names the serie family had before it took its own - list, list_view, fixed_size_list, large_list, large_list_view - read by every door that reads a datatype's name, written by none)
@@ -246,7 +246,7 @@ pub enum DataTypeId
 
 ### yggdryl::root::datatype_kind  [rust/src/datatype_kind.rs]
 pub enum DataTypeKind
-  pub const ALL: [Self; 13] = [ Self::Null, Self::Boolean, Self::Integer, Self::Floating, Self::Decimal, Self::Temporal, Self::Text, Self::Code, Self::Enum, Self::Bytes, Self::Nested, Self::Geospatial, Self::Uuid, ];  (Enum, `0xc0`-`0xcf`: a closed vocabulary stored as the unsigned code of its member, `uint8` or `uint16` by the leaf - `state`, `marketdatakind`, `side`, `marketdatatype`, `timeinforce`, `pluginside`)
+  pub const ALL: [Self; 13] = [ Self::Null, Self::Boolean, Self::Integer, Self::Floating, Self::Decimal, Self::Temporal, Self::Text, Self::Code, Self::Enum, Self::Bytes, Self::Nested, Self::Geospatial, Self::Uuid, ];  (Enum, `0xc0`-`0xcf`: a closed vocabulary stored as the unsigned code of its member, `uint8` or `uint16` by the leaf - `state`, `marketdatakind`, `side`, `marketdatatype`, `timeinforce`)
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn id(self) -> u8  (the family's own number, the start of the range its leaves take and a placeholder no leaf takes - but the null family's, whose one leaf is the null itself)
@@ -762,7 +762,7 @@ pub const CRATE_TAG_MAX: i32 = 65_100;  (one past the block; the crate defines 5
 pub const CURRUNIX_TAG_NAME: (i32, &str) = (65_007, "currunix");  (non-null nanosecond UTC clock: when the event happened - a stated `currunix`, else the official transaction clock standing within the codec's official_time_delay_ms of `SendingTime(52)`, else that `SendingTime`)
 pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_045, "msgctxid");  (the message context a bridge handled the line in; a capture fact, held by `FixCapture`)
 pub const MSGPLUGINID_TAG_NAME: (i32, &str) = (65_042, "msgpluginid");  (display `Message Plugin ID`: the plugin that logged the line, stated by a row's own `msgpluginid` capture or column and never derived; selects nothing)
-pub const MSGPLUGINSIDE_TAG_NAME: (i32, &str) = (65_043, "msgpluginside");  (required `pluginside`, display `Message Plugin Side`: the codec source's role, `UKNW` where no role is known)
+pub const MSGPLUGINSIDE_TAG_NAME: (i32, &str) = (65_043, "msgpluginside");  (required `side`, display `Message Plugin Side`: the codec source's role as a side, `UKNW` where no role is known)
 pub const CURRHASHCODE_TAG_NAME: (i32, &str) = (65_004, "currhashcode");  (non-null uint64: the XXH3-64 of what the event states, the text, the metadata, the lifted FIX fields and the named content of the row - every field but the standard header and trailer)
 pub const CROSSHASHCODE_TAG_NAME: (i32, &str) = (65_005, "crosshashcode");  (non-null uint64: the XXH3-64 of the stored cross code - `{kind}:{side}:{base}` - zero where the event names none)
 pub const PREVUNIX_TAG_NAME: (i32, &str) = (65_011, "prevunix");  (nullable clock: when the event this one follows happened)
@@ -838,7 +838,7 @@ pub struct FixHeader  (the standard header and trailer facts a message holds typ
   impl Clone, Debug, PartialEq, Eq for FixHeader
 pub struct FixCapture  (what a bridge's own row header stated about the line it wrote, typed and read off the line's own bytes - the plugin, the role of its dialect's plugin, message context and session instance: capture facts outside the entries and wire. Where message type, session, context and sequence are stated, `msgsesseventid` is the four joined by `:`; that derived capture key is excluded from the FIX content identity. What a reader said about the line is carried rather than stated; no public constructor)
   pub fn msgpluginid(&self) -> Option<&str>
-  pub const fn msgpluginside(&self) -> PluginSide  (the role of the FIX plugin whose session produced the message - `BUYS`, `SELL`, or `UKNW` where the codec read under no source or one stating no role; never absent, the codec's stamp at build, a row cell's word over it)
+  pub const fn msgpluginside(&self) -> Side  (the role of the FIX plugin whose session produced the message, as a side - `BUYS`, `SELL`, or `UKNW` where the codec read under no source or one stating no role; never absent, the codec's stamp at build, a row cell's word over it)
   pub fn msgctxid(&self) -> Option<&str>
   pub fn msgsessionid(&self) -> Option<&str>
   pub fn msgoriginator(&self) -> Option<&str>  (the plugin a bridge's log line names the message as coming through)
@@ -1079,13 +1079,14 @@ pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>>  (each column's tag, 
 pub struct FixSource  (re-exported at the crate root; one source a dictionary was built from - the entry a FIX:sources id names - its id folded to ASCII lowercase, the file it was read from where one is known and the role of its plugin (`UKNW` where none is known); the id grammar is this file's, read by every door an id crosses)
   pub fn new(id: &str) -> Result<Self>  (the id folded; refuses an empty id or one holding a quote, a backslash or a control character, naming FIX:sources)
   pub fn with_file(self, file: impl Into<SmolStr>) -> Self
-  pub const fn with_pluginside(self, pluginside: PluginSide) -> Self
+  pub const fn with_pluginside(self, pluginside: Side) -> Self
   pub fn id(&self) -> &str
   pub fn file(&self) -> Option<&str>
-  pub const fn pluginside(&self) -> PluginSide  (`BUYS`, `SELL`, or `UKNW` where the source states none)
+  pub const fn pluginside(&self) -> Side  (the plugin's role as a side: `BUYS`, `SELL`, or `UKNW` where the source states none)
   pub fn into_scalar(&self) -> Scalar  (the stored entry `{"id": .., "file": .., "pluginside": ..}`, the file left out where none is known, the plugin side always stated)
-  pub fn from_scalar(value: &Scalar) -> Result<Self>  (Error::InvalidRecord for anything but an object stating a text id, at most a text file and at most a `pluginside` naming a member - absent reads `UKNW` - the refusal naming the id; the id grammar's refusal for an id that is none)
+  pub fn from_scalar(value: &Scalar) -> Result<Self>  (Error::InvalidRecord for anything but an object stating a text id, at most a text file and at most a `pluginside` naming a side - a stored name, a wire code or a name, `BuySide` and `SellSide` among them; absent reads `UKNW` - the refusal naming the id; the id grammar's refusal for an id that is none)
   impl Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd for FixSource  (by id, then by file, then by plugin side)
+pub fn plugin_side(class: &str) -> Side  (re-exported at the crate root; the side a CBlock root's `type` attribute names: the last `.`-segment of the class, folded, holding `buyside` is `Side::Buy`, holding `sellside` is `Side::Sell`, anything else - a package naming a role, no attribute - is `Side::Unknown`; never refuses)
 
 ### yggdryl::fix::store  [rust/src/fix/store.rs]
 impl FixRegistry
@@ -5606,7 +5607,7 @@ pub trait EnumRepr: ArrowNativeType + Copy + Default + Into<u16> + Into<i64> + T
   const ARROW: arrow_schema::DataType  (`UInt8` or `UInt16`)
   const BYTES: usize  (the bytes one stored code takes)
   macro_rules! enum_leaf  (crate-private: one Enum-family leaf from its member table - repr, variant, code, stored name, description - with ALL, code, as_str, description, from_code, from_name, read, read_code, Display and Serialize as the name, Deserialize from a code or a spelling, Value, EnumValue, From<E> for Scalar and for its repr, TryFrom<repr>; each leaf writes its own from_spelling)
-  pub const fn is_enum(&self) -> bool  (on DataType: DataTypeKind::Enum.contains(self.id()) - state, marketdatakind, side, marketdatatype, timeinforce, pluginside)
+  pub const fn is_enum(&self) -> bool  (on DataType: DataTypeKind::Enum.contains(self.id()) - state, marketdatakind, side, marketdatatype, timeinforce)
   pub enum EnumType  (#[non_exhaustive]; Dictionary(Arc<DictionaryType>))
   pub fn key(&self) -> &DataType
   pub fn value(&self) -> &DataType
@@ -6477,7 +6478,7 @@ pub trait CodeValue: Value  (implemented by the seventeen registered codes)
   fn rank(&self) -> u8  (provided as MAX_RANK: how real this value is, from zero to MAX_RANK - `new` admits the shape, and what the shape leaves open is this reading: an Isin closing under a listed prefix 2, closing or listed 1, neither 0; a Cusip, Sedol, Figi, Lei or Dti 1 where it closes; a Country 1 where ISO 3166 lists it; a Bic 1 where its country is listed or SWIFT's `XK`; a Ccy `XXX`, a Mic `XXXX` and an empty Unit 0; a Cfi unclassified 0, classified 1, detailed 2; every other code 1)
   fn is_real(&self) -> bool  (provided: `rank() == MAX_RANK`)
   fn merge_with(self, other: &Self) -> Self  (provided: the better statement of two codes of one kind - the other where it outranks this one, else this one, so a real value replaces a placeholder, a masked number or a typo whatever the order and two of one rank keep the one that leads; a Cfi folds further, filling every `X` from the other where the two describe one instrument, and keeping this code across another category or group or a contradicted attribute)
-pub trait EnumValue: Value + Copy + Default  (implemented by the Enum-family leaves State, MarketDataKind, Side, MarketDataType, TimeInForce and PluginSide through `enum_leaf!`: a closed set of members, each stored as its unsigned code at the width of its `Repr`)
+pub trait EnumValue: Value + Copy + Default  (implemented by the Enum-family leaves State, MarketDataKind, Side, MarketDataType and TimeInForce through `enum_leaf!`: a closed set of members, each stored as its unsigned code at the width of its `Repr`)
   const ALL: &'static [Self]
   const KIND: &'static str  (the datatype's name and the refusal word)
   const EXTENSION_NAME: &'static str
@@ -7333,7 +7334,7 @@ impl Record<'_>
   pub const fn merge_with(self, other: Self) -> Self  (Unknown takes the other; anything stated stands)
   pub fn read(spelling: &str) -> Result<Self>  (`from_spelling` as a refusal naming the spelling, kind "side")
   pub fn read_code(code: i64) -> Result<Self>  (`from_code` as a refusal naming the code)
-  pub fn from_spelling(spelling: &str) -> Option<Self>  (the stored code, a `Side(54)` wire code unfolded, or the specification's name folded - and the name a member was stored under before its code (`BUY`, `SSHORT`), read and never written; a stored integer code is never text)
+  pub fn from_spelling(spelling: &str) -> Option<Self>  (the stored code, a `Side(54)` wire code unfolded, or the specification's name folded - the name a member was stored under before its code (`BUY`, `SSHORT`), read and never written, and the two roles a FIX plugin plays, `BuySide` and `SellSide`, which are the sides they name; a stored integer code is never text)
   impl Value, EnumValue<Repr = u8> for Side; From<Side> for Scalar; From<Side> for u8; TryFrom<u8> for Side
   pub type SideField = FieldOf<SideType>;
 
@@ -7423,23 +7424,6 @@ impl Record<'_>
   (extension `yggdryl.timeinforce` over Arrow UInt8, crate-private; a foreign storage under the name imports as that storage)
   pub const fn timeinforce() -> Self  (on DataType)
   pub type TimeInForceField = FieldOf<TimeInForceType>;
-
-### yggdryl::pluginside  [rust/src/pluginside.rs]
-  pub enum PluginSide  (#[non_exhaustive]; the role of a FIX plugin - the side of the session a dialect's plugin stands on - as an Enum-family leaf through `enum_leaf!`, `DataTypeId::PluginSide = 0xc6`, stored as the `uint8` code of its member under `yggdryl.pluginside` over Arrow UInt8; three members, `Unknown = 0` (`UKNW`, no role found or one no member names), `BuySide = 1` (`BUYS`, originates orders and cancels and receives execution reports), `SellSide = 2` (`SELL`, receives orders and cancels and answers with execution reports); Copy, Default (Unknown), total Ord by code; `PluginSideType` marks its field; a separate enum from `Side` though `BUYS` and `SELL` are spelled alike - never shared, never cast one into the other)
-  pub const ALL: &'static [Self]  (every member in code order)
-  pub const fn code(self) -> u8
-  pub const fn as_str(self) -> &'static str  (the stored name: `SELL`)
-  pub const fn description(self) -> &'static str
-  pub const fn from_code(code: u8) -> Option<Self>
-  pub fn from_name(name: &str) -> Option<Self>  (the stored name exactly)
-  pub fn read(spelling: &str) -> Result<Self>  (`from_spelling` as a refusal naming the spelling, kind "pluginside")
-  pub fn read_code(code: i64) -> Result<Self>
-  pub fn from_spelling(spelling: &str) -> Option<Self>  (the stored name in any case, or the role's own name folded - `BuySide`, `buy-side`, `buy_side`, `SELL SIDE`; a stored code is an integer, never text)
-  pub fn from_plugin_type(class: &str) -> Self  (the role a CBlock's root `type` attribute names: the last `.`-segment of the class, folded, holding `buyside` is `BuySide`, holding `sellside` is `SellSide`, anything else - a package naming a role, no attribute - is `Unknown`; never refuses)
-  impl Value, EnumValue<Repr = u8> for PluginSide; From<PluginSide> for Scalar; From<PluginSide> for u8; TryFrom<u8> for PluginSide
-  (extension `yggdryl.pluginside` over Arrow UInt8, crate-private; a foreign storage under the name imports as that storage)
-  pub const fn pluginside() -> Self  (on DataType)
-  pub type PluginSideField = FieldOf<PluginSideType>;
 
 ### yggdryl::unit  [rust/src/unit.rs]
   pub struct Unit(SmolStr)  (one validated code; `UnitType` marks its field, `UnitField` is `FieldOf<UnitType>`)
@@ -7627,7 +7611,6 @@ pub struct CountryType  // and CcyType, MicType, CfiType, IsinType, CusipType, S
   pub type FigiField = FieldOf<FigiType>;
   pub type SideField = FieldOf<SideType>;
   pub type TimeInForceField = FieldOf<TimeInForceType>;
-  pub type PluginSideField = FieldOf<PluginSideType>;
 impl Field
   pub fn string_enum(&self) -> Result<Option<StringEnum>>
   pub fn set_string_enum(&mut self, value: &StringEnum) -> Result<()>  (refused unless the datatype is a fixed US-ASCII string of at most sixteen bytes or a code)

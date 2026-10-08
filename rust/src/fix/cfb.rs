@@ -364,7 +364,7 @@ use quick_xml::events::{BytesStart, Event};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
-use crate::{Charset, DataType, Error, Field, IOBase, PluginSide, Result, StructType, Url};
+use crate::{Charset, DataType, Error, Field, IOBase, Result, Side, StructType, Url};
 
 use super::catalog::{catalog_name, push_member};
 use super::codes::{FixCodes, claims, is_sentinel, names_collide};
@@ -631,7 +631,7 @@ struct Parse<'doc> {
     /// `BuySideFIXCPluginCBlock` or `SellSideFIXCPluginCBlock` - which the
     /// dialect's catalog entry states; `UKNW` until the root is read, and
     /// where it names neither.
-    pluginside: PluginSide,
+    pluginside: Side,
     /// The vocabulary in declaration order, and where each tag sits in it.
     ///
     /// Indexed rather than scanned: a binding resolves every constraint it
@@ -752,7 +752,7 @@ impl<'doc> Parse<'doc> {
             reader,
             bytes,
             source,
-            pluginside: PluginSide::Unknown,
+            pluginside: Side::Unknown,
             vocabulary: Vec::new(),
             positions: std::collections::HashMap::new(),
             msgtypes: Vec::new(),
@@ -1049,9 +1049,7 @@ impl<'doc> Parse<'doc> {
                     if is_named(&element, b"cplugin-configuration") {
                         self.pluginside = self
                             .attribute(&element, "type")
-                            .map_or(PluginSide::Unknown, |class| {
-                                PluginSide::from_plugin_type(&class)
-                            });
+                            .map_or(Side::Unknown, |class| super::plugin_side(&class));
                     } else if is_named(&element, b"vocabulary") {
                         self.read_vocabulary()?;
                     } else if is_named(&element, b"grammar-binding") {

@@ -11,8 +11,8 @@
 fn logical_enum_predicates_keep_native_rows_as_arrow_filters_do() {
     use yggdryl::expression::Filter;
     use yggdryl::{
-        DataType, Field, MarketDataKind, MarketDataType, PluginSide, Scalar, Serie, Side, State,
-        StructType, TimeInForce,
+        DataType, Field, MarketDataKind, MarketDataType, Scalar, Serie, Side, State, StructType,
+        TimeInForce,
     };
 
     let members = [
@@ -29,10 +29,6 @@ fn logical_enum_predicates_keep_native_rows_as_arrow_filters_do() {
         (
             Scalar::from(TimeInForce::ALL[0]),
             Scalar::from(TimeInForce::ALL[1]),
-        ),
-        (
-            Scalar::from(PluginSide::ALL[0]),
-            Scalar::from(PluginSide::ALL[1]),
         ),
     ];
     for (first, second) in members {

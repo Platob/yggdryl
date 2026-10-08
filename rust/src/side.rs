@@ -234,8 +234,9 @@ static SIDE_CODES: &[(&str, Side)] = &[
 ];
 
 /// Every name that reaches a side, folded: the four-letter codes, the
-/// specification's names, and the names the members were stored under
-/// before their codes, read and never written.
+/// specification's names, the names the members were stored under
+/// before their codes, read and never written, and the two roles a FIX
+/// plugin plays - `BuySide`, `SellSide` - which are the sides they name.
 static SIDE_NAMES: &[(&str, Side)] = &[
     ("asdef", Side::AsDef),
     ("asdefined", Side::AsDef),
@@ -247,6 +248,7 @@ static SIDE_NAMES: &[(&str, Side)] = &[
     ("buym", Side::BuyMinus),
     ("buyminus", Side::BuyMinus),
     ("buys", Side::Buy),
+    ("buyside", Side::Buy),
     ("cros", Side::Cross),
     ("cross", Side::Cross),
     ("crossshort", Side::CrossSh),
@@ -263,6 +265,7 @@ static SIDE_NAMES: &[(&str, Side)] = &[
     ("selp", Side::SellPlus),
     ("sell", Side::Sell),
     ("sellplus", Side::SellPlus),
+    ("sellside", Side::Sell),
     ("sellshort", Side::SShort),
     ("sellshortexempt", Side::SShortEx),
     ("sellund", Side::SellUnd),

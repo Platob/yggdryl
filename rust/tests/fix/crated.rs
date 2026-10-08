@@ -967,12 +967,12 @@ fn origccy_is_a_held_market_column_after_the_currency() {
 }
 
 /// The plugin's role is one crate field right after the plugin that logged
-/// the line: required, typed as the `pluginside` enum, reading by the
+/// the line: required, typed as the `side` enum, reading by the
 /// intrinsic set, a column of the fixed row's message band, and a column
 /// no FIX tag is read into - the codec stamps it from its source.
 #[test]
 fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_intrinsic_set() {
-    use yggdryl::{DataType, PluginSide, Scalar};
+    use yggdryl::{DataType, Scalar, Side};
 
     assert_eq!(yggdryl::MSGPLUGINSIDE_TAG_NAME, (65_043, "msgpluginside"));
     assert_eq!(yggdryl::MSGPLUGINID_TAG_NAME, (65_042, "msgpluginid"));
@@ -991,7 +991,7 @@ fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_int
     assert_eq!(held[at - 1].name(), "msgpluginid");
     assert_eq!(held[at + 1].name(), "msgoriginator");
     let field = &held[at];
-    assert_eq!(field.dtype(), &DataType::PluginSide);
+    assert_eq!(field.dtype(), &DataType::Side);
     assert!(!field.is_nullable(), "every row states it");
     assert_eq!(field.display(), Some("Message Plugin Side"));
     assert_eq!(field.as_fix().codeset(), Some("msgpluginsidecodeset"));
@@ -1003,10 +1003,7 @@ fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_int
         "{:?}",
         field.description()
     );
-    assert_eq!(
-        field.scalar("sell-side").unwrap(),
-        Scalar::PluginSide(PluginSide::SellSide)
-    );
+    assert_eq!(field.scalar("sell-side").unwrap(), Scalar::Side(Side::Sell));
     assert!(field.scalar(Scalar::Null).is_err(), "required");
 
     // The fixed row states it in the message band, right after the plugin
@@ -1021,7 +1018,7 @@ fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_int
     assert_eq!(columns[column - 1], "msgpluginid");
     assert_eq!(columns[column + 1], "msgoriginator");
     assert!(!schema.fields()[column].is_nullable());
-    assert_eq!(schema.fields()[column].dtype(), &DataType::PluginSide);
+    assert_eq!(schema.fields()[column].dtype(), &DataType::Side);
     let tags = yggdryl::fix_schema_tags();
     let tag = tags.iter().position(|tag| *tag == 65_043).expect("the tag");
     assert_eq!(tags[tag - 1], 65_042);
@@ -1038,6 +1035,6 @@ fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_int
             .expect("the intrinsic set")
             .codes()
             .count(),
-        PluginSide::ALL.len()
+        Side::ALL.len()
     );
 }

@@ -500,10 +500,10 @@ fn messages_without_residual_entries_are_charged_and_rebuilt_by_their_columns() 
 /// the row's word over the codec's, a codec told no source included.
 #[test]
 fn the_row_door_stamps_the_codecs_plugin_role_where_the_row_states_none() {
-    use yggdryl::{FixSource, PluginSide};
+    use yggdryl::{FixSource, Side};
 
     let mut registry = registry().as_ref().clone();
-    for (id, side) in [("buy", PluginSide::BuySide), ("sell", PluginSide::SellSide)] {
+    for (id, side) in [("buy", Side::Buy), ("sell", Side::Sell)] {
         assert!(registry.add_source(FixSource::new(id).unwrap().with_pluginside(side)));
     }
     let registry = Arc::new(registry);
@@ -527,10 +527,7 @@ fn the_row_door_stamps_the_codecs_plugin_role_where_the_row_states_none() {
         .collect();
     let projected = whole.project(&kept).unwrap();
     let stating_none = || yggdryl::arrow::batch_reader(projected.schema(), [projected.clone()]);
-    for (source, stamped) in [
-        (Some("sell"), PluginSide::SellSide),
-        (None, PluginSide::Unknown),
-    ] {
+    for (source, stamped) in [(Some("sell"), Side::Sell), (None, Side::Unknown)] {
         let mut codec = super::fixed_codec(Arc::clone(&registry));
         if let Some(id) = source {
             codec = codec.with_source(id).unwrap();
@@ -544,7 +541,7 @@ fn the_row_door_stamps_the_codecs_plugin_role_where_the_row_states_none() {
         let carried = read(carrying());
         assert_eq!(carried.len(), 2);
         for message in &carried {
-            assert_eq!(message.msgpluginside(), PluginSide::BuySide, "{source:?}");
+            assert_eq!(message.msgpluginside(), Side::Buy, "{source:?}");
         }
         let rebuilt = read(stating_none());
         assert_eq!(rebuilt.len(), 2);
@@ -3516,25 +3513,16 @@ fn a_bridge_lines_thread_and_level_ride_its_fix_row_and_fill_nothing() {
 /// out carries the cell, and a codec told no source stamps `UKNW`.
 #[test]
 fn the_arrow_batch_door_stamps_the_codecs_plugin_role_on_every_message() {
-    use yggdryl::{FixSource, MSGPLUGINSIDE_TAG_NAME, PluginSide};
+    use yggdryl::{FixSource, MSGPLUGINSIDE_TAG_NAME, Side};
 
     let mut registry = registry().as_ref().clone();
-    assert!(
-        registry.add_source(
-            FixSource::new("ms")
-                .unwrap()
-                .with_pluginside(PluginSide::SellSide)
-        )
-    );
+    assert!(registry.add_source(FixSource::new("ms").unwrap().with_pluginside(Side::Sell)));
     let registry = Arc::new(registry);
     let lines = [
         "8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|52=20240102-10:15:30|10=0|",
         "8=FIX.4.4|35=D|11=B|55=AAPL|54=2|38=5|40=2|44=100|52=20240102-10:15:31|10=0|",
     ];
-    for (source, side) in [
-        (Some("MS"), PluginSide::SellSide),
-        (None, PluginSide::Unknown),
-    ] {
+    for (source, side) in [(Some("MS"), Side::Sell), (None, Side::Unknown)] {
         let mut codec = super::fixed_codec(Arc::clone(&registry));
         if let Some(id) = source {
             codec = codec.with_source(id).expect("a held source");
@@ -3549,7 +3537,7 @@ fn the_arrow_batch_door_stamps_the_codecs_plugin_role_on_every_message() {
             assert_eq!(message.msgpluginside(), side, "{source:?}");
             assert_eq!(
                 message.get_by_tag(MSGPLUGINSIDE_TAG_NAME.0),
-                Some(Scalar::PluginSide(side))
+                Some(Scalar::Side(side))
             );
         }
         let parsed = batches(

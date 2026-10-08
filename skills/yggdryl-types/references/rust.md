@@ -446,9 +446,9 @@ assert_eq!(entry.eusipacode(), Some(constant));
 
 ## Enums: side, marketdatakind, state, timeinforce
 
-`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` and
-`pluginside` are the `enum` family: each member is a code in a column - `uint8`
-for `side`, `marketdatakind`, `timeinforce` and `pluginside`, `uint16` for
+`side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
+`enum` family: each member is a code in a column - `uint8` for `side`,
+`marketdatakind` and `timeinforce`, `uint16` for
 `state` and `marketdatatype`,
 `code()` answering that width - and its stored name in text, read from every spelling
 its vocabulary has. A side is never absent - `UKNW` (code 0) is unstated. A side's name is a four-letter code (`BUYS`, `SELL`,
@@ -456,7 +456,8 @@ its vocabulary has. A side is never absent - `UKNW` (code 0) is unstated. A side
 and never written.
 
 ```rust
-use yggdryl::{DataType, MarketDataKind, PluginSide, Scalar, Side, State, TimeInForce};
+use yggdryl::fix::plugin_side;
+use yggdryl::{DataType, MarketDataKind, Scalar, Side, State, TimeInForce};
 
 // A side reads its stored name, FIX's wire code or the specification's name.
 assert_eq!(Side::from_spelling("1"), Some(Side::Buy));
@@ -483,11 +484,10 @@ assert_eq!(TimeInForce::from_fix("Z"), TimeInForce::Other, "a venue's own value"
 assert_eq!((TimeInForce::GoodTillCancel.code(), TimeInForce::GoodTillCancel.fix_code()), (2, Some("1")));
 assert_eq!(DataType::timeinforce().scalar("IOC")?, Scalar::TimeInForce(TimeInForce::ImmediateOrCancel));
 
-// A FIX plugin's role, read off a CBlock's plugin class; no `Side`, though
-// `BUYS` and `SELL` are spelled alike.
-assert_eq!(PluginSide::from_plugin_type("x.SellSideFIXCPluginCBlock"), PluginSide::SellSide);
-assert_eq!(DataType::pluginside().scalar("buy-side")?, Scalar::PluginSide(PluginSide::BuySide));
-assert!(DataType::pluginside().scalar(Scalar::Side(Side::Buy)).is_err());
+// A FIX plugin's role is a side, read off a CBlock's plugin class; the
+// role's own name is one of the side's spellings.
+assert_eq!(plugin_side("x.SellSideFIXCPluginCBlock"), Side::Sell);
+assert_eq!(DataType::Side.scalar("buy-side")?, Scalar::Side(Side::Buy));
 ```
 
 ## Nested values: serie, map, union, dictionary

@@ -2865,51 +2865,35 @@ mod lenient {
     /// says nothing against it.
     #[test]
     fn the_catalog_takes_a_plugin_role_it_lacked_and_keeps_a_stated_one() {
-        use yggdryl::{FixSource, PluginSide};
+        use yggdryl::{FixSource, Side};
         let mut registry = FixRegistry::new();
         assert!(registry.add_source(FixSource::new("venue").unwrap()));
         assert_eq!(
             registry.get_source("venue").unwrap().pluginside(),
-            PluginSide::Unknown
+            Side::Unknown
         );
-        assert!(
-            !registry.add_source(
-                FixSource::new("VENUE")
-                    .unwrap()
-                    .with_pluginside(PluginSide::SellSide)
-            )
-        );
+        assert!(!registry.add_source(FixSource::new("VENUE").unwrap().with_pluginside(Side::Sell)));
         assert_eq!(
             registry.get_source("venue").unwrap().pluginside(),
-            PluginSide::SellSide,
+            Side::Sell,
             "a role the entry lacked is taken"
         );
-        assert!(
-            !registry.add_source(
-                FixSource::new("venue")
-                    .unwrap()
-                    .with_pluginside(PluginSide::BuySide)
-            )
-        );
+        assert!(!registry.add_source(FixSource::new("venue").unwrap().with_pluginside(Side::Buy)));
         assert_eq!(
             registry.get_source("venue").unwrap().pluginside(),
-            PluginSide::SellSide,
+            Side::Sell,
             "a stated role is kept over a disagreeing one"
         );
         assert!(!registry.add_source(FixSource::new("venue").unwrap()));
         assert_eq!(
             registry.get_source("venue").unwrap().pluginside(),
-            PluginSide::SellSide,
+            Side::Sell,
             "none stated says nothing"
         );
         // The fold of two registries unions the catalogs under the same
         // rule, so the role rides a merge.
         let mut other = FixRegistry::new();
-        other.add_source(
-            FixSource::new("desk")
-                .unwrap()
-                .with_pluginside(PluginSide::BuySide),
-        );
+        other.add_source(FixSource::new("desk").unwrap().with_pluginside(Side::Buy));
         other.add_source(FixSource::new("venue").unwrap());
         registry.merge_with(&other).unwrap();
         assert_eq!(
@@ -2917,10 +2901,7 @@ mod lenient {
                 .sources()
                 .map(|source| (source.id(), source.pluginside()))
                 .collect::<Vec<_>>(),
-            [
-                ("desk", PluginSide::BuySide),
-                ("venue", PluginSide::SellSide)
-            ]
+            [("desk", Side::Buy), ("venue", Side::Sell)]
         );
     }
 

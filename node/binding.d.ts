@@ -502,7 +502,6 @@ export type DataTypeId =
   | 'marketdatakind'
   | 'marketdatatype'
   | 'timeinforce'
-  | 'pluginside'
   | 'unit'
   | 'ric'
   | 'forex'
@@ -623,7 +622,6 @@ interface DataTypeKindById {
   marketdatakind: 'enum'
   marketdatatype: 'enum'
   timeinforce: 'enum'
-  pluginside: 'enum'
   unit: 'code'
   ric: 'code'
   forex: 'code'
@@ -1754,7 +1752,6 @@ export type FisnField = FieldOf<'fisn', string>
 /** FIX TimeInForce(59), how long an order stands, an enum stored as the `uint8` code of its member and crossing as the member's name. */
 export type TimeInForceField = FieldOf<'timeinforce', TimeInForceName>
 /** The role of a FIX plugin, an enum stored as the `uint8` code of its member and crossing as the member's name. */
-export type PluginSideField = FieldOf<'pluginside', PluginSideName>
 /** The unit a quantity is counted in, FIX UnitOfMeasure(996), ASCII held to thirty-two bytes. */
 export type UnitField = FieldOf<'unit', string>
 /** A Refinitiv Identification Code - a ticker and an exchange code - printable ASCII bounded at thirty-two bytes. */
@@ -2062,7 +2059,6 @@ export interface FieldsNamespace {
   marketdatakind(name: string, options?: FieldOptions): MarketDataKindField
   marketdatatype(name: string, options?: FieldOptions): MarketDataTypeField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
-  pluginside(name: string, options?: FieldOptions): PluginSideField
   unit(name: string, options?: FieldOptions): UnitField
   ric(name: string, options?: FieldOptions): RicField
   forex(name: string, options?: FieldOptions): ForexField
@@ -2719,13 +2715,6 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'timeinforce', TimeInForceName, N, O>
-  pluginside<
-    const N extends string,
-    const O extends FieldOptionsInput = undefined,
-  >(
-    name: N,
-    options?: O,
-  ): NamedField<'pluginside', PluginSideName, N, O>
   unit<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -3786,29 +3775,6 @@ export declare function timeInForceFromFix(wire: string): TimeInForceName
  */
 export declare function timeInForceFixCode(name: TimeInForceName): string | null
 
-/**
- * The role of a FIX plugin: the side of the session a dialect's plugin
- * stands on, each member's stored name under the `uint8` code a
- * `pluginside` column stores - `UKNW` at zero for a plugin stating no role,
- * then `BUYS` and `SELL`. A session fact read off a dialect's source entry,
- * never off a FIX tag, and a separate enum from `Side` though two names are
- * spelled alike.
- */
-export declare const PluginSide: Readonly<{
-  UKNW: 0
-  BUYS: 1
-  SELL: 2
-}>
-
-/** The stored name of one plugin side. */
-export type PluginSideName = keyof typeof PluginSide
-
-/**
- * The role one plugin class names: a `CBlock` root's `type`, whose last
- * `.`-separated segment, folded, holding `buyside` is `BUYS`, holding
- * `sellside` is `SELL`, and anything else `UKNW`. Never throws.
- */
-export declare function pluginSideFromPluginType(pluginType: string): PluginSideName
 
 /**
  * FIX's `Side(54)`: which side of the market a trade took, each member's

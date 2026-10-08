@@ -705,7 +705,7 @@ reader did instead.
 import pathlib
 import tempfile
 
-from yggdryl import PluginSide
+from yggdryl import Side
 from yggdryl.fix import FixRegistry
 
 cblock = """<?xml version="1.0" encoding="US-ASCII"?>
@@ -723,7 +723,7 @@ with tempfile.TemporaryDirectory() as directory:
     venue, roots = FixRegistry.from_cfb_file(folder / "alpha.cfb", "venue")
     assert venue.field(4).fix.sources == ["venue"] and roots == []
     # The catalog records the source once: its file and its plugin's role.
-    assert venue.sources() == [{"id": "venue", "file": "alpha.cfb", "pluginside": PluginSide.SELL}]
+    assert venue.sources() == [{"id": "venue", "file": "alpha.cfb", "pluginside": Side.SELL}]
 
     # A folder holds the .cfb files directly inside it, a glob what it matches.
     registry = FixRegistry()

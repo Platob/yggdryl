@@ -29,7 +29,7 @@ use yggdryl::{
     FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
     FixEntry as CoreFixEntry, FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMerge,
     FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, FixSource as CoreFixSource,
-    IOBase as CoreIOBase, IdType, MsgType as CoreMsgType, PluginSide, Scalar, StructType, TimeUnit,
+    IOBase as CoreIOBase, IdType, MsgType as CoreMsgType, Scalar, Side, StructType, TimeUnit,
     Timezone,
 };
 
@@ -116,7 +116,7 @@ fn entry_tuple<'py>(py: Python<'py>, entry: &CoreFixEntry) -> PyResult<Bound<'py
 
 /// One sources catalog entry as the record Python reads: `{"id", "file",
 /// "pluginside"}`, every key stated - `file` `None` where none is known, the
-/// role the `PluginSide` member - so one record reads like the next.
+/// role the `Side` member - so one record reads like the next.
 fn source_record<'py>(py: Python<'py>, source: &CoreFixSource) -> PyResult<Bound<'py, PyDict>> {
     let record = PyDict::new(py);
     record.set_item("id", source.id())?;
@@ -125,20 +125,30 @@ fn source_record<'py>(py: Python<'py>, source: &CoreFixSource) -> PyResult<Bound
     Ok(record)
 }
 
-/// The plugin role one Python value names: a `PluginSide` member, its code
-/// or a spelling, read through the datatype's own value door so a spelling
-/// the column refuses is refused here too.
-pub(crate) fn pluginside_from_py(given: &Bound<'_, PyAny>) -> PyResult<PluginSide> {
-    match CoreDataType::PluginSide
+/// The plugin role one Python value names: a `Side` member, its code or a
+/// spelling - `BuySide`, `sell-side`, `BUYS`, `2` - read through the
+/// datatype's own value door so a spelling the column refuses is refused
+/// here too.
+pub(crate) fn pluginside_from_py(given: &Bound<'_, PyAny>) -> PyResult<Side> {
+    match CoreDataType::Side
         .scalar(from_py(given)?)
-        .map_err(value_error)?
+        .map_err(|error| value_error(format!("pluginside: {error}")))?
     {
-        Scalar::PluginSide(side) => Ok(side),
+        Scalar::Side(side) => Ok(side),
         other => Err(value_error(format!(
-            "expected a PluginSide, got {}",
+            "expected a Side, got {}",
             other.kind()
         ))),
     }
+}
+
+/// The side one plugin class names: a `CBlock` root's `type`, whose last
+/// `.`-separated segment, folded, holding `buyside` is `Side.BUYS`,
+/// holding `sellside` is `Side.SELL`, and anything else `Side.UKNW`.
+/// Never raises.
+#[pyfunction]
+pub(crate) fn fix_plugin_side(py: Python<'_>, plugin_type: &str) -> PyResult<Py<PyAny>> {
+    member(py, yggdryl::fix::plugin_side(plugin_type))
 }
 
 /// An optional text as a `repr` spells it: `None`, or the quoted text.
@@ -1176,8 +1186,8 @@ impl PyFixRegistry {
 
     /// The sources catalog, in id order: one record per source this
     /// dictionary was built from - `{"id": "venue", "file": "venue.cfb",
-    /// "pluginside": PluginSide.SELL}` - `file` `None` where none is known
-    /// and `pluginside` always a `PluginSide` member, `UKNW` where the
+    /// "pluginside": Side.SELL}` - `file` `None` where none is known
+    /// and `pluginside` always a `Side` member, `UKNW` where the
     /// source states no role. A store writes it as `sources.json`.
     fn sources<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         self.inner
@@ -1200,7 +1210,7 @@ impl PyFixRegistry {
     /// `id` is held to the id grammar - non-empty, no quote, backslash or
     /// control character - and folded to ASCII lowercase; `file` is the file
     /// the source was read from, and `pluginside` its plugin's role, a
-    /// `PluginSide` member, its code or a spelling. An id already held keeps
+    /// `Side` member, its code or a spelling. An id already held keeps
     /// its entry and takes only what it lacked - a file where it stated
     /// none, a role where it stated `UKNW` - and a role disagreeing with a
     /// stated one keeps the held one, logged at warn. A field names its
@@ -2143,7 +2153,7 @@ impl PyFixMsg {
     }
 
     /// The role of the FIX plugin whose session produced the message, as
-    /// the `PluginSide` member - `BUYS`, `SELL`, or `UKNW` where none is
+    /// the `Side` member - `BUYS`, `SELL`, or `UKNW` where none is
     /// stated: the codec's source entry, a row-header capture or a row cell
     /// named `msgpluginside` being the row's word over it. Never a FIX
     /// tag's, and independent of `Side(54)`.
@@ -4117,7 +4127,7 @@ impl PyFixCapture {
         self.inner.msgpluginid()
     }
 
-    /// The role of that plugin, as the `PluginSide` member: the codec's
+    /// The role of that plugin, as the `Side` member: the codec's
     /// source entry's, a capture or a row cell named `msgpluginside` being
     /// the line's word over it, and `UKNW` where neither states one.
     #[getter]

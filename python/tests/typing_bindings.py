@@ -47,7 +47,6 @@ from yggdryl import (
     MimeType,
     Parameters,
     Plan,
-    PluginSide,
     ProtocolField,
     PythonMetadata,
     RecordOptions,
@@ -1495,10 +1494,10 @@ tif_wire: TimeInForce = TimeInForce.from_fix("1")
 tif_code: str | None = TimeInForce.GTC.fix_code
 tif_description: str = TimeInForce.GTC.description
 tif_field: yggdryl.TimeInForceField = yggdryl.timeinforce("tif", nullable=False)
-role_member: PluginSide | None = PluginSide.from_spelling("SellSide")
-role_from_type: PluginSide = PluginSide.from_plugin_type("x.BuySideFIXCPluginCBlock")
-role_description: str = PluginSide.SELL.description
-role_field: yggdryl.PluginSideField = yggdryl.pluginside("pluginside", nullable=False)
+role_member: Side | None = Side.from_spelling("SellSide")
+role_from_type: Side = yggdryl.fix.plugin_side("x.BuySideFIXCPluginCBlock")
+role_description: str = Side.SELL.description
+role_field: yggdryl.SideField = yggdryl.side("pluginside", nullable=False)
 fix_names: list[str] = fix_field.fix.names
 fix_field.fix.parents = ["ParentOrderID", "origorderid"]
 fix_parents: list[str] = fix_field.fix.parents
@@ -1547,15 +1546,15 @@ fix_registry_parent_sources: list[FixParentSource] = fix_registry.parent_sources
 fix_registry_parents: list[str] = fix_registry.parents_of("orderid")
 fix_registry_parent_of: tuple[str, int] | None = fix_registry.parent_of("origorderid")
 fix_registry_added_source: bool = fix_registry.add_source(
-    "venue", file="venue.cfb", pluginside=PluginSide.SELL
+    "venue", file="venue.cfb", pluginside=Side.SELL
 )
 fix_registry_sources: list[FixSource] = fix_registry.sources()
 fix_registry_source: FixSource | None = fix_registry.get_source("VENUE")
-fix_registry_source_side: PluginSide | None = (
+fix_registry_source_side: Side | None = (
     None if fix_registry_source is None else fix_registry_source["pluginside"]
 )
 fix_registry_removed_source: FixSource | None = fix_registry.remove_source("venue")
-assert fix_registry_added_source and fix_registry_source_side is PluginSide.SELL
+assert fix_registry_added_source and fix_registry_source_side is Side.SELL
 assert fix_parents == ["parentorderid", "origorderid"] and fix_registry_parents == ["parentorderid", "origorderid"]
 assert fix_registry_parent_of == ("orderid", 1) and isinstance(fix_registry_parent_sources, list)
 fix_registry_from_fields: fix.FixRegistry = fix.FixRegistry.from_fields([fix_field])
@@ -1631,7 +1630,7 @@ fix_message_header: fix.FixHeader = fix_message.header()
 fix_message_capture: fix.FixCapture = fix_message.capture()
 fix_message_text: str | None = fix_message.text
 fix_message_marketdatakind: MarketDataKind = fix_message.marketdatakind
-fix_message_msgpluginside: PluginSide = fix_message.msgpluginside
+fix_message_msgpluginside: Side = fix_message.msgpluginside
 fix_message_strikepx: Scalar | None = fix_message.strikepx
 fix_message_metadata: dict[str, str] = fix_message.metadata
 fix_message_curruuid: Scalar = fix_message.curruuid
@@ -1696,7 +1695,7 @@ fix_header_possdupflag: bool | None = fix_message_header.possdupflag
 fix_header_msgdirection: str | None = fix_message_header.msgdirection
 
 fix_capture_msgpluginid: str | None = fix_message_capture.msgpluginid
-fix_capture_msgpluginside: PluginSide = fix_message_capture.msgpluginside
+fix_capture_msgpluginside: Side = fix_message_capture.msgpluginside
 fix_capture_msgctxid: str | None = fix_message_capture.msgctxid
 fix_capture_msgsessionid: str | None = fix_message_capture.msgsessionid
 fix_capture_msgsesseventid: str | None = fix_message_capture.msgsesseventid

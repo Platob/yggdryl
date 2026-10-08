@@ -57,7 +57,6 @@ mod marketdatatype;
 mod media;
 mod mic;
 mod parameters;
-mod pluginside;
 mod properties;
 mod protocol;
 mod scalar;
@@ -612,8 +611,8 @@ fn register_expression(module: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 /// Register the member tables the enum-family classes are built from at
-/// import: `State`, `MarketDataKind`, `MarketDataType`, `Side`, `TimeInForce`
-/// and `PluginSide` - and the code readings `Country` and `Mic` redirect to.
+/// import: `State`, `MarketDataKind`, `MarketDataType`, `Side` and
+/// `TimeInForce` - and the code readings `Country` and `Mic` redirect to.
 fn register_enum_members(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(state::state_members, module)?)?;
     module.add_function(wrap_pyfunction!(state::state_from_spelling, module)?)?;
@@ -637,9 +636,6 @@ fn register_enum_members(module: &Bound<'_, PyModule>) -> PyResult<()> {
         wrap_pyfunction!(timeinforce::timeinforce_members, module)?,
         wrap_pyfunction!(timeinforce::timeinforce_from_spelling, module)?,
         wrap_pyfunction!(timeinforce::timeinforce_from_fix, module)?,
-        wrap_pyfunction!(pluginside::pluginside_members, module)?,
-        wrap_pyfunction!(pluginside::pluginside_from_spelling, module)?,
-        wrap_pyfunction!(pluginside::pluginside_from_plugin_type, module)?,
     ] {
         module.add_function(function)?;
     }
@@ -775,6 +771,7 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(coding::zlib_dumps_raw, module)?)?;
     module.add_function(wrap_pyfunction!(coding::zstd_loads, module)?)?;
     module.add_function(wrap_pyfunction!(coding::zstd_dumps, module)?)?;
+    module.add_function(wrap_pyfunction!(fix::fix_plugin_side, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema_carrying, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema_tags, module)?)?;

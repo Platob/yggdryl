@@ -350,11 +350,6 @@ from .timeinforce import (
     TimeInForceField as TimeInForceField,
     timeinforce as timeinforce,
 )
-from .pluginside import (
-    PluginSide as PluginSide,
-    PluginSideField as PluginSideField,
-    pluginside as pluginside,
-)
 from .side import (
     Side as Side,
     SideField as SideField,

@@ -14,7 +14,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::document::is_word;
 use super::field::SOURCES_KEY;
-use crate::{Error, PluginSide, Result, Scalar};
+use crate::code::folded_spelling;
+use crate::{Error, Result, Scalar, Side};
 
 /// What a source id is, spelled once for every refusal.
 const ID_SHAPE: &str = "a non-empty source id without a quote, a backslash or a control character";
@@ -22,6 +23,40 @@ const ID_SHAPE: &str = "a non-empty source id without a quote, a backslash or a 
 const ID: &str = "id";
 const FILE: &str = "file";
 const PLUGINSIDE: &str = "pluginside";
+
+/// The side one plugin class names: the last `.`-separated segment of a
+/// CBlock's root `type` attribute, folded the way every name in this crate
+/// folds - case, `_`, `-` and blanks dropped - holding `buyside` is
+/// [`Side::Buy`], one holding `sellside` is [`Side::Sell`], and any other -
+/// a class naming neither, or no attribute at all - is [`Side::Unknown`].
+/// Never refuses: a plugin whose role the name does not spell is a plugin
+/// of no stated role.
+///
+/// ```
+/// use yggdryl::Side;
+/// use yggdryl::fix::plugin_side;
+///
+/// let buy = "com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.BuySideFIXCPluginCBlock";
+/// assert_eq!(plugin_side(buy), Side::Buy);
+/// assert_eq!(plugin_side("SellSideFIXCPluginCBlock"), Side::Sell);
+/// assert_eq!(plugin_side("x.Buy_Side_FIXCPluginCBlock"), Side::Buy);
+/// assert_eq!(plugin_side("x.FIXCPluginCBlock"), Side::Unknown);
+/// // Only the last segment is read: a package naming a side names no role.
+/// assert_eq!(plugin_side("buyside.FIXCPluginCBlock"), Side::Unknown);
+/// assert_eq!(plugin_side(""), Side::Unknown);
+/// ```
+#[must_use]
+pub fn plugin_side(class: &str) -> Side {
+    let last = class.rsplit('.').next().unwrap_or(class);
+    let folded = folded_spelling(last);
+    if folded.contains("buyside") {
+        Side::Buy
+    } else if folded.contains("sellside") {
+        Side::Sell
+    } else {
+        Side::Unknown
+    }
+}
 
 /// The id `text` spells, folded to ASCII lowercase.
 ///
@@ -57,7 +92,7 @@ pub struct FixSource {
     pub(super) file: Option<SmolStr>,
     /// The role of the source's plugin - a CBlock's root `type` names
     /// it - `UKNW` where the source states none.
-    pub(super) pluginside: PluginSide,
+    pub(super) pluginside: Side,
 }
 
 impl FixSource {
@@ -71,7 +106,7 @@ impl FixSource {
         Ok(Self {
             id: source_id(id)?,
             file: None,
-            pluginside: PluginSide::Unknown,
+            pluginside: Side::Unknown,
         })
     }
 
@@ -84,7 +119,7 @@ impl FixSource {
 
     /// This entry stating the role of its plugin.
     #[must_use]
-    pub const fn with_pluginside(mut self, pluginside: PluginSide) -> Self {
+    pub const fn with_pluginside(mut self, pluginside: Side) -> Self {
         self.pluginside = pluginside;
         self
     }
@@ -104,7 +139,7 @@ impl FixSource {
     /// The role of the source's plugin: `BUYS`, `SELL`, or `UKNW` where
     /// the source states none.
     #[must_use]
-    pub const fn pluginside(&self) -> PluginSide {
+    pub const fn pluginside(&self) -> Side {
         self.pluginside
     }
 
@@ -166,11 +201,11 @@ impl FixSource {
             })?),
         };
         let pluginside = match record.get(PLUGINSIDE) {
-            None => PluginSide::Unknown,
-            Some(stated) => <PluginSide as crate::EnumValue>::from_scalar_value(stated)
+            None => Side::Unknown,
+            Some(stated) => <Side as crate::EnumValue>::from_scalar_value(stated)
                 .ok_or_else(|| {
                     refused(format_smolstr!(
-                        "expected the pluginside of {id:?} as a member - BUYS, SELL or UKNW - got {}",
+                        "expected the pluginside of {id:?} as a side - a stored name such as BUYS, SELL or UKNW, a wire code or a name - got {}",
                         // The value where the door reads its shape - a text, an
                         // integer code - and the kind where it never does.
                         stated.as_str().map_or_else(

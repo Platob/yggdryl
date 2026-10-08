@@ -5935,7 +5935,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 59] = [
+    let seeds: [(DataTypeId, Scalar); 58] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -5995,7 +5995,6 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::State, Scalar::from("NEW")),
         (DataTypeId::MarketDataKind, Scalar::from("ORDR")),
         (DataTypeId::TimeInForce, Scalar::from("DAY")),
-        (DataTypeId::PluginSide, Scalar::from("BUYS")),
         (DataTypeId::MarketDataType, Scalar::from("ORDLIMIT")),
         (DataTypeId::Unit, Scalar::from("Shares")),
         (

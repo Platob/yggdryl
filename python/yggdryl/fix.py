@@ -68,7 +68,7 @@ header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
 ``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``); the
 business category ``marketdatakind``, the :class:`yggdryl.MarketDataKind` member the
 message type is filed under (``MsgType.marketdatakind`` answers the same member for
-the definition); ``msgpluginside``, the :class:`yggdryl.PluginSide` member
+the definition); ``msgpluginside``, the :class:`yggdryl.Side` member
 naming the role of the plugin whose session produced the message - the
 codec's ``source`` entry's, ``UKNW`` where none is named - never a FIX tag's
 and independent of ``Side(54)``; the ``strikepx`` of the option the message
@@ -302,6 +302,7 @@ from ._native import (
     FixMessages,
     MsgType,
     fix_crate_fields,
+    fix_plugin_side as plugin_side,
     fix_schema,
     fix_schema_carrying,
     fix_schema_tags,
@@ -318,6 +319,7 @@ __all__ = [
     "MsgType",
     "fix_crate_fields",
     "fix_schema",
+    "plugin_side",
     "fix_schema_carrying",
     "fix_schema_tags",
 ]

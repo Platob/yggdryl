@@ -12453,7 +12453,7 @@ export interface FixCaptureView {
   msgpluginid: string | null
   /**
    * The role of the FIX plugin whose session produced the message, as
-   * the `pluginside` member's stored name: `BUYS` for a Buy-Side plugin,
+   * the `Side` member's stored name: `BUYS` for a Buy-Side plugin,
    * `SELL` for a Sell-Side one, `UKNW` where the codec read under no
    * source or one stating no role - never `null`. The codec stamps it from
    * the source it reads under (`FixCodec`'s `source`), and a row-header
@@ -12801,6 +12801,14 @@ export interface FixParentSource {
 }
 
 /**
+ * The side one plugin class names, as its stored name: a `CBlock` root's
+ * `type`, whose last `.`-separated segment, folded, holding `buyside` is
+ * `BUYS`, holding `sellside` is `SELL`, and anything else `UKNW`. Never
+ * throws.
+ */
+export declare function fixPluginSide(pluginType: string): string
+
+/**
  * The fixed root every message answers as, built from one dictionary.
  *
  * The crate's own columns lead - its clocks, then its identities, then the
@@ -12849,9 +12857,9 @@ export interface FixSourceOptions {
   /** The file the source was read from, as it was named. */
   file?: string
   /**
-   * The role of the source's plugin: a `PluginSide` member's stored name
-   * in any case, the role's own name - `BuySide`, `sell-side` - or its
-   * code, what `PluginSide.BUYS` holds.
+   * The role of the source's plugin: a `Side` member's stored name in
+   * any case, the role's own name - `BuySide`, `sell-side` - or its
+   * code, what `Side.BUYS` holds.
    */
   pluginside?: string | number
 }
@@ -12875,7 +12883,7 @@ export interface FixSourceView {
    */
   file?: string
   /**
-   * The role of the source's plugin, as the `pluginside` member's stored
+   * The role of the source's plugin, as the `Side` member's stored
    * name: `BUYS`, `SELL`, or `UKNW` where the source states none.
    */
   pluginside: string
@@ -13458,24 +13466,6 @@ export interface PlanOrder {
   direction: 'asc' | 'desc'
   /** `first` or `last`: where nulls go. */
   nulls: 'first' | 'last'
-}
-
-/**
- * The role one plugin class names, as its stored name: a `CBlock` root's
- * `type`, whose last `.`-separated segment, folded, holding `buyside` is
- * `BUYS`, holding `sellside` is `SELL`, and anything else `UKNW`. Never
- * throws.
- */
-export declare function pluginSideFromPluginType(pluginType: string): string
-
-/**
- * One member of the core's plugin-side enum: its stored name, the code a
- * `pluginside` column stores, and what it means.
- */
-export interface PluginSideMember {
-  name: string
-  code: number
-  description: string
 }
 
 /** What one predicate let a scan leave alone. */

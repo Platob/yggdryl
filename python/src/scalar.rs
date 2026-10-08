@@ -27,7 +27,7 @@ use yggdryl::interval::Interval;
 use yggdryl::string::{Str, StringType};
 use yggdryl::{
     DataType as CoreDataType, DataTypeId, Error as CoreError, Field as CoreField, Float16, Float32,
-    Float64, PluginSide, Ric, Scalar, Serie, TimeUnit, Timezone, Unit, Vocabulary, i256,
+    Float64, Ric, Scalar, Serie, TimeUnit, Timezone, Unit, Vocabulary, i256,
 };
 use yggdryl::{MarketDataKind, MarketDataType, Side, State, TimeInForce};
 
@@ -424,11 +424,6 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "timeinforce",
             Some(PyString::new(py, member.as_str()).into_any().unbind()),
         ),
-        Scalar::PluginSide(member) => tagged_pickle_state(
-            py,
-            "pluginside",
-            Some(PyString::new(py, member.as_str()).into_any().unbind()),
-        ),
         Scalar::Uuid(value) => tagged_pickle_state(
             py,
             "uuid",
@@ -773,9 +768,6 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .map_err(value_error),
         "timeinforce" => TimeInForce::read(&payload()?.extract::<String>()?)
             .map(Scalar::TimeInForce)
-            .map_err(value_error),
-        "pluginside" => PluginSide::read(&payload()?.extract::<String>()?)
-            .map(Scalar::PluginSide)
             .map_err(value_error),
         "unit" => Unit::new(payload()?.extract::<String>()?)
             .map(Scalar::Unit)
@@ -1910,7 +1902,7 @@ impl RowPlan {
 }
 
 /// The member of the Python enum - `State`, `MarketDataKind`,
-/// `MarketDataType`, `Side`, `TimeInForce`, `PluginSide` - one enum value's
+/// `MarketDataType`, `Side`, `TimeInForce` - one enum value's
 /// code names.
 fn enum_member(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     let class = match value {
@@ -1919,7 +1911,6 @@ fn enum_member(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::MarketDataType(_) => classes::marketdatatype(py)?,
         Scalar::Side(_) => classes::side(py)?,
         Scalar::TimeInForce(_) => classes::timeinforce(py)?,
-        Scalar::PluginSide(_) => classes::pluginside(py)?,
         other => {
             return Err(value_error(format!("{} is no enum member", other.kind())));
         }
@@ -3502,7 +3493,6 @@ fn classify(class: &Bound<'_, PyType>) -> PyResult<ClassKind> {
             (classes::marketdatatype(py)?, CoreDataType::MarketDataType),
             (classes::side(py)?, CoreDataType::Side),
             (classes::timeinforce(py)?, CoreDataType::TimeInForce),
-            (classes::pluginside(py)?, CoreDataType::PluginSide),
         ] {
             if class.is(native) {
                 return Ok(ClassKind::Member(dtype));
@@ -3615,7 +3605,6 @@ mod classes {
         marketdatatype = "yggdryl.marketdatatype", "MarketDataType";
         side = "yggdryl.side", "Side";
         timeinforce = "yggdryl.timeinforce", "TimeInForce";
-        pluginside = "yggdryl.pluginside", "PluginSide";
         decimal = "decimal", "Decimal";
         datetime = "datetime", "datetime";
         date = "datetime", "date";

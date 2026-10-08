@@ -3434,10 +3434,17 @@ mod committed {
     /// `parentsecondarytradeid`, and `ParentAllocID(1593)` to `origallocid`.
     /// Four field shards were written again; the crate's dump and
     /// `constants.rs` did not change. No count of the census below moved.
+    /// It last moved when the `pluginside` datatype was deleted and the
+    /// plugin's role became a `Side`: the crate field `msgpluginside` (65043)
+    /// is typed `side` and its description restated, and the intrinsic
+    /// `msgpluginsidecodeset` renders `Side::ALL` - nineteen codes where
+    /// three stood - so the crate's field shard and that code set were
+    /// written again; the code-record census of `rust/tests/fix/mod_.rs`
+    /// moved from 7,938 to 7,954 and no count of the census below moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 17_114_512_833_162_386_024);
+        assert_eq!(registry.stable_hash(), 14_542_711_836_201_211_247);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();
@@ -3681,7 +3688,7 @@ fn the_sources_catalog_round_trips_through_sources_json_and_goes_with_its_last_e
             yggdryl::FixSource::new("Venue")
                 .unwrap()
                 .with_file("Venue.cfb")
-                .with_pluginside(yggdryl::PluginSide::SellSide)
+                .with_pluginside(yggdryl::Side::Sell)
         )
     );
     assert!(registry.add_source(yggdryl::FixSource::new("desk").unwrap()));
@@ -3708,8 +3715,8 @@ fn the_sources_catalog_round_trips_through_sources_json_and_goes_with_its_last_e
             .map(|source| (source.id(), source.file(), source.pluginside()))
             .collect::<Vec<_>>(),
         [
-            ("desk", None, yggdryl::PluginSide::Unknown),
-            ("venue", Some("Venue.cfb"), yggdryl::PluginSide::SellSide)
+            ("desk", None, yggdryl::Side::Unknown),
+            ("venue", Some("Venue.cfb"), yggdryl::Side::Sell)
         ]
     );
     // A second commit of an unchanged registry moves nothing.

@@ -435,7 +435,7 @@ fn the_plugin_side_set_is_the_crates_own_and_refuses_every_change() {
     let held = registry
         .codeset("msgpluginsidecodeset")
         .expect("the intrinsic set");
-    assert_eq!(held.codes().count(), yggdryl::PluginSide::ALL.len());
+    assert_eq!(held.codes().count(), yggdryl::Side::ALL.len());
     assert_eq!(held.code_name("0"), Some("UKNW"));
     assert_eq!(held.code_name("1"), Some("BUYS"));
     assert_eq!(held.code_value("SELL"), Some("2"));
@@ -445,7 +445,7 @@ fn the_plugin_side_set_is_the_crates_own_and_refuses_every_change() {
                 .description()
                 .map(str::to_owned))
             .collect::<Vec<_>>(),
-        yggdryl::PluginSide::ALL
+        yggdryl::Side::ALL
             .iter()
             .map(|side| Some(side.description().to_owned()))
             .collect::<Vec<_>>()
@@ -478,7 +478,7 @@ fn the_plugin_side_set_is_the_crates_own_and_refuses_every_change() {
         );
     }
     // The canonical document merged back is no change at all.
-    let canonical: Vec<FixCode> = yggdryl::PluginSide::ALL
+    let canonical: Vec<FixCode> = yggdryl::Side::ALL
         .iter()
         .map(|side| {
             FixCode::new(side.as_str(), side.code().to_string())
@@ -494,7 +494,7 @@ fn the_plugin_side_set_is_the_crates_own_and_refuses_every_change() {
             .unwrap()
             .codes()
             .count(),
-        3
+        yggdryl::Side::ALL.len()
     );
 }
 

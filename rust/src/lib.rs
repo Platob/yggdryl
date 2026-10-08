@@ -121,7 +121,6 @@ mod parallel;
 pub mod parquet;
 mod parser;
 mod path;
-pub mod pluginside;
 mod pretty;
 pub mod protocol;
 mod regex;
@@ -215,7 +214,7 @@ pub use fix::{
     STANDARD_TRAILER_TAGS, STATE_TAG_NAME, STRIKEPX_TAG_NAME, TICKER_TAG_NAME, TRADABLE_TAG_NAME,
     ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, Words, fix_column_of, fix_column_tags, fix_crate_fields,
     fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document,
-    is_crate_tag, is_derived_tag,
+    is_crate_tag, is_derived_tag, plugin_side,
 };
 pub use hostname::HOSTNAME;
 pub use int256::{i256, u256};
@@ -331,7 +330,6 @@ pub use mic::*;
 pub(crate) use mime_type::MIMETYPE_EXTENSION_NAME;
 pub use mime_type::MimeTypeType;
 pub(crate) use parser::{fold_digest, folds_equal, normalized};
-pub use pluginside::*;
 pub use pretty::Pretty;
 pub use ric::*;
 pub use runend::*;

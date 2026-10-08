@@ -244,7 +244,7 @@ pub struct FixSourceView {
     /// The file the source was read from, as it was named - `venue.cfb` -
     /// where one is known.
     pub file: Option<String>,
-    /// The role of the source's plugin, as the `pluginside` member's stored
+    /// The role of the source's plugin, as the `Side` member's stored
     /// name: `BUYS`, `SELL`, or `UKNW` where the source states none.
     pub pluginside: String,
 }
@@ -265,9 +265,9 @@ impl FixSourceView {
 pub struct FixSourceOptions {
     /// The file the source was read from, as it was named.
     pub file: Option<String>,
-    /// The role of the source's plugin: a `PluginSide` member's stored name
-    /// in any case, the role's own name - `BuySide`, `sell-side` - or its
-    /// code, what `PluginSide.BUYS` holds.
+    /// The role of the source's plugin: a `Side` member's stored name in
+    /// any case, the role's own name - `BuySide`, `sell-side` - or its
+    /// code, what `Side.BUYS` holds.
     #[napi(ts_type = "string | number")]
     pub pluginside: Option<Either<String, f64>>,
 }
@@ -1021,7 +1021,7 @@ impl JsFixRegistry {
                 source = source.with_file(file);
             }
             if let Some(side) = options.pluginside {
-                source = source.with_pluginside(crate::pluginside::plugin_side_of(side)?);
+                source = source.with_pluginside(plugin_side_of(side)?);
             }
         }
         Ok(self.inner_mut()?.add_source(source))
@@ -1328,7 +1328,7 @@ pub struct FixCaptureView {
     #[napi(ts_type = "string | null")]
     pub msgpluginid: Either<String, Null>,
     /// The role of the FIX plugin whose session produced the message, as
-    /// the `pluginside` member's stored name: `BUYS` for a Buy-Side plugin,
+    /// the `Side` member's stored name: `BUYS` for a Buy-Side plugin,
     /// `SELL` for a Sell-Side one, `UKNW` where the codec read under no
     /// source or one stating no role - never `null`. The codec stamps it from
     /// the source it reads under (`FixCodec`'s `source`), and a row-header
@@ -3436,6 +3436,26 @@ fn sending_time_from_js(value: Either<ClassInstance<'_, JsScalar>, JsDate<'_>>) 
                 .map_err(napi_error)
         }
     }
+}
+
+/// The role `side` names: a spelling read through the core `Side`
+/// vocabulary - the stored name in any case, `BuySide`, `sell-side`, a wire
+/// code - or a `Side` code, what `Side.BUYS` holds.
+fn plugin_side_of(side: Either<String, f64>) -> Result<yggdryl::Side> {
+    match side {
+        Either::A(text) => yggdryl::Side::read(&text),
+        Either::B(code) => yggdryl::Side::read_code(crate::exact_i64(code, "pluginside")?),
+    }
+    .map_err(|error| napi::Error::from_reason(format!("pluginside: {error}")))
+}
+
+/// The side one plugin class names, as its stored name: a `CBlock` root's
+/// `type`, whose last `.`-separated segment, folded, holding `buyside` is
+/// `BUYS`, holding `sellside` is `SELL`, and anything else `UKNW`. Never
+/// throws.
+#[napi(js_name = "fixPluginSide")]
+pub fn fix_plugin_side(plugin_type: String) -> String {
+    yggdryl::fix::plugin_side(&plugin_type).as_str().to_owned()
 }
 
 /// The fixed root every message answers as, built from one dictionary.

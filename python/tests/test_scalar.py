@@ -563,7 +563,6 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ("side", "BUYS"),
         ("state", "NEW"),
         ("timeinforce", "GTC"),
-        ("pluginside", "SELL"),
         ("cusip", "037833100"),
         ("sedol", "B0YBKJ7"),
         ("bbg", "AAPL US Equity"),

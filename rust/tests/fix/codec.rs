@@ -5258,23 +5258,11 @@ fn a_message_split_off_one_of_three_twins_names_its_own_report() {
 #[test]
 fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
     use yggdryl::graph::Market;
-    use yggdryl::{FixMsg, FixSource, MSGPLUGINSIDE_TAG_NAME, PluginSide, Side};
+    use yggdryl::{FixMsg, FixSource, MSGPLUGINSIDE_TAG_NAME, Side};
 
     let mut registry = committed_registry().as_ref().clone();
-    assert!(
-        registry.add_source(
-            FixSource::new("ms")
-                .unwrap()
-                .with_pluginside(PluginSide::SellSide)
-        )
-    );
-    assert!(
-        registry.add_source(
-            FixSource::new("desk")
-                .unwrap()
-                .with_pluginside(PluginSide::BuySide)
-        )
-    );
+    assert!(registry.add_source(FixSource::new("ms").unwrap().with_pluginside(Side::Sell)));
+    assert!(registry.add_source(FixSource::new("desk").unwrap().with_pluginside(Side::Buy)));
     assert!(registry.add_source(FixSource::new("bare").unwrap()));
     let registry = Arc::new(registry);
     let schema = yggdryl::fix_schema(&registry, "fix").expect("a fixed schema");
@@ -5282,9 +5270,9 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
     let line: &[u8] = b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|10=0|";
 
     for (id, side) in [
-        ("MS", PluginSide::SellSide),
-        ("desk", PluginSide::BuySide),
-        ("bare", PluginSide::Unknown),
+        ("MS", Side::Sell),
+        ("desk", Side::Buy),
+        ("bare", Side::Unknown),
     ] {
         let codec = super::fixed_codec(Arc::clone(&registry))
             .with_source(id)
@@ -5296,11 +5284,11 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
         assert_eq!(message.capture().msgpluginside(), side);
         assert_eq!(
             message.get_by_tag(MSGPLUGINSIDE_TAG_NAME.0),
-            Some(Scalar::PluginSide(side))
+            Some(Scalar::Side(side))
         );
         assert_eq!(
             message.by_name("msgpluginside").unwrap(),
-            Scalar::PluginSide(side)
+            Scalar::Side(side)
         );
         // Independent of the message's own side, and no entry on the wire.
         assert_eq!(message.get_side(), Side::Buy);
@@ -5312,10 +5300,7 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
         );
         // The row cell, and the message read back off it.
         let row = message.into_row(&schema).expect("a fixed row");
-        assert_eq!(
-            row.as_sequence().expect("a row")[at],
-            Scalar::PluginSide(side)
-        );
+        assert_eq!(row.as_sequence().expect("a row")[at], Scalar::Side(side));
         let again = FixMsg::from_row(Arc::clone(&registry), &schema, &row).expect("the row read");
         assert_eq!(again.msgpluginside(), side, "{id}: the row's word");
         assert_eq!(again.into_row(&schema).unwrap(), row);
@@ -5341,8 +5326,8 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
     let bare = super::fixed_codec(Arc::clone(&registry))
         .parse_fix_line(dated)
         .expect("a message");
-    assert_eq!(stamped.msgpluginside(), PluginSide::BuySide);
-    assert_eq!(bare.msgpluginside(), PluginSide::Unknown);
+    assert_eq!(stamped.msgpluginside(), Side::Buy);
+    assert_eq!(bare.msgpluginside(), Side::Unknown);
     assert_eq!(stamped.get_currhashcode(), bare.get_currhashcode());
     assert_eq!(stamped.get_curruuid(), bare.get_curruuid());
     assert_eq!(stamped.stable_hash(), bare.stable_hash());
@@ -5355,7 +5340,7 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
         .expect("a held source")
         .parse_fix_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|65043=BUYS|10=0|")
         .expect("a message");
-    assert_eq!(spelled.msgpluginside(), PluginSide::BuySide);
+    assert_eq!(spelled.msgpluginside(), Side::Buy);
     assert!(
         spelled
             .entries()
@@ -5368,10 +5353,10 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
     let codec = super::fixed_codec(Arc::clone(&registry));
     assert_eq!(codec.source(), None);
     let message = codec.parse_fix_line(line).expect("a message");
-    assert_eq!(message.msgpluginside(), PluginSide::Unknown);
+    assert_eq!(message.msgpluginside(), Side::Unknown);
     assert_eq!(
         message.get_by_tag(MSGPLUGINSIDE_TAG_NAME.0),
-        Some(Scalar::PluginSide(PluginSide::Unknown))
+        Some(Scalar::Side(Side::Unknown))
     );
 
     // A row-header capture named for the column is the row's word, and one
@@ -5395,12 +5380,9 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
             .expect("one message")
             .expect("a message")
     };
-    assert_eq!(
-        captured(Some("buy-side")).msgpluginside(),
-        PluginSide::BuySide
-    );
-    assert_eq!(captured(Some("UKNW")).msgpluginside(), PluginSide::Unknown);
-    assert_eq!(captured(None).msgpluginside(), PluginSide::SellSide);
+    assert_eq!(captured(Some("buy-side")).msgpluginside(), Side::Buy);
+    assert_eq!(captured(Some("UKNW")).msgpluginside(), Side::Unknown);
+    assert_eq!(captured(None).msgpluginside(), Side::Sell);
     // A cell written over a parsed message is the writer's word too, in any
     // spelling the enum reads, and a spelling naming no member is refused
     // with the message unchanged.
@@ -5408,17 +5390,17 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
     message
         .set(MSGPLUGINSIDE_TAG_NAME.0, Scalar::from("buy-side"))
         .expect("a stated role");
-    assert_eq!(message.msgpluginside(), PluginSide::BuySide);
+    assert_eq!(message.msgpluginside(), Side::Buy);
     message
         .set("msgpluginside", Scalar::from(2_i64))
         .expect("a stated code");
-    assert_eq!(message.msgpluginside(), PluginSide::SellSide);
+    assert_eq!(message.msgpluginside(), Side::Sell);
     assert!(
         message
             .set(MSGPLUGINSIDE_TAG_NAME.0, Scalar::from("UNKN"))
             .is_err()
     );
-    assert_eq!(message.msgpluginside(), PluginSide::SellSide);
+    assert_eq!(message.msgpluginside(), Side::Sell);
 
     // An id the catalog does not hold is refused by name, and the codec is
     // not built.

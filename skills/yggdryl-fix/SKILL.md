@@ -174,7 +174,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     dictionary already holds, stamps each source's id in `FIX:sources` (a JSON
     array of lowercase ids) and records what is known of the source once, in
     the registry's sources catalog (`sources.json` in a store): the file and
-    the `PluginSide` its CBlock root's `type` names. A datatype a source states at another precision
+    the `Side` its CBlock root's `type` names, read by `fix::plugin_side`. A datatype a source states at another precision
     of the stored one - unbounded text against anything, any two numbers, an
     integer against an enum, a date against a datetime (a CBlock's `float`
     against `decimal128`, `string` against `ccy`) - folds under it and is

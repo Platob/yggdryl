@@ -763,7 +763,7 @@ There is no partition column. How a layout is cut is the target's to decide: an 
 
 ### The plugin's role is the source's
 
-`msgpluginside` is no capture of the line and no tag of the wire: it is the role of the plugin whose session produced the message - a Buy-Side plugin originates orders and cancels and receives execution reports, a Sell-Side one receives them and answers - which a dictionary knows of each source it was built from, in that source's [catalog entry](registry.md#membership), read off a CBlock root's `type` ([`PluginSide`](../types/enum/pluginside.md#a-cblock-names-its-plugins-role)). A codec reading under one source - `FixCodec::with_source(id)`, Python `FixCodec(registry, source=id)`, JavaScript `new FixCodec(registry, { source })` - resolves the id against the catalog once, under the fold, refusing one it does not hold, and stamps that entry's role on every message it builds, on the line, row, byte and batch doors alike; a codec told no source stamps `UKNW`. A row-header capture or a row cell named `msgpluginside` - a line spelling the crate tag `65043` itself included - is the row's word over the stamp, in any spelling the enum reads, and a FIX row read back states its own cell. The role is the session's, never the order's: a Sell-Side plugin receives buy orders, so `Side(54)` and `msgpluginside` answer apart, and the stamp is outside `currhashcode`, `curruuid`, the message's stable hash and the wire - one line parsed under two sources is one message stamped two ways. Python reads it as `message.msgpluginside`, JavaScript as `message.capture().msgpluginside`.
+`msgpluginside` is no capture of the line and no tag of the wire: it is the role of the plugin whose session produced the message - a Buy-Side plugin originates orders and cancels and receives execution reports, a Sell-Side one receives them and answers - which a dictionary knows of each source it was built from, in that source's [catalog entry](registry.md#membership), read off a CBlock root's `type` as a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side). A codec reading under one source - `FixCodec::with_source(id)`, Python `FixCodec(registry, source=id)`, JavaScript `new FixCodec(registry, { source })` - resolves the id against the catalog once, under the fold, refusing one it does not hold, and stamps that entry's role on every message it builds, on the line, row, byte and batch doors alike; a codec told no source stamps `UKNW`. A row-header capture or a row cell named `msgpluginside` - a line spelling the crate tag `65043` itself included - is the row's word over the stamp, in any spelling the enum reads, and a FIX row read back states its own cell. The role is the session's, never the order's: a Sell-Side plugin receives buy orders, so `Side(54)` and `msgpluginside` answer apart, and the stamp is outside `currhashcode`, `curruuid`, the message's stable hash and the wire - one line parsed under two sources is one message stamped two ways. Python reads it as `message.msgpluginside`, JavaScript as `message.capture().msgpluginside`.
 
 === "Rust"
 
@@ -773,27 +773,27 @@ There is no partition column. How a layout is cut is the target's to decide: an 
 
     use yggdryl::graph::{Element, Market};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, FixSource, PluginSide, Scalar, Side, MSGPLUGINSIDE_TAG_NAME};
+    use yggdryl::{FixCodec, FixRegistry, FixSource, Scalar, Side, MSGPLUGINSIDE_TAG_NAME};
 
     let seed = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
     let mut registry = FixRegistry::from_handle(&LocalFolder::new(seed)?)?;
     // The source's entry states its plugin's role, as a CBlock root's `type` does.
-    registry.add_source(FixSource::new("venue")?.with_pluginside(PluginSide::SellSide));
+    registry.add_source(FixSource::new("venue")?.with_pluginside(Side::Sell));
     let registry = Arc::new(registry);
 
     let line: &[u8] = b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|10=0|";
     let codec = FixCodec::new(Arc::clone(&registry)).with_source("VENUE")?;
     assert_eq!(codec.source(), Some("venue"));
     let message = codec.parse_fix_line(line)?;
-    assert_eq!(message.msgpluginside(), PluginSide::SellSide);
+    assert_eq!(message.msgpluginside(), Side::Sell);
     assert_eq!(MSGPLUGINSIDE_TAG_NAME, (65_043, "msgpluginside"));
-    assert_eq!(message.get_by_tag(65_043), Some(Scalar::PluginSide(PluginSide::SellSide)));
+    assert_eq!(message.get_by_tag(65_043), Some(Scalar::Side(Side::Sell)));
     // The session's role, never the order's side.
     assert_eq!(message.get_side(), Side::Buy);
 
     // No source named stamps `UKNW`; an id the catalog does not hold is refused.
     let bare = FixCodec::new(Arc::clone(&registry)).parse_fix_line(line)?;
-    assert_eq!(bare.msgpluginside(), PluginSide::Unknown);
+    assert_eq!(bare.msgpluginside(), Side::Unknown);
     assert_eq!(bare.get_currhashcode(), message.get_currhashcode());
     assert!(FixCodec::new(registry).with_source("ghost").is_err());
     ```
@@ -805,21 +805,21 @@ There is no partition column. How a layout is cut is the target's to decide: an 
 
     import pytest
 
-    from yggdryl import PluginSide, Side
+    from yggdryl import Side
     from yggdryl.fix import FixCodec, FixRegistry
 
     registry = FixRegistry.from_handle(pathlib.Path("config/fix").resolve())
     # The source's entry states its plugin's role, as a CBlock root's `type` does.
-    registry.add_source("venue", pluginside=PluginSide.SELL)
+    registry.add_source("venue", pluginside=Side.SELL)
 
     line = b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|10=0|"
     message = FixCodec(registry, source="VENUE").parse_fix_line(line)
-    assert message.msgpluginside is PluginSide.SELL
+    assert message.msgpluginside is Side.SELL
     # The session's role, never the order's side.
     assert message.side is Side.BUYS
 
     # No source named stamps `UKNW`; an id the catalog does not hold is refused.
-    assert FixCodec(registry).parse_fix_line(line).msgpluginside is PluginSide.UKNW
+    assert FixCodec(registry).parse_fix_line(line).msgpluginside is Side.UKNW
     with pytest.raises(ValueError, match="ghost"):
         FixCodec(registry, source="ghost")
     ```
@@ -829,7 +829,7 @@ There is no partition column. How a layout is cut is the target's to decide: an 
     ```javascript
     const assert = require('node:assert/strict')
     const path = require('node:path')
-    const { PluginSide, fix } = require('yggdryl')
+    const { Side, fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
     // The source's entry states its plugin's role, as a CBlock root's `type` does.
@@ -838,7 +838,7 @@ There is no partition column. How a layout is cut is the target's to decide: an 
     const line = Buffer.from('8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|10=0|')
     const message = new fix.FixCodec(registry, { source: 'VENUE' }).parseFixLine(line)
     assert.equal(message.capture().msgpluginside, 'SELL')
-    assert.equal(PluginSide[message.capture().msgpluginside], 2)
+    assert.equal(Side[message.capture().msgpluginside], 2)
     // The session's role, never the order's side.
     assert.equal(message.side, 'BUYS')
 

@@ -192,7 +192,7 @@ Some wire values also keep a column of their own:
 | 69 | `possdupflag` | `boolean` |  | PossDupFlag | 43 |
 | 70 | `msgdirection` | `utf8` |  | MsgDirection | 385 |
 | 71 | `msgpluginid` | `utf8` |  | Message Plugin ID | 65042 |
-| 72 | `msgpluginside` | `pluginside` | yes | Message Plugin Side | 65043 |
+| 72 | `msgpluginside` | `side` | yes | Message Plugin Side | 65043 |
 | 73 | `msgoriginator` | `utf8` |  | Message Originator | 65044 |
 | 74 | `msgctxid` | `utf8` |  | Message Context ID | 65045 |
 | 75 | `msgsessionid` | `utf8` |  | Message Session ID | 65046 |

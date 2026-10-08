@@ -275,7 +275,6 @@ test('typed field factories cover every native datatype variant', () => {
     ['marketdatakind', fields.marketdatakind('value')],
     ['marketdatatype', fields.marketdatatype('value')],
     ['timeinforce', fields.timeinforce('value')],
-    ['pluginside', fields.pluginside('value')],
     ['unit', fields.unit('value')],
     ['ric', fields.ric('value')],
     ['forex', fields.forex('value')],

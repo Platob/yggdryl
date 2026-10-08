@@ -205,7 +205,7 @@ pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
 pub use registry::{FixDrop, FixFailure, FixFieldIter, FixMerge, FixRegistry};
-pub use source::FixSource;
+pub use source::{FixSource, plugin_side};
 pub use store::FixCommit;
 pub use ulbridge::ULBRIDGE_ROWHEADER;
 

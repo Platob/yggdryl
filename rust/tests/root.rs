@@ -169,8 +169,6 @@ mod parser;
 #[cfg(feature = "internals")]
 #[path = "root/path.rs"]
 mod path;
-#[path = "root/pluginside.rs"]
-mod pluginside;
 #[path = "root/protocol.rs"]
 mod protocol;
 #[path = "root/regex.rs"]

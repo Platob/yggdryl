@@ -131,7 +131,7 @@ fn validate_intrinsic_codeset(key: &str, document: Option<&str>) -> Result<()> {
 fn validate_intrinsic_merge(key: &str, codes: &[FixCode]) -> Result<()> {
     if folds_equal(key, super::crated::MSGPLUGINSIDE_CODESET_NAME) {
         let canonical = codes.iter().all(|code| {
-            crate::PluginSide::from_name(code.name()).is_some_and(|side| {
+            crate::Side::from_name(code.name()).is_some_and(|side| {
                 code.value() == side.code().to_string()
                     && code.aliases().is_empty()
                     && code.description() == Some(side.description())

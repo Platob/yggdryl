@@ -183,7 +183,7 @@ const firstOperation: OrderEvent | null = operations[0].asOrderEvent()
 declare const event: OrderEvent
 const header: FixHeaderView = message.header()
 const capture: FixCaptureView = message.capture()
-// The plugin side is always stated - a PluginSide member's name, the
+// The plugin side is always stated - a Side member's name, the
 // neutral member included - as every enum fact crosses, never null.
 const pluginside: string = capture.msgpluginside
 // @ts-expect-error never null: the neutral member is a stated value

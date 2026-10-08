@@ -32,7 +32,6 @@ SPELLED = {
     "yggdryl.marketdatatype": "marketdatatype",
     "yggdryl.side": "side",
     "yggdryl.timeinforce": "timeinforce",
-    "yggdryl.pluginside": "pluginside",
     "yggdryl.country": "country",
     "yggdryl.ccy": "ccy",
     "yggdryl.mic": "mic",

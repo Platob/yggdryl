@@ -1196,9 +1196,9 @@ impl FixRegistry {
                     if held.file.is_none() {
                         held.file = source.file;
                     }
-                    if held.pluginside == crate::PluginSide::Unknown {
+                    if held.pluginside == crate::Side::Unknown {
                         held.pluginside = source.pluginside;
-                    } else if source.pluginside != crate::PluginSide::Unknown
+                    } else if source.pluginside != crate::Side::Unknown
                         && source.pluginside != held.pluginside
                     {
                         log::warn!(

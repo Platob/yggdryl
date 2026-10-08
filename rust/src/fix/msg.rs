@@ -22,7 +22,7 @@ use crate::isin_registry::{EconomicMemo, IsinTable};
 use crate::xxhash;
 use crate::{
     Ccy, Cfi, Country, Decimal, Forex, IdKey, IdSource, IdType, Identifier, Identifiers,
-    MarketDataKind, Mic, PluginSide, Side, State, StructType, TimeInForce, Unit, Uuid,
+    MarketDataKind, Mic, Side, State, StructType, TimeInForce, Unit, Uuid,
 };
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie};
 
@@ -1369,7 +1369,7 @@ impl FixMsg {
             None,
             None,
             super::FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_NS,
-            PluginSide::Unknown,
+            Side::Unknown,
         )?;
         message.resolve_views(viewed, true);
         message.settle();
@@ -1398,7 +1398,7 @@ impl FixMsg {
         fallback_sending_time: Option<&Scalar>,
         source: Option<Uuid>,
         official_time_delay_ns: i64,
-        pluginside: PluginSide,
+        pluginside: Side,
     ) -> Result<(Self, Viewed)> {
         let super::build::Built {
             field,
@@ -1432,7 +1432,7 @@ impl FixMsg {
         field: Field,
         value: Scalar,
         retains_identity: bool,
-        pluginside: PluginSide,
+        pluginside: Side,
     ) -> Result<Self> {
         let value = field.canonicalize_value(value)?;
         let (mut message, viewed) = Self::assemble(
@@ -1475,7 +1475,7 @@ impl FixMsg {
         fallback_sending_time: Option<&Scalar>,
         source: Option<Uuid>,
         official_time_delay_ns: i64,
-        pluginside: PluginSide,
+        pluginside: Side,
     ) -> Result<(Self, Viewed)> {
         let plan = super::schema::column_plan_of(&field, &registry)?;
         let held = value.as_sequence().ok_or_else(|| {
@@ -4147,7 +4147,7 @@ impl FixMsg {
     /// row's word over it; the fixed row's `msgpluginside` column, never a
     /// FIX tag's, and independent of `Side(54)`.
     #[must_use]
-    pub const fn msgpluginside(&self) -> PluginSide {
+    pub const fn msgpluginside(&self) -> Side {
         self.capture.msgpluginside()
     }
 

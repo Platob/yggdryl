@@ -410,21 +410,21 @@ assert Eusipa(registry.get("CH0123456789")["eusipacode"]) == constant
 
 ## Enums: side, marketdatakind, state, timeinforce
 
-`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` and
-`pluginside` are the `enum` family: each member is a code in a column - `uint8`
-for `side`, `marketdatakind`, `timeinforce` and `pluginside`, `uint16` for
+`side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
+`enum` family: each member is a code in a column - `uint8` for `side`,
+`marketdatakind` and `timeinforce`, `uint16` for
 `state` and `marketdatatype` - and its stored name in text. Python reads them as
 the `enum.IntEnum`s `yggdryl.Side`, `yggdryl.MarketDataKind`,
-`yggdryl.MarketDataType`, `yggdryl.State`, `yggdryl.TimeInForce` and
-`yggdryl.PluginSide`,
-and a value of the column answers the member. A side is never absent -
+`yggdryl.MarketDataType`, `yggdryl.State` and `yggdryl.TimeInForce`, and a
+value of the column answers the member. A side is never absent -
 `Side.UKNW` (code 0) is unstated. A side's name is a four-letter code (`BUYS`,
 `SELL`, `SSHT`); the stored names before the codes (`BUY`, `SSHORT`, ...) are
 still read and never written.
 
 ```python
 import yggdryl
-from yggdryl import DataType, MarketDataKind, PluginSide, Side, State, TimeInForce
+from yggdryl import DataType, MarketDataKind, Side, State, TimeInForce
+from yggdryl.fix import plugin_side
 
 # A side reads its stored name, FIX's wire code, the specification's name or its code.
 side = yggdryl.side("side", nullable=False)
@@ -451,10 +451,10 @@ assert DataType("timeinforce").scalar("0").as_py() is TimeInForce.DAY
 assert TimeInForce.from_fix("Z") is TimeInForce.OTHER   # a venue's own value
 assert (int(TimeInForce.GTC), TimeInForce.GTC.fix_code) == (2, "1")
 
-# A FIX plugin's role, read off a CBlock's plugin class; no `Side`, though
-# `BUYS` and `SELL` are spelled alike.
-assert PluginSide.from_plugin_type("x.SellSideFIXCPluginCBlock") is PluginSide.SELL
-assert DataType("pluginside").scalar("buy-side").as_py() is PluginSide.BUYS
+# A FIX plugin's role is a side, read off a CBlock's plugin class; the
+# role's own name is one of the side's spellings.
+assert plugin_side("x.SellSideFIXCPluginCBlock") is Side.SELL
+assert DataType("side").scalar("buy-side").as_py() is Side.BUYS
 ```
 
 ## Nested values: serie, map, union, dictionary

@@ -61,8 +61,6 @@ mod marketdatakind;
 #[allow(dead_code)]
 mod marketdatatype;
 #[allow(dead_code)]
-mod pluginside;
-#[allow(dead_code)]
 mod side;
 #[allow(dead_code)]
 mod state;
@@ -98,8 +96,8 @@ pub use expression::{
 pub use field::{JsField, JsProtocolField, MetadataEntry};
 pub use fix::{
     FixCaptureView, FixCodecOptions, FixEntryView, FixHeaderView, JsFixCodec, JsFixFieldIterator,
-    JsFixMessages, JsFixMsg, JsFixRegistry, JsMsgType, fix_crate_fields, fix_schema,
-    fix_schema_carrying, fix_schema_tags, fix_ulbridge_rowheader_native,
+    JsFixMessages, JsFixMsg, JsFixRegistry, JsMsgType, fix_crate_fields, fix_plugin_side,
+    fix_schema, fix_schema_carrying, fix_schema_tags, fix_ulbridge_rowheader_native,
 };
 pub use graph::{
     BookLimit, BookRefInput, CandleReading, JsBookEvent, JsBookIterator, JsBookRef, JsCandle,

@@ -736,7 +736,6 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::MarketDataKind(_)
             | Scalar::MarketDataType(_)
             | Scalar::TimeInForce(_)
-            | Scalar::PluginSide(_)
             | Scalar::Isin(_)
             | Scalar::Cusip(_)
             | Scalar::Sedol(_)

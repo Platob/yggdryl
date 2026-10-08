@@ -373,7 +373,7 @@ mod columns {
                 Scalar::from_sequence([Scalar::from("0"), Scalar::from("6"), Scalar::Null]),
             ),
             (
-                Field::new("pluginside", DataType::PluginSide, true),
+                Field::new("pluginside", DataType::Side, true),
                 Scalar::from_sequence([
                     Scalar::from("BUYS"),
                     Scalar::from("sell-side"),

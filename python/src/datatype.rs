@@ -790,7 +790,6 @@ impl PyDataType {
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,
-            "pluginside" => CoreDataType::PluginSide,
             "unit" => CoreDataType::Unit,
             "ric" => CoreDataType::Ric,
             "forex" => CoreDataType::Forex,

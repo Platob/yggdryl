@@ -422,8 +422,8 @@ A datatype Arrow cannot state alone rides an extension name, one per datatype id
 (`DataTypeId::arrow_extension_name`): `arrow.uuid`, `arrow.parquet.variant`, `geoarrow.wkb`,
 `yggdryl.string` for every string leaf but plain `utf8`, `large_utf8` and `utf8_view`,
 `yggdryl.bytes` for `sized_binary` and `large_binary_view`, and `yggdryl.<name>` for the fixed
-decimals, the version, URL, URN, timezone, MIME and media types, the six enum leaves and the
-seventeen codes - thirty-six names in all, `DataTypeId::arrow_extension_names()`. The name over the
+decimals, the version, URL, URN, timezone, MIME and media types, the five enum leaves and the
+seventeen codes - thirty-five names in all, `DataTypeId::arrow_extension_names()`. The name over the
 storage its datatype lays out reads back as that datatype, a dictionary of it included; over any
 other storage it is a foreign field wearing the name and reads as its storage.
 

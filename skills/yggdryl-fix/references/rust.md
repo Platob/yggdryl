@@ -731,7 +731,7 @@ root.remove(true)?;
 `FixRegistry::from_cfb_file` reads one Ullink CBlock (`.cfb`) into a registry
 and its declared roots, stamping the dialect in `FIX:sources` on everything it
 produced and recording the dialect's entry in the registry's sources catalog -
-the file's name and the `PluginSide` its root's `type` names;
+the file's name and the `Side` its root's `type` names, read by `fix::plugin_side`;
 `add_cfb_file` folds one into a held registry, `add_cfb_files` folds what the
 locations it is handed hold - a glob every file it matches, a folder the `.cfb`
 files directly inside it, a file itself, a file reached twice folding once -
@@ -753,7 +753,7 @@ the reader did instead.
 ```rust
 use yggdryl::holder::Holder;
 use yggdryl::local::LocalFile;
-use yggdryl::{FixRegistry, FixSource, PluginSide};
+use yggdryl::{FixRegistry, FixSource, Side};
 
 let path = std::env::temp_dir().join(format!("ygg-skill-fix-cfb-{}", std::process::id()));
 std::fs::create_dir_all(&path)?;
@@ -771,7 +771,7 @@ let (venue, roots) = FixRegistry::from_cfb_file(&LocalFile::new(path.join("alpha
 assert_eq!(venue.field(4)?.as_fix().sources().collect::<Vec<_>>(), ["venue"]);
 // The catalog records the source once: its file and its plugin's role.
 let entry = venue.get_source("venue").expect("the dialect's entry");
-assert_eq!((entry.file(), entry.pluginside()), (Some("alpha.cfb"), PluginSide::SellSide));
+assert_eq!((entry.file(), entry.pluginside()), (Some("alpha.cfb"), Side::Sell));
 assert!(roots.is_empty());
 
 // `add_cfb_files` takes the locations alone: a folder holds the `.cfb`

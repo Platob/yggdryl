@@ -480,7 +480,6 @@ pub(crate) fn read_enum_code(id: DataTypeId, code: i64) -> Result<crate::Scalar>
         DataTypeId::TimeInForce => {
             crate::TimeInForce::read_code(code).map(crate::Value::into_scalar)
         }
-        DataTypeId::PluginSide => crate::PluginSide::read_code(code).map(crate::Value::into_scalar),
         _ => Err(enum_refusal(id)),
     }
 }
@@ -506,7 +505,6 @@ pub(crate) fn read_enum_spelling(id: DataTypeId, spelling: &str) -> Result<crate
         DataTypeId::TimeInForce => {
             crate::TimeInForce::read(spelling).map(crate::Value::into_scalar)
         }
-        DataTypeId::PluginSide => crate::PluginSide::read(spelling).map(crate::Value::into_scalar),
         _ => Err(enum_refusal(id)),
     }
 }
@@ -523,7 +521,6 @@ pub(crate) fn enum_for_extension(name: &str) -> Option<DataType> {
         crate::MARKETDATATYPE_EXTENSION_NAME => Some(DataType::MarketDataType),
         crate::SIDE_EXTENSION_NAME => Some(DataType::Side),
         crate::TIMEINFORCE_EXTENSION_NAME => Some(DataType::TimeInForce),
-        crate::PLUGINSIDE_EXTENSION_NAME => Some(DataType::PluginSide),
         _ => None,
     }
 }

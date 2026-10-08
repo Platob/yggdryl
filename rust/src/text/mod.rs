@@ -868,7 +868,6 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::MarketDataKind(_)
             | Scalar::MarketDataType(_)
             | Scalar::TimeInForce(_)
-            | Scalar::PluginSide(_)
             | Scalar::Isin(_)
             | Scalar::Cusip(_)
             | Scalar::Sedol(_)

@@ -31,7 +31,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   const path = require('node:path')
   const test = require('node:test')
 
-  const { DataType, Field, IOBase, MimeType, PluginSide, Scalar, TextLine, Url, fields, fix, graph, xxhash } = require('yggdryl')
+  const { DataType, Field, IOBase, MimeType, Scalar, Side, TextLine, Url, fields, fix, graph, xxhash } = require('yggdryl')
 
   /**
    * The fixed row without `dropped`, holding the dictionary's `Parties(453)`
@@ -98,7 +98,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   // The scalar fields the committed dictionary stores.
   const STORED = 6241
   // The named code sets it stores beside them, one per vocabulary however many
-  // The 735 published sets and the crate's MarketDataKind, MarketDataType, PluginSide and state sets.
+  // The 735 published sets and the crate's MarketDataKind, MarketDataType, plugin-side and state sets.
   const CODESETS = 739
 
   /**
@@ -688,7 +688,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(registry.addSource('Venue'), true)
     assert.deepEqual(registry.sources(), [{ id: 'venue', pluginside: 'UKNW' }])
     assert.equal(
-      registry.addSource('other', { file: 'other.cfb', pluginside: PluginSide.SELL }),
+      registry.addSource('other', { file: 'other.cfb', pluginside: Side.SELL }),
       true,
     )
     assert.deepEqual(registry.sources(), [
@@ -712,7 +712,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.throws(() => registry.addSource(''), /FIX:sources/)
     assert.throws(() => registry.addSource('a"b'), /FIX:sources/)
     assert.throws(() => registry.addSource('x', { pluginside: 'NOPE' }), /pluginside/)
-    assert.throws(() => registry.addSource('x', { pluginside: 7 }), /pluginside/)
+    assert.throws(() => registry.addSource('x', { pluginside: 98 }), /pluginside/)
     assert.equal(registry.sources().length, 2)
 
     // The catalog is not the fields' listing: `dialects` answers the ids
@@ -1195,7 +1195,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
 
     // The entry the id names is the registry's: one `sources.json` at the
     // root, sorted by id, read back whole, and part of what is equal.
-    registry.addSource('CME', { file: 'cme.cfb', pluginside: PluginSide.SELL })
+    registry.addSource('CME', { file: 'cme.cfb', pluginside: Side.SELL })
     assert.equal(reloaded.equals(registry), false)
     registry.writeInto(dictionary)
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dictionary, 'sources.json'), 'utf8')), [
@@ -2186,6 +2186,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
         'MsgType',
         'ULBRIDGE_ROWHEADER',
         'crateFields',
+        'pluginSide',
         'schema',
         'schemaCarrying',
         'schemaTags',
@@ -2564,7 +2565,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       /fixed marketdatakind operation identifiers/,
     )
     assert.throws(() => intrinsic.removeCodeset('marketdatakindcodeset'), /fixed marketdatakind operation identifiers/)
-    // The plugin side set is rendered from the `PluginSide` enum alike.
+    // The plugin side set is rendered from the `Side` enum alike: every side the column can store.
     assert.throws(() => intrinsic.setCodeset('msgpluginsidecodeset', []), /fixed plugin side codes/)
     assert.throws(
       () => intrinsic.mergeCodeset('msgpluginsidecodeset', [{ value: '9', name: 'BUYS' }]),
@@ -2573,7 +2574,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.throws(() => intrinsic.removeCodeset('msgpluginsidecodeset'), /fixed plugin side codes/)
     assert.deepEqual(
       intrinsic.codeset('msgpluginsidecodeset').codes.map(({ value, name }) => [value, name]),
-      Object.entries(PluginSide).map(([name, code]) => [String(code), name]),
+      Object.entries(Side).map(([name, code]) => [String(code), name]),
     )
 
     const registry = seed()
@@ -3236,7 +3237,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   const arrow = require('apache-arrow')
 
   const {
-    BatchReader, DataType, Field, Filter, MarketDataKind, PluginSide, Scalar, Side, State, Term, TextLine, TextOptions, fields, fix,
+    BatchReader, DataType, Field, Filter, MarketDataKind, Scalar, Side, State, Term, TextLine, TextOptions, fields, fix,
     graph,
   } = require('yggdryl')
 
@@ -3470,12 +3471,12 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   test('a codec read under a source stamps its plugin side on every message', () => {
     const registry = seed()
     registry.addSource('ms', { pluginside: 'SELL' })
-    registry.addSource('desk', { pluginside: PluginSide.BUYS })
+    registry.addSource('desk', { pluginside: Side.BUYS })
     registry.addSource('bare')
     const schema = fix.schema(registry)
     const at = schema.indexOf('msgpluginside')
     assert.equal(schema.fieldAt(at).fix.tag, 65043)
-    assert.equal(schema.fieldAt(at).dtype.id, 'pluginside')
+    assert.equal(schema.fieldAt(at).dtype.id, 'side')
     const line = Buffer.from('8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|10=0|')
 
     // The source is resolved once, folded, and its side stamped on the line
@@ -3531,11 +3532,14 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const message = seller.parseFixLine(line)
     message.set(65043, 'buy-side')
     assert.equal(message.capture().msgpluginside, 'BUYS')
-    message.set('msgpluginside', PluginSide.SELL)
+    message.set('msgpluginside', Side.SELL)
     assert.equal(message.capture().msgpluginside, 'SELL')
-    // A `Side` member is no plugin side, however alike the two enums spell.
-    assert.throws(() => message.set(65043, 'SSHT'))
-    assert.equal(message.capture().msgpluginside, 'SELL')
+    // The column is a side, so every side lands; a spelling naming none is
+    // refused and the message unchanged.
+    message.set(65043, 'SSHT')
+    assert.equal(message.capture().msgpluginside, 'SSHT')
+    assert.throws(() => message.set(65043, 'middle'), /side/)
+    assert.equal(message.capture().msgpluginside, 'SSHT')
 
     // An id the catalog does not hold is refused by name, and no codec is
     // built.

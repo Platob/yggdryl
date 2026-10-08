@@ -2649,13 +2649,6 @@ impl ArrayCastPlan {
                     exposure,
                     budget,
                 )?,
-                DataType::PluginSide => ingest_enum_array::<crate::PluginSide>(
-                    &array,
-                    self.safe(),
-                    &self.field,
-                    exposure,
-                    budget,
-                )?,
                 other => return Err(enum_refusal(other.id()).into()),
             },
             ArrayCastKind::UuidIngest => ingest_uuid_array(
@@ -3098,8 +3091,8 @@ impl ArrayCastPlan {
 /// keep what was stored. A bounded byte source crosses the same way. An
 /// enum source is member codes of its own leaf: its own leaf, an integer
 /// and text take them, and another enum leaf refuses them by name, as the
-/// value door refuses a member of another leaf - `Side` and `PluginSide`
-/// both store `BUYS` as `1` and `SELL` as `2`, and a code that reads alike
+/// value door refuses a member of another leaf - `Side` stores `BUYS` as
+/// `1` and `TimeInForce` stores `DAY` as `1`, and a code that reads alike
 /// under two vocabularies is still a value of one of them.
 fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) -> Result<()> {
     let Some(source) = source else {

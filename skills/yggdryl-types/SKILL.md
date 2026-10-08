@@ -49,7 +49,7 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | raw metadata | `insert_metadata(k, v)?`, `get_metadata(k)` | `field.metadata[k] = v` | `field.set(k, v)`, `field.get(k)` |
 | reserved properties | `set_parquet_field_id(17)`, `set_comment(..)?` | `set_parquet_field_id(17)`, `set_comment(..)` | `setParquetFieldId(17)`, `setComment(..)` |
 | one protocol's keys | `as_iceberg_mut().insert("doc", ..)?` | `field.iceberg["doc"] = ..` | `field.iceberg.set('doc', ..)` |
-| a registered enum (`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`, `pluginside`) | `DataType::Side.scalar("BUYS")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()`, `TimeInForce::from_fix("0")`, `PluginSide::from_plugin_type(class)` | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")`, `TimeInForce.from_fix("0")`, `PluginSide.from_plugin_type(class)` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object), `timeInForceFromFix('0')`, `pluginSideFromPluginType(class)` |
+| a registered enum (`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`) | `DataType::Side.scalar("BUYS")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()`, `TimeInForce::from_fix("0")`, `fix::plugin_side(class)` (a FIX plugin's role, a `Side`) | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")`, `TimeInForce.from_fix("0")`, `fix.plugin_side(class)` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object), `timeInForceFromFix('0')`, `fix.pluginSide(class)` |
 | a free enum spelling (`order fill`, `Part-Filled`, `pending cxl`) | `State::from_spelling("order fill")` - read by its words once the exact vocabularies miss, cached | `State.from_spelling("order fill")`, `DataType("state").scalar(...)` | `new DataType('state').scalar('order fill')` |
 | a registered code's validity (`isin`, `cusip`, `sedol`, `figi`, `lei`, `dti`, `bic`, `country`, `ccy`, `mic`, `cfi`) | `code.rank()`, `code.is_real()` (`CodeValue`), `IdType::Isin.rank(text)`, `Isin::rank_of(text)`, `Isin::is_closed`, `Lei::is_closed`, `Dti::is_closed`, `Isin::is_listed_prefix`, `Isin::NONE`, `Country::is_listed`, `Ccy::is_none`, `Mic::is_none` | Rust only: a value of the right shape is accepted whatever its rank | Rust only |
 | a structured product's EUSIPA/SSPA category (a value, not a datatype) | `Eusipa::new(2300)?`, `"2300".parse::<Eusipa>()?`; `code()`, `group()`, `level()`, `name()`, `sspa_name()`, `is_listed()` | `Eusipa(2300)`, `Eusipa("2300")`; `.code`, `.group`, `.level`, `.name`, `.sspa_name`, `.is_listed`, `int(c)` | no `Eusipa`: a registry row's `eusipacode` is a number |
@@ -243,16 +243,16 @@ string and byte leaves, the legacy `list` words - is in
   is accepted on the `StringEnum("Side", ...)` field above. Check membership
   yourself (`side.get_member(v)` / `getMember(v)` answers the member name or
   none) when non-members must fail.
-- `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` and
-  `pluginside` are not text: each is a `uint8` (`side`, `marketdatakind`,
-  `timeinforce`, `pluginside`) or
+- `side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are
+  not text: each is a `uint8` (`side`, `marketdatakind`, `timeinforce`) or
   `uint16` (`state`, `marketdatatype`) column of member codes (kind `enum`),
   any integer column casting in and a code naming no member refused, which a value reads as the member -
   Python's `IntEnum` (`Side.BUYS`), JavaScript's name (`'BUYS'`), Rust's variant
   (`Side::Buy`). Text reads through the vocabulary (`"1"` is FIX's `BUYS`); a
-  `marketdatakind` code is an integer, never the text `"10"`. A `pluginside`
-  (`UKNW`, `BUYS`, `SELL`: a FIX plugin's role) is no `side` though two names
-  are spelled alike: a cast between the two is refused by name.
+  `marketdatakind` code is an integer, never the text `"10"`. A FIX plugin's
+  role is a `side` (`fix::plugin_side(class)` reads a CBlock's class into
+  `BUYS`, `SELL` or `UKNW`; `BuySide` and `SellSide` are spellings of the
+  first two), and a cast between any two enums is refused by name.
 - `forex` is a code, not a string: one pair `CCY/CCY` of two distinct ISO 4217
   currencies, however a feed spells it; a digital-asset ticker is a `ccy` but no
   leg, so `BTC/USDT` is no `forex`. A symbol with a tenor or a RIC

@@ -1069,7 +1069,7 @@ fn sided(role: &str) -> String {
 /// - whose entry states `SELL` - is clean under `check`.
 #[test]
 fn the_plugin_side_is_a_schema_column_an_intrinsic_set_and_clean_under_check() {
-    use yggdryl::PluginSide;
+    use yggdryl::Side;
     let workspace = Workspace::new();
     let folder = workspace.cblocks(&[("ms_fix44.cfb", &sided("SellSide"))]);
     let file = folder.join("ms_fix44.cfb");
@@ -1078,7 +1078,7 @@ fn the_plugin_side_is_a_schema_column_an_intrinsic_set_and_clean_under_check() {
     let registry = workspace.loaded();
     assert_eq!(
         registry.get_source("ms_fix44").unwrap().pluginside(),
-        PluginSide::SellSide
+        Side::Sell
     );
     let stored = std::fs::read_to_string(workspace.root().join("sources.json")).unwrap();
     assert_eq!(
@@ -1115,7 +1115,7 @@ fn the_plugin_side_is_a_schema_column_an_intrinsic_set_and_clean_under_check() {
         .unwrap();
     assert_eq!(columns[at - 1], "msgpluginid");
     assert_eq!(columns[at + 1], "msgoriginator");
-    assert_eq!(written.fields()[at].dtype(), &DataType::PluginSide);
+    assert_eq!(written.fields()[at].dtype(), &DataType::Side);
     assert!(!written.fields()[at].is_nullable());
 
     // The intrinsic set is listed and read like any other, and refuses a

@@ -52,7 +52,7 @@ from yggdryl.fix import (
     fix_schema_carrying,
     fix_schema_tags,
 )
-from yggdryl import MarketDataKind, PluginSide, Side, State, TimeInForce, graph
+from yggdryl import MarketDataKind, Side, State, TimeInForce, graph
 from yggdryl.graph import BookEvent, MarketData, OrderEvent
 
 
@@ -2403,7 +2403,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert fields["marketdatatype"].dtype == DataType("marketdatatype")
     # The role of the plugin whose session produced the message: never null,
     # because the enum has the neutral member, and no Side(54).
-    assert fields["msgpluginside"].dtype == DataType("pluginside")
+    assert fields["msgpluginside"].dtype == DataType("side")
     assert fields["msgpluginside"].fix.codeset == "msgpluginsidecodeset"
     assert fields["forexcode"].dtype == DataType("forex")
     assert fields["strikepx"].fix.tag == STRIKEPX_TAG and fields["strikepx"].dtype == DataType("decimal")
@@ -2670,7 +2670,7 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect(tmp_path: pathlib.Path) 
     # The parse holds the dialect's catalog entry: the file it was read from,
     # and no plugin role, since the root states no `type`.
     assert registry.sources() == [
-        {"id": "bloomberg", "file": "bloomberg.cfb", "pluginside": PluginSide.UKNW}
+        {"id": "bloomberg", "file": "bloomberg.cfb", "pluginside": Side.UKNW}
     ]
 
     codec = _fixed(registry)
@@ -2706,9 +2706,9 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect(tmp_path: pathlib.Path) 
 
 def test_a_cblock_root_type_names_the_role_of_its_plugin(tmp_path: pathlib.Path) -> None:
     for kind, expected in (
-        ("BuySideFIXCPluginCBlock", PluginSide.BUYS),
-        ("SellSideFIXCPluginCBlock", PluginSide.SELL),
-        ("FIXCPluginCBlock", PluginSide.UKNW),
+        ("BuySideFIXCPluginCBlock", Side.BUYS),
+        ("SellSideFIXCPluginCBlock", Side.SELL),
+        ("FIXCPluginCBlock", Side.UKNW),
     ):
         path = tmp_path / f"{kind}.cfb"
         path.write_text(
@@ -2743,18 +2743,18 @@ def test_the_sources_catalog_holds_one_entry_per_source(tmp_path: pathlib.Path) 
     assert registry.add_source("Venue", file="venue.cfb", pluginside="SellSide") is True
     assert registry.add_source("alpha", pluginside=1) is True
     assert registry.sources() == [
-        {"id": "alpha", "file": None, "pluginside": PluginSide.BUYS},
-        {"id": "venue", "file": "venue.cfb", "pluginside": PluginSide.SELL},
+        {"id": "alpha", "file": None, "pluginside": Side.BUYS},
+        {"id": "venue", "file": "venue.cfb", "pluginside": Side.SELL},
     ]
     assert registry.get_source("VE_NUE") == registry.get_source("venue")
 
     # A held id keeps its entry and takes only what it lacked: a file where
     # it stated none; a stated role is never replaced by another.
-    assert registry.add_source("ALPHA", file="alpha.cfb", pluginside=PluginSide.SELL) is False
+    assert registry.add_source("ALPHA", file="alpha.cfb", pluginside=Side.SELL) is False
     assert registry.get_source("alpha") == {
         "id": "alpha",
         "file": "alpha.cfb",
-        "pluginside": PluginSide.BUYS,
+        "pluginside": Side.BUYS,
     }
 
     # A field names its sources itself, and an entry it names stays.
@@ -2784,7 +2784,7 @@ def test_the_sources_catalog_holds_one_entry_per_source(tmp_path: pathlib.Path) 
     assert registry.remove_source("ALPHA") == {
         "id": "alpha",
         "file": "alpha.cfb",
-        "pluginside": PluginSide.BUYS,
+        "pluginside": Side.BUYS,
     }
     assert registry.remove_source("alpha") is None
     assert registry != FixRegistry.from_handle(root)
@@ -2792,7 +2792,7 @@ def test_the_sources_catalog_holds_one_entry_per_source(tmp_path: pathlib.Path) 
 
 def test_a_codec_reading_under_a_source_stamps_its_plugin_side() -> None:
     registry = FixRegistry()
-    registry.add_source("venue", pluginside=PluginSide.SELL)
+    registry.add_source("venue", pluginside=Side.SELL)
     # A source the catalog does not hold is refused where the codec opens.
     with pytest.raises(ValueError, match="nowhere"):
         FixCodec(registry, source="nowhere")
@@ -2803,26 +2803,26 @@ def test_a_codec_reading_under_a_source_stamps_its_plugin_side() -> None:
     message = told.parse_fix_line(order)
     # The plugin's role, read off the source and never off Side(54): a
     # Sell-Side plugin receives a buy order.
-    assert message.msgpluginside is PluginSide.SELL
+    assert message.msgpluginside is Side.SELL
     assert message.side is Side.BUYS
-    assert message.capture().msgpluginside is PluginSide.SELL
+    assert message.capture().msgpluginside is Side.SELL
     schema = fix_schema(registry)
     row = message.into_row(schema)
-    assert row.as_py()[schema.index_of("msgpluginside")] is PluginSide.SELL
-    assert FixMsg.from_row(schema, row, registry).msgpluginside is PluginSide.SELL
+    assert row.as_py()[schema.index_of("msgpluginside")] is Side.SELL
+    assert FixMsg.from_row(schema, row, registry).msgpluginside is Side.SELL
 
     # A codec told no source stamps the neutral member.
     untold = _fixed(registry)
     assert untold.source is None
-    assert untold.parse_fix_line(order).msgpluginside is PluginSide.UKNW
+    assert untold.parse_fix_line(order).msgpluginside is Side.UKNW
 
     # A row-header capture named for the column is the line's word over the
     # source; a line stating none takes the source's.
     lined = _fixed(registry, source="venue", capture_names=["msgpluginside"])
     (stated,) = list(lined.parse_text_line(TextLine(0, order, ["BUYS"])))
-    assert stated.msgpluginside is PluginSide.BUYS
+    assert stated.msgpluginside is Side.BUYS
     (unstated,) = list(lined.parse_text_line(TextLine(0, order, [None])))
-    assert unstated.msgpluginside is PluginSide.SELL
+    assert unstated.msgpluginside is Side.SELL
 
 
 def test_a_cblock_warns_about_the_declaration_it_dropped(

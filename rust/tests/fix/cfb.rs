@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use yggdryl::fs::{FileSystem, FsFile, MemoryFileSystem};
 use yggdryl::holder::Buffer;
-use yggdryl::{DataType, Error, Field, FixCodec, FixId, FixRegistry, IOBase, PluginSide};
+use yggdryl::{DataType, Error, Field, FixCodec, FixId, FixRegistry, IOBase, Side};
 
 /// A CBlock in the exact shape a production file has: the same element order,
 /// the same attribute order, the same escaping, the same self-closing forms.
@@ -6210,19 +6210,13 @@ fn an_ingest_holds_the_dialect_in_the_sources_catalog_under_the_file_it_read() {
 #[test]
 fn the_root_type_names_the_plugins_role_which_the_dialects_entry_states() {
     let (buy, _) = parse(CBLOCK);
-    assert_eq!(
-        buy.get_source(DIALECT).unwrap().pluginside(),
-        PluginSide::BuySide
-    );
+    assert_eq!(buy.get_source(DIALECT).unwrap().pluginside(), Side::Buy);
     let (sell, _) = FixRegistry::from_cfb_file(&handle(SELLSIDE), Some("ms")).unwrap();
-    assert_eq!(
-        sell.get_source("ms").unwrap().pluginside(),
-        PluginSide::SellSide
-    );
+    assert_eq!(sell.get_source("ms").unwrap().pluginside(), Side::Sell);
     let (overlay, _) = FixRegistry::from_cfb_file(&handle(OVERLAY), Some("overlay")).unwrap();
     assert_eq!(
         overlay.get_source("overlay").unwrap().pluginside(),
-        PluginSide::SellSide
+        Side::Sell
     );
     // No type, a type naming neither role, and a role in the package rather
     // than the class: none stated.
@@ -6246,7 +6240,7 @@ fn the_root_type_names_the_plugins_role_which_the_dialects_entry_states() {
         let (bare, _) = FixRegistry::from_cfb_file(&handle(&body), Some("bare")).unwrap();
         assert_eq!(
             bare.get_source("bare").unwrap().pluginside(),
-            PluginSide::Unknown,
+            Side::Unknown,
             "{why}"
         );
     }
@@ -6277,9 +6271,9 @@ fn the_root_type_names_the_plugins_role_which_the_dialects_entry_states() {
             .map(|source| (source.id(), source.file(), source.pluginside()))
             .collect::<Vec<_>>(),
         [
-            ("buy", Some("buy.cfb"), PluginSide::BuySide),
-            ("overlay", Some("overlay.cfb"), PluginSide::SellSide),
-            ("sell", Some("sell.cfb"), PluginSide::SellSide),
+            ("buy", Some("buy.cfb"), Side::Buy),
+            ("overlay", Some("overlay.cfb"), Side::Sell),
+            ("sell", Some("sell.cfb"), Side::Sell),
         ]
     );
     // The role is the entry's, never a field's: the file's own fields carry

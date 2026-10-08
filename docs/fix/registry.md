@@ -30,7 +30,7 @@
 | Planning | Message identity, contextual counter lookup, group layouts and identifier selection are compiled before parsing rows |
 | Mutation | A refusal leaves every category and index unchanged; metadata edits refresh referenced occurrences atomically |
 | Identity spelling | A case-only replacement preserves the stored canonical name; an identity or referenced datatype change is refused |
-| Membership | `FIX:sources` lists the ids of the sources that contributed a field, and the registry's [sources catalog](#membership) holds one `FixSource` per id - the file it was read from and its plugin's [`PluginSide`](../types/enum/pluginside.md) - provenance a caller filters on; no lookup consults it, and a message root the codec builds carries none |
+| Membership | `FIX:sources` lists the ids of the sources that contributed a field, and the registry's [sources catalog](#membership) holds one `FixSource` per id - the file it was read from and its plugin's role, a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side) - provenance a caller filters on; no lookup consults it, and a message root the codec builds carries none |
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the vocabularies and the three categories - `{codesets, fields, components, groups}` and no other key, the sets leading so a reader holds them before it meets a field naming one - with each field's membership inside its metadata; stable hashes include that complete state |
@@ -532,7 +532,7 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
 
 A dictionary is a membership, not a namespace: what a source contributed is recorded on the field it contributed to, as `FIX:sources` - a compact JSON array of source ids, `["blp","xnas"]`, each held to the id grammar (a non-empty word holding no quote, backslash or control character), folded to ASCII lowercase, deduplicated under the fold and kept sorted, so two registries built from the same sources in any order hash alike. An empty list removes the key, which is what every field the specification alone defines states: the shipped `config/fix` carries none. Membership is provenance a caller filters on; resolution never consults it, and a message root the codec builds carries none.
 
-What is known of a source is recorded once, in the registry's sources catalog rather than on every field: one `FixSource` per id - the id, the file it was read from where one is known, and the role of its plugin, a [`PluginSide`](../types/enum/pluginside.md) that is `UKNW` where the source states none. A [store](store.md#membership) writes the catalog as `sources.json`. A field names its sources itself, so a field may name an id the catalog does not hold and the catalog may hold an entry no field names; [`yggdryl fix check`](cli.md#schema-check-and-diff) fails the first and notes the second.
+What is known of a source is recorded once, in the registry's sources catalog rather than on every field: one `FixSource` per id - the id, the file it was read from where one is known, and the role of its plugin, a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side) that is `UKNW` where the source states none. A [store](store.md#membership) writes the catalog as `sources.json`. A field names its sources itself, so a field may name an id the catalog does not hold and the catalog may hold an entry no field names; [`yggdryl fix check`](cli.md#schema-check-and-diff) fails the first and notes the second.
 
 | Rust | Python | JavaScript | Answer |
 | --- | --- | --- | --- |
@@ -541,7 +541,7 @@ What is known of a source is recorded once, in the registry's sources catalog ra
 | `FixFieldMut::set_sources([..])` | `field.fix.sources = [..]` | `field.fix.sources = [..]` | Replace the list; an id that is empty or holds a quote, a backslash or a control character is refused, naming `FIX:sources` |
 | `FixFieldMut::add_source(id)` | `field.fix.add_source(id)` | `field.fix.addSource(id)` | Add one, idempotent under the fold |
 | `FixRegistry::dialects()` | `registry.dialects()` | `registry.dialects()` | The distinct ids any field or named definition names, sorted - what the fields state, not the catalog |
-| `FixRegistry::sources()` | `registry.sources()` | `registry.sources()` | The catalog in id order: `FixSource` values in Rust, `{"id", "file", "pluginside"}` records in Python (`file` `None` where none is known, `pluginside` a `PluginSide` member), `{ id, file, pluginside }` objects in JavaScript (`file` left out where none is known, `pluginside` the member's stored name) |
+| `FixRegistry::sources()` | `registry.sources()` | `registry.sources()` | The catalog in id order: `FixSource` values in Rust, `{"id", "file", "pluginside"}` records in Python (`file` `None` where none is known, `pluginside` a `Side` member), `{ id, file, pluginside }` objects in JavaScript (`file` left out where none is known, `pluginside` the member's stored name) |
 | `FixRegistry::get_source(id)` | `registry.get_source(id)` | not bound | The entry `id` names under the fold - `VENUE` and `ve_nue` both reach `venue` - or none |
 | `FixRegistry::add_source(FixSource::new(id)?.with_file(..).with_pluginside(..))` | `registry.add_source(id, *, file=None, pluginside=None)` | `registry.addSource(id, { file, pluginside })` | Record one entry, answering whether it arrived; an id already held keeps its entry and takes only what it lacked - a file where it stated none, a role where it stated `UKNW` - and a role disagreeing with a stated one keeps the held one, logged at warn |
 | `FixRegistry::remove_source(id)` | `registry.remove_source(id)` | not bound | Remove the entry and answer it; refused as a conflict naming the first field or definition still naming the id |
@@ -551,7 +551,7 @@ What is known of a source is recorded once, in the registry's sources catalog ra
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry, FixSource, PluginSide};
+    use yggdryl::{DataType, FixRegistry, FixSource, Side};
 
     let mut registry = FixRegistry::new();
     let mut venue = DataType::utf8().nullable_field("VenueTag");
@@ -564,17 +564,17 @@ What is known of a source is recorded once, in the registry's sources catalog ra
 
     let entry = FixSource::new("VENUE")?
         .with_file("venue.cfb")
-        .with_pluginside(PluginSide::SellSide);
+        .with_pluginside(Side::Sell);
     assert!(registry.add_source(entry), "arrived");
     let held = registry.get_source("Venue").expect("one entry under the fold");
     assert_eq!(
         (held.id(), held.file(), held.pluginside()),
-        ("venue", Some("venue.cfb"), PluginSide::SellSide)
+        ("venue", Some("venue.cfb"), Side::Sell)
     );
 
     // A held id keeps its entry and takes only what it lacked.
-    assert!(!registry.add_source(FixSource::new("venue")?.with_pluginside(PluginSide::BuySide)));
-    assert_eq!(registry.get_source("venue").map(FixSource::pluginside), Some(PluginSide::SellSide));
+    assert!(!registry.add_source(FixSource::new("venue")?.with_pluginside(Side::Buy)));
+    assert_eq!(registry.get_source("venue").map(FixSource::pluginside), Some(Side::Sell));
     // An entry a field still names stays.
     assert!(registry.remove_source("venue").is_err());
     assert_eq!(registry.sources().len(), 1);
@@ -585,7 +585,7 @@ What is known of a source is recorded once, in the registry's sources catalog ra
     ```python
     import pytest
 
-    from yggdryl import Field, PluginSide
+    from yggdryl import Field, Side
     from yggdryl.fix import FixRegistry
 
     registry = FixRegistry()
@@ -598,11 +598,11 @@ What is known of a source is recorded once, in the registry's sources catalog ra
     assert registry.get_source("venue") is None
 
     assert registry.add_source("VENUE", file="venue.cfb", pluginside="SELL") is True
-    entry = {"id": "venue", "file": "venue.cfb", "pluginside": PluginSide.SELL}
+    entry = {"id": "venue", "file": "venue.cfb", "pluginside": Side.SELL}
     assert registry.get_source("Venue") == entry
 
     # A held id keeps its entry and takes only what it lacked.
-    assert registry.add_source("venue", pluginside=PluginSide.BUYS) is False
+    assert registry.add_source("venue", pluginside=Side.BUYS) is False
     assert registry.sources() == [entry]
     # An entry a field still names stays.
     with pytest.raises(ValueError):
@@ -743,7 +743,7 @@ A vocabulary belongs to the dictionary rather than to one field. The specificati
 
 The set is stated first, because a registry refuses a field whose `FIX:codeset` names a set it does not hold - at `insert`, `update`, `from_fields`, `from_json` and a [store](store.md) load alike. Taking one away runs the other way: `remove_codeset`, and `set_codeset` with an empty list, refuse while a held field still reads by that name, naming the field.
 
-`marketdatakindcodeset`, `marketdatatypecodeset`, `statecodeset` and `msgpluginsidecodeset` are intrinsic rather than ordinary mutable vocabularies: the first names every [MarketDataKind](../types/enum/marketdatakind.md) member - its four-letter category, the `uint8` code a `marketdatakind` column stores and what it stands for - the second every [MarketDataType](../types/enum/marketdatatype.md) member - its stored name, the `uint16` code a `marketdatatype` column stores and what it means - the third every [State](../types/enum/state.md) member - its stored name, the `uint16` code a `state` column stores as the value, and what it means - and the fourth every [PluginSide](../types/enum/pluginside.md) role and its `uint8` code; all four are fixed by the crate. Reinstalling the same canonical document is idempotent; replacing, widening, removing, or loading a conflicting document is refused. A custom `MsgType` may still select any symbolic category already in `marketdatakindcodeset`, through its `FIX:msgcat`.
+`marketdatakindcodeset`, `marketdatatypecodeset`, `statecodeset` and `msgpluginsidecodeset` are intrinsic rather than ordinary mutable vocabularies: the first names every [MarketDataKind](../types/enum/marketdatakind.md) member - its four-letter category, the `uint8` code a `marketdatakind` column stores and what it stands for - the second every [MarketDataType](../types/enum/marketdatatype.md) member - its stored name, the `uint16` code a `marketdatatype` column stores and what it means - the third every [State](../types/enum/state.md) member - its stored name, the `uint16` code a `state` column stores as the value, and what it means - and the fourth every [Side](../types/enum/side.md) member - its stored name, the `uint8` code a `msgpluginside` column stores, and what it means, because a plugin's role is a side; all four are fixed by the crate. Reinstalling the same canonical document is idempotent; replacing, widening, removing, or loading a conflicting document is refused. A custom `MsgType` may still select any symbolic category already in `marketdatakindcodeset`, through its `FIX:msgcat`.
 
 === "Rust"
 
@@ -1329,7 +1329,7 @@ How long an order stands is a [`TimeInForce`](../types/enum/timeinforce.md) memb
 
 ## Folding a second source in
 
-Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as one native fold each, staged and adopted whole: nothing lands until the whole call has folded, a datatype the source states at another precision of the stored one folds under it, and a contradiction is passed over rather than ending the fold - see below for which is which. `FixRegistry::from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and the code sets its fields read by - a CBlock names no set of its own, so each is filed under the name the field supplies, `hedgecurrencycodeset` for `HedgeCurrency` - and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:sources`, recording the catalog entry `dialect` names - the file's name, and the role the root element's `type` attribute names, a [`PluginSide`](../types/enum/pluginside.md) read by `PluginSide::from_plugin_type`; `None` stamps nothing and records no entry, the role read past with it. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
+Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as one native fold each, staged and adopted whole: nothing lands until the whole call has folded, a datatype the source states at another precision of the stored one folds under it, and a contradiction is passed over rather than ending the fold - see below for which is which. `FixRegistry::from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and the code sets its fields read by - a CBlock names no set of its own, so each is filed under the name the field supplies, `hedgecurrencycodeset` for `HedgeCurrency` - and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:sources`, recording the catalog entry `dialect` names - the file's name, and the role the root element's `type` attribute names, a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side) read by `fix::plugin_side`; `None` stamps nothing and records no entry, the role read past with it. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
 
 A `vocabulary-tag`'s `alt` names its tag where it names only that tag. A dialect that spells one `alt` over two tags - `TRTN_FX_TradeCapture` declares `HedgeCurrency` for the currency a hedge settles in and again for the one it is quoted in - has given a name to neither, and a tag whose `alt` is another tag's own decimal has done the same to that tag's identity. The file's other statement of what a tag is called is read first: a `normalization-binding` spelling one of them by a name of its own names it - `LEGLASTSPOTRATE` for a tag 5190 whose `alt` repeats tag 637's `LegLastPx` - and the contended spelling, then one tag's alone, stays with that tag. A tag the bindings leave unnamed too falls back to its own decimal, the name a tag declaring no `alt` takes as well, and keeps the declared spelling as `display`, so every tag is left named and nothing the file said is lost. A field named by its own decimal is unnamed, and the [fold](#what-one-namespace-means-for-a-field-that-arrives) reads it so: a later file naming that tag names the field, and the members of both files read one field. Contention is decided by the key the spelling's catalog name, below, is indexed under, which folds case and drops `_`, `-` and space, so `Hedge_Currency` and `Hedge Currency` contend with `HedgeCurrency`. Two tags sharing a spelling record each other's tag among their alternate tags and so stay reachable as a pair; three record nothing, because an alternate identifier names one field. A `normalization-binding` cannot spell a contended name back onto one of them, and a `map` naming one decodes neither. The spelling survives where the file made it unambiguous: a `tag-constraint` binds one tag, so the message root, the component and the group each carry it, and a reader resolving a key against the message it arrived in - a bridge row's `MSGTYPE`, and the repeating group the key sits in - reaches the tag the file meant.
 

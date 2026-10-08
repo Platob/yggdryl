@@ -5813,6 +5813,7 @@ const fix = Object.freeze({
   schemaCarrying: binding.fixSchemaCarrying,
   schemaTags: binding.fixSchemaTags,
   crateFields: binding.fixCrateFields,
+  pluginSide: binding.fixPluginSide,
 })
 
 // The FIX values are reached through the namespace and nowhere else, so a
@@ -5831,6 +5832,7 @@ for (const name of [
   'JsMsgType',
   'JsFixMessages',
   'fixCrateFields',
+  'fixPluginSide',
   'fixSchema',
   'fixSchemaCarrying',
   'fixSchemaTags',
@@ -7248,18 +7250,6 @@ binding.yaml = yaml
   const members = binding._timeInForceMembersNative()
   delete binding._timeInForceMembersNative
   binding.TimeInForce = Object.freeze(
-    Object.fromEntries(members.map(({ name, code }) => [name, code])),
-  )
-}
-
-// The role of a FIX plugin: the side of the session a dialect's plugin stands
-// on, each member's stored name under the code a `pluginside` column stores -
-// `UKNW` at zero for a plugin stating no role, then `BUYS` and `SELL`. A
-// separate enum from `Side`, though two names are spelled alike.
-{
-  const members = binding._pluginSideMembersNative()
-  delete binding._pluginSideMembersNative
-  binding.PluginSide = Object.freeze(
     Object.fromEntries(members.map(({ name, code }) => [name, code])),
   )
 }
