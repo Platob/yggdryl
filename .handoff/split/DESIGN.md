@@ -713,7 +713,7 @@ handoff if S6's diff is too large; it is not taken without the user.
 | P0 | `pluginside` deleted, the plugin's role a `Side` (U8, D22): "Delete PluginSide; the plugin's role is a Side" | the whole run in the all-features lane; both bindings' suites; the three example passes; CI read |
 | P1 | the medium holds its `RecordOptions` (U9, D23) | the media suites and their `iobase_calls` rows; both bindings; CI read |
 | S0 | design, the pins, the prompt and this file: "Pin the market kinds' wire and cost contracts" | pins generated and green on P1's tree; pushed; CI read green |
-| S1 | the market extension point; the 21 kinds claimed in place | S0's pins byte-identical; the cost and size gates; `rust/tests/market_register.rs` |
+| S1 | the market extension point; the four enum kinds claimed in place, the seventeen codes the core's flat variants (D25) | S0's pins byte-identical; the cost and size gates; `rust/tests/market_register.rs` |
 | S2 | the media extension point (D21), the media claimed in place | `iobase_calls` unmoved; every medium's harness; both lanes; the exchange jobs |
 | S3 | the remaining seams in place: D5, D6, D9, D10 | `cargo check --workspace --all-targets`; the dictionary hash and crate dump unmoved; the whole run |
 | S4 | `yggdryl-market` and `yggdryl-fix` | market and fix whole runs in both lanes; cost rows unmoved; `cargo package --list`; maturin sdist |
@@ -1108,7 +1108,7 @@ belong to the worker whose files hold them.
 | --- | --- | --- | --- |
 | D1 | program branch `ccr-0fe6f9d0-ruymat` (harness-assigned); draft PR; merge `origin/main` per session; version `0.1.21` until S9 | the harness's branch rule; `ci.yml:3-9` | S0 |
 | D2 | closed shape over `&'static MarketKind` descriptors; `Scalar` 48 and `Serie` 40 bytes | the spike; `allocations.rs:6540` | S0, built S1 |
-| D3 | `DataTypeId(u8)` newtype with CamelCase consts; the 21 market ids leave it; `all()` answers the claimed order | the spike; `datatype_id.rs:28-32, 270` | S0, built S1 |
+| D3 | `DataTypeId(u8)` newtype with CamelCase consts; the four enum kinds' ids leave it and the seventeen codes' stay (D25); `all()` answers the claimed order | the spike; `datatype_id.rs:28-32, 270` | S0, built S1 |
 | D4 | `State` and the event vocabulary stay core; `State`'s FIX tables move to `fix/` in S3 | `text/line.rs:11-12`, `text/plan.rs:20` | S0 |
 | D5 | the market type's own `dtype()`/`field(name)` items; no extension trait | E0116 | S3 |
 | D6 | one public `implementer` module of forwarders, per-slice list from a scratch `git mv` | AGENTS "never make an item pub inside a published module" | S1, S3, S6 |
