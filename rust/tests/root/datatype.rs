@@ -946,3 +946,61 @@ mod structural_hash {
         }
     }
 }
+
+/// The order `DataType` sorts the market kinds and `State` in, among the
+/// core leaves that sit between them: a third per-kind number beside the
+/// identifier byte and the `Shape` position (D19), neither of which it
+/// is - by byte `lei` would sort before `country`. Caller-visible through
+/// both bindings' comparisons, so the kinds leaving the core keep it.
+/// Pinned on `2ae975674`; the numbers are the ranks `datatype.rs` states.
+#[test]
+fn the_market_kinds_and_state_keep_their_order_among_the_core_datatypes() {
+    let ascending = [
+        ("country", 30),
+        ("ccy", 31),
+        ("mic", 32),
+        ("cfi", 33),
+        ("uuid", 34),
+        ("geography", 52),
+        ("side", 53),
+        ("state", 55),
+        ("timeinforce", 56),
+        ("url", 57),
+        ("isin", 58),
+        ("timezone", 59),
+        ("mimetype", 60),
+        ("mediatype", 61),
+        ("cusip", 62),
+        ("sedol", 63),
+        ("bbg", 64),
+        ("urn", 65),
+        ("figi", 66),
+        ("unit", 68),
+        ("decimal", 69),
+        ("bigdecimal", 70),
+        ("ric", 71),
+        ("forex", 72),
+        ("marketdatakind", 73),
+        ("marketdatatype", 74),
+        ("lei", 75),
+        ("bic", 76),
+        ("elf", 77),
+        ("dti", 78),
+        ("fisn", 79),
+    ];
+    let parsed: Vec<yggdryl::DataType> = ascending
+        .iter()
+        .map(|(name, _)| {
+            yggdryl::DataType::from_str(name).unwrap_or_else(|error| panic!("{name}: {error}"))
+        })
+        .collect();
+    for (pair, ranks) in parsed.windows(2).zip(ascending.windows(2)) {
+        assert!(ranks[0].1 < ranks[1].1);
+        assert!(pair[0] < pair[1], "{:?} !< {:?}", pair[0], pair[1]);
+    }
+    // The order is the datatype's, not its byte's: `lei` (0x6b) sorts after
+    // `country` (0x71) and after every code the market declared before it.
+    let lei = yggdryl::DataType::from_str("lei").unwrap();
+    let country = yggdryl::DataType::from_str("country").unwrap();
+    assert!(lei.id().as_u8() < country.id().as_u8() && country < lei);
+}

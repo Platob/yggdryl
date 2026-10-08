@@ -6526,6 +6526,37 @@ fn typed_leaf_columns() -> Vec<Serie> {
             Scalar::duration32(90, TimeUnit::Second).expect("a duration"),
         ),
         (DataType::utf8(), Scalar::from("AAPL")),
+        // A code and the three enum storages: a cell of a registered kind is
+        // read as its typed leaf is, with nothing built, before and after the
+        // kind leaves the core.
+        (
+            DataType::from_str("isin").expect("a kind"),
+            DataType::from_str("isin")
+                .expect("a kind")
+                .scalar("US0378331005")
+                .expect("an ISIN"),
+        ),
+        (
+            DataType::from_str("side").expect("a kind"),
+            DataType::from_str("side")
+                .expect("a kind")
+                .scalar("BUYS")
+                .expect("a side"),
+        ),
+        (
+            DataType::from_str("state").expect("a kind"),
+            DataType::from_str("state")
+                .expect("a kind")
+                .scalar("PENDING_NEW")
+                .expect("a state"),
+        ),
+        (
+            DataType::from_str("marketdatatype").expect("a kind"),
+            DataType::from_str("marketdatatype")
+                .expect("a kind")
+                .scalar("ORDLIMIT")
+                .expect("a type"),
+        ),
     ]
     .into_iter()
     .map(|(dtype, value)| {

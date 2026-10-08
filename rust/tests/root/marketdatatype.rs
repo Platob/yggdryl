@@ -296,3 +296,165 @@ fn the_datatype_is_an_enum_over_uint16_codes() {
         assert_eq!(&back.scalar(index).unwrap(), value, "row {index}");
     }
 }
+
+/// The wire contract of `marketdatatype` as the split found it, pinned so that the
+/// kind leaving the core (`DataType::Market`, S1; `yggdryl-market`, S4)
+/// moves no byte: the identifier byte and name, the Arrow extension and its
+/// storage in both directions, the serde tags, the value-stream bytes, the
+/// canonical digests and the names that reach it. Generated from the facts
+/// the tree answered on `2ae975674`, never typed by hand.
+#[test]
+fn the_marketdatatype_wire_contracts_are_pinned() {
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, UInt16Array};
+    use arrow_schema::DataType as ArrowDataType;
+    use yggdryl::{
+        ArrowCastOptions, DataType, DataTypeId, DataTypeKind, DigestAlgorithm, Field, FieldRecord,
+        Scalar, Serie, StructType,
+    };
+
+    // Built through the doors that survive the kind leaving the core: the
+    // parsed name and the datatype's own value door.
+    let dtype = DataType::from_str("marketdatatype").unwrap();
+    let value = dtype.scalar("ORDLIMIT").unwrap();
+
+    // Byte and name.
+    assert_eq!(dtype.id(), DataTypeId::from_u8(0xc4).unwrap());
+    assert_eq!(dtype.id().as_u8(), 0xc4);
+    assert_eq!(dtype.id().as_str(), "marketdatatype");
+    assert_eq!(dtype.id().kind(), DataTypeKind::Enum);
+    assert_eq!(dtype.to_string(), "marketdatatype");
+    assert_eq!(value.kind(), "marketdatatype");
+    assert_eq!(value.id().as_u8(), 0xc4);
+    assert_eq!(value.dtype().unwrap(), dtype);
+    assert!(dtype.is_enum() && !dtype.is_code());
+    assert_eq!(dtype.code_width(), None);
+    assert_eq!(value.enum_code(), Some(102_u16));
+    assert_eq!(value.enum_name(), Some("ORDLIMIT"));
+
+    // Names: the parser, the field grammar and the logical names.
+    assert_eq!(dtype.id().as_str(), "marketdatatype");
+    assert_eq!(
+        Field::from_str("value marketdatatype").unwrap().dtype(),
+        &dtype
+    );
+    assert_eq!(
+        DataType::from_logical_name("marketdatatype").unwrap(),
+        dtype
+    );
+    let logical: Vec<&str> = DataType::LOGICAL_NAMES
+        .iter()
+        .filter(|(_, held)| *held == dtype)
+        .map(|(logical, _)| *logical)
+        .collect();
+    assert_eq!(logical, ["marketdatatype"]);
+
+    // Arrow: the extension name over its storage, both directions.
+    let field = dtype.clone().nullable_field("value");
+    let arrow = field.clone().into_arrow_field().unwrap();
+    assert_eq!(arrow.data_type(), &ArrowDataType::UInt16);
+    assert_eq!(
+        dtype.id().arrow_extension_name(),
+        Some("yggdryl.marketdatatype")
+    );
+    assert_eq!(
+        arrow
+            .metadata()
+            .get("ARROW:extension:name")
+            .map(String::as_str),
+        Some("yggdryl.marketdatatype")
+    );
+    assert_eq!(
+        arrow
+            .metadata()
+            .get("ARROW:extension:metadata")
+            .map(String::as_str),
+        Some("")
+    );
+    assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
+    let storage: ArrayRef = Arc::new(UInt16Array::from(vec![102_u16]));
+    let landed = Serie::from_arrow_array(Some(&field), storage, ArrowCastOptions::new()).unwrap();
+    assert_eq!(landed.scalar(0).unwrap(), value);
+    assert_eq!(landed.field().unwrap(), &field);
+
+    // Serde: the tags of the datatype, the field and the value.
+    assert_eq!(
+        serde_json::to_string(&dtype).unwrap(),
+        r#"{"type":"marketdatatype"}"#
+    );
+    assert_eq!(
+        serde_json::from_str::<DataType>(r#"{"type":"marketdatatype"}"#).unwrap(),
+        dtype
+    );
+    assert_eq!(
+        serde_json::to_string(&field).unwrap(),
+        r#"{"name":"value","dtype":{"type":"marketdatatype"},"nullable":true,"metadata":{}}"#
+    );
+    assert_eq!(
+        serde_json::from_str::<Field>(
+            r#"{"name":"value","dtype":{"type":"marketdatatype"},"nullable":true,"metadata":{}}"#
+        )
+        .unwrap(),
+        field
+    );
+    assert_eq!(
+        serde_json::to_string(&value).unwrap(),
+        r#"{"type":"marketdatatype","value":"ORDLIMIT"}"#
+    );
+    assert_eq!(
+        serde_json::from_str::<Scalar>(r#"{"type":"marketdatatype","value":"ORDLIMIT"}"#).unwrap(),
+        value
+    );
+
+    // Value stream: the bytes of the value, under its own tag and under the
+    // datatype.
+    let bytes = value.into_value_bytes();
+    assert_eq!(bytes, [0, 196, 102, 0, 0, 0]);
+    assert_eq!(Scalar::decode_value_bytes(&bytes).unwrap(), value);
+    assert_eq!(
+        dtype.encode_value_bytes(&Scalar::from("ORDLIMIT")).unwrap(),
+        bytes
+    );
+    assert_eq!(dtype.decode_value_bytes(&bytes).unwrap(), value);
+
+    // Digest: the canonical feed of the value, of a row holding it, and of
+    // the datatype.
+    assert_eq!(value.stable_hash(), 1473889680286530346);
+    assert_eq!(
+        value.digest(DigestAlgorithm::Xxh3).as_u64(),
+        Some(1473889680286530346)
+    );
+    let root =
+        DataType::from(StructType::from_fields([field.clone()]).unwrap()).required_field("row");
+    let record = FieldRecord::new(&root, Scalar::from_sequence([value.clone()])).unwrap();
+    assert_eq!(
+        record.digest(DigestAlgorithm::Xxh3).as_u64(),
+        Some(6287968742111782408)
+    );
+    assert_eq!(dtype.stable_hash(), 3177951029087061660);
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    //! The std-hash feed of `marketdatatype`, which no caller names.
+
+    /// The std `Hash` feed D19 keeps - the value's rank then its identity,
+    /// the datatype's `Shape` position - read through the door that feeds it
+    /// to XXH3, pinned so the kind leaving the core moves no persisted digest.
+    #[test]
+    fn the_marketdatatype_std_hash_feed_is_pinned() {
+        use yggdryl::DataType;
+
+        let dtype = DataType::from_str("marketdatatype").unwrap();
+        let value = dtype.scalar("ORDLIMIT").unwrap();
+        assert_eq!(
+            yggdryl::internals::scalar::stable_hash_of(&value),
+            1847531576414769836
+        );
+        assert_eq!(
+            yggdryl::internals::hashing_stable::stable_hash_of(&dtype),
+            5766283677918373446
+        );
+    }
+}

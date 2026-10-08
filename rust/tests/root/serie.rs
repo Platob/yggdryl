@@ -1065,3 +1065,11 @@ fn a_generic_serie_names_its_field_and_whether_it_is_held() {
     assert_eq!(stream.field().unwrap().name(), "row");
     assert!(StreamChunkedSerie::from_serie(run()).is_err());
 }
+
+/// `Serie` is forty bytes, the size the split keeps (D2): the variant that
+/// holds a registered kind must fit the enum as it stands, as `Scalar`'s
+/// forty-eight (`rust/tests/root/string.rs`) must.
+#[test]
+fn a_serie_is_forty_bytes() {
+    assert_eq!(std::mem::size_of::<yggdryl::Serie>(), 40);
+}

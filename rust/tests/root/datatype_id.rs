@@ -626,3 +626,64 @@ fn a_code_width_is_a_bound_and_never_a_layout() {
     assert_eq!(DataTypeId::FixedUtf8String.code_width(), None);
     assert_eq!(DataTypeId::Int32.code_width(), None);
 }
+
+/// The market kinds and `State` as the listing states them on `2ae975674`:
+/// the code family's seventeen in byte order after `mediatype` and before
+/// `uuid`, the enum family's five after the text family's last. This is the
+/// order `DATA_TYPE_IDS` and `dataTypeIds` list, and what D3's `all()` keeps
+/// once a kind's byte is claimed rather than declared.
+#[test]
+fn the_market_kinds_keep_their_places_in_the_listing() {
+    // Every byte read through `from_u8`, the door that survives the kinds'
+    // bytes being claimed rather than declared: the identifiers it answers,
+    // in byte order, are the listing.
+    let names: Vec<&str> = (0..=u8::MAX)
+        .filter_map(DataTypeId::from_u8)
+        .map(|id| id.as_str())
+        .collect();
+    let codes = [
+        "lei", "bic", "elf", "dti", "fisn", "country", "ccy", "mic", "cfi", "isin", "cusip",
+        "sedol", "bbg", "figi", "unit", "ric", "forex",
+    ];
+    let start = names.iter().position(|name| *name == "lei").unwrap();
+    assert_eq!(&names[start..start + codes.len()], &codes);
+    assert_eq!(names[start - 1], "mediatype");
+    assert_eq!(names[start + codes.len()], "uuid");
+    let enums = [
+        "state",
+        "marketdatakind",
+        "side",
+        "marketdatatype",
+        "timeinforce",
+    ];
+    let start = names.iter().position(|name| *name == "state").unwrap();
+    assert_eq!(&names[start..start + enums.len()], &enums);
+    for (name, byte) in [
+        ("lei", 0x6b),
+        ("bic", 0x6c),
+        ("elf", 0x6d),
+        ("dti", 0x6e),
+        ("fisn", 0x6f),
+        ("country", 0x71),
+        ("ccy", 0x72),
+        ("mic", 0x73),
+        ("cfi", 0x74),
+        ("isin", 0x78),
+        ("cusip", 0x79),
+        ("sedol", 0x7a),
+        ("bbg", 0x7b),
+        ("figi", 0x7c),
+        ("unit", 0x7d),
+        ("ric", 0x7e),
+        ("forex", 0x7f),
+        ("state", 0xc1),
+        ("marketdatakind", 0xc2),
+        ("side", 0xc3),
+        ("marketdatatype", 0xc4),
+        ("timeinforce", 0xc5),
+    ] {
+        let id = DataTypeId::from_u8(byte).unwrap_or_else(|| panic!("{name} at {byte:#04x}"));
+        assert_eq!(id.as_str(), name, "{byte:#04x}");
+        assert_eq!(id.as_u8(), byte, "{name}");
+    }
+}
