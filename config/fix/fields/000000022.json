@@ -8,6 +8,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2200",
       "description": "Used to express the ceiling price of a capped call.",
       "display": "LegCapPrice"
@@ -22,6 +23,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2201",
       "description": "Used to express the floor price of a capped put.",
       "display": "LegFloorPrice"
@@ -34,6 +36,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2202",
       "description": "Used to indicate a derivatives security that can be defined using flexible terms. The terms commonly permitted to be defined by market participants are expiration date and strike price. FlexibleIndicator is an alternative to LegCFICode(608) Standard/Non-standard attribute.",
       "display": "LegFlexibleIndicator"
@@ -46,6 +49,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2203",
       "description": "Used to indicate if a product or group of product supports the creation of flexible securities.",
       "display": "LegFlexProductEligibilityIndicator"
@@ -59,6 +63,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimeOnly",
       "FIX:tag": "2204",
       "description": "The start time of the time range on which a complex event date is effective.",
       "display": "LegComplexEventStartTime"
@@ -71,6 +76,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2205",
       "description": "Position Limit for a given exchange-traded product.",
       "display": "LegPositionLimit"
@@ -83,6 +89,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2206",
       "description": "Position limit in the near-term contract for a given exchange-traded product.",
       "display": "LegNTPositionLimit"
@@ -96,6 +103,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "cpprogramcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2207",
       "description": "The program under which a commercial paper is issued.",
       "display": "LegCPProgram"
@@ -108,6 +116,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2208",
       "description": "The registration type of a commercial paper issuance.",
       "display": "LegCPRegType"
@@ -121,6 +130,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "shortsalerestrictioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2209",
       "description": "Indicates whether a restriction applies to short selling a security.",
       "display": "LegShortSaleRestriction"
@@ -134,6 +144,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "assetgroupcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2210",
       "description": "Indicates the broad product or asset classification. May be used to provide grouping for the product taxonomy (Product(460), SecurityType(167), etc.) and/or the risk taxonomy (AssetClass(1938), AssetSubClass(1939), AssetType(1940), etc.).",
       "display": "AssetGroup"
@@ -147,6 +158,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "strategytypecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2211",
       "description": "Specifies the type of trade strategy.",
       "display": "LegStrategyType"
@@ -159,6 +171,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2212",
       "description": "When this element is specified and set to 'Y', it indicates that common pricing applies. Common pricing may be relevant for a transaction that references more than one commodity reference price.",
       "display": "LegCommonPricingIndicator"
@@ -172,6 +185,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "settldisruptionprovisioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2213",
       "description": "Specifies the consequences of bullion settlement disruption events.",
       "display": "LegSettlDisruptionProvision"
@@ -185,6 +199,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "roundingdirectioncodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "2214",
       "description": "Specifies the rounding direction if not overridden elsewhere.",
       "display": "LegInstrumentRoundingDirection"
@@ -197,6 +212,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2215",
       "description": "Specifies the rounding precision in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
       "display": "LegInstrumentRoundingPrecision"
@@ -209,6 +225,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2216",
       "description": "The fee rate when MiscFeeAmt(137) is a percentage of trade quantity.",
       "display": "MiscFeeRate"
@@ -223,6 +240,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2217",
       "description": "The fee amount due if different from MiscFeeAmt(137).",
       "display": "MiscFeeAmountDue"
@@ -235,6 +253,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2218",
       "description": "Number of complex events in the repeating group.",
       "display": "NoLegComplexEvents"
@@ -248,6 +267,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2219",
       "description": "Identifies the type of complex event.",
       "display": "LegComplexEventType"
@@ -261,6 +281,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentpaysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2220",
       "description": "Trade side of payout payer.",
       "display": "LegComplexOptPayoutPaySide"
@@ -274,6 +295,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentpaysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2221",
       "description": "Trade side of payout receiver.",
       "display": "LegComplexOptPayoutReceiveSide"
@@ -286,6 +308,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2222",
       "description": "Reference to the underlier whose payments are being passed through.",
       "display": "LegComplexOptPayoutUnderlier"
@@ -300,6 +323,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2223",
       "description": "Cash amount indicating the pay out associated with an event. For binary options this is a fixed amount.",
       "display": "LegComplexOptPayoutAmount"
@@ -312,6 +336,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2224",
       "description": "Percentage of observed price for calculating the payout associated with the event.",
       "display": "LegComplexOptPayoutPercentage"
@@ -325,6 +350,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexoptpayouttimecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2225",
       "description": "Specifies when the payout is to occur.",
       "display": "LegComplexOptPayoutTime"
@@ -337,6 +363,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2226",
       "description": "Specifies the currency of the payout amount.",
       "display": "LegComplexOptPayoutCurrency"
@@ -351,6 +378,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2227",
       "description": "Specifies the price at which the complex event takes effect. Impact of the event price is determined by the LegComplexEventType(2219).",
       "display": "LegComplexEventPrice"
@@ -363,6 +391,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2228",
       "description": "Specifies the price percentage at which the complex event takes effect. Impact of the event price is determined by the LegComplexEventType(2219).",
       "display": "LegComplexEventPricePercentage"
@@ -376,6 +405,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventpriceboundarymethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2229",
       "description": "Specifies the boundary condition to be used for the event price relative to the complex event price at the point the complex event outcome takes effect as determined by the LegComplexEventPriceTimeType(2231).",
       "display": "LegComplexEventPriceBoundaryMethod"
@@ -388,6 +418,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2230",
       "description": "Used in combination with LegComplexEventPriceBoundaryMethod(2229) to specify the percentage of the strike price in relation to the underlying price. The percentage is generally 100 or greater for puts and 100 or less for calls.",
       "display": "LegComplexEventPriceBoundaryPrecision"
@@ -401,6 +432,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventpricetimetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2231",
       "description": "Specifies when the complex event outcome takes effect. The outcome of a complex event is a payout or barrier action as specified by the LegComplexEventType(2219).",
       "display": "LegComplexEventPriceTimeType"
@@ -414,6 +446,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventconditioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2232",
       "description": "Specifies the condition between complex events when more than one event is specified.",
       "display": "LegComplexEventCondition"
@@ -426,6 +459,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2233",
       "description": "Specifies the first or only reference currency of the trade.",
       "display": "LegComplexEventCurrencyOne"
@@ -438,6 +472,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2234",
       "description": "Specifies the second reference currency of the trade.",
       "display": "LegComplexEventCurrencyTwo"
@@ -451,6 +486,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventquotebasiscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2235",
       "description": "For foreign exchange Quanto option feature.",
       "display": "LegComplexEventQuoteBasis"
@@ -463,6 +499,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2236",
       "description": "Specifies the fixed FX rate alternative for FX Quantro options.",
       "display": "LegComplexEventFixedFXRate"
@@ -475,6 +512,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2237",
       "description": "Specifies the method according to which an amount or a date is determined. See https://fpml.org/coding-scheme/determination-method for values.",
       "display": "LegComplexEventDeterminationMethod"
@@ -488,6 +526,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisioncalculationagentcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2238",
       "description": "Used to identify the calculation agent.",
       "display": "LegComplexEventCalculationAgent"
@@ -502,6 +541,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2239",
       "description": "Upper strike price for Asian option feature. Strike percentage for a Strike Spread.",
       "display": "LegComplexEventStrikePrice"
@@ -514,6 +554,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2240",
       "description": "Strike factor for Asian option feature. Upper strike percentage for a Strike Spread.",
       "display": "LegComplexEventStrikeFactor"
@@ -526,6 +567,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2241",
       "description": "Upper string number of options for a Strike Spread.",
       "display": "LegComplexEventStrikeNumberOfOptions"
@@ -538,6 +580,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "2242",
       "description": "Reference to credit event table elsewhere in the message.",
       "display": "LegComplexEventCreditEventsXIDRef"
@@ -551,6 +594,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventcrediteventnotifyingpartycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2243",
       "description": "The notifying party is the party that notifies the other party when a credit event has occurred by means of a credit event notice. If more than one party is referenced as being the notifying party then either party may notify the other of a credit event occurring.",
       "display": "LegComplexEventCreditEventNotifyingParty"
@@ -563,6 +607,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2244",
       "description": "Specifies the local business center for which the credit event is to be determined. The inclusion of this business center implies that Greenwich Mean Time in Section 3.3 of the 2003 ISDA Credit Derivatives Definitions is replaced by the local time of the specified business center. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegComplexEventCreditEventBusinessCenter"
@@ -575,6 +620,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2245",
       "description": "When this element is specified and set to 'Y', indicates that ISDA defined Standard Public Sources are applicable.",
       "display": "LegComplexEventCreditEventStandardSources"
@@ -587,6 +633,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2246",
       "description": "The minimum number of the specified public information sources that must publish information that reasonably confirms that a credit event has occurred. The market convention is two.",
       "display": "LegComplexEventCreditEventMinimumSources"
@@ -600,6 +647,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimeOnly",
       "FIX:tag": "2247",
       "description": "The end time of the time range on which a complex event date is effective.",
       "display": "LegComplexEventEndTime"
@@ -612,6 +660,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XID",
       "FIX:tag": "2248",
       "description": "Identifier of this complex event for cross referencing elsewhere in the message.",
       "display": "LegComplexEventXID"
@@ -624,6 +673,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "2249",
       "description": "Reference to a complex event elsewhere in the message.",
       "display": "LegComplexEventXIDRef"
@@ -636,6 +686,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2250",
       "description": "Number of complex event dates in the repeating group.",
       "display": "NoLegComplexEventDates"
@@ -650,6 +701,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCDateOnly",
       "FIX:tag": "2251",
       "description": "The start date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options.",
       "display": "LegComplexEventStartDate"
@@ -664,6 +716,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCDateOnly",
       "FIX:tag": "2252",
       "description": "The end date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options.",
       "display": "LegComplexEventEndDate"
@@ -676,6 +729,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2253",
       "description": "Number of complex event times in the repeating group.",
       "display": "NoLegComplexEventTimes"
@@ -688,6 +742,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2254",
       "description": "Number of parties in the repeating group.",
       "display": "NoLegInstrumentParties"
@@ -700,6 +755,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2255",
       "description": "Used to identify party id related to instrument.",
       "display": "LegInstrumentPartyID"
@@ -713,6 +769,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyidsourcecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "2256",
       "description": "Used to identify source of instrument party id.",
       "display": "LegInstrumentPartyIDSource"
@@ -726,6 +783,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrolecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2257",
       "description": "Used to identify the role of instrument party id.",
       "display": "LegInstrumentPartyRole"
@@ -738,6 +796,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2258",
       "description": "Number of parties sub-IDs in the repeating group.",
       "display": "NoLegInstrumentPartySubIDs"
@@ -750,6 +809,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2259",
       "description": "PartySubID value within an instrument party repeating group.",
       "display": "LegInstrumentPartySubID"
@@ -763,6 +823,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partysubidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2260",
       "description": "Type of LegInstrumentPartySubID (2259) value.",
       "display": "LegInstrumentPartySubIDType"
@@ -776,6 +837,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentpaysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2261",
       "description": "Trade side of payout payer.",
       "display": "UnderlyingComplexOptPayoutPaySide"
@@ -789,6 +851,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentpaysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2262",
       "description": "Trade side of payout receiver.",
       "display": "UnderlyingComplexOptPayoutReceiveSide"
@@ -801,6 +864,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2263",
       "description": "Reference to the underlier whose payments are being passed through.",
       "display": "UnderlyingComplexOptPayoutUnderlier"
@@ -813,6 +877,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2264",
       "description": "Percentage of observed price for calculating the payout associated with the event.",
       "display": "UnderlyingComplexOptPayoutPercentage"
@@ -826,6 +891,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexoptpayouttimecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2265",
       "description": "The time when the payout is to occur.",
       "display": "UnderlyingComplexOptPayoutTime"
@@ -838,6 +904,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2266",
       "description": "Specifies the currency of the payout amount.",
       "display": "UnderlyingComplexOptPayoutCurrency"
@@ -850,6 +917,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2267",
       "description": "Specifies the price percentage at which the complex event takes effect. Impact of the event price is determined by the UnderlyingComplexEventType(2046).",
       "display": "UnderlyingComplexEventPricePercentage"
@@ -862,6 +930,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2268",
       "description": "Specifies the first or only reference currency of the trade.",
       "display": "UnderlyingComplexEventCurrencyOne"
@@ -874,6 +943,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2269",
       "description": "Specifies the second reference currency of the trade.",
       "display": "UnderlyingComplexEventCurrencyTwo"
@@ -887,6 +957,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventquotebasiscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2270",
       "description": "Specifies the currency pairing for the quote.",
       "display": "UnderlyingComplexEventQuoteBasis"
@@ -899,6 +970,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2271",
       "description": "Specifies the fixed FX rate alternative for FX Quantro options.",
       "display": "UnderlyingComplexEventFixedFXRate"
@@ -911,6 +983,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2272",
       "description": "Specifies the method according to which an amount or a date is determined. See https://fpml.org/coding-scheme/determination-method for values.",
       "display": "UnderlyingComplexEventDeterminationMethod"
@@ -924,6 +997,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisioncalculationagentcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2273",
       "description": "Used to identify the calculation agent.",
       "display": "UnderlyingComplexEventCalculationAgent"
@@ -938,6 +1012,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2274",
       "description": "Upper strike price for Asian option feature. Strike percentage for a Strike Spread.",
       "display": "UnderlyingComplexEventStrikePrice"
@@ -950,6 +1025,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2275",
       "description": "Strike factor for Asian option feature. Upper strike percentage for a Strike Spread.",
       "display": "UnderlyingComplexEventStrikeFactor"
@@ -962,6 +1038,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2276",
       "description": "Upper string number of options for a Strike Spread.",
       "display": "UnderlyingComplexEventStrikeNumberOfOptions"
@@ -974,6 +1051,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "2277",
       "description": "Reference to credit event table elsewhere in the message.",
       "display": "UnderlyingComplexEventCreditEventsXIDRef"
@@ -987,6 +1065,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventcrediteventnotifyingpartycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2278",
       "description": "The notifying party is the party that notifies the other party when a credit event has occurred by means of a credit event notice. If more than one party is referenced as being the notifying party then either party may notify the other of a credit event occurring.",
       "display": "UnderlyingComplexEventCreditEventNotifyingParty"
@@ -999,6 +1078,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2279",
       "description": "Specifies the local business center for which the credit event is to be determined. The inclusion of this business center implies that Greenwich Mean Time in Section 3.3 of the 2003 ISDA Credit Derivatives Definitions is replaced by the local time of the specified business center. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingComplexEventCreditEventBusinessCenter"
@@ -1011,6 +1091,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2280",
       "description": "When this element is specified and set to 'Y', indicates that ISDA defined Standard Public Sources are applicable.",
       "display": "UnderlyingComplexEventCreditEventStandardSources"
@@ -1023,6 +1104,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2281",
       "description": "The minimum number of the specified public information sources that must publish information that reasonably confirms that a credit event has occurred. The market convention is two.",
       "display": "UnderlyingComplexEventCreditEventMinimumSources"
@@ -1035,6 +1117,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XID",
       "FIX:tag": "2282",
       "description": "Identifier of this complex event for cross referencing elsewhere in the message.",
       "display": "UnderlyingComplexEventXID"
@@ -1047,6 +1130,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "2283",
       "description": "Reference to a complex event elsewhere in the message.",
       "display": "UnderlyingComplexEventXIDRef"
@@ -1059,6 +1143,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2284",
       "description": "In an outright or forward commodity trade that is cash settled this is the index used to determine the cash payment.",
       "display": "UnderlyingSettlRateIndex"
@@ -1071,6 +1156,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2285",
       "description": "This is an optional qualifying attribute of UnderlyingSettlementRateIndex(2284) such as the delivery zone for an electricity contract.",
       "display": "UnderlyingSettlRateIndexLocation"
@@ -1083,6 +1169,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2286",
       "description": "Description of the option expiration.",
       "display": "UnderlyingOptionExpirationDesc"
@@ -1095,6 +1182,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2287",
       "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingOptionExpirationDesc(2288) field.",
       "display": "EncodedUnderlyingOptionExpirationDescLen"
@@ -1107,6 +1195,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2288",
       "description": "Encoded (non-ASCII characters) representation of the UnderlyingOptionExpirationDesc(2286) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingOptionExpirationDesc(2286).",
       "display": "EncodedUnderlyingOptionExpirationDesc"
@@ -1120,6 +1209,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "swapsubclasscodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2289",
       "description": "The sub-classification or notional schedule type of the swap.",
       "display": "UnderlyingSwapSubClass"
@@ -1133,6 +1223,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2290",
       "description": "Used to express the unit of measure (UOM) of the price if different from the contract.",
       "display": "UnderlyingStrikeUnitOfMeasure"
@@ -1145,6 +1236,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2291",
       "description": "Specifies the index used to calculate the strike price.",
       "display": "UnderlyingStrikeIndex"
@@ -1159,6 +1251,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "2292",
       "description": "Specifies the strike price offset from the named index.",
       "display": "UnderlyingStrikeIndexSpread"
@@ -1171,6 +1264,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2293",
       "description": "Specifies the source of trade valuation data.",
       "display": "UnderlyingValuationSource"
@@ -1183,6 +1277,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2294",
       "description": "Specifies the methodology and/or assumptions used to generate the trade value.",
       "display": "UnderlyingValuationReferenceModel"
@@ -1196,6 +1291,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "strategytypecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2295",
       "description": "Specifies the type of trade strategy.",
       "display": "UnderlyingStrategyType"
@@ -1208,6 +1304,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2296",
       "description": "When this element is specified and set to 'Y', it indicates that common pricing applies. Common pricing may be relevant for a transaction that references more than one commodity reference price.",
       "display": "UnderlyingCommonPricingIndicator"
@@ -1221,6 +1318,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "settldisruptionprovisioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2297",
       "description": "Specifies the consequences of settlement disruption events.",
       "display": "UnderlyingSettlDisruptionProvision"
@@ -1234,6 +1332,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "roundingdirectioncodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "2298",
       "description": "Specifies the rounding direction if not overridden elsewhere.",
       "display": "UnderlyingInstrumentRoundingDirection"
@@ -1246,6 +1345,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2299",
       "description": "Specifies the rounding precision in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
       "display": "UnderlyingInstrumentRoundingPrecision"

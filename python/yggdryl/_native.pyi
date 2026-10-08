@@ -548,7 +548,7 @@ class Serie:
     def from_default(field: object, rows: int = 1) -> Serie: ...
     # Any columnar object - a pyarrow scalar, array, chunked array, batch,
     # table or reader, a pandas or polars frame or series, a numpy array, an
-    # Arrow C exporter, a `Serie`, `ChunkedSerie` or `SerieReader` - crosses
+    # Arrow C exporter, a `Serie`, `ChunkedSerie` or `StreamChunkedSerie` - crosses
     # as the column it holds, a stream drained and chunks joined; any other
     # value is read as a `Scalar`, a sequence as its rows and anything else
     # as one row.
@@ -629,12 +629,9 @@ class Serie:
     def into_filtered(self, mask: object) -> Serie: ...
     # One `(key, rows)` per distinct key in order of first occurrence, an
     # absent key one value; sorted keys cut every group as a zero-copy slice.
-    def partition_by(self, keys: object) -> list[tuple[Scalar, Serie]]: ...
+    def partition_by(self, by: object) -> KeySeries: ...
     # A record column by the cells its paths reach - one path or several,
     # each a `FieldPath` or its text - keyed by the run of those cells.
-    def partition_by_paths(
-        self, paths: str | FieldPath | Iterable[str | FieldPath]
-    ) -> list[tuple[Scalar, Serie]]: ...
     def memory_size(self) -> int: ...
     # `memory_size` less what lies in a spill file's mapping.
     def resident_size(self) -> int: ...
@@ -702,14 +699,12 @@ class Serie:
     def as_sort_by(self, by: OrderingsLike) -> Self: ...
     # A window over this serie object, read and written through it.
     def window(self, offset: int, length: int) -> WindowSerie: ...
-    # The windows of equal adjacent keys, each `(key, window)` - the key a
-    # run of one cell per term - over this serie object at its offsets, or,
-    # where `sorted` gathered rows out of key order, over one new `Serie`
-    # every window shares. Each window states its record as `static_values`.
+    # Native key items for adjacent equal keys; sorted gathers retain one
+    # shared payload. The key context is explicit on each KeySerie.
     # `sorted=None` is `False`.
     def window_by(
-        self, by: SelectorLike, sorted: bool | None = False
-    ) -> list[tuple[Scalar, WindowSerie]]: ...
+        self, by: object, sorted: bool | None = False
+    ) -> KeySeries: ...
     def into_arrow_scalar(self) -> pyarrow.Scalar: ...
     def into_arrow_array(self) -> pyarrow.Array: ...
     def into_arrow_batch(self) -> pyarrow.RecordBatch: ...
@@ -743,6 +738,8 @@ class Serie:
     def __ge__(self, other: Serie) -> bool: ...
     def __copy__(self) -> Serie: ...
     def __deepcopy__(self, memo: object) -> Serie: ...
+    def into_stream(self) -> StreamSerie: ...
+    def into_chunked_stream(self, row_size: int | None = None, byte_size: int | None = None) -> StreamChunkedSerie: ...
 
 class SerieSerie(Serie):
     """A serie column: ``int32`` offsets over one item column."""
@@ -804,7 +801,7 @@ class StructSerie(Serie):
     def names(self) -> list[str]: ...
     def without_child(self, name: str) -> StructSerie: ...
     # A record column is also the stream of its one batch - what
-    # `SerieReader.from_serie` reads - as a `pyarrow.RecordBatch` is.
+    # `StreamChunkedSerie.from_serie` reads - as a `pyarrow.RecordBatch` is.
     def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
 
 class WindowSerie:
@@ -813,12 +810,8 @@ class WindowSerie:
     ``serie.window(offset, length)`` holds that serie object, the offset and
     the length, and nothing else: every call borrows the serie when it is
     asked and redirects to the core's window over it, every index
-    window-relative. A window ``window_by`` lent also holds the windows of
-    that call and its place among them: it states the record of values
-    constant over its rows - ``static_values`` - which no other window, a
-    narrower one included, states, and the windows of it keep that record.
-    The windows hold the rows they were cut from, buffers shared, so they
-    outlive the serie object. One class is both the shared and the mutable window -
+    window-relative. Clustering answers explicit key items with native
+    payloads. One class is both the shared and the mutable window -
     a write is checked when it is made - and a window never grows or shrinks
     what it views: ``splice`` takes exactly as many rows as its range,
     ``as_taken`` exactly as many indices as the window, and there is no
@@ -856,14 +849,12 @@ class WindowSerie:
     # number its first row has in what was windowed first, `None` where
     # `sorted` gathered the rows) - as `window_by` read the rows when it cut
     # the windows, read by name.
-    @property
-    def static_values(self) -> Scalar | None: ...
     # `Serie.window_by` over this window's rows, offsets the serie's. A
     # window `window_by` lent keeps its record through them: its cells
     # first, the `rownum` absolute.
     def window_by(
         self, by: SelectorLike, sorted: bool | None = False
-    ) -> list[tuple[Scalar, WindowSerie]]: ...
+    ) -> KeySeries: ...
     def into_serie(self) -> Serie: ...
     def is_sorted(self, *, descending: bool = False, nulls_first: bool = False) -> bool: ...
     def is_unique(self) -> bool: ...
@@ -882,7 +873,7 @@ class WindowSerie:
     def into_reversed(self) -> Serie: ...
     def into_taken(self, indices: object) -> Serie: ...
     def into_filtered(self, mask: object) -> Serie: ...
-    def partition_by(self, keys: object) -> list[tuple[Scalar, Serie]]: ...
+    def partition_by(self, by: object) -> KeySeries: ...
     def set(self, index: int, value: object) -> None: ...
     def fill(self, value: object) -> None: ...
     def swap(self, left: int, right: int) -> None: ...
@@ -907,8 +898,10 @@ class WindowSerie:
     def __le__(self, other: WindowSerie | Serie) -> bool: ...
     def __gt__(self, other: WindowSerie | Serie) -> bool: ...
     def __ge__(self, other: WindowSerie | Serie) -> bool: ...
+    def into_stream(self) -> StreamSerie: ...
+    def into_chunked_stream(self, row_size: int | None = None, byte_size: int | None = None) -> StreamChunkedSerie: ...
 
-class SerieReader(Iterator[Serie]):
+class StreamChunkedSerie(Iterator[Serie]):
     """One record ``Serie`` per batch of an Arrow stream, each cast by one plan.
 
     The plan is compiled before a batch is pulled, so a planning failure is
@@ -925,7 +918,7 @@ class SerieReader(Iterator[Serie]):
         *,
         safe: bool = True,
         representation: Representation = "value",
-    ) -> SerieReader: ...
+    ) -> StreamChunkedSerie: ...
     # A stream - a reader, a table, a frame, a dataset, rows - is not pulled
     # until the first column is asked for; a held column is the one item of
     # its stream, and held chunks - a `ChunkedSerie`, a chunked array - one
@@ -937,15 +930,15 @@ class SerieReader(Iterator[Serie]):
         *,
         safe: bool = True,
         representation: Representation = "value",
-    ) -> SerieReader: ...
+    ) -> StreamChunkedSerie: ...
     # A record column is the batch it is; any other column the one child of
     # a `row`. A record column holding an absent row is refused.
     @staticmethod
-    def from_serie(serie: Serie) -> SerieReader: ...
+    def from_serie(serie: Serie) -> StreamChunkedSerie: ...
     # One record column per chunk, by `from_serie`'s rule; nothing is cast,
     # copied or read, and no chunk is the empty stream of its root.
     @staticmethod
-    def from_chunked(chunked: ChunkedSerie) -> SerieReader: ...
+    def from_chunked(chunked: ChunkedSerie) -> StreamChunkedSerie: ...
     # The records not yet pulled, each cast into `field` by one plan, as a
     # new reader; this one is spent. A refused option or target leaves it.
     def cast(
@@ -954,7 +947,7 @@ class SerieReader(Iterator[Serie]):
         *,
         safe: bool = True,
         representation: Representation = "value",
-    ) -> SerieReader: ...
+    ) -> StreamChunkedSerie: ...
     # The held records still to yield; a stream holds none between pulls.
     def resident_size(self) -> int: ...
     def is_spilled(self) -> bool: ...
@@ -982,18 +975,18 @@ class SerieReader(Iterator[Serie]):
         *,
         byte_size: int | EllipsisType = ...,
         folder: SpillFolder | None | EllipsisType = ...,
-    ) -> SerieReader: ...
+    ) -> StreamChunkedSerie: ...
     # Every record not yet pulled, in order, as a new reader; this one is
     # spent. The stream is drained before the first sorted batch.
     def into_sorted(
         self, *, descending: bool = False, nulls_first: bool = False
-    ) -> SerieReader: ...
+    ) -> StreamChunkedSerie: ...
     # The keys are read before the stream is: a key no column answers is
     # refused with no batch pulled.
-    def into_sort_by(self, by: OrderingsLike) -> SerieReader: ...
+    def into_sort_by(self, by: OrderingsLike) -> StreamChunkedSerie: ...
     # A stream of the output, one probe batch joined at a time; this reader
-    # is spent. `other` is a `Serie`, a `ChunkedSerie`, a `SerieReader` or
-    # anything `SerieReader.from_` reads; a held side is the one built.
+    # is spent. `other` is a `Serie`, a `ChunkedSerie`, a `StreamChunkedSerie` or
+    # anything `StreamChunkedSerie.from_` reads; a held side is the one built.
     def join_with(
         self,
         other: object,
@@ -1007,41 +1000,113 @@ class SerieReader(Iterator[Serie]):
         prune: bool | EllipsisType = ...,
         spill: SpillOptions | None | EllipsisType = ...,
         pushdown_keys: int | EllipsisType = ...,
-    ) -> SerieReader: ...
+    ) -> StreamChunkedSerie: ...
     @property
     def field(self) -> Field: ...
     # Where `window_by` cut this reader: one struct value named as the root,
     # read by name - the windowed reader's own cells, the key cells,
     # `windownum` and `rownum`. Kept by `cast`, never part of a batch.
-    @property
-    def static_values(self) -> Scalar | None: ...
-    # One lazy `SerieReader` per run of equal adjacent keys, read in order;
+    # One lazy `StreamChunkedSerie` per run of equal adjacent keys, read in order;
     # this reader is spent. `sorted=True` verifies the keys arrive in order.
-    def window_by(self, by: SelectorLike, sorted: bool | None = False) -> SerieReaderWindows: ...
-    def __iter__(self) -> SerieReader: ...
+    def window_by(self, by: object, sorted: bool | None = False) -> StreamKeySerie: ...
+    # One native key item per partition, yielded as it closes; this reader
+    # is spent. Past `max_open` the lowest keys close, `clustered=True` closes
+    # each once another key arrives; `None` holds every one to the end.
+    def partition_by(
+        self,
+        by: SelectorLike,
+        max_open: int | None = None,
+        threads: int | None = None,
+        clustered: bool = False,
+    ) -> StreamKeySerie: ...
+    def __iter__(self) -> StreamChunkedSerie: ...
     def __next__(self) -> Serie: ...
     def into_arrow_reader(self) -> pyarrow.RecordBatchReader: ...
     # The batches not yet pulled as the Arrow PyCapsule Interface's stream,
     # cast into a `requested_schema` capsule by the one cast; the reader is
     # spent afterwards, as `into_arrow_reader` spends it.
     def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
+    @property
+    def schema(self) -> pyarrow.Schema: ...
+    def read_next_batch(self) -> pyarrow.RecordBatch: ...
+    def read_all(self) -> pyarrow.Table: ...
+    def into_stream(self) -> StreamSerie: ...
+    def into_chunked_stream(self, row_size: int | None = None, byte_size: int | None = None) -> StreamChunkedSerie: ...
 
-class SerieReaderWindows(Iterator[SerieReader]):
-    """The windows of a stream, one lazy ``SerieReader`` per run of equal
-    adjacent keys, in the order they arrive.
-
-    Windows are read in order: taking the next window pulls and drops the
-    open one's unread rows, and a window read after its walk passed rows of
-    it raises once, naming it. Both records are known before the first pull.
-    """
-
-    __hash__: ClassVar[None]  # type: ignore[assignment]
+class KeySerie:
     @property
     def field(self) -> Field: ...
     @property
-    def static_field(self) -> Field: ...
-    def __iter__(self) -> SerieReaderWindows: ...
-    def __next__(self) -> SerieReader: ...
+    def key_field(self) -> Field: ...
+    @property
+    def serie_field(self) -> Field: ...
+    @property
+    def key_paths(self) -> list[FieldPath | None]: ...
+    @property
+    def key(self) -> Scalar: ...
+    @property
+    def rows(self) -> Serie: ...
+    @property
+    def rownum(self) -> int | None: ...
+    def into_parts(self) -> tuple[Scalar, Serie]: ...
+    def memory_size(self) -> int: ...
+    def window_by(self, by: object, sorted: bool = False) -> KeySeries: ...
+    def partition_by(self, by: object) -> KeySeries: ...
+    def into_stream(self) -> StreamSerie: ...
+    def into_chunked_stream(self, row_size: int | None = None, byte_size: int | None = None) -> StreamChunkedSerie: ...
+
+class KeySeries:
+    @property
+    def field(self) -> Field: ...
+    @property
+    def key_field(self) -> Field: ...
+    @property
+    def serie_field(self) -> Field: ...
+    @property
+    def key_paths(self) -> list[FieldPath | None]: ...
+    def __len__(self) -> int: ...
+    def __getitem__(self, index: int) -> KeySerie: ...
+    def __iter__(self) -> Iterator[KeySerie]: ...
+    def memory_size(self) -> int: ...
+    def window_by(self, by: object, sorted: bool = False) -> KeySeries: ...
+    def partition_by(self, by: object) -> KeySeries: ...
+    def into_stream(self) -> StreamSerie: ...
+    def into_chunked_stream(self, row_size: int | None = None, byte_size: int | None = None) -> StreamChunkedSerie: ...
+
+class StreamKeySerie(Iterator[KeySerie]):
+    @property
+    def field(self) -> Field: ...
+    @property
+    def key_field(self) -> Field: ...
+    @property
+    def serie_field(self) -> Field: ...
+    @property
+    def key_paths(self) -> list[FieldPath | None]: ...
+    def __iter__(self) -> StreamKeySerie: ...
+    def __next__(self) -> KeySerie: ...
+    def window_by(self, by: object, sorted: bool = False) -> StreamKeySerie: ...
+    def partition_by(self, by: object, max_open: int | None = None, threads: int | None = None, clustered: bool = False) -> StreamKeySerie: ...
+    def into_stream(self) -> StreamSerie: ...
+    def into_chunked_stream(self, row_size: int | None = None, byte_size: int | None = None) -> StreamChunkedSerie: ...
+
+class StreamSerie(Iterator[Scalar]):
+    @property
+    def field(self) -> Field: ...
+    def __iter__(self) -> StreamSerie: ...
+    def __next__(self) -> Scalar: ...
+    def collect(self) -> list[Scalar]: ...
+    @staticmethod
+    def from_(value: object) -> StreamSerie: ...
+    @staticmethod
+    def from_rows(field: FieldLike, rows: Iterable[object]) -> StreamSerie: ...
+    @staticmethod
+    def from_arrow_reader(reader: pyarrow.RecordBatchReader | ArrowStreamReader) -> StreamSerie: ...
+    def into_arrow_reader(self) -> pyarrow.RecordBatchReader: ...
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
+    def window_by(self, by: object, sorted: bool = False) -> StreamKeySerie: ...
+    def partition_by(self, by: object, max_open: int | None = None, threads: int | None = None, clustered: bool = False) -> StreamKeySerie: ...
+    def into_stream(self) -> StreamSerie: ...
+    def into_chunked_stream(self, row_size: int | None = None, byte_size: int | None = None) -> StreamChunkedSerie: ...
 
 class ChunkedSerie:
     """Many columns under one field, held apart: a chunked array, or a table.
@@ -1094,7 +1159,7 @@ class ChunkedSerie:
     ) -> ChunkedSerie: ...
     # `Serie.from_`'s ladder read as chunks: a chunked array is its chunks, a
     # table, reader, dataset, scanner or frame one chunk per batch, a held
-    # column one chunk, a `SerieReader` drained one chunk per batch, a
+    # column one chunk, a `StreamChunkedSerie` drained one chunk per batch, a
     # `ChunkedSerie` shared; any other value `Serie.from_` reads, one chunk.
     @staticmethod
     def from_(
@@ -1167,12 +1232,12 @@ class ChunkedSerie:
     def into_reversed(self) -> ChunkedSerie: ...
     def into_taken(self, indices: object) -> ChunkedSerie: ...
     def into_filtered(self, mask: object) -> ChunkedSerie: ...
-    def partition_by(self, keys: object) -> list[tuple[Scalar, ChunkedSerie]]: ...
+    def partition_by(self, by: object) -> KeySeries: ...
     # `Serie.window_by` across the chunks, a run crossing an edge one window;
     # a window states no record - its place is its place in the list.
     def window_by(
         self, by: SelectorLike, sorted: bool | None = False
-    ) -> list[tuple[Scalar, ChunkedSerie]]: ...
+    ) -> KeySeries: ...
     def memory_size(self) -> int: ...
     def resident_size(self) -> int: ...
     def is_spilled(self) -> bool: ...
@@ -1251,6 +1316,8 @@ class ChunkedSerie:
     def __ge__(self, other: ChunkedSerie | Serie) -> bool: ...
     def __copy__(self) -> ChunkedSerie: ...
     def __deepcopy__(self, memo: object) -> ChunkedSerie: ...
+    def into_stream(self) -> StreamSerie: ...
+    def into_chunked_stream(self, row_size: int | None = None, byte_size: int | None = None) -> StreamChunkedSerie: ...
 
 class ScalarIterator(Iterator[Scalar]):
     __hash__: ClassVar[None]  # type: ignore[assignment]
@@ -3251,7 +3318,7 @@ class Filter:
     def apply_arrow(self, value: Any) -> Any: ...
     def apply_records(
         self, rows: Iterable[Row], schema: FieldLike | None = None
-    ) -> Records: ...
+    ) -> StreamSerie: ...
     def explain(self) -> str: ...
     def into_json(self) -> str: ...
     def __and__(self, other: FilterLike) -> Filter: ...
@@ -3320,7 +3387,7 @@ class Selector:
     def apply_arrow(self, value: Any) -> Any: ...
     def apply_records(
         self, rows: Iterable[Row], schema: FieldLike | None = None
-    ) -> Records: ...
+    ) -> StreamSerie: ...
     def explain(self) -> str: ...
     def into_json(self) -> str: ...
     def __str__(self) -> str: ...
@@ -3427,7 +3494,7 @@ class Plan:
     def apply_arrow(self, value: Any) -> Any: ...
     def apply_records(
         self, rows: Iterable[Row], schema: FieldLike | None = None
-    ) -> Records: ...
+    ) -> StreamSerie: ...
     def explain(self) -> str: ...
     def into_json(self) -> str: ...
     def __str__(self) -> str: ...
@@ -3489,7 +3556,7 @@ class Expression:
     def apply_arrow(self, value: Any) -> Any: ...
     def apply_records(
         self, rows: Iterable[Row], schema: FieldLike | None = None
-    ) -> Records: ...
+    ) -> StreamSerie: ...
     def explain(self) -> str: ...
     def into_json(self) -> str: ...
     def __str__(self) -> str: ...
@@ -3505,17 +3572,6 @@ class Expression:
     def __reduce__(self) -> tuple[object, tuple[str]]: ...
     def __copy__(self) -> Expression: ...
     def __deepcopy__(self, memo: Any) -> Expression: ...
-
-class Records:
-    @property
-    def field(self) -> Field: ...
-    def __iter__(self) -> Records: ...
-    def __next__(self) -> dict[str, object]: ...
-    def collect(self) -> list[dict[str, object]]: ...
-    def into_arrow_reader(self) -> pyarrow.RecordBatchReader: ...
-    @staticmethod
-    def from_arrow_reader(reader: pyarrow.RecordBatchReader | ArrowStreamReader) -> Records: ...
-    def __repr__(self) -> str: ...
 
 class IOResult:
     """The rows one record write read, wrote and skipped.
@@ -3797,9 +3853,9 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> SerieReader: ...
-    # `value` is a `Serie`, `ChunkedSerie` or `SerieReader`, written as the
-    # batches it holds, or anything `SerieReader.from_` reads.
+    ) -> Serie: ...
+    # `value` is a `Serie`, `ChunkedSerie` or `StreamChunkedSerie`, written as the
+    # batches it holds, or anything `StreamChunkedSerie.from_` reads.
     def write_serie(
         self,
         value: object,
@@ -4296,7 +4352,17 @@ class HttpStats(TypedDict):
     redirects: int
     retry_tokens: int
 
+class HostStats(TypedDict):
+    requests: int
+    gets: int
+    heads: int
+    puts: int
+    posts: int
+    deletes: int
+    others: int
+
 def http_session() -> Session: ...
+def http_process_stats() -> dict[str, HostStats]: ...
 
 class Headers:
     """An HTTP header section: names compared ignoring case."""
@@ -4586,7 +4652,7 @@ class Pages(Iterator[Response]):
 
     def __iter__(self) -> Pages: ...
     def __next__(self) -> Response: ...
-    def read_serie(self, field: Field | str | None = None) -> SerieReader: ...
+    def chunked_stream(self, field: Field | str | None = None) -> StreamChunkedSerie: ...
     def into_arrow_reader(
         self, field: Field | str | None = None, batch_row_size: int = 0
     ) -> pyarrow.RecordBatchReader: ...
@@ -5556,6 +5622,7 @@ class IcebergProperties(TypedDict, total=False):
     read_parallel_min_files: int | EllipsisType
     read_parallel_min_file_size: int | EllipsisType
     write_parallelism: int | EllipsisType
+    max_open_partitions: int | EllipsisType
     write_staging: str | PathLike[str] | EllipsisType
     data_mime_type: MimeType | str | EllipsisType
 
@@ -5579,6 +5646,7 @@ class IcebergOptions:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         write_parallelism: int | None = None,
+        max_open_partitions: int | None = None,
         write_staging: str | PathLike[str] | None = None,
         data_mime_type: MimeType | str | None = None,
     ) -> None: ...
@@ -5620,6 +5688,10 @@ class IcebergOptions:
     def write_parallelism(self) -> int: ...
     @write_parallelism.setter
     def write_parallelism(self, threads: int) -> None: ...
+    @property
+    def max_open_partitions(self) -> int: ...
+    @max_open_partitions.setter
+    def max_open_partitions(self, partitions: int) -> None: ...
     @property
     def write_staging(self) -> str | None: ...
     @write_staging.setter
@@ -7113,17 +7185,31 @@ class Identifiers:
     def __reduce__(self) -> tuple[object, tuple[dict[str, str]]]: ...
 
 class IsinRegistry:
-    """A table of instruments keyed by ISIN, shared behind one lock.
+    """A table of instruments keyed by ISIN, one row per listing - per ISIN
+    and market - shared behind one lock.
 
     Each row holds the instrument's ``isin``, ``updunix`` (when the statement
-    that last moved it happened, a stamp), detailed ``cficode``, its
-    ``countrycode`` of issue, its ``forexcode`` pair, the ``underlyingisin``
-    it is written on, its ``eusipacode`` - the four-digit EUSIPA product
-    category ``Eusipa`` reads, an ``int`` - the ``miccode`` its listing facts
-    belong to, its ``ticker`` and trading ``currency`` and one code per
-    ``SecurityIDSource(22)`` type but the ISIN. A lifecycle learns
+    that last moved a fact of it happened, a stamp), ``firstunix`` (the
+    earliest instant an event the registry learned from stated the ISIN, moved
+    only by an earlier one), ``lastunix`` (the latest, moved by every learn),
+    detailed ``cficode``, its ``countrycode`` of issue, its
+    ``forexcode`` pair, the ``underlyingisin`` it is written on, its
+    ``eusipacode`` - the four-digit EUSIPA product category ``Eusipa`` reads,
+    an ``int`` - the ``miccode`` of the listing, its ``ticker``, its ``fisn``
+    (the ISO 18774 short name), trading ``currency``, ``origccy`` (the
+    currency it was issued in, where stated, never derived) and one code per
+    ``SecurityIDSource(22)`` type but the ISIN. The instrument facts are the
+    ISIN's and every listing row of it carries them; the market, the ticker,
+    the currency and the listing codes are each row's own, a statement naming
+    a new market a new row, one naming none landing on the ISIN's single row
+    or, where it has several, warned off every row. ``len`` counts
+    instruments, ``rows`` listing rows. A row carries the CUSIP, SEDOL, WKN or
+    Valor its ISIN embeds and the currency of its listing market's country
+    alone - a row with no market keeps none, where it states none. ``seeded`` holds the embedded common instruments. A lifecycle learns
     into it - keyed by a stated real ISIN - and fills from it what a message
-    leaves unsaid, a parse fills derived identifiers from it, and a valid
+    leaves unsaid, naming the row by ``resolve``'s waterfall - its ISIN, a code
+    of ``LOOKUP_CODES``, its ticker on its market, and, where
+    ``is_economic_match``, its short name in its currency - a parse fills derived identifiers from it, and a valid
     stated value fills and replaces whatever the time. Bound to the store it
     was loaded from (``from_url``, ``from_env``) and committed back only
     where it moved (``commit``). Equal only to itself; never hashed or
@@ -7136,15 +7222,27 @@ class IsinRegistry:
     @staticmethod
     def field() -> Field:
         """The registry's row: the required struct ``isinregistry`` of
-        forty-two columns every row is laid out as, what a table holding the
-        registry is created from."""
+        forty-six columns every listing row is laid out as, ``firstunix`` then
+        ``lastunix`` right after ``updunix`` and ``origccy`` after
+        ``currency``, what a table holding the registry is created from;
+        its root declares ``PARTITION:by`` ``["truncate(isin, 2)"]`` - the
+        ISIN's country prefix, storing no column - and ``SORT:by``
+        ``["isin", "miccode"]``."""
+    @staticmethod
+    def seeded() -> IsinRegistry:
+        """A registry holding the seed - the common instruments ``config/isin/instruments.json`` states, embedded at build time - clean and bound to no store; each seed row an ordinary statement, its derived facts filled."""
+        ...
     @staticmethod
     def from_url(location: object, max_instruments: int = 16384, **properties: str) -> IsinRegistry:
-        """A registry bound to the store a URL or path names and loaded from it: an Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an object store; a store holding nothing yet an empty first run."""
+        """A registry bound to the store a URL or path names and loaded from it: an Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an object store; a store holding nothing yet an empty first run. Unseeded: ``seeded_from_url`` lays the store over the seed."""
+        ...
+    @staticmethod
+    def seeded_from_url(location: object, max_instruments: int = 16384, **properties: str) -> IsinRegistry:
+        """``from_url`` laid over the seed (``seeded``): the store's rows fold over the seed's - a value the store states wins, a seed row it has none of stands - and a store holding nothing yet loads as the seed bound to it; clean after the load, so the first ``commit`` after something moved writes the seed's rows with the store's."""
         ...
     @staticmethod
     def from_env() -> IsinRegistry:
-        """The process's own registry, resolved once from ``YGGDRYL_ISIN_REGISTRY_URI``, else ``~/.config/yggdryl/isin/``, and shared with ``FixCodec.from_env``."""
+        """The process's own registry, resolved once from ``YGGDRYL_ISIN_REGISTRY_URI``, else ``~/.config/yggdryl/isin/``, laid over the seed (``seeded``) - the store's rows win - and shared with ``FixCodec.from_env``."""
         ...
     @staticmethod
     def install_env(registry: IsinRegistry) -> None:
@@ -7152,33 +7250,141 @@ class IsinRegistry:
         ...
     @staticmethod
     def from_arrow_reader(reader: object, max_instruments: int = 16384) -> IsinRegistry:
-        """A registry read from any Arrow stream, bound to no store."""
+        """A registry read from any Arrow stream, bound to no store; several rows of one ISIN on several markets load as its listings."""
         ...
     def extend_from_handle(self, location: object) -> int: ...
     def extend_from_arrow_reader(self, reader: object) -> int: ...
     def into_arrow_reader(self) -> pyarrow.RecordBatchReader:
-        """The rows as a snapshot stream in ISIN order, under the registry's row field."""
+        """The listing rows as a snapshot stream in ISIN then MIC order, under the registry's row field."""
         ...
     def commit(self) -> IOResult:
         """Writes the table to the store it is bound to, only where it moved: one overwrite of the snapshot; a clean registry costs no call."""
         ...
     @property
     def is_dirty(self) -> bool: ...
-    def get(self, isin: str) -> dict[str, Any] | None: ...
-    def get_by_ticker(self, ticker: str, market: str | None = None) -> dict[str, Any] | None:
-        """The row the ticker names on ``market``: the one row listing it whose
-        market is ``market``, or whose market or ``market`` is unstated; two
-        rows answering is ambiguous, and answers ``None``."""
+    def get(self, isin: str) -> dict[str, Any] | None:
+        """The first listing row of ``isin`` in MIC order, or ``None``."""
         ...
+    def listings(self, isin: str) -> list[dict[str, Any]]:
+        """Every listing row of ``isin`` in MIC order; empty where it is unknown."""
+        ...
+    def get_listing(self, isin: str, market: str) -> dict[str, Any] | None:
+        """The listing row of ``isin`` on ``market``, or ``None``."""
+        ...
+    def get_by_ticker(self, ticker: str, market: str | None = None) -> dict[str, Any] | None:
+        """The listing row the ticker names on ``market``: the one row listing
+        it there, else the one listing it on no market; with ``market``
+        unstated, the one row listing it on any. Two rows answering is
+        ambiguous, and answers ``None``."""
+        ...
+    LOOKUP_CODES: ClassVar[tuple[str, ...]]
+    """The codes a lookup reads, in cascade order, each its type's word."""
+    DEFAULT_ECONOMIC_THRESHOLD: ClassVar[float]
+    """How similar two short names must be by default for an economic match: ``0.85``."""
+    def get_by_code(self, kind: str, value: str, market: str | None = None) -> dict[str, Any] | None:
+        """The listing row the code ``value`` of type ``kind`` - one of
+        ``LOOKUP_CODES`` - names: the one instrument holding it, its row on
+        ``market``, else the one row holding the code, else its single row,
+        else its first. Two instruments holding it, a type that is no lookup
+        code or a value its type refuses answer ``None``."""
+        ...
+    def resolve(self, element: object) -> Resolution:
+        """The listing row ``element`` - a market leaf, a ``MarketData`` or a
+        ``FixMsg`` - names, and how: its real ISIN alone, one the registry
+        lacks ending the cascade (``UnknownIsin``); else each code of
+        ``LOOKUP_CODES`` it states, then its ticker on its market, the first
+        naming two instruments ending it (``Ambiguous``); else the instrument
+        listed in its stated currency whose short name is the most similar, at
+        least ``economic_threshold``, another stated origin currency or CFI
+        category dropped and named. Fills nothing."""
+        ...
+    @property
+    def economic_threshold(self) -> float:
+        """How similar two short names must be, in ``(0, 1]``, for an economic match."""
+    def set_economic_threshold(self, threshold: float) -> None:
+        """Sets ``economic_threshold``; NaN or a value outside ``(0, 1]`` raises ``ValueError`` naming it."""
+        ...
+    @property
+    def is_economic_match(self) -> bool:
+        """Whether ``fill`` takes an economic match where nothing exact names the element; ``False`` unless set."""
+    def set_economic_match(self, enabled: bool) -> None: ...
     def merge(self, entry: Mapping[str, object]) -> bool: ...
-    def remove(self, isin: str) -> dict[str, Any] | None: ...
+    def remove(self, isin: str) -> list[dict[str, Any]]:
+        """Removes every listing row of ``isin``, answering them in MIC order."""
+        ...
+    def remove_listing(self, isin: str, market: str) -> dict[str, Any] | None:
+        """Removes the listing row of ``isin`` on ``market``; the instrument goes with its last listing."""
+        ...
     def clear(self) -> None: ...
+    @property
+    def rows(self) -> int:
+        """How many listing rows it holds - what a commit writes; ``len`` counts instruments."""
     @property
     def max_instruments(self) -> int: ...
     def learn(self, message: FixMsg) -> bool: ...
     def fill(self, message: FixMsg) -> bool: ...
     def enrich(self, message: FixMsg) -> bool: ...
     def __len__(self) -> int: ...
+    def __bool__(self) -> bool: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __repr__(self) -> str: ...
+
+class Resolution:
+    """What ``IsinRegistry.resolve`` answered for one element: the row it
+    names and how, or why none, every field of the core answer an attribute.
+
+    A match (``matched``, and truth) states ``entry``, ``tier`` - ``"isin"``,
+    ``"code"``, ``"symbology"`` or ``"economic"`` - ``kind`` (a ``"code"``
+    tier's type), ``similarity`` (an ``"economic"`` tier's), ``derived`` and
+    ``listing``. A miss states ``unmatched`` - ``"NoKey"``, ``"UnknownIsin"``,
+    ``"NoCandidate"``, ``"Ambiguous"``, ``"CfiConflict"``,
+    ``"CurrencyConflict"`` or ``"BelowThreshold"`` - and its variant's fields:
+    ``isins`` and ``tier`` of an ``Ambiguous``, ``stated``, ``held``, ``best``,
+    ``isin``. Every other attribute is ``None``. Immutable, equal by value,
+    never hashed.
+    """
+
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+
+    @property
+    def matched(self) -> bool: ...
+    @property
+    def entry(self) -> dict[str, Any] | None: ...
+    @property
+    def tier(self) -> Literal["isin", "code", "symbology", "economic"] | None: ...
+    @property
+    def kind(self) -> str | None: ...
+    @property
+    def similarity(self) -> float | None: ...
+    @property
+    def derived(self) -> bool | None: ...
+    @property
+    def listing(self) -> bool | None: ...
+    @property
+    def unmatched(
+        self,
+    ) -> (
+        Literal[
+            "NoKey",
+            "UnknownIsin",
+            "NoCandidate",
+            "Ambiguous",
+            "CfiConflict",
+            "CurrencyConflict",
+            "BelowThreshold",
+        ]
+        | None
+    ): ...
+    @property
+    def isins(self) -> list[str] | None: ...
+    @property
+    def stated(self) -> str | None: ...
+    @property
+    def held(self) -> str | None: ...
+    @property
+    def best(self) -> float | None: ...
+    @property
+    def isin(self) -> str | None: ...
     def __bool__(self) -> bool: ...
     def __eq__(self, other: object, /) -> bool: ...
     def __repr__(self) -> str: ...
@@ -7660,6 +7866,12 @@ class FixMsg:
     @property
     def currency(self) -> Scalar: ...
     @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
+    @property
     def quantity(self) -> Scalar | None: ...
     @property
     def unit(self) -> str: ...
@@ -7769,7 +7981,7 @@ class FixMessages(Iterator[FixMsg]):
 
 # What a text reader hands the codec: a ``pyarrow.RecordBatchReader``, any
 # holder exporting the Arrow C stream, or the crate's own ``Serie``,
-# ``ChunkedSerie`` and ``SerieReader``, which cross with no C stream between.
+# ``ChunkedSerie`` and ``StreamChunkedSerie``, which cross with no C stream between.
 FixArrowSource = (
     pyarrow.RecordBatchReader
     | pyarrow.Table
@@ -7777,7 +7989,12 @@ FixArrowSource = (
     | ArrowStreamReader
     | Serie
     | ChunkedSerie
-    | SerieReader
+    | StreamChunkedSerie
+    | StreamSerie
+    | KeySerie
+    | KeySeries
+    | StreamKeySerie
+    | WindowSerie
 )
 
 class FixCodec:
@@ -7967,18 +8184,19 @@ class FixCodec:
     ) -> pyarrow.RecordBatchReader:
         """Stream sorted FIX messages into lifted ``marketdata`` book rows.
 
-        A book folds ORDR, QUOT and BOOK W/X; every other record is ignored
-        before it is expanded - a fill moves a book through its order's or
-        quote's report, so an execution, and a trade whose fills are
-        executions, never reach one. A quote is one entry resting on each leg
-        it states. Nothing an admitted message states raises: what cannot
+        A book folds ORDR, QUOT and BOOK W/X into its sides and records every
+        EXEC among its events; every other record is ignored before it is
+        expanded - a fill moves a book through its order's or quote's report,
+        so the execution moves nothing, and a trade, whose fills are
+        executions, never reaches one. A quote is one entry resting on each
+        leg it states. Nothing an admitted message states raises: what cannot
         stand is left out or defaulted with a warning, an operation dated
         before its book is left out, and only a source failure raises, after
         the completed book prefix.
         Lifecycle enrichment is explicit: pass ``codec.lifecycle(messages)``
         when needed. Positive ``snapshot_millis`` enables epoch-aligned
-        snapshots, at which a book is written whole; every other book states
-        its deltas alone. One book is kept per book key - the instrument's
+        snapshots, at which a complete book is written; every other book is a
+        delta book, stating its delta and its events alone. One book is kept per book key - the instrument's
         ISIN, else its ticker, else ``XX0000000000``. ``filter``, a predicate
         over the ``marketdata`` row, narrows what the books fold and never
         admits a kind they do not; ``None`` keeps every booked leaf. Each leaf
@@ -8024,35 +8242,35 @@ class FixCodec:
         self, source: FixArrowSource, field: FieldLike
     ) -> pyarrow.RecordBatchReader: ...
     def write_arrow_reader(self, source: FixArrowSource, sink: IO[bytes]) -> int: ...
-    def parse_text_serie(self, source: FixArrowSource) -> SerieReader:
-        """``parse_text_arrow_reader`` answered as a native ``SerieReader``.
+    def parse_text_serie(self, source: FixArrowSource) -> StreamChunkedSerie:
+        """``parse_text_arrow_reader`` answered as a native ``StreamChunkedSerie``.
 
         A native source crosses as the batches it already is, and the answer
         stays native, so a following ``append_serie`` writes off the GIL.
         """
         ...
-    def lifecycle_serie(self, source: FixArrowSource) -> SerieReader:
-        """``lifecycle_arrow_reader`` answered as a native ``SerieReader``."""
+    def lifecycle_serie(self, source: FixArrowSource) -> StreamChunkedSerie:
+        """``lifecycle_arrow_reader`` answered as a native ``StreamChunkedSerie``."""
         ...
-    def market_data_serie(self, source: FixArrowSource) -> SerieReader:
-        """``market_data_arrow_reader`` answered as a native ``SerieReader``."""
+    def market_data_serie(self, source: FixArrowSource) -> StreamChunkedSerie:
+        """``market_data_arrow_reader`` answered as a native ``StreamChunkedSerie``."""
         ...
     def messages_serie(self, source: FixArrowSource) -> FixMessages:
         """``messages`` over a serie source: the messages its FIX rows hold."""
         ...
-    def serie_reader(self, schema: FieldLike, messages: Iterable[FixMsg]) -> SerieReader:
-        """``arrow_reader`` answered as a native ``SerieReader`` under ``schema``."""
+    def chunked_stream(self, schema: FieldLike, messages: Iterable[FixMsg]) -> StreamChunkedSerie:
+        """``arrow_reader`` answered as a native ``StreamChunkedSerie`` under ``schema``."""
         ...
     def book_serie(
         self,
         messages: Iterable[FixMsg],
         snapshot_millis: int = 0,
         filter: FilterLike | None = None,
-    ) -> SerieReader:
-        """``book_arrow_reader`` answered as a native ``SerieReader``."""
+    ) -> StreamChunkedSerie:
+        """``book_arrow_reader`` answered as a native ``StreamChunkedSerie``."""
         ...
-    def market_serie(self, messages: Iterable[FixMsg]) -> SerieReader:
-        """``market_arrow_reader`` answered as a native ``SerieReader``."""
+    def market_serie(self, messages: Iterable[FixMsg]) -> StreamChunkedSerie:
+        """``market_arrow_reader`` answered as a native ``StreamChunkedSerie``."""
         ...
     def __copy__(self) -> FixCodec: ...
     def __deepcopy__(self, memo: Any) -> FixCodec: ...
@@ -8082,6 +8300,10 @@ def pluginside_from_spelling(spelling: str) -> int | None: ...
 def pluginside_from_plugin_type(class_: str) -> int: ...
 def side_members() -> list[tuple[str, int, str, str | None, list[bool]]]: ...
 def side_from_spelling(spelling: str) -> int | None: ...
+def country_currency(code: str) -> str | None: ...
+def mic_operating(code: str) -> str | None: ...
+def mic_is_segment(code: str) -> bool: ...
+def mic_country(code: str) -> str | None: ...
 
 # The graph vocabulary: the typed market leaves, `MarketData` over every one
 # of them, and the typed values and walks around them.
@@ -8184,6 +8406,12 @@ class Order:
     def price(self) -> Scalar | None: ...
     @property
     def currency(self) -> Scalar: ...
+    @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
     @property
     def quantity(self) -> Scalar | None: ...
     @property
@@ -8307,6 +8535,12 @@ class Quote:
     @property
     def currency(self) -> Scalar: ...
     @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
+    @property
     def quantity(self) -> Scalar | None: ...
     @property
     def unit(self) -> str: ...
@@ -8428,6 +8662,12 @@ class Execution:
     def price(self) -> Scalar | None: ...
     @property
     def currency(self) -> Scalar: ...
+    @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
     @property
     def quantity(self) -> Scalar | None: ...
     @property
@@ -8574,6 +8814,12 @@ class OrderEvent:
     def price(self) -> Scalar | None: ...
     @property
     def currency(self) -> Scalar: ...
+    @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
     @property
     def quantity(self) -> Scalar | None: ...
     @property
@@ -8731,6 +8977,12 @@ class QuoteEvent:
     @property
     def currency(self) -> Scalar: ...
     @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
+    @property
     def quantity(self) -> Scalar | None: ...
     @property
     def unit(self) -> str: ...
@@ -8887,6 +9139,12 @@ class ExecutionEvent:
     @property
     def currency(self) -> Scalar: ...
     @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
+    @property
     def quantity(self) -> Scalar | None: ...
     @property
     def unit(self) -> str: ...
@@ -9037,6 +9295,12 @@ class TradeEvent:
     @property
     def currency(self) -> Scalar: ...
     @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
+    @property
     def quantity(self) -> Scalar | None: ...
     @property
     def unit(self) -> str: ...
@@ -9131,8 +9395,11 @@ class BookEvent:
     """One coherent view of a market at one exact nanosecond instant.
 
     The live entries of both sides and each side's price levels on a complete
-    book, the deltas applied since the book before it on every book; a book
-    stating its deltas alone is whole again by ``with_previous``. Every book
+    book; on every book its ``delta`` - the orders and quotes its instant
+    applied - and its ``events`` - every other event its instant recorded: the
+    executions and the snapshot controls. A delta book holds no sides, states
+    its delta and events alone, and is complete again by ``with_previous``.
+    Every book
     answers its top of book. Immutable: ``with_operations`` and every verb
     answer a new book.
     """
@@ -9144,8 +9411,8 @@ class BookEvent:
     @staticmethod
     def keyed(currunix: int, key: str) -> BookEvent:
         """An empty book keyed ``key`` - an ISIN, a ticker or ``XX0000000000`` -
-        stating neither a ticker nor an ISIN: the base a code's first book,
-        stating its deltas alone, rebuilds over with ``with_previous``."""
+        stating neither a ticker nor an ISIN: the base a code's first book, a
+        delta book, rebuilds over with ``with_previous``."""
         ...
     @property
     def curruuid(self) -> Scalar: ...
@@ -9185,6 +9452,12 @@ class BookEvent:
     def price(self) -> Scalar | None: ...
     @property
     def currency(self) -> Scalar: ...
+    @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
     @property
     def quantity(self) -> Scalar | None: ...
     @property
@@ -9251,62 +9524,68 @@ class BookEvent:
     def metadata(self) -> dict[str, str]: ...
     @property
     def is_complete(self) -> bool:
-        """Whether the book holds its sides rather than its deltas alone."""
+        """Whether the book is a complete book, holding its sides, rather than
+        a delta book stating its delta and events alone."""
         ...
     @property
     def alive(self) -> list[MarketData]:
         """Every live entry once: the bid side's best first, then the ask side's;
-        a two-sided quote listed with the bids. Empty on a book stating its
-        deltas alone."""
+        a two-sided quote listed with the bids. Empty on a delta book."""
         ...
     def alive_on(self, side: Side | int | str) -> list[MarketData]:
         """The entries alive on the side ``side`` takes, best price first and the
         unpriced last; empty for a side that is neither a bid nor an ask, or on
-        a book stating its deltas alone."""
+        a delta book."""
         ...
     @property
-    def deltas(self) -> list[MarketData]:
-        """Every event of the book's instant since the book before this one, in
-        the order applied across both sides: the orders and quotes applied, and
-        the executions recorded, which rest on no side."""
+    def delta(self) -> list[MarketData]:
+        """The membership operations the book's instant applied since the book
+        before this one, in the order applied across both sides: the orders and
+        quotes placed, changed, ended, expired, withdrawn or range-deleted, each
+        the very entry a side holds where it rests. What ``with_previous``
+        replays over the book before it."""
         ...
     @property
     def ordlive(self) -> list[OrderEvent]:
         """The orders resting on the book, in ``alive``'s order: the bid side's
-        best first, then the ask side's. Empty on a book stating its deltas
-        alone."""
+        best first, then the ask side's. Empty on a delta book."""
         ...
     @property
     def orddelta(self) -> list[OrderEvent]:
-        """The orders among ``deltas``, in the order applied: every order the
-        book's instant placed, changed or ended."""
+        """The orders among ``delta``, in the order applied: every order the
+        book's instant placed, changed, ended, expired or withdrawn."""
         ...
     @property
     def quotes(self) -> list[QuoteEvent]:
-        """The quotes among ``deltas``, in the order applied; a quote resting
-        since an earlier instant is ``alive``'s and not here."""
+        """The quotes among ``delta``, in the order applied; a quote resting
+        since an earlier instant is ``alive``'s and not here. These and
+        ``orddelta`` partition ``delta``."""
         ...
     @property
     def executions(self) -> list[ExecutionEvent]:
-        """The executions among ``deltas``, in the order applied: recorded at
+        """The executions among ``events``, in the order applied: recorded at
         the book's instant, resting on no side."""
         ...
     @property
     def events(self) -> list[MarketData]:
-        """Every other delta - none an order, a quote or an execution - in the
-        order applied: ``orddelta``, ``quotes``, ``executions`` and these
-        partition ``deltas``. Empty today, by construction: a fold prunes a
-        trade, a batch and a session message, refuses an undated order, quote
-        or execution and a nested book by kind, and folds a snapshot control
-        into the sides, never among the deltas."""
+        """Every other event the book's instant recorded, in the order applied:
+        the executions, which rest on no side and move none, and the snapshot
+        controls whose membership replacement made the book complete. A delta
+        book states them beside its ``delta``; ``with_previous`` replays none
+        of them. ``executions`` and ``controls`` partition them."""
+        ...
+    @property
+    def controls(self) -> list[SnapshotEvent]:
+        """The snapshot controls among ``events``, in the order applied: each
+        ``W`` control whose membership replacement made the book complete, so
+        only a complete book states one."""
         ...
     def limits(self, side: Side | int | str) -> list[Scalar]:
         """One limit struct per level of the side ``side`` takes, best first.
 
         Each states its ``price`` (``None`` on the unpriced limit last), the
         ``quantity`` resting there, the ``uuids`` of the entries resting there
-        and whether the level is ``tradable``. Empty on a book stating its
-        deltas alone.
+        and whether the level is ``tradable``. Empty on a delta book.
         """
         ...
     def best_price(self, side: Side | int | str) -> Scalar | None:
@@ -9400,6 +9679,12 @@ class SnapshotEvent:
     def price(self) -> Scalar | None: ...
     @property
     def currency(self) -> Scalar: ...
+    @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
     @property
     def quantity(self) -> Scalar | None: ...
     @property
@@ -9514,6 +9799,12 @@ class MarketData:
     @property
     def currency(self) -> Scalar: ...
     @property
+    def origccy(self) -> Scalar | None:
+        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+    @property
+    def origin_currency(self) -> Scalar:
+        """``origccy`` where held, else ``currency``: the currency an amount converts from."""
+    @property
     def quantity(self) -> Scalar | None: ...
     @property
     def unit(self) -> str: ...
@@ -9605,11 +9896,20 @@ class MarketData:
     @staticmethod
     def from_arrow_reader(reader: FixArrowSource) -> MarketDataRowIterator: ...
     @staticmethod
-    def deltas_serie(source: FixArrowSource, kind: str | None = None) -> SerieReader:
-        """The deltas of the books ``source`` holds, laid out as ``marketdata``
-        rows in book order as a native ``SerieReader``: every event each book
-        states among its deltas, of ``kind`` where one is named (``"ORDR"``,
-        ``"QUOT"``, ``"EXEC"``), every kind otherwise."""
+    def delta_serie(source: FixArrowSource, kind: str | None = None) -> StreamChunkedSerie:
+        """The delta of the books ``source`` holds, laid out as ``marketdata``
+        rows in book order as a native ``StreamChunkedSerie``: the orders and
+        quotes each book's instant applied, of ``kind`` where one is named
+        (``"ORDR"``, ``"QUOT"``), both otherwise; a row that is no book is
+        refused by its kind where it is read."""
+        ...
+    @staticmethod
+    def events_serie(source: FixArrowSource, kind: str | None = None) -> StreamChunkedSerie:
+        """The events of the books ``source`` holds, laid out as ``marketdata``
+        rows in book order as a native ``StreamChunkedSerie``: every other event
+        each book's instant recorded, of ``kind`` where one is named (``"EXEC"``,
+        or ``"BOOK"`` for the snapshot controls), both otherwise; a row that is
+        no book is refused by its kind where it is read."""
         ...
     @staticmethod
     def plan(
@@ -9671,13 +9971,13 @@ class BookIterator(Iterator[BookEvent]):
 
     Pulling its items lazily from the caller's iterable: order and quote
     events and snapshot controls fold, an execution is recorded among its
-    book's deltas, moving no side; a trade is pruned where it is pulled, and
+    book's events, moving no side; a trade is pruned where it is pulled, and
     any other leaf is refused by its kind. An operation
     dated before its book, an order or a quote stating neither side and a
     group the book refuses are left out with a ``logging`` warning, never an
     error. A book is whole at a snapshot tick - every grid tick when
-    ``snapshot_millis`` is positive, and a snapshot input - and states its
-    deltas alone otherwise. ``filter``, a predicate over the ``marketdata``
+    ``snapshot_millis`` is positive, and a snapshot input - and is a delta
+    book, stating its delta and events alone, otherwise. ``filter``, a predicate over the ``marketdata``
     row bound once, narrows what the walk folds; ``None`` keeps every recorded
     input.
     """

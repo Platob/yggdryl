@@ -695,12 +695,12 @@ mod inferred {
 }
 
 /// The currency pair a message is about is one of the crate's instrument
-/// fields: a forex column, displayed `ForexCode`, under tag 65048, the
+/// fields: a forex column, displayed `ForexCode`, under tag 65049, the
 /// first of the fixed row's instrument band.
 #[test]
 fn the_currency_pair_is_an_instrument_field_after_the_isin() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
-    assert_eq!(held.len(), 51);
+    assert_eq!(held.len(), 52);
     let at = |name: &str| {
         held.iter()
             .position(|field| field.name() == name)
@@ -713,7 +713,7 @@ fn the_currency_pair_is_an_instrument_field_after_the_isin() {
     assert_eq!(pair.dtype(), &yggdryl::DataType::Forex);
     assert_eq!(pair.display(), Some("Forex Code"));
     assert!(pair.is_nullable());
-    assert_eq!(yggdryl::FOREXCODE_TAG_NAME, (65_048, "forexcode"));
+    assert_eq!(yggdryl::FOREXCODE_TAG_NAME, (65_049, "forexcode"));
     assert_eq!(
         pair.as_fix().tag().expect("a tag reading"),
         Some(yggdryl::FOREXCODE_TAG_NAME.0)
@@ -738,7 +738,7 @@ fn strikepx_is_a_derived_market_column_beside_the_dictionarys_strikeprice() {
         .iter()
         .find(|field| field.name() == "strikepx")
         .expect("the crate's strike column");
-    assert_eq!(yggdryl::STRIKEPX_TAG_NAME, (65_035, "strikepx"));
+    assert_eq!(yggdryl::STRIKEPX_TAG_NAME, (65_036, "strikepx"));
     assert_eq!(
         strike.as_fix().tag().expect("a tag reading"),
         Some(yggdryl::STRIKEPX_TAG_NAME.0)
@@ -879,6 +879,93 @@ fn strikepx_is_a_derived_market_column_beside_the_dictionarys_strikeprice() {
     );
 }
 
+/// The currency an instrument originates in is the crate field `origccy`,
+/// tagged after the market band's `Currency(15)` at 65018 - every later
+/// crate tag one up - and held, never derived: no FIX field states it, so
+/// a registry holds it and a line spelling it lands on it. A message stating
+/// none holds none and its row writes null, never the currency it defaults
+/// to at read; a row stating one is the row's word.
+#[test]
+fn origccy_is_a_held_market_column_after_the_currency() {
+    use std::sync::Arc;
+    use yggdryl::graph::Market;
+    use yggdryl::{Ccy, DataType, FixMsg, Scalar};
+
+    let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
+    let at = held
+        .iter()
+        .position(|field| field.name() == "origccy")
+        .expect("the crate's origin column");
+    let origin = &held[at];
+    assert_eq!(origin.as_fix().tag().unwrap(), Some(65_018));
+    assert_eq!(held[at - 1].name(), "marketdatatype");
+    assert_eq!(held[at + 1].name(), "hiddenqty");
+    assert_eq!(yggdryl::HIDDENQTY_TAG_NAME, (65_019, "hiddenqty"));
+    assert!(!yggdryl::is_derived_tag(65_018), "held, not derived");
+    assert_eq!(origin.dtype(), &DataType::Ccy);
+    assert_eq!(origin.display(), Some("Origin Currency"));
+    assert!(origin.is_nullable());
+    assert_eq!(
+        yggdryl::FixRegistry::new()
+            .field_by_tag(65_018)
+            .unwrap()
+            .name(),
+        "origccy"
+    );
+    let tags = yggdryl::fix_schema_tags();
+    let place = |tag: i32| tags.iter().position(|held| *held == tag).expect("a band");
+    assert_eq!(
+        place(65_018),
+        place(15) + 1,
+        "the origin follows the currency"
+    );
+    assert_eq!(place(53), place(65_018) + 1);
+
+    let registry = super::committed_registry();
+    let codec = super::fixed_codec(Arc::clone(&registry));
+    let schema = yggdryl::fix_schema(&registry, "fix").expect("a fixed schema");
+    let column = yggdryl::fix_column_of(&schema, 65_018).expect("a column");
+    let usd = Ccy::new("USD").unwrap();
+
+    // Stated on the wire, the message holds it and its row writes it.
+    let stated = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|15=EUR|65018=USD|10=0|")
+        .expect("an order stating its origin");
+    assert_eq!(stated.get_origccy(), &usd);
+    assert_eq!(stated.origin_currency(), &usd);
+    assert_eq!(stated.get_currency().as_str(), "EUR");
+    assert_eq!(stated.by_tag(65_018).unwrap(), Scalar::Ccy(usd.clone()));
+    let row = stated.into_row(&schema).expect("a fixed row");
+    let mut cells = row.as_sequence().expect("a row").to_vec();
+    assert_eq!(cells[column], Scalar::Ccy(usd.clone()));
+
+    // Stating none, it holds none: the cell is null and the origin read is
+    // the currency.
+    let plain = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=P|55=AAPL|15=EUR|10=0|")
+        .expect("an order");
+    assert!(plain.get_origccy().is_none());
+    assert_eq!(plain.get_by_tag(65_018), None);
+    assert_eq!(plain.origin_currency().as_str(), "EUR");
+    let row = plain.into_row(&schema).expect("a fixed row");
+    assert!(row.as_sequence().expect("a row")[column].is_null());
+
+    // Read back, the row's cell is the message's word, and a null clears it.
+    cells[column] = Scalar::Ccy(Ccy::new("GBP").unwrap());
+    let mut restated = FixMsg::with_registry(
+        Arc::clone(&registry),
+        schema.clone(),
+        Scalar::from_sequence(cells),
+    )
+    .expect("the row read back");
+    assert_eq!(restated.get_origccy().as_str(), "GBP");
+    restated
+        .set(65_018, Scalar::Null)
+        .expect("an origin the message can clear");
+    assert!(restated.get_origccy().is_none());
+    assert_eq!(restated.origin_currency().as_str(), "EUR");
+}
+
 /// The plugin's role is one crate field right after the plugin that logged
 /// the line: required, typed as the `pluginside` enum, reading by the
 /// intrinsic set, a column of the fixed row's message band, and a column
@@ -887,16 +974,16 @@ fn strikepx_is_a_derived_market_column_beside_the_dictionarys_strikeprice() {
 fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_intrinsic_set() {
     use yggdryl::{DataType, PluginSide, Scalar};
 
-    assert_eq!(yggdryl::MSGPLUGINSIDE_TAG_NAME, (65_042, "msgpluginside"));
-    assert_eq!(yggdryl::MSGPLUGINID_TAG_NAME, (65_041, "msgpluginid"));
+    assert_eq!(yggdryl::MSGPLUGINSIDE_TAG_NAME, (65_043, "msgpluginside"));
+    assert_eq!(yggdryl::MSGPLUGINID_TAG_NAME, (65_042, "msgpluginid"));
     assert_eq!(
         yggdryl::MSGORIGINATOR_TAG_NAME,
-        (65_043, "msgoriginator"),
+        (65_044, "msgoriginator"),
         "every later crate tag moved up by one"
     );
-    assert_eq!(yggdryl::FIXMSG_TAG_NAME, (65_052, "fixmsg"));
+    assert_eq!(yggdryl::FIXMSG_TAG_NAME, (65_053, "fixmsg"));
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
-    assert_eq!(held.len(), 51);
+    assert_eq!(held.len(), 52);
     let at = held
         .iter()
         .position(|field| field.name() == "msgpluginside")
@@ -908,7 +995,7 @@ fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_int
     assert!(!field.is_nullable(), "every row states it");
     assert_eq!(field.display(), Some("Message Plugin Side"));
     assert_eq!(field.as_fix().codeset(), Some("msgpluginsidecodeset"));
-    assert_eq!(field.as_fix().tag().unwrap(), Some(65_042));
+    assert_eq!(field.as_fix().tag().unwrap(), Some(65_043));
     assert!(
         field
             .description()
@@ -936,13 +1023,13 @@ fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_int
     assert!(!schema.fields()[column].is_nullable());
     assert_eq!(schema.fields()[column].dtype(), &DataType::PluginSide);
     let tags = yggdryl::fix_schema_tags();
-    let tag = tags.iter().position(|tag| *tag == 65_042).expect("the tag");
-    assert_eq!(tags[tag - 1], 65_041);
-    assert_eq!(tags[tag + 1], 65_043);
-    assert_eq!(yggdryl::fix_column_of(&schema, 65_042), Some(column));
+    let tag = tags.iter().position(|tag| *tag == 65_043).expect("the tag");
+    assert_eq!(tags[tag - 1], 65_042);
+    assert_eq!(tags[tag + 1], 65_044);
+    assert_eq!(yggdryl::fix_column_of(&schema, 65_043), Some(column));
     // Every registry holds it, reading by the intrinsic set it holds too.
     assert_eq!(
-        registry.field_by_tag(65_042).unwrap().name(),
+        registry.field_by_tag(65_043).unwrap().name(),
         "msgpluginside"
     );
     assert_eq!(

@@ -61,6 +61,24 @@ impl WriteLimitState {
         self.skip_rows != 0
     }
 
+    /// Admit one native row, where no Arrow-byte axis was requested.
+    pub(crate) fn apply_row(&mut self) -> bool {
+        debug_assert!(self.remaining_bytes.is_none());
+        if self.satisfied {
+            return false;
+        }
+        if self.skip_rows != 0 {
+            self.skip_rows -= 1;
+            return false;
+        }
+        if let Some(remaining) = &mut self.remaining_rows {
+            *remaining -= 1;
+            self.satisfied = *remaining == 0;
+        }
+        self.yielded = true;
+        true
+    }
+
     /// Admit the leading rows one logical write limit still allows.
     ///
     /// `None` means the limit is complete. A zero-row batch passes through as

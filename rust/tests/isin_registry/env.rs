@@ -1,12 +1,17 @@
 //! `rust/src/isin_registry/env.rs`: the process default, resolved once from
 //! `YGGDRYL_ISIN_REGISTRY_URI`, the home directory or nothing, in the
-//! documented order, and shared with the codec the environment names.
+//! documented order, laid over the seed, and shared with the codec the
+//! environment names.
 
 use std::sync::Arc;
 
-use yggdryl::{FixCodec, FixRegistry, IOBase, IdType, Isin, IsinEntry, IsinRegistry, Url};
+use yggdryl::{
+    Ccy, FixCodec, FixRegistry, IOBase, IdType, Isin, IsinEntry, IsinRegistry, Mic, Url,
+};
 
 const HOLCIM: &str = "CH0012214059";
+const APPLE: &str = "US0378331005";
+const MICROSOFT: &str = "US5949181045";
 
 fn row(code: &str) -> IsinEntry {
     IsinEntry::new(Isin::new(HOLCIM).unwrap())
@@ -16,9 +21,9 @@ fn row(code: &str) -> IsinEntry {
 
 /// `from_env` resolves once and reads the environment, so it runs in a
 /// child whose environment names a scratch store: the registry it answers
-/// is bound there, empty on a first run, committed on request, the same
-/// `Arc` on every call, what `FixCodec::from_env` shares and what no later
-/// install replaces.
+/// is bound there, the seed alone and clean on a first run, committed on
+/// request, the same `Arc` on every call, what `FixCodec::from_env` shares
+/// and what no later install replaces.
 #[test]
 fn the_process_default_binds_what_the_environment_names_and_a_codec_shares_it() {
     if crate::run_isolated(
@@ -32,7 +37,12 @@ fn the_process_default_binds_what_the_environment_names_and_a_codec_shares_it() 
     let registry = IsinRegistry::from_env().expect("the default resolves");
     {
         let mut held = registry.lock().expect("the registry");
-        assert!(held.is_empty(), "an empty first run");
+        assert_eq!(
+            held.len(),
+            IsinRegistry::seeded().len(),
+            "a first run: the seed"
+        );
+        assert!(held.get(APPLE).is_some());
         assert!(!held.is_dirty());
         let bound = held
             .holder()
@@ -70,6 +80,62 @@ fn the_process_default_binds_what_the_environment_names_and_a_codec_shares_it() 
         FixCodec::new(Arc::new(FixRegistry::new()))
             .isin_registry()
             .is_none()
+    );
+}
+
+/// A store holding rows already is laid over the seed: a value the store
+/// states wins over the seed's, a seed row it has no row of stands, a
+/// fact only the seed states is kept beside the store's, and the default
+/// is clean after the load.
+#[test]
+fn the_process_default_lays_the_store_over_the_seed() {
+    if crate::run_isolated(
+        "env::the_process_default_lays_the_store_over_the_seed",
+        "over-seed",
+        Some("instruments/"),
+    ) {
+        return;
+    }
+    let location = std::env::var("YGGDRYL_ISIN_REGISTRY_URI").expect("the child's location");
+    let url = Url::from_location(&location).unwrap();
+    let none: [(&str, &str); 0] = [];
+    let mut store = IsinRegistry::from_url(&url, none).expect("a first run");
+    assert!(store.is_empty(), "bound without the seed");
+    store
+        .merge(
+            IsinEntry::new(Isin::new(APPLE).unwrap())
+                .with_miccode(Some(Mic::new("XNAS").unwrap()))
+                .with_ticker(Some("AAPL".into()))
+                .with_currency(Some(Ccy::new("CHF").unwrap())),
+        )
+        .unwrap();
+    store.commit().expect("committed");
+
+    let registry = IsinRegistry::from_env().expect("the default resolves");
+    let held = registry.lock().expect("the registry");
+    assert!(!held.is_dirty(), "clean after the load");
+    assert_eq!(held.len(), IsinRegistry::seeded().len());
+    let apple = held.get(APPLE).expect("the seed's and the store's");
+    assert_eq!(
+        apple.currency().map(Ccy::as_str),
+        Some("CHF"),
+        "the store's value wins"
+    );
+    assert_eq!(
+        apple.fisn().map(yggdryl::Fisn::as_str),
+        IsinRegistry::seeded()
+            .get(APPLE)
+            .and_then(IsinEntry::fisn)
+            .map(yggdryl::Fisn::as_str),
+        "a fact the store does not state stays the seed's"
+    );
+    assert!(apple.fisn().is_some());
+    assert_eq!(
+        held.get(MICROSOFT)
+            .and_then(IsinEntry::currency)
+            .map(Ccy::as_str),
+        Some("USD"),
+        "a seed row the store has none of"
     );
 }
 
@@ -113,23 +179,26 @@ mod internal {
     use super::row;
 
     /// The pure step under `from_env`, driven by explicit inputs: nothing
-    /// and no home an unbound empty registry; a home the folder under its
-    /// configuration directory, an empty first run laid out by the first
-    /// commit and read back by the next resolution; an explicit location
+    /// and no home the seed unbound; a home the folder under its
+    /// configuration directory, a first run - the seed - laid out by the
+    /// first commit and read back by the next resolution; an explicit location
     /// beating it, spelled as a path, a URL, a leaf or a `~` path; an empty
     /// location unset; a `~` path with no home, a scheme this build has no
-    /// backend for and a store that cannot be read refused, never the empty
-    /// registry.
+    /// backend for and a store that cannot be read refused, never the seed
+    /// alone.
     #[test]
     fn the_default_resolves_in_the_documented_order_from_explicit_inputs() {
         let root = crate::scratch("autoload");
         let home = LocalFolder::new(root.join("home")).unwrap();
 
+        let seeded = yggdryl::IsinRegistry::seeded().len();
         let unbound = autoload(None, None).unwrap();
-        assert!(unbound.is_empty() && unbound.holder().is_none());
+        assert_eq!(unbound.len(), seeded);
+        assert!(unbound.holder().is_none() && !unbound.is_dirty());
 
         let mut configured = autoload(None, Some(home.clone())).unwrap();
-        assert!(configured.is_empty() && !configured.is_dirty());
+        assert_eq!(configured.len(), seeded);
+        assert!(!configured.is_dirty());
         let bound = configured
             .holder()
             .expect("bound")
@@ -150,8 +219,14 @@ mod internal {
             Some("C-1")
         );
         assert!(!again.is_dirty());
-        // An empty location reads as unset.
-        assert_eq!(autoload(Some("  "), Some(home.clone())).unwrap().len(), 1);
+        // An empty location reads as unset: the home's folder, holding the
+        // seed's rows the first commit wrote beside the one it moved.
+        let unset = autoload(Some("  "), Some(home.clone())).unwrap();
+        assert_eq!(unset.len(), seeded);
+        assert_eq!(
+            unset.get(super::HOLCIM).unwrap().get(&IdType::Common),
+            Some("C-1")
+        );
 
         // An explicit location beats the home's folder: a leaf as a path or
         // a URL, a folder under `~`.
@@ -162,7 +237,7 @@ mod internal {
         ];
         for spelling in spellings {
             let mut located = autoload(Some(&spelling), Some(home.clone())).unwrap();
-            assert!(located.is_empty(), "{spelling}");
+            assert_eq!(located.len(), seeded, "{spelling}");
             located.merge(row("C-2")).unwrap();
             located.commit().unwrap();
             assert!(leaf.is_file(), "{spelling}");

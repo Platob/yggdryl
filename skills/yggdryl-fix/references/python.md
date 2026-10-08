@@ -390,7 +390,13 @@ with tempfile.TemporaryDirectory() as directory:
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
 its order and side under one `crossuuid`, within one market data kind (`marketdatakind`); a
-report stating no side joins the one side alive under its identifiers. A fill's
+report stating no side joins the one side alive under its identifiers - its
+chain identities (`orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid`,
+never `execid`, `trdmatchid` or `quotereqid`) and the first value a lineage
+field names - and every message of a chain carries the chain's first
+`crosscode`, a replace under a new `ClOrdID` included. A message citing two
+live chains is joined to neither: it stands under its own identity and carries
+a `FixAnomaly` under `crosscode` naming both, warned once per kind. A fill's
 execution, split off at the parse, is a chain of its own and never restates,
 follows or ends its order. A codec pinned `sorted_lifecycle=True` reads a source already in
 instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
@@ -451,7 +457,10 @@ through the same codec fills derived identifiers from the table its door
 fixed. A codec without one learns into a registry of each walk's own;
 `isin_registry=` shares one across walks run one after another, bound to a
 store with `from_url` and written back with `commit()` only where it moved,
-and `FixCodec.from_env()` shares the process's own, `IsinRegistry.from_env()`.
+and `FixCodec.from_env()` shares the process's own, `IsinRegistry.from_env()`,
+laid over the embedded common instruments `IsinRegistry.seeded()` holds. A
+row carries the national number its ISIN embeds - Holcim's Valor below -
+and its market's country's currency where it states none.
 A structured product's EUSIPA category is learned off a bridge's own key
 (`EUSIPACode`, `OMS_SSPACategory`, ...) as the row's `eusipacode`, an `int`
 that `yggdryl.Eusipa` names; the key is lifted into no identifier map.
@@ -469,6 +478,7 @@ codec = FixCodec(FixRegistry.from_handle(Path("config/fix")), isin_registry=inst
 stated = [b"8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|"]
 list(codec.lifecycle(codec.parse_lines(stated)))
 assert instruments.get("CH0012214059")["ric"] == "HOLN.S"
+assert instruments.get("CH0012214059")["valor"] == "1221405", "the Valor a CH ISIN embeds"
 
 # A bridge key states a structured product's category beside its ISIN.
 product = [b"8=FIX.4.4|35=D|11=C|22=4|48=CH0123456789|55=ACMEL|207=XSWX|OMS_SSPACategory=2300|10=0|"]
@@ -488,11 +498,13 @@ assert IsinRegistry.from_arrow_reader(instruments.into_arrow_reader()).get("CH00
 
 ## Follow a replace chain's parents
 
-A message that states an identifier again under another value is a step in
+A message that states a chain identity again under another value is a step in
 its chain: `lifecycle` keeps the value before it as the type's parent
 (`orderid` leaves `parentorderid` and the chain's first as `origorderid`,
-`clordid` leaves `origclordid`), and joins a replace to its order by that
-parent too. `registry.parents_of("orderid")` lists them, nearest first, from
+`clordid` leaves `origclordid`), and joins a replace to its order by the first value its lineage field
+names (`OrigClOrdID(41)`, `OrigTradeID(1126)`, `TradeReportRefID(572)`), under
+the base; only a chain identity has parents, so an `ExecID(17)` carries none.
+`registry.parents_of("orderid")` lists them, nearest first, from
 the `FIX:parents` a field states.
 
 ```python
@@ -576,7 +588,8 @@ assert ack.market_data() == []
 `market_data` admits orders, quotes, executions and `W`/`X` book messages - a
 trade as the executions its parse split off - reads each as its one graph
 leaf (a book message one per entry) and sorts them by the instant a book folds
-them at; `graph.BookIterator` then walks them, pruning the executions.
+them at; `graph.BookIterator` then walks them, recording each execution among
+its book's `events`.
 `book_arrow_reader(messages, snapshot_millis=0, filter=None)` folds the same
 messages into book rows, one book per book key. Compose `lifecycle` in front when
 predecessor state matters. `market_arrow_reader` writes the sorted leaves as
@@ -759,5 +772,6 @@ with tempfile.TemporaryDirectory() as directory:
   beyond the grid and the filter (a `Filter`, a `Term`, an `Expression` or a
   predicate's text over the `marketdata` row): books are keyed by the
   instrument's ISIN, else the ticker, else `XX0000000000`, and a book is
-  complete only at a grid tick or a `W` full refresh - every other row states
-  its deltas, which `book.with_previous(previous)` rebuilds.
+  complete only at a grid tick or a `W` full refresh - every other row is a
+  delta book, its `delta` and `events`, which `book.with_previous(previous)`
+  rebuilds.

@@ -95,13 +95,21 @@
 //! A reader that meets both spellings of one version whole refuses with an
 //! error naming both, since choosing one by its own codec would drop the
 //! other's commit from the chain; a commit that meets them waits as a
-//! beaten attempt and reports the fork once its budget is spent. What stays
+//! beaten attempt and reports the fork once its budget is spent. A third
+//! writer may read a claim in the instant before that claim's own check
+//! withdraws it, so a claim that stands alone checks the document it built
+//! on too, where it read that document rather than published it: the other
+//! spelling of the base's version is read once and must hold nothing, and
+//! the base's own name once and must hold exactly the bytes read - their
+//! length and XXH3-64 kept where the document was read. A base that fails
+//! withdraws the claim, and the commit reads the version that stands: an
+//! append to a table stating no identifier and a metadata-only change
+//! rebase onto it, and the others end in a [`CommitConflict`]. What stays
 //! best-effort: a reader in the instant between a second claim and its
-//! withdrawal is refused rather than answered; a third writer that read the
-//! first claim in the instant before that claim's own check, and claimed
-//! the next version on it, has built on a document the check then
-//! withdraws; and a withdrawal the store refuses leaves the version forked,
-//! which the commit reports with every file its document names kept.
+//! withdrawal is refused rather than answered; a base whose own check had
+//! not yet run when this commit checked it may still be withdrawn after;
+//! and a withdrawal the store refuses leaves the version forked, which the
+//! commit reports with every file its document names kept.
 //!
 //! A table's first document is the one claim a listing goes before: the
 //! name `v1.metadata.json` cannot see a table laid out under another - a
@@ -175,8 +183,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{BuildHasherDefault, Hash, Hasher};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, StructArray, UInt32Array};
 use arrow_row::{Row, RowConverter, SortField};
@@ -184,7 +191,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::manifest::{
     DataFile, FieldSummary, ManifestContent, ManifestEntry, ManifestFile, is_iceberg_mime_type,
-    read_manifest_list, read_v1_direct_manifest_file, write_manifest, write_manifest_list,
+    read_manifest_list, read_v1_direct_manifest_file, write_manifest, write_manifest_list_rows,
 };
 use super::metadata::{FormatVersion, SortOrder, TableMetadata, now_ms, uuid};
 use super::options::{CommitSettings, IcebergOptions, WriteSettings, WriteStaging};
@@ -195,11 +202,12 @@ use super::snapshot::{Snapshot, SnapshotRef};
 use super::staging::{Staging, container, leaf, sized};
 use super::value::{compare_single, is_portable, single_value};
 use crate::arrow::BatchReader;
-use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
+use crate::cast::ArrowCastOptions;
 use crate::expression::{FieldPath, FieldSegment, Projection};
 use crate::holder::Holder;
 use crate::media::{Cadence, IORecordOptions, RecordOptions};
-use crate::{ChunkedSerie, IOBase, IOMedia, Serie, SpillOptions};
+use crate::serie::{Closing, Partitions};
+use crate::{ChunkedSerie, IOBase, IOMedia, Serie, StreamChunkedSerie};
 use crate::{
     DataType, Error, Field, Filter, IOKind, MimeType, Result, Scalar, Selector, StructType, Term,
 };
@@ -259,6 +267,43 @@ struct Opened {
     /// on - for a pointed table; `None` under the folder contract. A pointed
     /// table created in memory and not yet published states no location.
     pointed: Option<PointerState>,
+    /// What proves the document is still its version's one document when a
+    /// commit builds on it, under the folder contract; `None` for a pointed
+    /// table, whose publication is conditioned at the service, and for the
+    /// version 0 a create holds before its first document.
+    base: Option<Base>,
+    /// The manifests of the manifest list this handle's own commit wrote,
+    /// keyed by that list's location: what [`IcebergTable::manifests_at`]
+    /// answers for the snapshot naming it, without reading the list back.
+    manifests: Option<(SmolStr, Arc<[ManifestFile]>)>,
+}
+
+/// How a commit proves the document it built on still stands alone at its
+/// version, kept where the document was read or published.
+///
+/// A claim that lands is withdrawn when its own check finds the other
+/// spelling of its version held, so a document read in the instant before
+/// that check may be withdrawn after it was read; a commit built on it
+/// would chain past the document that won the version, and lose that
+/// version's commit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Base {
+    /// Read from the folder: the stored length and the XXH3-64 of the stored
+    /// bytes, which a read of its name must find again.
+    Read { length: u64, digest: u64 },
+    /// Published by this handle's own commit past its checks: a document no
+    /// writer withdraws once its claim stood alone.
+    Published,
+}
+
+impl Base {
+    /// The proof of a document read as `bytes`.
+    fn read(bytes: &[u8]) -> Self {
+        Self::Read {
+            length: bytes.len() as u64,
+            digest: crate::xxhash::xxh3(bytes),
+        }
+    }
 }
 
 impl IcebergTable<Handle> {
@@ -671,6 +716,8 @@ fn read_pointed<H: IOBase>(root: &H, pointer: &dyn MetadataPointer) -> Result<Op
         version,
         metadata_file_name,
         pointed: Some(state),
+        base: None,
+        manifests: None,
     }))
 }
 
@@ -718,7 +765,8 @@ fn missing_pointed<H: IOBase>(root: &H) -> Error {
 /// `*.metadata.json`.
 fn read_current<H: IOBase>(root: &H) -> Result<Option<Opened>> {
     let metadata_dir = container(root.child_by_path(METADATA_DIR)?)?;
-    let Some((version, metadata_file_name, document)) = find_metadata_document(&metadata_dir)?
+    let Some((version, metadata_file_name, (document, base))) =
+        find_metadata_document(&metadata_dir)?
     else {
         return Ok(None);
     };
@@ -732,10 +780,23 @@ fn read_current<H: IOBase>(root: &H) -> Result<Option<Opened>> {
         version,
         metadata_file_name,
         pointed: None,
+        base: Some(base),
+        manifests: None,
     }))
 }
 
 impl<H: IOBase> IcebergTable<H> {
+    /// The read settings this table resolves for `metadata`: its options,
+    /// then its properties, then the defaults - on one thread where its root
+    /// answers only on the calling thread ([`IOBase::is_thread_bound`]).
+    fn read_settings(&self, metadata: &TableMetadata) -> Result<super::options::ReadSettings> {
+        let mut settings = IcebergOptions::read_settings(self.options.as_ref(), metadata)?;
+        if self.root.is_thread_bound() {
+            settings.parallelism = 1;
+        }
+        Ok(settings)
+    }
+
     /// Create a table, writing its first metadata document.
     ///
     /// The table has a schema and a partition spec but no snapshot, which is
@@ -849,8 +910,10 @@ impl<H: IOBase> IcebergTable<H> {
                     version: 0,
                     metadata_file_name: SmolStr::new_static(""),
                     pointed: None,
+                    base: None,
+                    manifests: None,
                 });
-                table.commit_metadata(None)?;
+                table.commit_metadata(None).map_err(Unclaimed::into_error)?;
             }
             Some(pointer) => {
                 // The pointer is read once: a table it already names a
@@ -865,6 +928,8 @@ impl<H: IOBase> IcebergTable<H> {
                     version: 0,
                     metadata_file_name: SmolStr::new_static(""),
                     pointed: Some(state),
+                    base: None,
+                    manifests: None,
                 });
                 table.publish_pointed(pointer.as_ref(), None)?;
                 table.pointer = Some(pointer);
@@ -1256,6 +1321,10 @@ impl<H: IOBase> IcebergTable<H> {
 
     /// Return every manifest one retained snapshot points at.
     ///
+    /// The manifest list is read from the store, one read - except the list
+    /// this handle's own last commit wrote, which the commit kept as the
+    /// list states its manifests and answers without a read.
+    ///
     /// # Errors
     ///
     /// Returns an error when a manifest or manifest list cannot be reached or decoded.
@@ -1271,6 +1340,16 @@ impl<H: IOBase> IcebergTable<H> {
         }
         if snapshot.manifest_list.is_empty() {
             return Ok(Vec::new());
+        }
+        // The list this handle's own commit wrote is answered as it states
+        // its manifests: a commit carrying them forward reads nothing back.
+        if let Some(Opened {
+            manifests: Some((list, manifests)),
+            ..
+        }) = self.opened.get()
+            && *list == snapshot.manifest_list
+        {
+            return Ok(manifests.to_vec());
         }
         let handle = self.child_at(&snapshot.manifest_list)?;
         read_manifest_list(&handle)
@@ -1462,8 +1541,7 @@ impl<H: IOBase> IcebergTable<H> {
         let location = metadata.location();
         // The manifests a plan keeps are read side by side on the scan's own
         // parallelism, resolved by the one three-layer rule.
-        let parallelism =
-            IcebergOptions::read_settings(self.options.as_ref(), metadata)?.parallelism;
+        let parallelism = self.read_settings(metadata)?.parallelism;
         log::debug!(
             "planning iceberg scan of {location} over {} manifests on up to {parallelism} threads",
             manifests.len()
@@ -1628,18 +1706,20 @@ impl<H: IOBase> IcebergTable<H> {
             // visibility itself is uncertain.
             match find_metadata_document(&metadata_dir).and_then(|visible| {
                 visible
-                    .map(|(version, metadata_file_name, document)| {
+                    .map(|(version, metadata_file_name, (document, base))| {
                         TableMetadata::from_json(&document)
-                            .map(|metadata| (version, metadata_file_name, metadata))
+                            .map(|metadata| (version, metadata_file_name, metadata, base))
                     })
                     .transpose()
             }) {
-                Ok(Some((version, metadata_file_name, metadata))) => {
+                Ok(Some((version, metadata_file_name, metadata, base))) => {
                     table.adopt(Opened {
                         metadata,
                         version,
                         metadata_file_name,
                         pointed: None,
+                        base: Some(base),
+                        manifests: None,
                     });
                 }
                 Ok(None) | Err(_) => table.adopt(saved.clone()),
@@ -1668,7 +1748,9 @@ impl<H: IOBase> IcebergTable<H> {
                                     "expected the newer metadata document {metadata_file_name} to be read, got none"
                                 ))
                             })
-                            .and_then(|document| TableMetadata::from_json(&document));
+                            .and_then(|(document, base)| {
+                                TableMetadata::from_json(&document).map(|fresh| (fresh, base))
+                            });
                         match fresh {
                             Ok(fresh) => Some(fresh),
                             Err(error) => return restore(self, error, unresolved_claim),
@@ -1676,7 +1758,7 @@ impl<H: IOBase> IcebergTable<H> {
                     } else {
                         None
                     };
-                    if let (Some(attempted), Some(fresh)) = (&attempted_snapshot, &fresh)
+                    if let (Some(attempted), Some((fresh, base))) = (&attempted_snapshot, &fresh)
                         && fresh.snapshot_by_id(attempted.snapshot_id) == Some(attempted)
                     {
                         if let Some(staging) = staging {
@@ -1687,6 +1769,8 @@ impl<H: IOBase> IcebergTable<H> {
                             version,
                             metadata_file_name,
                             pointed: None,
+                            base: Some(*base),
+                            manifests: None,
                         });
                         return Ok(());
                     }
@@ -1707,12 +1791,14 @@ impl<H: IOBase> IcebergTable<H> {
                         Ok(wait) => wait,
                         Err(error) => return restore(self, error, unresolved_claim),
                     };
-                    if let Some(fresh) = fresh {
+                    if let Some((fresh, base)) = fresh {
                         self.adopt(Opened {
                             metadata: fresh,
                             version,
                             metadata_file_name,
                             pointed: None,
+                            base: Some(base),
+                            manifests: None,
                         });
                     }
                     log::debug!(
@@ -1755,21 +1841,50 @@ impl<H: IOBase> IcebergTable<H> {
             let updated = if let Some((version, metadata)) = pending_attempt.take()
                 && version == held_version
             {
-                metadata
+                Ok(metadata)
             } else {
-                match apply(self) {
-                    Ok(updated) => updated,
-                    Err(error) => return restore(self, error, unresolved_claim),
+                apply(self)
+            };
+            let attempt = match updated {
+                Ok(updated) => {
+                    attempted_snapshot = if on_conflict == OnConflict::Rebase && staging.is_some() {
+                        updated.current_snapshot().cloned()
+                    } else {
+                        None
+                    };
+                    let planned = std::mem::replace(&mut self.opened_mut()?.metadata, updated);
+                    self.commit_metadata(staging)
+                        .map_err(|unclaimed| (unclaimed, Some(planned)))
                 }
+                // A document read in the instant before its claim's own check
+                // withdrew it names files that withdrawal may have taken back
+                // with it: where the document held no longer stands, a failure
+                // to build on it is that withdrawal, and the attempt is beaten
+                // as one whose base moved under its claim is.
+                Err(error) => match self.held_moved() {
+                    Some(moved) => Err((Unclaimed::Failed(moved), None)),
+                    None => return restore(self, error, unresolved_claim),
+                },
             };
-            attempted_snapshot = if on_conflict == OnConflict::Rebase && staging.is_some() {
-                updated.current_snapshot().cloned()
-            } else {
-                None
-            };
-            let planned = std::mem::replace(&mut self.opened_mut()?.metadata, updated);
-            if let Err(error) = self.commit_metadata(staging) {
-                if !error.is_conflict() {
+            if let Err((unclaimed, planned)) = attempt {
+                let (error, withdrawn) = match unclaimed {
+                    Unclaimed::Withdrawn(error) => (error, true),
+                    Unclaimed::Failed(error) => (error, false),
+                };
+                // A withdrawn claim leaves nothing durable naming its
+                // snapshot: a document met naming it built on the claim
+                // before it was withdrawn, and goes with it, so it is no
+                // sign that this commit landed.
+                if withdrawn {
+                    attempted_snapshot = None;
+                }
+                // A claim withdrawn because the document it built on no
+                // longer stands alone at its version: the version that
+                // stands may carry the number held, or a lower one where the
+                // document held was a claim withdrawn since, and is the one
+                // to read.
+                let moved = is_moved_base(&error);
+                if !moved && !error.is_conflict() {
                     if unresolved_claim && let Some(staging) = staging {
                         staging.preserve_uncertain();
                     }
@@ -1777,10 +1892,14 @@ impl<H: IOBase> IcebergTable<H> {
                 }
                 // Keep one refused data attempt intact while its winner is
                 // unreadable: rebuilding it would withdraw the manifest list
-                // a visible descendant may already name.
-                let attempted = std::mem::replace(&mut self.opened_mut()?.metadata, planned);
-                if on_conflict == OnConflict::Rebase && staging.is_some() {
-                    pending_attempt = Some((held_version, attempted));
+                // a visible descendant may already name. An attempt whose
+                // base moved built on a document no version holds, and is
+                // rebuilt on the one that stands, never sent again.
+                if let Some(planned) = planned {
+                    let attempted = std::mem::replace(&mut self.opened_mut()?.metadata, planned);
+                    if on_conflict == OnConflict::Rebase && staging.is_some() && !moved {
+                        pending_attempt = Some((held_version, attempted));
+                    }
                 }
                 // The version this attempt claimed is another writer's. Where
                 // the table stands is read as a fresh handle reads it, past a
@@ -1792,13 +1911,15 @@ impl<H: IOBase> IcebergTable<H> {
                 let claimed = held_version.saturating_add(1);
                 let winner = match find_metadata_document(&metadata_dir).and_then(|visible| {
                     visible
-                        .map(|(version, metadata_file_name, document)| {
+                        .map(|(version, metadata_file_name, (document, base))| {
                             TableMetadata::from_json(&document)
-                                .map(|metadata| (version, metadata_file_name, metadata))
+                                .map(|metadata| (version, metadata_file_name, metadata, base))
                         })
                         .transpose()
                 }) {
-                    Ok(winner) => winner.filter(|(version, _, _)| *version > held_version),
+                    Ok(winner) => {
+                        winner.filter(|(version, _, _, _)| moved || *version > held_version)
+                    }
                     Err(reading) => {
                         log::debug!(
                             "iceberg commit beaten to version {claimed} found the winner \
@@ -1807,7 +1928,7 @@ impl<H: IOBase> IcebergTable<H> {
                         None
                     }
                 };
-                if let (Some(attempted), Some((version, metadata_file_name, metadata))) =
+                if let (Some(attempted), Some((version, metadata_file_name, metadata, base))) =
                     (&attempted_snapshot, &winner)
                     && metadata.snapshot_by_id(attempted.snapshot_id) == Some(attempted)
                 {
@@ -1819,24 +1940,27 @@ impl<H: IOBase> IcebergTable<H> {
                         version: *version,
                         metadata_file_name: metadata_file_name.clone(),
                         pointed: None,
+                        base: Some(*base),
+                        manifests: None,
                     });
                     return Ok(());
                 }
-                if winner.is_none() {
+                if winner.is_none() && !withdrawn && !moved {
                     // A refused create may be our durable document. Until it
                     // or another same-version winner is readable, rollback
-                    // cannot safely remove the files it may name.
+                    // cannot safely remove the files it may name - unless the
+                    // claim was withdrawn, which leaves nothing durable.
                     unresolved_claim = true;
                 } else if on_conflict == OnConflict::Rebase
                     && winner
                         .as_ref()
-                        .is_some_and(|(version, _, _)| *version == claimed)
+                        .is_some_and(|(version, _, _, _)| *version == claimed)
                 {
                     unresolved_claim = false;
                 }
                 let seen = winner
                     .as_ref()
-                    .map_or(claimed, |(version, _, _)| (*version).max(claimed));
+                    .map_or(claimed, |(version, _, _, _)| (*version).max(claimed));
                 let wait = match retry_wait_ms(
                     &settings,
                     &mut beaten,
@@ -1848,13 +1972,15 @@ impl<H: IOBase> IcebergTable<H> {
                     Err(error) => return restore(self, error, unresolved_claim),
                 };
                 if on_conflict == OnConflict::Rebase
-                    && let Some((version, metadata_file_name, metadata)) = winner
+                    && let Some((version, metadata_file_name, metadata, base)) = winner
                 {
                     self.adopt(Opened {
                         metadata,
                         version,
                         metadata_file_name,
                         pointed: None,
+                        base: Some(base),
+                        manifests: None,
                     });
                 }
                 log::debug!(
@@ -2020,8 +2146,7 @@ impl<H: IOBase> IcebergTable<H> {
         // predicate's own columns even when the caller projected them away.
         let predicates = super::scan::conjuncts(&read_root, filter)?;
         let parts = self.scan_parts(tasks, stored, &read_root)?;
-        let parallel =
-            IcebergOptions::read_settings(self.options.as_ref(), &self.opened()?.metadata)?;
+        let parallel = self.read_settings(&self.opened()?.metadata)?;
         super::scan::reader(
             parts,
             root,
@@ -2100,13 +2225,12 @@ impl<H: IOBase> IcebergTable<H> {
     ) -> Result<BatchReader> {
         let (rows, late) = self.read_rows(scope, options)?;
         let reader = rows.into_arrow_reader()?;
-        if late {
-            return options.limit_arrow_reader(options.apply_arrow_expressions(reader)?);
-        }
         // The limit wraps last, as on every handle, so it counts result rows
         // and a satisfied read opens no partition past the one that
         // satisfied it.
-        options.limit_arrow_reader(options.select().apply_arrow_reader(reader)?)
+        options.limit_arrow_reader(
+            late.apply_arrow_reader(options.select().apply_arrow_reader(reader)?)?,
+        )
     }
 
     /// The rows an options-driven read yields before the `select`, a `where`
@@ -2134,21 +2258,18 @@ impl<H: IOBase> IcebergTable<H> {
         &self,
         scope: Filter,
         options: &RecordOptions,
-    ) -> Result<(super::scan::Partitions, bool)> {
+    ) -> Result<(super::scan::Partitions, Filter)> {
         let stored = self.schema()?.clone();
-        let filter = options.filter();
-        let late = crate::expression::filter_after_select(
-            filter,
-            options.select(),
-            stored.fields().iter().map(Field::name),
-        );
         let (landing, given) = self.read_landing(options)?;
-        let pushed = if late {
-            scope
-        } else if scope.is_always_true() {
-            filter.clone()
+        let (early, late) = crate::expression::filter_phases(
+            options.filter(),
+            options.select(),
+            landing.fields().iter().map(Field::name),
+        );
+        let pushed = if scope.is_always_true() {
+            early.into_owned()
         } else {
-            Filter::all([scope, filter.clone()])
+            Filter::all([scope, early.into_owned()])
         };
         let metadata = &self.opened()?.metadata;
         let spec = metadata.default_spec()?;
@@ -2186,7 +2307,7 @@ impl<H: IOBase> IcebergTable<H> {
             .into_iter()
             .map(|tasks| self.scan_parts(tasks, &stored, &read_root))
             .collect::<Result<Vec<_>>>()?;
-        let mut parallel = IcebergOptions::read_settings(self.options.as_ref(), metadata)?;
+        let mut parallel = self.read_settings(metadata)?;
         if options.max_row_size().is_some() {
             // A limited read decodes one file at a time, on one thread, so it
             // stops where its limit does rather than decoding ahead of it.
@@ -2208,7 +2329,7 @@ impl<H: IOBase> IcebergTable<H> {
             sorting,
             std::sync::Arc::new(root),
         );
-        Ok((partitions, late))
+        Ok((partitions, late.into_owned()))
     }
 
     /// The root an options-driven read lands its rows under, declaring no
@@ -2354,8 +2475,9 @@ impl<H: IOBase> IcebergTable<H> {
     /// fails, or a [`CommitConflict`] when concurrent writers exhausted the
     /// retries - or, for a keyed append, when a concurrent commit won.
     pub fn commit_append(&mut self, batches: BatchReader) -> Result<()> {
+        let claimed = claimed_order(&batches.schema());
         let batches = self.derived(batches)?;
-        let skipped = self.commit_append_on(batches, None)?;
+        let skipped = self.commit_append_on(batches, None, &claimed)?;
         if skipped > 0 {
             log::info!(
                 "skipped {skipped} rows whose key {} already holds",
@@ -2385,11 +2507,14 @@ impl<H: IOBase> IcebergTable<H> {
 
     /// [`Self::commit_append`] with its partition groups written on
     /// `threads` at once where one is stated, else on the table's own
-    /// parallelism: the rows it skipped, a key the table already held.
+    /// parallelism, and each partition written as soon as the rows move past
+    /// it while they keep the order the source `claimed`
+    /// ([`Self::partitions`]).
     pub(crate) fn commit_append_on(
         &mut self,
         batches: BatchReader,
         threads: Option<usize>,
+        claimed: &[crate::expression::Ordering],
     ) -> Result<u64> {
         if self
             .schema()?
@@ -2397,18 +2522,27 @@ impl<H: IOBase> IcebergTable<H> {
             .identifier_field_ids()?
             .is_empty()
         {
-            self.commit_every_row(batches, threads)?;
+            self.commit_every_row(batches, threads, claimed)?;
             return Ok(0);
         }
         self.commit_absent(batches, threads)
     }
 
-    /// Append every row of `batches`, keyed or not: the later commits of an
-    /// overwrite, which append beside what its first commit wrote, and an
-    /// append to a table stating no key.
-    fn commit_every_row(&mut self, batches: BatchReader, threads: Option<usize>) -> Result<()> {
-        let writes = self.partition_writes(batches, false)?;
-        self.commit(writes, None, "append", Retained::All, threads)?;
+    fn commit_every_row(
+        &mut self,
+        batches: BatchReader,
+        threads: Option<usize>,
+        claimed: &[crate::expression::Ordering],
+    ) -> Result<()> {
+        let partitions = self.partitions(batches, false, threads, true, claimed)?;
+        self.commit(
+            Groups::Streamed(partitions),
+            None,
+            "append",
+            |_, _| Ok(Retained::All),
+            threads,
+            Empty::Commits,
+        )?;
         Ok(())
     }
 
@@ -2433,7 +2567,7 @@ impl<H: IOBase> IcebergTable<H> {
             // Checked against the schema before a file is read.
             row_keys.bind(&schema)?;
         }
-        let mut writes = self.partition_writes(batches, false)?;
+        let mut writes = self.partition_writes(batches, false, threads)?;
         if writes.is_empty() {
             return Ok(0);
         }
@@ -2470,16 +2604,19 @@ impl<H: IOBase> IcebergTable<H> {
             matched: Matched::Kept { key_root },
         };
         let committed = self.commit(
-            writes,
+            Groups::Held(writes),
             Some(&join),
             "append",
-            Retained::Only {
-                manifests,
-                entries: Vec::new(),
+            move |_, _| {
+                Ok(Retained::Only {
+                    manifests,
+                    entries: Vec::new(),
+                })
             },
             threads,
+            Empty::CommitsNothing,
         )?;
-        Ok(committed.skipped_rows)
+        Ok(committed.map_or(0, |commit| commit.skipped_rows))
     }
 
     /// Give each group the keys a live file of another partition spec holds
@@ -2621,8 +2758,15 @@ impl<H: IOBase> IcebergTable<H> {
     /// source reaches - rewrite it into the current spec first - when any
     /// write fails, or a [`CommitConflict`] when a concurrent commit won.
     pub fn commit_overwrite(&mut self, batches: BatchReader) -> Result<()> {
+        let claimed = claimed_order(&batches.schema());
         let batches = self.derived(batches)?;
-        self.commit_overwrite_cadence(&[], batches, &mut ReplacedPartitions::default(), None)
+        self.commit_overwrite_cadence(
+            &[],
+            batches,
+            &mut ReplacedPartitions::default(),
+            None,
+            &claimed,
+        )
     }
 
     /// One commit of a streamed overwrite.
@@ -2640,6 +2784,7 @@ impl<H: IOBase> IcebergTable<H> {
         batches: BatchReader,
         replaced: &mut ReplacedPartitions,
         threads: Option<usize>,
+        claimed: &[crate::expression::Ordering],
     ) -> Result<()> {
         if filters.is_empty() && !self.opened()?.metadata.default_spec()?.is_unpartitioned() {
             return self.commit_partitions(
@@ -2649,15 +2794,13 @@ impl<H: IOBase> IcebergTable<H> {
                 false,
                 replaced,
                 threads,
+                claimed,
             );
         }
         if replaced.scope {
-            // Beside what this write's first commit wrote, whatever the
-            // table's key: an overwrite never asks its own rows what is
-            // absent.
-            return self.commit_every_row(batches, threads);
+            return self.commit_every_row(batches, threads, claimed);
         }
-        self.commit_overwrite_where_on(filters, batches, threads)?;
+        self.commit_overwrite_where_on(filters, batches, threads, claimed)?;
         replaced.scope = true;
         Ok(())
     }
@@ -2692,8 +2835,9 @@ impl<H: IOBase> IcebergTable<H> {
         filters: &[(&str, &str)],
         batches: BatchReader,
     ) -> Result<()> {
+        let claimed = claimed_order(&batches.schema());
         let batches = self.derived(batches)?;
-        self.commit_overwrite_where_on(filters, batches, None)
+        self.commit_overwrite_where_on(filters, batches, None, &claimed)
     }
 
     /// [`Self::commit_overwrite_where`] with its partition groups written
@@ -2704,18 +2848,23 @@ impl<H: IOBase> IcebergTable<H> {
         filters: &[(&str, &str)],
         batches: BatchReader,
         threads: Option<usize>,
+        claimed: &[crate::expression::Ordering],
     ) -> Result<()> {
         let plan = self.plan(filters)?;
-        let writes = self.partition_writes(batches, false)?;
+        let partitions = self.partitions(batches, false, threads, true, claimed)?;
+        // The scope is replaced whether or not a row falls in it.
         self.commit(
-            writes,
+            Groups::Streamed(partitions),
             None,
             "overwrite",
-            Retained::Only {
-                manifests: plan.skipped,
-                entries: plan.excluded,
+            move |_, _| {
+                Ok(Retained::Only {
+                    manifests: plan.skipped,
+                    entries: plan.excluded,
+                })
             },
             threads,
+            Empty::Commits,
         )?;
         Ok(())
     }
@@ -2791,6 +2940,7 @@ impl<H: IOBase> IcebergTable<H> {
         merge_by: &crate::Selector,
         safe: bool,
     ) -> Result<()> {
+        let claimed = claimed_order(&batches.schema());
         let batches = self.derived(batches)?;
         self.commit_merge_cadence(
             filters,
@@ -2799,6 +2949,7 @@ impl<H: IOBase> IcebergTable<H> {
             safe,
             &mut ReplacedPartitions::default(),
             None,
+            &claimed,
         )
     }
 
@@ -2812,6 +2963,7 @@ impl<H: IOBase> IcebergTable<H> {
     /// replaced: the first commit that reaches a partition replaces it and
     /// records it, every later one carries its files and appends beside
     /// them. A keyed merge joins by key on every commit and records nothing.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn commit_merge_cadence(
         &mut self,
         filters: &[(&str, &str)],
@@ -2820,6 +2972,7 @@ impl<H: IOBase> IcebergTable<H> {
         safe: bool,
         replaced: &mut ReplacedPartitions,
         threads: Option<usize>,
+        claimed: &[crate::expression::Ordering],
     ) -> Result<()> {
         let schema = self.schema()?.clone();
         let spec = self.opened()?.metadata.default_spec()?.clone();
@@ -2841,7 +2994,7 @@ impl<H: IOBase> IcebergTable<H> {
         // Every key column is checked against the schema before a file is
         // read, computed keys included, so a bad key costs nothing.
         keys.bind(&schema)?;
-        self.commit_partitions(filters, batches, row_keys, safe, replaced, threads)
+        self.commit_partitions(filters, batches, row_keys, safe, replaced, threads, claimed)
     }
 
     /// One commit over the partitions `batches` falls in: each joined with
@@ -2853,6 +3006,7 @@ impl<H: IOBase> IcebergTable<H> {
     /// by partition tuple, the plan opened over those partitions alone, and
     /// every file of every other partition carried untouched. A source with
     /// no row commits nothing.
+    #[allow(clippy::too_many_arguments)]
     fn commit_partitions(
         &mut self,
         filters: &[(&str, &str)],
@@ -2861,15 +3015,59 @@ impl<H: IOBase> IcebergTable<H> {
         safe: bool,
         replaced: &mut ReplacedPartitions,
         threads: Option<usize>,
+        claimed: &[crate::expression::Ordering],
     ) -> Result<()> {
         let schema = self.schema()?.clone();
         let spec = self.opened()?.metadata.default_spec()?.clone();
+        if row_keys.is_empty() {
+            // The partition is the key: its files are replaced, not read, so
+            // each partition is written as it closes and the plan - the
+            // files this commit replaces - is opened over the partitions the
+            // rows fell in once the last of them is written.
+            let partitions = self.partitions(batches, safe, threads, true, claimed)?;
+            let mut replacing: Vec<Vec<Scalar>> = Vec::new();
+            let committed = self.commit(
+                Groups::Streamed(partitions),
+                None,
+                "overwrite",
+                |table, tuples| {
+                    let (retained, newly) =
+                        table.replaced_by(filters, &schema, &spec, tuples, replaced)?;
+                    replacing = newly;
+                    Ok(retained)
+                },
+                threads,
+                Empty::CommitsNothing,
+            )?;
+            if committed.is_some() {
+                // Recorded once the commit is published: a commit that
+                // failed replaced nothing, and the write it belonged to is
+                // over.
+                replaced.tuples.extend(replacing);
+            }
+            return Ok(());
+        }
 
-        // The incoming side is held, grouped by partition, and this is why:
+        // A keyed merge's incoming side is held, grouped by partition, and
+        // this is why:
         // the files a merge has to read are the ones of the partitions the
         // rows fall in whose statistics say they can hold an incoming key,
-        // and neither is known from a reader that has not been read.
-        let mut writes = self.partition_writes(batches, safe)?;
+        // and neither is known from a reader that has not been read. Each
+        // partition is joined with its stored files once, so every one is
+        // held until the source ends.
+        let mut writes: Vec<PartitionWrite> = self
+            .partitions(batches, safe, threads, false, &[])?
+            .map(|closed| {
+                let (values, hold) = closed?;
+                Ok(PartitionWrite {
+                    values,
+                    hold,
+                    stored: Vec::new(),
+                    selected: Vec::new(),
+                    known: Vec::new(),
+                })
+            })
+            .collect::<Result<_>>()?;
         if writes.is_empty() {
             return Ok(());
         }
@@ -2905,20 +3103,7 @@ impl<H: IOBase> IcebergTable<H> {
                 )));
             }
         }
-        let mut replacing: Vec<Vec<Scalar>> = Vec::new();
         for (write, tasks) in writes.iter_mut().zip(own) {
-            if !keyed {
-                // The partition is the key: its files are replaced, not
-                // read, by the first commit of the write that reaches it,
-                // and carried - this commit appends beside them - by every
-                // later commit of the same write.
-                if replaced.contains(&write.values) {
-                    carried.extend(tasks);
-                } else {
-                    replacing.push(write.values.clone());
-                }
-                continue;
-            }
             let incoming = hold_batches(&write.hold)?;
             let bounds = KeyBounds::of(&incoming, &schema, &row_keys)?;
             let mut selected = Vec::new();
@@ -2939,36 +3124,166 @@ impl<H: IOBase> IcebergTable<H> {
             matched: Matched::Replaced,
         };
         self.commit(
-            writes,
-            keyed.then_some(&join),
+            Groups::Held(writes),
+            Some(&join),
             "overwrite",
-            Retained::Only {
-                manifests: skipped,
-                entries: carried,
+            move |_, _| {
+                Ok(Retained::Only {
+                    manifests: skipped,
+                    entries: carried,
+                })
             },
             threads,
+            Empty::Commits,
         )?;
-        // Recorded once the commit is published: a commit that failed
-        // replaced nothing, and the write it belonged to is over.
-        replaced.tuples.extend(replacing);
         Ok(())
     }
 
-    /// Group an incoming reader by partition tuple, each group a write.
-    fn partition_writes(&self, batches: BatchReader, safe: bool) -> Result<Vec<PartitionWrite>> {
+    /// What an overwrite of the partitions `tuples` retains: the plan opened
+    /// over the `filters` scope and those partitions alone, every file of
+    /// every other partition carried untouched, and - of the partitions the
+    /// rows fell in - the files of one an earlier commit of the same write
+    /// already replaced carried too, this commit appending beside them. The
+    /// partitions this commit replaces come back beside it, recorded only
+    /// once the commit is published. A file of another spec belongs to no
+    /// partition of this one, and is refused naming both specs.
+    fn replaced_by(
+        &mut self,
+        filters: &[(&str, &str)],
+        schema: &Field,
+        spec: &PartitionSpec,
+        tuples: &[Vec<Scalar>],
+        replaced: &ReplacedPartitions,
+    ) -> Result<(Retained, Vec<Vec<Scalar>>)> {
+        let scope = Filter::all([
+            pairs_predicate(schema, filters),
+            partition_tuples_filter(spec, schema, tuples),
+        ]);
+        let conjuncts = super::scan::conjuncts(schema, &scope)?;
+        let plan = self.planned(&conjuncts, schema, false)?;
+        let mut carried = plan.excluded;
+        let mut replacing: Vec<Vec<Scalar>> = Vec::new();
+        for task in plan.tasks {
+            if task.spec.spec_id != spec.spec_id {
+                return Err(invalid(format_smolstr!(
+                    "expected every live file this write could replace to belong to partition \
+                     spec {}, got {:?} under spec {}; rewrite it into the current spec first",
+                    spec.spec_id,
+                    task.entry.data_file.file_path,
+                    task.spec.spec_id
+                )));
+            }
+            match tuples
+                .iter()
+                .find(|values| **values == task.entry.data_file.partition)
+            {
+                // The partition is the key: its files are replaced, not read,
+                // by the first commit of the write that reaches it, and
+                // carried - this commit appends beside them - by every later
+                // commit of the same write.
+                Some(values) if replaced.contains(values) => carried.push(task),
+                Some(_) => {}
+                // A partition no incoming row falls in: the filter kept the
+                // file on bounds a transformed field cannot settle, and the
+                // tuple settles it now.
+                None => carried.push(task),
+            }
+        }
+        for values in tuples {
+            if !replaced.contains(values) && !replacing.contains(values) {
+                replacing.push(values.clone());
+            }
+        }
+        Ok((
+            Retained::Only {
+                manifests: plan.skipped,
+                entries: carried,
+            },
+            replacing,
+        ))
+    }
+
+    /// The incoming reader's rows cut into the partitions of the table's
+    /// spec through the one partitioner a split of a stream runs through
+    /// ([`StreamChunkedSerie::map_landed`] and [`Partitions`]): each batch landed
+    /// under the stored schema, keyed by its tuples and cut into its
+    /// partitions' pieces on the write's threads - `threads` where the write
+    /// states them, else the table's own parallelism, as [`Self::commit`]
+    /// resolves it - each partition held under the process spill bound, and,
+    /// where `bounded`, closed as soon as the source moves past it: once
+    /// another tuple arrives while the rows keep an order the source
+    /// `claimed` that clusters the spec's tuples ([`ClaimedOrder`]), else
+    /// past the table's `write.max-open-partitions` open, the lowest tuple
+    /// first. Unbounded, every partition is held until the source ends.
+    fn partitions(
+        &self,
+        batches: BatchReader,
+        safe: bool,
+        threads: Option<usize>,
+        bounded: bool,
+        claimed: &[crate::expression::Ordering],
+    ) -> Result<Partitions<Vec<Scalar>>> {
         let schema = self.schema()?;
-        let spec = self.opened()?.metadata.default_spec()?;
+        let metadata = &self.opened()?.metadata;
+        let spec = metadata.default_spec()?;
         let partition = spec.partition_field(schema)?;
-        Ok(grouped_holds(batches, schema, spec, &partition, safe)?
-            .into_iter()
-            .map(|(values, hold)| PartitionWrite {
-                values,
-                hold,
-                stored: Vec::new(),
-                selected: Vec::new(),
-                known: Vec::new(),
+        let settings = IcebergOptions::write_settings(self.options.as_ref(), metadata)?;
+        let threads = threads.map_or(settings.parallelism, |threads| threads.max(1));
+        let transforms = spec.write_transforms(schema, &partition)?;
+        let unpartitioned = spec.is_unpartitioned();
+        let claim = bounded
+            .then(|| ClaimedOrder::of(spec, schema, claimed))
+            .flatten();
+        let closing = match (&claim, bounded) {
+            (_, false) => Closing::Never,
+            (Some(claim), true) => {
+                Closing::ClusteredWhile(Arc::clone(&claim.holds), settings.max_open_partitions)
+            }
+            (None, true) => Closing::Bounded(settings.max_open_partitions),
+        };
+        // The landing root is the schema without the order it declares: a
+        // declaring root would refuse rows out of that order where they land,
+        // and ordering them is the writer's work.
+        let root = Arc::new(schema.clone().with_metadata_removed("SORT:by"));
+        let reader = StreamChunkedSerie::from_arrow_reader(
+            Some(&root),
+            batches,
+            ArrowCastOptions::new().with_safe(safe),
+        )?;
+        let cuts = reader.map_landed(threads, move |record| {
+            Ok(cut_by_partition(record, &transforms, unpartitioned)?)
+        });
+        let pieces: Box<dyn Iterator<Item = crate::arrow::Result<_>> + Send> = match claim {
+            Some(mut claim) => Box::new(cuts.map(move |cut| {
+                cut.map(|(pieces, runs)| {
+                    claim.check(&pieces, runs);
+                    pieces
+                })
+            })),
+            None => Box::new(cuts.map(|cut| cut.map(|(pieces, _)| pieces))),
+        };
+        Ok(Partitions::new(root, pieces, closing))
+    }
+
+    /// Hold all incoming groups for a keyed write's single stored-side plan.
+    fn partition_writes(
+        &self,
+        batches: BatchReader,
+        safe: bool,
+        threads: Option<usize>,
+    ) -> Result<Vec<PartitionWrite>> {
+        self.partitions(batches, safe, threads, false, &[])?
+            .map(|closed| {
+                let (values, hold) = closed?;
+                Ok(PartitionWrite {
+                    values,
+                    hold,
+                    stored: Vec::new(),
+                    selected: Vec::new(),
+                    known: Vec::new(),
+                })
             })
-            .collect())
+            .collect()
     }
 
     /// The live files of the partitions `writes` fall in - in `filters`'
@@ -3097,19 +3412,22 @@ impl<H: IOBase> IcebergTable<H> {
         );
         let schema = self.schema()?.clone();
         let rows = self.reader(selected, &schema, None, &crate::Filter::always_true())?;
-        let writes = self.partition_writes(rows, false)?;
+        let partitions = self.partitions(rows, false, None, true, &[])?;
         let files_after = self
             .commit(
-                writes,
+                Groups::Streamed(partitions),
                 None,
                 "replace",
-                Retained::Only {
-                    manifests: plan.skipped,
-                    entries: carried,
+                move |_, _| {
+                    Ok(Retained::Only {
+                        manifests: plan.skipped,
+                        entries: carried,
+                    })
                 },
                 None,
+                Empty::Commits,
             )?
-            .files_written;
+            .map_or(0, |commit| commit.files_written);
         log::info!(
             "compacted {}: {files_before} files of {bytes_rewritten} bytes rewritten as {files_after}",
             self.opened()?.metadata.location(),
@@ -3345,16 +3663,32 @@ impl<H: IOBase> IcebergTable<H> {
     /// the version forked, which is reported - with every file the document
     /// names kept - rather than retried.
     ///
-    /// A document that passed that check is the commit's point of no
+    /// The document the commit built on is checked next, where it was read
+    /// from the folder rather than published by this handle: the other
+    /// spelling of its version is read once and must hold nothing, and its
+    /// own name is read once and must hold exactly the bytes read - the
+    /// length and the XXH3-64 kept where it was read ([`Base`]). A claim
+    /// read in the instant before its own check, and withdrawn by that
+    /// check, fails this one: the claim is withdrawn as a contested one is,
+    /// and the attempt answers [`is_moved_base`]'s refusal, on which the
+    /// ladder reads the version that stands - an append to a table stating
+    /// no identifier and a metadata-only commit rebase onto it, every other
+    /// commit ends in [`CommitConflict`]. What this cannot see is a base
+    /// whose own check had not yet run when this one read it.
+    ///
+    /// A document that passed those checks is the commit's point of no
     /// return, and the commit: the hint is written after it with one
     /// [`IOBase::write_all_bytes`], and a failure to write it is logged at
     /// warn rather than returned, since every reader walks past the version
     /// a hint names.
-    fn commit_metadata(&mut self, staging: Option<&Staging>) -> Result<()> {
+    fn commit_metadata(&mut self, staging: Option<&Staging>) -> std::result::Result<(), Unclaimed> {
         // A bad in-memory state is refused before a document exists, so a
         // broken table can only be read, never written.
         let held = self.opened()?;
         held.metadata.validate()?;
+        let base = held
+            .base
+            .map(|base| (held.metadata_file_name.clone(), base));
         let previous = (held.version > 0)
             .then(|| self.metadata_location())
             .transpose()?;
@@ -3373,11 +3707,11 @@ impl<H: IOBase> IcebergTable<H> {
         match document.create_bytes(&encoded) {
             Ok(()) => {}
             Err(error) if error.is_conflict() => {
-                return Err(Error::conflict(
+                return Err(Unclaimed::Failed(Error::conflict(
                     "Iceberg metadata version",
                     "Iceberg metadata version",
                     format!("{next_version}: {name}"),
-                ));
+                )));
             }
             // A create whose answer was lost may have landed: the name read
             // back holding exactly this document is the commit made, and
@@ -3387,7 +3721,7 @@ impl<H: IOBase> IcebergTable<H> {
                     .read_all_bytes()
                     .is_ok_and(|stored| stored == encoded);
                 if !landed {
-                    return Err(error);
+                    return Err(Unclaimed::Failed(error));
                 }
             }
         }
@@ -3413,19 +3747,40 @@ impl<H: IOBase> IcebergTable<H> {
             )),
             Err(error) => Some(error),
         };
+        // Alone at its version, the claim is still built on the document
+        // held: one that may have been withdrawn since it was read is read
+        // again, and any change - or a read that cannot say - withdraws this
+        // claim too.
+        let contested = match (contested, &base) {
+            (Some(contested), _) => Some(contested),
+            (None, Some((base_name, base))) => self.moved_base(next_version - 1, base_name, *base),
+            (None, None) => None,
+        };
         if let Some(contested) = contested {
             if let Err(removal) = document.remove(false) {
-                // The claim stands beside the other: every file it names is
-                // kept, and the fork is reported for an operator to settle.
+                // The claim stands beside the other, or on a base that moved:
+                // every file it names is kept, and the fork is reported for
+                // an operator to settle.
                 if let Some(staging) = staging {
                     staging.commit();
                 }
-                return Err(Error::iceberg(format_smolstr!(
-                    "expected one metadata document of version {next_version}, got {name} \
-                     beside {other_name}: withdrawing {name} after {contested} failed: {removal}"
+                return Err(Unclaimed::Failed(Error::iceberg(
+                    if is_moved_base(&contested) {
+                        format_smolstr!(
+                            "expected the metadata document {name} of version {next_version} \
+                         withdrawn from a base that moved, got it kept: withdrawing it \
+                         after {contested} failed: {removal}"
+                        )
+                    } else {
+                        format_smolstr!(
+                            "expected one metadata document of version {next_version}, got {name} \
+                         beside {other_name}: withdrawing {name} after {contested} failed: \
+                         {removal}"
+                        )
+                    },
                 )));
             }
-            return Err(contested);
+            return Err(Unclaimed::Withdrawn(contested));
         }
 
         // The versioned document is durable, alone at its version, and names
@@ -3460,8 +3815,52 @@ impl<H: IOBase> IcebergTable<H> {
             version: next_version,
             metadata_file_name: name,
             pointed: None,
+            base: Some(Base::Published),
+            manifests: None,
         });
         Ok(())
+    }
+
+    /// Why the document `name`, version `version`, no longer proves what a
+    /// commit built on it, when it does not: its other spelling holds a
+    /// byte, or its own name holds other bytes than `base` was read from -
+    /// a claim withdrawn by its own check, replaced by the one that won the
+    /// version - or a read that cannot say. `None` where it still stands
+    /// alone, and for a document this handle published, which no writer
+    /// withdraws.
+    fn moved_base(&self, version: u32, name: &str, base: Base) -> Option<Error> {
+        let Base::Read { .. } = base else {
+            return None;
+        };
+        let read = |name: &str| {
+            self.root
+                .child_by_path(&format!("{METADATA_DIR}/{name}"))
+                .and_then(leaf)
+                .and_then(|document| document.read_all_bytes())
+        };
+        if let Some(other) = other_spelling(name) {
+            match read(&other) {
+                Ok(bytes) if bytes.is_empty() => {}
+                Ok(_) => return Some(moved_base(version, name, &other)),
+                Err(error) => return Some(error),
+            }
+        }
+        match read(name) {
+            Ok(bytes) if Base::read(&bytes) == base => None,
+            Ok(_) => Some(moved_base(version, name, name)),
+            Err(error) => Some(error),
+        }
+    }
+
+    /// The refusal [`moved_base`] answers where the document this table
+    /// holds, read from its folder, no longer stands alone at its version;
+    /// `None` where it stands, where this handle published it, and where a
+    /// read cannot say.
+    fn held_moved(&self) -> Option<Error> {
+        let held = self.opened().ok()?;
+        let base = held.base?;
+        self.moved_base(held.version, &held.metadata_file_name, base)
+            .filter(is_moved_base)
     }
 
     /// [`Self::commit_document`] for a pointed table: the pointer is the
@@ -3614,6 +4013,8 @@ impl<H: IOBase> IcebergTable<H> {
             version: next_version,
             metadata_file_name: name,
             pointed: Some(published),
+            base: None,
+            manifests: None,
         });
         Ok(())
     }
@@ -3645,12 +4046,13 @@ impl<H: IOBase> IcebergTable<H> {
     /// are.
     fn commit(
         &mut self,
-        writes: Vec<PartitionWrite>,
+        groups: Groups,
         join: Option<&Join>,
         operation: &str,
-        retained: Retained,
+        retain: impl FnOnce(&mut Self, &[Vec<Scalar>]) -> Result<Retained>,
         threads: Option<usize>,
-    ) -> Result<Committed> {
+        empty: Empty,
+    ) -> Result<Option<Committed>> {
         let schema = self.schema()?.clone();
         let spec = self.opened()?.metadata.default_spec()?.clone();
         spec.require_writable()?;
@@ -3663,6 +4065,11 @@ impl<H: IOBase> IcebergTable<H> {
             // The thread count the write's options state is the explicit
             // layer over the table's `write.parallelism` property.
             settings.parallelism = threads.max(1);
+        }
+        if self.root.is_thread_bound() {
+            // A root that answers only on the calling thread is written
+            // there alone, whatever the write states.
+            settings.parallelism = 1;
         }
         require_encodable(&settings.mime_type)?;
         let (sort, sort_order_id) = sort_orderings(
@@ -3698,48 +4105,60 @@ impl<H: IOBase> IcebergTable<H> {
             sort_order_id,
             join,
             staging: &staging,
-            file_threads: (settings.parallelism / settings.parallelism.min(writes.len()).max(1))
-                .max(1),
         };
         log::debug!(
-            "writing an iceberg {operation} snapshot {snapshot_id} to {} in {} partition groups",
+            "writing an iceberg {operation} snapshot {snapshot_id} to {}",
             self.opened()?.metadata.location(),
-            writes.len(),
         );
-        let mut jobs = Vec::with_capacity(writes.len());
-        for write in writes {
-            let directory = spec.partition_path(&write.values)?;
-            // Each group gets its own handle on the table folder: the file
-            // writes resolve their full relative path against it, exactly as
-            // a single-threaded write does, and the table's own root handle
-            // never crosses a thread.
-            let root = self.root.child_by_path(".")?;
-            jobs.push(PartitionJob {
+        // Each group gets its own handle on the table folder, resolved on
+        // this thread as the group arrives: the file writes resolve their
+        // full relative path against it, exactly as a single-threaded write
+        // does, and the table's own root handle never crosses a thread.
+        let root = &self.root;
+        let job = |write: PartitionWrite| -> Result<PartitionJob> {
+            Ok(PartitionJob {
+                directory: spec.partition_path(&write.values)?,
+                root: root.child_by_path(".")?,
                 write,
-                directory,
-                root,
-            });
+            })
+        };
+        let (outcome, tuples) = match groups {
+            Groups::Held(writes) => write_partitions(
+                Feed::Held(writes.into_iter().map(job).collect::<Result<_>>()?),
+                &write,
+            )?,
+            Groups::Streamed(partitions) => write_partitions(
+                Feed::Streamed(Box::new(partitions.map(|closed| {
+                    let (values, hold) = closed?;
+                    job(PartitionWrite {
+                        values,
+                        hold,
+                        stored: Vec::new(),
+                        selected: Vec::new(),
+                        known: Vec::new(),
+                    })
+                }))),
+                &write,
+            )?,
+        };
+        if tuples.is_empty() && matches!(empty, Empty::CommitsNothing) {
+            return Ok(None);
         }
-        let groups = write_partitions(jobs, &write)?;
-        let mut written = Vec::new();
-        let mut unchanged = Vec::new();
-        let mut skipped_rows: u64 = 0;
-        for group in groups {
-            written.extend(group.files);
-            unchanged.extend(group.unchanged);
-            skipped_rows = skipped_rows.saturating_add(group.skipped_rows);
-        }
+        let Written {
+            files: written,
+            skipped_rows,
+            unchanged,
+        } = outcome;
         if join.is_some() && written.is_empty() {
             log::info!(
-                "committed no {operation} snapshot to {}: no row it holds changed and no \
-                 new key arrived ({skipped_rows} rows already held)",
-                self.opened()?.metadata.location(),
+                "committed no {operation} snapshot: no row changed and no new key arrived ({skipped_rows} rows already held)"
             );
-            return Ok(Committed {
+            return Ok(Some(Committed {
                 files_written: 0,
                 skipped_rows,
-            });
+            }));
         }
+        let retained = retain(self, &tuples)?;
         let files_written = written.len();
 
         let added_records = checked_file_sum(&written, |file| file.record_count, "record count")?;
@@ -3797,22 +4216,35 @@ impl<H: IOBase> IcebergTable<H> {
         };
 
         let operation = SmolStr::new(operation);
-        // The live manifests of one snapshot never change, so an attempt
+        // The manifests one manifest list names never change, so an attempt
         // beaten on write rather than on the version check re-uses the list
-        // it already read; only a rebase onto a newer snapshot reads again.
-        let mut listed: Option<(Option<i64>, Vec<ManifestFile>)> = None;
+        // it already read; only a rebase onto another list reads again. The
+        // list's location is the key, never the snapshot id alone: a commit
+        // keeps its snapshot id across its attempts, so a claim withdrawn and
+        // claimed again names one snapshot id over two lists.
+        let mut listed: Option<(ListKey, Vec<ManifestFile>)> = None;
         // The manifest list of the attempt before, when this one is a retry:
         // it names nothing a document will ever name, so it is withdrawn.
         let mut previous_list: Option<String> = None;
+        // The last attempt's list as it states its manifests, by location.
+        let written_list: std::cell::RefCell<Option<(SmolStr, Arc<[ManifestFile]>)>> =
+            std::cell::RefCell::new(None);
+        let listed_last = &written_list;
         let staged = &staging;
         let apply = move |table: &Self| {
             let sequence_number = next_sequence_number(&table.opened()?.metadata)?;
             let mut manifests = match &kept {
                 Some(kept) => kept.clone(),
                 None => {
-                    let current = table.opened()?.metadata.current_snapshot_id;
+                    let current = (
+                        table.opened()?.metadata.current_snapshot_id,
+                        table
+                            .current_snapshot()?
+                            .map(|snapshot| snapshot.manifest_list.clone())
+                            .unwrap_or_default(),
+                    );
                     match &listed {
-                        Some((snapshot, manifests)) if *snapshot == current => manifests.clone(),
+                        Some((list, manifests)) if *list == current => manifests.clone(),
                         _ => {
                             let manifests = table.manifests()?;
                             listed = Some((current, manifests.clone()));
@@ -3830,6 +4262,7 @@ impl<H: IOBase> IcebergTable<H> {
             }
 
             let list_name = format!("snap-{snapshot_id}-1-{}.avro", uuid());
+            let manifest_list = SmolStr::new(table.location_of(METADATA_DIR, &list_name)?);
             let first_row_id =
                 if table.opened()?.metadata.format_version >= FormatVersion::V3 {
                     Some(table.opened()?.metadata.next_row_id.ok_or_else(|| {
@@ -3850,20 +4283,22 @@ impl<H: IOBase> IcebergTable<H> {
                 staged.withdraw(&previous)?;
             }
             let list_path = format!("{METADATA_DIR}/{list_name}");
-            let (next_row_id, _) = staged.publish(
+            let ((next_row_id, stated), _) = staged.publish(
                 &table.root,
                 &list_path,
                 &crate::MediaType::new(MimeType::AVRO),
                 |list| {
-                    write_manifest_list(
-                        list,
-                        format_version,
-                        snapshot_id,
-                        parent_snapshot_id,
-                        sequence_number,
-                        first_row_id,
-                        &manifests,
-                    )
+                    written_whole(list, |list| {
+                        write_manifest_list_rows(
+                            list,
+                            format_version,
+                            snapshot_id,
+                            parent_snapshot_id,
+                            sequence_number,
+                            first_row_id,
+                            &manifests,
+                        )
+                    })
                 },
             )?;
 
@@ -3927,7 +4362,7 @@ impl<H: IOBase> IcebergTable<H> {
                 sequence_number: (table.opened()?.metadata.format_version >= FormatVersion::V2)
                     .then_some(sequence_number),
                 timestamp_ms: now_ms(),
-                manifest_list: SmolStr::new(table.location_of(METADATA_DIR, &list_name)?),
+                manifest_list: manifest_list.clone(),
                 manifests: None,
                 summary,
                 schema_id: Some(table.opened()?.metadata.current_schema_id),
@@ -3939,15 +4374,29 @@ impl<H: IOBase> IcebergTable<H> {
             let mut updated = table.opened()?.metadata.clone();
             updated.set_current_snapshot(snapshot)?;
             previous_list = Some(list_path);
+            *listed_last.borrow_mut() = Some((manifest_list, Arc::from(stated)));
             Ok(updated)
         };
         // The staging is committed inside, the moment the versioned document
         // is durable; what is left of it when it drops is the directory.
         self.commit_document(on_conflict, apply, Some(&staging))?;
-        Ok(Committed {
+        // The list the last attempt wrote is the one the committed snapshot
+        // names - unless a winner that carried that snapshot was adopted
+        // past it - so the next commit's carried manifests are answered from
+        // it rather than read back.
+        if let Some((list, manifests)) = written_list.into_inner()
+            && let Ok(opened) = self.opened_mut()
+            && opened
+                .metadata
+                .current_snapshot()
+                .is_some_and(|snapshot| snapshot.manifest_list == list)
+        {
+            opened.manifests = Some((list, manifests));
+        }
+        Ok(Some(Committed {
             files_written,
             skipped_rows,
-        })
+        }))
     }
 
     /// Reject rewrites that would assign fresh row IDs to retained v3 rows.
@@ -3981,7 +4430,11 @@ impl<H: IOBase> IcebergTable<H> {
             &self.root,
             &format!("{METADATA_DIR}/{name}"),
             &crate::MediaType::new(MimeType::AVRO),
-            |handle| write_manifest(handle, version, schema, spec, entries),
+            |handle| {
+                written_whole(handle, |manifest| {
+                    write_manifest(manifest, version, schema, spec, entries)
+                })
+            },
         )?;
         Ok(ManifestFile {
             manifest_path: SmolStr::new(self.location_of(METADATA_DIR, name)?),
@@ -4402,77 +4855,69 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
         super::scan::declaring(root.with_metadata_removed("SORT:by"), proven)
     }
 
-    /// Scan the current snapshot, the whole `where` clause answered by the plan.
-    ///
-    /// The clause is pushed into the scan as [`IcebergTable::scan_matching`] takes
-    /// it, so every spelling the expression language has prunes: `venue in
-    /// ('XNAS', 'XLON')` and `ts between ... and ...` skip the same manifests
-    /// and files an equality does. The read decodes only the columns the
-    /// `select` and the `where` name. The rows arrive as [`Self::read_serie`]
-    /// yields them - partition after partition, each in the table's sort
-    /// order - as transport.
-    fn read_arrow_reader(&self, options: &RecordOptions) -> Result<BatchReader> {
-        self.read_scoped(Filter::always_true(), options)
-    }
-
     /// The table's rows partition after partition, in ascending partition
     /// tuple order, each partition's rows in the table's default sort order,
-    /// the root declaring the order the stream proves.
+    /// the root declaring the order the stream proves; the
+    /// [`read_arrow_reader`](crate::IOMedia::read_arrow_reader) transport is
+    /// this stream's batches.
     ///
     /// One partition is held at a time, spilled under the process bound,
     /// and decoded only once the one before it has been yielded. A read the
-    /// options shape - a `select`, a `where` after it, a row bound - is
-    /// [`Self::read_arrow_reader`]'s stream landed once, the order it
-    /// declares carried as proven rather than read batch by batch again.
-    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
-        let owned;
-        let options = match options {
-            Some(options) => options,
-            None => {
-                owned = self.record_options()?;
-                &owned
+    /// options shape - a `select`, a `where` after it, a row bound - is the
+    /// scoped scan's stream landed once, the order it declares carried as
+    /// proven rather than read batch by batch again.
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
+        (|| -> Result<crate::StreamChunkedSerie> {
+            let owned;
+            let options = match options {
+                Some(options) => options,
+                None => {
+                    owned = self.record_options()?;
+                    &owned
+                }
+            };
+            let bounded = options.max_row_size().is_some()
+                || options.max_byte_size().is_some()
+                || options.row_offset().is_some_and(|rows| rows != 0);
+            // Under `*` the whole `where` clause was pushed into the plan, so the
+            // rows need nothing past what the read itself yields.
+            if options.select().is_all() && !bounded {
+                return Ok(self
+                    .read_rows(Filter::always_true(), options)?
+                    .0
+                    .chunked_stream()?);
             }
-        };
-        let bounded = options.max_row_size().is_some()
-            || options.max_byte_size().is_some()
-            || options.row_offset().is_some_and(|rows| rows != 0);
-        // Under `*` the whole `where` clause was pushed into the plan, so the
-        // rows need nothing past what the read itself yields.
-        if options.select().is_all() && !bounded {
-            return Ok(self
-                .read_rows(Filter::always_true(), options)?
-                .0
-                .into_serie_reader()?);
-        }
-        // The selector, a `where` after it and the bounds are Arrow's, so
-        // what they shape lands once, under its root without the order, and
-        // each record is relabelled under the root declaring it. Lazy, so no
-        // record is read against that order again: it was proven before
-        // them - its keys are the ones the selector publishes unchanged
-        // (`proven_order`) - and a `where` keeps its rows in their order, a
-        // bound a run of them.
-        let shaped = self.read_scoped(Filter::always_true(), options)?;
-        let declared = crate::arrow::field_from_arrow_schema(
-            crate::media::DEFAULT_ROOT_NAME,
-            shaped.schema().as_ref(),
-        )?;
-        let plain = declared.clone().with_metadata_removed("SORT:by");
-        let landed = crate::SerieReader::from_arrow_reader(
-            Some(&plain),
-            shaped,
-            crate::ArrowCastOptions::default(),
-        )?;
-        if !declared.as_sort().declares_order() {
-            return Ok(landed);
-        }
-        let root = std::sync::Arc::new(declared);
-        let relabel = std::sync::Arc::clone(&root);
-        Ok(crate::SerieReader::from_landed_iter(
-            root,
-            landed.map(move |record| {
-                record.map(|record| record.into_relabeled(std::sync::Arc::clone(&relabel)))
-            }),
-        )?)
+            // The selector, a `where` after it and the bounds are Arrow's, so
+            // what they shape lands once, under its root without the order, and
+            // each record is relabelled under the root declaring it. Lazy, so no
+            // record is read against that order again: it was proven before
+            // them - its keys are the ones the selector publishes unchanged
+            // (`proven_order`) - and a `where` keeps its rows in their order, a
+            // bound a run of them.
+            let shaped = self.read_scoped(Filter::always_true(), options)?;
+            let declared = crate::arrow::field_from_arrow_schema(
+                crate::media::DEFAULT_ROOT_NAME,
+                shaped.schema().as_ref(),
+            )?;
+            let plain = declared.clone().with_metadata_removed("SORT:by");
+            let landed = crate::StreamChunkedSerie::from_arrow_reader(
+                Some(&plain),
+                shaped,
+                crate::ArrowCastOptions::default(),
+            )?;
+            if !declared.as_sort().declares_order() {
+                return Ok(landed);
+            }
+            let root = std::sync::Arc::new(declared);
+            let relabel = std::sync::Arc::clone(&root);
+            Ok(crate::StreamChunkedSerie::from_landed_iter(
+                root,
+                landed.into_chunks().map(move |record| {
+                    record.map(|record| record.into_relabeled(std::sync::Arc::clone(&relabel)))
+                }),
+            )?)
+        })()
+        .map(crate::Serie::from)
     }
 
     /// Replace the partitions the rows fall in - the partitions the
@@ -4480,17 +4925,19 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
     /// table whole: `write_cadenced` under
     /// [`IOMode::Overwrite`](crate::IOMode::Overwrite). No other partition
     /// is touched, and a source with no row replaces none.
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(&*self, options)?;
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         let filters: Vec<(String, String)> = options.partition_pairs();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        self.write_cadenced(batches, crate::IOMode::Overwrite, options, &pairs)
+        self.write_cadenced(batches, crate::IOMode::Overwrite, &options, &pairs)
     }
 
     /// Add the rows: `write_cadenced` under
@@ -4499,12 +4946,14 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
     /// whose schema states `identifier-field-ids` a row whose key the table
     /// holds - or an earlier row of the write brought - is left out and
     /// counted skipped; see [`IcebergTable::commit_append`].
-    fn append_arrow_reader(
+    fn append_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        self.write_cadenced(batches, crate::IOMode::Append, options, &[])
+        let options = crate::iomedia::own_options(&*self, options)?;
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
+        self.write_cadenced(batches, crate::IOMode::Append, &options, &[])
     }
 
     /// Merge into the selected partitions: `write_cadenced` under
@@ -4514,17 +4963,19 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
     /// partition columns, then its identifier columns - so on a partitioned
     /// table stating no identifier the partitions the rows fall in are
     /// replaced; see [`IcebergTable::commit_merge_where`].
-    fn merge_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(&*self, options)?;
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         let filters: Vec<(String, String)> = options.partition_pairs();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        self.write_cadenced(batches, crate::IOMode::Merge, options, &pairs)
+        self.write_cadenced(batches, crate::IOMode::Merge, &options, &pairs)
     }
 }
 
@@ -4605,6 +5056,9 @@ impl<H: IOBase> IcebergTable<H> {
         let Some(batches) = batches else {
             return Ok(crate::IOResult::default());
         };
+        // The order the caller's rows claim, read before they are shaped
+        // onto the stored schema, which states the table's own order.
+        let claimed = claimed_order(&batches.schema());
         let (batches, count) =
             crate::iobase::prepare_arrow_write_deriving(batches, options, &stored)?;
         let batches = if overwrite {
@@ -4626,19 +5080,26 @@ impl<H: IOBase> IcebergTable<H> {
                         crate::arrow::batch_reader(schema, []),
                         &mut replaced,
                         threads,
+                        &claimed,
                     )?;
                     return Ok(count.result());
                 };
-                self.commit_overwrite_cadence(pairs, first?, &mut replaced, threads)?;
+                self.commit_overwrite_cadence(pairs, first?, &mut replaced, threads, &claimed)?;
                 for commit in commits {
-                    self.commit_overwrite_cadence(pairs, commit?, &mut replaced, threads)?;
+                    self.commit_overwrite_cadence(
+                        pairs,
+                        commit?,
+                        &mut replaced,
+                        threads,
+                        &claimed,
+                    )?;
                 }
             }
             crate::IOMode::Append => {
                 // A keyed table's append leaves out a row whose key it holds,
                 // and each commit sees what the commits before it wrote.
                 for commit in commits {
-                    count.skip(self.commit_append_on(commit?, threads)?);
+                    count.skip(self.commit_append_on(commit?, threads, &claimed)?);
                 }
             }
             crate::IOMode::Merge => {
@@ -4651,6 +5112,7 @@ impl<H: IOBase> IcebergTable<H> {
                         options.safe(),
                         &mut replaced,
                         threads,
+                        &claimed,
                     )?;
                 }
             }
@@ -4956,9 +5418,6 @@ struct CommitWrite<'a> {
     join: Option<&'a Join>,
     /// The staging every file of the commit is published through.
     staging: &'a Staging,
-    /// The threads one file's columns encode on: the write parallelism's
-    /// share left over by the partition groups written side by side.
-    file_threads: usize,
 }
 
 /// Resolve the table's default sort order into the `order by` keys files
@@ -5017,81 +5476,447 @@ fn sort_orderings(
     Ok((keys, order_id))
 }
 
-/// Write every partition group, on up to the resolved parallelism threads.
+/// Where a commit's partition groups come from.
+enum Groups {
+    /// Every group held, a keyed merge's: each joined with its stored files.
+    Held(Vec<PartitionWrite>),
+    /// Each partition as it closes, written while the source is still read.
+    Streamed(Partitions<Vec<Scalar>>),
+}
+
+/// What a commit whose source wrote no partition does.
+#[derive(Clone, Copy)]
+enum Empty {
+    /// Publishes the snapshot anyway: an append's empty snapshot was refused
+    /// before, and an overwrite of a stated scope replaces it rows or not.
+    Commits,
+    /// Publishes nothing: an overwrite reaching no partition replaces none.
+    CommitsNothing,
+}
+
+/// The groups a commit's writer pool is fed, each built on the calling
+/// thread as it arrives.
+enum Feed<'a> {
+    /// Every group up front, scheduled heaviest first.
+    Held(Vec<PartitionJob>),
+    /// Each group as its partition closes, pulled while the pool writes.
+    Streamed(Box<dyn Iterator<Item = Result<PartitionJob>> + 'a>),
+}
+
+/// Write every partition group the feed gives, on up to the resolved
+/// parallelism threads, and answer the files with each group's tuple.
 ///
-/// The files come back in group order whatever order the groups finished
-/// in, so the manifest a commit writes does not depend on scheduling. The
-/// first failing group fails the whole commit: the others stop at their
-/// next group rather than writing files no manifest will name.
-fn write_partitions(jobs: Vec<PartitionJob>, write: &CommitWrite<'_>) -> Result<Vec<Written>> {
-    let parallelism = write.settings.parallelism.min(jobs.len()).max(1);
+/// The unit of work is a file. A group is first prepared - a keyed merge's
+/// stored side joined in, its rows sorted by the table's order, its rows cut
+/// into files of the target size - and each of its files is then encoded as
+/// a task of its own, so one large partition is written on as many threads
+/// as it has files, and a skewed commit is not held by its heaviest group.
+/// A streamed feed is pulled on the calling thread while the pool writes, so
+/// a partition's files are written as soon as it closes; at most as many
+/// groups as there are threads wait unprepared, the feed blocking until one
+/// is claimed, so what a commit holds beyond its open partitions is bounded.
+/// A held feed is scheduled heaviest first. A prepared group's files are
+/// claimed before another group is prepared, so a group's sorted rows are
+/// held only while its own files are written. Each task runs on a share of
+/// the parallelism - the parallelism over the tasks running or waiting when
+/// it is claimed - which is what a file's columns encode on and what a
+/// group's chunks sort and its stored side reads on.
+///
+/// The files come back in group order - the order a held feed lists its
+/// groups in, the order a streamed one closes them in - each group's in
+/// file order, whatever order they finished in, so the manifest a commit
+/// writes does not depend on scheduling, and a file's name carries its index
+/// within its group. The first failure fails the whole commit: the source's
+/// own is reported first, else the task of the lowest group and file that
+/// failed, and the others stop at their next claim rather than writing files
+/// no manifest will name.
+fn write_partitions(
+    feed: Feed<'_>,
+    write: &CommitWrite<'_>,
+) -> Result<(Written, Vec<Vec<Scalar>>)> {
+    let parallelism = write.settings.parallelism.max(1);
     if parallelism == 1 {
-        return jobs
-            .into_iter()
-            .map(|job| write_partition(job, write))
-            .collect();
-    }
-    let total = jobs.len();
-    let queue: Mutex<VecDeque<(usize, PartitionJob)>> =
-        Mutex::new(jobs.into_iter().enumerate().collect());
-    let outcomes: Mutex<Vec<Option<Result<Written>>>> =
-        Mutex::new((0..total).map(|_| None).collect());
-    let failed = AtomicBool::new(false);
-    std::thread::scope(|scope| {
-        for _ in 0..parallelism {
-            scope.spawn(|| {
-                loop {
-                    if failed.load(Ordering::Acquire) {
-                        return;
-                    }
-                    let next = match queue.lock() {
-                        Ok(mut queue) => queue.pop_front(),
-                        Err(_) => return,
-                    };
-                    let Some((index, job)) = next else {
-                        return;
-                    };
-                    let outcome = write_partition(job, write);
-                    if outcome.is_err() {
-                        failed.store(true, Ordering::Release);
-                    }
-                    if let Ok(mut outcomes) = outcomes.lock() {
-                        outcomes[index] = Some(outcome);
-                    }
-                }
-            });
+        let jobs: Box<dyn Iterator<Item = Result<PartitionJob>> + '_> = match feed {
+            Feed::Held(jobs) => Box::new(jobs.into_iter().map(Ok)),
+            Feed::Streamed(jobs) => jobs,
+        };
+        let mut written = Written {
+            files: Vec::new(),
+            skipped_rows: 0,
+            unchanged: Vec::new(),
+        };
+        let mut tuples = Vec::new();
+        for job in jobs {
+            let prepared = prepare_partition(job?, write, 1)?;
+            for (index, slice) in prepared.files.into_iter().enumerate() {
+                written.files.push(write_data_file(
+                    &prepared.root,
+                    &prepared.directory,
+                    write,
+                    index,
+                    &prepared.values,
+                    slice,
+                    1,
+                )?);
+            }
+            written.skipped_rows = written.skipped_rows.saturating_add(prepared.skipped_rows);
+            written.unchanged.extend(prepared.unchanged);
+            tuples.push(prepared.values);
         }
+        return Ok((written, tuples));
+    }
+    let pool = Mutex::new(Pool::new());
+    let ready = Condvar::new();
+    let fed = std::thread::scope(|scope| {
+        for _ in 0..parallelism {
+            scope.spawn(|| work_partitions(&pool, &ready, write, parallelism));
+        }
+        let fed = feed_pool(&pool, &ready, feed, parallelism);
+        if let Ok(mut held) = pool.lock() {
+            held.fed = true;
+            held.stopped |= fed.is_err();
+        }
+        ready.notify_all();
+        fed
     });
-    let outcomes = outcomes.into_inner().map_err(|_| {
+    let pool = pool.into_inner().map_err(|_| {
         invalid(SmolStr::new_static(
-            "expected every partition writer to finish, got a poisoned result",
+            "expected every partition writer to finish, got a poisoned pool",
         ))
     })?;
-    let mut written = Vec::with_capacity(total);
-    for outcome in outcomes {
-        match outcome {
-            Some(Ok(group)) => written.push(group),
-            Some(Err(error)) => return Err(error),
-            None => {
-                return Err(invalid(SmolStr::new_static(
-                    "expected every partition group to be written, got one no writer took",
-                )));
+    fed?;
+    if let Some((_, error)) = pool.failure {
+        return Err(error);
+    }
+    let mut written = Written {
+        files: Vec::new(),
+        skipped_rows: 0,
+        unchanged: Vec::new(),
+    };
+    for group in pool.files {
+        let Some(group) = group else {
+            return Err(invalid(SmolStr::new_static(
+                "expected every partition group to be prepared, got one no writer took",
+            )));
+        };
+        written.skipped_rows = written.skipped_rows.saturating_add(group.skipped_rows);
+        written.unchanged.extend(group.unchanged);
+        for file in group.files {
+            written.files.push(file.ok_or_else(|| {
+                invalid(SmolStr::new_static(
+                    "expected every data file to be written, got one no writer took",
+                ))
+            })?);
+        }
+    }
+    let tuples = pool
+        .tuples
+        .into_iter()
+        .map(|values| {
+            values.ok_or_else(|| {
+                invalid(SmolStr::new_static(
+                    "expected every partition group's tuple, got a group never fed",
+                ))
+            })
+        })
+        .collect::<Result<_>>()?;
+    Ok((written, tuples))
+}
+
+/// Feed the pool every group of `feed` on the calling thread, each at the
+/// position it is listed in, waiting while `parallelism` groups wait
+/// unprepared; stop at the source's first failure, or once a task failed.
+fn feed_pool(
+    pool: &Mutex<Pool>,
+    ready: &Condvar,
+    feed: Feed<'_>,
+    parallelism: usize,
+) -> Result<()> {
+    let poisoned = || {
+        invalid(SmolStr::new_static(
+            "expected the partition writers' pool, got a poisoned one",
+        ))
+    };
+    // Whether the pool took the group: false once a task has failed.
+    let submit = |group: usize, job: PartitionJob| -> Result<bool> {
+        let mut held = pool.lock().map_err(|_| poisoned())?;
+        while held.failure.is_none() && held.waiting >= parallelism {
+            held = ready.wait(held).map_err(|_| poisoned())?;
+        }
+        if held.failure.is_some() {
+            return Ok(false);
+        }
+        if held.files.len() <= group {
+            held.files.resize_with(group + 1, || None);
+            held.tuples.resize_with(group + 1, || None);
+        }
+        held.tuples[group] = Some(job.write.values.clone());
+        held.waiting += 1;
+        held.queue.push_back(Task::Prepare(group, Box::new(job)));
+        ready.notify_all();
+        Ok(true)
+    };
+    match feed {
+        Feed::Held(jobs) => {
+            // Heaviest first, so the longest preparation and the most files
+            // start while the rest of the pool fills; a tie keeps group order.
+            let mut order: Vec<(usize, PartitionJob)> = jobs.into_iter().enumerate().collect();
+            order.sort_by_key(|(_, job)| std::cmp::Reverse(job.write.hold.memory_size()));
+            for (group, job) in order {
+                if !submit(group, job)? {
+                    break;
+                }
+            }
+        }
+        Feed::Streamed(jobs) => {
+            for (group, job) in jobs.enumerate() {
+                if !submit(group, job?)? {
+                    break;
+                }
             }
         }
     }
-    Ok(written)
+    Ok(())
 }
 
-/// Write one partition group's files: join, sort, cut, encode.
+/// The work a commit's writer pool shares, under one lock.
+struct Pool {
+    /// The tasks not yet claimed: a prepared group's files at the front,
+    /// the groups not yet prepared behind them.
+    queue: VecDeque<Task>,
+    /// How many groups wait unprepared in the queue.
+    waiting: usize,
+    /// How many tasks are running now.
+    running: usize,
+    /// Whether the feed is over: every group it will give is in the queue.
+    fed: bool,
+    /// Whether the feed failed: nothing more is claimed.
+    stopped: bool,
+    /// The failure of the lowest group and file that failed, by
+    /// `(group, file)` - a group's preparation is its file `0`.
+    failure: Option<((usize, usize), Error)>,
+    /// Each group's files, in file order, once the group is prepared.
+    files: Vec<Option<PreparedFiles>>,
+    /// Each group's partition tuple, once the group is fed.
+    tuples: Vec<Option<Vec<Scalar>>>,
+}
+
+impl Pool {
+    /// A pool fed nothing yet.
+    const fn new() -> Self {
+        Self {
+            queue: VecDeque::new(),
+            waiting: 0,
+            running: 0,
+            fed: false,
+            stopped: false,
+            failure: None,
+            files: Vec::new(),
+            tuples: Vec::new(),
+        }
+    }
+}
+
+/// Each group's encoded slots and the stored-side outcome of its preparation.
+struct PreparedFiles {
+    files: Vec<Option<DataFile>>,
+    skipped_rows: u64,
+    unchanged: Vec<ScanTask>,
+}
+
+/// One task of a commit's writer pool.
+enum Task {
+    /// A group to join, sort and cut into files, by its position.
+    Prepare(usize, Box<PartitionJob>),
+    /// One file of a prepared group.
+    Encode(Box<EncodeFile>),
+}
+
+/// One data file to encode: its group and its index there, the handle it is
+/// written through, and its rows.
+struct EncodeFile {
+    group: usize,
+    index: usize,
+    root: Holder,
+    group_of: Arc<PreparedGroup>,
+    rows: Vec<RecordBatch>,
+}
+
+/// What every file of one prepared group shares: where its files land and
+/// the partition tuple they record.
+struct PreparedGroup {
+    directory: String,
+    values: Vec<Scalar>,
+}
+
+/// One writer thread of the pool: claim a task, run it on its share of the
+/// parallelism, record what it answered - until the feed is over and nothing
+/// is left to claim or running, or a task or the feed has failed.
+fn work_partitions(
+    pool: &Mutex<Pool>,
+    ready: &Condvar,
+    write: &CommitWrite<'_>,
+    parallelism: usize,
+) {
+    loop {
+        let (task, share) = {
+            let Ok(mut held) = pool.lock() else {
+                return;
+            };
+            loop {
+                if held.failure.is_some() || held.stopped {
+                    return;
+                }
+                if let Some(task) = held.queue.pop_front() {
+                    if matches!(task, Task::Prepare(..)) {
+                        held.waiting -= 1;
+                        // The feed may be waiting for a group to be claimed.
+                        ready.notify_all();
+                    }
+                    held.running += 1;
+                    let busy = held.running + held.queue.len();
+                    break (task, (parallelism / busy.max(1)).max(1));
+                }
+                if held.fed && held.running == 0 {
+                    return;
+                }
+                held = match ready.wait(held) {
+                    Ok(held) => held,
+                    Err(_) => return,
+                };
+            }
+        };
+        let done = run_task(task, write, share);
+        let Ok(mut held) = pool.lock() else {
+            return;
+        };
+        held.running -= 1;
+        match done {
+            Ok(Done::Prepared(group, encodes, outcome)) => {
+                if let Some(files) = held.files.get_mut(group) {
+                    *files = Some(outcome);
+                }
+                for encode in encodes.into_iter().rev() {
+                    held.queue.push_front(Task::Encode(Box::new(encode)));
+                }
+            }
+            Ok(Done::Encoded(group, index, file)) => {
+                if let Some(Some(files)) = held.files.get_mut(group)
+                    && let Some(slot) = files.files.get_mut(index)
+                {
+                    *slot = Some(*file);
+                }
+            }
+            Err(failed) => {
+                let (at, error) = *failed;
+                if held.failure.as_ref().is_none_or(|(first, _)| at < *first) {
+                    held.failure = Some((at, error));
+                }
+            }
+        }
+        ready.notify_all();
+    }
+}
+
+/// What one task answered.
+enum Done {
+    /// A group prepared, by its position, with its files to encode.
+    Prepared(usize, Vec<EncodeFile>, PreparedFiles),
+    /// One file written, by its group and index.
+    Encoded(usize, usize, Box<DataFile>),
+}
+
+/// A task's failure, located by group and file - boxed: an `Error` is large,
+/// and a task answers far more often than it fails.
+type TaskFailure = Box<((usize, usize), Error)>;
+
+/// Run one task on `share` threads, its failure located by group and file.
+fn run_task(
+    task: Task,
+    write: &CommitWrite<'_>,
+    share: usize,
+) -> std::result::Result<Done, TaskFailure> {
+    match task {
+        Task::Prepare(group, job) => {
+            let failed = |error| Box::new(((group, 0), error));
+            let prepared = prepare_partition(*job, write, share).map_err(failed)?;
+            // Every file after the first resolves a handle of its own on the
+            // table folder, so the files of one group are written side by
+            // side; the first keeps the group's.
+            let mut handles = Vec::with_capacity(prepared.files.len());
+            for _ in 1..prepared.files.len() {
+                handles.push(prepared.root.child_by_path(".").map_err(failed)?);
+            }
+            let outcome = PreparedFiles {
+                files: (0..prepared.files.len()).map(|_| None).collect(),
+                skipped_rows: prepared.skipped_rows,
+                unchanged: prepared.unchanged,
+            };
+            let group_of = Arc::new(PreparedGroup {
+                directory: prepared.directory,
+                values: prepared.values,
+            });
+            let encodes = std::iter::once(prepared.root)
+                .chain(handles)
+                .zip(prepared.files)
+                .enumerate()
+                .map(|(index, (root, rows))| EncodeFile {
+                    group,
+                    index,
+                    root,
+                    group_of: Arc::clone(&group_of),
+                    rows,
+                })
+                .collect();
+            Ok(Done::Prepared(group, encodes, outcome))
+        }
+        Task::Encode(file) => {
+            let EncodeFile {
+                group,
+                index,
+                root,
+                group_of,
+                rows,
+            } = *file;
+            write_data_file(
+                &root,
+                &group_of.directory,
+                write,
+                index,
+                &group_of.values,
+                rows,
+                share,
+            )
+            .map(|written| Done::Encoded(group, index, Box::new(written)))
+            .map_err(|error| Box::new(((group, index), error)))
+        }
+    }
+}
+
+/// One partition group, prepared: where its files land, its tuple, the
+/// group's handle on the table folder, and each file's rows in file order.
+struct Prepared {
+    directory: String,
+    values: Vec<Scalar>,
+    root: Holder,
+    files: Vec<Vec<RecordBatch>>,
+    skipped_rows: u64,
+    unchanged: Vec<ScanTask>,
+}
+
+/// Prepare one partition group's files: join, sort, cut.
 ///
-/// A keyed merge reads the group's selected stored files here, on the
-/// writer's own thread, and joins them with the group's rows - the last of
-/// the rows arriving with one key wins - so a group's stored files are in
-/// memory only while its files are being written; a merge that changes no
-/// row writes nothing and hands its stored files back to be carried. A
-/// keyed append reads the key columns of the group's selected files and
-/// writes the rows whose key none of them, and no earlier row, holds.
-fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Written> {
+/// A keyed merge reads the group's selected stored files here, on `threads`
+/// threads, and joins them with the group's rows - the last of the rows
+/// arriving with one key wins - so a group's stored files are in memory only
+/// while its files are being cut. A group out of the table's order is
+/// sorted with its chunks on `threads` threads, and the unsorted rows are let
+/// go of before the sorted ones are cut.
+fn prepare_partition(
+    job: PartitionJob,
+    write: &CommitWrite<'_>,
+    threads: usize,
+) -> Result<Prepared> {
     let PartitionJob {
         write: group,
         directory,
@@ -5145,13 +5970,17 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Written
             let stored = if group.stored.is_empty() {
                 crate::arrow::batch_reader(arrow_schema, [])
             } else {
+                let read = super::options::ReadSettings {
+                    parallelism: threads,
+                    ..write.settings.read
+                };
                 super::scan::reader(
                     group.stored,
                     write.schema.clone(),
                     write.schema.clone(),
                     None,
                     Vec::new(),
-                    &write.settings.read,
+                    &read,
                     false,
                 )?
             };
@@ -5165,7 +5994,10 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Written
             if !merged.changed {
                 // Every row the group matched is what it already holds and
                 // it brought no new key: its files stay as they are.
-                return Ok(Written {
+                return Ok(Prepared {
+                    directory,
+                    values: group.values,
+                    root,
                     files: Vec::new(),
                     skipped_rows: 0,
                     unchanged: group.selected,
@@ -5179,45 +6011,51 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Written
         }
         None => group.hold,
     };
-    let nothing = |skipped_rows| Written {
-        files: Vec::new(),
-        skipped_rows,
-        unchanged: Vec::new(),
-    };
+    let values = group.values;
     if hold.is_empty() {
-        return Ok(nothing(skipped_rows));
+        return Ok(Prepared {
+            directory,
+            values,
+            root,
+            files: Vec::new(),
+            skipped_rows,
+            unchanged: Vec::new(),
+        });
     }
     // A group already in order - by its root's proven declaration, or read
     // once chunk by chunk and edge by edge - goes to the encoder as the
-    // chunks it arrived in; one out of order is sorted out of core, each
-    // chunk on its own and the chunks merged, the output settled.
+    // chunks it arrived in; one out of order is sorted out of core, its
+    // chunks on `threads` threads and the chunks merged, the output settled,
+    // and the unsorted rows dropped before the sorted ones are cut.
     let hold = if write.sort.is_empty() || hold.keeps_order(write.sort)? {
         hold
     } else {
-        hold.into_sort_by(write.sort)?
+        let sorted = hold.sorted_by_on(write.sort, threads)?;
+        drop(hold);
+        sorted
     };
     let rows: Vec<RecordBatch> = hold_batches(&hold)?
         .into_iter()
         .filter(|batch| batch.num_rows() > 0)
         .collect();
+    drop(hold);
     if rows.is_empty() {
-        return Ok(nothing(skipped_rows));
+        return Ok(Prepared {
+            directory,
+            values,
+            root,
+            files: Vec::new(),
+            skipped_rows,
+            unchanged: Vec::new(),
+        });
     }
-    let mut written = Vec::new();
-    for slice in sliced(rows, write.settings.target_file_size_bytes) {
-        // Deliberately no record per file: a commit is the unit worth
-        // watching, and a wide partition write is thousands of files.
-        written.push(write_data_file(
-            &root,
-            &directory,
-            write,
-            written.len(),
-            &group.values,
-            slice,
-        )?);
-    }
-    Ok(Written {
-        files: written,
+    // Deliberately no record per file: a commit is the unit worth watching,
+    // and a wide partition write is thousands of files.
+    Ok(Prepared {
+        directory,
+        values,
+        root,
+        files: sliced(rows, write.settings.target_file_size_bytes),
         skipped_rows,
         unchanged: Vec::new(),
     })
@@ -5264,6 +6102,22 @@ fn sliced(batches: Vec<RecordBatch>, target: u64) -> Vec<Vec<RecordBatch>> {
     files
 }
 
+/// Write what `encode` lays out into `handle` with one whole write, and
+/// answer its length beside what `encode` answered: a manifest or a manifest
+/// list is small by construction and laid out whole anyway, so its length is
+/// known here rather than asked of the handle it went to - on a store, a
+/// `HEAD`.
+fn written_whole<T>(
+    handle: &mut Holder,
+    encode: impl FnOnce(&mut crate::holder::Buffer) -> Result<T>,
+) -> Result<(T, Option<u64>)> {
+    let mut buffer = crate::holder::Buffer::new();
+    let answer = encode(&mut buffer)?;
+    let bytes = buffer.into_bytes();
+    handle.write_all_bytes(&bytes)?;
+    Ok((answer, Some(bytes.len() as u64)))
+}
+
 /// Write one file of one partition group and describe it.
 ///
 /// The file's name carries the MIME type's own extension, so the handle's
@@ -5280,6 +6134,7 @@ fn write_data_file(
     index: usize,
     values: &[Scalar],
     batches: Vec<RecordBatch>,
+    threads: usize,
 ) -> Result<DataFile> {
     let snapshot_id = write.snapshot_id;
     let schema = write.schema;
@@ -5295,9 +6150,10 @@ fn write_data_file(
         format!("{DATA_DIR}/{directory_path}/{name}")
     };
 
-    // The statistics are read back from the file the writer just wrote -
-    // the staged copy when the commit stages, so the footer read costs the
-    // store nothing - before the file reaches the table.
+    // A Parquet file's statistics and length are what its encoder closed it
+    // with, so nothing of it is read back - from the staged copy or the
+    // store - and nothing is asked of its handle: the name is fresh, so no
+    // stored shape is there to complete onto either.
     let arrow_schema = crate::arrow::arrow_schema_from_field(&stored)?;
     let parquet = mime_type == &MimeType::PARQUET;
     let nans = super::statistics::nan_value_counts(schema, &batches)?;
@@ -5310,15 +6166,22 @@ fn write_data_file(
                 .record_options()?
                 .with_safe(false)
                 .with_field(stored.clone());
-            options.set_file_threads(write.file_threads);
+            options.set_file_threads(threads);
             if parquet {
-                handle.overwrite_arrow_reader(
+                let RecordOptions::Parquet(parquet) = &options else {
+                    return Err(not_encodable(mime_type));
+                };
+                let (metadata, length) = crate::parquet::overwrite_buffered(
+                    handle,
                     crate::arrow::batch_reader(arrow_schema, batches),
-                    &options,
+                    parquet,
+                    crate::parquet::WRITE_BUFFER_BYTES,
                 )?;
-                handle.flush()?;
-                let statistics = crate::parquet::read_statistics(handle)?;
-                super::statistics::data_file(schema, &statistics)
+                let statistics = crate::parquet::FileStatistics::from_metadata(&metadata);
+                Ok((
+                    super::statistics::data_file(schema, &statistics)?,
+                    Some(length),
+                ))
             } else {
                 // The batches are measured before the write consumes them,
                 // because this format's file carries no footer to read them
@@ -5329,7 +6192,7 @@ fn write_data_file(
                     &options,
                 )?;
                 handle.flush()?;
-                Ok(file)
+                Ok((file, None))
             }
         },
     )?;
@@ -6031,89 +6894,210 @@ pub(super) fn extreme(
     Ok(single_value(&scalar, field.dtype()))
 }
 
-/// Land every incoming batch under the table schema and cut it into one
-/// hold per partition tuple.
-///
-/// Every batch lands once, through one plan per layout the batches arrive
-/// in; the pieces a partition takes out of it share its buffers - a
-/// batch falling whole in one partition is the batch, a run of its rows a
-/// slice, interleaved rows one take. A partitioned spec computes each
-/// batch's tuples once ([`row_groups`]); an unpartitioned one holds every
-/// batch under the one empty tuple. Each hold settles as it is pushed to,
-/// and the holds together are settled against the process bound after each
-/// batch, heaviest hold first, so a commit of any size keeps that bound in
-/// memory.
-fn grouped_holds(
-    batches: BatchReader,
-    schema: &Field,
-    spec: &PartitionSpec,
-    partition: &Field,
-    safe: bool,
-) -> Result<Vec<(Vec<Scalar>, ChunkedSerie)>> {
-    let mut groups: Vec<(Vec<Scalar>, ChunkedSerie)> = Vec::new();
-    // `Scalar`'s hash reads canonical content only, never the
-    // interior-mutable caches a datatype holds, so the key is stable.
-    #[allow(clippy::mutable_key_type)]
-    let mut index: HashMap<Vec<Scalar>, usize> = HashMap::new();
-    let transforms = spec.write_transforms(schema, partition)?;
-    // The landing root is the schema without the order it declares: a
-    // declaring root would refuse rows out of that order where they land,
-    // and ordering them is the writer's work. One plan per layout the
-    // batches arrive in, compiled once.
-    let root = std::sync::Arc::new(schema.clone().with_metadata_removed("SORT:by"));
-    let mut plans = PlanCache::new();
-    for batch in batches {
-        let batch = batch.map_err(Error::Arrow)?;
-        let record = plans
-            .get_or_compile(batch.schema_ref().fields(), || {
-                ArrowCastPlan::compile_schema(
-                    batch.schema_ref(),
-                    &root,
-                    ArrowCastOptions::new().with_safe(safe),
-                    Deferred::default(),
-                )
-            })?
-            .cast_batch(batch)?;
-        if record.is_empty() {
-            continue;
-        }
-        if spec.is_unpartitioned() {
-            if groups.is_empty() {
-                groups.push((
-                    Vec::new(),
-                    ChunkedSerie::from_landed(std::sync::Arc::clone(&root), Vec::new()),
-                ));
-            }
-            groups[0].1.push_landed(record)?;
-            settle_holds(&mut groups)?;
-            continue;
-        }
+/// The order an incoming stream's schema claims its rows keep - the
+/// `SORT:by` its root states, as a record stream's schema carries it, a
+/// serie's proven and any other source's a claim - or none where it states
+/// none or a declaration that does not parse: what the writer verifies the
+/// rows by as they arrive, to close each partition as soon as the stream has
+/// moved past it ([`ClaimedOrder`]). Read off the caller's stream, before
+/// the rows are shaped onto the table's schema, which states the table's own
+/// order whatever order the rows are in.
+pub(crate) fn claimed_order(schema: &arrow_schema::Schema) -> Vec<crate::expression::Ordering> {
+    let Some(stored) = schema.metadata().get(crate::metadata::SORT_BY_KEY) else {
+        return Vec::new();
+    };
+    let Ok(entries) = crate::metadata::parse_by_list(crate::metadata::SORT_BY_KEY, stored) else {
+        return Vec::new();
+    };
+    entries
+        .iter()
+        .map(|entry| crate::metadata::parse_by_ordering(crate::metadata::SORT_BY_KEY, entry))
+        .collect::<crate::Result<_>>()
+        .unwrap_or_default()
+}
 
-        let batch = record.into_arrow_batch()?;
-        let found = row_groups(&batch, &transforms)?;
-        let whole = found.len() == 1;
-        for (values, rows) in found {
-            let position = match index.get(&values) {
-                Some(position) => *position,
-                None => {
-                    groups.push((
-                        values.clone(),
-                        ChunkedSerie::from_landed(std::sync::Arc::clone(&root), Vec::new()),
-                    ));
-                    index.insert(values, groups.len() - 1);
-                    groups.len() - 1
-                }
-            };
-            let piece = if whole {
-                record.clone()
-            } else {
-                piece_of(&record, &rows)?
-            };
-            groups[position].1.push_landed(piece)?;
+/// The order a write's source claims its rows arrive in, read as the order
+/// of `spec`'s tuples and verified batch by batch as the rows arrive: while
+/// it holds, every row of a tuple arrives before any row of the next, so
+/// each partition closes as soon as another tuple arrives.
+///
+/// A claim clusters the tuples where its leading keys are the spec's source
+/// columns as `schema` names them, in spec order, in either direction: every
+/// field but the last the identity of a column that is not floating - equal
+/// sources adjacent - and the last the identity or a transform that keeps
+/// its source's order (a truncation, a time period), whose equal images are
+/// adjacent where the source is sorted. A `void` field is the one constant
+/// and asks for no key; an unpartitioned spec is one partition and closes
+/// nothing early. A batch is in the claimed order when every partition's
+/// rows are one run of it and its tuples follow one another, and the batch
+/// before it, in the claimed directions; the first batch that is not
+/// clears [`Self::holds`] before its pieces are pushed, and the write is
+/// bounded by `write.max-open-partitions` from then on. A claim the rows
+/// break therefore costs each partition closed before the break, and
+/// returned to after it, a second file - never a row.
+struct ClaimedOrder {
+    /// Each tuple position's claimed direction; `None` for a `void` field.
+    directions: Vec<Option<crate::SortOptions>>,
+    /// The last tuple a batch ended with.
+    last: Option<Vec<Scalar>>,
+    /// Whether the rows have kept the claim so far.
+    holds: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl ClaimedOrder {
+    /// The claim `claimed` makes about `spec`'s tuples, where it clusters
+    /// them.
+    fn of(
+        spec: &PartitionSpec,
+        schema: &Field,
+        claimed: &[crate::expression::Ordering],
+    ) -> Option<Self> {
+        use super::partition::Transform;
+
+        let keyed = spec
+            .fields
+            .iter()
+            .filter(|part| part.transform != Transform::Void)
+            .count();
+        if keyed == 0 || claimed.len() < keyed {
+            return None;
         }
-        settle_holds(&mut groups)?;
+        let mut keys = claimed.iter();
+        let mut directions = Vec::with_capacity(spec.fields.len());
+        let mut position = 0;
+        for part in &spec.fields {
+            if part.transform == Transform::Void {
+                directions.push(None);
+                continue;
+            }
+            position += 1;
+            let key = keys.next()?;
+            let keeps_order = match part.transform {
+                Transform::Identity => true,
+                Transform::Truncate(_)
+                | Transform::Year
+                | Transform::Quarter
+                | Transform::Month
+                | Transform::Week
+                | Transform::Day
+                | Transform::Hour
+                | Transform::Minutes(_) => position == keyed,
+                Transform::Bucket(_) | Transform::Void | Transform::Unknown => false,
+            };
+            let (path, source) = super::partition::source_path(schema, part.source_id).ok()?;
+            let mut segments = path.iter();
+            let column = segments.next().map(|root| {
+                segments.fold(Term::column(root.clone()), |term, name| {
+                    term.child(name.clone())
+                })
+            })?;
+            let floating =
+                part.transform == Transform::Identity && source.dtype().id().is_floating();
+            if !keeps_order || floating || key.term() != &column {
+                return None;
+            }
+            directions.push(Some(key.options()));
+        }
+        Some(Self {
+            directions,
+            last: None,
+            holds: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+        })
     }
-    Ok(groups)
+
+    /// Verify one batch's pieces - in the order their first rows arrived,
+    /// `runs` when every partition's rows were one run of the batch -
+    /// against the claim, clearing [`Self::holds`] at the first batch out
+    /// of it.
+    fn check(&mut self, pieces: &[TuplePiece], runs: bool) {
+        use std::sync::atomic::Ordering as Atomic;
+
+        if !self.holds.load(Atomic::Acquire) {
+            return;
+        }
+        let mut keeps = runs;
+        for (position, (tuple, _)) in pieces.iter().enumerate() {
+            if !keeps {
+                break;
+            }
+            if let Some(last) = &self.last {
+                let order = self.compare(last, tuple);
+                // A run may cross the edge into this batch; within it every
+                // tuple is new.
+                keeps = order.is_lt() || (position == 0 && order.is_eq());
+            }
+            self.last = Some(tuple.clone());
+        }
+        if !keeps {
+            self.holds.store(false, Atomic::Release);
+        }
+    }
+
+    /// Two tuples in the claimed order: position by position, each in its
+    /// direction with its nulls where the claim puts them.
+    fn compare(&self, left: &[Scalar], right: &[Scalar]) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+
+        for ((left, right), direction) in left.iter().zip(right).zip(&self.directions) {
+            let Some(direction) = direction else {
+                continue;
+            };
+            let order = match (left.is_null(), right.is_null()) {
+                (true, true) => Ordering::Equal,
+                (true, false) if direction.is_nulls_first() => Ordering::Less,
+                (true, false) => Ordering::Greater,
+                (false, true) if direction.is_nulls_first() => Ordering::Greater,
+                (false, true) => Ordering::Less,
+                (false, false) if direction.is_descending() => right.cmp(left),
+                (false, false) => left.cmp(right),
+            };
+            if order.is_ne() {
+                return order;
+            }
+        }
+        Ordering::Equal
+    }
+}
+
+/// One partition's tuple and a piece of its rows.
+type TuplePiece = (Vec<Scalar>, Serie);
+
+/// One landed batch cut into the pieces its partitions take, in the order
+/// their first row arrives in, and whether every partition's rows are one
+/// run of it: an unpartitioned spec's every batch the one piece of the empty
+/// tuple; a partitioned spec's tuples computed once per batch
+/// ([`row_groups`]), a batch falling whole in one partition the batch
+/// itself, a run of its rows a slice, interleaved rows one take
+/// ([`piece_of`]). An empty batch answers no piece.
+fn cut_by_partition(
+    record: Serie,
+    transforms: &[super::partition::PartitionTransform],
+    unpartitioned: bool,
+) -> Result<(Vec<TuplePiece>, bool)> {
+    if record.is_empty() {
+        return Ok((Vec::new(), true));
+    }
+    if unpartitioned {
+        return Ok((vec![(Vec::new(), record)], true));
+    }
+    let found = row_groups(&record.into_arrow_batch()?, transforms)?;
+    if let [(values, _)] = found.as_slice() {
+        return Ok((vec![(values.clone(), record)], true));
+    }
+    let runs = found.iter().all(|(_, rows)| is_run(rows));
+    let pieces = found
+        .into_iter()
+        .map(|(values, rows)| Ok((values, piece_of(&record, &rows)?)))
+        .collect::<Result<_>>()?;
+    Ok((pieces, runs))
+}
+
+/// Whether row indices in batch order are one run of the batch.
+fn is_run(rows: &[u32]) -> bool {
+    match (rows.first(), rows.last()) {
+        (Some(&first), Some(&last)) => (last - first) as usize + 1 == rows.len(),
+        _ => true,
+    }
 }
 
 /// The rows of `record` at `rows`, in that order: one zero-copy slice where
@@ -6121,11 +7105,9 @@ fn grouped_holds(
 /// the order its partitions advance - and one take where they interleave
 /// with another partition's.
 fn piece_of(record: &Serie, rows: &[u32]) -> Result<Serie> {
-    match (rows.first(), rows.last()) {
+    match rows.first() {
         // Indices arrive in batch order, so a run is first..=last.
-        (Some(&first), Some(&last)) if (last - first) as usize + 1 == rows.len() => {
-            Ok(record.slice(first as usize, rows.len())?)
-        }
+        Some(&first) if is_run(rows) => Ok(record.slice(first as usize, rows.len())?),
         _ => {
             let indices = Serie::from_arrow_array(
                 None,
@@ -6135,40 +7117,6 @@ fn piece_of(record: &Serie, rows: &[u32]) -> Result<Serie> {
             Ok(record.into_taken(&indices)?)
         }
     }
-}
-
-/// Spill the heaviest holds whole until what every hold of one commit keeps
-/// resident is under the process bound. Each hold alone settles as it is
-/// pushed to; this is the bound across them.
-fn settle_holds(groups: &mut [(Vec<Scalar>, ChunkedSerie)]) -> Result<()> {
-    let options = SpillOptions::from_env()?;
-    if options.is_never() {
-        return Ok(());
-    }
-    let bound = options.byte_size();
-    let resident = |groups: &[(Vec<Scalar>, ChunkedSerie)]| {
-        groups
-            .iter()
-            .map(|(_, hold)| u64::try_from(hold.resident_size()).unwrap_or(u64::MAX))
-            .fold(0_u64, u64::saturating_add)
-    };
-    if resident(groups) <= bound {
-        return Ok(());
-    }
-    let mut order: Vec<(usize, usize)> = groups
-        .iter()
-        .enumerate()
-        .map(|(index, (_, hold))| (index, hold.resident_size()))
-        .collect();
-    order.sort_by_key(|(_, bytes)| std::cmp::Reverse(*bytes));
-    let whole = options.clone().with_byte_size(0);
-    for (index, _) in order {
-        if resident(groups) <= bound {
-            break;
-        }
-        groups[index].1.spill(&whole)?;
-    }
-    Ok(())
 }
 
 /// Group row indices by their computed, typed partition tuple.
@@ -6394,10 +7342,22 @@ fn encoded_document(metadata: &TableMetadata) -> Result<(&'static str, Vec<u8>)>
     }
 }
 
+/// A metadata document as read: the parsed document, and the [`Base`] its
+/// stored bytes prove.
+type Document = (Scalar, Base);
+
+/// A metadata document found under the folder contract: its version, its
+/// exact name and the document.
+type Found = (u32, SmolStr, Document);
+
+/// What a commit's carried manifests were read for: the snapshot current and
+/// the location of the manifest list it names.
+type ListKey = (Option<i64>, SmolStr);
+
 /// Return the current metadata document with its exact name and number.
 ///
 /// [`find_metadata`] with the document always read.
-fn find_metadata_document(metadata_dir: &Holder) -> Result<Option<(u32, SmolStr, Scalar)>> {
+fn find_metadata_document(metadata_dir: &Holder) -> Result<Option<Found>> {
     match find_metadata(metadata_dir, None)? {
         Some((version, name, Some(document))) => Ok(Some((version, name, document))),
         Some((version, name, None)) => Err(invalid(format_smolstr!(
@@ -6429,11 +7389,11 @@ fn find_metadata_document(metadata_dir: &Holder) -> Result<Option<(u32, SmolStr,
 /// exactly it, the hint is taken at its word, nothing else is read, and the
 /// answer carries `None` for the document. That is a commit's look before it
 /// claims the next version, whose exclusive create is what decides; every
-/// other answer carries the document.
+/// other answer carries the document, and the [`Base`] its bytes prove.
 fn find_metadata(
     metadata_dir: &Holder,
     known: Option<u32>,
-) -> Result<Option<(u32, SmolStr, Option<Scalar>)>> {
+) -> Result<Option<(u32, SmolStr, Option<Document>)>> {
     // A folder that is not a table has no metadata directory at all, and the
     // laziness contract makes that a handle that simply is not a container.
     if !metadata_dir.is_container() {
@@ -6487,8 +7447,8 @@ fn find_metadata(
 /// whole document forked, and the walk refuses it naming both.
 fn newest_from(
     metadata_dir: &Holder,
-    (mut version, mut name, mut document): (u32, SmolStr, Scalar),
-) -> Result<(u32, SmolStr, Scalar)> {
+    (mut version, mut name, mut document): Found,
+) -> Result<Found> {
     while let Some(next) = version.checked_add(1) {
         let gzip_first = name.ends_with(".gz.metadata.json");
         let Some((next_name, next_document)) = versioned_document(metadata_dir, next, gzip_first)?
@@ -6515,9 +7475,9 @@ fn versioned_document(
     metadata_dir: &Holder,
     version: u32,
     gzip_first: bool,
-) -> Result<Option<(SmolStr, Scalar)>> {
+) -> Result<Option<(SmolStr, Document)>> {
     let suffixes = if gzip_first { [".gz", ""] } else { ["", ".gz"] };
-    let mut found: Option<(SmolStr, Scalar)> = None;
+    let mut found: Option<(SmolStr, Document)> = None;
     for suffix in suffixes {
         let name = format_smolstr!("v{version}{suffix}.metadata.json");
         let bytes = match leaf(metadata_dir.child_by_path(&name)?)?.read_all_bytes() {
@@ -6532,7 +7492,7 @@ fn versioned_document(
             continue;
         };
         match &found {
-            None => found = Some((name, document)),
+            None => found = Some((name, (document, Base::read(&bytes)))),
             Some((first, _)) => return Err(forked(version, first, &name)),
         }
     }
@@ -6589,6 +7549,69 @@ fn is_forked(error: &Error) -> bool {
     matches!(error, Error::Iceberg { source: Some(source), .. } if source.is::<Forked>())
 }
 
+/// A commit's base no longer its version's one document, the source of the
+/// error [`moved_base`] answers, so the commit ladder reads the version that
+/// stands even where it carries the number held.
+#[derive(Debug)]
+struct MovedBase;
+
+impl std::fmt::Display for MovedBase {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("the metadata document a commit built on was withdrawn")
+    }
+}
+
+impl std::error::Error for MovedBase {}
+
+/// The refusal of a claim built on `name`, version `version`, which no
+/// longer stands alone at its version: `found` holds what the version is
+/// now, the other spelling's document or other bytes under its own name.
+fn moved_base(version: u32, name: &str, found: &str) -> Error {
+    Error::Iceberg {
+        reason: format_smolstr!(
+            "expected the metadata document {name} a commit built on to stand alone at \
+             version {version}, got {found} changed since it was read; the claim it built \
+             on was withdrawn, and the commit reads the version that stands"
+        ),
+        source: Some(Box::new(MovedBase)),
+    }
+}
+
+/// Why a claim of the next version did not commit.
+#[derive(Debug)]
+enum Unclaimed {
+    /// The claim landed and was withdrawn - its document removed - because
+    /// the other spelling of its version holds a claim too, or because the
+    /// document it built on no longer stands: nothing durable names its
+    /// files, and a document met naming its snapshot built on the claim
+    /// before it was withdrawn.
+    Withdrawn(Error),
+    /// Any other failure: a refused create - whose document may still be
+    /// this commit's own, where the create's answer was lost - or a write or
+    /// a read that failed.
+    Failed(Error),
+}
+
+impl Unclaimed {
+    /// The failure, whichever way the claim went.
+    fn into_error(self) -> Error {
+        match self {
+            Self::Withdrawn(error) | Self::Failed(error) => error,
+        }
+    }
+}
+
+impl From<Error> for Unclaimed {
+    fn from(error: Error) -> Self {
+        Self::Failed(error)
+    }
+}
+
+/// Whether `error` is the refusal [`moved_base`] answers.
+fn is_moved_base(error: &Error) -> bool {
+    matches!(error, Error::Iceberg { source: Some(source), .. } if source.is::<MovedBase>())
+}
+
 /// The document a listing of `metadata/` settles on, for a folder whose hint
 /// names none: the hinted version where a listed name carries it, else the
 /// highest, its exact name kept.
@@ -6597,10 +7620,7 @@ fn is_forked(error: &Error) -> bool {
 /// cannot be read, are empty or do not decode the name below it answers
 /// instead; any other document that does not read or decode is the table's
 /// failure.
-fn listed_metadata(
-    metadata_dir: &Holder,
-    hinted_version: Option<u32>,
-) -> Result<Option<(u32, SmolStr, Scalar)>> {
+fn listed_metadata(metadata_dir: &Holder, hinted_version: Option<u32>) -> Result<Option<Found>> {
     // Exact filenames: a UUID filename is never rewritten into a synthetic
     // `vN` path.
     let mut candidates: Vec<(u32, SmolStr, Holder)> = Vec::new();
@@ -6657,7 +7677,11 @@ fn listed_metadata(
                     if let Some((_, other, _)) = other {
                         return Err(forked(*version, name, other));
                     }
-                    return Ok(Some((*version, name.clone(), document)));
+                    return Ok(Some((
+                        *version,
+                        name.clone(),
+                        (document, Base::read(&bytes)),
+                    )));
                 }
                 Err(error) if !newest => return Err(error),
                 Err(_) => {}
@@ -7102,3 +8126,10 @@ pub mod internals {
         table.child_at(location)
     }
 }
+
+crate::media_serie::media_serie!(
+    IcebergTableSerie,
+    IcebergTable,
+    as_iceberg_table,
+    get_iceberg_table_mut
+);

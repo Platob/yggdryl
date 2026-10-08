@@ -484,7 +484,7 @@ impl Sheet {
     ///
     /// A record column is laid out column by column; any other column is the
     /// one column of a record named as it is, the rule
-    /// [`SerieReader::from_serie`](crate::SerieReader::from_serie) states;
+    /// [`StreamChunkedSerie::from_serie`](crate::StreamChunkedSerie::from_serie) states;
     /// a run, which names no columns, is refused.
     ///
     /// # Errors

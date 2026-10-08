@@ -622,7 +622,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
       // schemaless wire now makes.
       assert.equal(decoded.bigint, value.bigint)
       assert.deepEqual(decoded.bytes, value.bytes)
-      assert.equal(decoded.date, '2026-08-15T12:30:00.000Z')
+      assert.equal(decoded.date, '2026-08-15T12:30:00Z')
       assert.equal(decoded.infinity, Infinity)
       assert.ok(Number.isNaN(decoded.nan))
       assert.ok(Object.is(decoded.negativeZero, -0))
@@ -730,7 +730,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     Object.defineProperty(date, 'getTime', {
       value: () => 0,
     })
-    assert.equal(json.loads(json.dumps(date)), '2026-08-15T12:30:00.000Z')
+    assert.equal(json.loads(json.dumps(date)), '2026-08-15T12:30:00Z')
     assert.throws(() => json.dumps(new Date(NaN)), /invalid Date/)
   })
 
@@ -746,12 +746,13 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
 
     for (const format of [json, yaml]) {
       const decoded = format.loads(format.dumps(values))
-      // The fraction width is the unit, so nothing about the reading is lost -
-      // it is just spelled the way every other tool spells it.
-      assert.equal(decoded.at, '2023-11-14T22:13:20.000000Z')
+      // The fraction is written short - none where it is zero, else the
+      // shortest exact one - and a reading restates it at the column's unit,
+      // so nothing is lost: it is spelled the way every other tool spells it.
+      assert.equal(decoded.at, '2023-11-14T22:13:20Z')
       assert.equal(decoded.naive, '2023-11-14T22:13:20.123456')
       assert.equal(decoded.on, '2024-01-01')
-      assert.equal(decoded.sinceMidnight, '12:34:56.000000')
+      assert.equal(decoded.sinceMidnight, '12:34:56')
       assert.equal(decoded.took, 'PT90S')
       assert.equal(decoded.price, '-10.5')
     }
@@ -1370,7 +1371,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     )
     assert.equal(
       json.loads(json.dumps(new DataType('datetime64(ms,"Europe/Paris")').scalar(1786797000000n))),
-      '2026-08-15T14:30:00.000+02:00[Europe/Paris]',
+      '2026-08-15T14:30:00+02:00[Europe/Paris]',
     )
   })
 
@@ -1399,7 +1400,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     // the instant, which the wire spells as its classic string.
     const value = { id: 1, tags: new Set(['a']) }
     assert.deepEqual(json.loads(json.dumps(value)), Scalar.from(value).asJs())
-    assert.equal(json.loads(json.dumps({ at: new Date(0) })).at, '1970-01-01T00:00:00.000Z')
+    assert.equal(json.loads(json.dumps({ at: new Date(0) })).at, '1970-01-01T00:00:00Z')
     assert.throws(() => Scalar.from({}, { maxDepth: 0 }), /between 1 and 48/)
   })
 
@@ -2474,13 +2475,13 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     })
     assert.equal(
       written.toString(),
-      '<row><at>2026-08-15T12:30:00.000Z</at><bytes>AP8=</bytes><flag>true</flag>' +
+      '<row><at>2026-08-15T12:30:00Z</at><bytes>AP8=</bytes><flag>true</flag>' +
         '<on>2024-01-01</on><price>-10.5</price><ratio>1.5</ratio><tags>a</tags><tags>b</tags></row>',
     )
     // XML proves text and nothing else.
     assert.deepEqual(xml.loads(written), {
       row: {
-        at: '2026-08-15T12:30:00.000Z',
+        at: '2026-08-15T12:30:00Z',
         bytes: 'AP8=',
         flag: 'true',
         on: '2024-01-01',

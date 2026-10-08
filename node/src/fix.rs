@@ -1333,7 +1333,7 @@ pub struct FixCaptureView {
     /// source or one stating no role - never `null`. The codec stamps it from
     /// the source it reads under (`FixCodec`'s `source`), and a row-header
     /// capture or a row cell named `msgpluginside` is the row's word over
-    /// it; also `byTag(65042)`.
+    /// it; also `byTag(65043)`.
     pub msgpluginside: String,
     /// The message context a bridge handled the line in.
     #[napi(ts_type = "string | null")]
@@ -1344,17 +1344,17 @@ pub struct FixCaptureView {
     /// The session event the message was delivered as - `MsgType`,
     /// `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
     /// `8:e7256476:9effef3e6a:1094` - where all four are stated; also
-    /// `byTag(65046)`.
+    /// `byTag(65047)`.
     #[napi(ts_type = "string | null")]
     pub msgsesseventid: Either<String, Null>,
     /// The plugin the message came into a bridge through, as the bridge's
     /// log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-    /// (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65043)`.
+    /// (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65044)`.
     #[napi(ts_type = "string | null")]
     pub msgoriginator: Either<String, Null>,
     /// The conversation a bridge filed the message under - a
     /// `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
-    /// of its log line; also `byTag(65047)`.
+    /// of its log line; also `byTag(65048)`.
     #[napi(ts_type = "string | null")]
     pub conversationid: Either<String, Null>,
 }
@@ -1863,6 +1863,22 @@ impl JsFixMsg {
         self.inner.get_currency().as_str().to_owned()
     }
 
+    /// The currency the instrument originates in, as the `ccy` code it is:
+    /// the crate field `origccy` the message states, or what a registry
+    /// filled; `null` where neither did, never defaulted.
+    #[napi(getter)]
+    pub fn origccy(&self) -> Option<String> {
+        let held = self.inner.get_origccy();
+        (!held.is_none()).then(|| held.as_str().to_owned())
+    }
+
+    /// The origin currency read with its default: `origccy` where held,
+    /// else `currency` - `XXX` only where neither is stated.
+    #[napi(getter)]
+    pub fn origin_currency(&self) -> String {
+        self.inner.origin_currency().as_str().to_owned()
+    }
+
     /// The price the message last traded at, as decimal text, or `null`.
     /// FIX's own `LastPx(31)`.
     #[napi(getter)]
@@ -2164,7 +2180,7 @@ impl JsFixMsg {
     ///
     /// A key reaching no field and no child, or a value the field refuses,
     /// throws the core's refusal and leaves the message as it was. So does a
-    /// key reaching the capture's own column - `sourceurl` (65051), by tag
+    /// key reaching the capture's own column - `sourceurl` (65052), by tag
     /// or by name: a message holds no fact for it, and a row child would put
     /// it on the wire.
     #[napi(ts_args_type = "key: number | string, value: unknown")]
@@ -3073,10 +3089,12 @@ impl JsFixCodec {
     /// stateful book iterator into Arrow batches of lifted `marketdata` rows,
     /// one `book_event` row per book.
     ///
-    /// Folds orders, quotes and `W`/`X` book messages; an execution, a
-    /// trade and every other record are ignored before they are expanded,
-    /// since a fill moves a book through its order's or quote's report.
-    /// Source errors still fail.
+    /// Folds orders, quotes and `W`/`X` book messages into each book's
+    /// sides - the orders and quotes its instant applied its `delta` - and
+    /// records every execution among its `events`, moving no side, since a
+    /// fill moves a book through its order's or quote's report; a trade and
+    /// every other record are ignored before they are expanded. Source
+    /// errors still fail.
     ///
     /// The loader supplies the iterable pull. `snapshotMillis` enables an
     /// epoch-aligned snapshot grid. `filter` - a `Filter`, a `Term` or the
@@ -3504,7 +3522,7 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// instrument codes (`isincode`, `bloombergcode`, `figicode`, `forexcode`,
 /// `miccode`) and the market and operation facts a message names - each a
 /// fact no FIX dictionary publishes, at the datatype its graph column names,
-/// numbered contiguously from `65001` through `fixmsg` (`65052`). The strike
+/// numbered contiguously from `65001` through `fixmsg` (`65053`). The strike
 /// price is the derived market fact `strikepx` over `StrikePrice(202)`, and a
 /// bridge's own identifier keys are no crate field either: they arrive as
 /// unmapped entries and are read for the identifier name they end with.

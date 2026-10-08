@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "400",
       "description": "BidDescriptor value. Usage depends upon BidDescriptorTyp (399).",
       "display": "BidDescriptor"
@@ -19,6 +20,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "sidevalueindcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "401",
       "description": "Code to identify which \"SideValue\" the value refers to. SideValue1 and SideValue2 are used as opposed to Buy or Sell so that the basket can be quoted either way as Buy or Sell.",
       "display": "SideValueInd"
@@ -31,6 +33,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "402",
       "description": "Liquidity indicator or lower limit if TotalNumSecurities (393) > 1. Represented as a percentage.",
       "display": "LiquidityPctLow"
@@ -43,6 +46,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "403",
       "description": "Upper liquidity indicator if TotalNumSecurities (393) > 1. Represented as a percentage.",
       "display": "LiquidityPctHigh"
@@ -57,6 +61,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "404",
       "description": "Value between LiquidityPctLow (402) and LiquidityPctHigh (403) in Currency",
       "display": "LiquidityValue"
@@ -69,6 +74,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "405",
       "description": "Eg Used in EFP trades 2% (EFP - Exchange for Physical ). Represented as a percentage.",
       "display": "EFPTrackingError"
@@ -83,6 +89,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "406",
       "description": "Used in EFP trades",
       "display": "FairValue"
@@ -95,6 +102,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "407",
       "description": "Used in EFP trades. Represented as a percentage.",
       "display": "OutsideIndexPct"
@@ -109,6 +117,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "408",
       "description": "Used in EFP trades",
       "display": "ValueOfFutures"
@@ -122,6 +131,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "liquidityindtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "409",
       "description": "Code to identify the type of liquidity indicator.",
       "display": "LiquidityIndType"
@@ -134,6 +144,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "410",
       "description": "Overall weighted average liquidity expressed as a % of average daily volume. Represented as a percentage.",
       "display": "WtAverageLiquidity"
@@ -147,6 +158,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "exchangeforphysicalcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "411",
       "description": "Indicates whether or not to exchange for phsyical.",
       "display": "ExchangeForPhysical"
@@ -161,6 +173,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "412",
       "description": "Value of stocks in Currency",
       "display": "OutMainCntryUIndex"
@@ -173,6 +186,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "413",
       "description": "Percentage of program that crosses in Currency. Represented as a percentage.",
       "display": "CrossPercent"
@@ -186,6 +200,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "progrptreqscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "414",
       "description": "Code to identify the desired frequency of progress reports.",
       "display": "ProgRptReqs"
@@ -198,6 +213,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "415",
       "description": "Time in minutes between each ListStatus report sent by SellSide. Zero means don't send status.",
       "display": "ProgPeriodInterval"
@@ -211,6 +227,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "inctaxindcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "416",
       "description": "Code to represent whether value is net (inclusive of tax) or gross.",
       "display": "IncTaxInd"
@@ -223,6 +240,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "417",
       "description": "Indicates the total number of bidders on the list",
       "display": "NumBidders"
@@ -236,6 +254,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "bidtradetypecodeset",
+      "FIX:datatype": "char",
       "FIX:names": [
         "tradetype"
       ],
@@ -252,6 +271,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "basispxtypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "419",
       "description": "Code to represent the basis price type.",
       "display": "BasisPxType"
@@ -264,6 +284,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "420",
       "description": "Indicates the number of list entries.",
       "display": "NoBidComponents"
@@ -276,6 +297,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Country",
       "FIX:tag": "421",
       "description": "ISO Country Code in field",
       "display": "Country"
@@ -288,6 +310,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "422",
       "description": "Total number of strike price entries across all messages. Should be the sum of all NoStrikes (428) in each message that has repeating strike price entries related to the same ListID (66). Used to support fragmentation.",
       "display": "TotNoStrikes"
@@ -301,6 +324,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "pricetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "423",
       "description": "Code to represent the price type.",
       "display": "PriceType"
@@ -315,6 +339,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "424",
       "description": "For GT orders, the OrderQty (38) less all quantity (adjusted for stock splits) that traded on previous days. DayOrderQty (424) = OrderQty - (CumQty (14) - DayCumQty (425))",
       "display": "DayOrderQty"
@@ -329,6 +354,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "425",
       "description": "Quantity on a GT order that has traded today.",
       "display": "DayCumQty"
@@ -343,6 +369,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "426",
       "description": "The average price for quantity on a GT order that has traded today.",
       "display": "DayAvgPx"
@@ -356,6 +383,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "gtbookinginstcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "427",
       "description": "Code to identify whether to book out executions on a part-filled GT order on the day of execution or to accumulate.",
       "display": "GTBookingInst"
@@ -368,6 +396,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "428",
       "description": "Number of list strike price entries.",
       "display": "NoStrikes"
@@ -381,6 +410,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "liststatustypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "429",
       "description": "Code to represent the status type.",
       "display": "ListStatusType"
@@ -394,6 +424,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "netgrossindcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "430",
       "description": "Code to represent whether value is net (inclusive of tax) or gross.",
       "display": "NetGrossInd"
@@ -407,6 +438,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "listorderstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "431",
       "description": "Code to represent the status of a list order.",
       "display": "ListOrderStatus"
@@ -420,6 +452,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "432",
       "description": "Date of order expiration (last day the order can trade), always expressed in terms of the local market date. The time at which the order expires is determined by the local market's business practices",
       "display": "ExpireDate"
@@ -433,6 +466,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "listexecinsttypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "433",
       "description": "Identifies the type of ListExecInst (69).",
       "display": "ListExecInstType"
@@ -446,6 +480,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "cxlrejresponsetocodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "434",
       "description": "Identifies the type of request that a Cancel Reject is in response to.",
       "display": "CxlRejResponseTo"
@@ -458,6 +493,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "435",
       "description": "Underlying security's CouponRate.",
       "display": "UnderlyingCouponRate"
@@ -470,6 +506,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "436",
       "description": "Underlying security's ContractMultiplier.",
       "display": "UnderlyingContractMultiplier"
@@ -484,6 +521,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "437",
       "description": "Quantity traded with the ContraBroker (375).",
       "display": "ContraTradeQty"
@@ -498,6 +536,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "438",
       "description": "Identifes the time of the trade with the ContraBroker (375). (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
       "display": "ContraTradeTime"
@@ -510,6 +549,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "439",
       "display": "ClearingFirm"
     }
@@ -521,6 +561,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "440",
       "display": "ClearingAccount"
     }
@@ -532,6 +573,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "441",
       "description": "Number of Securites between LiquidityPctLow (402) and LiquidityPctHigh (403) in Currency.",
       "display": "LiquidityNumSecurities"
@@ -545,6 +587,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "multilegreportingtypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "442",
       "description": "Used to indicate how the multi-legged security (e.g. option strategies, spreads, etc.) is being reported.",
       "display": "MultiLegReportingType"
@@ -559,6 +602,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "443",
       "description": "The time at which current market prices are used to determine the value of a basket.",
       "display": "StrikeTime"
@@ -571,6 +615,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "444",
       "description": "Free format text string related to List Status.",
       "display": "ListStatusText"
@@ -583,6 +628,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "445",
       "description": "Byte length of encoded (non-ASCII characters) EncodedListStatusText (446) field.",
       "display": "EncodedListStatusTextLen"
@@ -595,6 +641,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "446",
       "description": "Encoded (non-ASCII characters) representation of the ListStatusText (444) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the ListStatusText field.",
       "display": "EncodedListStatusText"
@@ -608,6 +655,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyidsourcecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "447",
       "description": "Identifies class or source of the PartyID (448) value. Required if PartyID is specified. Note: applicable values depend upon PartyRole (452) specified.",
       "display": "PartyIDSource"
@@ -620,6 +668,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "448",
       "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
       "display": "PartyID"
@@ -634,6 +683,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCDateOnly",
       "FIX:tag": "449",
       "display": "TotalVolumeTradedDate"
     }
@@ -646,6 +696,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimeOnly",
       "FIX:tag": "450",
       "display": "TotalVolumeTradedTime"
     }
@@ -659,6 +710,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "451",
       "description": "Net change from previous day's closing price vs. last traded price.",
       "display": "NetChgPrevDay"
@@ -672,6 +724,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrolecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "452",
       "description": "Identifies the type or role of the PartyID (448) specified.",
       "display": "PartyRole"
@@ -684,6 +737,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "453",
       "description": "Number of PartyID (448), PartyIDSource (447), and PartyRole (452) entries",
       "display": "NoPartyIDs"
@@ -696,6 +750,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "454",
       "description": "Number of SecurityAltID (455) entries.",
       "display": "NoSecurityAltID"
@@ -708,6 +763,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "455",
       "description": "Alternate Security identifier value for this security of SecurityAltIDSource (456) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityAltIDSource.",
       "display": "SecurityAltID"
@@ -721,6 +777,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "456",
       "description": "Identifies class or source of the SecurityAltID(455) value.",
       "display": "SecurityAltIDSource"
@@ -733,6 +790,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "457",
       "description": "Number of UnderlyingSecurityAltID (458) entries.",
       "display": "NoUnderlyingSecurityAltID"
@@ -745,6 +803,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "458",
       "description": "Alternate Security identifier value for this underlying security of UnderlyingSecurityAltIDSource (459) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires UnderlyingSecurityAltIDSource.",
       "display": "UnderlyingSecurityAltID"
@@ -758,6 +817,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "459",
       "description": "Identifies class or source of the UnderlyingSecurityAltID(458) value.",
       "display": "UnderlyingSecurityAltIDSource"
@@ -771,6 +831,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "productcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "460",
       "description": "Indicates the type of product the security is associated with. See also the CFICode (461) and SecurityType (167) fields.",
       "display": "Product"
@@ -783,6 +844,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:names": [
         "detailedcficode"
       ],
@@ -799,6 +861,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "productcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "462",
       "description": "Underlying security's Product.",
       "display": "UnderlyingProduct"
@@ -811,6 +874,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "463",
       "description": "Underlying security's CFICode.",
       "display": "UnderlyingCFICode"
@@ -824,6 +888,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "testmessageindicatorcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "464",
       "description": "Indicates whether or not this FIX Session is a \"test\" vs. \"production\" connection. Useful for preventing \"accidents\".",
       "display": "TestMessageIndicator"
@@ -837,6 +902,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "quantitytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "465",
       "display": "QuantityType"
     }
@@ -848,6 +914,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "466",
       "description": "Common reference passed to a post-trade booking process (e.g. industry matching utility).",
       "display": "BookingRefID"
@@ -860,6 +927,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "467",
       "description": "Unique identifier for a specific NoAllocs (78) repeating group instance (e.g. for an AllocAccount).",
       "display": "IndividualAllocID"
@@ -873,6 +941,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "roundingdirectioncodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "468",
       "description": "Specifies which direction to round For CIV - indicates whether or not the quantity of shares/units is to be rounded and in which direction where CashOrdQty (152) or (for CIV only) OrderPercent (516) are specified on an order.",
       "display": "RoundingDirection"
@@ -885,6 +954,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "469",
       "description": "For CIV - a float value indicating the value to which rounding is required.",
       "display": "RoundingModulus"
@@ -897,6 +967,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Country",
       "FIX:tag": "470",
       "description": "ISO Country code of instrument issue (e.g. the country portion typically used in ISIN). Can be used in conjunction with non-ISIN SecurityID (48) (e.g. CUSIP for Municipal Bonds without ISIN) to provide uniqueness.",
       "display": "CountryOfIssue"
@@ -909,6 +980,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "471",
       "description": "A two-character state or province abbreviation.",
       "display": "StateOrProvinceOfIssue"
@@ -921,6 +993,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "472",
       "description": "Identifies the locale or region of issue.",
       "display": "LocaleOfIssue"
@@ -933,6 +1006,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "473",
       "description": "The number of registration details on a Registration Instructions message",
       "display": "NoRegistDtls"
@@ -945,6 +1019,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "474",
       "description": "Set of Correspondence address details, possibly including phone, fax, etc.",
       "display": "MailingDtls"
@@ -957,6 +1032,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Country",
       "FIX:tag": "475",
       "description": "The ISO 3166 Country code (2 character) identifying which country the beneficial investor is resident for tax purposes.",
       "display": "InvestorCountryOfResidence"
@@ -969,6 +1045,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "476",
       "description": "\"Settlement Payment Reference\" - A free format Payment reference to assist with reconciliation, e.g. a Client and/or Order ID number.",
       "display": "PaymentRef"
@@ -982,6 +1059,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "distribpaymentmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "477",
       "description": "Identifies the payment method for a (fractional) distribution. Used for CIV.",
       "display": "DistribPaymentMethod"
@@ -994,6 +1072,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "478",
       "description": "Specifies currency to be used for Cash Distributions see \"Appendix 6-A Valid Currency Codes\".",
       "display": "CashDistribCurr"
@@ -1006,6 +1085,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "479",
       "description": "Specifies currency to be used for Commission(12) if the commission currency is different from the deal currency.",
       "display": "CommCurrency"
@@ -1019,6 +1099,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "cancellationrightscodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "480",
       "description": "For CIV - A one character code identifying whether Cancellation rights/Cooling off period applies.",
       "display": "CancellationRights"
@@ -1032,6 +1113,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "moneylaunderingstatuscodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "481",
       "description": "A one character code identifying Money laundering status.",
       "display": "MoneyLaunderingStatus"
@@ -1044,6 +1126,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "482",
       "description": "Free format text to specify mailing instruction requirements, e.g. \"no third party mailings\".",
       "display": "MailingInst"
@@ -1058,6 +1141,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "483",
       "description": "For CIV A date and time stamp to indicate the time a CIV order was booked by the fund manager.",
       "display": "TransBkdTime"
@@ -1071,6 +1155,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "execpricetypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "484",
       "description": "For CIV - Identifies how the execution price LastPx (31) was calculated from the fund unit/share price(s) calculated at the fund valuation point.",
       "display": "ExecPriceType"
@@ -1083,6 +1168,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "485",
       "description": "For CIV the amount or percentage by which the fund unit/share price was adjusted, as indicated by ExecPriceType (484)",
       "display": "ExecPriceAdjustment"
@@ -1096,6 +1182,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "486",
       "description": "The date of birth applicable to the individual, e.g. required to open some types of tax-exempt account.",
       "display": "DateOfBirth"
@@ -1109,6 +1196,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradereporttranstypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "487",
       "description": "Identifies Trade Report message transaction type",
       "display": "TradeReportTransType"
@@ -1121,6 +1209,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "488",
       "description": "The name of the payment card holder as specified on the card being used for payment.",
       "display": "CardHolderName"
@@ -1133,6 +1222,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "489",
       "description": "The number of the payment card as specified on the card being used for payment.",
       "display": "CardNumber"
@@ -1146,6 +1236,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "490",
       "description": "The expiry date of the payment card as specified on the card being used for payment.",
       "display": "CardExpDate"
@@ -1158,6 +1249,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:names": [
         "cardissno"
       ],
@@ -1174,6 +1266,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "492",
       "description": "Identifies the settlement payment method.",
       "display": "PaymentMethod"
@@ -1186,6 +1279,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "493",
       "description": "For CIV - a fund manager-defined code identifying which of the fund manager's account types is required.",
       "display": "RegistAcctType"
@@ -1198,6 +1292,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "494",
       "description": "Free format text defining the designation to be associated with a holding on the register. Used to identify assets of a specific underlying investor using a common registration, e.g. a broker's nominee or street name.",
       "display": "Designation"
@@ -1211,6 +1306,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "taxadvantagetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "495",
       "description": "Identifies the type of tax exempt account in which purchases shares/units are to be held. Used for CIV.",
       "display": "TaxAdvantageType"
@@ -1223,6 +1319,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "496",
       "description": "Text indicating reason(s) why a Registration Instruction has been rejected.",
       "display": "RegistRejReasonText"
@@ -1236,6 +1333,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "fundrenewwaivcodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "497",
       "description": "A one character code identifying whether the Fund based renewal commission is to be waived.",
       "display": "FundRenewWaiv"
@@ -1248,6 +1346,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "498",
       "description": "Name of local agent bank if for cash distributions",
       "display": "CashDistribAgentName"
@@ -1260,6 +1359,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "499",
       "description": "BIC (Bank Identification Code--Swift managed) code of agent bank for cash distributions",
       "display": "CashDistribAgentCode"

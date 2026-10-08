@@ -446,7 +446,7 @@ mod coverage {
         let elapsed: ArrayRef = Arc::new(DurationMillisecondArray::from(vec![90_000, -1_500]));
         let text = cast(&DataType::utf8().nullable_field("took"), elapsed).unwrap();
         let text = text.as_any().downcast_ref::<StringArray>().unwrap();
-        assert_eq!((text.value(0), text.value(1)), ("PT90.000S", "-PT1.500S"));
+        assert_eq!((text.value(0), text.value(1)), ("PT90S", "-PT1.500S"));
 
         let clock: ArrayRef = Arc::new(Time64NanosecondArray::from(vec![Some(1), None]));
         let text = cast(&DataType::utf8().nullable_field("clock"), clock).unwrap();
@@ -468,7 +468,7 @@ mod plans {
     };
     use yggdryl::arrow::BatchReader;
     use yggdryl::{
-        ArrowCastOptions, ArrowCastPlan, DataType, Field, Serie, SerieReader, StructType,
+        ArrowCastOptions, ArrowCastPlan, DataType, Field, Serie, StreamChunkedSerie, StructType,
     };
 
     fn stored() -> SchemaRef {
@@ -692,7 +692,7 @@ mod plans {
     fn a_reader_plans_once_and_casts_when_a_batch_is_pulled() {
         let (inner, pulled) = counted(3);
         let reader =
-            SerieReader::from_arrow_reader(Some(&target()), inner, ArrowCastOptions::new())
+            StreamChunkedSerie::from_arrow_reader(Some(&target()), inner, ArrowCastOptions::new())
                 .unwrap()
                 .into_arrow_reader();
 
@@ -720,9 +720,10 @@ mod plans {
             false,
         );
         let (inner, pulled) = counted(1);
-        let reader = SerieReader::from_arrow_reader(Some(&exact), inner, ArrowCastOptions::new())
-            .unwrap()
-            .into_arrow_reader();
+        let reader =
+            StreamChunkedSerie::from_arrow_reader(Some(&exact), inner, ArrowCastOptions::new())
+                .unwrap()
+                .into_arrow_reader();
         drop(reader);
 
         // Nothing wrapped it, so dropping it dropped the source directly.
@@ -745,7 +746,7 @@ mod plans {
         ]);
         let inner = yggdryl::arrow::batch_reader(stored(), [batch(0), broken, batch(9)]);
         let mut reader =
-            SerieReader::from_arrow_reader(Some(&required), inner, ArrowCastOptions::new())
+            StreamChunkedSerie::from_arrow_reader(Some(&required), inner, ArrowCastOptions::new())
                 .unwrap()
                 .into_arrow_reader();
 
@@ -761,7 +762,7 @@ mod plans {
     fn dropping_a_reader_early_releases_the_source() {
         let (inner, pulled) = counted(100);
         let mut reader =
-            SerieReader::from_arrow_reader(Some(&target()), inner, ArrowCastOptions::new())
+            StreamChunkedSerie::from_arrow_reader(Some(&target()), inner, ArrowCastOptions::new())
                 .unwrap()
                 .into_arrow_reader();
         assert!(reader.next().unwrap().is_ok());
@@ -833,7 +834,7 @@ mod plans {
 
         let (reader, _) = counted(2);
         let streamed =
-            SerieReader::from_arrow_reader(Some(&field), reader, ArrowCastOptions::new())
+            StreamChunkedSerie::from_arrow_reader(Some(&field), reader, ArrowCastOptions::new())
                 .unwrap()
                 .into_arrow_reader();
         assert_eq!(streamed.schema(), cast.schema());
@@ -845,7 +846,7 @@ mod plans {
         // because casting it would rebuild arrays it would hand back unchanged.
         let exact = batch_reader(cast.schema(), [cast.clone()]);
         let same: Vec<_> =
-            SerieReader::from_arrow_reader(Some(&field), exact, ArrowCastOptions::new())
+            StreamChunkedSerie::from_arrow_reader(Some(&field), exact, ArrowCastOptions::new())
                 .unwrap()
                 .into_arrow_reader()
                 .map(std::result::Result::unwrap)

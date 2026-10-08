@@ -10,6 +10,7 @@
 //! A token expires, so it is obtained again shortly before it does rather than
 //! per request, and nothing at all is read until the first request needs one.
 
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
@@ -44,9 +45,13 @@ const METADATA_TIMEOUT: Duration = Duration::from_secs(2);
 const IAM_CREDENTIALS_HOST: &str = "https://iamcredentials.googleapis.com";
 /// The largest token document read from any of these endpoints.
 const MAX_ANSWER: u64 = 256 * 1024;
+/// How many credential sources one value of the options holds a token for,
+/// the oldest let go first: a process names one or two, and the bound keeps
+/// one that names sources without end from growing.
+const LEASES: usize = 8;
 
 /// A credentials document, in whichever of the shapes it was written.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 enum Credential {
     /// A service-account key: an email and an RSA private key to sign with.
     ServiceAccount {
@@ -76,6 +81,7 @@ enum Credential {
 }
 
 /// Where a token comes from, decided once and then asked repeatedly.
+#[derive(Clone, PartialEq, Eq)]
 enum Source {
     /// A token the caller already holds; nothing is obtained or refreshed.
     Fixed(String),
@@ -91,11 +97,81 @@ enum Source {
 pub(crate) struct TokenCache {
     source: Source,
     scope: String,
-    held: Lease<Bearer>,
+    /// The lease every client built on the same options under the same
+    /// source and scope holds ([`TokenLeases`]).
+    held: Arc<Lease<Bearer>>,
+}
+
+/// The bearer tokens the clients built on one value of [`GoogleOptions`] -
+/// and on its clones - obtain: one lease per credential source and scope,
+/// so two clients under one credential ask for one token between them and
+/// clients under different credentials never share one. Held by the
+/// options, never by the process: options built afresh start with none.
+#[derive(Clone, Default)]
+pub(crate) struct TokenLeases(Arc<Mutex<Vec<Leased>>>);
+
+/// One source's lease, and the source and scope it was obtained for.
+struct Leased {
+    source: Source,
+    scope: String,
+    lease: Arc<Lease<Bearer>>,
+}
+
+impl TokenLeases {
+    /// The lease `source` obtains `scope`'s token under: the one already
+    /// held for both, else a new one, the oldest of `LEASES` let go to hold
+    /// it - a client still holding a released lease keeps using it.
+    fn lease(&self, source: &Source, scope: &str) -> Arc<Lease<Bearer>> {
+        let mut held = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(found) = held
+            .iter()
+            .find(|leased| leased.source == *source && leased.scope == scope)
+        {
+            return Arc::clone(&found.lease);
+        }
+        if held.len() >= LEASES {
+            held.remove(0);
+        }
+        let lease = Arc::new(new_lease());
+        held.push(Leased {
+            source: source.clone(),
+            scope: scope.to_owned(),
+            lease: Arc::clone(&lease),
+        });
+        lease
+    }
+}
+
+/// The sources and tokens held are secrets, so nothing of them is printed.
+impl std::fmt::Debug for TokenLeases {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let held = self.0.lock().map_or(0, |held| held.len());
+        formatter
+            .debug_struct("TokenLeases")
+            .field("held", &held)
+            .finish()
+    }
+}
+
+/// A lease on one source's bearer token.
+fn new_lease() -> Lease<Bearer> {
+    // No mandatory window: a token is used until it lapses, as the service
+    // that issued it allows.
+    Lease::new(
+        "Google bearer token",
+        REFRESH_MARGIN,
+        Duration::ZERO,
+        RETRY_PAUSE,
+        RETRY_PAUSE,
+    )
 }
 
 impl TokenCache {
     /// Decide where a token will come from, reading no network and no file.
+    ///
+    /// The lease the token is held under is the options' own for this source
+    /// and scope ([`TokenLeases`]), so a client built beside another on the
+    /// same options asks for no token the other already holds.
     ///
     /// # Errors
     ///
@@ -104,18 +180,15 @@ impl TokenCache {
     pub(crate) fn new(options: &GoogleOptions, anonymous: bool, environment: bool) -> Result<Self> {
         let scope = options.scope().to_owned();
         let source = Self::resolve(options, anonymous, environment)?;
+        let held = match source {
+            // Nothing is obtained, so nothing is worth sharing.
+            Source::Anonymous => Arc::new(new_lease()),
+            _ => options.leases().lease(&source, &scope),
+        };
         Ok(Self {
             source,
             scope,
-            // No mandatory window: a token is used until it lapses, as the
-            // service that issued it allows.
-            held: Lease::new(
-                "Google bearer token",
-                REFRESH_MARGIN,
-                Duration::ZERO,
-                RETRY_PAUSE,
-                RETRY_PAUSE,
-            ),
+            held,
         })
     }
 

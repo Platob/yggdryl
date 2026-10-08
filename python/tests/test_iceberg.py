@@ -13,6 +13,8 @@ import datetime
 import json
 import pathlib
 import pickle
+import subprocess
+import sys
 import threading
 import time
 
@@ -609,6 +611,80 @@ class TestLocations:
         assert str(namespace) == "bucket.desk"
 
 
+THREADED_COMMITS_SCRIPT = """
+import pathlib
+import sys
+
+import pandas
+import pyarrow as pa
+
+from yggdryl import IOBase
+from yggdryl.iceberg import IcebergOptions, IcebergTable, assign_field_ids
+
+arrow = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("venue", pa.string())])
+schema = assign_field_ids(arrow)
+root = pathlib.Path(sys.argv[1])
+four = IcebergOptions(write_parallelism=4, read_parallelism=4)
+
+
+def frame():
+    return pandas.DataFrame({"id": [1, 2, 3], "venue": ["XNAS", "XLON", None]})
+
+
+def batches():
+    for start in (10, 20):
+        yield pa.record_batch(
+            {"id": [start, start + 1], "venue": ["XNAS", "XPAR"]}, schema=arrow
+        )
+
+
+doors = {
+    "append a frame": lambda table: table.append(frame(), options=four),
+    "overwrite a frame": lambda table: table.overwrite(frame(), options=four),
+    "overwrite_where a table": lambda table: table.overwrite_where(
+        None, pa.Table.from_pandas(frame(), schema=arrow, preserve_index=False), options=four
+    ),
+    "append a generator": lambda table: table.append(batches(), options=four),
+    "merge a frame": lambda table: table.merge(frame(), ["id"], options=four),
+}
+for number, (door, write) in enumerate(doors.items()):
+    print("door:", door, flush=True)
+    table = IcebergTable.create(IOBase(root / str(number)), schema, ["venue"])
+    write(table)
+    assert table.scan().read_all().num_rows > 0, door
+print("door: append_serie through the folder", flush=True)
+table = IcebergTable.create(IOBase(root / "folder"), schema, ["venue"])
+written = IOBase(root / "folder").append_serie(batches(), num_threads=4)
+assert written.written_rows == 4, written
+print("ok")
+"""
+
+
+def test_no_commit_door_holds_the_gil_while_its_threads_write(tmp_path: pathlib.Path) -> None:
+    """A commit cuts and encodes its partitions on the write's threads, and
+    a thread letting go of a batch whose buffers ``pyarrow`` owns - a frame,
+    a table, a generator's batches - takes the GIL, as one that logs does:
+    so every door waiting on those threads must have released it, held the
+    two wait on each other for good. Each door is driven at four threads, in
+    a process of its own under a deadline, because the failure is a hang;
+    what it had printed names the door that hung.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", THREADED_COMMITS_SCRIPT, str(tmp_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired as hung:
+        seen = hung.stdout if isinstance(hung.stdout, str) else (hung.stdout or b"").decode()
+        doors = [line for line in seen.splitlines() if line.startswith("door:")]
+        raise AssertionError(f"a commit door hung holding the GIL; the last named: {doors[-1:]}") from hung
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().endswith("ok")
+
+
 class TestCommits:
     """Each commit writes data files, a manifest, a list, and a document."""
 
@@ -677,8 +753,10 @@ class TestCommits:
         table.append(_rows())
         table.overwrite(_rows(10))
 
+        # The partitions open when the source ends are written in tuple
+        # order, the absent venue first, and a scan reads them in that order.
         rows = table.scan().read_all()
-        assert rows.column("id").to_pylist() == [10, 11, 12]
+        assert rows.column("id").to_pylist() == [12, 10, 11]
         assert table.current_snapshot is not None
         assert table.current_snapshot.operation == "overwrite"
         # The previous snapshot is retained, which is what makes this reversible.
@@ -775,8 +853,9 @@ class TestPartitioning:
         # The directory spells it `null`, and only the manifest can say which.
         assert "venue=null" in absent[0].path
 
+        # Partitions are written in tuple order, the absent venue first.
         rows = table.scan().read_all()
-        assert rows.column("venue").to_pylist() == ["XNAS", "XNYS", None]
+        assert rows.column("venue").to_pylist() == [None, "XNAS", "XNYS"]
 
     def test_a_data_file_is_a_child_of_the_table(
         self, table: IcebergTable, tmp_path: pathlib.Path
@@ -1228,9 +1307,10 @@ class TestTimeTravel:
         first = table.current_snapshot.snapshot_id
         table.overwrite(_rows(10))
 
-        assert table.scan().read_all().column("id").to_pylist() == [10, 11, 12]
+        # Each snapshot's partitions in tuple order, the absent venue first.
+        assert table.scan().read_all().column("id").to_pylist() == [12, 10, 11]
         old = table.scan_at(first).read_all()
-        assert old.column("id").to_pylist() == [1, 2, 3]
+        assert old.column("id").to_pylist() == [3, 1, 2]
 
         # Filters take the same (column, value) pairs a lake read takes, and
         # the schema keeps the columns it names.
@@ -1638,6 +1718,21 @@ class TestIcebergOptions:
             options.write_parallelism = 0
         assert options.write_parallelism == 5
 
+        # The bound on open partitions defaults to 128, is recorded only once
+        # set, survives a pickle, and refuses zero naming its key.
+        assert options.max_open_partitions == 128
+        assert "max_open_partitions" not in repr(options)
+        options.max_open_partitions = 4
+        assert options.max_open_partitions == 4
+        assert pickle.loads(pickle.dumps(options)).max_open_partitions == 4
+        assert IcebergOptions(max_open_partitions=2).max_open_partitions == 2
+        assert IcebergOptions(max_open_partitions=2) != IcebergOptions()
+        with pytest.raises(ValueError, match=r"write\.max-open-partitions"):
+            IcebergOptions(max_open_partitions=0)
+        with pytest.raises(ValueError, match=r"write\.max-open-partitions"):
+            options.max_open_partitions = 0
+        assert options.max_open_partitions == 4
+
         # The staging folder is unset until a layer speaks, reads back as the
         # text it was given, takes a path as well as a URL, and refuses a
         # remote folder naming its key.
@@ -1701,6 +1796,7 @@ class TestIcebergOptions:
             ("read_parallel_min_files", 1),
             ("read_parallel_min_file_size", 1),
             ("write_parallelism", 1),
+            ("max_open_partitions", 1),
             ("write_staging", "off"),
             ("data_mime_type", "avro"),
         ]:
@@ -2179,7 +2275,8 @@ class TestMerging:
         # partition: the rows replace the three partitions they fall in.
         table_planning.merge(_rows_planning(10), [])
 
-        assert table_planning.scan().read_all().column("id").to_pylist() == [10, 11, 12]
+        # The replacing partitions in tuple order, the absent venue first.
+        assert table_planning.scan().read_all().column("id").to_pylist() == [12, 10, 11]
         assert table_planning.current_snapshot is not None
         assert table_planning.current_snapshot.operation == "overwrite"
 

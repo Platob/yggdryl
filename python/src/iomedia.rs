@@ -15,7 +15,7 @@
 //!
 //! [`batch_reader_from_any`] is the wide intake of the table-level writes -
 //! `IcebergTable`'s commits and `Tables.write` - and, through `stream_of`,
-//! of `Serie`, `ChunkedSerie` and `SerieReader.from_arrow_reader`: each
+//! of `Serie`, `ChunkedSerie` and `StreamChunkedSerie.from_arrow_reader`: each
 //! passes the options it reads rows under. `IOBase`'s per-shape writes
 //! never call it: each takes the shape its name says through its own strict
 //! intake, so the intent-specific entry points stay statically and
@@ -62,7 +62,7 @@ use pyo3::types::{
 use yggdryl::arrow::BatchReader;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::{LeadingFragment, TextOptions as CoreTextOptions};
-use yggdryl::{Field as CoreField, Level, SerieReader};
+use yggdryl::{Field as CoreField, Level, StreamChunkedSerie};
 
 use crate::chunked_serie::PyChunkedSerie;
 use crate::datatype::{
@@ -73,7 +73,7 @@ use crate::enums::{PyMimeType, core_media_type_from_value};
 use crate::expression::{PyFilter, PyPlan, PySelector, plan_from_value};
 use crate::field::{PyField, core_field_from_value, core_schema_to_pyarrow};
 use crate::scalar::RowPlan;
-use crate::serie::{PySerie, PySerieReader};
+use crate::serie::PySerie;
 use crate::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
 use yggdryl::ArrowCastOptions;
@@ -147,29 +147,12 @@ pub(crate) fn batch_reader_from_value(value: &Bound<'_, PyAny>) -> PyResult<Batc
     ))
 }
 
-/// A native value's own record batches, or `None` for any other value.
-///
-/// A `Serie`, a `ChunkedSerie` and a `SerieReader` export the Arrow
-/// `PyCapsule` Interface for foreign consumers; inside the binding they never
-/// cross it, so nothing they state is re-read through a C schema: a held
-/// column is the one batch of its stream, held chunks one batch each, and a
-/// reader is taken as the stream it is.
-///
-/// # Errors
-///
-/// Returns the core's refusal of a run or of a record holding an absent row,
-/// and a `ValueError` for a `SerieReader` already handed over.
-fn native_reader(value: &Bound<'_, PyAny>) -> PyResult<Option<BatchReader>> {
-    let reader = if let Ok(serie) = value.extract::<PyRef<'_, PySerie>>() {
-        SerieReader::from_serie(serie.inner.clone())
-    } else if let Ok(chunked) = value.extract::<PyRef<'_, PyChunkedSerie>>() {
-        SerieReader::from_chunked(chunked.inner.clone())
-    } else if let Ok(mut reader) = value.extract::<PyRefMut<'_, PySerieReader>>() {
-        Ok(reader.take()?)
-    } else {
+pub(crate) fn native_reader(value: &Bound<'_, PyAny>) -> PyResult<Option<BatchReader>> {
+    if !crate::serie::is_native_columnar(value) {
         return Ok(None);
-    };
-    reader
+    }
+    let source = crate::serie::serie_source_of(value)?;
+    StreamChunkedSerie::from_serie(source)
         .map(|reader| Some(reader.into_arrow_reader()))
         .map_err(value_error)
 }
@@ -702,8 +685,8 @@ impl Chained {
         if Arc::ptr_eq(&schema, &self.schema) || schema == self.schema {
             return Ok(item);
         }
-        SerieReader::from_arrow_reader(Some(&self.root), item, self.options)
-            .map(SerieReader::into_arrow_reader)
+        StreamChunkedSerie::from_arrow_reader(Some(&self.root), item, self.options)
+            .map(StreamChunkedSerie::into_arrow_reader)
             .map_err(value_error)
     }
 }

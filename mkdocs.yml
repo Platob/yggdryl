@@ -136,6 +136,9 @@ nav:
       - Scalar: types/scalar.md
       - Serie: types/serie.md
       - Chunked serie: types/chunked-serie.md
+      - Scalar row streams: types/stream-serie.md
+      - Native chunk streams: types/stream-chunked-serie.md
+      - Key series: types/key-serie.md
       - Window serie: types/window-serie.md
       - Cast: types/cast.md
       - Paths: types/paths.md

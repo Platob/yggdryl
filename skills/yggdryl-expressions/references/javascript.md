@@ -1,6 +1,6 @@
 # yggdryl-expressions in JavaScript
 
-`Term`, `Filter`, `Selector`, `Plan`, `Expression`, `FieldPath`, `Records`
+`Term`, `Filter`, `Selector`, `Plan`, `Expression`, `FieldPath`, `StreamSerie`
 and `BatchReader` come from `require('yggdryl')`; Arrow crosses as
 `apache-arrow` tables and batches through a copied IPC stream.
 

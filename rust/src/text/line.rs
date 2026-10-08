@@ -1357,7 +1357,7 @@ impl Element for TextLine {
     /// The XXH3-64 of [`body`](TextLine::body), the line past its row header,
     /// and nothing else.
     ///
-    /// The header's captures, the state, the predecessor and the cross code
+    /// The file URL, header captures, state, predecessor and cross code
     /// stay out: the instant, the row and the cross hash reach the identity
     /// beside this code, through [`Event::time_uuid`], so a line's code is
     /// what anyone holding its `body` cell computes.

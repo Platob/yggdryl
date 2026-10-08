@@ -216,6 +216,7 @@ mod iceberg {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
+            // Its one caller merges by key: v2 only, refused on v3.
             FormatVersion::V2,
             schema,
             spec,
@@ -310,6 +311,7 @@ mod iceberg {
         let path = root("flat-merge");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
+            // A keyed merge: v2 only, refused on v3.
             FormatVersion::V2,
             schema(),
             PartitionSpec::unpartitioned(),

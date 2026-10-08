@@ -70,8 +70,9 @@ pub(crate) struct MarketFacts {
     cumqty: Option<Decimal>,
     leavesqty: Option<Decimal>,
     /// The stop price, the shown and hidden parts of the quantity, what was
-    /// canceled and an option's strike, boxed: most elements state none of
-    /// them and pay one pointer.
+    /// canceled, an option's strike and the currency the instrument
+    /// originates in, boxed: most elements state none of them and pay one
+    /// pointer.
     terms: Option<Box<Terms>>,
     prevpx: Option<Decimal>,
     prevqty: Option<Decimal>,
@@ -147,8 +148,9 @@ impl BidAsk {
 }
 
 /// The order terms a market element may state beside its price and
-/// quantity, and the strike of the option it is about, held together
-/// because most elements state none of them.
+/// quantity, the strike of the option it is about and the currency the
+/// instrument originates in, held together because most elements state
+/// none of them.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Terms {
     stoppx: Option<Decimal>,
@@ -159,6 +161,9 @@ struct Terms {
     /// An operation's ordered quantity: held here, beside the terms, so an
     /// element stating none pays nothing for it.
     ordqty: Option<Decimal>,
+    /// The currency the instrument originates in, held only where stated
+    /// or filled - never [`Ccy::none`], which is none held.
+    origccy: Option<Ccy>,
 }
 
 impl Terms {
@@ -170,6 +175,7 @@ impl Terms {
             && self.hiddenqty.is_none()
             && self.cxlqty.is_none()
             && self.ordqty.is_none()
+            && self.origccy.is_none()
     }
 }
 
@@ -509,6 +515,9 @@ fn hidden_of(quantity: Option<Decimal>, display: Option<Decimal>) -> Option<Deci
 fn stated_ccy(ccy: &Ccy) -> Option<&Ccy> {
     (!ccy.is_none()).then_some(ccy)
 }
+
+/// The origin a holder holding none answers: one shared [`Ccy::none`].
+static NO_ORIGCCY: std::sync::LazyLock<Ccy> = std::sync::LazyLock::new(Ccy::none);
 
 /// Every redirection is written directly on the fields - never through a
 /// setter - so one change runs once and a chain of them cannot loop.
@@ -984,6 +993,22 @@ impl Market for MarketFacts {
             let before = std::mem::replace(&mut self.currency, currency);
             self.currency_moved(&before);
             self.quote_currency();
+        }
+    }
+
+    fn get_origccy(&self) -> &Ccy {
+        self.terms()
+            .and_then(|held| held.origccy.as_ref())
+            .unwrap_or(&*NO_ORIGCCY)
+    }
+
+    /// Lands as the currency does - a fill only where none is held - and
+    /// moves nothing else: the origin implies no other fact.
+    fn set_origccy(&mut self, ccy: Ccy, overwrite: bool) {
+        let held = self.get_origccy();
+        if lands(held, &ccy, held.is_none(), overwrite) {
+            let ccy = stated_ccy(&ccy).is_some().then_some(ccy);
+            self.set_terms(|held| held.origccy = ccy);
         }
     }
 
@@ -2177,6 +2202,7 @@ fn copy_market<T: Market + ?Sized, E: Market + ?Sized>(this: &mut T, other: &E) 
     this.set_stoppx(other.get_stoppx(), true);
     this.set_strikepx(other.get_strikepx(), true);
     this.set_currency(other.get_currency().clone(), true);
+    this.set_origccy(other.get_origccy().clone(), true);
     this.set_quantity(other.get_quantity(), true);
     this.set_displayqty(other.get_displayqty(), true);
     this.set_hiddenqty(other.get_hiddenqty(), true);

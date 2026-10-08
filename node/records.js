@@ -13,8 +13,8 @@
 // points. The representation-specific adapter widens to one native reader and
 // the intent-specific call redirects to the matching Rust primitive. The
 // Serie verbs are the one generic door: rows in any shape the crate holds
-// them - a Serie, a ChunkedSerie, a SerieReader - or any columnar value a
-// BatchReader is built from, read back as a SerieReader.
+// them - a Serie, a ChunkedSerie, a StreamChunkedSerie - or any columnar value a
+// BatchReader is built from, read back as a StreamChunkedSerie.
 
 const { arrow, ipcBytes } = require('./values.js')
 const optionProperties = require('./properties.js')
@@ -84,7 +84,12 @@ function installRecords({
   IOResult,
   RecordOptions,
   Serie,
-  SerieReader,
+  StreamChunkedSerie,
+  StreamSerie,
+  KeySerie,
+  KeySeries,
+  StreamKeySerie,
+  WindowSerie,
   TextOptions,
   Table,
   nativeWriteMode,
@@ -177,7 +182,16 @@ function installRecords({
   // encoded by Arrow JS itself. This is the explicit `BatchReader.from`
   // conversion contract; write methods do not silently accept a different
   // representation than their names declare.
+  function nativeSourceReader(source) {
+    if ([Serie, ChunkedSerie, StreamChunkedSerie, StreamSerie, KeySerie, KeySeries, StreamKeySerie, WindowSerie].some(Owner => source instanceof Owner)) {
+      return source.intoChunkedStream().intoArrowReader()
+    }
+    return null
+  }
+
   function batchReader(source, rootName) {
+    const native = nativeSourceReader(source)
+    if (native !== null) return native
     if (source instanceof BatchReader) return source
     if (isBytes(source)) {
       return BatchReader.fromIpc(ipcBytes(source, 'Arrow IPC batches'), rootName)
@@ -192,6 +206,8 @@ function installRecords({
   }
 
   function nativeArrowReader(source) {
+    const native = nativeSourceReader(source)
+    if (native !== null) return native
     if (source instanceof BatchReader) return source
     throw new TypeError(
       'reader must be a native BatchReader; use BatchReader.from(value) to convert another Arrow representation',
@@ -202,6 +218,8 @@ function installRecords({
   // classifier. Arrow JS has no C Data consumer, so each already-materialized
   // holder is encoded once into the native streaming reader boundary.
   function arrowTableReader(source, rootName) {
+    const native = nativeSourceReader(source)
+    if (native !== null) return native
     if (arrowKind(source) !== 'Table') {
       throw new TypeError('table must be an Apache Arrow JS Table')
     }
@@ -209,6 +227,8 @@ function installRecords({
   }
 
   function arrowRecordBatchReader(source, rootName) {
+    const native = nativeSourceReader(source)
+    if (native !== null) return native
     if (arrowKind(source) !== 'RecordBatch') {
       throw new TypeError('batch must be an Apache Arrow JS RecordBatch')
     }
@@ -988,16 +1008,21 @@ function installRecords({
     if (
       source instanceof Serie ||
       source instanceof ChunkedSerie ||
-      source instanceof SerieReader
+      source instanceof StreamChunkedSerie ||
+      source instanceof StreamSerie ||
+      source instanceof KeySerie ||
+      source instanceof KeySeries ||
+      source instanceof StreamKeySerie ||
+      source instanceof WindowSerie
     ) {
       return source
     }
     if (!isArrowShaped(source)) {
       throw new TypeError(
-        'value must be a Serie, a ChunkedSerie, a SerieReader, a BatchReader, an Apache Arrow JS Table or RecordBatch, or Arrow IPC bytes',
+        'value must be a Serie, a ChunkedSerie, a StreamChunkedSerie, a BatchReader, an Apache Arrow JS Table or RecordBatch, or Arrow IPC bytes',
       )
     }
-    return SerieReader.fromArrowReader(batchReader(source, rootName))
+    return StreamChunkedSerie.fromArrowReader(batchReader(source, rootName))
   }
 
   // The one generic write: preflighted, bounded and typed exactly as the
@@ -1017,7 +1042,7 @@ function installRecords({
       if (settings.field !== null) {
         const converted = emptyRecordsReader(settings)
         return Reflect.apply(writeSerieNative, handle, [
-          SerieReader.fromArrowReader(converted.reader),
+          StreamChunkedSerie.fromArrowReader(converted.reader),
           intent,
           converted.settings,
         ])

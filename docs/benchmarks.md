@@ -20,7 +20,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Holder | [Filesystems](holder/index.md#filesystems-performance) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |
 | Holder | [Object stores](holder/index.md#object-stores-performance) | Both clients against one in-process store over a real socket: reads, writes under either payload policy, and listings, beside `object_store` 0.13.2 |
 | Holder | [Bytes](holder/index.md#bytes-performance) | Criterion measured medians on one 8 MiB decoded fixture: Windows 11 x86_64, AMD Ryzen 5 150 (6 cores/12 thr... |
-| Holder | [Records](holder/index.md#records-performance) | Write-mode dispatch, 4,096 rows, one local Windows x86_64 release run (Criterion point estimates; regenerat... |
+| Holder | [StreamSerie](holder/index.md#records-performance) | Write-mode dispatch, 4,096 rows, one local Windows x86_64 release run (Criterion point estimates; regenerat... |
 | Holder | [Values](holder/index.md#values-performance) | Criterion measured one 16,384-record JSON value through `IOBase`; each compressed case includes coding and... |
 | Holder | [Call counts](holder/index.md#call-counts-performance) | One run of each operation over a 4 MiB in-memory value, wall clock beside the `IOBase` calls it makes |
 | Holder | [ZIP](holder/index.md#zip-performance) | `io_zip`: positional, whole and streamed member reads and writes, restart strides and a 2,000-member archive; one containerized x86_64 Linux release run |
@@ -45,6 +45,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Media | [Excel](media/excel.md#record-and-workbook-doors) | `media/excel`: 10,000 rows of five columns written and read as records, one cell through `Workbook`, a sheet into and from a `Serie`; one containerized x86_64 Linux release run |
 | Media | [Excel against openpyxl](media/excel.md#against-openpyxl) | `python/benchmarks/media/excel.py`: one workbook read and written through openpyxl and this crate at 10,000 and 100,000 rows, one cell, and a sheet's round trip; one containerized x86_64 Linux run |
 | Media | [Iceberg](media/iceberg.md#performance) | Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1 |
+| Media | [Iceberg commits](media/iceberg.md#one-commit-per-write) | Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.98.1: two-million-row commits on one thread and on the host's, before and after the partition writer that closes each partition as the stream moves past it |
 | Media | [Iceberg against PyIceberg](media/iceberg.md#against-pyiceberg) | `python/benchmarks/media/iceberg.py`: appends, opens and four scans of a 1M-row table, unpartitioned and in eight partitions, beside PyIceberg's SQLite catalog; one containerized x86_64 Linux run |
 | Types | [Cast](types/cast.md) | One compiled `ArrowCastPlan` against planning per batch, over 1, 10 and 1,000 batches of 64 rows; one con... |
 | Types | [Nested JSON text](types/cast.md#nested-json-text) | A struct, a serie and a map column written as JSON text and read back at 1,024 and 16,384 rows, beside Arrow's list-to-text kernel and a serde_json parse; one containerized x86_64 Linux run |

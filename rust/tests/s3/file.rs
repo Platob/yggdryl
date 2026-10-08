@@ -928,3 +928,344 @@ mod create {
         }
     }
 }
+
+mod tail {
+    //! [`IOBase::read_tail_bytes`], the footer-first read: one `GET` with a
+    //! suffix range and no `HEAD` before it, the total learned from the
+    //! answer's `Content-Range`.
+
+    use crate::mod_::{BUCKET, file, file_on, payload, store};
+    use crate::server::{FakeS3, Recorded};
+    use yggdryl::s3::Provider;
+    use yggdryl::{Error, IOBase};
+
+    /// What each recorded request was: its method and the range it asked.
+    fn asked(store: &FakeS3) -> Vec<(String, Option<String>)> {
+        store
+            .requests()
+            .iter()
+            .map(|request: &Recorded| {
+                let range = request
+                    .headers
+                    .iter()
+                    .find(|(name, _)| name == "range")
+                    .map(|(_, value)| value.clone());
+                (request.method.clone(), range)
+            })
+            .collect()
+    }
+
+    fn get(range: &str) -> (String, Option<String>) {
+        ("GET".to_owned(), Some(range.to_owned()))
+    }
+
+    #[test]
+    fn a_refused_tail_read_is_the_stores_refusal_and_never_an_empty_object() {
+        let store = store();
+        store.put(BUCKET, "lake/part.parquet", &payload(4096));
+        let handle = file(&store, "lake/part.parquet");
+
+        store.fail_next(403, "AccessDenied", 1);
+        store.clear_requests();
+        let error = handle.read_tail_bytes(8).expect_err("an injected refusal");
+        assert!(
+            matches!(&error, Error::Remote { status: 403, code, .. } if code == "AccessDenied"),
+            "{error:?}"
+        );
+        assert_eq!(asked(&store), [get("bytes=-8")], "one request, refused");
+        // A refusal teaches nothing: the size is asked of the store again.
+        store.clear_requests();
+        assert_eq!(handle.size(), 4096);
+        assert_eq!(asked(&store), [("HEAD".to_owned(), None)]);
+    }
+
+    #[test]
+    fn a_tail_read_is_one_suffix_ranged_get_and_states_the_size() {
+        let store = store();
+        let bytes = payload(4096);
+        store.put(BUCKET, "lake/part.parquet", &bytes);
+        let mut handle = file(&store, "lake/part.parquet");
+
+        store.clear_requests();
+        let (tail, total) = handle.read_tail_bytes(8).expect("the tail");
+        assert_eq!(tail, &bytes[4088..]);
+        assert_eq!(total, 4096);
+        assert_eq!(
+            asked(&store),
+            [get("bytes=-8")],
+            "one GET with a suffix range, no HEAD before it"
+        );
+
+        // The total the answer stated is kept as a listed size is: asking
+        // for it costs nothing, and a range after it asks for no size.
+        store.clear_requests();
+        assert_eq!(handle.size(), 4096);
+        assert_eq!(store.request_count(), 0, "the size the tail read stated");
+        assert_eq!(
+            handle.read_range_bytes(0, 4).expect("a window"),
+            &bytes[..4]
+        );
+        assert_eq!(asked(&store), [get("bytes=0-3")]);
+
+        // A write through the handle drops it, so the next size is asked.
+        handle.write_all_bytes(b"PAR1").expect("a write");
+        store.clear_requests();
+        assert_eq!(handle.size(), 4);
+        assert_eq!(asked(&store), [("HEAD".to_owned(), None)]);
+    }
+
+    #[test]
+    fn a_window_wider_than_the_object_answers_all_of_it_for_the_same_get() {
+        let store = store();
+        let bytes = payload(100);
+        store.put(BUCKET, "lake/part.parquet", &bytes);
+        let handle = file(&store, "lake/part.parquet");
+
+        store.clear_requests();
+        assert_eq!(
+            handle.read_tail_bytes(64 * 1024).expect("the whole object"),
+            (bytes, 100)
+        );
+        assert_eq!(asked(&store), [get("bytes=-65536")]);
+    }
+
+    #[test]
+    fn an_empty_object_and_a_missing_one_answer_nothing_for_one_get() {
+        let store = store();
+        store.put(BUCKET, "lake/empty.parquet", b"");
+        let empty = file(&store, "lake/empty.parquet");
+
+        // No suffix range is satisfiable over no bytes: the store's 416 is a
+        // total of zero, and the zero is kept.
+        store.clear_requests();
+        assert_eq!(empty.read_tail_bytes(8).expect("nothing"), (Vec::new(), 0));
+        assert_eq!(asked(&store), [get("bytes=-8")]);
+        assert_eq!(store.requests()[0].status, 416);
+        store.clear_requests();
+        assert_eq!(empty.size(), 0);
+        assert!(empty.exists(), "an empty object is there");
+        assert_eq!(store.request_count(), 0);
+
+        // Absence reads as emptiness, and teaches nothing to keep.
+        let missing = file(&store, "lake/missing.parquet");
+        store.clear_requests();
+        assert_eq!(
+            missing.read_tail_bytes(8).expect("nothing"),
+            (Vec::new(), 0)
+        );
+        assert_eq!(asked(&store), [get("bytes=-8")]);
+        assert_eq!(store.requests()[0].status, 404);
+        store.clear_requests();
+        assert!(!missing.exists());
+        assert_eq!(asked(&store), [("HEAD".to_owned(), None)]);
+    }
+
+    #[test]
+    fn a_store_that_reads_no_range_answers_its_tail_out_of_the_whole_object() {
+        let store = store();
+        let bytes = payload(4096);
+        store.put(BUCKET, "lake/part.parquet", &bytes);
+        store.ignore_ranges(true);
+        let handle = file(&store, "lake/part.parquet");
+
+        store.clear_requests();
+        let (tail, total) = handle.read_tail_bytes(8).expect("the tail");
+        assert_eq!(tail, &bytes[4088..]);
+        assert_eq!(total, 4096, "the whole body's length is the total");
+        assert_eq!(asked(&store), [get("bytes=-8")]);
+        assert_eq!(store.requests()[0].status, 200);
+    }
+
+    #[test]
+    fn google_reads_the_same_suffix_and_azure_counts_back_from_its_size() {
+        let store = store();
+        let bytes = payload(4096);
+        for provider in [Provider::Aws, Provider::Google, Provider::Azure] {
+            let key = format!("lake/{}.parquet", provider.service());
+            store.put(BUCKET, &key, &bytes);
+            let handle = file_on(&store, provider, &key);
+
+            store.clear_requests();
+            let (tail, total) = handle.read_tail_bytes(8).expect("the tail");
+            assert_eq!(tail, &bytes[4088..], "{provider}");
+            assert_eq!(total, 4096, "{provider}");
+            let expected = match provider {
+                // Azure Blob Storage reads no suffix range: its size, then
+                // the range counted back from it.
+                Provider::Azure => vec![("HEAD".to_owned(), None), get("bytes=4088-4095")],
+                Provider::Aws | Provider::Google => vec![get("bytes=-8")],
+            };
+            assert_eq!(asked(&store), expected, "{provider}");
+            if provider == Provider::Google {
+                let media = store.requests()[0]
+                    .query
+                    .iter()
+                    .any(|(name, value)| name == "alt" && value == "media");
+                assert!(media, "the media download carries the range");
+            }
+        }
+    }
+
+    #[test]
+    fn an_open_handle_counts_back_from_the_size_it_holds_and_a_staged_one_asks_nothing() {
+        let store = store();
+        let bytes = payload(4096);
+        store.put(BUCKET, "lake/part.parquet", &bytes);
+        let mut handle = file(&store, "lake/part.parquet");
+        handle.open().expect("an open");
+
+        store.clear_requests();
+        let (tail, total) = handle.read_tail_bytes(8).expect("the tail");
+        assert_eq!((tail.as_slice(), total), (&bytes[4088..], 4096));
+        assert_eq!(asked(&store), [get("bytes=4088-4095")]);
+        handle.close().expect("a close");
+
+        // An open scope that found nothing asks nothing more.
+        let mut missing = file(&store, "lake/missing.parquet");
+        missing.open().expect("an open of nothing");
+        store.clear_requests();
+        assert_eq!(
+            missing.read_tail_bytes(8).expect("nothing"),
+            (Vec::new(), 0)
+        );
+        assert_eq!(store.request_count(), 0);
+        missing.close().expect("a close");
+
+        // A staged write is what the handle answers, from memory.
+        let mut staged = file(&store, "lake/staged.parquet");
+        staged.truncate(0).expect("an empty stage");
+        staged.pwrite(0, b"PAR1....PAR1").expect("a staged write");
+        store.clear_requests();
+        assert_eq!(
+            staged.read_tail_bytes(4).expect("the staged tail"),
+            (b"PAR1".to_vec(), 12)
+        );
+        assert_eq!(store.request_count(), 0);
+        staged.close().expect("the stage published");
+    }
+}
+
+/// What a Parquet read over a closed object costs: its end, the footer in
+/// it, and the length learned beside it, in one suffix-ranged `GET` - no
+/// `HEAD` for the size the footer is counted back from.
+#[cfg(feature = "parquet")]
+mod parquet {
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch};
+    use arrow_schema::{DataType, Field, Schema};
+    use yggdryl::IOMedia;
+
+    use crate::mod_::{file, store};
+    use crate::server::FakeS3;
+
+    /// `count` rows of one column whose values do not compress, so the file
+    /// is about eight bytes a row.
+    fn rows(count: i64) -> RecordBatch {
+        let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, false)]));
+        // The golden-ratio multiplier, `0x9E37_79B9_7F4A_7C15` as an `i64`.
+        let values = (0..count).map(|row| row.wrapping_mul(-7_046_029_254_386_353_131));
+        RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from_iter_values(values))])
+            .expect("a batch")
+    }
+
+    /// Write `batch` as the object `key` through its own handle.
+    fn written(store: &FakeS3, key: &str, batch: RecordBatch) {
+        let mut handle = file(store, key);
+        let options = handle.record_options().expect("an encoding");
+        handle
+            .overwrite_arrow_batch(batch, &options)
+            .expect("a written batch");
+    }
+
+    /// Each recorded request as its method and the range it asked.
+    fn asked(store: &FakeS3) -> Vec<String> {
+        store
+            .requests()
+            .iter()
+            .map(|request| {
+                let range = request
+                    .headers
+                    .iter()
+                    .find(|(name, _)| name == "range")
+                    .map_or("whole", |(_, value)| value.as_str());
+                format!("{} {range}", request.method)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_footer_read_is_one_suffix_ranged_get_and_no_head() {
+        let store = store();
+        written(&store, "lake/part.parquet", rows(64));
+        let handle = file(&store, "lake/part.parquet");
+        let options = handle.record_options().expect("an encoding");
+
+        // The schema and the row count are the footer's: the file's last
+        // 64 KiB, which a small file is all of.
+        store.clear_requests();
+        let field = handle.read_arrow_field(&options).expect("the schema");
+        assert!(field.to_string().contains("id"), "{field}");
+        assert_eq!(asked(&store), ["GET bytes=-65536"]);
+        let handle = file(&store, "lake/part.parquet");
+        store.clear_requests();
+        assert_eq!(handle.row_size().expect("a row count"), 64);
+        assert_eq!(asked(&store), ["GET bytes=-65536"]);
+
+        // A read of every row takes the file's last MiB, which a file of at
+        // most that much arrives whole in.
+        let handle = file(&store, "lake/part.parquet");
+        store.clear_requests();
+        let read: usize = handle
+            .read_arrow_reader(&options)
+            .expect("a reader")
+            .map(|batch| batch.expect("a batch").num_rows())
+            .sum();
+        assert_eq!(read, 64);
+        assert_eq!(asked(&store), ["GET bytes=-1048576"]);
+    }
+
+    #[test]
+    fn a_read_of_a_file_past_a_mebibyte_takes_its_end_then_the_chunks_it_lacks() {
+        let store = store();
+        written(&store, "lake/large.parquet", rows(200_000));
+        let size = store
+            .get(crate::mod_::BUCKET, "lake/large.parquet")
+            .expect("the object")
+            .len();
+        assert!(size > 1024 * 1024, "{size} bytes");
+        let handle = file(&store, "lake/large.parquet");
+        let options = handle.record_options().expect("an encoding");
+
+        store.clear_requests();
+        let read: usize = handle
+            .read_arrow_reader(&options)
+            .expect("a reader")
+            .map(|batch| batch.expect("a batch").num_rows())
+            .sum();
+        assert_eq!(read, 200_000);
+        let asked = asked(&store);
+        assert_eq!(asked[0], "GET bytes=-1048576", "{asked:?}");
+        assert!(
+            asked[1..]
+                .iter()
+                .all(|request| request.starts_with("GET bytes=")
+                    && !request.starts_with("GET bytes=-")),
+            "the chunks are ranged reads, and nothing asks the size: {asked:?}"
+        );
+        assert_eq!(
+            asked.len(),
+            2,
+            "the end, then the part of the one column chunk it lacks: {asked:?}"
+        );
+        // The part it lacks runs from the chunk's start, right after the
+        // leading magic, to the byte before the end in hand: nothing the end
+        // holds is asked for twice.
+        let held_from = size - 1024 * 1024;
+        assert_eq!(
+            asked[1],
+            format!("GET bytes=4-{}", held_from - 1),
+            "{asked:?}"
+        );
+    }
+}

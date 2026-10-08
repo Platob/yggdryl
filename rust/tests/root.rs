@@ -133,6 +133,8 @@ mod isin;
 mod isin_registry;
 #[path = "root/join.rs"]
 mod join;
+#[path = "root/key_serie.rs"]
+mod key_serie;
 #[path = "root/lei.rs"]
 mod lei;
 #[path = "root/lib.rs"]
@@ -147,12 +149,16 @@ mod mapping;
 mod marketdatakind;
 #[path = "root/marketdatatype.rs"]
 mod marketdatatype;
+#[path = "root/media_serie.rs"]
+mod media_serie;
 #[path = "root/media_type.rs"]
 mod media_type;
 #[path = "root/merge.rs"]
 mod merge;
 #[path = "root/metadata.rs"]
 mod metadata;
+#[path = "root/mic.rs"]
+mod mic;
 #[path = "root/mime_type.rs"]
 mod mime_type;
 #[cfg(feature = "internals")]
@@ -183,8 +189,8 @@ mod sedol;
 mod serde;
 #[path = "root/serie.rs"]
 mod serie;
-#[path = "root/serie_source.rs"]
-mod serie_source;
+#[path = "root/shared_stream.rs"]
+mod shared_stream;
 #[path = "root/side.rs"]
 mod side;
 #[path = "root/sort_options.rs"]
@@ -193,6 +199,8 @@ mod sort_options;
 mod spill;
 #[path = "root/state.rs"]
 mod state;
+#[path = "root/stream_serie.rs"]
+mod stream_serie;
 #[path = "root/string.rs"]
 mod string;
 #[path = "root/structure.rs"]

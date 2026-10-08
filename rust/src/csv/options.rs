@@ -6,9 +6,6 @@ use crate::media::IORecordOptions;
 use crate::text::{LineSep, expected_got};
 use crate::{Error, Field, Filter, Level, Result, Selector};
 
-/// Bytes per batch a CSV read closes on when the row bound has not: 64 MiB.
-pub const DEFAULT_CSV_BATCH_BYTE_SIZE: u64 = 64 * 1024 * 1024;
-
 /// Records sampled to infer a column's datatype when no field is declared.
 pub const DEFAULT_CSV_INFER_ROW_SIZE: usize = 1024;
 
@@ -107,8 +104,8 @@ impl CsvOptions {
             select: Selector::all(),
             merge_by: Selector::all(),
             safe: true,
-            batch_byte_size: Some(DEFAULT_CSV_BATCH_BYTE_SIZE),
-            batch_row_size: Some(crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE),
+            batch_byte_size: None,
+            batch_row_size: None,
             max_row_size: None,
             row_offset: None,
             max_byte_size: None,

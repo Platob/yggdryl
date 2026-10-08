@@ -10,6 +10,8 @@
 
 use std::path::{Path, PathBuf};
 
+use super::token::TokenLeases;
+
 /// The OAuth 2.0 scope a read-write storage client asks for.
 ///
 /// `devstorage.full_control` is what the official clients request, because
@@ -18,6 +20,11 @@ use std::path::{Path, PathBuf};
 pub const DEFAULT_SCOPE: &str = "https://www.googleapis.com/auth/devstorage.full_control";
 
 /// How this backend reaches Google Cloud Storage in particular.
+///
+/// The clients built on one value of these options, and on its clones, share
+/// the bearer token each credential source obtains: two `gs://` handles under
+/// one credential ask for one token between them, and handles under
+/// different credentials never share one.
 ///
 /// ```
 /// use yggdryl::s3::{GoogleOptions, S3Options};
@@ -42,6 +49,9 @@ pub struct GoogleOptions {
     storage_class: Option<String>,
     predefined_acl: Option<String>,
     metadata_host: Option<String>,
+    /// The tokens the clients built on these options hold, per source and
+    /// scope - shared by every clone, started empty by a new value.
+    leases: TokenLeases,
 }
 
 impl GoogleOptions {
@@ -207,6 +217,11 @@ impl GoogleOptions {
     /// The metadata host instance tokens are asked of, when one was named.
     pub fn metadata_host(&self) -> Option<&str> {
         self.metadata_host.as_deref()
+    }
+
+    /// The tokens the clients built on these options share.
+    pub(crate) const fn leases(&self) -> &TokenLeases {
+        &self.leases
     }
 
     /// Fill from `ambient` every knob this one does not set for itself.

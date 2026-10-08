@@ -200,24 +200,61 @@ pub(crate) fn merge_arrow_reader_default(
     Ok(count.result())
 }
 
+/// [`crate::IOMedia::append_serie`]'s default: `value` crossed as the
+/// batches it already is, under `options` or the handle's own.
+pub(crate) fn append_serie_default(
+    handle: &mut (impl IOBase + ?Sized),
+    value: crate::Serie,
+    options: Option<&RecordOptions>,
+) -> Result<IOResult> {
+    if crate::text::Format::from_media_type(handle.media_type()).is_ok() {
+        crate::iomedia::require_document_mode(crate::IOMode::Append)?;
+    }
+    let options = crate::iomedia::own_options(&*handle, options)?;
+    let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
+    append_arrow_reader_default(handle, batches, &options)
+}
+
+/// [`crate::IOMedia::merge_serie`]'s default: `value` crossed as the
+/// batches it already is, under `options` or the handle's own.
+pub(crate) fn merge_serie_default(
+    handle: &mut (impl IOBase + ?Sized),
+    value: crate::Serie,
+    options: Option<&RecordOptions>,
+) -> Result<IOResult> {
+    if crate::text::Format::from_media_type(handle.media_type()).is_ok() {
+        crate::iomedia::require_document_mode(crate::IOMode::Merge)?;
+    }
+    let options = crate::iomedia::own_options(&*handle, options)?;
+    let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
+    merge_arrow_reader_default(handle, batches, &options)
+}
+
 /// The common overwrite implementation for byte and folder handles.
 ///
-/// [`crate::IOMedia::overwrite_arrow_reader`] is required so a media or table format
-/// can make publication one native operation. Implementations whose only
-/// publication primitive is the byte surface call this function; it performs
-/// all generic shaping and reaches exactly one encoding writer.
+/// [`crate::IOMedia::overwrite_serie`] is required so a media or table
+/// format can make publication one native operation. Implementations whose
+/// only publication primitive is the byte surface call this function; it
+/// crosses `value` as the batches it already is, performs all generic
+/// shaping and reaches exactly one encoding writer. `options` absent is the
+/// handle's own.
 ///
 /// # Errors
 ///
 /// Returns a field, cast, listing, encoding, or write failure. A non-empty
 /// match key is refused because overwrite never guesses merge intent.
 #[doc(hidden)]
-pub fn overwrite_arrow_reader_default(
+pub fn overwrite_serie_default(
     handle: &mut (impl IOBase + ?Sized),
-    batches: crate::arrow::BatchReader,
-    options: &RecordOptions,
+    value: crate::Serie,
+    options: Option<&RecordOptions>,
 ) -> Result<IOResult> {
-    overwrite_arrow_reader_default_with_field(handle, batches, options).map(|(_, result)| result)
+    if crate::text::Format::from_media_type(handle.media_type()).is_ok() {
+        return crate::iomedia::overwrite_document(handle, value, options);
+    }
+    let options = crate::iomedia::own_options(&*handle, options)?;
+    let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
+    overwrite_arrow_reader_default_with_field(handle, batches, &options).map(|(_, result)| result)
 }
 
 /// Run the default overwrite and return the logical field actually published.
@@ -260,11 +297,13 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
     let Some(first) = commits.next() else {
         // Overwrite is the one intent for which an empty input still
         // publishes its shaped schema and clears the prior rows.
-        handle
-            .overwrite_prepared_arrow_reader(crate::arrow::batch_reader(schema, []), &delegated)?;
+        handle.overwrite_prepared_serie(
+            crate::iomedia::landed(crate::arrow::batch_reader(schema, []))?,
+            &delegated,
+        )?;
         return Ok((published, count.result()));
     };
-    handle.overwrite_prepared_arrow_reader(first?, &delegated)?;
+    handle.overwrite_prepared_serie(crate::iomedia::landed(first?)?, &delegated)?;
     // Replacing every cadence would retain only the last one. Once the
     // first prefix is visible, later overwrite cadences are appends.
     for commit in commits {
@@ -963,9 +1002,8 @@ impl ArrowWriteSession {
             .expect("a publishing session has resolved its target")
         {
             ArrowWriteTarget::Leaf { stored } => match mode {
-                crate::IOMode::Overwrite => {
-                    handle.overwrite_prepared_arrow_reader(batches, &self.delegated)?
-                }
+                crate::IOMode::Overwrite => handle
+                    .overwrite_prepared_serie(crate::iomedia::landed(batches)?, &self.delegated)?,
                 crate::IOMode::Append => {
                     append_leaf_onto(handle, batches, &self.delegated, stored)?
                 }
@@ -986,9 +1024,8 @@ impl ArrowWriteSession {
                 }
             },
             ArrowWriteTarget::TextLeaf => match mode {
-                crate::IOMode::Overwrite => {
-                    handle.overwrite_prepared_arrow_reader(batches, &self.delegated)?
-                }
+                crate::IOMode::Overwrite => handle
+                    .overwrite_prepared_serie(crate::iomedia::landed(batches)?, &self.delegated)?,
                 crate::IOMode::Append => append_leaf(handle, batches, &self.delegated)?,
                 crate::IOMode::Merge => {
                     merge_leaf(handle, batches, &self.delegated, self.delegated.merge_by())?
@@ -1195,8 +1232,16 @@ pub(crate) fn leaf_field(
     }
     match options {
         RecordOptions::Ipc(ipc) => Ok(crate::ipc::read_field(handle, ipc)?),
+        // The Parquet reader lands its rows under a root stating no
+        // metadata - neither the file's key-value pairs nor the root's own
+        // the Arrow schema message carries - so the schema answers that
+        // same root, and a schema read and the rows never disagree.
         #[cfg(feature = "parquet")]
-        RecordOptions::Parquet(parquet) => Ok(crate::parquet::read_field(handle, parquet)?),
+        RecordOptions::Parquet(parquet) => {
+            let mut field = crate::parquet::read_field(handle, parquet)?;
+            field.clear_metadata();
+            Ok(field)
+        }
         RecordOptions::Avro(avro) => Ok(crate::avro::read_field(handle, avro)?),
         RecordOptions::Text(text) => text.source_field(),
         RecordOptions::Xmla(xmla) => crate::xmla::read_field(handle, xmla),
@@ -1336,7 +1381,7 @@ fn merge_leaf_onto(
     // cannot recursively merge the result against itself.
     rewrite.take_field();
     rewrite.set_merge_by(crate::Selector::all());
-    handle.overwrite_prepared_arrow_reader(merged.rows, &rewrite)
+    handle.overwrite_prepared_serie(crate::iomedia::landed(merged.rows)?, &rewrite)
 }
 
 /// Add `incoming` after a leaf's current rows.
@@ -1384,7 +1429,7 @@ fn append_leaf_onto(
     let appended = crate::arrow::appended(current, incoming, target, options.safe())?;
     rewrite.take_field();
     rewrite.set_merge_by(crate::Selector::all());
-    handle.overwrite_prepared_arrow_reader(appended, &rewrite)
+    handle.overwrite_prepared_serie(crate::iomedia::landed(appended)?, &rewrite)
 }
 
 /// Resolve the root Field a merge or an append produces.

@@ -19,7 +19,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::arrow::{ALIVE, ASKLIMITS, BIDLIMITS, DELTAS, EXECUTIONS};
+use super::arrow::{ALIVE, ASKLIMITS, BIDLIMITS, DELTA, EVENTS, EXECUTIONS};
 use super::{ElementColumn, EventColumn, MarketColumn, MarketData};
 use crate::MarketDataKind;
 use crate::arrow::BatchReader;
@@ -27,7 +27,7 @@ use crate::expression::{FieldPath, Function, Ordering, Plan, Projection, Selecto
 use crate::{Error, Result};
 
 /// Every nested column of the root row: what a flat view drops.
-const NESTED: [&str; 5] = [ALIVE, DELTAS, EXECUTIONS, BIDLIMITS, ASKLIMITS];
+const NESTED: [&str; 6] = [ALIVE, DELTA, EVENTS, EXECUTIONS, BIDLIMITS, ASKLIMITS];
 
 /// One named reading of a `marketdata` stream.
 ///
@@ -49,7 +49,7 @@ const NESTED: [&str; 5] = [ALIVE, DELTAS, EXECUTIONS, BIDLIMITS, ASKLIMITS];
 /// let plan = MarketData::plan(&view, &["identifiers['clordid'] as clordid".parse()?])?;
 /// assert!(plan
 ///     .to_string()
-///     .starts_with("select * exclude (alive, deltas, executions, bidlimits, asklimits)"));
+///     .starts_with("select * exclude (alive, delta, events, executions, bidlimits, asklimits)"));
 /// assert_eq!(plan.to_string().parse::<yggdryl::Plan>()?, plan);
 /// # Ok(())
 /// # }
@@ -64,8 +64,8 @@ pub enum MarketView {
     Executions,
     /// One row per execution of every trade, the trade's columns beside it.
     Trades,
-    /// One row per book, its deltas - and a complete book's alive entries
-    /// and levels - kept nested.
+    /// One row per book, its delta and its events - and a complete book's
+    /// alive entries and levels - kept nested.
     Books,
     /// Every leaf of one element's chain, in the order it happened: ordered
     /// by `currunix`, the leaves that share an instant kept in the order the
@@ -171,11 +171,15 @@ fn category(kind: MarketDataKind) -> Term {
     Term::column(MarketColumn::MarketDataKind.name()).eq(Term::literal(kind.as_str()))
 }
 
-/// `marketdatakind = 'BOOK' and deltas is not null`: the books, which
-/// state their deltas - a complete one its alive entries beside them -
-/// where a snapshot control states neither.
+/// `marketdatakind = 'BOOK' and (delta is not null or events is not null)`:
+/// the books, which state their delta and their events - a complete one
+/// its alive entries beside them - where a snapshot control states none.
 fn books() -> Term {
-    category(MarketDataKind::Book).and(Term::column(DELTAS).is_not_null())
+    category(MarketDataKind::Book).and(
+        Term::column(DELTA)
+            .is_not_null()
+            .or(Term::column(EVENTS).is_not_null()),
+    )
 }
 
 /// `unnest(<serie>) as <name>`: the projection that lays a serie flat.
@@ -204,8 +208,8 @@ impl MarketData {
                 flat().with_projection(unnested(Term::column(EXECUTIONS), "execution")),
                 category(MarketDataKind::Trade),
             ),
-            // A book keeps its alive entries and its deltas; `executions`
-            // is a trade's column, the trades view's to lay flat.
+            // A book keeps its alive entries, its delta and its events;
+            // `executions` is a trade's column, the trades view's to lay flat.
             MarketView::Books => (Selector::all_except([EXECUTIONS]), books()),
             MarketView::Lifecycle { crosscode } => (
                 flat(),

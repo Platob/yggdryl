@@ -6,6 +6,7 @@
     },
     "nullable": false,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "65001",
       "FIX:transient": "false",
       "description": "The element's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
@@ -19,6 +20,7 @@
     },
     "nullable": false,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "65002",
       "FIX:transient": "false",
       "description": "The identity every element of one chain shares, derived from the code they share; the element's own where it names none.",
@@ -32,6 +34,7 @@
     },
     "nullable": false,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "65003",
       "FIX:transient": "false",
       "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and of the side an order or an execution takes, 10:1:ORD-1, side 0 on one of side UKNW and on every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its chain's once followed.",
@@ -45,6 +48,7 @@
     },
     "nullable": false,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "65004",
       "FIX:transient": "false",
       "description": "The XXH3-64 of what the event states and the named FIX content behind it.",
@@ -58,6 +62,7 @@
     },
     "nullable": false,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "65005",
       "FIX:transient": "false",
       "description": "The XXH3-64 of the cross code; zero where the element names none.",
@@ -94,6 +99,7 @@
     },
     "nullable": false,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "65007",
       "FIX:transient": "false",
       "description": "When the event happened: the settled instant, UTC.",
@@ -109,6 +115,7 @@
     },
     "nullable": false,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:names": [
         "CreationTime"
       ],
@@ -127,6 +134,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "65009",
       "FIX:transient": "false",
       "description": "When the message was recorded: by its carrier, where the carrier states one, else by its sender, where it states a SendingTime; the earliest its statements know.",
@@ -142,6 +150,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "65010",
       "FIX:transient": "false",
       "description": "When the message stops being good: ExpireTime, else ValidUntilTime, else the end of the day ExpireDate names; MaturityDate is the instrument's, no deadline; a newer explicit deadline replaces the one its chain carried.",
@@ -157,6 +166,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "65011",
       "FIX:transient": "false",
       "description": "When the event this one follows happened, where it follows one.",
@@ -172,6 +182,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "65012",
       "FIX:transient": "false",
       "description": "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of.",
@@ -185,6 +196,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "65013",
       "FIX:transient": "false",
       "description": "The identity of the event this one follows, where it follows one.",
@@ -198,6 +210,7 @@
     },
     "nullable": false,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "65014",
       "FIX:transient": "false",
       "description": "The message's place among the messages of its instant, never null: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later.",
@@ -212,6 +225,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "statecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "65015",
       "FIX:transient": "false",
       "description": "The state the message reached, as the code of a lifecycle-sorted enum: FILLED on an execution the parse split off; otherwise the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed, and a row stating one is the row's word.",
@@ -226,6 +240,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "marketdatakindcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "65016",
       "description": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UKNW where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word.",
       "display": "Market Data Kind"
@@ -239,10 +254,24 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "marketdatatypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "65017",
       "FIX:transient": "false",
       "description": "The type of its kind the message is, as the member of the marketdatatype enum: its order type from OrdType, its quote type from QuoteType, its trade type from TrdType, its book entry type from MDEntryType - the field its kind names first, each value read through the dictionary's FIX:marketdatatype where it maps one - UKNW where none is stated; a row stating one is the row's word.",
       "display": "Market Data Type"
+    }
+  },
+  {
+    "name": "origccy",
+    "dtype": {
+      "type": "ccy"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:datatype": "Currency",
+      "FIX:tag": "65018",
+      "description": "The currency the instrument originates in - the one it was issued in, which a depositary receipt or a share class listed in another currency trades apart from - where the message states it or the lifecycle's registry filled it; no FIX field states it. Null where neither did, the currency then being the origin an amount converts from; a row stating one is the row's word.",
+      "display": "Origin Currency"
     }
   },
   {
@@ -252,7 +281,8 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65021",
+      "FIX:datatype": "String",
+      "FIX:tag": "65022",
       "description": "The normalized ISIN the message identifies.",
       "display": "ISIN Code"
     }
@@ -264,10 +294,11 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Exchange",
       "FIX:names": [
         "instrument[exchange]"
       ],
-      "FIX:tag": "65022",
+      "FIX:tag": "65023",
       "description": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC or a Reuters mnemonic resolving to one, and XXXX for a currency pair naming none; a bridge's INSTRUMENT[EXCHANGE] states it.",
       "display": "MIC Code"
     }
@@ -281,7 +312,8 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65023",
+      "FIX:datatype": "UTCTimestamp",
+      "FIX:tag": "65024",
       "FIX:transient": "false",
       "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know.",
       "display": "Execution Time"
@@ -294,7 +326,8 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65041",
+      "FIX:datatype": "String",
+      "FIX:tag": "65042",
       "description": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived.",
       "display": "Message Plugin ID"
     }
@@ -307,7 +340,8 @@
     "nullable": false,
     "metadata": {
       "FIX:codeset": "msgpluginsidecodeset",
-      "FIX:tag": "65042",
+      "FIX:datatype": "int",
+      "FIX:tag": "65043",
       "description": "The role of the FIX plugin whose session produced the message: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, and independent of Side(54).",
       "display": "Message Plugin Side"
     }
@@ -319,7 +353,8 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65043",
+      "FIX:datatype": "String",
+      "FIX:tag": "65044",
       "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
       "display": "Message Originator"
     }
@@ -331,7 +366,8 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65044",
+      "FIX:datatype": "String",
+      "FIX:tag": "65045",
       "description": "The message context a bridge handled the message in, as its own log names it.",
       "display": "Message Context ID"
     }
@@ -343,7 +379,8 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65045",
+      "FIX:datatype": "String",
+      "FIX:tag": "65046",
       "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
       "display": "Message Session ID"
     }
@@ -355,7 +392,8 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65046",
+      "FIX:datatype": "String",
+      "FIX:tag": "65047",
       "FIX:transient": "false",
       "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
       "display": "Message Session Event ID"
@@ -368,7 +406,8 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65047",
+      "FIX:datatype": "String",
+      "FIX:tag": "65048",
       "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
       "display": "Conversation ID"
     }
@@ -380,7 +419,8 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65048",
+      "FIX:datatype": "String",
+      "FIX:tag": "65049",
       "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other replaces its type's answer, the base key.",
       "display": "Forex Code"
     }
@@ -392,7 +432,8 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65049",
+      "FIX:datatype": "String",
+      "FIX:tag": "65050",
       "description": "The normalized Bloomberg identifier the message identifies.",
       "display": "Bloomberg Code"
     }
@@ -404,7 +445,8 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65050",
+      "FIX:datatype": "String",
+      "FIX:tag": "65051",
       "description": "The normalized FIGI the message identifies.",
       "display": "FIGI Code"
     }
@@ -416,7 +458,8 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65051",
+      "FIX:datatype": "String",
+      "FIX:tag": "65052",
       "FIX:transient": "false",
       "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
       "display": "Source URL"

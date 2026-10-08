@@ -1,9 +1,9 @@
 ---
 name: yggdryl-records
-description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC/Feather, Parquet, Avro, CSV/TSV, Excel workbooks (.xlsx, one worksheet as records and the Workbook/Sheet/Cell random-access model), plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_serie / write_serie / overwrite_serie / append_serie / merge_serie (a Serie, ChunkedSerie or SerieReader as one SerieSource), read_arrow_field / row_size (a file's schema or row count without reading it), pandas or polars frames to and from a file (read_polars_frame, overwrite_pandas_frame, scan_polars), RecordOptions (field, safe, select, filter, merge_by, max_row_size, row_offset, commit_batch_num, num_threads, plan), TextOptions rowheader, iceberg IcebergTable create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
+description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC/Feather, Parquet, Avro, CSV/TSV, Excel workbooks (.xlsx, one worksheet as records and the Workbook/Sheet/Cell random-access model), plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_serie / write_serie / overwrite_serie / append_serie / merge_serie (a Serie, ChunkedSerie or StreamChunkedSerie as one Serie), read_arrow_field / row_size (a file's schema or row count without reading it), pandas or polars frames to and from a file (read_polars_frame, overwrite_pandas_frame, scan_polars), RecordOptions (field, safe, select, filter, merge_by, max_row_size, row_offset, commit_batch_num, num_threads, plan), TextOptions rowheader, iceberg IcebergTable create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
 ---
 
-# Records
+# StreamSerie
 
 `IOMedia` is the record surface every handle answers: one streamed read
 (`read_arrow_reader`) and three explicit write intents (overwrite, append,
@@ -28,7 +28,7 @@ medium does the work before a byte is decoded.
 | stored schema, no rows decoded | `read_arrow_field(&options)?` | `read_arrow_field()` | `readArrowField()` |
 | row and column counts from metadata | `row_size()?`, `column_size()?` | `.row_size()`, `.column_size()` | `.rowSize()`, `.columnSize()` |
 | stream batches out | `read_arrow_reader(&options)?` -> `arrow::BatchReader` | `read_arrow_reader()` -> `pyarrow.RecordBatchReader` | `readArrowReader()` -> `BatchReader` of Arrow JS batches |
-| stream record columns out | `read_serie(Some(&options))?` (`None`: the handle's own) -> `SerieReader` | `read_serie()` -> `SerieReader` | `readSerie()` -> `SerieReader` |
+| stream record columns out | `read_serie(Some(&options))?` (`None`: the handle's own) -> `Serie` | `read_serie()` -> `Serie` | `readSerie()` -> `Serie` |
 | rows out as native values | `read_serie` + `serie.child(name)` / `scalar(i)` | `read_records()`, `read_records(Cls)` | `readRecords()`, `readRecords(Cls)` |
 | replace | `overwrite_arrow_reader(reader, &options)?`, `overwrite_arrow_batch` | `overwrite_arrow_reader`, `_table`, `_batch` | `overwriteArrowReader(BatchReader.from(x))`, `overwriteArrowTable`, `overwriteArrowBatch` |
 | append | `append_arrow_reader`, `append_arrow_batch` | `append_arrow_reader`, `_table`, `_batch` | `appendArrowReader`, `appendArrowTable`, `appendArrowBatch` |
@@ -36,7 +36,7 @@ medium does the work before a byte is decoded.
 | upsert by the destination's own key (an Iceberg table's) | `merge_serie(s.into(), None)?`, or `options.with_merge_by_scalar(&Scalar::from(true))?` to state it | `merge_serie(t)`, `merge_serie(t, merge_by=True)`, `table.merge(t, True)` | `table.merge(t)` - `mergeBy` left out or `null`; no boolean |
 | mode chosen at run time | `write_arrow_reader(r, IOMode::Append, &options)?`, `write_arrow_batch`, `write_records` | `write_arrow_table(t, "append")`, `write_arrow_reader`, `write_arrow_batch`, `write_records` | `writeArrowTable(t, 'append')`, `writeArrowReader`, `writeArrowBatch`, `writeRecords` |
 | native rows in | `overwrite_records(rows, &options)?` (rows `Into<Scalar>`) | `overwrite_records([dict or @scalar instance])` | `overwriteRecords([object], { field })` |
-| a `Serie`, `ChunkedSerie` or `SerieReader` in (also JSON/YAML/TOML/XML rows) | `overwrite_serie(s.into(), None)?`, `append_serie`, `merge_serie`, `write_serie(s.into(), IOMode::Append, None)?` (a document handle takes `Overwrite` only) | `overwrite_serie(value)`, `append_serie`, `merge_serie`, `write_serie(value, "append")` - any columnar value | `overwriteSerie(value)`, `appendSerie`, `mergeSerie`, `writeSerie(value, 'append')` - a reader is consumed |
+| a `Serie`, `ChunkedSerie` or `StreamChunkedSerie` in (also JSON/YAML/TOML/XML rows) | `overwrite_serie(s.into(), None)?`, `append_serie`, `merge_serie`, `write_serie(s.into(), IOMode::Append, None)?` (a document handle takes `Overwrite` only) | `overwrite_serie(value)`, `append_serie`, `merge_serie`, `write_serie(value, "append")` - any columnar value | `overwriteSerie(value)`, `appendSerie`, `mergeSerie`, `writeSerie(value, 'append')` - a reader is consumed |
 | what a write did, in rows (`skipped_rows`: kept out by `filter`, cut by a limit, or a key a keyed Iceberg append already held) | every write door answers `IOResult { read_rows, written_rows, skipped_rows }` - `let r = handle.append_serie(s.into(), None)?` | every write returns `IOResult`: `r.read_rows`, `r.written_rows`, `r.skipped_rows`, `r.is_empty()` | every write returns `IOResult`: `r.readRows`, `r.writtenRows`, `r.skippedRows`, `r.isEmpty()` |
 | refuse values the declared field cannot convert | `options.with_field(root).with_safe(false)` | `read_arrow_reader(field=f, safe=False)` | `readArrowReader({ field, safe: false })` |
 | one setting for one call | `options.clone().with_select(["id"])?.with_filter("id > 3")?` | `read_arrow_reader(select=["id"], filter="id > 3")` | `readArrowReader({ select: ['id'], filter: 'id > 3' })` |
@@ -322,11 +322,11 @@ medium does the work before a byte is decoded.
 
 ## Deeper
 
-- Records surface (signatures, pushdown, limits, append and merge, commit cadence, lazy scans): https://platob.github.io/yggdryl/holder/#records
+- StreamSerie surface (signatures, pushdown, limits, append and merge, commit cadence, lazy scans): https://platob.github.io/yggdryl/holder/#records
 - Partitions (pruning, partition columns, derived columns): https://platob.github.io/yggdryl/holder/#partitions
 - Media overview and options: https://platob.github.io/yggdryl/media/
 - Per format: https://platob.github.io/yggdryl/media/ipc/, https://platob.github.io/yggdryl/media/parquet/, https://platob.github.io/yggdryl/media/avro/, https://platob.github.io/yggdryl/media/excel/, https://platob.github.io/yggdryl/media/csv/, https://platob.github.io/yggdryl/media/text/, https://platob.github.io/yggdryl/media/iceberg/
 - Iceberg keys - the merge key, the keyed append, the merge that changes nothing: https://platob.github.io/yggdryl/media/iceberg/#the-merge-key, https://platob.github.io/yggdryl/media/iceberg/#appending-to-a-keyed-table, https://platob.github.io/yggdryl/media/iceberg/#a-merge-that-changes-nothing
 - Required columns and the cast rule: https://platob.github.io/yggdryl/types/cast/
 - Plans and write verbs: https://platob.github.io/yggdryl/expression/plans/
-- Sibling skills: `yggdryl-storage` (handles, backends, codings), `yggdryl-arrow` (`Serie`, `SerieReader`, casts), `yggdryl-expressions` (filter/select grammar, `Plan`), `yggdryl-uri` (hive paths, globs), `yggdryl-types` (fields, dataclasses), `yggdryl-documents` (JSON/YAML/TOML/XML).
+- Sibling skills: `yggdryl-storage` (handles, backends, codings), `yggdryl-arrow` (`Serie`, `StreamChunkedSerie`, casts), `yggdryl-expressions` (filter/select grammar, `Plan`), `yggdryl-uri` (hive paths, globs), `yggdryl-types` (fields, dataclasses), `yggdryl-documents` (JSON/YAML/TOML/XML).

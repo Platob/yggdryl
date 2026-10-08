@@ -172,8 +172,9 @@ assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
 
 ## Walk a stream into chains
 
-`EventIterator` chains a stream by cross identity (and by a live element's
-`identifiers`), yields a twin as a restatement rather than a successor, retires a
+`EventIterator` chains a stream by cross identity (and by the chain identities a live
+element's `identifiers` hold, never an `execid`), re-keys each element onto its
+chain's side and first cross code, yields a twin as a restatement rather than a successor, retires a
 chain at a terminal state and emits one `EXPIRED` at a deadline. An order's or
 an execution's chain is keyed by side - a quote's is one chain whatever side
 it tags - a chain lives within one `marketdatakind` (an order and an execution
@@ -350,10 +351,10 @@ let values = vec![
     MarketData::from(BookEvent::new(1_700_000_001_000_000_000, "AAPL")),
 ];
 
-// 63 columns: 6 element, 9 event, 35 market (marketdatakind first), 5 operation,
-// the book controls bookscope, bookaction and bookposition, 5 nested.
+// 65 columns: 6 element, 9 event, 36 market (marketdatakind first), 5 operation,
+// the book controls bookscope, bookaction and bookposition, 6 nested.
 let field = MarketData::field()?;
-assert_eq!(field.field_len(), 63);
+assert_eq!(field.field_len(), 65);
 assert_eq!(field.fields()[15].name(), "marketdatakind");
 let batches: Vec<RecordBatch> = MarketData::arrow_reader(values.clone(), Some(1_000), None)?.collect::<Result<_, _>>()?;
 let read: Vec<MarketData> = MarketData::from_arrow_reader(batch_reader(batches[0].schema(), batches))?
@@ -410,10 +411,11 @@ assert_eq!(read, values);
 
 `BookIterator` folds sorted orders and quotes into one `BookEvent` per
 instant and book key that moved it - the instrument's ISIN, else its ticker,
-else `XX0000000000` - pruning every execution and trade. A book is complete
-(`is_complete`) only at a snapshot tick; every other book states its deltas
-alone beside the top of book they settled on, and `with_previous` over the
-complete book before it rebuilds it whole. A filter over the `marketdata` row
+else `XX0000000000` - recording every execution among its `events` and
+pruning every trade. A book is complete (`is_complete`) only at a snapshot
+tick; every other book is a delta book - its `delta` and `events` beside the
+top of book they settled on - and `with_previous` over the complete book
+before it rebuilds it whole. A filter over the `marketdata` row
 narrows what folds.
 
 ```rust
@@ -444,10 +446,12 @@ let stream = vec![bid(T, "B-1", "189.48", 300)?, bid(T + SECOND, "B-2", "189.49"
 
 let books = BookIterator::new(stream.clone().into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
 assert_eq!(books.len(), 2, "one book per instant that moved it; the execution is recorded beside the better bid");
-// No grid and no snapshot input: each book states its deltas alone and its top of book.
+// No grid and no snapshot input: each book is a delta book - the bid in its
+// delta, the execution in its events - and its top of book.
 let last = &books[1];
 assert!(!last.is_complete());
-assert_eq!((last.get_currunix(), last.deltas().len(), last.alive().count()), (T + SECOND, 2, 0));
+assert_eq!((last.get_currunix(), last.delta().len(), last.events().len(), last.alive().count()), (T + SECOND, 1, 1, 0));
+assert_eq!(last.executions().count(), 1);
 assert_eq!(last.best_price(Side::Buy), Some("189.49".parse()?));
 // Rebuilt whole: the first over the empty book its key starts from, the next over it.
 assert_eq!(books[0].get_prevuuid(), None);
@@ -486,10 +490,9 @@ A complete book answers each side as its `limits` (one per price, best
 first, the unpriced market level last) and its entries as `alive_on(side)`,
 the orders resting as `ordlive`; every book answers the readings of the first
 level that can trade: `best_price`, `best_quantity`, the `bidpx`/`askpx` it
-states, `spread`; a complete one `depth` and `imbalance` too. Its deltas read
-by kind as `orddelta`, `quotes`, `executions` and `events` - every delta that
-is none of the three, empty because a book records nothing else - which
-partition them. A book built by hand is complete.
+states, `spread`; a complete one `depth` and `imbalance` too. Its `delta`
+reads by kind as `orddelta` and `quotes`, which partition it, and its
+`events` as `executions` and `controls`. A book built by hand is complete.
 
 ```rust
 use yggdryl::graph::{BookEvent, Element, Market, MarketData, Operation, OrderEvent};
@@ -535,14 +538,14 @@ assert!(!book.is_locked() && !book.is_crossed());
 assert_eq!(book.depth(Side::Buy, 2), Some(Decimal::from_int(310)));
 assert!(book.is_complete());
 assert_eq!((book.alive().count(), book.alive_on(Side::Buy).len(), book.alive_on(Side::Sell).len()), (5, 4, 1));
-// The deltas are the five orders, in the order applied.
-assert_eq!(book.deltas().map(Element::get_crosscode).collect::<Vec<_>>(), ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:2:A-1", "10:1:MKT"]);
+// The delta is the five orders, in the order applied.
+assert_eq!(book.delta().map(Element::get_crosscode).collect::<Vec<_>>(), ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:2:A-1", "10:1:MKT"]);
 // By kind: the orders resting in book order - the bids best first and the
-// market order last, then the offer - and every delta an order.
+// market order last, then the offer - and every delta entry an order.
 assert_eq!(book.ordlive().map(Element::get_crosscode).collect::<Vec<_>>(), ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:1:MKT", "10:2:A-1"]);
-assert_eq!((book.orddelta().count(), book.quotes().count(), book.executions().count()), (book.deltas().len(), 0, 0));
-// The four kinds partition the deltas; a book records no other kind.
-assert_eq!(book.events().count(), 0);
+assert_eq!((book.orddelta().count(), book.quotes().count()), (book.delta().len(), 0));
+// No execution and no snapshot control: the events are empty.
+assert_eq!((book.events().len(), book.executions().count(), book.controls().count()), (0, 0, 0));
 ```
 
 ## Replace a scope with a snapshot
@@ -577,6 +580,8 @@ assert_eq!(control.book().action, Some(MdUpdateAction::Snapshot));
 
 book.add_operations([MarketData::from(control)])?;
 assert_eq!(book.alive().count(), 0);
+// The control is recorded among the book's events.
+assert_eq!(book.controls().count(), 1);
 assert_eq!((book.get_price(), book.get_bidpx(), book.get_askpx()), (None, None, None));
 ```
 
@@ -661,9 +666,10 @@ let first = books[0].as_book_event().expect("a book row");
 assert!(first.is_complete());
 let last = books[1].as_book_event().expect("a book row");
 assert_eq!(last.best_price(Side::Buy).map(|price| price.to_string()).as_deref(), Some("101"));
-// The bid's change and the trade entry (`269=2`), recorded as the execution it is, are the deltas.
+// The bid's change is the delta; the trade entry (`269=2`), recorded as the
+// execution it is, is among the events.
 assert!(!last.is_complete());
-assert_eq!(last.deltas().len(), 2);
+assert_eq!((last.delta().len(), last.executions().count()), (1, 1));
 ```
 
 ## Fold books into candles
@@ -737,7 +743,7 @@ assert_eq!(Candle::from_scalar(&rows.scalar(1)?)?, candles[1]);
 `BookService` is the HTTP face of a `marketdata` table, keyed by the book key
 (the ISIN, else the ticker, else `XX0000000000`) - the keys it holds, the
 candles of a key over a range, the book at an instant rebuilt whole, the audit
-of every alive entry and delta - and every reading is a method, so a program
+of every alive entry, delta entry and event - and every reading is a method, so a program
 asks without HTTP what the display's routes answer. A `ticker` argument names
 a key, else the ticker one key's books state. `yggdryl market serve` is the
 same service with the display in front of it.
@@ -791,7 +797,7 @@ assert_eq!(candles[0].bid.map(|bid| bid.close), Some(Decimal::from_int(100)));
 assert_eq!(candles[1].ask.map(|ask| ask.open), Some(Decimal::from_int(102)));
 let book = service.book("books", "ACME", T0 + 90 * SECOND)?.expect("the last book at or before 10:01:30");
 assert_eq!(book.get_currunix(), T0 + 65 * SECOND);
-// Stored as deltas, answered whole: rebuilt over the books before it.
+// Stored as a delta book, answered whole: rebuilt over the books before it.
 assert!(book.is_complete());
 assert_eq!(book.alive().count(), 2);
 assert_eq!(service.tickers("books")?.sequence_rows().map(|listed| listed.len()), Some(1));
@@ -826,18 +832,18 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
 - `EventIterator::new(items, false)` collects to sort; pass `true` only for a
   stream you know is sorted, so it streams - an unsorted stream under `true` is
   not refused, it yields broken chains (a step before its live element
-  yielded as it came, `prevuuid` null).
+  yielded following nothing, `prevuuid` null).
 - `BookIterator::new(items, snapshot_millis)` takes an iterator
   (`.into_iter()`) of `MarketData` or `Result<MarketData>` and yields
   `Result<BookEvent>`; `with_filter(filter)` binds an expression over the
   `marketdata` row once, refusing a column the row does not carry. An `Err`
   item is a source's own failure or a value no book folds (an undated order, a
-  `BookEvent`); an execution is recorded among its book's deltas, and every
+  `BookEvent`); an execution is recorded among its book's events, and every
   input `MarketDataKind::is_recorded` refuses - a trade, a batch - is pruned
   in silence. An operation dated before
   its book and a group the book refuses are left out with a `log` warning, and
   an order or a quote resting on neither side is placed nowhere with one, yet
-  still counts as the book's delta.
+  still counts among the book's delta.
 - A book from a walk is complete only at a snapshot tick: test
   `is_complete()` before reading `alive()`, `alive_on`, `limits`, `depth` or
   `imbalance`, and rebuild a delta book with `with_previous(&previous)` - over

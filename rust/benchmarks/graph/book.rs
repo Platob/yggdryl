@@ -87,8 +87,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
         group.bench_function(format!("imbalance_{levels}"), |bencher| {
             bencher.iter(|| black_box(&book).imbalance(black_box(levels)));
         });
-        // The book's entries by kind, borrowed over both sides: the deltas'
-        // quotes, every entry, and the resting orders, none - the filter's
+        // The book's entries by kind, borrowed over both sides: the quotes
+        // among its delta, every entry, and the resting orders, none - the filter's
         // own cost over every live entry.
         group.throughput(Throughput::Elements(u64::try_from(2 * levels).unwrap()));
         group.bench_function(format!("quotes_{levels}"), |bencher| {
@@ -149,8 +149,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
         group.throughput(Throughput::Elements(1));
         // One step of a walk between ticks while the consumer holds every
         // book it emitted, as a collect does: the walk's first book and the
-        // delta after it held, the next delta's step timed. A book
-        // stating its deltas alone holds no side, so the walk changes the
+        // delta after it held, the next delta's step timed. A delta book
+        // holds no side, so the walk changes the
         // side it alone holds in place at either depth.
         group.bench_function(format!("walk_step_delta_{levels}"), |bencher| {
             bencher.iter_batched(
@@ -176,7 +176,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 BatchSize::LargeInput,
             );
         });
-        // A book stating its delta alone rebuilt over the whole book before
+        // A delta book rebuilt over the complete book before
         // it: the delta replayed over that book's sides, which the rebuild
         // copies once - the book before it is borrowed and kept. The walk's
         // first book follows no book, so it is whole over the empty one.
@@ -217,7 +217,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
                         books = books.with_filter(filter).expect("a filter over the row");
                     }
                     books
-                        .map(|book| book.expect("a book").deltas().len())
+                        .map(|book| {
+                            let book = book.expect("a book");
+                            book.delta().len() + book.events().len()
+                        })
                         .sum::<usize>()
                 },
                 BatchSize::LargeInput,

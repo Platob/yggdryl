@@ -575,7 +575,7 @@ assert.throws(() => DataType.from('datetime64(ns)').intoSchemeCompat('spark'), /
   `eusipacode` as its number, which Rust's and Python's `Eusipa` name.
 - No `validateStructRoot`, `applyArrowBatch`, `pretty`, YAML/TOML schema
   writers, `uuidPacked`, `FieldScalar` or `FieldRecord`. A nullable struct
-  root is accepted by `Serie.fromScalars`, `SerieReader` and
+  root is accepted by `Serie.fromScalars`, `StreamChunkedSerie` and
   `intoField(field)`; check `f.dtype.id === 'struct' && !f.nullable` yourself
   (only `intoField(Class)` checks it).
 - Arrow JS crossing is copied IPC (see `yggdryl-arrow`). The batch schema keeps

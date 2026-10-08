@@ -150,20 +150,20 @@ fn metadata_has_exactly_one_nullable_sorted_column_without_a_scalar_counter() {
     assert_eq!(columns.len(), 1);
     let column = columns[0];
     assert!(column.is_nullable());
-    assert_eq!(column.as_fix().tag().unwrap(), Some(65_036));
-    assert_eq!(column.as_fix().counter().unwrap(), Some(65_036));
+    assert_eq!(column.as_fix().tag().unwrap(), Some(65_037));
+    assert_eq!(column.as_fix().counter().unwrap(), Some(65_037));
     let Some(map) = (column.dtype()).as_mapping() else {
         panic!("metadata is a Map")
     };
     assert!(map.keys_sorted());
-    assert!(registry.get_field_by_tag(65_036).is_none());
+    assert!(registry.get_field_by_tag(65_037).is_none());
     assert_eq!(yggdryl::fix::GROUP_TAGS, [768, 1907]);
 }
 
 #[test]
 fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
     let registry = Arc::new(FixRegistry::new());
-    let group = registry.get_field_by_counter(65_036).unwrap().clone();
+    let group = registry.get_field_by_counter(65_037).unwrap().clone();
     let schema = StructType::from_fields([group])
         .map(DataType::from)
         .unwrap()
@@ -180,7 +180,7 @@ fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
         let source = fresh(Arc::clone(&registry), &schema, vec![mapping.clone()]);
         // The metadata are the event's own fact: a map stating none is
         // no fact, and one stating pairs answers them.
-        assert_eq!(source.get_by_tag(65_036), (!empty).then(|| mapping.clone()));
+        assert_eq!(source.get_by_tag(65_037), (!empty).then(|| mapping.clone()));
         let schema = source.as_field();
         let row = source.as_value();
         let msg = FixMsg::from_row(Arc::clone(&registry), schema, row).unwrap();
@@ -206,7 +206,7 @@ fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
 #[test]
 fn map_paths_distinguish_present_missing_and_absent_maps() {
     let registry = Arc::new(FixRegistry::new());
-    let schema = StructType::from_fields([registry.get_field_by_counter(65_036).unwrap().clone()])
+    let schema = StructType::from_fields([registry.get_field_by_counter(65_037).unwrap().clone()])
         .map(DataType::from)
         .unwrap()
         .required_field("fix");
@@ -249,7 +249,7 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     label.as_fix_mut().set_tag(9001).unwrap();
     label.as_fix_mut().set_names(["Metadata"]).unwrap();
     registry.insert(label.clone()).unwrap();
-    let map = registry.get_field_by_counter(65_036).unwrap().clone();
+    let map = registry.get_field_by_counter(65_037).unwrap().clone();
     let schema = StructType::from_fields([label, map])
         .map(DataType::from)
         .unwrap()
@@ -267,7 +267,7 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     let path = yggdryl::FieldPath::from_str("metadata['clordid']").unwrap();
     assert_eq!(registry.field_by_name("Metadata").unwrap().name(), "label");
     let declared = registry.field_by_path(&root).unwrap();
-    assert_eq!(declared, registry.get_field_by_counter(65_036).unwrap());
+    assert_eq!(declared, registry.get_field_by_counter(65_037).unwrap());
     let Some(map) = (declared.dtype()).as_mapping() else {
         panic!("the canonical Map owns the resolved path")
     };

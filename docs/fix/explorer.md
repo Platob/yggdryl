@@ -14,11 +14,11 @@ Search the native FIX catalog and inspect the fields, components and groups it s
 
 ## Use
 
-A Serie group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `metadata` Map group instead owns tag and counter together - 65036 - with no scalar counter column.
+A Serie group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `metadata` Map group instead owns tag and counter together - 65037 - with no scalar counter column.
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,272 |
+| Scalar fields | 6,241 | 6,273 |
 | Groups | 580 | 581 |
 | Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
@@ -36,18 +36,18 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
     // Every category is in the one length: the fields, the components and
     // the groups.
-    assert_eq!(registry.len(), 7_781);
+    assert_eq!(registry.len(), 7_782);
     // The walk is the same listing: the fields, then the definitions.
-    assert_eq!(registry.iter().count(), 7_781);
+    assert_eq!(registry.iter().count(), 7_782);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.field_by_name("parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
     assert_eq!(parties.as_fix().component(), Some("party"));
-    let metadata = registry.field_by_counter(65_036)?;
+    let metadata = registry.field_by_counter(65_037)?;
     assert_eq!(metadata.name(), "metadata");
-    assert_eq!(metadata.as_fix().tag()?, Some(65_036));
+    assert_eq!(metadata.as_fix().tag()?, Some(65_037));
     assert!(metadata.dtype().as_mapping().is_some_and(|mapping| mapping.keys_sorted()));
-    assert!(registry.get_field_by_tag(65_036).is_none());
+    assert!(registry.get_field_by_tag(65_037).is_none());
     assert_eq!(registry.msgtype("D")?.as_str(), "D");
     // The crate's own columns are fields from tag 65007, held by every registry;
     // an identity is the tag and the name together.
@@ -67,16 +67,16 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     # Every category is in the one length: the fields, the components and the
     # groups; iterating a Python registry walks the fields alone.
-    assert len(registry) == 7_781
-    assert sum(1 for _ in registry) == 6_272
+    assert len(registry) == 7_782
+    assert sum(1 for _ in registry) == 6_273
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.field_by_name("parties")
     assert parties.fix.counter == 453
     assert parties.fix.component == "party"
-    metadata = registry.field_by_counter(65_036)
-    assert metadata.name == "metadata" and metadata.fix.tag == 65_036
+    metadata = registry.field_by_counter(65_037)
+    assert metadata.name == "metadata" and metadata.fix.tag == 65_037
     assert metadata.into_arrow().type.keys_sorted
-    assert registry.get_field_by_tag(65_036) is None
+    assert registry.get_field_by_tag(65_037) is None
     assert registry.msgtype("D").value == "D"
     # The crate's own columns are fields from tag 65007, held by every registry;
     # an identity is the tag and the name together, an int derived on every read.
@@ -96,17 +96,17 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     // Every category is in the one size: the fields, the components and the
     // groups, which is what a Node registry iterates too.
-    assert.equal(registry.size, 7781)
+    assert.equal(registry.size, 7782)
     assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.fieldByName('parties')
     assert.equal(parties.fix.counter, 453)
     assert.equal(parties.fix.component, 'party')
-    const metadata = registry.fieldByCounter(65036)
+    const metadata = registry.fieldByCounter(65037)
     assert.equal(metadata.name, 'metadata')
-    assert.equal(metadata.fix.tag, 65036)
+    assert.equal(metadata.fix.tag, 65037)
     assert.match(metadata.dtype.toString(), /keys_sorted=true/)
-    assert.equal(registry.getFieldByTag(65036), null)
+    assert.equal(registry.getFieldByTag(65037), null)
     assert.equal(registry.msgtype('D').asStr(), 'D')
     // The crate's own columns are fields from tag 65007, held by every registry;
     // an identity is the tag and the name together, a number derived on every read.

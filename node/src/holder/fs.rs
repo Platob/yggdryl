@@ -364,6 +364,12 @@ impl FileSystem for JsFileSystem {
         &self.name
     }
 
+    /// A JavaScript handler runs on its isolate's thread alone, so work over
+    /// it - an Iceberg table's reads and writes - stays on the calling thread.
+    fn is_thread_bound(&self) -> bool {
+        true
+    }
+
     fn equals(&self, other: &dyn FileSystem) -> bool {
         self.try_equals(other).unwrap_or(false)
     }

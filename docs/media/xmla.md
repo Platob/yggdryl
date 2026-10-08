@@ -41,7 +41,7 @@ A read takes the rowset inside a SOAP 1.1 `DiscoverResponse` or `ExecuteResponse
     ])?)
     .required_field("row");
     let mut symbols = Vec::new();
-    for records in bare.read_serie(Some(&options.with_field(field)))? {
+    for records in bare.read_serie(Some(&options.with_field(field)))?.into_chunked_stream(None, None)?.into_chunks() {
         let records = records?;
         let symbol = records.child("symbol").expect("a symbol column");
         for row in 0..symbol.len() {

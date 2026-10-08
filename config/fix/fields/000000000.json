@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:names": [
         "omsdealeraccount"
       ],
@@ -21,6 +22,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2",
       "description": "Unique identifier of advertisement message.",
       "display": "AdvId"
@@ -33,6 +35,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3",
       "description": "Reference identifier used with CANCEL and REPLACE transaction types.",
       "display": "AdvRefID"
@@ -46,6 +49,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "advsidecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "4",
       "description": "Broker's side of advertised trade",
       "display": "AdvSide"
@@ -59,6 +63,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "advtranstypecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "5",
       "description": "Identifies advertisement message transaction type",
       "display": "AdvTransType"
@@ -73,6 +78,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "6",
       "description": "Calculated average price of all fills on this order.",
       "display": "AvgPx"
@@ -85,6 +91,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "SeqNum",
       "FIX:tag": "7",
       "description": "Message sequence number of first message in range to be resent",
       "display": "BeginSeqNo"
@@ -98,6 +105,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "beginstringcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "8",
       "description": "Identifies beginning of new message and session protocol version by means of a session profile identifier (see FIX Session Layer for details). ALWAYS FIRST FIELD IN MESSAGE. (Always unencrypted).",
       "display": "BeginString"
@@ -110,6 +118,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "9",
       "description": "Message length, in bytes, forward to the CheckSum field. ALWAYS SECOND FIELD IN MESSAGE. (Always unencrypted)",
       "display": "BodyLength"
@@ -122,6 +131,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "10",
       "description": "Three byte, simple checksum (see Volume 2: \"Checksum Calculation\" for description). ALWAYS LAST FIELD IN MESSAGE; i.e. serves, with the trailing <SOH>, as the end-of-message delimiter. Always defined as three characters. (Always unencrypted)",
       "display": "CheckSum"
@@ -134,6 +144,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:idmap": [
         {
           "map": "identifiers",
@@ -160,6 +171,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "12",
       "description": "Commission. Note if CommType (13) is percentage, Commission of 5% should be represented as .05.",
       "display": "Commission"
@@ -173,6 +185,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "commtypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "13",
       "description": "Specifies the basis or unit used to calculate the total commission based on the rate.",
       "display": "CommType"
@@ -187,6 +200,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "14",
       "description": "Total quantity (e.g. number of shares) filled.",
       "display": "CumQty"
@@ -199,6 +213,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "15",
       "description": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent.",
       "display": "Currency"
@@ -211,6 +226,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "SeqNum",
       "FIX:tag": "16",
       "description": "Message sequence number of last message in range to be resent. If request is for a single message BeginSeqNo (7) = EndSeqNo. If request is for all messages subsequent to a particular message, EndSeqNo = \"0\" (representing infinity).",
       "display": "EndSeqNo"
@@ -223,6 +239,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:idmap": [
         {
           "map": "identifiers",
@@ -242,6 +259,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "execinstcodeset",
+      "FIX:datatype": "MultipleCharValue",
       "FIX:tag": "18",
       "description": "Instructions for order handling on exchange trading floor. If more than one instruction is applicable to an order, this field can contain multiple instructions separated by space. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
       "display": "ExecInst"
@@ -254,6 +272,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "19",
       "description": "Reference identifier used with Trade, Trade Cancel and Trade Correct execution types.",
       "display": "ExecRefID"
@@ -267,6 +286,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "exectranstypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "20",
       "display": "ExecTransType"
     }
@@ -279,6 +299,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "handlinstcodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "21",
       "description": "Instructions for order handling on Broker trading floor",
       "display": "HandlInst"
@@ -292,6 +313,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:names": [
         "idsource"
       ],
@@ -307,6 +329,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "23",
       "description": "Unique identifier of IOI message.",
       "display": "IOIID"
@@ -320,6 +343,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ioiothsvccodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "24",
       "display": "IOIOthSvc"
     }
@@ -332,6 +356,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ioiqltyindcodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "25",
       "description": "Relative quality of indication",
       "display": "IOIQltyInd"
@@ -344,6 +369,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "26",
       "description": "Reference identifier used with CANCEL and REPLACE, transaction types.",
       "display": "IOIRefID"
@@ -357,6 +383,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ioiqtycodeset",
+      "FIX:datatype": "String",
       "FIX:names": [
         "ioishares"
       ],
@@ -373,6 +400,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ioitranstypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "28",
       "description": "Identifies IOI message transaction type",
       "display": "IOITransType"
@@ -386,6 +414,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "lastcapacitycodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "29",
       "description": "Broker capacity in order execution",
       "display": "LastCapacity"
@@ -398,6 +427,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Exchange",
       "FIX:tag": "30",
       "description": "Market of execution for last fill, or an indication of the market where an order was routed",
       "display": "LastMkt"
@@ -412,6 +442,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "31",
       "description": "Price of this (last) fill.",
       "display": "LastPx"
@@ -426,6 +457,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:names": [
         "lastshares"
       ],
@@ -441,6 +473,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:names": [
         "linesoftext"
       ],
@@ -456,6 +489,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "SeqNum",
       "FIX:tag": "34",
       "description": "Integer message sequence number.",
       "display": "MsgSeqNum"
@@ -469,6 +503,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "msgtypecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "35",
       "description": "Defines message type ALWAYS THIRD FIELD IN MESSAGE. (Always unencrypted)",
       "display": "MsgType"
@@ -481,6 +516,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "SeqNum",
       "FIX:tag": "36",
       "description": "New sequence number",
       "display": "NewSeqNo"
@@ -493,6 +529,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:idmap": [
         {
           "map": "identifiers",
@@ -518,6 +555,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "38",
       "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
       "display": "OrderQty"
@@ -531,6 +569,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ordstatuscodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "39",
       "description": "Identifies current status of order. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
       "display": "OrdStatus"
@@ -544,6 +583,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ordtypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "40",
       "description": "Order type.",
       "display": "OrdType"
@@ -556,14 +596,12 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:idmap": [
         {
           "map": "identifiers",
           "key": "origclordid"
         }
-      ],
-      "FIX:names": [
-        "parentclordid"
       ],
       "FIX:tag": "41",
       "description": "ClOrdID (11) of the previous order (NOT the initial order of the day) as assigned by the institution, used to identify the previous order in cancel and cancel/replace requests.",
@@ -579,6 +617,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "42",
       "description": "Time of message origination (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\"))",
       "display": "OrigTime"
@@ -592,6 +631,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "possdupflagcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "43",
       "description": "Indicates possible retransmission of message with this sequence number",
       "display": "PossDupFlag"
@@ -606,6 +646,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "44",
       "description": "Price per unit of quantity (e.g. per share)",
       "display": "Price"
@@ -618,6 +659,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "SeqNum",
       "FIX:tag": "45",
       "description": "Reference message sequence number",
       "display": "RefSeqNum"
@@ -630,6 +672,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "46",
       "display": "RelatdSym"
     }
@@ -642,6 +685,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "rule80acodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "47",
       "display": "Rule80A"
     }
@@ -653,6 +697,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "48",
       "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
       "display": "SecurityID"
@@ -665,6 +710,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "49",
       "description": "Assigned value used to identify firm sending message.",
       "display": "SenderCompID"
@@ -677,6 +723,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "50",
       "description": "Assigned value used to identify specific message originator (desk, trader, etc.)",
       "display": "SenderSubID"
@@ -690,6 +737,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "51",
       "display": "SendingDate"
     }
@@ -703,6 +751,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "52",
       "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
       "display": "SendingTime"
@@ -717,6 +766,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:names": [
         "shares"
       ],
@@ -733,6 +783,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "sidecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "54",
       "description": "Side of order (see Volume : \"Glossary\" for value definitions)",
       "display": "Side"
@@ -745,6 +796,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "55",
       "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
       "display": "Symbol"
@@ -757,6 +809,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "56",
       "description": "Assigned value used to identify receiving firm.",
       "display": "TargetCompID"
@@ -769,6 +822,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "57",
       "description": "Assigned value used to identify specific individual or unit intended to receive message. \"ADMIN\" reserved for administrative messages not intended for a specific user.",
       "display": "TargetSubID"
@@ -781,6 +835,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "58",
       "description": "Free format text string",
       "display": "Text"
@@ -794,6 +849,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "timeinforcecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "59",
       "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
       "display": "TimeInForce"
@@ -808,6 +864,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "60",
       "description": "Timestamp when the business transaction represented by the message occurred.",
       "display": "TransactTime"
@@ -821,6 +878,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "urgencycodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "61",
       "description": "Urgency flag",
       "display": "Urgency"
@@ -835,6 +893,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "62",
       "description": "Indicates expiration time of indication message (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
       "display": "ValidUntilTime"
@@ -848,6 +907,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "settltypecodeset",
+      "FIX:datatype": "String",
       "FIX:names": [
         "settlmnttyp"
       ],
@@ -864,6 +924,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:names": [
         "futsettdate"
       ],
@@ -880,6 +941,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "symbolsfxcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "65",
       "description": "Additional information about the security (e.g. preferred, warrants, etc.). Note also see SecurityType (167).",
       "display": "SymbolSfx"
@@ -892,6 +954,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "66",
       "description": "Unique identifier for list as assigned by institution, used to associate multiple individual orders. Uniqueness must be guaranteed within a single trading day. Firms which generate multi-day orders should consider embedding a date within the ListID field to assure uniqueness across days.",
       "display": "ListID"
@@ -904,6 +967,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "67",
       "description": "Sequence of individual order within list (i.e. ListSeqNo of TotNoOrders (68), 2 of 25, 3 of 25, . . . )",
       "display": "ListSeqNo"
@@ -916,6 +980,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:names": [
         "listnoords"
       ],
@@ -931,6 +996,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "69",
       "description": "Free format text message containing list handling and execution instructions.",
       "display": "ListExecInst"
@@ -943,6 +1009,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:parents": [
         "parentallocid"
       ],
@@ -959,6 +1026,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "alloctranstypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "71",
       "description": "Identifies allocation transaction type *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" ***",
       "display": "AllocTransType"
@@ -971,6 +1039,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "72",
       "description": "Reference identifier to be used with AllocTransType (71) = Replace or Cancel.",
       "display": "RefAllocID"
@@ -983,6 +1052,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "73",
       "description": "Indicates number of orders to be combined for average pricing and allocation.",
       "display": "NoOrders"
@@ -995,6 +1065,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:names": [
         "avgprxprecision"
       ],
@@ -1011,6 +1082,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "75",
       "description": "Indicates date of trading day. Absence of this field indicates current day (expressed in local time at place of trade).",
       "display": "TradeDate"
@@ -1023,6 +1095,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "76",
       "display": "ExecBroker"
     }
@@ -1035,6 +1108,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "positioneffectcodeset",
+      "FIX:datatype": "char",
       "FIX:names": [
         "openclose"
       ],
@@ -1050,6 +1124,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "78",
       "description": "Number of repeating AllocAccount (79)/AllocPrice (366) entries.",
       "display": "NoAllocs"
@@ -1062,6 +1137,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "79",
       "description": "Sub-account mnemonic",
       "display": "AllocAccount"
@@ -1076,6 +1152,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:names": [
         "allocshares"
       ],
@@ -1092,6 +1169,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "processcodecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "81",
       "description": "Processing code for sub-account. Absence of this field in AllocAccount (79) / AllocPrice (366) /AllocQty (80) / ProcessCode instance indicates regular trade.",
       "display": "ProcessCode"
@@ -1104,6 +1182,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "82",
       "description": "Total number of reports within series.",
       "display": "NoRpts"
@@ -1116,6 +1195,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "83",
       "description": "Sequence number of message within report series. Used to carry reporting sequence number of the fill as represented on the Trade Report Side.",
       "display": "RptSeq"
@@ -1130,6 +1210,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "84",
       "description": "Total quantity canceled for this order.",
       "display": "CxlQty"
@@ -1142,6 +1223,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "85",
       "description": "Number of delivery instruction fields in repeating group.",
       "display": "NoDlvyInst"
@@ -1154,6 +1236,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "86",
       "display": "DlvyInst"
     }
@@ -1166,6 +1249,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "allocstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "87",
       "description": "Identifies status of allocation.",
       "display": "AllocStatus"
@@ -1179,6 +1263,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "allocrejcodecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "88",
       "description": "Identifies reason for rejection.",
       "display": "AllocRejCode"
@@ -1191,6 +1276,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:deprecated": "5.0",
       "FIX:tag": "89",
       "description": "Electronic signature",
@@ -1204,6 +1290,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:deprecated": "5.0",
       "FIX:tag": "90",
       "description": "Length of encrypted message",
@@ -1217,6 +1304,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:deprecated": "5.0",
       "FIX:tag": "91",
       "description": "Actual encrypted data stream",
@@ -1230,6 +1318,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "92",
       "display": "BrokerOfCredit"
     }
@@ -1241,6 +1330,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:deprecated": "5.0",
       "FIX:tag": "93",
       "description": "Number of bytes in signature field",
@@ -1255,6 +1345,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "emailtypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "94",
       "description": "Email message type.",
       "display": "EmailType"
@@ -1267,6 +1358,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "95",
       "description": "Number of bytes in raw data field.",
       "display": "RawDataLength"
@@ -1279,6 +1371,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "96",
       "description": "Unformatted raw data, can include bitmaps, word processor documents, etc.",
       "display": "RawData"
@@ -1292,6 +1385,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "possresendcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "97",
       "description": "Indicates that message may contain information that has been sent under another sequence number.",
       "display": "PossResend"
@@ -1305,6 +1399,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "encryptmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "98",
       "description": "Method of encryption.",
       "display": "EncryptMethod"
@@ -1319,6 +1414,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "99",
       "description": "Price per unit of quantity (e.g. per share)",
       "display": "StopPx"

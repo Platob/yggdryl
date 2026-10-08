@@ -122,6 +122,27 @@ where
 }
 
 /// Widen a fallible stream of core scalar rows into Arrow batches.
+pub(crate) fn proven_result_reader<I>(
+    field: &Field,
+    rows: I,
+    row_size: Option<usize>,
+    byte_size: Option<u64>,
+) -> Result<BatchReader>
+where
+    I: IntoIterator<Item = crate::Result<Scalar>>,
+    I::IntoIter: Send + 'static,
+{
+    build(
+        field,
+        rows.into_iter().map(FallibleScalar),
+        row_size,
+        byte_size,
+        None,
+        true,
+        None,
+    )
+}
+
 pub(crate) fn result_reader<I>(
     field: &Field,
     rows: I,

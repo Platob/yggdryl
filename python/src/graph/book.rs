@@ -36,7 +36,9 @@ fn side_of(value: &Bound<'_, PyAny>) -> PyResult<CoreSide> {
 
 /// One coherent view of a market at one exact nanosecond instant: the live
 /// entries of both sides and each side's price levels on a complete book,
-/// the deltas applied since the book before it on every book. Immutable:
+/// and on every book its delta - the orders and quotes its instant applied -
+/// and its events - every other event its instant recorded. A delta book
+/// holds no sides and states its delta and events alone. Immutable:
 /// `with_operations` and every verb answer a new book.
 #[pyclass(
     name = "BookEvent",
@@ -70,17 +72,17 @@ graph_methods!(PyBookEvent, "BookEvent"; [
     /// An empty book keyed `key` at `currunix` nanoseconds since the epoch:
     /// `key` is its crosscode - an instrument's ISIN, a ticker, or
     /// `XX0000000000` - and the book states neither a ticker nor an ISIN.
-    /// The empty base a code's first book, stating its deltas alone,
-    /// rebuilds over with `with_previous`.
+    /// The empty base a code's first book, a delta book, rebuilds over with
+    /// `with_previous`.
     #[staticmethod]
     fn keyed(currunix: i64, key: &str) -> Self {
         Self::from_core(CoreBookEvent::keyed(currunix, key))
     }
 
-    /// Whether the book holds its sides - every entry alive on it - rather
-    /// than only the deltas it applied since the book before it: a book a
-    /// caller builds, one a walk emits at a snapshot tick, and one rebuilt
-    /// by `with_previous` are complete.
+    /// Whether the book is a complete book, holding its sides - every entry
+    /// alive on it - rather than a delta book stating its delta and events
+    /// alone: a book a caller builds, one a walk emits at a snapshot tick,
+    /// and one rebuilt by `with_previous` are complete.
     #[getter]
     fn is_complete(&self) -> bool {
         self.inner.is_complete()
@@ -89,8 +91,8 @@ graph_methods!(PyBookEvent, "BookEvent"; [
     /// Every entry alive on the book, each once and a `MarketData`: the bid
     /// side's, best price first and every entry stating no price last, then
     /// the ask side's the same way but those resting on the bid too - a
-    /// two-sided quote is one entry, listed with the bids. Empty on a book
-    /// stating its deltas alone.
+    /// two-sided quote is one entry, listed with the bids. Empty on a delta
+    /// book.
     #[getter]
     fn alive(&self) -> Vec<PyMarketData> {
         self.inner
@@ -103,7 +105,7 @@ graph_methods!(PyBookEvent, "BookEvent"; [
     /// The entries alive on the side `side` takes, each a `MarketData`,
     /// best price first and every entry stating no price last - a two-sided
     /// quote on both sides. Empty for a side that is neither a bid nor an
-    /// ask, or on a book stating its deltas alone.
+    /// ask, or on a delta book.
     fn alive_on(&self, side: &Bound<'_, PyAny>) -> PyResult<Vec<PyMarketData>> {
         Ok(self
             .inner
@@ -113,15 +115,16 @@ graph_methods!(PyBookEvent, "BookEvent"; [
             .collect())
     }
 
-    /// Every event of the book's instant since the book before this one,
-    /// each a `MarketData`, in the order applied across both sides: the
-    /// orders and quotes applied, and the executions recorded, which rest on
-    /// no side. What a book stating its deltas alone states, and what
-    /// `with_previous` replays over the book before it.
+    /// The book's delta: the membership operations its instant applied
+    /// since the book before this one, each a `MarketData`, in the order
+    /// applied across both sides - the orders and quotes placed, changed,
+    /// ended, expired, withdrawn or range-deleted, each the very entry a
+    /// side holds where it rests. What a delta book states beside its
+    /// `events`, and what `with_previous` replays over the book before it.
     #[getter]
-    fn deltas(&self) -> Vec<PyMarketData> {
+    fn delta(&self) -> Vec<PyMarketData> {
         self.inner
-            .deltas()
+            .delta()
             .cloned()
             .map(PyMarketData::from_core)
             .collect()
@@ -129,8 +132,7 @@ graph_methods!(PyBookEvent, "BookEvent"; [
 
     /// The orders resting on the book - every `alive` entry that is an
     /// order - each an `OrderEvent`, in `alive`'s order: the bid side's,
-    /// best price first, then the ask side's. Empty on a book stating its
-    /// deltas alone.
+    /// best price first, then the ask side's. Empty on a delta book.
     #[getter]
     fn ordlive(&self) -> Vec<PyOrderEvent> {
         self.inner
@@ -140,8 +142,9 @@ graph_methods!(PyBookEvent, "BookEvent"; [
             .collect()
     }
 
-    /// The orders among `deltas`, each an `OrderEvent`, in the order
-    /// applied: every order the book's instant placed, changed or ended.
+    /// The orders among `delta`, each an `OrderEvent`, in the order
+    /// applied: every order the book's instant placed, changed, ended,
+    /// expired or withdrawn.
     #[getter]
     fn orddelta(&self) -> Vec<PyOrderEvent> {
         self.inner
@@ -151,8 +154,9 @@ graph_methods!(PyBookEvent, "BookEvent"; [
             .collect()
     }
 
-    /// The quotes among `deltas`, each a `QuoteEvent`, in the order applied;
+    /// The quotes among `delta`, each a `QuoteEvent`, in the order applied;
     /// a quote resting since an earlier instant is `alive`'s and not here.
+    /// These and `orddelta` partition `delta`.
     #[getter]
     fn quotes(&self) -> Vec<PyQuoteEvent> {
         self.inner
@@ -162,7 +166,7 @@ graph_methods!(PyBookEvent, "BookEvent"; [
             .collect()
     }
 
-    /// The executions among `deltas`, each an `ExecutionEvent`, in the order
+    /// The executions among `events`, each an `ExecutionEvent`, in the order
     /// applied: recorded at the book's instant, resting on no side.
     #[getter]
     fn executions(&self) -> Vec<PyExecutionEvent> {
@@ -173,13 +177,12 @@ graph_methods!(PyBookEvent, "BookEvent"; [
             .collect()
     }
 
-    /// Every other delta - none an order, a quote or an execution - each a
-    /// `MarketData`, in the order applied: `orddelta`, `quotes`,
-    /// `executions` and these partition `deltas`. Empty today, by
-    /// construction: a fold prunes a trade, a batch and a session message,
-    /// refuses an undated order, quote or execution and a nested book by
-    /// kind, and folds a snapshot control into the sides, never among the
-    /// deltas.
+    /// The book's events: every other event its instant recorded, each a
+    /// `MarketData`, in the order applied - the executions, which rest on no
+    /// side and move none, and the snapshot controls whose membership
+    /// replacement made the book complete. A delta book states them beside
+    /// its `delta`, and `with_previous` replays none of them. `executions`
+    /// and `controls` partition them.
     #[getter]
     fn events(&self) -> Vec<PyMarketData> {
         self.inner
@@ -189,12 +192,24 @@ graph_methods!(PyBookEvent, "BookEvent"; [
             .collect()
     }
 
+    /// The snapshot controls among `events`, each a `SnapshotEvent`, in the
+    /// order applied: each `W` control whose membership replacement made the
+    /// book complete, so only a complete book states one.
+    #[getter]
+    fn controls(&self) -> Vec<PySnapshotEvent> {
+        self.inner
+            .controls()
+            .cloned()
+            .map(PySnapshotEvent::from_core)
+            .collect()
+    }
+
     /// One limit per level of the side `side` takes - a bid side reads the
     /// bid, an ask side the ask - best first and the unpriced limit last:
     /// each the struct `Scalar` of its `price` (`None` on the unpriced
     /// limit), the exact `quantity` resting there, the `uuids` of the
     /// entries resting there and whether the level is `tradable`. Empty for
-    /// a side that is neither, and on a book stating its deltas alone.
+    /// a side that is neither, and on a delta book.
     fn limits(&self, side: &Bound<'_, PyAny>) -> PyResult<Vec<PyScalar>> {
         Ok(self
             .inner
@@ -349,7 +364,7 @@ impl PyBookIterator {
     /// snapshots, so a book is emitted whole only at a full refresh.
     ///
     /// The walk folds orders, quotes and snapshot controls, records every
-    /// execution among the deltas of its book at its instant, and prunes
+    /// execution among the events of its book at its instant, and prunes
     /// every other input where it is pulled. `filter` - a `Filter`, a
     /// `Term`, an `Expression` or the text of a predicate over the
     /// `marketdata` row - narrows it further, bound once here; it never

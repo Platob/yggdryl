@@ -22,9 +22,17 @@
 //! names, the derivations, the identifiers, the identity - so
 //! there is no pass after it but the walk.
 //!
+//! One walk reads other bytes of the same length: `decoded_lifecycle_distinct`
+//! walks copies rendered by `rust/tests/support/ulbridge.rs`, every copy's
+//! identifiers stepped and clocks moved, so its chains are distinct where the
+//! repeated corpus is retransmissions the walk's deduplication drops.
+//!
 //! The registry is the shipped dictionary: the framed FIX lands on FIX's own
 //! tags, and a JSON document the bridge wrote is one `unknown` row carrying
 //! only what the row stated.
+
+#[path = "../../tests/support/ulbridge.rs"]
+mod ulbridge;
 
 use std::hint::black_box;
 use std::sync::Arc;
@@ -41,7 +49,7 @@ use yggdryl::media::RecordOptions;
 use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
     ArrowCastOptions, DataType, Field, Filter, FixCodec, FixMsg, FixRegistry, IOMedia, Identifier,
-    SerieReader, State, StructType, Timezone, Url, fix_schema,
+    State, StreamChunkedSerie, StructType, Timezone, Url, fix_schema,
 };
 
 use super::seed;
@@ -77,6 +85,18 @@ const MARKET_REPEATS: usize = crate::bench_profile::corpus(512, 4);
 const MARKET_DEPTH: usize = crate::bench_profile::corpus(1_024, 16);
 
 /// The log, as the bytes a `.log` file holds.
+/// The thread counts the multi-threaded rows run at: two, four and the
+/// host's own parallelism - what every door defaults to - each once, in
+/// that order, so a host of four cores runs the matrix of two.
+fn thread_matrix() -> Vec<usize> {
+    let host = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let mut matrix = vec![2, 4];
+    if !matrix.contains(&host) {
+        matrix.push(host);
+    }
+    matrix
+}
+
 fn corpus() -> Vec<u8> {
     LOG.repeat(REPEATS)
 }
@@ -120,10 +140,10 @@ fn batched_text(rows: usize) -> RecordOptions {
 /// once and each row's bytes borrowed where they lie.
 fn bodies(source: &Buffer) -> Vec<Vec<u8>> {
     let read = source.read_arrow_reader(&text()).expect("a reader");
-    let columns = SerieReader::from_arrow_reader(None, read, ArrowCastOptions::new())
+    let columns = StreamChunkedSerie::from_arrow_reader(None, read, ArrowCastOptions::new())
         .expect("the text reader's rows are records");
     let mut held = Vec::new();
-    for records in columns {
+    for records in columns.into_chunks() {
         let records = records.expect("a batch");
         let body = records
             .child("body")
@@ -292,6 +312,47 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("decoded_lifecycle_sorted", |bencher| {
         bencher.iter_batched(
             || ordered.clone(),
+            |held| {
+                hourly
+                    .lifecycle(held)
+                    .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                        message.map(|_| read + 1)
+                    })
+                    .expect("a walked message")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The same sorted walk over copies that repeat nothing: each rendered
+    // from the capture with its identifiers stepped and its clocks moved by
+    // the copy, every copy a second after the one before inside one span,
+    // as the scale run stacks them. The copies above are one capture's
+    // bytes again, which the walk's deduplication drops as retransmissions,
+    // so that case is the deduplication's rate; here every copy is chains
+    // of its own, and this is the walk's.
+    let copies = u64::try_from(REPEATS).expect("a copy count");
+    let template = ulbridge::Template::new(copies);
+    let mut rendered = Vec::with_capacity(bytes.len());
+    for copy in 0..copies {
+        template.render(copy, &mut rendered);
+    }
+    assert_eq!(
+        rendered.len(),
+        bytes.len(),
+        "a rendered copy keeps every line's width: the group's throughput is its bytes too"
+    );
+    let rendered_source = handle(&rendered);
+    let mut distinct: Vec<FixMsg> = composed
+        .parse_text_lines(
+            read_text_lines(&rendered_source, &options).expect("a decoded line stream"),
+        )
+        .collect::<yggdryl::Result<_>>()
+        .expect("the decoded copies");
+    assert_eq!(distinct.len(), MESSAGES * REPEATS);
+    distinct.sort_by_key(yggdryl::graph::Event::get_currunix);
+    group.bench_function("decoded_lifecycle_distinct", |bencher| {
+        bencher.iter_batched(
+            || distinct.clone(),
             |held| {
                 hourly
                     .lifecycle(held)
@@ -534,8 +595,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // The same doors on several threads, against the one-thread rows above:
     // what the machine's cores buy each door, and what each door leaves on
     // the thread that pulls it - the text reader in front of the line
-    // doors, the batches closing behind the Arrow ones.
-    for threads in [2, 4] {
+    // doors, the batches closing behind the Arrow ones. The matrix ends at
+    // the host's own parallelism, the default every door runs at.
+    for threads in thread_matrix() {
         let spread = codec.clone().with_threads(threads);
         let composed = composed.clone().with_threads(threads);
         group.bench_function(format!("parse_lines/threads={threads}"), |bencher| {
@@ -877,7 +939,9 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
                     .expect("a sorted book iterator")
                     .try_fold(0_usize, |count, book| {
                         let book = book?;
-                        Ok::<_, yggdryl::Error>(count + book.alive().count() + book.deltas().len())
+                        Ok::<_, yggdryl::Error>(
+                            count + book.alive().count() + book.delta().len() + book.events().len(),
+                        )
                     })
                     .expect("the operation stream builds books")
             },
@@ -1064,6 +1128,52 @@ pub fn line_benchmarks(criterion: &mut Criterion) {
                 yggdryl::text::TextEntries::from_bytes_direct(black_box(&page))
                     .map_or(0, |held| held.len())
             });
+        });
+    }
+    group.finish();
+    fill_benchmarks(criterion);
+}
+
+/// What a fill from the seeded instrument registry costs one element: by
+/// its stated ISIN, and - for an instrument the registry knows by no code
+/// the element states - by the short name it states in its currency, the
+/// exact tier's miss alone where the economic match is off and the scan of
+/// every instrument in that currency where it is on.
+fn fill_benchmarks(criterion: &mut Criterion) {
+    use yggdryl::{Ccy, IdType, IsinRegistry};
+    let identified = |kind: IdType, value: &str| {
+        let mut element = OrderEvent::at(1);
+        element
+            .insert_securityid(Identifier::new(IdKey::base(kind), value).expect("an identifier"))
+            .expect("a security identifier");
+        element
+    };
+    let by_isin = identified(IdType::Isin, "US0378331005");
+    let mut by_name = identified(IdType::Fisn, "APPLE INC./SH SH");
+    by_name.set_currency(Ccy::new("USD").expect("a currency"), true);
+    let exact = IsinRegistry::seeded();
+    let economic = IsinRegistry::seeded().with_economic_match(true);
+    assert!(exact.fill(&mut by_isin.clone()), "Apple by its ISIN");
+    assert!(!exact.fill(&mut by_name.clone()), "no exact key");
+    assert!(
+        economic.fill(&mut by_name.clone()),
+        "Apple by its short name"
+    );
+    let mut group = criterion.benchmark_group("fix/fill");
+    for (case, registry, element) in [
+        ("known_isin", &exact, &by_isin),
+        ("unknown_fisn_exact", &exact, &by_name),
+        ("unknown_fisn_economic", &economic, &by_name),
+    ] {
+        group.bench_function(case, |bencher| {
+            bencher.iter_batched(
+                || element.clone(),
+                |mut held| {
+                    black_box(registry).fill(&mut held);
+                    held
+                },
+                BatchSize::SmallInput,
+            );
         });
     }
     group.finish();

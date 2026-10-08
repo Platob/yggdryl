@@ -160,10 +160,11 @@ market data and books into lifted ``marketdata`` batches, one
 ``book_event`` row per book and book key - the instrument's ISIN, else its
 ticker, else ``XX0000000000`` - read back by
 :meth:`yggdryl.graph.MarketData.from_arrow_reader`; ``snapshot_millis``
-selects an epoch-aligned snapshot grid, at which a book is written whole,
-every other book its deltas, and ``filter`` narrows what the books fold. A
-book folds orders, quotes and book messages and never an execution or a
-trade. Lifecycle enrichment remains an explicit composition.
+selects an epoch-aligned snapshot grid, at which a complete book is
+written, every other book a delta book stating its delta and events, and
+``filter`` narrows what the books fold. A book folds orders, quotes and book
+messages into its sides, records an execution among its events, and never
+reaches a trade. Lifecycle enrichment remains an explicit composition.
 :meth:`FixCodec.market_data` is the sorted door: it collects a
 capture, admits what the book door admits, expands each message and answers
 the market data stably sorted by the instant a book folds them at, nothing a

@@ -65,7 +65,6 @@ from .expression import (
     Expression as Expression,
     Filter as Filter,
     Plan as Plan,
-    Records as Records,
     Selector as Selector,
     Term as Term,
 )
@@ -258,8 +257,6 @@ from .serie import (
     MapSerie as MapSerie,
     Serie as Serie,
     SerieField as SerieField,
-    SerieReader as SerieReader,
-    SerieReaderWindows as SerieReaderWindows,
     SerieSerie as SerieSerie,
     WindowSerie as WindowSerie,
     SerieViewField as SerieViewField,
@@ -374,9 +371,18 @@ from .identifier import (
 )
 from .isin_registry import (
     IsinRegistry as IsinRegistry,
+    Resolution as Resolution,
 )
 from .eusipa import (
     Eusipa as Eusipa,
+)
+
+from .stream_serie import StreamSerie as StreamSerie
+from .stream_chunked_serie import StreamChunkedSerie as StreamChunkedSerie
+from .key_serie import (
+    KeySerie as KeySerie,
+    KeySeries as KeySeries,
+    StreamKeySerie as StreamKeySerie,
 )
 
 __all__: list[str]

@@ -335,8 +335,15 @@ macro_rules! temporal_leaf {
         }
 
         impl ::std::fmt::Display for $name {
+            // The classic ISO 8601 spelling wherever the value has one - the
+            // short form the one renderer writes, so a typed cell prints as a
+            // reader would write it - and the structural `count@unit[zone]`
+            // only where it has none, which is the serde wire's own fallback.
             fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                write!(formatter, "{}@{}[{}]", self.count, self.unit, self.timezone)
+                match $crate::Scalar::$name(*self).into_temporal_text() {
+                    Some(text) => formatter.write_str(&text),
+                    None => write!(formatter, "{}@{}[{}]", self.count, self.unit, self.timezone),
+                }
             }
         }
 
@@ -405,10 +412,14 @@ pub(crate) use temporal_leaf;
 // A temporal used to travel through the text formats as a tagged tuple - a
 // unit name beside a count - which no other tool reads. Every other tool
 // reads `2026-08-17`, `10:00:00.123`, `2026-08-17T10:00:00Z`, and `PT90S`,
-// so those are what the emitters write now. The spelling stays exact both
-// ways: the fraction is printed at the unit's full width, so the number of
-// digits *is* the unit, and a zoned instant carries its offset plus the zone
-// name in brackets when the name says more than the offset does.
+// so those are what the emitters write now. The spelling is short and
+// exact: a clock writes no fraction where its fraction is zero, else the
+// shortest of three, six or nine digits that spells it exactly
+// (`push_fraction`), so `09:30:00` under a nanosecond column prints as a
+// reader would write it and `.500` is half a second at every unit; the count
+// comes back exactly when it is read at the unit it was written at, which is
+// the column's. A zoned instant carries its offset plus the zone name in
+// brackets when the name says more than the offset does.
 //
 // Formatting answers `None` for a reading with no classic spelling - a date
 // beyond four-digit years, a time of day outside its day, an interval-layout
@@ -468,16 +479,80 @@ const fn unit_of_fraction(digits: usize) -> TimeUnit {
     }
 }
 
-/// Write `seconds.fraction` for one in-day count, at the unit's full width.
-fn push_clock(text: &mut String, count: i64, unit: TimeUnit) {
+/// Write `HH:MM:SS[.fraction]` for one in-day count, the fraction through
+/// [`push_fraction`].
+fn push_clock(text: &mut impl std::fmt::Write, count: i64, unit: TimeUnit) {
     let per = per_second(unit).expect("a resolution unit reaches the clock");
     let seconds = count.div_euclid(per);
     let fraction = count.rem_euclid(per);
     let (hours, minutes, seconds) = (seconds / 3_600, (seconds / 60) % 60, seconds % 60);
-    text.push_str(&format!("{hours:02}:{minutes:02}:{seconds:02}"));
-    let digits = fraction_digits(unit);
-    if digits > 0 {
-        text.push_str(&format!(".{fraction:0digits$}"));
+    write!(text, "{hours:02}:{minutes:02}:{seconds:02}").expect("a string takes every write");
+    push_fraction(text, fraction, unit);
+}
+
+/// The sub-second digits one count prints: none for a zero fraction, else
+/// three, six or nine - the shortest group that spells it exactly.
+///
+/// `fraction` is the count's sub-second part at `unit`, so it is below the
+/// unit's `per_second`. The groups are the three widths a reader names a
+/// unit by, which is what keeps the spelling exact: `.500` is half a second
+/// whether the column counts milliseconds or nanoseconds, and `.000000001`
+/// is one nanosecond and nothing shorter.
+const fn fraction_width(fraction: i64, unit: TimeUnit) -> usize {
+    if fraction == 0 {
+        return 0;
+    }
+    let Some(per) = per_second(unit) else {
+        return 0;
+    };
+    let nanos = fraction * (1_000_000_000 / per);
+    if nanos % 1_000_000 == 0 {
+        3
+    } else if nanos % 1_000 == 0 {
+        6
+    } else {
+        9
+    }
+}
+
+/// Write the `.fraction` of one count, when it has one: nothing for a zero
+/// fraction, else the shortest of three, six or nine digits that spells it
+/// exactly - `.123`, `.123456`, `.123456789`, `.500` for half a second at
+/// any unit.
+///
+/// The one rule every classic spelling writes its fraction by - a time of
+/// day, a datetime, an instant and a duration - so a clock reads as it
+/// prints whatever the column's unit: `09:30:00` under `time64(ns)` is the
+/// count that printed it, and FIX's own wire (`fix/entry.rs`) spells the
+/// same digits.
+fn push_fraction(text: &mut impl std::fmt::Write, fraction: i64, unit: TimeUnit) {
+    let width = fraction_width(fraction, unit);
+    if width == 0 {
+        return;
+    }
+    let per = per_second(unit).expect("a width names a resolution unit");
+    let nanos = fraction * (1_000_000_000 / per);
+    let value = match width {
+        3 => nanos / 1_000_000,
+        6 => nanos / 1_000,
+        _ => nanos,
+    };
+    write!(text, ".{value:0width$}").expect("a string takes every write");
+}
+
+/// Whether the classic spelling of `count` at `unit` reads back at `unit`.
+///
+/// The fraction a spelling writes is the shortest exact one, so a count
+/// whose fraction is zero, or shorter than its unit's width, spells a
+/// coarser unit than it is held at: `09:30:00` reads as seconds whatever
+/// column printed it. A wire that must restore the unit from the text
+/// alone, the `Scalar` serde, writes the spelling only where this holds and
+/// its structural form otherwise; an interval layout spells nothing and
+/// answers `false`.
+pub(crate) fn spelling_keeps_unit(count: i64, unit: TimeUnit) -> bool {
+    match per_second(unit) {
+        Some(per) => unit_of_fraction(fraction_width(count.rem_euclid(per), unit)) == unit,
+        None => false,
     }
 }
 
@@ -496,13 +571,19 @@ pub(crate) fn format_time(count: i64, unit: TimeUnit) -> Option<SmolStr> {
     if count < 0 || count >= DAY.checked_mul(per)? {
         return None;
     }
-    let mut text = String::with_capacity(18);
+    // At most eighteen bytes, inside the string's inline width: a clock is
+    // spelled on the stack, which is what lets a typed time of day render
+    // into a FIX entry at no allocation.
+    let mut text = smol_str::SmolStrBuilder::new();
     push_clock(&mut text, count, unit);
-    Some(SmolStr::from(text))
+    Some(text.finish())
 }
 
-/// Spell a naive reading as `YYYY-MM-DDTHH:MM:SS[.fraction]`.
+/// Spell a naive reading as `YYYY-MM-DDTHH:MM:SS[.fraction]`, the fraction
+/// [`push_fraction`]'s.
 pub(crate) fn format_datetime(count: i64, unit: TimeUnit) -> Option<SmolStr> {
+    use std::fmt::Write;
+
     let per = per_second(unit)?;
     let days = count.div_euclid(DAY * per);
     let in_day = count.rem_euclid(DAY * per);
@@ -511,7 +592,7 @@ pub(crate) fn format_datetime(count: i64, unit: TimeUnit) -> Option<SmolStr> {
         return None;
     }
     let mut text = String::with_capacity(30);
-    text.push_str(&format!("{year:04}-{month:02}-{day:02}T"));
+    write!(text, "{year:04}-{month:02}-{day:02}T").expect("a String takes every write");
     push_clock(&mut text, in_day, unit);
     Some(SmolStr::from(text))
 }
@@ -556,20 +637,24 @@ pub(crate) fn format_timestamp(count: i64, unit: TimeUnit, zone: &Timezone) -> O
 ///
 /// Seconds are the one component every unit restates exactly, so the spelling
 /// never decomposes into hours a reader would have to multiply back. The sign
-/// leads, as ISO 8601 puts it. An interval layout has no fixed width and
-/// answers `None`.
+/// leads, as ISO 8601 puts it, and the fraction is [`push_fraction`]'s:
+/// `PT90S` for ninety seconds at any unit, `PT1.500S` for a second and a
+/// half. An interval layout has no fixed width and answers `None`.
 pub(crate) fn format_duration(count: i64, unit: TimeUnit) -> Option<SmolStr> {
+    use std::fmt::Write;
+
     let per = per_second(unit)?;
     let magnitude = count.unsigned_abs();
     let seconds = magnitude / per.unsigned_abs();
     let fraction = magnitude % per.unsigned_abs();
     let sign = if count < 0 { "-" } else { "" };
-    let digits = fraction_digits(unit);
-    Some(if digits == 0 {
-        format_smolstr!("{sign}PT{seconds}S")
-    } else {
-        format_smolstr!("{sign}PT{seconds}.{fraction:0digits$}S")
-    })
+    let mut text = String::with_capacity(24);
+    write!(text, "{sign}PT{seconds}").expect("a String takes every write");
+    // The magnitude's fraction is below `per`, so it fits the signed count
+    // the clock writers hand over.
+    push_fraction(&mut text, fraction as i64, unit);
+    text.push('S');
+    Some(SmolStr::from(text))
 }
 
 /// The error one malformed ISO spelling reports.
@@ -753,28 +838,117 @@ fn parse_clock_at(
     position: usize,
     target: &'static str,
 ) -> Result<(i64, TimeUnit, usize)> {
+    clock_at(text, position, target, false)
+}
+
+/// Parse a clock as FIX and the bridges that carry it spell one, returning
+/// the count, unit, and end position: everything [`parse_clock_at`] reads,
+/// and two spellings only that wire writes - a clock that stops at its
+/// minutes (`07:39`, `0739`), and the compact clock running straight into
+/// its fraction with no decimal sign, three, six or nine digits of it
+/// (`093000123`, the clock of `20240102101530123`).
+fn parse_fix_clock_at(
+    text: &str,
+    position: usize,
+    target: &'static str,
+) -> Result<(i64, TimeUnit, usize)> {
+    clock_at(text, position, target, true)
+}
+
+/// The one clock reader behind [`parse_clock_at`] and [`parse_fix_clock_at`];
+/// `fix` admits the two FIX spellings.
+fn clock_at(
+    text: &str,
+    position: usize,
+    target: &'static str,
+    fix: bool,
+) -> Result<(i64, TimeUnit, usize)> {
     let hours = digits(text, position, 2, target)?;
     // The compact `HHMMSS` beside the extended `HH:MM:SS`, decided by one
     // look, exactly as the date is.
     let compact = is_digit_at(text, position + 2);
-    let (minutes_at, seconds_at, end) = if compact {
-        (position + 2, position + 4, position + 6)
+    let (minutes_at, seconds_at) = if compact {
+        (position + 2, position + 4)
     } else {
         literal(text, position + 2, b':', target)?;
-        (position + 3, position + 6, position + 8)
+        (position + 3, position + 6)
     };
     let minutes = digits(text, minutes_at, 2, target)?;
-    if !compact {
-        literal(text, position + 5, b':', target)?;
-    }
-    let seconds = digits(text, seconds_at, 2, target)?;
+    // Where the seconds open: a digit in the compact spelling, `:` in the
+    // extended one. ISO wants them, naming the byte they were owed at; FIX
+    // may stop at the minutes.
+    let has_seconds = if compact {
+        is_digit_at(text, seconds_at)
+    } else {
+        text.as_bytes().get(position + 5) == Some(&b':')
+    };
+    let (seconds, fraction, unit, end) = if has_seconds {
+        let seconds = digits(text, seconds_at, 2, target)?;
+        let after = seconds_at + 2;
+        if fix && compact && is_digit_at(text, after) {
+            let (fraction, unit, end) = parse_run_fraction_at(text, after, target)?;
+            (seconds, fraction, unit, end)
+        } else {
+            let (fraction, unit, end) = parse_fraction_at(text, after, target)?;
+            (seconds, fraction, unit, end)
+        }
+    } else if fix {
+        (0, 0, TimeUnit::Second, minutes_at + 2)
+    } else if compact {
+        return Err(iso_error(target, seconds_at, "expected digits"));
+    } else {
+        return Err(iso_error(target, position + 5, "unexpected separator"));
+    };
     if minutes >= 60 || seconds >= 60 {
         return Err(iso_error(target, position, "clock reading out of range"));
     }
     let whole = hours * 3_600 + minutes * 60 + seconds;
-    let (fraction, unit, end) = parse_fraction_at(text, end, target)?;
     let per = per_second(unit).expect("a fraction width names a resolution unit");
     Ok((whole * per + fraction, unit, end))
+}
+
+/// Read the fraction a compact FIX clock runs straight into at `position`:
+/// the digits to the end of the run, exactly three, six or nine of them,
+/// answering the count at the width's unit, that unit, and the end.
+///
+/// FIX allows a fraction of three, six or nine digits (twelve by bilateral
+/// agreement, which this crate's nanosecond clocks cannot hold), and with
+/// no decimal sign the digit count is the only thing that says where the
+/// seconds end, so any other width is refused at the first digit of it.
+fn parse_run_fraction_at(
+    text: &str,
+    position: usize,
+    target: &'static str,
+) -> Result<(i64, TimeUnit, usize)> {
+    let bytes = text.as_bytes();
+    let mut end = position;
+    let mut fraction: i64 = 0;
+    while let Some(byte) = bytes.get(end)
+        && byte.is_ascii_digit()
+    {
+        if end - position == 9 {
+            return Err(iso_error(
+                target,
+                position,
+                "fraction must hold 3, 6 or 9 digits",
+            ));
+        }
+        fraction = fraction * 10 + i64::from(byte - b'0');
+        end += 1;
+    }
+    let unit = match end - position {
+        3 => TimeUnit::Millisecond,
+        6 => TimeUnit::Microsecond,
+        9 => TimeUnit::Nanosecond,
+        _ => {
+            return Err(iso_error(
+                target,
+                position,
+                "fraction must hold 3, 6 or 9 digits",
+            ));
+        }
+    };
+    Ok((fraction, unit, end))
 }
 
 /// Parse `HH:MM:SS[.fraction]` into a count of `unit` since midnight.
@@ -942,18 +1116,13 @@ fn fix_shaped(text: &str) -> Option<(i64, TimeUnit, Option<Timezone>)> {
     }
     if bytes.len() > 14 && bytes.iter().all(u8::is_ascii_digit) {
         let (days, _) = parse_date_at(text, 0).ok()?;
-        let (in_day, _, _) = parse_clock_at(&text[..14], 8, "timestamp").ok()?;
-        let unit = match bytes.len() - 14 {
-            3 => TimeUnit::Millisecond,
-            6 => TimeUnit::Microsecond,
-            9 => TimeUnit::Nanosecond,
-            _ => return None,
-        };
+        // The compact clock runs into its fraction, which the FIX clock
+        // reader takes to the end of the run or refuses by width.
+        let (in_day, unit, _) = parse_fix_clock_at(text, 8, "timestamp").ok()?;
         let per = per_second(unit)?;
-        let fraction: i64 = text[14..].parse().ok()?;
         let count = i64::from(days)
             .checked_mul(DAY * per)?
-            .checked_add(in_day * per + fraction)?;
+            .checked_add(in_day)?;
         return Some((count, unit, None));
     }
     None
@@ -974,24 +1143,14 @@ fn fix_clock(text: &str) -> Option<(i64, TimeUnit, Option<Timezone>)> {
         }
         _ => (None, 0),
     };
-    let hours = digits(text, clock_at, 2, TARGET).ok()?;
-    literal(text, clock_at + 2, b':', TARGET).ok()?;
-    let minutes = digits(text, clock_at + 3, 2, TARGET).ok()?;
-    if minutes >= 60 {
+    // A FIX timestamp's clock is the extended one, `HH:MM[:SS[.f]]`; the
+    // compact clocks are a bridge's and a `TZTimeOnly` field's, which
+    // [`parse_fix_clock`] reads.
+    if bytes.get(clock_at + 2) != Some(&b':') {
         return None;
     }
-    let (seconds, fraction, unit, end) = if bytes.get(clock_at + 5) == Some(&b':') {
-        let seconds = digits(text, clock_at + 6, 2, TARGET).ok()?;
-        if seconds >= 60 {
-            return None;
-        }
-        let (fraction, unit, end) = parse_fraction_at(text, clock_at + 8, TARGET).ok()?;
-        (seconds, fraction, unit, end)
-    } else {
-        (0, 0, TimeUnit::Second, clock_at + 5)
-    };
+    let (in_day, unit, end) = parse_fix_clock_at(text, clock_at, TARGET).ok()?;
     let per = per_second(unit)?;
-    let in_day = (hours * 3_600 + minutes * 60 + seconds) * per + fraction;
     let local = match days {
         Some(days) => i64::from(days)
             .checked_mul(DAY * per)?
@@ -1005,6 +1164,48 @@ fn fix_clock(text: &str) -> Option<(i64, TimeUnit, Option<Timezone>)> {
     }
     let (count, unit, zone) = zoned_at(text, local, unit, end).ok()?;
     Some((count, unit, Some(zone)))
+}
+
+/// Parse a time of day as FIX spells one into a count of `unit` since
+/// midnight: everything [`parse_time`] reads, and the clock half of the two
+/// FIX datetime spellings that have one - a clock that stops at its minutes
+/// (`07:39`, `0739`) and the digit run with its three, six or nine fraction
+/// digits unseparated (`093000123`). The hours fold modulo the day as
+/// [`parse_time`]'s do; a zone is trailing text here, as it is there, and
+/// the time doors name the type that reads one.
+pub(crate) fn parse_fix_time(text: &str) -> Result<(i64, TimeUnit)> {
+    let (count, unit, end) = parse_fix_clock_at(text, 0, "time")?;
+    if end != text.len() {
+        return Err(iso_error("time", end, "trailing text after the time"));
+    }
+    let per = per_second(unit).expect("the clock parsed at a resolution unit");
+    Ok((count.rem_euclid(DAY * per), unit))
+}
+
+/// Parse a `TZTimeOnly` as FIX spells one: a clock and no date -
+/// `HH:MM[:SS[.f]]`, compact `HHMM[SS[.f]]`, the compact run into its
+/// fraction - closed by nothing, by `Z` or by an offset, `±hh[:mm]`, one
+/// blank allowed before a numeric one as [`parse_instant`] allows it.
+///
+/// The count is the clock on the epoch day, as the dateless arm of
+/// [`parse_fix_instant`] reads it - the one choice that costs nothing for
+/// a time of day - and an hour past the day carries into the next, as a
+/// datetime's does. A stated zone answers the instant and the zone; a
+/// clock stating none answers the local count and no zone, for the column
+/// to read as a wall clock in its own. A dated value is refused by its
+/// shape - eight digits and FIX's `-` open a timestamp, never a clock - and
+/// so is what is no clock at all, naming the byte.
+pub(crate) fn parse_fix_clock(text: &str) -> Result<(i64, TimeUnit, Option<Timezone>)> {
+    let bytes = text.as_bytes();
+    if bytes.get(8) == Some(&b'-') && bytes[..8].iter().all(u8::is_ascii_digit) {
+        return Err(iso_error("timestamp", 0, "a time of day states no date"));
+    }
+    let (local, unit, end) = parse_fix_clock_at(text, 0, "timestamp")?;
+    if end == text.len() {
+        return Ok((local, unit, None));
+    }
+    let (count, unit, zone) = zoned_at(text, local, unit, end)?;
+    Ok((count, unit, Some(zone)))
 }
 
 /// Read the zone that closes a local reading ending at `end`, answering the
@@ -1477,12 +1678,15 @@ pub(crate) mod scalars {
         ///
         /// This is the crate's one text reading of a temporal: the row evaluator,
         /// the field-directed record parsers and the Arrow cast leaf all arrive
-        /// here, so a spelling reads the same count wherever it is met. The unit
-        /// the spelling names is restated in the declared one and has to land
-        /// exactly - `10:00:00.500` is no `time32(second)` - and the zone is the
-        /// datatype's: a zoned datetime wants an offset in the text, while a
-        /// `NAIVE` datetime refuses one. An interval has no classic spelling, so
-        /// it is no target here.
+        /// here, so a spelling reads the same count wherever it is met. Each
+        /// family's own door reads the text - [`crate::Date32::from_text`],
+        /// [`crate::Time32::from_text`] and [`crate::Time64::from_text`],
+        /// [`crate::Duration64::from_text`] - and what it answers is restated
+        /// in the declared unit, which it has to land exactly - `10:00:00.500`
+        /// is no `time32(second)`. The zone is the datatype's: a zoned
+        /// datetime wants an offset in the text, while a `NAIVE` datetime
+        /// refuses one. An interval has no classic spelling, so it is no
+        /// target here.
         ///
         /// # Errors
         ///
@@ -1490,17 +1694,19 @@ pub(crate) mod scalars {
         /// when the count does not fit the declared unit and width.
         pub(crate) fn from_temporal_text(dtype: &DataType, text: &str) -> Result<Self> {
             match dtype {
-                DataType::Date32 => Ok(Self::date32(super::parse_date(text)?)),
-                DataType::Date64 => i64::from(super::parse_date(text)?)
+                DataType::Date32 => Ok(Self::Date32(crate::Date32::from_text(text)?)),
+                DataType::Date64 => i64::from(crate::Date32::from_text(text)?.count())
                     .checked_mul(86_400_000)
                     .map(Self::date64)
                     .ok_or_else(|| invalid_record("date64 count must fit signed 64 bits")),
                 DataType::Time32(unit) => {
-                    let count = restated(clock_of_day(text)?, *unit, "time32")?;
+                    let read = crate::Time32::from_text(text)?;
+                    let count = restated((i64::from(read.count()), read.unit()), *unit, "time32")?;
                     Self::time32(narrow_i32(count, "time32")?, *unit, Timezone::NAIVE)
                 }
                 DataType::Time64(unit) => {
-                    let count = restated(clock_of_day(text)?, *unit, "time64")?;
+                    let read = crate::Time64::from_text(text)?;
+                    let count = restated((read.count(), read.unit()), *unit, "time64")?;
                     Self::time64(count, *unit, Timezone::NAIVE)
                 }
                 DataType::DateTime64 { unit, timezone } if timezone.is_naive() => {
@@ -1512,12 +1718,18 @@ pub(crate) mod scalars {
                     let count = restated((count, source), *unit, "datetime64")?;
                     Self::datetime64(count, *unit, *timezone)
                 }
+                // The 64-bit door reads for both widths: the count is restated
+                // in the column's unit before it is narrowed, so a spelling the
+                // narrow width holds at the column's unit is never refused at
+                // the finer unit its digits happened to name.
                 DataType::Duration32(unit) => {
-                    let count = restated(super::parse_duration(text)?, *unit, "duration32")?;
+                    let read = crate::Duration64::from_text(text)?;
+                    let count = restated((read.count(), read.unit()), *unit, "duration32")?;
                     Self::duration32(narrow_i32(count, "duration32")?, *unit)
                 }
                 DataType::Duration64(unit) => {
-                    let count = restated(super::parse_duration(text)?, *unit, "duration64")?;
+                    let read = crate::Duration64::from_text(text)?;
+                    let count = restated((read.count(), read.unit()), *unit, "duration64")?;
                     Self::duration64(count, *unit)
                 }
                 other => Err(invalid_record_text(format_smolstr!(
@@ -1589,24 +1801,6 @@ pub(crate) mod scalars {
         pub fn temporal_dtype(&self) -> Option<DataType> {
             self.is_temporal().then(|| self.dtype().ok()).flatten()
         }
-    }
-
-    /// Read a time of day, naming the type that reads a zoned clock instead.
-    ///
-    /// An offset makes a clock an instant, and the message says so rather than
-    /// reporting the offset as trailing text.
-    fn clock_of_day(text: &str) -> Result<(i64, TimeUnit)> {
-        let zoned = text.ends_with(['Z', 'z'])
-            || text
-                .len()
-                .checked_sub(6)
-                .is_some_and(|start| matches!(text.as_bytes()[start], b'+' | b'-'));
-        if zoned {
-            return Err(invalid_record(
-                "time-of-day cannot carry a timezone; use DateTime64 for a zoned instant",
-            ));
-        }
-        crate::temporal::parse_time(text)
     }
 
     /// Restate a parsed count in the unit its datatype declares, when exact.
@@ -2138,6 +2332,12 @@ pub mod internals {
     #[must_use]
     pub fn format_duration(count: i64, unit: TimeUnit) -> Option<SmolStr> {
         super::format_duration(count, unit)
+    }
+
+    /// Whether the classic spelling of `count` at `unit` reads back at `unit`.
+    #[must_use]
+    pub fn spelling_keeps_unit(count: i64, unit: TimeUnit) -> bool {
+        super::spelling_keeps_unit(count, unit)
     }
 
     /// Read a calendar date as a day count.

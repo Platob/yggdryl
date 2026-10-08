@@ -471,11 +471,8 @@ impl<H: IOBase> crate::IOMedia for Buffered<H> {
         crate::IOMedia::read_arrow_field(&self.handle, options)
     }
 
-    fn read_arrow_reader(
-        &self,
-        options: &crate::media::RecordOptions,
-    ) -> Result<crate::arrow::BatchReader> {
-        crate::IOMedia::read_arrow_reader(&self.handle, options)
+    fn read_serie(&self, options: Option<&crate::media::RecordOptions>) -> Result<crate::Serie> {
+        crate::IOMedia::read_serie(&self.handle, options)
     }
 
     #[cfg(feature = "parquet")]

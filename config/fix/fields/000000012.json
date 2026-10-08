@@ -8,6 +8,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1200",
       "description": "Used to express the floor price of a capped put",
       "display": "FloorPrice"
@@ -20,6 +21,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1201",
       "description": "Number of strike rule entries. This block specifies the rules for determining how new strikes should be listed within the stated price range of the underlying instrument",
       "display": "NoStrikeRules"
@@ -34,6 +36,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1202",
       "description": "Starting price for the range to which the StrikeIncrement applies. Price refers to the price of the underlying",
       "display": "StartStrikePxRange"
@@ -48,6 +51,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1203",
       "description": "Ending price of the range to which the StrikeIncrement applies. Price refers to the price of the underlying",
       "display": "EndStrikePxRange"
@@ -60,6 +64,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1204",
       "description": "Value by which strike price should be incremented within the specified price range.",
       "display": "StrikeIncrement"
@@ -72,6 +77,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1205",
       "description": "Number of tick rules. This block specifies the rules for determining how a security ticks, i.e. the price increments at which it can be quoted and traded, depending on the current price of the security",
       "display": "NoTickRules"
@@ -86,6 +92,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1206",
       "description": "Starting price range for specified tick increment",
       "display": "StartTickPriceRange"
@@ -100,6 +107,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1207",
       "description": "Ending price range for the specified tick increment",
       "display": "EndTickPriceRange"
@@ -114,6 +122,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1208",
       "description": "Tick increment for stated price range. Specifies the valid price increments at which a security can be quoted and traded",
       "display": "TickIncrement"
@@ -127,6 +136,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tickruletypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1209",
       "description": "Specifies the type of tick rule which is being described",
       "display": "TickRuleType"
@@ -140,6 +150,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "instrattribtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1210",
       "description": "Code to represent the type of instrument attribute",
       "display": "NestedInstrAttribType"
@@ -152,6 +163,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1211",
       "description": "Attribute value appropriate to the NestedInstrAttribType field",
       "display": "NestedInstrAttribValue"
@@ -166,6 +178,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "TZTimeOnly",
       "FIX:tag": "1212",
       "description": "Time of security's maturity expressed in local time with offset to UTC specified",
       "display": "LegMaturityTime"
@@ -180,6 +193,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "TZTimeOnly",
       "FIX:tag": "1213",
       "description": "Time of security's maturity expressed in local time with offset to UTC specified",
       "display": "UnderlyingMaturityTime"
@@ -192,6 +206,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1214",
       "description": "Ticker symbol. Common, human understood representation of the security.",
       "display": "DerivativeSymbol"
@@ -205,6 +220,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "symbolsfxcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1215",
       "description": "Additional information about the security (e.g. preferred, warrants, etc.).",
       "display": "DerivativeSymbolSfx"
@@ -217,6 +233,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1216",
       "description": "Security identifier value (e.g. CUSIP, SEDOL, ISIN, etc).",
       "display": "DerivativeSecurityID"
@@ -230,6 +247,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1217",
       "description": "Identifies class or source of the DerivativeSecurityID(1217) value.",
       "display": "DerivativeSecurityIDSource"
@@ -242,6 +260,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1218",
       "description": "Number of alternate derivative security IDs.",
       "display": "NoDerivativeSecurityAltID"
@@ -254,6 +273,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1219",
       "description": "Alternate derivative security identifier value of DerivativeSecurityAltIDSource(1220) type.",
       "display": "DerivativeSecurityAltID"
@@ -267,6 +287,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1220",
       "description": "Identifies class or source of the DerivativeSecurityAltID(1219) value.",
       "display": "DerivativeSecurityAltIDSource"
@@ -281,6 +302,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1221",
       "description": "Refer to definition of LowLimitPrice(1148)",
       "display": "SecondaryLowLimitPrice"
@@ -293,6 +315,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1222",
       "description": "Allows maturity rule to be referenced via an identifier so that rules do not need to be explicitly enumerated",
       "display": "MaturityRuleID"
@@ -305,6 +328,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1223",
       "description": "Allows strike rule to be referenced via an identifier so that rules do not need to be explicitly enumerated",
       "display": "StrikeRuleID"
@@ -319,6 +343,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1224",
       "description": "Refer to definition of UnitOfMeasureQty(1147)",
       "display": "LegUnitOfMeasureQty"
@@ -333,6 +358,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:names": [
         "derivativeoptpayamount"
       ],
@@ -350,6 +376,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "MonthYear",
       "FIX:tag": "1226",
       "description": "Ending maturity month year for an option class",
       "display": "EndMaturityMonthYear"
@@ -362,6 +389,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1227",
       "description": "Identifies an entire suite of products for a given market. In Futures this may be \"interest rates\", \"agricultural\", \"equity indexes\", etc.",
       "display": "ProductComplex"
@@ -374,6 +402,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1228",
       "description": "Identifies an entire suite of products for a given market.",
       "display": "DerivativeProductComplex"
@@ -386,6 +415,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1229",
       "description": "Increment between successive maturities for an option class",
       "display": "MaturityMonthYearIncrement"
@@ -400,6 +430,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1230",
       "description": "Refer to definition of HighLimitPrice(1149)",
       "display": "SecondaryHighLimitPrice"
@@ -414,6 +445,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1231",
       "description": "Minimum lot size allowed based on lot type specified in LotType(1093)",
       "display": "MinLotSize"
@@ -426,6 +458,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1232",
       "description": "Number of execution instructions",
       "display": "NoExecInstRules"
@@ -438,6 +471,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1233",
       "description": "The commission rate when Commission(12) is based on a percentage of quantity, amount per unit or a factor of \"unit of measure\". If the rate is a percentage, use the decimalized form, e.g. \"0.05\" for a 5% commission or \"0.005\" for 50 basis points.",
       "display": "CommRate"
@@ -450,6 +484,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1234",
       "description": "Number of Lot Type Rules",
       "display": "NoLotTypeRules"
@@ -462,6 +497,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1235",
       "description": "Number of Match Rules",
       "display": "NoMatchRules"
@@ -474,6 +510,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1236",
       "description": "Number of maturity rules in MarurityRules component block",
       "display": "NoMaturityRules"
@@ -486,6 +523,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1237",
       "description": "Number of order types",
       "display": "NoOrdTypeRules"
@@ -499,6 +537,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1238",
       "description": "The commission rate unit of measure.",
       "display": "CommUnitOfMeasure"
@@ -511,6 +550,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1239",
       "description": "Number of time in force techniques",
       "display": "NoTimeInForceRules"
@@ -525,6 +565,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1240",
       "description": "Refer to definition for TradingReferencePrice(1150)",
       "display": "SecondaryTradingReferencePrice"
@@ -539,6 +580,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "MonthYear",
       "FIX:tag": "1241",
       "description": "Starting maturity month year for an option class",
       "display": "StartMaturityMonthYear"
@@ -551,6 +593,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1242",
       "description": "Used to indicate if a product or group of product supports the creation of flexible securities",
       "display": "FlexProductEligibilityIndicator"
@@ -563,6 +606,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1243",
       "description": "Used to indicate if a product or group of product supports the creation of flexible securities.",
       "display": "DerivFlexProductEligibilityIndicator"
@@ -575,6 +619,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1244",
       "description": "Used to indicate a derivatives security that can be defined using flexible terms. The terms commonly permitted to be defined by market participants are expiration date and strike price. FlexibleIndicator is an alternative CFICode(461) Standard/Non-standard attribute.",
       "display": "FlexibleIndicator"
@@ -587,6 +632,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "1245",
       "description": "Used when the trading currency can differ from the price currency",
       "display": "TradingCurrency"
@@ -600,6 +646,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "productcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1246",
       "description": "The type of product the security is associated with.",
       "display": "DerivativeProduct"
@@ -612,6 +659,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1247",
       "description": "An exchange specific name assigned to a group of related securities which may be concurrently affected by market events and actions.",
       "display": "DerivativeSecurityGroup"
@@ -624,6 +672,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1248",
       "description": "The type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values.",
       "display": "DerivativeCFICode"
@@ -637,6 +686,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "derivativesecuritytypecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1249",
       "description": "The type of security.",
       "display": "DerivativeSecurityType"
@@ -649,6 +699,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1250",
       "description": "Sub-type qualification/identification of the security type.",
       "display": "DerivativeSecuritySubType"
@@ -663,6 +714,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "MonthYear",
       "FIX:tag": "1251",
       "description": "Month and Year of the maturity (used for standardized futures and options).",
       "display": "DerivativeMaturityMonthYear"
@@ -676,6 +728,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "1252",
       "description": "Date of maturity.",
       "display": "DerivativeMaturityDate"
@@ -690,6 +743,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "TZTimeOnly",
       "FIX:tag": "1253",
       "description": "Time of security's maturity expressed in local time with offset to UTC specified.",
       "display": "DerivativeMaturityTime"
@@ -702,6 +756,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1254",
       "description": "Indicator to determine if instrument is settle on open.",
       "display": "DerivativeSettleOnOpenFlag"
@@ -715,6 +770,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "instrmtassignmentmethodcodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1255",
       "description": "Method under which assignment was conducted.",
       "display": "DerivativeInstrmtAssignmentMethod"
@@ -728,6 +784,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securitystatuscodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1256",
       "description": "Indicates the current state of the derivative instrument.",
       "display": "DerivativeSecurityStatus"
@@ -740,6 +797,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1257",
       "description": "Values may include BIC for the depository or custodian who maintain ownership records, the ISO country code for the location of the record, or the value ZZ to specify physical ownership of the security (e.g. stock certificate).",
       "display": "DerivativeInstrRegistry"
@@ -752,6 +810,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Country",
       "FIX:tag": "1258",
       "description": "ISO Country code of instrument issue (e.g. the country portion typically used in ISIN).",
       "display": "DerivativeCountryOfIssue"
@@ -764,6 +823,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1259",
       "description": "A two-character state or province abbreviation.",
       "display": "DerivativeStateOrProvinceOfIssue"
@@ -776,6 +836,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1260",
       "description": "Identifies the locale or region of issue.",
       "display": "DerivativeLocaleOfIssue"
@@ -790,6 +851,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1261",
       "description": "Strike price for an option.",
       "display": "DerivativeStrikePrice"
@@ -802,6 +864,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "1262",
       "description": "Currency in which the strike price is denominated.",
       "display": "DerivativeStrikeCurrency"
@@ -814,6 +877,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1263",
       "description": "Multiplier applied to the strike price for the purpose of calculating the settlement value.",
       "display": "DerivativeStrikeMultiplier"
@@ -826,6 +890,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1264",
       "description": "The number of shares/units for the financial instrument involved in the option trade.",
       "display": "DerivativeStrikeValue"
@@ -838,6 +903,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "char",
       "FIX:tag": "1265",
       "description": "Provided to support versioning of option contracts as a result of corporate actions or events. Use of this field is defined by counterparty agreement or market conventions.",
       "display": "DerivativeOptAttribute"
@@ -850,6 +916,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1266",
       "description": "Specifies the ratio or multiply factor to convert from nominal units (e.g. contracts) to total units (e.g. shares) (e.g. 1.0, 100, 1000, etc.).",
       "display": "DerivativeContractMultiplier"
@@ -862,6 +929,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1267",
       "description": "Minimum price increase for a given exchange-traded Instrument.",
       "display": "DerivativeMinPriceIncrement"
@@ -876,6 +944,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "1268",
       "description": "Minimum price increment amount associated with the minimum price increment.",
       "display": "DerivativeMinPriceIncrementAmount"
@@ -889,6 +958,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1269",
       "description": "The unit of measure of the underlying commodity upon which the contract is based.",
       "display": "DerivativeUnitOfMeasure"
@@ -903,6 +973,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1270",
       "description": "Used to indicate the quantity of the underlying commodity unit of measure on which the contract is based.",
       "display": "DerivativeUnitOfMeasureQty"
@@ -916,6 +987,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "timeunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1271",
       "description": "Unit of time associated with the contract.",
       "display": "DerivativeTimeUnit"
@@ -928,6 +1000,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Exchange",
       "FIX:tag": "1272",
       "description": "Market used to help identify a security.",
       "display": "DerivativeSecurityExchange"
@@ -940,6 +1013,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1273",
       "description": "Position limit for a given exchange-traded product.",
       "display": "DerivativePositionLimit"
@@ -952,6 +1026,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1274",
       "description": "Position limit in the near-term contract for a given exchange-traded product.",
       "display": "DerivativeNTPositionLimit"
@@ -964,6 +1039,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1275",
       "description": "Name of security issuer.",
       "display": "DerivativeIssuer"
@@ -977,6 +1053,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "1276",
       "description": "The date on which the security is issued.",
       "display": "DerivativeIssueDate"
@@ -989,6 +1066,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "1277",
       "description": "Byte length of encoded (non-ASCII characters) DerivativeEncodedSecurityDesc (1281) field.",
       "display": "DerivativeEncodedIssuerLen"
@@ -1001,6 +1079,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "1278",
       "description": "Encoded (non-ASCII characters) representation of the DerivativeIssuer(1275) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the DerivativeIssuer(1275) field.",
       "display": "DerivativeEncodedIssuer"
@@ -1013,6 +1092,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1279",
       "description": "Can be used by the venue or one of the trading parties to provide a non-normative textual description for the financial instrument.",
       "display": "DerivativeSecurityDesc"
@@ -1025,6 +1105,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "1280",
       "description": "Byte length of encoded (non-ASCII characters) DerivativeEncodedSecurityDesc (1281) field.",
       "display": "DerivativeEncodedSecurityDescLen"
@@ -1037,6 +1118,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "1281",
       "description": "Encoded (non-ASCII characters) representation of the DerivativeSecurityDesc(1279) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the DerivativeSecurityDesc(1279) field.",
       "display": "DerivativeEncodedSecurityDesc"
@@ -1049,6 +1131,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "1282",
       "description": "The length of the DerivativeSecurityXML(1283) data block.",
       "display": "DerivativeSecurityXMLLen"
@@ -1061,6 +1144,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XMLData",
       "FIX:tag": "1283",
       "description": "XML definition for the security.",
       "display": "DerivativeSecurityXML"
@@ -1073,6 +1157,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1284",
       "description": "The schema used to validate the contents of DerivativeSecurityXML(1283).",
       "display": "DerivativeSecurityXMLSchema"
@@ -1087,6 +1172,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "MonthYear",
       "FIX:tag": "1285",
       "description": "Specifies when the contract (i.e. MBS/TBA) will settle.",
       "display": "DerivativeContractSettlMonth"
@@ -1099,6 +1185,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1286",
       "description": "Number of repeating DerivativeEventType entries.",
       "display": "NoDerivativeEvents"
@@ -1112,6 +1199,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "eventtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1287",
       "description": "Code to represent the type of event.",
       "display": "DerivativeEventType"
@@ -1125,6 +1213,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "1288",
       "description": "Date of event.",
       "display": "DerivativeEventDate"
@@ -1139,6 +1228,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "1289",
       "description": "Specific time of event. To be used in combination with DerivativeEventDate(1288).",
       "display": "DerivativeEventTime"
@@ -1153,6 +1243,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1290",
       "description": "Predetermined price of issue at event.",
       "display": "DerivativeEventPx"
@@ -1165,6 +1256,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1291",
       "description": "Comments related to the event.",
       "display": "DerivativeEventText"
@@ -1177,6 +1269,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1292",
       "description": "Number of repeating derivative instrument party entries.",
       "display": "NoDerivativeInstrumentParties"
@@ -1189,6 +1282,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1293",
       "description": "Party identifier/code.",
       "display": "DerivativeInstrumentPartyID"
@@ -1202,6 +1296,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyidsourcecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1294",
       "description": "Identifies class or source of the DerivativeInstrumentPartyID (1293) value.",
       "display": "DerivativeInstrumentPartyIDSource"
@@ -1215,6 +1310,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrolecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1295",
       "description": "Identifies the type or role of the DerivativeInstrumentPartyID (1293) specified.",
       "display": "DerivativeInstrumentPartyRole"
@@ -1227,6 +1323,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1296",
       "description": "Number of derivative instrument party sub IDs.",
       "display": "NoDerivativeInstrumentPartySubIDs"
@@ -1239,6 +1336,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1297",
       "description": "Party sub-identifier.",
       "display": "DerivativeInstrumentPartySubID"
@@ -1252,6 +1350,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partysubidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1298",
       "description": "Type of party sub-identifier.",
       "display": "DerivativeInstrumentPartySubIDType"
@@ -1265,6 +1364,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "exercisestylecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1299",
       "description": "Type of exercise.",
       "display": "DerivativeExerciseStyle"

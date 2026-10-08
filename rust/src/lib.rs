@@ -100,6 +100,7 @@ pub mod isin;
 mod isin_registry;
 mod join;
 pub mod json;
+mod key_serie;
 pub mod lei;
 pub mod limit;
 mod listing;
@@ -109,6 +110,7 @@ pub mod mapping;
 pub mod marketdatakind;
 pub mod marketdatatype;
 pub mod media;
+mod media_serie;
 mod media_type;
 mod merge;
 mod metadata;
@@ -135,12 +137,13 @@ pub mod securityid;
 pub mod sedol;
 pub(crate) mod serde;
 pub mod serie;
-mod serie_source;
+mod shared_stream;
 pub mod side;
 pub mod soap;
 mod sort_options;
 mod spill;
 pub mod state;
+mod stream_serie;
 pub mod string;
 pub mod structure;
 pub mod temporal;
@@ -206,9 +209,9 @@ pub use fix::{
     MARKETDATAKIND_TAG_NAME, MARKETDATATYPE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME,
     MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME,
     MSGPLUGINSIDE_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, ORDQTY_TAG_NAME,
-    PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
-    RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH,
-    SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS,
+    ORIGCCY_TAG_NAME, PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME,
+    PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME,
+    SOH, SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS,
     STANDARD_TRAILER_TAGS, STATE_TAG_NAME, STRIKEPX_TAG_NAME, TICKER_TAG_NAME, TRADABLE_TAG_NAME,
     ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, Words, fix_column_of, fix_column_tags, fix_crate_fields,
     fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document,
@@ -216,7 +219,7 @@ pub use fix::{
 };
 pub use hostname::HOSTNAME;
 pub use int256::{i256, u256};
-pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
+pub use iobase::{ArrowWriteSession, overwrite_serie_default};
 pub use iobase::{
     DEFAULT_FETCH_BYTE_SIZE, DEFAULT_STREAM_BATCH_SIZE, IOBase, Reader, Writer, not_empty,
     skip_absent,
@@ -230,7 +233,9 @@ pub use iomode::IOMode;
 pub use iopath::IOPath;
 pub use ioresult::IOResult;
 pub use join::{DEFAULT_JOIN_SUFFIX, DEFAULT_PUSHDOWN_KEYS, JoinKind, JoinOptions, JoinSide};
+pub use key_serie::{IntoKeyBy, KeyBy, KeySerie, KeySeries, StreamKeySerie};
 pub use listing::Listing;
+pub use media_serie::{MediaSerieState, MediaSerieValue};
 pub use media_type::MediaType;
 pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata};
 pub use mime_type::MimeType;
@@ -246,9 +251,10 @@ pub use protocol::{
     TransformFieldMut, UrnField, UrnFieldMut,
 };
 pub use scheme::Scheme;
-pub use serie_source::SerieSource;
+pub use shared_stream::SharedStream;
 pub use sort_options::SortOptions;
 pub use spill::{DEFAULT_SPILL_BYTE_SIZE, SpillOptions};
+pub use stream_serie::StreamSerie;
 pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
 pub use union_mode::UnionMode;
@@ -263,9 +269,7 @@ pub use warehouse::{
     Object, ObjectValue, Objects, Properties, SystemWarehouse, Table, TableValue, Tables,
     Warehouse,
 };
-pub use window_serie::{
-    SerieWindows, SerieWindowsIter, WindowSerie, WindowSerieMut, WindowSerieRows,
-};
+pub use window_serie::{WindowSerie, WindowSerieMut, WindowSerieRows};
 pub use xxhash::{DigestFieldNames, DigestFields};
 
 pub(crate) use arithmetic::Arithmetic;
@@ -313,7 +317,7 @@ pub use idtype::IdType;
 pub use integer::*;
 pub use interval::*;
 pub use isin::*;
-pub use isin_registry::{IsinEntry, IsinRegistry};
+pub use isin_registry::{IsinEntry, IsinRegistry, MatchTier, Resolution, Unmatched};
 pub use lei::*;
 pub use limit::Limit;
 pub use mapping::*;
@@ -420,12 +424,15 @@ pub mod internals {
     pub use crate::bytestream::internals as bytestream;
     pub use crate::charset::reader::internals as charset_reader;
     pub use crate::code::internals as code;
+    pub use crate::country::internals as country;
+    pub use crate::datetime::internals as datetime;
     pub use crate::decimal::internals as decimal;
     pub use crate::diff::internals as diff;
     pub use crate::duration::internals as duration;
     pub use crate::error::internals as error;
     pub use crate::expression::eval::internals as expression_eval;
     pub use crate::expression::selector::internals as expression_selector;
+    pub use crate::fisn::internals as fisn;
     pub use crate::fix::catalog::internals as fix_catalog;
     pub use crate::fix::codec::internals as fix_codec;
     pub use crate::fix::codes::internals as fix_codes;
@@ -504,6 +511,7 @@ pub mod internals {
     pub use crate::media::partition::internals as media_partition;
     pub use crate::merge::internals as merge;
     pub use crate::metadata::internals as metadata;
+    pub use crate::mic::internals as mic;
     pub use crate::mime_type::line::internals as mime_type_line;
     pub use crate::parallel::internals as parallel;
     #[cfg(feature = "parquet")]
@@ -545,6 +553,7 @@ pub mod internals {
     pub use crate::text::line::internals as text_line;
     pub use crate::text::position::internals as text_position;
     pub use crate::text::reader::internals as text_reader;
+    pub use crate::time::internals as time;
     pub use crate::timezone::internals as timezone;
     pub use crate::toml::wire::internals as toml_wire;
     pub use crate::txhash::arrow::internals as txhash_arrow;

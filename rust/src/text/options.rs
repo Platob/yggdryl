@@ -46,17 +46,6 @@ pub(crate) const MTIME_COLUMN: &str = "mtime";
 /// The column stating what a line was classified as.
 pub(crate) const MIMETYPE_COLUMN: &str = "mimetype";
 
-/// The rows a text batch holds until its byte target binds first: `35 * 1024`.
-///
-/// A text read batches on two targets, whichever binds first, because a
-/// heartbeat capture and a market-data capture differ by orders of
-/// magnitude in bytes for one row count: this many rows of short lines, or
-/// [`DEFAULT_TEXT_BATCH_BYTE_SIZE`] of long ones.
-pub const DEFAULT_TEXT_BATCH_ROW_SIZE: usize = 35 * 1024;
-
-/// The bytes a text batch holds until its row target binds first: `64 MiB`.
-pub const DEFAULT_TEXT_BATCH_BYTE_SIZE: u64 = 64 * 1024 * 1024;
-
 /// The one datatype the `mtime` column is read and stored at.
 ///
 /// Nanoseconds in UTC: a capture's own offset is resolved into it, and a
@@ -117,8 +106,7 @@ impl PartialOrd for Expression {
 
 /// Settings for text rows reached through the ordinary record-media methods.
 ///
-/// A new value batches on [`DEFAULT_TEXT_BATCH_ROW_SIZE`] rows or
-/// [`DEFAULT_TEXT_BATCH_BYTE_SIZE`] bytes, whichever binds first.
+/// A new value reads native rows; explicit batch bounds request chunk transport.
 /// Physical-line mode emits one row per line. With `framing` enabled,
 /// `rowheader` starts a logical record and following nonmatching lines join its
 /// body with normalized `\n` separators. Named captures remain nullable, and
@@ -148,13 +136,13 @@ pub struct TextOptions {
     /// name either way.
     pub safe: bool,
     /// Bytes per emitted batch, whichever of this and `batch_row_size` binds
-    /// first; [`DEFAULT_TEXT_BATCH_BYTE_SIZE`] as `new()` states it.
+    /// first; `None` until a caller requests a batch bound.
     ///
     /// A target rather than a ceiling, and a non-zero bound always yields at
     /// least one row.
     pub batch_byte_size: Option<u64>,
     /// Rows per emitted batch, whichever of this and `batch_byte_size` binds
-    /// first; [`DEFAULT_TEXT_BATCH_ROW_SIZE`] as `new()` states it.
+    /// first; `None` until a caller requests a batch bound.
     pub batch_row_size: Option<usize>,
     /// Most result rows in total.
     pub max_row_size: Option<u64>,
@@ -241,8 +229,8 @@ impl TextOptions {
             select: crate::Selector::all(),
             merge_by: crate::Selector::all(),
             safe: true,
-            batch_byte_size: Some(DEFAULT_TEXT_BATCH_BYTE_SIZE),
-            batch_row_size: Some(DEFAULT_TEXT_BATCH_ROW_SIZE),
+            batch_byte_size: None,
+            batch_row_size: None,
             max_row_size: None,
             row_offset: None,
             max_byte_size: None,

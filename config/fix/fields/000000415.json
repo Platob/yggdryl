@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41500",
       "description": "Specifies the anchor date when the option exercise start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegOptionExerciseStartDateRelativeTo"
@@ -18,6 +19,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41501",
       "description": "Time unit multiplier for the relative exercise start date offset.",
       "display": "LegOptionExerciseStartDateOffsetPeriod"
@@ -31,6 +33,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41502",
       "description": "Time unit associated with the relative exercise start date offset.",
       "display": "LegOptionExerciseStartDateOffsetUnit"
@@ -44,6 +47,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41503",
       "description": "Specifies the day type of the relative option exercise start date offset.",
       "display": "LegOptionExerciseStartDateOffsetDayType"
@@ -57,6 +61,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41504",
       "description": "The adjusted start date for calculating periodic exercise dates.",
       "display": "LegOptionExerciseStartDateAdjusted"
@@ -69,6 +74,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41505",
       "description": "The number of periods in the referenced date schedule that are between each date in the relative date schedule. Thus a skip of 2 would mean that dates are relative to every second date in the referenced schedule. If present this should have a value greater than 1.",
       "display": "LegOptionExerciseSkip"
@@ -82,6 +88,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41506",
       "description": "The last date (adjusted) for establishing the option exercise terms.",
       "display": "LegOptionExerciseNominationDeadline"
@@ -95,6 +102,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41507",
       "description": "The unadjusted first exercise date.",
       "display": "LegOptionExerciseFirstDateUnadjusted"
@@ -108,6 +116,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41508",
       "description": "The unadjusted last exercise date.",
       "display": "LegOptionExerciseLastDateUnadjusted"
@@ -121,6 +130,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "41509",
       "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each Bermuda option exercise date and the expiration date, in the case of a Bermuda style option, (iii) the commencement date to, and including, the expiration date, in the case of an American option.",
       "display": "LegOptionExerciseEarliestTime"
@@ -134,6 +144,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "41510",
       "description": "The latest exercise time. See also LegOptionExerciseEarliestTime(41509).",
       "display": "LegOptionExerciseLatestTime"
@@ -146,6 +157,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41511",
       "description": "The business center used to determine the locale for option exercise time, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegOptionExerciseTimeBusinessCenter"
@@ -158,6 +170,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41512",
       "description": "Number of dates in the repeating group.",
       "display": "NoLegOptionExerciseDates"
@@ -171,6 +184,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41513",
       "description": "The adjusted or unadjusted option exercise fixed date.",
       "display": "LegOptionExerciseDate"
@@ -184,6 +198,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "optionexercisedatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41514",
       "description": "Specifies the type of option exercise date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
       "display": "LegOptionExerciseDateType"
@@ -196,6 +211,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41515",
       "description": "Number of business centers in the repeating group.",
       "display": "NoLegOptionExerciseExpirationDateBusinessCenters"
@@ -208,6 +224,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41516",
       "description": "The business center calendar used to adjust the option exercise expiration dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegOptionExerciseExpirationDateBusinessCenter"
@@ -221,6 +238,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41517",
       "description": "The business day convention used to adjust the option exercise expiration dates. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegOptionExerciseExpirationDateBusinessDayConvention"
@@ -233,6 +251,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41518",
       "description": "Specifies the anchor date when the option exercise expiration date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegOptionExerciseExpirationDateRelativeTo"
@@ -245,6 +264,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41519",
       "description": "Time unit multiplier for the relative exercise expiration date offset.",
       "display": "LegOptionExerciseExpirationDateOffsetPeriod"
@@ -258,6 +278,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41520",
       "description": "Time unit associated with the relative exercise expiration date offset.",
       "display": "LegOptionExerciseExpirationDateOffsetUnit"
@@ -270,6 +291,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41521",
       "description": "Time unit multiplier for the frequency of exercise expiration dates.",
       "display": "LegOptionExerciseExpirationFrequencyPeriod"
@@ -283,6 +305,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "protectiontermeventunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41522",
       "description": "Time unit associated with the frequency of exercise expiration dates.",
       "display": "LegOptionExerciseExpirationFrequencyUnit"
@@ -296,6 +319,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "daterollconventioncodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41523",
       "description": "The convention for determining the sequence of exercise expiration dates. It is used in conjunction with a specified frequency. Used only to override the roll convention defined in the LegDateAdjustment component in InstrumentLeg.",
       "display": "LegOptionExerciseExpirationRollConvention"
@@ -309,6 +333,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41524",
       "description": "Specifies the day type of the relative option exercise expiration date offset.",
       "display": "LegOptionExerciseExpirationDateOffsetDayType"
@@ -322,6 +347,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "41525",
       "description": "The option exercise expiration time.",
       "display": "LegOptionExerciseExpirationTime"
@@ -334,6 +360,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41526",
       "description": "The business center used to determine the locale for option exercise expiration time, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegOptionExerciseExpirationTimeBusinessCenter"
@@ -346,6 +373,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41527",
       "description": "Number of fixed exercise expiration dates in the repeating group.",
       "display": "NoLegOptionExerciseExpirationDates"
@@ -359,6 +387,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41528",
       "description": "The adjusted or unadjusted option exercise expiration fixed date.",
       "display": "LegOptionExerciseExpirationDate"
@@ -372,6 +401,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "optionexercisedatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41529",
       "description": "Specifies the type of option exercise expiration date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
       "display": "LegOptionExerciseExpirationDateType"
@@ -384,6 +414,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41530",
       "description": "Number of fixing days in the repeating group.",
       "display": "NoLegPaymentScheduleFixingDays"
@@ -397,6 +428,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampricingdayofweekcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41531",
       "description": "The day of the week on which fixing takes place.",
       "display": "LegPaymentScheduleFixingDayOfWeek"
@@ -409,6 +441,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41532",
       "description": "The occurrence of the day of week on which fixing takes place.",
       "display": "LegPaymentScheduleFixingDayNumber"
@@ -421,6 +454,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XID",
       "FIX:tag": "41533",
       "description": "Identifier of this LegPaymentSchedule for cross referencing elsewhere in the message.",
       "display": "LegPaymentScheduleXID"
@@ -433,6 +467,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "41534",
       "description": "Reference to payment schedule elsewhere in the message.",
       "display": "LegPaymentScheduleXIDRef"
@@ -445,6 +480,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41535",
       "description": "The currency of the schedule rate. Uses ISO 4217 currency codes.",
       "display": "LegPaymentScheduleRateCurrency"
@@ -458,6 +494,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41536",
       "description": "The schedule rate unit of measure (UOM).",
       "display": "LegPaymentScheduleRateUnitOfMeasure"
@@ -470,6 +507,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "41537",
       "description": "The number multipled by the derived floating rate of the leg's payment schedule in order to arrive at the payment rate. If omitted, the schedule rate conversion factor is 1.",
       "display": "LegPaymentScheduleRateConversionFactor"
@@ -483,6 +521,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamratespreadtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41538",
       "description": "Identifies whether the rate spread is an absolute value to be added to the index rate or a percentage of the index rate.",
       "display": "LegPaymentScheduleRateSpreadType"
@@ -497,6 +536,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "41539",
       "description": "The schedule settlement period price.",
       "display": "LegPaymentScheduleSettlPeriodPrice"
@@ -509,6 +549,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41540",
       "description": "The currency of the schedule settlement period price. Uses ISO 4217 currency codes.",
       "display": "LegPaymentScheduleSettlPeriodPriceCurrency"
@@ -522,6 +563,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41541",
       "description": "The settlement period price unit of measure (UOM).",
       "display": "LegPaymentScheduleSettlPeriodPriceUnitOfMeasure"
@@ -535,6 +577,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41542",
       "description": "The schedule step unit of measure (UOM).",
       "display": "LegPaymentScheduleStepUnitOfMeasure"
@@ -548,6 +591,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampricingdaydistributioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41543",
       "description": "The distribution of fixing days.",
       "display": "LegPaymentScheduleFixingDayDistribution"
@@ -560,6 +604,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41544",
       "description": "The number of days over which fixing should take place.",
       "display": "LegPaymentScheduleFixingDayCount"
@@ -572,6 +617,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41545",
       "description": "Time unit multiplier for the fixing lag duration.",
       "display": "LegPaymentScheduleFixingLagPeriod"
@@ -585,6 +631,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreaminflationlagunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41546",
       "description": "Time unit associated with the fixing lag duration.",
       "display": "LegPaymentScheduleFixingLagUnit"
@@ -597,6 +644,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41547",
       "description": "Time unit multiplier for the relative first observation date offset.",
       "display": "LegPaymentScheduleFixingFirstObservationDateOffsetPeriod"
@@ -610,6 +658,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41548",
       "description": "Time unit associated with the relative first observation date offset.",
       "display": "LegPaymentScheduleFixingFirstObservationDateOffsetUnit"
@@ -622,6 +671,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "41549",
       "description": "When this element is specified and set to 'Y', the Flat Rate is the New Worldwide Tanker Nominal Freight Scale for the Freight Index Route taken at the trade date of the transaction \"Fixed\". If 'N' it is taken on each pricing date \"Floating\".",
       "display": "LegPaymentStreamFlatRateIndicator"
@@ -636,6 +686,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "41550",
       "description": "Specifies the actual monetary value of the flat rate when LegPaymentStreamFlatRateIndicator(41549) = 'Y'.",
       "display": "LegPaymentStreamFlatRateAmount"
@@ -648,6 +699,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41551",
       "description": "Specifies the currency of the actual flat rate. Uses ISO 4217 currency codes.",
       "display": "LegPaymentStreamFlatRateCurrency"
@@ -662,6 +714,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "41552",
       "description": "Specifies the limit on the total payment amount.",
       "display": "LegStreamMaximumPaymentAmount"
@@ -674,6 +727,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41553",
       "description": "Specifies the currency of total payment amount limit. Uses ISO 4217 currency codes.",
       "display": "LegStreamMaximumPaymentCurrency"
@@ -688,6 +742,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "41554",
       "description": "Specifies the limit on the payment amount that goes out in any particular calculation period.",
       "display": "LegStreamMaximumTransactionAmount"
@@ -700,6 +755,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41555",
       "description": "Specifies the currency of the period payment amount limit. Uses ISO 4217 currency codes.",
       "display": "LegStreamMaximumTransactionCurrency"
@@ -713,6 +769,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41556",
       "description": "The fixed payment amount unit of measure (UOM).",
       "display": "LegPaymentStreamFixedAmountUnitOfMeasure"
@@ -727,6 +784,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "41557",
       "description": "Specifies the total fixed payment amount.",
       "display": "LegPaymentStreamTotalFixedAmount"
@@ -739,6 +797,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "41558",
       "description": "The number of Worldscale points for purposes of the calculation of a fixed amount for a wet voyage charter commodity swap.",
       "display": "LegPaymentStreamWorldScaleRate"
@@ -753,6 +812,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "41559",
       "description": "The price per relevant unit for purposes of the calculation of a fixed amount for a dry voyage charter or time charter commodity swap.",
       "display": "LegPaymentStreamContractPrice"
@@ -765,6 +825,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41560",
       "description": "Specifies the currency of LegPaymentStreamContractPrice(41559). Uses ISO 4217 currency codes.",
       "display": "LegPaymentStreamContractPriceCurrency"
@@ -777,6 +838,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41561",
       "description": "Number of business centers in the repeating group.",
       "display": "NoLegPaymentStreamPricingBusinessCenters"
@@ -789,6 +851,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41562",
       "description": "The business center calendar used to adjust the pricing dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegPaymentStreamPricingBusinessCenter"
@@ -802,6 +865,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamrateindexcurveunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41563",
       "description": "Secondary time unit associated with the payment stream's floating rate index curve.",
       "display": "LegPaymentStreamRateIndex2CurveUnit"
@@ -814,6 +878,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41564",
       "description": "Secondary time unit multiplier for the payment stream's floating rate index curve.",
       "display": "LegPaymentStreamRateIndex2CurvePeriod"
@@ -826,6 +891,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41565",
       "description": "Specifies the location of the floating rate index.",
       "display": "LegPaymentStreamRateIndexLocation"
@@ -840,6 +906,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "41566",
       "description": "This is the weather Cooling Degree Days (CDD), Heating Degree Days (HDD) or HDD index level specified as the number of (amount of) weather index units specified by the parties in the related confirmation.",
       "display": "LegPaymentStreamRateIndexLevel"
@@ -853,6 +920,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41567",
       "description": "The unit of measure (UOM) of the rate index level.",
       "display": "LegPaymentStreamRateIndexUnitOfMeasure"
@@ -866,6 +934,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamsettllevelcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41568",
       "description": "Specifies how weather index units are to be calculated.",
       "display": "LegPaymentStreamSettlLevel"
@@ -880,6 +949,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "41569",
       "description": "This is the weather Cooling Degree Days (CDD), Heating Degree Days (HDD) or HDD reference level specified as the number of (amount of) weather index units specified by the parties in the related confirmation.",
       "display": "LegPaymentStreamReferenceLevel"
@@ -893,6 +963,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41570",
       "description": "The unit of measure (UOM) of the rate reference level.",
       "display": "LegPaymentStreamReferenceLevelUnitOfMeasure"
@@ -905,6 +976,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "41571",
       "description": "When set to 'Y', it indicates that the weather reference level equals zero.",
       "display": "LegPaymentStreamReferenceLevelEqualsZeroIndicator"
@@ -917,6 +989,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41572",
       "description": "Specifies the currency of the floating rate spread. Uses ISO 4217 currency codes.",
       "display": "LegPaymentStreamRateSpreadCurrency"
@@ -930,6 +1003,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41573",
       "description": "Specifies the unit of measure (UOM) of the floating rate spread.",
       "display": "LegPaymentStreamRateSpreadUnitOfMeasure"
@@ -942,6 +1016,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "41574",
       "description": "The number to be multiplied by the derived floating rate of the leg's payment stream in order to arrive at the payment rate. If omitted, the floating rate conversion factor is 1.",
       "display": "LegPaymentStreamRateConversionFactor"
@@ -955,6 +1030,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamratespreadtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41575",
       "description": "Identifies whether the rate spread is an absolute value to be added to the index rate or a percentage of the index rate.",
       "display": "LegPaymentStreamRateSpreadType"
@@ -967,6 +1043,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "41576",
       "description": "The floating rate determined at the most recent reset. The rate is expressed in decimal form, e.g. 5% is represented as 0.05.",
       "display": "LegPaymentStreamLastResetRate"
@@ -979,6 +1056,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "41577",
       "description": "The floating rate determined at the final reset. The rate is expressed in decimal form, e.g. 5% is represented as 0.05.",
       "display": "LegPaymentStreamFinalRate"
@@ -991,6 +1069,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41578",
       "description": "Time unit multiplier for the calculation lag duration.",
       "display": "LegPaymentStreamCalculationLagPeriod"
@@ -1004,6 +1083,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreaminflationlagunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41579",
       "description": "Time unit associated with the calculation lag duration.",
       "display": "LegPaymentStreamCalculationLagUnit"
@@ -1016,6 +1096,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41580",
       "description": "Time unit multiplier for the relative first observation date offset.",
       "display": "LegPaymentStreamFirstObservationDateOffsetPeriod"
@@ -1029,6 +1110,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41581",
       "description": "Time unit associated with the relative first observation date offset.",
       "display": "LegPaymentStreamFirstObservationDateOffsetUnit"
@@ -1042,6 +1124,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41582",
       "description": "Specifies the commodity pricing day type.",
       "display": "LegPaymentStreamPricingDayType"
@@ -1055,6 +1138,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampricingdaydistributioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41583",
       "description": "The distribution of pricing days.",
       "display": "LegPaymentStreamPricingDayDistribution"
@@ -1067,6 +1151,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41584",
       "description": "The number of days over which pricing should take place.",
       "display": "LegPaymentStreamPricingDayCount"
@@ -1079,6 +1164,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41585",
       "description": "Specifies the business calendar to use for pricing. See https://fpml.org/coding-scheme/commodity-business-calendar for values.",
       "display": "LegPaymentStreamPricingBusinessCalendar"
@@ -1092,6 +1178,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41586",
       "description": "The business day convention used to adjust the payment stream's pricing dates. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegPaymentStreamPricingBusinessDayConvention"
@@ -1104,6 +1191,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41587",
       "description": "Specifies the source or legal framework for the risk apportionment. See https://fixtrading.org/packages/risk-apportionment-source for the details of the external code list.",
       "display": "UnderlyingDeliveryStreamRiskApportionmentSource"
@@ -1117,6 +1205,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliveryschedulesettltimetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41588",
       "description": "Specifies the format of the commodities settlement start and end times.",
       "display": "StreamCommoditySettlTimeType"
@@ -1129,6 +1218,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41589",
       "description": "Number of payment dates in the repeating group.",
       "display": "NoLegPaymentStreamPaymentDates"
@@ -1142,6 +1232,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41590",
       "description": "The adjusted or unadjusted fixed stream payment date.",
       "display": "LegPaymentStreamPaymentDate"
@@ -1155,6 +1246,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "optionexercisedatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41591",
       "description": "Specifies the type of payment date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
       "display": "LegPaymentStreamPaymentDateType"
@@ -1167,6 +1259,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "41592",
       "description": "When set to 'Y', it indicates that payment dates are specified in the relevant master agreement.",
       "display": "LegPaymentStreamMasterAgreementPaymentDatesIndicator"
@@ -1179,6 +1272,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41593",
       "description": "Number of pricing dates in the repeating group.",
       "display": "NoLegPaymentStreamPricingDates"
@@ -1192,6 +1286,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41594",
       "description": "The adjusted or unadusted fixed stream pricing date.",
       "display": "LegPaymentStreamPricingDate"
@@ -1205,6 +1300,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "optionexercisedatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41595",
       "description": "Specifies the type of pricing date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
       "display": "LegPaymentStreamPricingDateType"
@@ -1217,6 +1313,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41596",
       "description": "Number of pricing days in the repeating group.",
       "display": "NoLegPaymentStreamPricingDays"
@@ -1230,6 +1327,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampricingdayofweekcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41597",
       "description": "The day of the week on which pricing takes place.",
       "display": "LegPaymentStreamPricingDayOfWeek"
@@ -1242,6 +1340,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41598",
       "description": "The occurrence of the day of week on which pricing takes place.",
       "display": "LegPaymentStreamPricingDayNumber"
@@ -1254,6 +1353,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41599",
       "description": "Number of entries in the repeating group.",
       "display": "NoLegPhysicalSettlTerms"

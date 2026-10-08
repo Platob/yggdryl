@@ -44,7 +44,7 @@ use smol_str::format_smolstr;
 use crate::floating::f64_from_text;
 #[cfg(feature = "http")]
 use crate::integer::integer_from_text_as;
-use crate::temporal::scalars::require;
+use crate::temporal::scalars::{narrow_i32, require};
 use crate::temporal::{temporal_leaf, validate_duration_unit};
 use crate::value::DataTypeValue;
 use crate::{DataType, DataTypeId, Error, Result, Scalar, TimeUnit, Timezone};
@@ -378,6 +378,78 @@ temporal_leaf!(
     dtype = |value: &Duration64| DataType::duration64(value.unit()),
     "Duration64 requires a fixed temporal unit and the NAIVE timezone",
 );
+
+impl Duration32 {
+    /// The elapsed length `text` spells, at 32 bits.
+    ///
+    /// The ISO 8601 door of the 32-bit duration: what [`Duration64::from_text`]
+    /// reads, narrowed to the width, so a count past `i32` is refused by
+    /// name rather than wrapped.
+    ///
+    /// ```
+    /// use yggdryl::{Duration32, TimeUnit};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let span = Duration32::from_text("PT1.500S")?;
+    /// assert_eq!((span.count(), span.unit()), (1_500, TimeUnit::Millisecond));
+    /// assert_eq!(Duration32::from_text("-01:30:00")?.count(), -5_400);
+    /// assert!(Duration32::from_text("PT3000000000S").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Duration64::from_text`]'s, and [`Error::InvalidRecord`] for a count
+    /// that does not fit 32 bits.
+    pub fn from_text(text: &str) -> Result<Self> {
+        let (count, unit) = crate::temporal::parse_duration(text)?;
+        Self::new(narrow_i32(count, "duration32")?, unit, Timezone::NAIVE)
+    }
+}
+
+impl Duration64 {
+    /// The elapsed length `text` spells.
+    ///
+    /// The ISO 8601 door of the duration family, over the one reader every
+    /// duration cell in the crate reads through. Two grammars read the same
+    /// count, the sign leading either as ISO 8601 puts it:
+    ///
+    /// | Spelling | Example | Reads as |
+    /// | --- | --- | --- |
+    /// | ISO 8601's general form, a fraction on the seconds alone | `PT90S`, `-P1DT2H3M4.5S` | every component restated in seconds |
+    /// | a plain clock, the hours as wide as the count needs | `25:30:00`, `-00:00:01.500` | the elapsed hours as written, never folded |
+    ///
+    /// The resolution is the one the fraction's digits spell: seconds with
+    /// none, milliseconds to three, microseconds to six, nanoseconds to
+    /// nine. This is a cell's grammar and nothing else: a setting's `30s`
+    /// or `1.5` is no cell and is refused here, as `PT30S` is refused where
+    /// a setting is read. No FIX field is a duration, so the FIX codec has
+    /// no door of its own into this family.
+    ///
+    /// ```
+    /// use yggdryl::{Duration64, TimeUnit};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let span = Duration64::from_text("PT90S")?;
+    /// assert_eq!((span.count(), span.unit()), (90, TimeUnit::Second));
+    /// assert_eq!(Duration64::from_text("00:01:30")?, span);
+    /// let fine = Duration64::from_text("-PT0.000000001S")?;
+    /// assert_eq!((fine.count(), fine.unit()), (-1, TimeUnit::Nanosecond));
+    /// assert!(Duration64::from_text("30s").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] naming the byte the text stopped being a
+    /// duration at.
+    pub fn from_text(text: &str) -> Result<Self> {
+        let (count, unit) = crate::temporal::parse_duration(text)?;
+        Self::new(count, unit, Timezone::NAIVE)
+    }
+}
 
 impl Scalar {
     /// Build the narrowest duration width that holds `count`.

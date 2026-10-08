@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40600",
       "description": "The business center calendar used to adjust the payment stream's initial fixing date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingPaymentStreamInitialFixingDateBusinessCenter"
@@ -18,6 +19,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40601",
       "description": "Time unit multiplier for the relative initial fixing date offset.",
       "display": "UnderlyingPaymentStreamInitialFixingDateOffsetPeriod"
@@ -31,6 +33,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40602",
       "description": "Time unit associated with the relative initial fixing date offset.",
       "display": "UnderlyingPaymentStreamInitialFixingDateOffsetUnit"
@@ -44,6 +47,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40603",
       "description": "Specifies the day type of the relative initial fixing date offset.",
       "display": "UnderlyingPaymentStreamInitialFixingDateOffsetDayType"
@@ -57,6 +61,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40604",
       "description": "The adjusted initial fixing date.",
       "display": "UnderlyingPaymentStreamInitialFixingDateAdjusted"
@@ -69,6 +74,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40605",
       "description": "Specifies the anchor date when the fixing date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingPaymentStreamFixingDateRelativeTo"
@@ -82,6 +88,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40606",
       "description": "The business day convention used to adjust the payment stream's fixing date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentStreamFixingDateBusinessDayConvention"
@@ -94,6 +101,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40607",
       "description": "The business center calendar used to adjust the payment stream's fixing date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingPaymentStreamFixingDateBusinessCenter"
@@ -106,6 +114,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40608",
       "description": "Time unit multiplier for the relative fixing date offset.",
       "display": "UnderlyingPaymentStreamFixingDateOffsetPeriod"
@@ -119,6 +128,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40609",
       "description": "Time unit associated with the relative fixing date offset.",
       "display": "UnderlyingPaymentStreamFixingDateOffsetUnit"
@@ -132,6 +142,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40610",
       "description": "Specifies the day type of the relative fixing date offset.",
       "display": "UnderlyingPaymentStreamFixingDateOffsetDayType"
@@ -145,6 +156,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40611",
       "description": "The adjusted fixing date.",
       "display": "UnderlyingPaymentStreamFixingDateAdjusted"
@@ -157,6 +169,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40612",
       "description": "Time unit multiplier for the relative rate cut-off date offset.",
       "display": "UnderlyingPaymentStreamRateCutoffDateOffsetPeriod"
@@ -170,6 +183,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40613",
       "description": "Time unit associated with the relative rate cut-off date offset.",
       "display": "UnderlyingPaymentStreamRateCutoffDateOffsetUnit"
@@ -183,6 +197,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40614",
       "description": "Specifies the day type of the relative rate cut-off date offset.",
       "display": "UnderlyingPaymentStreamRateCutoffDateOffsetDayType"
@@ -195,6 +210,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40615",
       "description": "The rate applicable to the fixed rate payment stream.",
       "display": "UnderlyingPaymentStreamRate"
@@ -209,6 +225,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "40616",
       "description": "The underlying payment stream's fixed payment amount. In CDS an alternative to UnderlyingPaymentStreamRate(40615).",
       "display": "UnderlyingPaymentStreamFixedAmount"
@@ -221,6 +238,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "40617",
       "description": "Specifies the currency in which UnderlyingPaymentStreamFixedAmount(40616) or UnderlyingPaymentStreamRate(40615) is denominated. Users ISO 4271 currency codes.",
       "display": "UnderlyingPaymentStreamRateOrAmountCurrency"
@@ -235,6 +253,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "40618",
       "description": "The future value notional is normally only required for certain non-deliverable interest rate swaps (e.g. Brazillian Real (BRL) vs. CETIP Interbank Deposit Rate (CDI)). The value is calculated as follows: Future Value Notional = Notional Amount * (1 + Fixed Rate) ^ (Fixed Rate Day Count Fraction). The currency is the same as the stream notional.",
       "display": "UnderlyingPaymentStreamFutureValueNotional"
@@ -248,6 +267,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40619",
       "description": "The adjusted value date of the future value amount.",
       "display": "UnderlyingPaymentStreamFutureValueDateAdjusted"
@@ -260,6 +280,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40620",
       "description": "The payment stream's floating rate index.",
       "display": "UnderlyingPaymentStreamRateIndex"
@@ -273,6 +294,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamrateindexsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40621",
       "description": "The source of the payment stream floating rate index.",
       "display": "UnderlyingPaymentStreamRateIndexSource"
@@ -286,6 +308,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamrateindexcurveunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40622",
       "description": "Time unit associated with the underlying instrument’s floating rate index.",
       "display": "UnderlyingPaymentStreamRateIndexCurveUnit"
@@ -298,6 +321,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40623",
       "description": "Time unit multiplier for the underlying instrument’s floating rate index.",
       "display": "UnderlyingPaymentStreamRateIndexCurvePeriod"
@@ -310,6 +334,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "40624",
       "description": "A rate multiplier to apply to the floating rate. A multiplier schedule is expressed as explicit multipliers and dates. In the case of a schedule, the step dates may be subject to adjustment in accordance with any adjustments specified in the calculationPeriodDatesAdjustments. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
       "display": "UnderlyingPaymentStreamRateMultiplier"
@@ -324,6 +349,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "40625",
       "description": "Spread from floating rate index.",
       "display": "UnderlyingPaymentStreamRateSpread"
@@ -337,6 +363,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamratespreadpositiontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40626",
       "description": "Identifies a short or long spread value.",
       "display": "UnderlyingPaymentStreamRateSpreadPositionType"
@@ -350,6 +377,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamratetreatmentcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40627",
       "description": "Specifies the yield calculation treatment for the index.",
       "display": "UnderlyingPaymentStreamRateTreatment"
@@ -362,6 +390,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40628",
       "description": "The cap rate, if any, which applies to the floating rate. The cap rate (strike) is only required where the floating rate on a swap stream is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as 0.05.",
       "display": "UnderlyingPaymentStreamCapRate"
@@ -375,6 +404,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamcapratebuysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40629",
       "description": "Reference to the buyer of the cap rate option through its trade side.",
       "display": "UnderlyingPaymentStreamCapRateBuySide"
@@ -388,6 +418,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamcapratebuysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40630",
       "description": "Reference to the seller of the cap rate option through its trade side.",
       "display": "UnderlyingPaymentStreamCapRateSellSide"
@@ -400,6 +431,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40631",
       "description": "The floor rate, if any, which applies to the floating rate. The floor rate (strike) is only required where the floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A floor rate of 5% would be represented as 0.05.",
       "display": "UnderlyingPaymentStreamFloorRate"
@@ -413,6 +445,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamfloorratebuysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40632",
       "description": "Reference to the buyer of the floor rate option through its trade side.",
       "display": "UnderlyingPaymentStreamFloorRateBuySide"
@@ -426,6 +459,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamfloorratebuysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40633",
       "description": "Reference to the seller of the floor rate option through its trade side.",
       "display": "UnderlyingPaymentStreamFloorRateSellSide"
@@ -438,6 +472,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40634",
       "description": "The initial floating rate reset agreed between the principal parties involved in the trade. This is assumed to be the first required reset rate for the first regular calculation period. It should only be included when the rate is not equal to the rate published on the source implied by the floating rate index. An initial rate of 5% would be represented as 0.05.",
       "display": "UnderlyingPaymentStreamInitialRate"
@@ -451,6 +486,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "roundingdirectioncodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "40635",
       "description": "Specifies the rounding direction.",
       "display": "UnderlyingPaymentStreamFinalRateRoundingDirection"
@@ -463,6 +499,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40636",
       "description": "Specifies the rounding precision in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
       "display": "UnderlyingPaymentStreamFinalRatePrecision"
@@ -476,6 +513,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamaveragingmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40637",
       "description": "When rate averaging is applicable, used to specify whether a weighted or unweighted average calculation method is to be used.",
       "display": "UnderlyingPaymentStreamAveragingMethod"
@@ -489,6 +527,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamnegativeratetreatmentcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40638",
       "description": "The specification of any provisions for calculating payment obligations when a floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
       "display": "UnderlyingPaymentStreamNegativeRateTreatment"
@@ -501,6 +540,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40639",
       "description": "Time unit multiplier for the inflation lag period. The lag period is the offsetting period from the payment date which determines the reference period for which the inflation index is observed.",
       "display": "UnderlyingPaymentStreamInflationLagPeriod"
@@ -514,6 +554,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreaminflationlagunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40640",
       "description": "Time unit associated with the inflation lag period.",
       "display": "UnderlyingPaymentStreamInflationLagUnit"
@@ -527,6 +568,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreaminflationlagdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40641",
       "description": "The inflation lag period day type.",
       "display": "UnderlyingPaymentStreamInflationLagDayType"
@@ -540,6 +582,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreaminflationinterpolationmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40642",
       "description": "The method used when calculating the Inflation Index Level from multiple points - the most common is Linear.",
       "display": "UnderlyingPaymentStreamInflationInterpolationMethod"
@@ -553,6 +596,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamrateindexsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40643",
       "description": "The inflation index reference source.",
       "display": "UnderlyingPaymentStreamInflationIndexSource"
@@ -565,6 +609,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40644",
       "description": "The current main publication source such as relevant web site or a government body.",
       "display": "UnderlyingPaymentStreamInflationPublicationSource"
@@ -577,6 +622,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "40645",
       "description": "Initial known index level for the first calculation period.",
       "display": "UnderlyingPaymentStreamInflationInitialIndexLevel"
@@ -589,6 +635,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "40646",
       "description": "Indicates whether a fallback bond as defined in the 2006 ISDA Inflation Derivatives Definitions, sections 1.3 and 1.8, is applicable or not. If not specified, the default value is \"Y\" (True/Yes).",
       "display": "UnderlyingPaymentStreamInflationFallbackBondApplicable"
@@ -602,6 +649,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamfradiscountingcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40647",
       "description": "The method of Forward Rate Agreement (FRA) discounting, if any, that will apply.",
       "display": "UnderlyingPaymentStreamFRADiscounting"
@@ -614,6 +662,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "40648",
       "description": "The non-deliverable settlement reference currency. Uses ISO 4217 currency codes.",
       "display": "UnderlyingPaymentStreamNonDeliverableRefCurrency"
@@ -627,6 +676,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40649",
       "description": "The business day convention used to adjust the payment stream's fixing date for the non-deliverable terms. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesBizDayConvention"
@@ -639,6 +689,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40650",
       "description": "The business center calendar used to adjust the payment stream's fixing date for the non-deliverable terms, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesBusinessCenter"
@@ -651,6 +702,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40651",
       "description": "Specifies the anchor date when the non-deliverable fixing dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesRelativeTo"
@@ -663,6 +715,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40652",
       "description": "Time unit multiplier for the relative non-deliverable fixing date offset.",
       "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesOffsetPeriod"
@@ -676,6 +729,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40653",
       "description": "Time unit associated with the relative non-deliverable fixing date offset.",
       "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesOffsetUnit"
@@ -689,6 +743,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40654",
       "description": "Specifies the day type of the relative non-deliverable fixing date offset.",
       "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesOffsetDayType"
@@ -701,6 +756,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40655",
       "description": "Identifies the reference \"page\" from the rate source. When SettlRateFallbackRateSource(40373) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
       "display": "SettlRateFallbackReferencePage"
@@ -713,6 +769,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "40656",
       "description": "Number of Fixing dates in the repeating group",
       "display": "NoUnderlyingNonDeliverableFixingDates"
@@ -726,6 +783,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40657",
       "description": "The non-deliverable fixing date unadjusted or adjusted depending on UnderlyingNonDeliverableFixingDateType(40658).",
       "display": "UnderlyingNonDeliverableFixingDate"
@@ -739,6 +797,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "nondeliverablefixingdatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40658",
       "description": "Specifies the type of date (e.g. adjusted for holidays).",
       "display": "UnderlyingNonDeliverableFixingDateType"
@@ -751,6 +810,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "40659",
       "description": "Number of settlement rate fallbacks in the repeating group",
       "display": "NoUnderlyingSettlRateFallbacks"
@@ -763,6 +823,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40660",
       "description": "The maximum number of days to wait for a quote from the disrupted settlement rate option before proceding to this method.",
       "display": "UnderlyingSettlRatePostponementMaximumDays"
@@ -776,6 +837,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ratesourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40661",
       "description": "Identifies the source of rate information.",
       "display": "UnderlyingPaymentStreamNonDeliverableSettlRateSource"
@@ -788,6 +850,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "40662",
       "description": "Indicates whether to request a settlement rate quote from the market.",
       "display": "UnderlyingSettlRatePostponementSurvey"
@@ -801,6 +864,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisioncalculationagentcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40663",
       "description": "Used to identify the settlement rate postponement calculation agent.",
       "display": "UnderlyingSettlRatePostponementCalculationAgent"
@@ -813,6 +877,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "40664",
       "description": "Number of swap schedules in the repeating group",
       "display": "NoUnderlyingPaymentSchedules"
@@ -826,6 +891,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentscheduletypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40665",
       "description": "Type of schedule.",
       "display": "UnderlyingPaymentScheduleType"
@@ -839,6 +905,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstubtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40666",
       "description": "Indicates to which stub this schedule applies.",
       "display": "UnderlyingPaymentScheduleStubType"
@@ -852,6 +919,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40667",
       "description": "The unadjusted date on which the value is adjusted, or calculated if a future value notional for certain non-deliverable interest rate swaps (e.g. Brazillian Real (BRL) vs. CETIP Interbank Deposit Rate (CDI)), or the start date of a cashflow payment.",
       "display": "UnderlyingPaymentScheduleStartDateUnadjusted"
@@ -865,6 +933,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40668",
       "description": "The unadjusted end date of a cashflow payment.",
       "display": "UnderlyingPaymentScheduleEndDateUnadjusted"
@@ -878,6 +947,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentpaysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40669",
       "description": "The side of the party paying the step schedule.",
       "display": "UnderlyingPaymentSchedulePaySide"
@@ -891,6 +961,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentpaysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40670",
       "description": "The side of the party receiving the step schedule.",
       "display": "UnderlyingPaymentScheduleReceiveSide"
@@ -905,6 +976,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "40671",
       "description": "The notional value for this step, or amount of a cashflow payment.",
       "display": "UnderlyingPaymentScheduleNotional"
@@ -917,6 +989,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "40672",
       "description": "The currency for this step. Uses ISO 4217 currency codes.",
       "display": "UnderlyingPaymentScheduleCurrency"
@@ -929,6 +1002,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40673",
       "description": "The rate value for this step.",
       "display": "UnderlyingPaymentScheduleRate"
@@ -941,6 +1015,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "40674",
       "description": "A rate multiplier to apply to the floating rate. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
       "display": "UnderlyingPaymentScheduleRateMultiplier"
@@ -955,6 +1030,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "40675",
       "description": "The spread value for this step.",
       "display": "UnderlyingPaymentScheduleRateSpread"
@@ -968,6 +1044,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamratespreadpositiontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40676",
       "description": "Identifies whether the rate spread is applied to a long or short position.",
       "display": "UnderlyingPaymentScheduleRateSpreadPositionType"
@@ -981,6 +1058,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamratetreatmentcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40677",
       "description": "Specifies the yield calculation treatment for the step schedule.",
       "display": "UnderlyingPaymentScheduleRateTreatment"
@@ -995,6 +1073,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "40678",
       "description": "The explicit payment amount for this step.",
       "display": "UnderlyingPaymentScheduleFixedAmount"
@@ -1007,6 +1086,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "40679",
       "description": "The currency of the fixed amount. Uses ISO 4217 currency codes.",
       "display": "UnderlyingPaymentScheduleFixedCurrency"
@@ -1019,6 +1099,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40680",
       "description": "Time unit multiplier for the step frequency.",
       "display": "UnderlyingPaymentScheduleStepFrequencyPeriod"
@@ -1032,6 +1113,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "couponfrequencyunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40681",
       "description": "Time unit associated with the step frequency.",
       "display": "UnderlyingPaymentScheduleStepFrequencyUnit"
@@ -1046,6 +1128,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "40682",
       "description": "The explicit amount that the notional changes on each step date. This can be a positive or negative amount.",
       "display": "UnderlyingPaymentScheduleStepOffsetValue"
@@ -1058,6 +1141,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40683",
       "description": "The percentage by which the notional changes on each step date. The percentage is either a percentage applied to the initial notional amount or the previous outstanding notional, depending on the value specified in UnderlyingPaymentScheduleStepRelativeTo(40685). The percentage can be either positive or negative.",
       "display": "UnderlyingPaymentScheduleStepRate"
@@ -1070,6 +1154,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40684",
       "description": "The explicit amount that the rate changes on each step date. This can be a positive or negative value.",
       "display": "UnderlyingPaymentScheduleStepOffsetRate"
@@ -1083,6 +1168,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentschedulesteprelativetocodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40685",
       "description": "Specifies whether the UnderlyingPaymentScheduleStepRate(40683) or UnderlyingPaymentScheduleStepOffsetValue(40682) should be applied to the initial notional or the previous notional in order to calculate the notional step change amount.",
       "display": "UnderlyingPaymentScheduleStepRelativeTo"
@@ -1096,6 +1182,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40686",
       "description": "The unadjusted fixing date.",
       "display": "UnderlyingPaymentScheduleFixingDateUnadjusted"
@@ -1108,6 +1195,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "40687",
       "description": "Floating rate observation weight for cashflow payment.",
       "display": "UnderlyingPaymentScheduleWeight"
@@ -1120,6 +1208,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40688",
       "description": "Specifies the anchor date when the fixing date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingPaymentScheduleFixingDateRelativeTo"
@@ -1133,6 +1222,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40689",
       "description": "The business day convention used to adjust the payment schedule's fixing date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentScheduleFixingDateBusinessDayCnvtn"
@@ -1145,6 +1235,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40690",
       "description": "The business center calendar used to adjust the payment schedule's fixing date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingPaymentScheduleFixingDateBusinessCenter"
@@ -1157,6 +1248,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40691",
       "description": "Time unit multiplier for the relative fixing date offset.",
       "display": "UnderlyingPaymentScheduleFixingDateOffsetPeriod"
@@ -1170,6 +1262,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40692",
       "description": "Time unit associated with the relative fixing date offset.",
       "display": "UnderlyingPaymentScheduleFixingDateOffsetUnit"
@@ -1183,6 +1276,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40693",
       "description": "Specifies the day type of the relative fixing date offset.",
       "display": "UnderlyingPaymentScheduleFixingDateOffsetDayType"
@@ -1196,6 +1290,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40694",
       "description": "The adjusted fixing date.",
       "display": "UnderlyingPaymentScheduleFixingDateAdjusted"
@@ -1209,6 +1304,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "40695",
       "description": "The fixing time.",
       "display": "UnderlyingPaymentScheduleFixingTime"
@@ -1221,6 +1317,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40696",
       "description": "Business center for determining fixing time. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingPaymentScheduleFixingTimeBusinessCenter"
@@ -1233,6 +1330,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40697",
       "description": "Specifies the anchor date when the interim exchange payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingPaymentScheduleInterimExchangePaymentDateRelativeTo"
@@ -1246,6 +1344,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40698",
       "description": "The business day convention used to adjust the payment schedule's interim exchange date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentScheduleInterimExchangeDatesBizDayConvention"
@@ -1258,6 +1357,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40699",
       "description": "The business center calendar used to adjust the payment schedule's interim exchange date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingPaymentScheduleInterimExchangeDatesBusinessCenter"

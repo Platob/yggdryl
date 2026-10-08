@@ -269,7 +269,7 @@ fn table_metadata_state_is_read_only_through_complete_accessors() {
     use yggdryl::internals::iceberg_metadata as fields;
 
     let metadata = TableMetadata::new(
-        FormatVersion::V2,
+        FormatVersion::V3,
         "file:///table",
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -2115,7 +2115,7 @@ mod table_metadata {
 
     #[test]
     fn every_format_version_round_trips_through_its_document() {
-        for version in [FormatVersion::V1, FormatVersion::V2, FormatVersion::V3] {
+        for version in [FormatVersion::V3, FormatVersion::V2, FormatVersion::V1] {
             let original = metadata(version);
             let document = original.clone().into_json().unwrap();
             let read = TableMetadata::from_json(&document).unwrap();
@@ -2143,7 +2143,7 @@ mod table_metadata {
             order
         );
 
-        let mut metadata = metadata(FormatVersion::V2);
+        let mut metadata = metadata(FormatVersion::V3);
         sort_orders_mut(&mut metadata).push(order);
         *default_sort_order_id_mut(&mut metadata) = order_id;
         let document = metadata.into_json().unwrap();
@@ -2171,7 +2171,7 @@ mod table_metadata {
             state.finish()
         }
 
-        let mut metadata = metadata(FormatVersion::V2);
+        let mut metadata = metadata(FormatVersion::V3);
         metadata.add_schema(trade_schema()).unwrap();
         metadata
             .add_spec(PartitionSpec {
@@ -2205,8 +2205,9 @@ mod table_metadata {
                     summary: vec![("operation".into(), "append".into())],
                     schema_id: Some(0),
                     encryption_key_id: None,
-                    first_row_id: None,
-                    added_rows: None,
+                    // The row lineage a v3 table asks of every snapshot.
+                    first_row_id: Some(0),
+                    added_rows: Some(0),
                 })
                 .unwrap();
         }
@@ -2255,6 +2256,7 @@ mod table_metadata {
 
     #[test]
     fn a_v1_document_carries_the_singular_schema_and_spec_keys() {
+        // v1's singular keys: the document pinned here.
         let document = metadata(FormatVersion::V1).into_json().unwrap();
         assert!(document.contains_key("schema"), "v1 needs the singular key");
         assert!(document.contains_key("partition-spec"));
@@ -2275,6 +2277,7 @@ mod table_metadata {
         )
         .unwrap();
         let metadata = TableMetadata::from_json(&document).unwrap();
+        // v1's own document, read back.
         assert_eq!(metadata.format_version(), FormatVersion::V1);
         assert_eq!(metadata.schemas().len(), 1);
         assert_eq!(metadata.partition_specs().len(), 1);
@@ -2283,6 +2286,7 @@ mod table_metadata {
 
     #[test]
     fn v1_direct_manifest_paths_survive_official_metadata_updates() {
+        // v1's direct manifest paths: the contract pinned here.
         let mut metadata = metadata(FormatVersion::V1);
         let snapshot = Snapshot {
             snapshot_id: 7,
@@ -2467,7 +2471,7 @@ mod table_metadata {
 
     #[test]
     fn a_current_snapshot_of_minus_one_means_there_is_none() {
-        let mut document = metadata(FormatVersion::V2).into_json().unwrap();
+        let mut document = metadata(FormatVersion::V3).into_json().unwrap();
         document = document.with_key("current-snapshot-id", -1_i64).unwrap();
         let read = TableMetadata::from_json(&document).unwrap();
         assert!(read.current_snapshot_id().is_none());
@@ -2476,7 +2480,7 @@ mod table_metadata {
 
     #[test]
     fn an_evolved_schema_keeps_the_old_one_and_numbers_above_it() {
-        let mut metadata = metadata(FormatVersion::V2);
+        let mut metadata = metadata(FormatVersion::V3);
         let mut evolved = trade_schema();
         evolved.remove_metadata("ICEBERG:schema-id");
         let mut fields = evolved.fields().to_vec();
@@ -2544,7 +2548,7 @@ mod tables {
 
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
@@ -2581,7 +2585,7 @@ mod tables {
 
         let table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
@@ -2604,7 +2608,7 @@ mod tables {
         let schema = trade_schema();
         let table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
@@ -2628,7 +2632,7 @@ mod tables {
         let path = root("official-metadata-name");
         let table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -2666,7 +2670,7 @@ mod tables {
         let path = root("hint-resolvable-metadata-name");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -2704,7 +2708,7 @@ mod tables {
         let path = root("gzip-metadata");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -2738,14 +2742,14 @@ mod tables {
         let path = root("create-conflict");
         IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
         let error = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -2765,7 +2769,7 @@ mod tables {
         let path = root("location-boundary");
         let table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -2783,7 +2787,7 @@ mod tables {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::unpartitioned(),
         )
@@ -2820,6 +2824,7 @@ mod tables {
         let path = root("v1-direct-manifests");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
+            // v1's direct manifests: the contract pinned here.
             FormatVersion::V1,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -2900,7 +2905,7 @@ mod tables {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )
@@ -3000,7 +3005,7 @@ mod tables {
         };
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec,
         )
@@ -3094,7 +3099,7 @@ mod tables {
         };
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec,
         )
@@ -3157,7 +3162,7 @@ mod tables {
         };
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec,
         )
@@ -3254,7 +3259,7 @@ mod tables {
             };
             let mut table = IcebergTable::create(
                 LocalFolder::new(&path).unwrap(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema.clone(),
                 spec,
             )
@@ -3306,7 +3311,7 @@ mod tables {
         assign_field_ids(&mut schema, 1).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::unpartitioned(),
         )
@@ -3371,7 +3376,7 @@ mod tables {
             assign_field_ids(&mut schema, 1).unwrap();
             let mut table = IcebergTable::create(
                 LocalFolder::new(&path).unwrap(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema.clone(),
                 PartitionSpec::unpartitioned(),
             )
@@ -3426,7 +3431,7 @@ mod tables {
         };
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec,
         )
@@ -3473,7 +3478,7 @@ mod tables {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )
@@ -3512,7 +3517,7 @@ mod tables {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
@@ -3558,7 +3563,7 @@ mod tables {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::unpartitioned(),
         )
@@ -3673,7 +3678,7 @@ mod tables {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::unpartitioned(),
         )
@@ -3729,7 +3734,7 @@ mod tables {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
@@ -3759,6 +3764,7 @@ mod tables {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
+            // v1 writes no sequence number: the contract pinned here.
             FormatVersion::V1,
             schema,
             PartitionSpec::unpartitioned(),
@@ -3777,6 +3783,7 @@ mod tables {
         let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(
             reopened.metadata().unwrap().format_version(),
+            // v1 writes no sequence number: the contract pinned here.
             FormatVersion::V1
         );
         assert_eq!(collect(reopened.scan(None).unwrap()).len(), 2);
@@ -3923,6 +3930,7 @@ mod tables {
         let path = root("v2-rewrite-lineage");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
+            // v2 permits the rewrites v3 refuses: the contract pinned here.
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -3965,6 +3973,7 @@ mod tables {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
+            // The v2 -> v3 upgrade path.
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -4008,7 +4017,7 @@ mod tables {
         spec.fields[0].transform = super::Transform::Bucket(8);
         let message = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )
@@ -4035,7 +4044,7 @@ mod tables {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec.clone(),
         )
@@ -4100,7 +4109,7 @@ mod planning {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )
@@ -4239,7 +4248,7 @@ mod planning {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
@@ -4293,7 +4302,7 @@ mod planning {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )
@@ -4377,7 +4386,7 @@ mod planning {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec,
         )
@@ -4470,18 +4479,17 @@ mod handles {
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{DataType, MimeType};
 
-    /// Create a venue-partitioned table and return the folder addressing it.
+    /// Create a v3 venue-partitioned table and return the folder addressing it.
     fn table(label: &str) -> (std::path::PathBuf, LocalFolder) {
+        table_at(label, FormatVersion::V3)
+    }
+
+    /// [`table`] at `version`, for a test whose writes only that version takes.
+    fn table_at(label: &str, version: FormatVersion) -> (std::path::PathBuf, LocalFolder) {
         let path = root(label);
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        IcebergTable::create(
-            LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
-            schema,
-            spec,
-        )
-        .unwrap();
+        IcebergTable::create(LocalFolder::new(&path).unwrap(), version, schema, spec).unwrap();
         let folder = LocalFolder::new(&path).unwrap();
         (path, folder)
     }
@@ -4597,7 +4605,8 @@ mod handles {
 
     #[test]
     fn a_write_with_a_match_key_upserts_the_table_through_the_same_surface() {
-        let (_path, mut folder) = table("handle-merge");
+        // A keyed merge: v2 only, refused on v3.
+        let (_path, mut folder) = table_at("handle-merge", FormatVersion::V2);
         let options = options(&folder);
 
         let batch = trades(
@@ -4642,6 +4651,7 @@ mod handles {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
+            // A keyed merge: v2 only, refused on v3.
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -4766,7 +4776,7 @@ mod handles {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )
@@ -4873,6 +4883,7 @@ mod handles {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
+            // Its writes include a keyed merge: v2 only, refused on v3.
             FormatVersion::V2,
             schema,
             spec,
@@ -4962,7 +4973,7 @@ mod handles {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )
@@ -5013,7 +5024,7 @@ mod handles {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::unpartitioned(),
         )
@@ -5061,7 +5072,7 @@ mod handles {
         let path = root("handle-table-stored-completion");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             stored.clone(),
             PartitionSpec::unpartitioned(),
         )
@@ -5138,6 +5149,7 @@ mod handles {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
+            // Its writes include a keyed merge: v2 only, refused on v3.
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -5227,7 +5239,7 @@ mod handles {
             let schema = trade_schema();
             let mut table = IcebergTable::create(
                 LocalFolder::new(&path).unwrap(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema.clone(),
                 PartitionSpec::unpartitioned(),
             )
@@ -5301,7 +5313,11 @@ mod handles {
         // one-byte target alike - the target cuts files, never commits - and
         // every row still reads back exactly once.
         for (label, target) in [("default", None), ("tiny", Some(1))] {
-            let (path, mut folder) = table(&format!("handle-located-byte-cadence-{label}"));
+            // Its writes include a keyed merge: v2 only, refused on v3.
+            let (path, mut folder) = table_at(
+                &format!("handle-located-byte-cadence-{label}"),
+                FormatVersion::V2,
+            );
             if let Some(target) = target {
                 set_target_file_size(&path, target);
             }
@@ -5364,6 +5380,7 @@ mod handles {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
+            // A keyed merge: v2 only, refused on v3.
             FormatVersion::V2,
             schema.clone(),
             spec,
@@ -5776,7 +5793,7 @@ mod handles {
         let schema = trade_schema();
         let mut table = IcebergTable::create_sorted(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
             SortOrder {
@@ -5857,7 +5874,7 @@ mod handles {
             let schema = trade_schema();
             let mut table = IcebergTable::create(
                 LocalFolder::new(&path).unwrap(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema.clone(),
                 PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
             )
@@ -5928,7 +5945,7 @@ mod handles {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::unpartitioned(),
         )
@@ -5972,7 +5989,7 @@ mod handles {
         let schema = trade_schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::unpartitioned(),
         )
@@ -6008,7 +6025,7 @@ fn time_travel_reads_a_previous_snapshot_by_id_and_by_ref() {
     let path = root("time-travel");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -6060,7 +6077,7 @@ fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
     let path = root("metadata-commit");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -6106,7 +6123,7 @@ fn a_refused_hint_write_leaves_the_commit_made() {
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let mut table = IcebergTable::create(
         folder.clone(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -6147,7 +6164,7 @@ fn a_refused_hint_write_keeps_the_data_files_the_document_names() {
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let schema = trade_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-    let mut table = IcebergTable::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
+    let mut table = IcebergTable::create(folder.clone(), FormatVersion::V3, schema, spec).unwrap();
     let version = table.metadata_version().unwrap();
 
     filesystem.arm();
@@ -6217,7 +6234,7 @@ fn a_claim_beside_the_other_spelling_withdraws_and_rebases_onto_it() {
     let path = root("other-spelling-claim");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -6282,7 +6299,7 @@ fn a_version_held_under_both_spellings_is_refused_as_a_fork() {
     let path = root("forked-version");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -6372,7 +6389,7 @@ fn a_create_over_any_metadata_document_is_refused() {
         std::fs::write(metadata.join(planted), b"{}").unwrap();
         let error = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -6393,7 +6410,7 @@ fn a_create_over_any_metadata_document_is_refused() {
     std::fs::write(path.join("metadata").join("notes.txt"), b"desk").unwrap();
     let table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -6415,7 +6432,7 @@ fn a_hint_that_reads_as_no_version_leaves_the_listing_to_answer() {
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let mut table = IcebergTable::create(
         folder.clone(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -6502,7 +6519,7 @@ fn a_lost_claim_whose_winner_cannot_be_read_yet_waits_and_rebases() {
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let mut table = IcebergTable::create(
         folder.clone(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -6541,7 +6558,7 @@ fn a_refused_document_create_rolls_the_commit_back_and_claims_nothing() {
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let schema = trade_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-    let mut table = IcebergTable::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
+    let mut table = IcebergTable::create(folder.clone(), FormatVersion::V3, schema, spec).unwrap();
     let version = table.metadata_version().unwrap();
 
     filesystem.arm();
@@ -6600,7 +6617,7 @@ fn a_commit_beaten_on_write_withdraws_the_list_of_the_attempt_it_replaces() {
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let mut table = IcebergTable::create(
         folder.clone(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -6678,7 +6695,7 @@ fn a_refused_create_of_our_own_snapshot_finishes_one_append() {
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/own-snapshot", None).unwrap();
     let mut table = IcebergTable::create(
         folder.clone(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -6740,7 +6757,7 @@ fn a_delayed_own_snapshot_reuses_the_same_append_attempt() {
             .unwrap();
     let mut table = IcebergTable::create(
         folder.clone(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -6812,7 +6829,7 @@ fn an_unreadable_own_snapshot_keeps_its_files_after_retry_exhaustion() {
         }
         let mut table = IcebergTable::create(
             folder.clone(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
@@ -6883,7 +6900,7 @@ fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let mut table = IcebergTable::create(
         folder.clone(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -6935,7 +6952,7 @@ fn the_inspection_tables_report_history_snapshots_and_files() {
     let path = root("inspect");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::identity(0, &trade_schema(), &["venue"]).unwrap(),
     )
@@ -7011,7 +7028,7 @@ fn a_commit_refuses_metadata_that_does_not_hold_together() {
     let path = root("invalid-commit");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7036,7 +7053,7 @@ fn a_zero_row_append_commits_a_snapshot_that_reads_as_nothing() {
     let path = root("zero-row");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7068,7 +7085,7 @@ fn a_nan_value_neither_poisons_a_bound_nor_hides_a_row() {
     assign_field_ids(&mut schema, 1).unwrap();
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         schema.clone(),
         PartitionSpec::unpartitioned(),
     )
@@ -7118,7 +7135,7 @@ fn a_truncated_manifest_is_a_typed_error_and_not_a_panic() {
     let path = root("corrupt-manifest");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7152,7 +7169,7 @@ fn a_tiny_write_target_rolls_one_append_into_multiple_data_files() {
     let path = root("target-size");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7220,7 +7237,7 @@ fn the_schema_root_write_target_is_honored_when_the_table_property_is_absent() {
         .unwrap();
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         schema,
         PartitionSpec::unpartitioned(),
     )
@@ -7258,7 +7275,7 @@ fn an_unparseable_write_target_is_a_typed_error_naming_the_key() {
     let path = root("target-unparseable");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7304,6 +7321,7 @@ fn compaction_merges_small_files_and_the_old_snapshot_still_time_travels() {
     let path = root("compact");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
+        // Compaction: v2 only, refused on v3.
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -7387,6 +7405,7 @@ fn compaction_respects_partitions_and_pruning_still_prunes_after_it() {
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
+        // Compaction: v2 only, refused on v3.
         FormatVersion::V2,
         schema,
         spec,
@@ -7477,7 +7496,7 @@ fn a_wide_schema_round_trips_with_every_field_numbered() {
 
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         schema.clone(),
         PartitionSpec::unpartitioned(),
     )
@@ -7550,7 +7569,7 @@ fn options_resolve_explicitly_then_by_property_then_by_default() {
     let path = root("options-layers");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7606,7 +7625,7 @@ fn a_count_property_reads_as_every_count_reads_and_refuses_what_none_does() {
     let path = root("option-integer-spelling");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7657,7 +7676,7 @@ fn zero_total_retry_budget_allows_a_zero_wait_rebase() {
     let path = root("commit-total-timeout");
     let mut winner = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7705,7 +7724,7 @@ fn an_unparseable_option_property_is_typed_and_an_explicit_option_shadows_it() {
     let path = root("options-unparseable");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7750,7 +7769,7 @@ fn a_beaten_append_rebases_and_keeps_both_writers_rows() {
     let path = root("append-conflict");
     let mut first = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7804,7 +7823,7 @@ fn concurrent_metadata_commits_rebase_and_both_changes_survive() {
     let path = root("changes-conflict");
     let mut first = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7849,7 +7868,7 @@ fn a_beaten_overwrite_exhausts_its_retries_into_a_conflict_naming_versions() {
     let path = root("overwrite-conflict");
     let mut first = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7911,7 +7930,7 @@ fn a_parallel_read_yields_the_sequential_rows_in_the_sequential_order() {
     let path = root("parallel-read");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -7991,7 +8010,7 @@ fn branches_and_tags_round_trip_through_table_level_commits() {
     let path = root("table-refs");
     let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -8077,7 +8096,7 @@ mod datatype_coverage {
             .required_field("row");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::unpartitioned(),
         )
@@ -8263,6 +8282,7 @@ mod datatype_coverage {
             .required_field("row");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
+            // A keyed merge: v2 only, refused on v3.
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -8410,7 +8430,7 @@ mod concurrency {
         let schema = trade_schema();
         IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
@@ -8471,7 +8491,7 @@ mod concurrency {
         let path = root("racing-appenders");
         IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -8604,7 +8624,7 @@ mod concurrency {
         let path = root("codec-flips");
         IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -8692,6 +8712,138 @@ mod concurrency {
         let _ = std::fs::remove_dir_all(&path);
     }
 
+    /// The interleaving the race above can lose a commit in, laid out by
+    /// hand: a writer reads a gzip claim of version 2, that claim is then
+    /// withdrawn - as its own check withdraws it once a plain claim of the
+    /// version landed before that check ran - and an appender's plain
+    /// version 2 commits in its place. The writer's commit claims version 3
+    /// on the document it read, finds that base no longer the version's one
+    /// document, withdraws its claim and rebases onto the version that
+    /// stands: the appender's rows, which it was told landed, are kept.
+    #[test]
+    fn a_commit_built_on_a_withdrawn_claim_rebases_onto_the_version_that_stands() {
+        let path = root("withdrawn-base");
+        let metadata = path.join("metadata");
+        IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V3,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        // The appender holds version 1 before anything else lands.
+        let mut appender = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+
+        // The flipper claims version 2 under gzip, and the writer reads it.
+        let mut flipper = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        flipper
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property("write.metadata.compression-codec", "gzip")?;
+                Ok(())
+            })
+            .unwrap();
+        let mut writer = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(writer.metadata_version().unwrap(), 2);
+
+        // The claim is withdrawn, and the appender's plain version 2 lands
+        // alone and commits.
+        std::fs::remove_file(metadata.join("v2.gz.metadata.json")).unwrap();
+        let rows = batch(1, 2);
+        appender
+            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+            .unwrap();
+        assert!(metadata.join("v2.metadata.json").is_file());
+
+        // The writer commits on the withdrawn document it read.
+        let rows = batch(2, 2);
+        writer
+            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+            .unwrap();
+
+        let table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(table.metadata_version().unwrap(), 3);
+        let mut ids: Vec<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        ids.sort_unstable();
+        assert_eq!(ids, [10, 11, 20, 21], "the appender's commit is kept");
+        let chain = chain(&table);
+        assert_eq!(chain.len(), 2);
+        assert_eq!(chain[1].parent_snapshot_id, Some(chain[0].snapshot_id));
+        assert_eq!(
+            table
+                .metadata()
+                .unwrap()
+                .property("write.metadata.compression-codec"),
+            None,
+            "the withdrawn claim's change is in no document"
+        );
+        let mut names: Vec<String> = std::fs::read_dir(&metadata)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".metadata.json"))
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            ["v1.metadata.json", "v2.metadata.json", "v3.metadata.json"]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// A claim withdrawn after a writer read it takes back the files it
+    /// named - its rebase withdraws the manifest list it wrote - so the
+    /// writer's next commit finds the list of the snapshot it holds gone.
+    /// Laid out by hand: the claim of version 2 and its list removed after
+    /// the writer read them. The writer's commit finds the document it holds
+    /// no longer stands, and rebases onto the version that does - version 1
+    /// - rather than failing on the missing list.
+    #[test]
+    fn a_commit_on_a_claim_whose_files_were_withdrawn_rebases_onto_what_stands() {
+        let path = root("withdrawn-files");
+        let metadata = path.join("metadata");
+        IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V3,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let mut claimer = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let rows = batch(1, 2);
+        claimer
+            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+            .unwrap();
+        let list = claimer
+            .current_snapshot()
+            .unwrap()
+            .unwrap()
+            .manifest_list
+            .clone();
+        let mut writer = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(writer.metadata_version().unwrap(), 2);
+
+        // The claim of version 2 is withdrawn, and its list with it.
+        std::fs::remove_file(metadata.join("v2.metadata.json")).unwrap();
+        std::fs::remove_file(yggdryl::Url::from_str(&list).unwrap().into_path().unwrap()).unwrap();
+
+        let rows = batch(2, 2);
+        writer
+            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+            .unwrap();
+        let table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(table.metadata_version().unwrap(), 2);
+        let mut ids: Vec<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        ids.sort_unstable();
+        assert_eq!(ids, [20, 21], "the commit built on the version that stands");
+        assert_eq!(chain(&table).len(), 1);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
     /// Appends racing whole-table overwrites: every attempt either lands or
     /// is a typed `CommitConflict`, and the rows the table holds are exactly
     /// the replay of its snapshot log - an overwrite the one row set it
@@ -8705,7 +8857,7 @@ mod concurrency {
         let path = root("appends-racing-overwrites");
         IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -8878,7 +9030,7 @@ mod concurrency {
                     start.wait();
                     IcebergTable::create(
                         folder,
-                        FormatVersion::V2,
+                        FormatVersion::V3,
                         trade_schema(),
                         PartitionSpec::unpartitioned(),
                     )
@@ -8919,6 +9071,7 @@ mod concurrency {
         let schema = trade_schema();
         let mut writer = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
+            // A keyed merge: v2 only, refused on v3.
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -9112,7 +9265,7 @@ mod manifest_planning {
         let mut handle = Buffer::new();
         write_manifest(
             &mut handle,
-            FormatVersion::V2,
+            FormatVersion::V3,
             &schema,
             &spec,
             &[full_entry(0), full_entry(1)],
@@ -9256,7 +9409,7 @@ mod data_mime_type {
         let path = root("format-layers");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -9290,7 +9443,7 @@ mod data_mime_type {
         let path = root("format-unparseable");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -9336,7 +9489,7 @@ mod data_mime_type {
             let path = root(&format!("format-{}", name.to_ascii_lowercase()));
             let mut table = IcebergTable::create(
                 LocalFolder::new(&path).unwrap(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 trade_schema(),
                 PartitionSpec::unpartitioned(),
             )
@@ -9364,7 +9517,7 @@ mod data_mime_type {
         let path = root("format-mixed");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -9430,7 +9583,7 @@ mod data_mime_type {
         let path = root("format-avro-property");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -9474,7 +9627,7 @@ mod interop_regressions {
         let path = root("rename-by-id");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -9620,9 +9773,13 @@ mod isolation {
 
     use std::sync::{Arc, Mutex};
 
+    use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
     use arrow_array::{
-        Array, ArrayRef, BinaryArray, Int64Array, NullArray, RecordBatch, TimestampMicrosecondArray,
+        Array, ArrayRef, BinaryArray, Int64Array, NullArray, RecordBatch, RecordBatchIterator,
+        RecordBatchReader, StringArray, TimestampMicrosecondArray,
     };
+    use arrow_schema::{ArrowError, SchemaRef};
 
     use super::{
         FormatVersion, IcebergOptions, IcebergTable, PartitionSpec, SortField, SortOrder,
@@ -9712,18 +9869,22 @@ mod isolation {
         }
     }
 
-    /// One row per venue, one commit per row: three partitions, three files.
+    /// One row per venue, one commit per row: three partitions, three files,
+    /// in a v3 table.
     fn venues(label: &str) -> (std::path::PathBuf, IcebergTable<LocalFolder>) {
+        venues_at(label, FormatVersion::V3)
+    }
+
+    /// [`venues`] at `version`, for a test whose writes only that version takes.
+    fn venues_at(
+        label: &str,
+        version: FormatVersion,
+    ) -> (std::path::PathBuf, IcebergTable<LocalFolder>) {
         let path = root(label);
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = IcebergTable::create(
-            LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
-            schema,
-            spec,
-        )
-        .unwrap();
+        let mut table =
+            IcebergTable::create(LocalFolder::new(&path).unwrap(), version, schema, spec).unwrap();
         for (id, symbol, venue) in [
             (1_i64, "AAPL", "XNAS"),
             (2, "MSFT", "XNYS"),
@@ -9822,7 +9983,7 @@ mod isolation {
         assign_field_ids(&mut schema, 1).unwrap();
         let spec = PartitionSpec::identity(1, &schema, &["timepartition"]).unwrap();
         let mut table =
-            IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec).unwrap();
+            IcebergTable::create(folder, FormatVersion::V3, schema.clone(), spec).unwrap();
         table.set_options(
             IcebergOptions::new()
                 .try_with_write_staging(yggdryl::iceberg::WriteStaging::Off)
@@ -9928,7 +10089,8 @@ mod isolation {
 
     #[test]
     fn a_merge_into_one_partition_reads_no_other_partition_and_carries_their_files() {
-        let (path, _) = venues("isolation-merge");
+        // A keyed merge: v2 only, refused on v3.
+        let (path, _) = venues_at("isolation-merge", FormatVersion::V2);
         let mut table = IcebergTable::open(Recording::new(&path)).unwrap();
         let before = file_paths(&table);
         assert_eq!(before.len(), 3);
@@ -9970,7 +10132,8 @@ mod isolation {
 
     #[test]
     fn the_partition_columns_lead_the_key_so_a_moved_row_is_a_new_row() {
-        let (path, mut table) = venues("isolation-moved-row");
+        // A keyed merge: v2 only, refused on v3.
+        let (path, mut table) = venues_at("isolation-moved-row", FormatVersion::V2);
         // Key = (venue, id): id 2 under XLON is not id 2 under XNYS.
         let batch = trades(&[2], &[Some("MSFT.L")], &[Some("XLON")]);
         table
@@ -10033,7 +10196,7 @@ mod isolation {
         let flat = root("isolation-keyless-flat");
         let mut flat_table = IcebergTable::create(
             LocalFolder::new(&flat).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -10055,7 +10218,8 @@ mod isolation {
 
     #[test]
     fn duplicate_keys_in_one_write_keep_the_last_row() {
-        let (path, mut table) = venues("isolation-duplicates");
+        // A keyed merge: v2 only, refused on v3.
+        let (path, mut table) = venues_at("isolation-duplicates", FormatVersion::V2);
         let batch = trades(
             &[9, 9, 9],
             &[Some("first"), Some("second"), Some("last")],
@@ -10086,7 +10250,7 @@ mod isolation {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec,
         )
@@ -10127,7 +10291,7 @@ mod isolation {
         let sorted = root("isolation-sorted-explicit");
         let mut by_symbol = IcebergTable::create_sorted(
             LocalFolder::new(&sorted).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
             SortOrder {
@@ -10207,7 +10371,7 @@ mod isolation {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create_sorted(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
             SortOrder::unsorted(),
@@ -10229,7 +10393,7 @@ mod isolation {
         let flat = root("isolation-unsorted-flat");
         let flat_table = IcebergTable::create(
             LocalFolder::new(&flat).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -10263,7 +10427,7 @@ mod isolation {
         let path = root("isolation-write-parallelism");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -10323,7 +10487,7 @@ mod isolation {
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
             let mut table = IcebergTable::create(
                 LocalFolder::new(&path).unwrap(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema,
                 spec,
             )
@@ -10361,7 +10525,7 @@ mod isolation {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )
@@ -10387,6 +10551,465 @@ mod isolation {
         let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata_version().unwrap(), version);
         assert!(reopened.current_snapshot().unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// The write parallelism a host leg runs at: the host's, and never one,
+    /// so the threaded path runs on a one-core runner too.
+    fn host_parallelism() -> usize {
+        IcebergOptions::default_read_parallelism().max(2)
+    }
+
+    /// A venue-partitioned table, sorted where `order` says, writing on
+    /// `parallelism` threads and cutting files at `target` where one is given.
+    fn venue_table(
+        label: &str,
+        parallelism: usize,
+        order: Option<SortOrder>,
+        target: Option<u64>,
+    ) -> (std::path::PathBuf, IcebergTable<LocalFolder>) {
+        let path = root(label);
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let folder = LocalFolder::new(&path).unwrap();
+        let mut table = match order {
+            Some(order) => {
+                IcebergTable::create_sorted(folder, FormatVersion::V3, schema, spec, order)
+            }
+            None => IcebergTable::create(folder, FormatVersion::V3, schema, spec),
+        }
+        .unwrap();
+        let mut options = IcebergOptions::new()
+            .try_with_write_parallelism(parallelism)
+            .unwrap();
+        if let Some(target) = target {
+            options = options.try_with_target_file_size_bytes(target).unwrap();
+        }
+        table.set_options(options);
+        (path, table)
+    }
+
+    /// `batches` batches of `rows` rows whose venue cycles through `venues`
+    /// row by row, so every batch spans every venue. A row's id is its
+    /// arrival position in the stream, and its symbol cycles through `symbols`
+    /// two rows at a time, so sort keys repeat within and across batches.
+    fn interleaved(
+        venues: &[&str],
+        symbols: &[&str],
+        batches: usize,
+        rows: usize,
+    ) -> Vec<RecordBatch> {
+        (0..batches)
+            .map(|batch| {
+                let positions = batch * rows..(batch + 1) * rows;
+                let ids: Vec<i64> = positions
+                    .clone()
+                    .map(|position| i64::try_from(position).unwrap())
+                    .collect();
+                let symbols: Vec<Option<&str>> = positions
+                    .clone()
+                    .map(|position| Some(symbols[(position / 2) % symbols.len()]))
+                    .collect();
+                let venues: Vec<Option<&str>> = positions
+                    .map(|position| Some(venues[position % venues.len()]))
+                    .collect();
+                trades(&ids, &symbols, &venues)
+            })
+            .collect()
+    }
+
+    /// Every row of a reader as `(id, symbol, venue)`, in the order it yields them.
+    fn rows_in_order(
+        reader: yggdryl::arrow::BatchReader,
+    ) -> Vec<(i64, Option<String>, Option<String>)> {
+        let mut rows = Vec::new();
+        for batch in reader {
+            let batch = batch.unwrap();
+            let text = |name: &str| {
+                batch
+                    .column_by_name(name)
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap()
+                    .clone()
+            };
+            let ids = batch
+                .column_by_name("id")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap()
+                .clone();
+            let (symbols, venues) = (text("symbol"), text("venue"));
+            for row in 0..batch.num_rows() {
+                let cell = |column: &StringArray| {
+                    (!column.is_null(row)).then(|| column.value(row).to_owned())
+                };
+                rows.push((ids.value(row), cell(&symbols), cell(&venues)));
+            }
+        }
+        rows
+    }
+
+    /// The ids of one venue's rows, in the order `rows` holds them.
+    fn venue_ids(rows: &[(i64, Option<String>, Option<String>)], venue: &str) -> Vec<i64> {
+        rows.iter()
+            .filter(|(_, _, value)| value.as_deref() == Some(venue))
+            .map(|(id, _, _)| *id)
+            .collect()
+    }
+
+    /// The manifest's data files in plan order, each as its path below
+    /// `data/` with the snapshot id and the uuid masked off the name - so the
+    /// partition directory and the file's index are what remains - beside
+    /// its record count.
+    fn file_layout(table: &IcebergTable<LocalFolder>) -> Vec<(String, i64)> {
+        table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, _)| {
+                let path = file.file_path.to_string().replace('\\', "/");
+                let start = path.rfind("/data/").map_or(0, |slash| slash + 1);
+                let below = path[start..].strip_prefix("data/").expect("a data path");
+                let (directory, name) = below.rsplit_once('/').unwrap();
+                let index = name.split_once('-').expect("an indexed name").0;
+                (format!("{directory}/{index}"), file.record_count)
+            })
+            .collect()
+    }
+
+    /// The table's metadata documents, by name.
+    fn metadata_documents(path: &std::path::Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(path.join("metadata"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn a_group_cut_into_files_lists_them_in_one_order_and_numbering_on_any_parallelism() {
+        // Three venues interleaved over six batches, sixty rows each, under a
+        // target small enough to cut each venue into several files. The
+        // cuts are computed from the whole group, so the manifest lists the
+        // groups in tuple order - every one open when the source ends - and
+        // each group's files by their index from 00000 up, whatever thread
+        // wrote which file.
+        let venues = ["v3", "v1", "v2"];
+        let batches = interleaved(&venues, &["a", "b", "c", "d", "e", "f", "g"], 6, 30);
+        let mut legs = Vec::new();
+        for parallelism in [1, host_parallelism()] {
+            let (path, mut table) = venue_table(
+                &format!("isolation-cut-files-{parallelism}"),
+                parallelism,
+                None,
+                Some(128),
+            );
+            table
+                .commit_append(yggdryl::arrow::batch_reader(
+                    batches[0].schema(),
+                    batches.clone(),
+                ))
+                .unwrap();
+            assert_eq!(table.metadata().unwrap().snapshots().len(), 1);
+            let layout = file_layout(&table);
+            let mut seen = Vec::new();
+            for venue in ["v1", "v2", "v3"] {
+                let files: Vec<&(String, i64)> = layout
+                    .iter()
+                    .filter(|(name, _)| name.starts_with(&format!("venue={venue}/")))
+                    .collect();
+                assert!(files.len() >= 3, "{venue}: {layout:?}");
+                for (index, (name, _)) in files.iter().enumerate() {
+                    assert_eq!(*name, format!("venue={venue}/{index:05}"), "{layout:?}");
+                }
+                assert_eq!(files.iter().map(|(_, rows)| rows).sum::<i64>(), 60);
+                seen.extend(files.into_iter().cloned());
+            }
+            assert_eq!(seen, layout, "group order is the tuples': v1, v2, v3");
+            let rows = rows_in_order(table.scan(None).unwrap());
+            for (position, venue) in venues.iter().enumerate() {
+                let expected: Vec<i64> = (0..180).skip(position).step_by(3).collect();
+                assert_eq!(
+                    venue_ids(&rows, venue),
+                    expected,
+                    "{venue} in arrival order"
+                );
+            }
+            legs.push((layout, rows));
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        assert_eq!(legs[0], legs[1]);
+    }
+
+    #[test]
+    fn a_skewed_commit_lists_its_partitions_in_tuple_order_never_by_size() {
+        // Four light venues arrive first, out of their sorted order; the
+        // heaviest venue arrives only in the last batch, and sorts first.
+        // Every partition is open when the source ends, so the manifest
+        // lists them in tuple order: neither a group's size, nor when it
+        // arrived, nor which group finishes last moves it.
+        let light = trades(
+            &[1, 2, 3, 4, 5, 6, 7, 8],
+            &[Some("a"); 8],
+            &[
+                Some("v3"),
+                Some("v1"),
+                Some("v4"),
+                Some("v2"),
+                Some("v1"),
+                Some("v3"),
+                Some("v2"),
+                Some("v4"),
+            ],
+        );
+        let heavy_ids: Vec<i64> = (100..4_100).collect();
+        let mut heavy_venues = vec![Some("v0"); heavy_ids.len()];
+        heavy_venues[0] = Some("v2");
+        let heavy = trades(&heavy_ids, &vec![Some("b"); heavy_ids.len()], &heavy_venues);
+        for parallelism in [1, host_parallelism()] {
+            let (path, mut table) = venue_table(
+                &format!("isolation-skewed-{parallelism}"),
+                parallelism,
+                None,
+                None,
+            );
+            table
+                .commit_append(yggdryl::arrow::batch_reader(
+                    light.schema(),
+                    [light.clone(), light.slice(0, 0), heavy.clone()],
+                ))
+                .unwrap();
+            let layout: Vec<(String, i64)> = file_layout(&table);
+            assert_eq!(
+                layout,
+                [
+                    ("venue=v0/00000".to_owned(), 3_999),
+                    ("venue=v1/00000".to_owned(), 2),
+                    ("venue=v2/00000".to_owned(), 3),
+                    ("venue=v3/00000".to_owned(), 2),
+                    ("venue=v4/00000".to_owned(), 2),
+                ],
+                "parallelism {parallelism}"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    #[test]
+    fn a_sorted_table_sorts_each_group_stably_across_the_batches_of_one_commit() {
+        // Sort keys repeat within and across eight batches, every batch
+        // spanning both venues; ids are arrival positions. Each partition
+        // reads back ordered by symbol, and rows of one symbol keep the
+        // order they arrived in.
+        let order = SortOrder {
+            order_id: 1,
+            fields: vec![SortField {
+                source_id: 2,
+                transform: Transform::Identity,
+                direction: "asc".into(),
+                null_order: "nulls-last".into(),
+            }],
+        };
+        let venues = ["v2", "v1"];
+        let batches = interleaved(&venues, &["d", "b", "c", "a"], 8, 12);
+        let arrived = rows_in_order(yggdryl::arrow::batch_reader(
+            batches[0].schema(),
+            batches.clone(),
+        ));
+        let mut legs = Vec::new();
+        for parallelism in [1, host_parallelism()] {
+            let (path, mut table) = venue_table(
+                &format!("isolation-stable-sort-{parallelism}"),
+                parallelism,
+                Some(order.clone()),
+                None,
+            );
+            table
+                .commit_append(yggdryl::arrow::batch_reader(
+                    batches[0].schema(),
+                    batches.clone(),
+                ))
+                .unwrap();
+            let scanned = rows_in_order(table.scan(None).unwrap());
+            let options = table.record_options().unwrap();
+            let read = rows_in_order(table.read_arrow_reader(&options).unwrap());
+            for venue in venues {
+                let mut expected: Vec<(i64, Option<String>, Option<String>)> = arrived
+                    .iter()
+                    .filter(|(_, _, value)| value.as_deref() == Some(venue))
+                    .cloned()
+                    .collect();
+                expected.sort_by(|left, right| left.1.cmp(&right.1));
+                let ids: Vec<i64> = expected.iter().map(|(id, _, _)| *id).collect();
+                assert_eq!(venue_ids(&scanned, venue), ids, "{venue}, scanned");
+                assert_eq!(venue_ids(&read, venue), ids, "{venue}, read");
+            }
+            assert_eq!(scanned.len(), 96);
+            legs.push(scanned);
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        assert_eq!(legs[0], legs[1]);
+    }
+
+    #[test]
+    fn an_unsorted_table_keeps_each_partitions_rows_in_arrival_order_across_many_batches() {
+        // Sixteen batches of nine rows, each spanning three venues; with no
+        // sort order a partition's file holds its rows as they arrived.
+        let venues = ["v2", "v3", "v1"];
+        let batches = interleaved(&venues, &["z", "y"], 16, 9);
+        let mut legs = Vec::new();
+        for parallelism in [1, host_parallelism()] {
+            let (path, mut table) = venue_table(
+                &format!("isolation-arrival-order-{parallelism}"),
+                parallelism,
+                None,
+                None,
+            );
+            table
+                .commit_append(yggdryl::arrow::batch_reader(
+                    batches[0].schema(),
+                    batches.clone(),
+                ))
+                .unwrap();
+            let scanned = rows_in_order(table.scan(None).unwrap());
+            let options = table.record_options().unwrap();
+            let read = rows_in_order(table.read_arrow_reader(&options).unwrap());
+            for (position, venue) in venues.iter().enumerate() {
+                let expected: Vec<i64> = (0..144).skip(position).step_by(3).collect();
+                assert_eq!(venue_ids(&scanned, venue), expected, "{venue}, scanned");
+                assert_eq!(venue_ids(&read, venue), expected, "{venue}, read");
+            }
+            legs.push(scanned);
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        assert_eq!(legs[0], legs[1]);
+    }
+
+    #[test]
+    fn a_source_failing_mid_stream_fails_the_commit_with_that_batchs_error_and_writes_no_metadata()
+    {
+        // The source fails at its third batch and again at its fourth; the
+        // commit answers the first failure in stream order, whatever was
+        // pulled ahead of it, and leaves the table as it was.
+        let batches = interleaved(&["v1", "v2", "v3"], &["a"], 5, 6);
+        let failing = || -> yggdryl::arrow::BatchReader {
+            Box::new(RecordBatchIterator::new(
+                [
+                    Ok(batches[0].clone()),
+                    Ok(batches[1].clone()),
+                    Err(ArrowError::ComputeError("source failure at batch 2".into())),
+                    Err(ArrowError::ComputeError("source failure at batch 3".into())),
+                    Ok(batches[4].clone()),
+                ],
+                batches[0].schema(),
+            ))
+        };
+        for parallelism in [1, host_parallelism()] {
+            let (path, mut table) = venue_table(
+                &format!("isolation-source-failure-{parallelism}"),
+                parallelism,
+                None,
+                None,
+            );
+            let seed = trades(&[900], &[Some("SEED")], &[Some("v1")]);
+            table
+                .commit_append(yggdryl::arrow::batch_reader(seed.schema(), [seed]))
+                .unwrap();
+            let version = table.metadata_version().unwrap();
+            let files = table.data_files().unwrap();
+            let documents = metadata_documents(&path);
+
+            let options = table
+                .record_options()
+                .unwrap()
+                .with_field(trade_schema())
+                .with_num_threads(parallelism);
+            let errors = [
+                table.commit_append(failing()).unwrap_err().to_string(),
+                table
+                    .append_arrow_reader(failing(), &options)
+                    .unwrap_err()
+                    .to_string(),
+            ];
+            for error in errors {
+                assert!(error.contains("source failure at batch 2"), "{error}");
+                assert!(!error.contains("batch 3"), "{error}");
+            }
+            for table in [
+                table,
+                IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap(),
+            ] {
+                assert_eq!(table.metadata_version().unwrap(), version);
+                assert_eq!(table.metadata().unwrap().snapshots().len(), 1);
+                assert_eq!(table.data_files().unwrap(), files);
+                assert_eq!(
+                    rows_in_order(table.scan(None).unwrap()),
+                    [(900, Some("SEED".to_owned()), Some("v1".to_owned()))]
+                );
+            }
+            assert_eq!(metadata_documents(&path), documents);
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    /// A source of many batches that counts each one pulled from it.
+    struct Pulled {
+        schema: SchemaRef,
+        batches: std::vec::IntoIter<RecordBatch>,
+        pulls: Arc<AtomicUsize>,
+    }
+
+    impl Iterator for Pulled {
+        type Item = std::result::Result<RecordBatch, ArrowError>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let batch = self.batches.next()?;
+            self.pulls.fetch_add(1, AtomicOrdering::SeqCst);
+            Some(Ok(batch))
+        }
+    }
+
+    impl RecordBatchReader for Pulled {
+        fn schema(&self) -> SchemaRef {
+            Arc::clone(&self.schema)
+        }
+    }
+
+    #[test]
+    fn zero_threads_is_refused_at_every_table_write_door_before_a_batch_is_pulled() {
+        let (path, mut table) = venue_table("isolation-zero-threads-pulls", 1, None, None);
+        let batches = interleaved(&["v1", "v2", "v3"], &["a", "b"], 64, 256);
+        let options = table
+            .record_options()
+            .unwrap()
+            .with_field(trade_schema())
+            .with_num_threads(0);
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let source = || -> yggdryl::arrow::BatchReader {
+            Box::new(Pulled {
+                schema: batches[0].schema(),
+                batches: batches.clone().into_iter(),
+                pulls: Arc::clone(&pulls),
+            })
+        };
+        let keyed = options.clone().with_merge_by(["id"]).unwrap();
+        let errors = [
+            table.append_arrow_reader(source(), &options).unwrap_err(),
+            table
+                .overwrite_arrow_reader(source(), &options)
+                .unwrap_err(),
+            table.merge_arrow_reader(source(), &keyed).unwrap_err(),
+        ];
+        for error in errors {
+            let error = error.to_string();
+            assert!(error.contains("$.num_threads"), "{error}");
+        }
+        assert_eq!(pulls.load(AtomicOrdering::SeqCst), 0);
+        assert!(table.current_snapshot().unwrap().is_none());
         let _ = std::fs::remove_dir_all(&path);
     }
 
@@ -10447,6 +11070,7 @@ mod isolation {
         let v2 = root("isolation-unknown-v2");
         let message = IcebergTable::create(
             LocalFolder::new(&v2).unwrap(),
+            // v2 refuses the v3 type: the contract pinned here.
             FormatVersion::V2,
             unknown_schema(),
             PartitionSpec::unpartitioned(),
@@ -10738,6 +11362,7 @@ mod isolation {
         let v2 = root("isolation-variant-v2");
         let message = IcebergTable::create(
             LocalFolder::new(&v2).unwrap(),
+            // v2 refuses the v3 type: the contract pinned here.
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -10797,7 +11422,8 @@ mod isolation {
 
     #[test]
     fn the_record_surface_keys_a_merge_by_the_partition_and_the_options_key() {
-        let (path, _) = venues("isolation-record-merge");
+        // A keyed merge: v2 only, refused on v3.
+        let (path, _) = venues_at("isolation-record-merge", FormatVersion::V2);
         let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         let options: RecordOptions = IOMedia::record_options(&table)
             .unwrap()
@@ -10986,7 +11612,7 @@ mod staging_transaction {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )
@@ -11107,7 +11733,7 @@ mod time_partitions {
         };
         IcebergTable::create(
             LocalFolder::new(path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec,
         )
@@ -11355,7 +11981,7 @@ mod declared_schema {
         let spec = PartitionSpec::from_schema(1, &numbered).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec.clone(),
         )
@@ -11467,7 +12093,7 @@ mod declared_schema {
         let spec = PartitionSpec::from_schema(1, &numbered).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )

@@ -76,7 +76,7 @@
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, Field, Selector, Term
+    from yggdryl import DataType, Field, Selector, Term, Serie
 
     root = Field("rows", "struct<ccy:utf8,size:int64>", False)
     selector = Selector("ccy, size as quantity, size * 2 as doubled int32")
@@ -95,7 +95,7 @@
 
     # Native rows go through the same bound plan, one bind for all of them.
     rows = selector.apply_records([{"ccy": "EUR", "size": 1}], root)
-    assert list(rows) == [{"ccy": "EUR", "quantity": 1, "doubled": 2}]
+    assert Serie.from_(rows).as_py() == [{"ccy": "EUR", "quantity": 1, "doubled": 2}]
 
     # A field is a selector, and the selector is a field again: the one
     # that declares every column the field stores.
@@ -188,7 +188,7 @@
     ```python
     import pyarrow as pa
 
-    from yggdryl import Selector
+    from yggdryl import Selector, Serie
 
     selector = Selector("* except (secret), size * 2 as doubled")
     assert str(selector) == "* exclude (secret), size * 2 as doubled"

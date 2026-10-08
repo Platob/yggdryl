@@ -5,6 +5,33 @@
 //! is reached through `yggdryl::internals`; everything else here is the
 //! `TextLine` a caller holds.
 
+#[test]
+fn current_content_hash_never_depends_on_the_file_url() {
+    use std::sync::Arc;
+    use yggdryl::graph::Element as _;
+    use yggdryl::text::{TextBytes, TextLine, TextOptions};
+    use yggdryl::{Uri, Url};
+
+    let line = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(b"8=FIX.4.4|35=D|55=AAPL|").unwrap(),
+        Arc::new(TextOptions::new()),
+    )
+    .unwrap();
+    let first = line.clone().with_sourceuri(Arc::new(Uri::from(
+        Url::from_str("file:///capture/one.log").unwrap(),
+    )));
+    let mut second = line.clone().with_sourceuri(Arc::new(Uri::from(
+        Url::from_str("file:///other/two.log").unwrap(),
+    )));
+    assert_ne!(first.sourceurl(), second.sourceurl());
+    let expected = yggdryl::xxhash::xxh3(line.body().as_bytes());
+    assert_eq!(first.get_currhashcode(), expected);
+    assert_eq!(second.get_currhashcode(), expected);
+    second.set_sourceuri(None);
+    assert_eq!(second.get_currhashcode(), expected);
+}
+
 #[cfg(feature = "internals")]
 mod internal {
     use std::sync::Arc;
@@ -848,8 +875,7 @@ mod text {
 
         use yggdryl::graph::{Element, Event, EventColumn};
         use yggdryl::text::{
-            DEFAULT_TEXT_BATCH_BYTE_SIZE, DEFAULT_TEXT_BATCH_ROW_SIZE, TextBytes, TextEntries,
-            TextLine, TextOptions, into_arrow_batch, read_text_lines,
+            TextBytes, TextEntries, TextLine, TextOptions, into_arrow_batch, read_text_lines,
         };
         use yggdryl::{FieldPath, Scalar, Uri, Uuid};
 
@@ -893,12 +919,10 @@ mod text {
         }
 
         #[test]
-        fn a_new_value_batches_on_rows_or_bytes_whichever_binds_first() {
+        fn a_new_value_reads_native_rows_without_a_batch_ceiling() {
             let options = TextOptions::new();
-            assert_eq!(options.batch_row_size, Some(DEFAULT_TEXT_BATCH_ROW_SIZE));
-            assert_eq!(options.batch_byte_size, Some(DEFAULT_TEXT_BATCH_BYTE_SIZE));
-            assert_eq!(DEFAULT_TEXT_BATCH_ROW_SIZE, 35 * 1024);
-            assert_eq!(DEFAULT_TEXT_BATCH_BYTE_SIZE, 64 * 1024 * 1024);
+            assert_eq!(options.batch_row_size, None);
+            assert_eq!(options.batch_byte_size, None);
         }
 
         #[test]

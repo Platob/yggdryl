@@ -129,7 +129,7 @@ assert.throws(() => handle.readArrowReader({ field, safe: false }).intoTable(), 
 
 ## Write and read plain rows or class instances
 
-`*Records` takes plain objects; `readRecords()` yields plain objects and `readRecords(Cls)` instances built from each row. Declare a `field` when writing: Arrow JS infers strings as `dictionary(int32,utf8)` otherwise.
+`*StreamSerie` takes plain objects; `readRecords()` yields plain objects and `readRecords(Cls)` instances built from each row. Declare a `field` when writing: Arrow JS infers strings as `dictionary(int32,utf8)` otherwise.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -195,12 +195,12 @@ assert.throws(() => handle.mergeArrowTable(rows([1n], ['X'])), /merge_by/)
 
 ## Choose the write mode at run time
 
-`writeArrowReader|Table|Batch` and `writeRecords` take the mode as a string, and so does `writeSerie(value, mode?)`, whose `overwriteSerie`/`appendSerie`/`mergeSerie` name it: `value` is a `Serie`, a `ChunkedSerie`, a `SerieReader` (consumed) or anything `BatchReader.from` accepts, and with `readSerie()` - a `SerieReader` - they are also the record door of JSON, JSON Lines, YAML, TOML and XML handles. Absent options are the handle's own.
+`writeArrowReader|Table|Batch` and `writeRecords` take the mode as a string, and so does `writeSerie(value, mode?)`, whose `overwriteSerie`/`appendSerie`/`mergeSerie` name it: `value` is a `Serie`, a `ChunkedSerie`, a `StreamChunkedSerie` (consumed) or anything `BatchReader.from` accepts, and with `readSerie()` - a generic `Serie` - they are also the record door of JSON, JSON Lines, YAML, TOML and XML handles. Absent options are the handle's own.
 
 ```javascript
 const assert = require('node:assert/strict')
 const arrow = require('apache-arrow')
-const { ChunkedSerie, IOBase, MimeType, Serie, SerieReader } = require('yggdryl')
+const { ChunkedSerie, IOBase, MimeType, Serie, StreamChunkedSerie } = require('yggdryl')
 
 const handle = IOBase.fromBytes()
 handle.mediaType = MimeType.ARROW_STREAM
@@ -214,8 +214,8 @@ handle.writeSerie(rows, 'append')
 handle.appendSerie(ChunkedSerie.fromArrowBatch(table))
 assert.equal(handle.rowSize(), 8)
 const read = handle.readSerie()
-assert.ok(read instanceof SerieReader)
-assert.equal([...read].reduce((total, records) => total + records.length, 0), 8)
+assert.ok(read instanceof Serie)
+assert.equal([...read.intoChunkedStream()].reduce((total, records) => total + records.length, 0), 8)
 ```
 
 ## Bound memory on large writes
@@ -613,7 +613,7 @@ fs.rmSync(root, { recursive: true, force: true })
 ## Gotchas in JavaScript
 
 - Arrow JS interop is copied IPC: cross in whole batches or tables, never row by row; `intoTable()` drains the reader.
-- `int64` columns come back as `bigint`; build Arrow JS `Int64` vectors from `bigint` (`1n`). `*Records` unifies `number` and `bigint` rows of one column into one type: `[{ id: 1 }, { id: 2n }]` is one `int64` column, an integral `number` read as `bigint`. Only a fraction beside `bigint` rows in that column is refused - `TypeError`, naming the column and the value. A later batch reads a `number` as `bigint` under an established `int64` column, and a `bigint` as `number` under a `number` column when it is a safe integer, else the same named `TypeError`.
+- `int64` columns come back as `bigint`; build Arrow JS `Int64` vectors from `bigint` (`1n`). `*StreamSerie` unifies `number` and `bigint` rows of one column into one type: `[{ id: 1 }, { id: 2n }]` is one `int64` column, an integral `number` read as `bigint`. Only a fraction beside `bigint` rows in that column is refused - `TypeError`, naming the column and the value. A later batch reads a `number` as `bigint` under an established `int64` column, and a `bigint` as `number` under a `number` column when it is a safe integer, else the same named `TypeError`.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; pass `{ safe: false }` to have it refused.
 - Plain-object rows infer strings as `dictionary(int32,utf8)`; Avro stores them as the plain values. Pass `{ field }` on the write to state the column instead.
 - A `RecordOptions` `with*` call returns a new value; setters (`options.filter = ...`) mutate that one object.

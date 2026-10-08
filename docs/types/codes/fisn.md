@@ -201,6 +201,91 @@ for refused in ["ACME CORP SH", "/SH", "ACME CORP/", "ACME\tCORP/SH", "SOCIÉTÉ
 }
 ```
 
+## In the instrument registry
+
+An [`IsinRegistry`](../../graph/isin-registry.md) row holds an instrument's short name in its `fisn` column, typed `fisn`, right after `ticker`: an instrument fact, held alike on every [listing](../../graph/isin-registry.md#listings) of its ISIN - one row per market - and filled into an element on any market. A lifecycle learns it where a message states one - `FinancialInstrumentShortName(2737)`, or a `fisn` security identifier - and fills it into an element stating none as a `derived` identifier; the [seed](../../graph/isin-registry.md#seed) states it where FIRDS spells one. A merge replaces a held name by one that differs, as every column.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::IsinRegistry;
+
+    let registry = IsinRegistry::seeded();
+    let name = registry.get("US0378331005").and_then(|row| row.fisn()).expect("seeded");
+    assert_eq!(name.as_str(), "APPLE INC/SH SH");
+    assert_eq!((name.issuer(), name.description()), ("APPLE INC", "SH SH"));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IsinRegistry
+
+    registry = IsinRegistry.seeded()
+    row = registry.get("US0378331005")
+    assert row is not None and row["fisn"] == "APPLE INC/SH SH"
+    field = IsinRegistry.field()
+    assert field.index_of("fisn") == field.index_of("ticker") + 1
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IsinRegistry } = require('yggdryl')
+
+    const registry = IsinRegistry.seeded()
+    assert.equal(registry.get('US0378331005').fisn, 'APPLE INC/SH SH')
+    const field = IsinRegistry.field()
+    assert.equal(field.indexOf('fisn'), field.indexOf('ticker') + 1)
+    ```
+
+## Similarity
+
+`Fisn::similarity` scores how alike two short names are, from `0` to `1`: one less the Levenshtein distance between their bytes over the longer one's length - both already upper case - symmetric, `1` for two equal names, and allocating nothing. It is what the instrument registry's [economic match](../../graph/isin-registry.md#by-short-name) weighs, at or above its `economic_threshold` (`0.85` unless set). Python and JavaScript hold no `Fisn` value, so the score crosses there as a `resolve` answer's `similarity`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::Fisn;
+
+    let apple = Fisn::new("APPLE INC/SH")?;
+    let dotted = Fisn::new("APPLE INC./SH")?;
+    assert_eq!(apple.similarity(&apple), 1.0);
+    assert!((apple.similarity(&dotted) - 12.0 / 13.0).abs() < 1e-12, "one insertion in thirteen");
+    assert_eq!(apple.similarity(&dotted), dotted.similarity(&apple));
+    assert_eq!(apple.similarity(&Fisn::new("APPLE INC/SH USD")?), 0.75);
+    ```
+
+=== "Python"
+
+    ```python
+    import math
+
+    from yggdryl import Identifier, IsinRegistry, graph
+
+    registry = IsinRegistry()
+    registry.merge({"isin": "US0378331005", "miccode": "XNAS", "fisn": "APPLE INC./SH"})
+    order = graph.OrderEvent(1, securityids=[Identifier("fisn", "APPLE INC/SH")], currency="USD")
+    answer = registry.resolve(order)
+    assert answer.tier == "economic" and answer.similarity is not None
+    assert math.isclose(answer.similarity, 12 / 13), "one insertion in thirteen"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Identifier, IsinRegistry, graph } = require('yggdryl')
+
+    const registry = new IsinRegistry()
+    registry.merge({ isin: 'US0378331005', miccode: 'XNAS', fisn: 'APPLE INC./SH' })
+    const order = new graph.OrderEvent(1n, { securityids: [new Identifier('fisn', 'APPLE INC/SH')], currency: 'USD' })
+    const answer = registry.resolve(order)
+    assert.equal(answer.tier, 'economic')
+    assert.ok(Math.abs(answer.similarity - 12 / 13) < 1e-12, 'one insertion in thirteen')
+    ```
+
 ## Edges
 
 - `expected a '/' between the issuer and the instrument description`, `expected an issuer name before the '/'`, `expected an instrument description after the '/'`, `expected printable characters` - the four shape refusals, each naming `fisn` and the spelling it saw.

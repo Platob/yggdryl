@@ -90,6 +90,16 @@ impl IOPath for FsPath {
 
 impl crate::IOMedia for FsPath {
     crate::impl_default_iomedia!();
+
+    fn read_serie(&self, options: Option<&crate::media::RecordOptions>) -> Result<crate::Serie> {
+        // Resolve the role once; a file's media type then needs no second
+        // store query to decide whether its bytes form a document.
+        if self.current_kind().is_ok_and(IOKind::is_container) {
+            crate::IOMedia::read_serie(&self.as_directory(), options)
+        } else {
+            crate::IOMedia::read_serie(&self.as_file(), options)
+        }
+    }
 }
 
 impl IOBase for FsPath {
@@ -123,6 +133,13 @@ impl IOBase for FsPath {
             Err(error) if is_directory(&error) => {
                 self.as_directory().folder_read_range_bytes(offset, length)
             }
+            other => other,
+        }
+    }
+
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        match self.as_file().read_tail_bytes(length) {
+            Err(error) if is_directory(&error) => self.as_directory().read_tail_bytes(length),
             other => other,
         }
     }
@@ -245,6 +262,10 @@ impl IOBase for FsPath {
 
     fn is_atomic(&self) -> bool {
         self.path_is_atomic()
+    }
+
+    fn is_thread_bound(&self) -> bool {
+        self.filesystem().is_thread_bound()
     }
 
     fn is_tabular(&self) -> bool {

@@ -164,7 +164,7 @@ assert!(refused.contains("$.v"), "{refused}");
 
 ## Write and read rows as values
 
-`*_records` takes anything `Into<Scalar>` in the field's column order; `read_serie` answers a `SerieReader`, one record `Serie` per batch, whose children are the columns.
+`*_records` takes anything `Into<Scalar>` in the field's column order; `read_serie` answers a `StreamChunkedSerie`, one record `Serie` per batch, whose children are the columns.
 
 ```rust
 use yggdryl::holder::Buffer;
@@ -191,7 +191,7 @@ handle.overwrite_records([Trade(1, "XNAS"), Trade(2, "XNYS")], &options)?;
 handle.append_records([Trade(3, "XLON")], &options)?;
 
 let mut venues = Vec::new();
-for records in handle.read_serie(Some(&options.clone().with_filter("id >= 2")?))? {
+for records in handle.read_serie(Some(&options.clone().with_filter("id >= 2")?))?.into_chunked_stream(None, None)?.into_chunks() {
     let records = records?;
     let venue = records.child("venue").expect("a venue column");
     for row in 0..venue.len() {
@@ -250,12 +250,12 @@ assert!(options.clone().with_merge_by_scalar(&Scalar::from(false)).is_err());
 
 ## Choose the write mode at run time
 
-`write_arrow_reader`/`write_arrow_batch`/`write_records` take an `IOMode`, and so does `write_serie`, whose `overwrite_serie`/`append_serie`/`merge_serie` name it: they take a `Serie`, a `ChunkedSerie` or a `SerieReader` as one `SerieSource` (`.into()`), written as the batches it already is, and with `read_serie` are also the record door of JSON, JSON Lines, YAML, TOML and XML handles. `None` options are the handle's own.
+`write_arrow_reader`/`write_arrow_batch`/`write_records` take an `IOMode`, and so does `write_serie`, whose `overwrite_serie`/`append_serie`/`merge_serie` name it: they take a `Serie`, a `ChunkedSerie` or a `StreamChunkedSerie` as one `Serie` (`.into()`), written as the batches it already is, and with `read_serie` are also the record door of JSON, JSON Lines, YAML, TOML and XML handles. `None` options are the handle's own.
 
 ```rust
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{ChunkedSerie, DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Serie, SerieReader, StructType, Url};
+use yggdryl::{ChunkedSerie, DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Serie, StreamChunkedSerie, StructType, Url};
 
 let root = DataType::from(StructType::from_fields([
     DataType::utf8().required_field("symbol"),
@@ -270,7 +270,7 @@ let rows = Serie::from_scalars(
 let mut stream = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
 let options = stream.record_options()?;
 for mode in [IOMode::Overwrite, IOMode::Append] {
-    stream.write_arrow_reader(SerieReader::from_serie(rows.clone())?.into_arrow_reader(), mode, &options)?;
+    stream.write_arrow_reader(StreamChunkedSerie::from_serie(rows.clone())?.into_arrow_reader(), mode, &options)?;
 }
 assert_eq!(stream.row_size()?, 2);
 
@@ -281,9 +281,9 @@ assert_eq!(stream.row_size()?, 4);
 
 // A JSON Lines handle takes rows as documents through overwrite_serie.
 let mut lines = Buffer::new().with_media_type(Url::from_str("file:///quotes.jsonl")?.media_type());
-lines.overwrite_serie(SerieReader::from_serie(rows.clone())?.into(), None)?;
+lines.overwrite_serie(StreamChunkedSerie::from_serie(rows.clone())?.into(), None)?;
 let declared = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(root);
-assert_eq!(lines.read_serie(Some(&declared))?.collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
+assert_eq!(lines.read_serie(Some(&declared))?.into_chunked_stream(None, None)?.into_chunks().collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
 
 // A document is written whole: write_serie on it takes IOMode::Overwrite only.
 let refused = lines.append_serie(rows.into(), None).unwrap_err();
@@ -460,7 +460,7 @@ text_options.set_rowheader(Some(r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+) "))?;
 text_options.set_framing(true);
 let text = source.into_text_with(text_options);
 
-let records = text.read_serie(None)?.next().expect("one batch")?;
+let records = text.read_serie(None)?.into_chunked_stream(None, None)?.next_chunk().expect("one batch")?;
 let body = records.child("body").expect("the body column");
 let id = records.child("id").expect("a capture column");
 assert_eq!(body.scalar(0)?, Scalar::from("first\n detail A"));
@@ -503,7 +503,7 @@ assert_eq!((handle.row_size()?, handle.column_size()?), (3, 2));
 
 // Declared, every cell crosses the column's contract; a null and "" stay apart.
 let mut symbols = Vec::new();
-for records in handle.read_serie(Some(&declared))? {
+for records in handle.read_serie(Some(&declared))?.into_chunked_stream(None, None)?.into_chunks() {
     let records = records?;
     let symbol = records.child("symbol").expect("a symbol column");
     for row in 0..symbol.len() {
@@ -704,7 +704,7 @@ assert_eq!(table.metadata()?.snapshots().len(), snapshots);
 assert!(own.with_merge_by_scalar(&Scalar::from(false)).is_err());
 
 let mut rows: Vec<Scalar> = Vec::new();
-for batch in table.read_serie(None)? {
+for batch in table.read_serie(None)?.into_chunked_stream(None, None)?.into_chunks() {
     rows.extend(batch?.rows().into_owned());
 }
 rows.sort();

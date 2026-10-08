@@ -3,7 +3,7 @@
 No feature flag is needed for this layer. Name Arrow types through
 `arrow-array` and `arrow-schema` at the release yggdryl is built on (`59`);
 yggdryl does not re-export them. The core names are at the crate root:
-`yggdryl::{Serie, ChunkedSerie, SerieReader, ArrowCastPlan, ArrowCastOptions,
+`yggdryl::{Serie, ChunkedSerie, StreamChunkedSerie, ArrowCastPlan, ArrowCastOptions,
 Representation}`; stream helpers are in `yggdryl::arrow`.
 
 ## Build a column from values
@@ -150,7 +150,7 @@ assert_eq!(held.len(), 3);
 
 ## Stream a reader under one plan
 
-`SerieReader::from_arrow_reader(root, reader, options)` compiles one plan
+`StreamChunkedSerie::from_arrow_reader(root, reader, options)` compiles one plan
 from the stream's schema before a batch is pulled and holds at most one
 source batch. A bad batch fails at its pull, and the reader is fused after
 it. `into_arrow_reader()` is the transport face, never landed.
@@ -161,7 +161,7 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Int32Array, RecordBatch, RecordBatchReader, StringArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use yggdryl::arrow::batch_reader;
-use yggdryl::{ArrowCastOptions, DataType, Serie, SerieReader, StructType};
+use yggdryl::{ArrowCastOptions, DataType, Serie, StreamChunkedSerie, StructType};
 
 let root = DataType::from(StructType::from_fields([
     DataType::Int64.nullable_field("id"),
@@ -183,18 +183,18 @@ let batch = |id: i32, symbol: Option<&str>| {
 };
 
 let stream = batch_reader(Arc::clone(&schema), [batch(1, Some("A"))?, batch(2, Some("B"))?, batch(3, None)?]);
-let mut series = SerieReader::from_arrow_reader(Some(&root), stream, ArrowCastOptions::new())?;
+let mut series = StreamChunkedSerie::from_arrow_reader(Some(&root), stream, ArrowCastOptions::new())?;
 assert_eq!(series.field(), &root);
-let first = series.next().transpose()?.expect("a first batch");
+let first = series.next_chunk().transpose()?.expect("a first batch");
 assert_eq!(first.child("id").and_then(Serie::as_int64).map(|ids| ids.values().to_vec()), Some(vec![1]));
-assert!(series.next().is_some_and(|second| second.is_ok()));
-let refusal = series.next().expect("a third batch").unwrap_err();
+assert!(series.next_chunk().is_some_and(|second| second.is_ok()));
+let refusal = series.next_chunk().expect("a third batch").unwrap_err();
 assert!(refusal.to_string().contains("$.symbol"), "{refusal}");
-assert!(series.next().is_none());
+assert!(series.next_chunk().is_none());
 
 // Transport: the root's schema up front, batches cast as they are pulled.
 let good = batch_reader(Arc::clone(&schema), [batch(1, Some("A"))?, batch(2, Some("B"))?]);
-let reader = SerieReader::from_arrow_reader(Some(&root), good, ArrowCastOptions::new())?.into_arrow_reader();
+let reader = StreamChunkedSerie::from_arrow_reader(Some(&root), good, ArrowCastOptions::new())?.into_arrow_reader();
 assert_eq!(reader.schema().field(0).data_type(), &ArrowDataType::Int64);
 let rows = reader.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<usize, _>>()?;
 assert_eq!(rows, 2);
@@ -484,11 +484,11 @@ let mut held = prices.clone();
 held.as_sorted(SortOptions::default())?.as_unique()?.as_reversed()?;
 assert_eq!(held.rows().to_vec(), vec![Scalar::Null, Scalar::from(3_i64), Scalar::from(1_i64)]);
 
-// One (key, rows) per distinct key, in first-occurrence order.
-let venues = Serie::new(["XNAS", "XNYS", "XNAS", "XNYS"].map(Scalar::from).to_vec());
+// One KeySerie per distinct key, in first-occurrence order.
+let venues = Serie::from_scalars(DataType::utf8().required_field("venue"), ["XNAS", "XNYS", "XNAS", "XNYS"].map(Scalar::from))?;
 let groups = prices.partition_by(&venues)?;
-assert_eq!((groups.len(), groups[0].0.clone()), (2, Scalar::from("XNAS")));
-assert_eq!(groups[0].1.rows().to_vec(), [3_i64, 1].map(Scalar::from));
+assert_eq!((groups.len(), groups[0].key().clone()), (2, Scalar::from_sequence([Scalar::from("XNAS")])));
+assert_eq!(groups[0].rows().child("price").expect("price").rows().to_vec(), [3_i64, 1].map(Scalar::from));
 
 // A window reads and writes a stretch where it stands, window-relative.
 let mut column = Serie::from_scalars(
@@ -593,22 +593,22 @@ let left = trades.join_with(&venues, "id", JoinKind::Left, &built)?;
 assert_eq!(left.child("venue").expect("venue").scalar(2)?, Scalar::Null);
 assert_eq!(trades.join_with(&venues, "id", JoinKind::Anti, &built)?.len(), 1);
 // A stream probes lazily against the held side.
-let streamed = yggdryl::SerieReader::from_serie(trades)?.join_with(venues, "id", JoinKind::Inner, &built)?;
-assert_eq!(streamed.map(|batch| batch.expect("rows").len()).sum::<usize>(), 2);
+let streamed = yggdryl::StreamChunkedSerie::from_serie(trades)?.join_with(venues, "id", JoinKind::Inner, &built)?;
+assert_eq!(streamed.into_chunks().map(|batch| batch.expect("rows").len()).sum::<usize>(), 2);
 ```
 
 ## Cut rows into windows by key
 
-`window_by(by, sorted)` computes the key once and lends each window as a view
-with the record of its key cells, `windownum` and `rownum`. `sorted = true`
+`window_by(by, sorted)` computes the key once and yields a `KeySerie` with
+its key cells, payload rows, `windownum` and `rownum`. `sorted = true`
 asks for each key once in key order: keys already in order copy nothing, and
 only a descent gathers the rows once. A `ChunkedSerie` regroups its runs as
-zero-copy pieces and states no record; a stream yields one lazy reader per
+zero-copy pieces; a stream yields one lazy reader per
 window, read in order. Contract and costs:
 [windows by key](https://platob.github.io/yggdryl/types/serie/#windows-by-key).
 
 ```rust
-use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Scalar, Serie, SerieReader, StructType};
+use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Scalar, Serie, StreamChunkedSerie, StructType};
 
 let root = DataType::from(StructType::from_fields([
     DataType::utf8().required_field("venue"),
@@ -620,28 +620,60 @@ let fills = Serie::from_scalars(root.clone(), [fill("XNAS", 5), fill("XNYS", 2),
 
 // Each key once, in key order; the record names the window's key.
 let mut totals = Vec::new();
-for (_, window) in &fills.window_by("venue", true)? {
-    let record = window.static_values().ok_or("a window window_by lent states its record")?;
-    let venue = record.get_key_str("venue").cloned();
-    let qty: i64 = window.into_serie().child("qty").and_then(Serie::as_int64).map_or(0, |qty| qty.values().iter().sum());
+for window in &fills.window_by("venue", true)? {
+    let venue = window.key().sequence_rows().map(|cells| cells[0].clone());
+    let qty: i64 = window.rows().child("qty").and_then(Serie::as_int64).map_or(0, |qty| qty.values().iter().sum());
     totals.push((venue, qty));
 }
 assert_eq!(totals, [(Some(Scalar::from("XNAS")), 8), (Some(Scalar::from("XNYS")), 2)]);
 
-// Across chunks: zero-copy pieces, no join, no record.
+// Across chunks: zero-copy payload pieces, no join.
 let chunked = ChunkedSerie::from_series(Some(&root), [fills.slice(0, 2)?, fills.slice(2, 1)?], ArrowCastOptions::new())?;
 let sorted = chunked.window_by("venue", true)?;
-assert_eq!((sorted[0].1.len(), sorted[0].1.num_chunks()), (2, 2));
+let payload = sorted[0].rows().as_chunked().ok_or("chunked payload")?;
+assert_eq!((payload.len(), payload.num_chunks()), (2, 2));
 
 // A stream: one lazy reader per window - read each before taking the next.
 let mut places = Vec::new();
-for window in SerieReader::from_serie(fills)?.window_by("venue", false)? {
+for window in StreamChunkedSerie::from_serie(fills)?.window_by("venue", false)? {
     let window = window?;
-    let rownum = window.static_values().and_then(|record| record.get_key_str("rownum").cloned());
-    let rows = window.map(|piece| piece.map(|piece| piece.len())).sum::<Result<usize, _>>()?;
+    let rownum = window.rownum();
+    let rows = window.rows().clone().into_stream()?.map(|row| row.map(|_| 1)).sum::<yggdryl::Result<usize>>()?;
     places.push((rownum, rows));
 }
-assert_eq!(places, [(Some(Scalar::from(0_u64)), 1), (Some(Scalar::from(1_u64)), 1), (Some(Scalar::from(2_u64)), 1)]);
+assert_eq!(places, [(Some(0), 1), (Some(1), 1), (Some(2), 1)]);
+```
+
+## Cut a stream into partitions
+
+`reader.partition_by(by, options)` yields each partition as soon as it
+closes: past `max_open` the lowest keys, `clustered` once another key
+arrives, the rest in key order when the stream ends. Contract:
+[partitions of a stream](https://platob.github.io/yggdryl/arrow/readers/#partitions-of-a-stream).
+
+```rust
+use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, PartitionOptions, Scalar, Serie, StreamChunkedSerie, StructType};
+
+let root = DataType::from(StructType::from_fields([
+    DataType::utf8().required_field("venue"),
+    DataType::Int64.required_field("qty"),
+])?)
+.required_field("fill");
+let fill = |venue: &str, qty: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(qty)]);
+let batches = [
+    Serie::from_scalars(root.clone(), [fill("XLON", 1), fill("XNAS", 2)])?,
+    Serie::from_scalars(root.clone(), [fill("XNAS", 3), fill("XNYS", 4)])?,
+];
+let stream = StreamChunkedSerie::from_chunked(ChunkedSerie::from_series(Some(&root), batches, ArrowCastOptions::new())?)?;
+
+// Sorted on the venue: each partition is handed over as soon as the next one opens.
+let mut sizes = Vec::new();
+for partition in stream.partition_by("venue", PartitionOptions::new().with_clustered(true))? {
+    let (key, rows) = partition?.into_parts();
+    sizes.push((key, rows.len()));
+}
+let venue = |name: &str| Scalar::from_sequence([Scalar::from(name)]);
+assert_eq!(sizes, [(venue("XLON"), 1), (venue("XNAS"), 2), (venue("XNYS"), 1)]);
 ```
 
 ## Keep chunks and batches apart
@@ -688,13 +720,13 @@ assert_eq!(table.child("price").map(|column| column.len()), Some(1));
 
 ## Hand a held column on as a stream
 
-`SerieReader::from_serie` and `from_chunked` read held data as a stream with
+`StreamChunkedSerie::from_serie` and `from_chunked` read held data as a stream with
 no plan and no copy - what `IOMedia::write_serie` does with a held `Serie`
 or `ChunkedSerie` it is handed, so pass those as they are. `reader.cast`
 re-roots the stream under one plan and consumes the reader.
 
 ```rust
-use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, SerieReader, StructType};
+use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, StreamChunkedSerie, StructType};
 
 let options = ArrowCastOptions::new();
 let root = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
@@ -703,23 +735,23 @@ let rows = Serie::from_scalars(
     root.clone(),
     [Scalar::from_sequence([Scalar::from(1_i64)]), Scalar::from_sequence([Scalar::from(2_i64)])],
 )?;
-let held = SerieReader::from_serie(rows.clone())?;
+let held = StreamChunkedSerie::from_serie(rows.clone())?;
 assert_eq!(held.field(), &root);
-assert_eq!(held.collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
+assert_eq!(held.into_chunks().collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
 
 // A leaf column is the one child of a `row` record.
 let price = Serie::from_scalars(Field::new("price", DataType::Int64, true), [Scalar::from(1_i64)])?;
-let record = SerieReader::from_serie(price.clone())?.next().expect("one batch")?;
+let record = StreamChunkedSerie::from_serie(price.clone())?.next_chunk().expect("one batch")?;
 assert_eq!(record.child("price").map(Serie::len), Some(1));
 
 let chunks = ChunkedSerie::from_series(None, [price.clone(), price], options)?;
-assert_eq!(SerieReader::from_chunked(chunks)?.count(), 2);
+assert_eq!(StreamChunkedSerie::from_chunked(chunks)?.count(), 2);
 
 // Re-root under a wider field: one plan, cast as each record is pulled.
 let wide = DataType::from(StructType::from_fields([DataType::Float64.required_field("id")])?)
     .required_field("row");
-let cast = SerieReader::from_serie(rows)?.cast(&wide, options)?;
-let records = cast.collect::<Result<Vec<_>, _>>()?;
+let cast = StreamChunkedSerie::from_serie(rows)?.cast(&wide, options)?;
+let records = cast.into_chunks().collect::<Result<Vec<_>, _>>()?;
 assert_eq!(records[0].scalar(1)?, Scalar::from_sequence([Scalar::from(2.0_f64)]));
 ```
 
@@ -834,7 +866,7 @@ assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 2);
   `nulls()`.
 - A clone shares buffers; the first write to either copies them once, and
   every later write is in place.
-- `SerieReader::cast` takes the reader by value; a refusal is returned at the
+- `StreamChunkedSerie::cast` takes the reader by value; a refusal is returned at the
   call for held records and at the pull for a stream's batches.
 - A plan compiled for one source layout refuses another by name; key plans by
   source schema when a loop's batches can change schema.

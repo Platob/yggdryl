@@ -16,7 +16,7 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use yggdryl::arrow::BatchReader;
 use yggdryl::{
     ArrowCastOptions, ArrowCastPlan, ChunkedSerie, DataType, Field, JoinKind, JoinOptions, Scalar,
-    Serie, SerieReader, SortOptions, SpillOptions, StructType,
+    Serie, SortOptions, SpillOptions, StreamChunkedSerie, StructType,
 };
 
 /// The process default every test here settles under: a few hundred bytes,
@@ -328,14 +328,14 @@ fn push_chunk_settles_the_chunks_heaviest_first() {
 #[test]
 fn a_drained_reader_settles_every_chunk_it_collects() {
     installed();
-    let chunked = ChunkedSerie::from_serie_reader(
-        SerieReader::from_arrow_reader(None, stream(2, ROWS), ArrowCastOptions::new())
+    let chunked = ChunkedSerie::from_chunked_stream(
+        StreamChunkedSerie::from_arrow_reader(None, stream(2, ROWS), ArrowCastOptions::new())
             .expect("a stream"),
     )
     .expect("two chunks");
     assert_eq!(chunked.num_chunks(), 2);
     for chunk in chunked.chunks() {
-        assert_settled("ChunkedSerie::from_serie_reader", chunk, &expected(ROWS));
+        assert_settled("ChunkedSerie::from_chunked_stream", chunk, &expected(ROWS));
     }
     assert!(chunked.is_spilled());
 
@@ -495,14 +495,18 @@ fn a_slice_and_a_window_never_settle() {
 #[test]
 fn a_reader_landing_a_batch_under_its_identity_plan_never_settles() {
     installed();
-    let mut reader = SerieReader::from_arrow_reader(None, stream(2, ROWS), ArrowCastOptions::new())
-        .expect("a stream");
+    let mut reader =
+        StreamChunkedSerie::from_arrow_reader(None, stream(2, ROWS), ArrowCastOptions::new())
+            .expect("a stream");
     for _ in 0..2 {
-        let record = reader.next().expect("a batch").expect("a landed batch");
-        assert_resident("SerieReader::next, identity", &record);
+        let record = reader
+            .next_chunk()
+            .expect("a batch")
+            .expect("a landed batch");
+        assert_resident("StreamChunkedSerie::next, identity", &record);
         assert_eq!(xs(&record), expected(ROWS));
     }
-    assert!(reader.next().is_none());
+    assert!(reader.next_chunk().is_none());
 }
 
 #[test]
@@ -659,11 +663,11 @@ fn a_write_cadence_held_past_the_bound_publishes_every_row_it_was_handed() {
     installed();
     use yggdryl::holder::Buffer;
     use yggdryl::media::IORecordOptions;
-    use yggdryl::{IOMedia, IOMode, SerieSource, Url};
+    use yggdryl::{IOMedia, IOMode, Url};
 
     let batches: Vec<RecordBatch> = (0..8).map(|_| batch(ROWS, false)).collect();
     let schema = batches[0].schema();
-    let stream = SerieReader::from_arrow_reader(
+    let stream = StreamChunkedSerie::from_arrow_reader(
         Some(&quote_root()),
         yggdryl::arrow::batch_reader(schema, batches),
         ArrowCastOptions::new(),
@@ -677,13 +681,14 @@ fn a_write_cadence_held_past_the_bound_publishes_every_row_it_was_handed() {
     let mut options = target.record_options().expect("the IPC encoding");
     options.set_commit_batch_num(Some(3));
     target
-        .write_serie(SerieSource::from(stream), IOMode::Overwrite, Some(&options))
+        .write_serie(Serie::from(stream), IOMode::Overwrite, Some(&options))
         .expect("the stream writes in three cadences");
-    let rows: usize = target
-        .read_serie(None)
-        .expect("the rows read")
-        .map(|column| column.expect("a batch").len())
-        .sum();
+    let rows: usize =
+        yggdryl::StreamChunkedSerie::from_serie(target.read_serie(None).expect("the rows read"))
+            .expect("native record stream")
+            .into_chunks()
+            .map(|column| column.expect("a batch").len())
+            .sum();
     assert_eq!(rows, 8 * ROWS);
 }
 

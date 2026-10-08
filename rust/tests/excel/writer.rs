@@ -461,9 +461,9 @@ fn a_naive_temporal_is_its_serial_under_the_style_of_its_format() {
             .unwrap()
     };
     assert_eq!(json("A2"), "\"2024-01-01\"");
-    assert_eq!(json("B2"), "\"2023-11-14T22:13:20.000\"");
+    assert_eq!(json("B2"), "\"2023-11-14T22:13:20\"");
     assert_eq!(json("C2"), "\"2023-11-14T22:13:20.123\"");
-    assert_eq!(json("D2"), "\"12:00:00.000\"");
+    assert_eq!(json("D2"), "\"12:00:00\"");
     assert_eq!(json("F2"), "\"1970-01-02\"");
     assert_eq!(
         sheet.scalar("E2".parse().unwrap()),
@@ -789,7 +789,7 @@ fn a_date_the_date_system_does_not_spell_is_refused_naming_the_cell() {
     assert_eq!(
         error.to_string(),
         "invalid record value at Sheet1!A2: expected an instant the 1900 date system spells, from its \
-         first day to 9999-12-31, got 1899-11-29T00:00:00.000"
+         first day to 9999-12-31, got 1899-11-29T00:00:00"
     );
     assert_eq!(handle.size(), 0);
 }

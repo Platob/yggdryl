@@ -261,7 +261,7 @@ string and byte leaves, the legacy `list` words - is in
 - JavaScript `asJs()` on a decimal (and on values with no JS spelling) answers
   the `Scalar` itself: read `unscaled`/`scale`, or `toString()`.
 - `Field.apply_arrow_batch` compiles its cast per call: in a loop hold
-  `apply_arrow_reader` (one plan per stream) or a `SerieReader`. It is the
+  `apply_arrow_reader` (one plan per stream) or a `StreamChunkedSerie`. It is the
   cast alone - no `TRANSFORM:` or `DIGEST:` column is filled.
 - Rust `DataType::from_arrow_datatype` loses the extension name (an arrow-rs
   datatype carries no metadata): import the **field** to keep `ccy`, `uuid`,

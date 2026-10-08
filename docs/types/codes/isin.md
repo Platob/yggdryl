@@ -289,7 +289,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 - No vocabulary: `StringEnum::from_logical_name("isin")` answers an enum of no members, and no Python code class declares it.
 - A `ZZ` number - ISO 6166's placeholder for a derivative no agency has numbered yet - closes but is listed nowhere: rank one, which a real number replaces on a [`merge_with`](index.md#rank) whichever leads, as a real number replaces a typo and a typo a masked number. Two numbers of one rank are two statements, and the leading one stands.
 - A lifecycle may learn a missing matching identifier or CFI attribute only under a real ISIN (`is_real`: closing under a listed prefix) in its own [graph walk](../../graph/event.md#lifecycle-walk); that association registry is not a codec parser, a global mapper, or a replacement for a stated fact.
-- `SecurityIDSource(22)` and the crate tag `isincode(65021)` carry the normalized column in a [FIX capture](index.md#fix-message-definitions): a view of the message's `isin` [security identifier](../../graph/identifier.md).
+- `SecurityIDSource(22)` and the crate tag `isincode(65022)` carry the normalized column in a [FIX capture](index.md#fix-message-definitions): a view of the message's `isin` [security identifier](../../graph/identifier.md).
 - The prefix is the numbering agency's, which includes international prefixes no [country](country.md) names, so it is read as text rather than as that code.
 
 ## Commands

@@ -8,7 +8,7 @@ statistics pushdown live. :class:`Filter` is a ``where`` clause and
 read or write - ``create``, a write verb, ``select``, ``from``, ``where``,
 ``order by``, ``limit``, ``offset`` - and :class:`Expression` is whichever of
 those one piece of text turns out to be, a ``;``-separated sequence included.
-:class:`Records` streams native rows through any of them, and :class:`Bounds`
+:class:`yggdryl.StreamSerie` streams native rows through any of them, and :class:`Bounds`
 carries one container's per-column statistics, so a caller can skip a file
 without opening it.
 
@@ -33,7 +33,6 @@ from ._native import (
     Field,
     Filter,
     Plan,
-    Records,
     Selector,
     Term,
     expression_needs_quoting,
@@ -225,7 +224,6 @@ __all__ = [
     "Expression",
     "Filter",
     "Plan",
-    "Records",
     "Selector",
     "Term",
     "needs_quoting",

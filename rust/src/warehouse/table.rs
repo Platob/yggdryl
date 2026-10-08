@@ -207,6 +207,10 @@ impl IOBase for Table {
         self.as_io().read_range_bytes(offset, length)
     }
 
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        self.as_io().read_tail_bytes(length)
+    }
+
     fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {
         self.as_io().read_digest(algorithm)
     }
@@ -383,67 +387,46 @@ impl IOMedia for Table {
         IOMedia::read_arrow_field(self.as_media(), options)
     }
 
-    fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
-        IOMedia::read_arrow_reader(self.as_media(), options)
-    }
-
-    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
         IOMedia::read_serie(self.as_media(), options)
     }
 
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
+        IOMedia::overwrite_serie(self.as_media_mut(), value, options)
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
+        value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> Result<()> {
-        IOMedia::overwrite_prepared_arrow_reader(self.as_media_mut(), batches, options)
+        IOMedia::overwrite_prepared_serie(self.as_media_mut(), value, options)
     }
 
-    fn overwrite_arrow_batch(
+    fn append_serie(
         &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
+        IOMedia::append_serie(self.as_media_mut(), value, options)
     }
 
-    fn append_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
-    }
-
-    fn append_arrow_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
-    }
-
-    fn merge_arrow_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
-    }
-
-    fn merge_arrow_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
+        IOMedia::merge_serie(self.as_media_mut(), value, options)
     }
 }
+
+crate::media_serie::media_serie!(
+    WarehouseTableSerie,
+    WarehouseTable,
+    as_warehouse_table,
+    get_warehouse_table_mut
+);

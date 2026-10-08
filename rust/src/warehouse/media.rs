@@ -339,6 +339,10 @@ impl IOBase for MediaTable {
         self.handle()?.read_range_bytes(offset, length)
     }
 
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        self.handle()?.read_tail_bytes(length)
+    }
+
     fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {
         self.handle()?.read_digest(algorithm)
     }
@@ -535,81 +539,49 @@ impl IOMedia for MediaTable {
         IOMedia::read_arrow_field(self.handle()?, options)
     }
 
-    fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
-        IOMedia::read_arrow_reader(self.handle()?, options)
+    // The table's own options carry its declared field and its name, so an
+    // absent option set is resolved here rather than by the handle.
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
+        let options = crate::iomedia::own_options(self, options)?;
+        IOMedia::read_serie(self.handle()?, Some(&options))
     }
 
-    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
-        match options {
-            Some(options) => IOMedia::read_serie(self.handle()?, Some(options)),
-            // The table's own options carry its declared field and its name.
-            None => {
-                let options = self.options()?;
-                IOMedia::read_serie(self.handle()?, Some(&options))
-            }
-        }
-    }
-
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        let result = IOMedia::overwrite_arrow_reader(self.handle_mut()?, batches, options);
+        let options = crate::iomedia::own_options(&*self, options)?;
+        let result = IOMedia::overwrite_serie(self.handle_mut()?, value, Some(&options));
         self.finish_write(result)
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
+        value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> Result<()> {
-        let result = IOMedia::overwrite_prepared_arrow_reader(self.handle_mut()?, batches, options);
+        let result = IOMedia::overwrite_prepared_serie(self.handle_mut()?, value, options);
         self.finish_write(result)
     }
 
-    fn overwrite_arrow_batch(
+    fn append_serie(
         &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        let result = IOMedia::overwrite_arrow_batch(self.handle_mut()?, batch, options);
+        let options = crate::iomedia::own_options(&*self, options)?;
+        let result = IOMedia::append_serie(self.handle_mut()?, value, Some(&options));
         self.finish_write(result)
     }
 
-    fn append_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        let result = IOMedia::append_arrow_reader(self.handle_mut()?, batches, options);
-        self.finish_write(result)
-    }
-
-    fn append_arrow_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        let result = IOMedia::append_arrow_batch(self.handle_mut()?, batch, options);
-        self.finish_write(result)
-    }
-
-    fn merge_arrow_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        let result = IOMedia::merge_arrow_reader(self.handle_mut()?, batches, options);
-        self.finish_write(result)
-    }
-
-    fn merge_arrow_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        let result = IOMedia::merge_arrow_batch(self.handle_mut()?, batch, options);
+        let options = crate::iomedia::own_options(&*self, options)?;
+        let result = IOMedia::merge_serie(self.handle_mut()?, value, Some(&options));
         self.finish_write(result)
     }
 }

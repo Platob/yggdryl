@@ -8,8 +8,7 @@
 use std::time::Duration;
 
 use napi::bindgen_prelude::{
-    BigInt, Buffer, ClassInstance, Either, Either3, Either6, Env, Object, Reference, Result,
-    Uint8Array,
+    BigInt, Buffer, ClassInstance, Either, Either6, Env, Object, Reference, Result, Uint8Array,
 };
 use napi_derive::napi;
 
@@ -20,7 +19,6 @@ use yggdryl::http::HttpOptions;
 use yggdryl::media::IORecordOptions as _;
 use yggdryl::{IOBase as _, IOMedia as _};
 
-use crate::chunked_serie::JsChunkedSerie;
 use crate::field::JsField;
 use crate::holder::fs::{
     ArrowFileInfo, FileSystemInput, JsByteReader as HandlerByteReader,
@@ -30,7 +28,7 @@ use crate::holder::fs::{
 use crate::iomedia::JsBatchReader;
 use crate::ioresult::JsIOResult;
 use crate::media::options::JsRecordOptions;
-use crate::serie::{JsSerie, JsSerieReader, serie_source};
+use crate::serie::JsSerie;
 use crate::text::codec::{
     DEFAULT_JS_DEPTH, JsScalar, decoded_value_for_field, value_to_transport_for_field,
 };
@@ -1789,9 +1787,13 @@ impl JsIOBase {
             && yggdryl::text::Format::from_media_type(self.inner.media_type()).is_ok()
         {
             let records = self.inner.read_serie(None).map_err(napi_error)?;
-            let root_name = records.field().name().to_owned();
+            let root_name = records
+                .require_field()
+                .map_err(napi_error)?
+                .name()
+                .to_owned();
             return Ok(JsBatchReader::from_core(
-                records.into_arrow_reader(),
+                records.into_arrow_reader().map_err(napi_error)?,
                 &root_name,
             ));
         }
@@ -1800,7 +1802,7 @@ impl JsIOBase {
         Ok(JsBatchReader::from_core(reader, options.name()))
     }
 
-    /// Read this resource's rows as a `SerieReader`, one record serie per
+    /// Read this resource's rows as a `StreamChunkedSerie`, one record serie per
     /// batch.
     ///
     /// Absent options are the handle's own: the encoding its media type
@@ -1809,18 +1811,18 @@ impl JsIOBase {
     /// its rows parse into, of which a declared field is the only option it
     /// reads.
     #[napi]
-    pub fn read_serie(&self, options: Option<&JsRecordOptions>) -> Result<JsSerieReader> {
+    pub fn read_serie(&self, options: Option<&JsRecordOptions>) -> Result<JsSerie> {
         let reader = self
             .inner
             .read_serie(options.map(|options| &options.inner))
             .map_err(napi_error)?;
-        JsSerieReader::from_core(reader)
+        Ok(JsSerie::from_core(reader))
     }
 
     /// Write rows in any shape the crate holds them - a `Serie`, a
-    /// `ChunkedSerie`, a `SerieReader`, which is consumed - under one mode.
+    /// `ChunkedSerie`, a `StreamChunkedSerie`, which is consumed - under one mode.
     ///
-    /// The loader widens every other columnar value into a `SerieReader`
+    /// The loader widens every other columnar value into a `StreamChunkedSerie`
     /// and names the intent; absent options are the handle's own, resolved
     /// by the core, and options declaring no field take the rows' own root,
     /// as every other record write does. A structured text document takes
@@ -1829,21 +1831,22 @@ impl JsIOBase {
     #[napi(js_name = "_writeSerieNative", skip_typescript)]
     pub fn write_serie_native(
         &mut self,
-        value: Either3<
-            ClassInstance<'_, JsSerie>,
-            ClassInstance<'_, JsChunkedSerie>,
-            ClassInstance<'_, JsSerieReader>,
-        >,
+        value: crate::key_serie::SerieInput<'_>,
         mode: String,
         options: Option<&JsRecordOptions>,
     ) -> Result<JsIOResult> {
         let mode = IOMode::from_str(&mode).map_err(napi_error)?;
-        let value = serie_source(value)?;
+        let value = crate::key_serie::serie_source(value)?;
         let options = match options {
             Some(options) => {
                 let mut options = options.inner.clone();
                 if options.field().is_none() {
-                    options.set_field(value.root().map_err(napi_error)?);
+                    options.set_field(
+                        yggdryl::StreamChunkedSerie::root_of(
+                            value.require_field().map_err(napi_error)?,
+                        )
+                        .map_err(napi_error)?,
+                    );
                 }
                 Some(options)
             }

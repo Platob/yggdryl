@@ -11,7 +11,7 @@ use yggdryl::holder::Buffer;
 use yggdryl::text::LineSep;
 use yggdryl::{
     ArrowCastOptions, Charset, DataType, Error, Field, IOBase, MediaType, Scalar, Serie,
-    SerieReader, TimeUnit, Timezone,
+    StreamChunkedSerie, TimeUnit, Timezone,
 };
 
 fn buffer(name: &str) -> Buffer {
@@ -60,10 +60,10 @@ fn refusal(error: Error) -> (String, String) {
 /// Every row of `handle` read under `field` and `options`, each row its cells.
 fn rows_under(handle: &Buffer, field: &Field, options: &CsvOptions) -> Vec<Vec<Scalar>> {
     let reader = read_batch_reader(handle, Some(field), options).expect("a reader");
-    let records = SerieReader::from_arrow_reader(None, reader, ArrowCastOptions::default())
+    let records = StreamChunkedSerie::from_arrow_reader(None, reader, ArrowCastOptions::default())
         .expect("record columns");
     let mut out = Vec::new();
-    for record in records {
+    for record in records.into_chunks() {
         let record = record.expect("a batch");
         for index in 0..record.len() {
             let row = record.scalar(index).expect("a row");

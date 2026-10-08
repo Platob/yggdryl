@@ -127,17 +127,18 @@ impl MarketData {
     }
 
     /// This value's dated order, quote or execution: the seam a book's
-    /// internals read through, unwrapped - a side holds orders and quotes,
-    /// the deltas executions beside them.
+    /// internals read through, unwrapped - a side and a book's delta hold
+    /// orders and quotes, its events the executions beside the snapshot
+    /// controls, which are no operation and are never read through it.
     pub(crate) fn operation_event(&self) -> &dyn BookOperation {
         self.as_operation_event()
-            .expect("a book states only dated order, quote or execution events")
+            .expect("a book reads operation facts only off a dated order, quote or execution")
     }
 
     /// [`Self::operation_event`], mutably.
     pub(crate) fn operation_event_mut(&mut self) -> &mut dyn BookOperation {
         self.as_operation_event_mut()
-            .expect("a book states only dated order, quote or execution events")
+            .expect("a book reads operation facts only off a dated order, quote or execution")
     }
 }
 
@@ -319,6 +320,12 @@ impl Market for MarketData {
     }
     fn set_currency(&mut self, currency: crate::Ccy, overwrite: bool) {
         delegate_by_variant!(self, set_currency, currency, overwrite);
+    }
+    fn get_origccy(&self) -> &crate::Ccy {
+        delegate_by_variant!(self, get_origccy)
+    }
+    fn set_origccy(&mut self, ccy: crate::Ccy, overwrite: bool) {
+        delegate_by_variant!(self, set_origccy, ccy, overwrite);
     }
     fn get_quantity(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_quantity)

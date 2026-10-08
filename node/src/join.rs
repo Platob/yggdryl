@@ -1,7 +1,7 @@
 //! The facts a JavaScript join states beside its keys: the kind, as one of
 //! the core's six words, and the options, as one plain object - each read once
 //! into the core's [`JoinKind`] and [`JoinOptions`] by the helpers every
-//! `joinWith` shares (`Serie`, `ChunkedSerie`, `SerieReader`).
+//! `joinWith` shares (`Serie`, `ChunkedSerie`, `StreamChunkedSerie`).
 //!
 //! The keys themselves are no business of this file: the loader converts
 //! them into one `Scalar` and the core reads it ([`JoinKeys::from_scalar`]).

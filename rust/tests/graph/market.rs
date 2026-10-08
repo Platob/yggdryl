@@ -293,6 +293,104 @@ fn the_strike_follows_its_instrument_merges_and_digests_only_where_stated() {
     );
 }
 
+/// The currency an instrument originates in is held only where stated or
+/// filled: stating the currency leaves it unheld, and the origin read
+/// answers the currency there; a stated origin stands over a later
+/// currency and the currency is never read off it; a fill lands only where
+/// none is held. A follower of the same instrument holding none takes its
+/// chain's, one naming another ISIN takes none; a merge takes the origin
+/// either statement holds; and the digest feeds it only where held, so an
+/// element holding none digests as it did before the fact existed.
+#[test]
+fn the_origin_currency_is_held_only_where_stated_and_read_as_the_currency_else() {
+    let ccy = |code: &str| Ccy::new(code).unwrap();
+    let isin = |code: &str| securityids(&[("ISIN", code)]);
+
+    let mut listed = order(1);
+    listed.set_currency(ccy("EUR"), true);
+    assert!(
+        listed.get_origccy().is_none(),
+        "the currency states no origin"
+    );
+    assert_eq!(listed.origin_currency(), &ccy("EUR"));
+    listed.set_origccy(ccy("USD"), true);
+    listed.set_currency(ccy("GBP"), true);
+    assert_eq!(listed.get_origccy(), &ccy("USD"), "a stated origin stands");
+    assert_eq!(listed.origin_currency(), &ccy("USD"));
+    assert_eq!(
+        listed.get_currency(),
+        &ccy("GBP"),
+        "never read off the origin"
+    );
+    // A fill lands only where none is held; a statement replaces it.
+    listed.set_origccy(ccy("CHF"), false);
+    assert_eq!(listed.get_origccy(), &ccy("USD"));
+    let mut unheld = order(1);
+    unheld.set_origccy(ccy("CHF"), false);
+    assert_eq!(unheld.get_origccy(), &ccy("CHF"));
+    unheld.set_origccy(Ccy::none(), true);
+    assert!(unheld.get_origccy().is_none(), "none clears it");
+    let mut none = order(1);
+    assert!(none.origin_currency().is_none(), "neither stated");
+    none.set_origccy(Ccy::none(), false);
+    assert!(none.get_origccy().is_none());
+
+    // Followed along the instrument.
+    let mut previous = order(1);
+    previous
+        .set_securityids(isin("US0378331005"), true)
+        .unwrap();
+    previous.set_origccy(ccy("USD"), true);
+    previous.finalize();
+    let silent = order(2)
+        .following_market(&previous)
+        .expect("a later event follows");
+    assert_eq!(silent.get_origccy(), &ccy("USD"));
+    let mut stated = order(2);
+    stated.set_origccy(ccy("JPY"), true);
+    stated.finalize();
+    let stated = stated
+        .following_market(&previous)
+        .expect("a later event follows");
+    assert_eq!(stated.get_origccy(), &ccy("JPY"), "a stated origin stands");
+    let mut other = order(2);
+    other.set_securityids(isin("GB0002634946"), true).unwrap();
+    other.finalize();
+    let other = other
+        .following_market(&previous)
+        .expect("a later event follows");
+    assert!(other.get_origccy().is_none(), "another instrument's origin");
+
+    // Two statements of one event: the merge takes the origin either holds.
+    let plain = order(1);
+    let mut sized = plain.clone();
+    sized.set_quantity(Some(dec("5")), true);
+    sized.finalize();
+    let mut issued = plain.clone();
+    issued.set_origccy(ccy("USD"), true);
+    issued.set_recdunix(Some(2));
+    issued.finalize();
+    issued.set_curruuid(sized.get_curruuid());
+    for (this, other) in [(sized.clone(), &issued), (issued.clone(), &sized)] {
+        let merged = this.merge_with(other).expect("one event stated twice");
+        assert_eq!(merged.get_origccy(), &ccy("USD"));
+        assert_eq!(merged.get_quantity(), Some(dec("5")));
+    }
+
+    // Fed only where held.
+    let mut cleared = plain.clone();
+    cleared.set_origccy(ccy("USD"), true);
+    assert_ne!(
+        cleared.digest_market_event().as_u64(),
+        plain.digest_market_event().as_u64()
+    );
+    cleared.set_origccy(Ccy::none(), true);
+    assert_eq!(
+        cleared.digest_market_event().as_u64(),
+        plain.digest_market_event().as_u64()
+    );
+}
+
 /// A follower that derived its instrument's real number - a registry's
 /// fill - keeps it over the masked number its chain stated before it,
 /// under the base key or under a named source, which it carries as
@@ -2397,4 +2495,83 @@ fn market_implications_are_confluent() {
         ..Facts::default()
     };
     converges("an execution", ExecutionEvent::at, &fill);
+}
+
+/// `Operation::follow_identity`, what a lifecycle stands every element it
+/// states as a chain's under: a sided operation stating no side takes the
+/// live statement's - so its price quotes that side - and then the live
+/// stored cross code, its cross hash and cross element derived from it; a
+/// live statement stating no code lends the side alone, and one already
+/// shared moves nothing. A conflict noted on a typed leaf records nothing.
+#[test]
+fn following_an_identity_lends_the_side_and_forces_the_code() {
+    let crosshash = |code: &str| {
+        let mut state = Xxh3::new();
+        state.write(code.as_bytes());
+        state.as_u64()
+    };
+    let mut live = OrderEvent::at(1);
+    live.set_crosscode("J".to_owned());
+    live.set_side(Side::Buy, true);
+    live.finalize();
+    assert_eq!(live.get_crosscode(), "10:1:J");
+    let unsided = || {
+        let mut event = OrderEvent::at(2);
+        event.set_crosscode("K".to_owned());
+        event.set_price(Some(Decimal::from_int(99)), true);
+        event.set_quantity(Some(Decimal::from_int(5)), true);
+        event.finalize();
+        event
+    };
+
+    let mut event = unsided();
+    assert_eq!(event.get_crosscode(), "10:0:K");
+    assert!(event.follow_identity(&live));
+    assert_eq!(event.get_side(), Side::Buy);
+    assert_eq!(event.get_crosscode(), "10:1:J");
+    assert_eq!(event.get_crosshashcode(), crosshash("10:1:J"));
+    assert_eq!(
+        event.get_crossuuid(),
+        Uuid::from_v8(u128::from(crosshash("10:1:J")))
+    );
+    assert_eq!(event.get_crossuuid(), live.get_crossuuid());
+    assert_eq!(
+        (event.get_bidpx(), event.get_bidqty()),
+        (Some(Decimal::from_int(99)), Some(Decimal::from_int(5))),
+        "the side lent quotes the price and the quantity"
+    );
+    // Moved, so the caller finalizes; settled, it moves nothing again.
+    event.finalize();
+    assert!(!event.follow_identity(&live), "one of equal side and code");
+    assert_eq!(event.get_crosscode(), "10:1:J");
+
+    // A live statement stating no code lends the side alone.
+    let mut codeless = OrderEvent::at(1);
+    codeless.set_side(Side::Sell, true);
+    codeless.finalize();
+    let mut event = unsided();
+    assert!(event.follow_identity(&codeless));
+    assert_eq!(event.get_side(), Side::Sell);
+    assert_eq!(
+        event.get_crosscode(),
+        "10:2:K",
+        "its own code, under the side"
+    );
+
+    // An unsided kind takes no side: a quote's is a tag.
+    let mut quote = QuoteEvent::at(2);
+    quote.set_crosscode("Q".to_owned());
+    quote.finalize();
+    let mut held = QuoteEvent::at(1);
+    held.set_crosscode("Q".to_owned());
+    held.set_side(Side::Buy, true);
+    held.finalize();
+    assert!(!quote.follow_identity(&held), "one code, no side lent");
+    assert_eq!(quote.get_side(), Side::Unknown);
+
+    // A conflict noted on a typed leaf records nothing.
+    let mut noted = unsided();
+    let before = noted.clone();
+    noted.note_conflict("10:0:K cites 10:1:J by clordid=C1 and 10:2:L by its cross code");
+    assert_eq!(noted, before);
 }

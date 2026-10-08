@@ -261,7 +261,7 @@ fn write_nonconforming_manifest(
         ("schema-id", "0"),
         ("partition-spec", spec_text.as_str()),
         ("partition-spec-id", spec_id.as_str()),
-        ("format-version", "2"),
+        ("format-version", "3"),
         ("content", "data"),
     ];
     yggdryl::avro::write_container(handle, avro_schema, &metadata, &[row]).unwrap();
@@ -311,7 +311,7 @@ fn manifest_with_data_file_value(name: &str, value: Scalar) -> Buffer {
     let field = field();
     let spec = PartitionSpec::identity(3, &field, &["venue"]).unwrap();
     let partition = spec.partition_field(&field).unwrap();
-    let schema = manifest_entry_schema(FormatVersion::V2, &partition).unwrap();
+    let schema = manifest_entry_schema(FormatVersion::V3, &partition).unwrap();
     let input = ManifestEntry::added(
         41,
         DataFile {
@@ -323,7 +323,7 @@ fn manifest_with_data_file_value(name: &str, value: Scalar) -> Buffer {
         },
     );
     let row = with_data_file_value(
-        &entry_to_value(&input, FormatVersion::V2, &partition).unwrap(),
+        &entry_to_value(&input, FormatVersion::V3, &partition).unwrap(),
         name,
         Some(value),
     );
@@ -436,7 +436,7 @@ fn manifest_spec_reads_only_the_bounded_avro_header() {
             entry
         })
         .collect::<Vec<_>>();
-    write_manifest(&mut buffer, FormatVersion::V2, &field, &spec, &entries).unwrap();
+    write_manifest(&mut buffer, FormatVersion::V3, &field, &spec, &entries).unwrap();
     assert!(buffer.size() > 64 * 1024);
     let handle = CountingHandle {
         handle: buffer,
@@ -467,7 +467,7 @@ fn manifest_spec_ignores_truncated_and_corrupt_bodies() {
         },
     );
     let mut encoded = Buffer::new();
-    write_manifest(&mut encoded, FormatVersion::V2, &field, &spec, &[entry]).unwrap();
+    write_manifest(&mut encoded, FormatVersion::V3, &field, &spec, &[entry]).unwrap();
     let header_end = avro_header_end(encoded.as_slice());
     assert!(header_end < encoded.as_slice().len());
 
@@ -487,6 +487,7 @@ fn manifest_spec_rejects_missing_and_malformed_required_metadata() {
     let field = field();
     let spec = PartitionSpec::identity(3, &field, &["venue"]).unwrap();
     let (avro_schema, schema, partition_spec) =
+        // A header stating no format-version is a v1 one.
         manifest_header_parts(&field, &spec, FormatVersion::V1);
 
     let mut missing_schema = Buffer::new();
@@ -541,6 +542,7 @@ fn manifest_spec_rejects_invalid_utf8_required_metadata() {
     let field = field();
     let spec = PartitionSpec::identity(3, &field, &["venue"]).unwrap();
     let (avro_schema, schema, partition_spec) =
+        // A header stating no format-version is a v1 one.
         manifest_header_parts(&field, &spec, FormatVersion::V1);
     let mut encoded = Buffer::new();
     yggdryl::avro::write_container(
@@ -566,6 +568,7 @@ fn manifest_header_defaults_preserve_official_v1_semantics() {
     let field = field();
     let spec = PartitionSpec::identity(3, &field, &["venue"]).unwrap();
     let (avro_schema, schema, partition_spec) =
+        // A header stating no format-version is a v1 one: the semantics pinned here.
         manifest_header_parts(&field, &spec, FormatVersion::V1);
     let partition = spec.partition_field(&field).unwrap();
     let entry = ManifestEntry::added(
@@ -578,6 +581,7 @@ fn manifest_header_defaults_preserve_official_v1_semantics() {
             ..DataFile::default()
         },
     );
+    // The v1 entry a header stating no format-version holds.
     let row = entry_to_value(&entry, FormatVersion::V1, &partition).unwrap();
     let mut encoded = Buffer::new();
     yggdryl::avro::write_container(
@@ -620,7 +624,7 @@ fn planning_reader_rejects_missing_required_fields() {
     let spec = PartitionSpec::identity(3, &field, &["venue"]).unwrap();
     let partition = spec.partition_field(&field).unwrap();
     let schema = replace_data_file_schema_field(
-        &manifest_entry_schema(FormatVersion::V2, &partition).unwrap(),
+        &manifest_entry_schema(FormatVersion::V3, &partition).unwrap(),
         "record_count",
         None,
     );
@@ -635,7 +639,7 @@ fn planning_reader_rejects_missing_required_fields() {
         },
     );
     let row = with_data_file_value(
-        &entry_to_value(&input, FormatVersion::V2, &partition).unwrap(),
+        &entry_to_value(&input, FormatVersion::V3, &partition).unwrap(),
         "record_count",
         None,
     );
@@ -659,7 +663,7 @@ fn planning_reader_rejects_malformed_statistics_members() {
     let string_counts =
         Scalar::from_sequence([Scalar::from("null"), avro_map(119, 120, "string").unwrap()]);
     let schema = replace_data_file_schema_field(
-        &manifest_entry_schema(FormatVersion::V2, &partition).unwrap(),
+        &manifest_entry_schema(FormatVersion::V3, &partition).unwrap(),
         "value_counts",
         Some(string_counts),
     );
@@ -679,7 +683,7 @@ fn planning_reader_rejects_malformed_statistics_members() {
     ])
     .unwrap()]);
     let row = with_data_file_value(
-        &entry_to_value(&input, FormatVersion::V2, &partition).unwrap(),
+        &entry_to_value(&input, FormatVersion::V3, &partition).unwrap(),
         "value_counts",
         Some(malformed_counts),
     );
@@ -743,7 +747,7 @@ fn raw_manifest_preflight_rejects_invalid_split_offsets() {
 fn public_manifest_reads_are_official_parser_views() {
     let field = field();
     let spec = PartitionSpec::identity(3, &field, &["venue"]).unwrap();
-    for version in [FormatVersion::V1, FormatVersion::V2, FormatVersion::V3] {
+    for version in [FormatVersion::V3, FormatVersion::V2, FormatVersion::V1] {
         let input = ManifestEntry::added(
             41,
             DataFile {
@@ -822,7 +826,7 @@ fn planning_reader_preserves_nonlexical_partition_spec_order() {
         },
     );
     let mut handle = Buffer::new();
-    write_manifest(&mut handle, FormatVersion::V2, &field, &spec, &[input]).unwrap();
+    write_manifest(&mut handle, FormatVersion::V3, &field, &spec, &[input]).unwrap();
 
     let official_partition = read_manifest(&handle).unwrap()[0]
         .data_file
@@ -861,7 +865,7 @@ fn official_manifest_reads_preserve_unknown_partition_transforms() {
         },
     );
     let mut handle = Buffer::new();
-    write_manifest(&mut handle, FormatVersion::V2, &field, &spec, &[input]).unwrap();
+    write_manifest(&mut handle, FormatVersion::V3, &field, &spec, &[input]).unwrap();
 
     assert_eq!(read_manifest_spec(&handle).unwrap(), spec);
     assert_eq!(
@@ -898,16 +902,16 @@ fn a_manifest_header_stating_a_reserved_bucket_count_is_refused_by_its_count() {
         },
     );
     let partition = spec.partition_field(&field).unwrap();
-    let row = entry_to_value(&input, FormatVersion::V2, &partition).unwrap();
+    let row = entry_to_value(&input, FormatVersion::V3, &partition).unwrap();
     let (avro_schema, schema_text, spec_text) =
-        manifest_header_parts(&field, &spec, FormatVersion::V2);
+        manifest_header_parts(&field, &spec, FormatVersion::V3);
     let write = |spec_text: &str| {
         let metadata = [
             ("schema", schema_text.as_str()),
             ("schema-id", "0"),
             ("partition-spec", spec_text),
             ("partition-spec-id", "3"),
-            ("format-version", "2"),
+            ("format-version", "3"),
             ("content", "data"),
         ];
         let mut handle = Buffer::new();
@@ -968,7 +972,7 @@ fn official_uuid_partition_literals_use_the_exact_uuid_shape() {
         },
     );
     let mut handle = Buffer::new();
-    write_manifest(&mut handle, FormatVersion::V2, &field, &spec, &[input]).unwrap();
+    write_manifest(&mut handle, FormatVersion::V3, &field, &spec, &[input]).unwrap();
     let container = yggdryl::avro::read_container(&handle).unwrap();
     assert!(contains_fixed_uuid(&container.schema.into_json()));
     assert_eq!(
@@ -985,7 +989,7 @@ fn official_uuid_partition_literals_use_the_exact_uuid_shape() {
     assert_eq!(read[0].data_file.partition, vec![expected]);
 
     let mut rewritten = Buffer::new();
-    write_manifest(&mut rewritten, FormatVersion::V2, &field, &spec, &read).unwrap();
+    write_manifest(&mut rewritten, FormatVersion::V3, &field, &spec, &read).unwrap();
     assert_eq!(read_manifest(&rewritten).unwrap(), read);
 }
 
@@ -1005,7 +1009,7 @@ fn manifest_writer_rejects_non_iceberg_mime_types_without_writing() {
     );
     let mut handle = Buffer::new();
 
-    let message = write_manifest(&mut handle, FormatVersion::V2, &field, &spec, &[entry])
+    let message = write_manifest(&mut handle, FormatVersion::V3, &field, &spec, &[entry])
         .unwrap_err()
         .to_string();
 
@@ -1019,7 +1023,7 @@ fn manifest_writer_rejects_non_iceberg_mime_types_without_writing() {
 fn delete_manifest_metadata_is_official_and_mixed_content_is_refused() {
     let field = field();
     let spec = PartitionSpec::identity(3, &field, &["venue"]).unwrap();
-    for version in [FormatVersion::V2, FormatVersion::V3] {
+    for version in [FormatVersion::V3, FormatVersion::V2] {
         let deleted = ManifestEntry::added(
             41,
             DataFile {
@@ -1097,6 +1101,7 @@ fn versioned_manifest_fields_are_preserved_or_rejected_before_write() {
 
     let message = write_manifest(
         &mut Buffer::new(),
+        // v2 refuses a deletion vector's fields: the contract pinned here.
         FormatVersion::V2,
         &field,
         &spec,
@@ -1123,6 +1128,7 @@ fn versioned_manifest_fields_are_preserved_or_rejected_before_write() {
     );
     let message = write_manifest(
         &mut Buffer::new(),
+        // v1 holds data files alone: the contract pinned here.
         FormatVersion::V1,
         &field,
         &spec,
@@ -1155,6 +1161,7 @@ fn versioned_manifest_fields_are_preserved_or_rejected_before_write() {
     };
     let message = write_manifest_list(
         &mut Buffer::new(),
+        // v1 lists data manifests alone: the contract pinned here.
         FormatVersion::V1,
         41,
         None,
@@ -1169,7 +1176,7 @@ fn versioned_manifest_fields_are_preserved_or_rejected_before_write() {
 
 #[test]
 fn public_manifest_list_reads_are_official_parser_views() {
-    for version in [FormatVersion::V1, FormatVersion::V2, FormatVersion::V3] {
+    for version in [FormatVersion::V3, FormatVersion::V2, FormatVersion::V1] {
         let input = ManifestFile {
             manifest_path: "s3://warehouse/table/metadata/manifest.avro".into(),
             manifest_length: 1_024,
@@ -1320,4 +1327,70 @@ fn v3_row_range_assignment_fails_before_writing() {
     .to_string();
     assert!(message.contains("added_rows_count") && message.contains("null"));
     assert!(handle.as_slice().is_empty());
+}
+
+/// A commit keeps the manifests its list states, as the list reader reads
+/// them back - each v3 data manifest's assigned `first_row_id` included -
+/// so the next commit of the same handle carries them forward without
+/// reading the list: the list removed from under the handle, that commit
+/// still lands every manifest, and a fresh handle reads every row.
+#[test]
+fn a_commit_holds_the_manifests_its_list_states_and_reads_no_list_back() {
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::iceberg::IcebergTable;
+    use yggdryl::local::LocalFolder;
+
+    let rows = |ids: &[i64]| {
+        let batch = RecordBatch::try_new(
+            field().into_arrow_schema().unwrap(),
+            vec![
+                std::sync::Arc::new(Int64Array::from(ids.to_vec())),
+                std::sync::Arc::new(StringArray::from(vec!["XNAS"; ids.len()])),
+            ],
+        )
+        .unwrap();
+        yggdryl::arrow::batch_reader(batch.schema(), [batch])
+    };
+    for version in [FormatVersion::V1, FormatVersion::V2, FormatVersion::V3] {
+        let path = LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap()
+            .join(format!(
+                "yggdryl-iceberg-held-list-v{}-{}",
+                version.number(),
+                std::process::id()
+            ));
+        let _ = std::fs::remove_dir_all(&path);
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            version,
+            field(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table.commit_append(rows(&[1, 2])).unwrap();
+
+        let list = table
+            .current_snapshot()
+            .unwrap()
+            .unwrap()
+            .manifest_list
+            .clone();
+        let stored = yggdryl::Url::from_str(&list).unwrap().into_path().unwrap();
+        let read = read_manifest_list(&yggdryl::local::LocalFile::new(&stored).unwrap()).unwrap();
+        assert_eq!(table.manifests().unwrap(), read, "v{}", version.number());
+
+        std::fs::remove_file(&stored).unwrap();
+        table.commit_append(rows(&[3])).unwrap();
+        assert_eq!(table.manifests().unwrap().len(), 2, "v{}", version.number());
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let read: usize = reopened
+            .scan(None)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        assert_eq!(read, 3, "v{}", version.number());
+        let _ = std::fs::remove_dir_all(&path);
+    }
 }

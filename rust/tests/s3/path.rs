@@ -104,6 +104,105 @@ mod accounting {
         assert_eq!(store.request_count(), 1, "an unshared name settles in one");
     }
 
+    /// What each recorded request asked: its method and the key it named, or
+    /// `listing` for a request of the bucket.
+    fn asked(store: &crate::server::FakeS3) -> Vec<String> {
+        store
+            .requests()
+            .into_iter()
+            .map(|request| match request.key {
+                Some(key) => format!("{} {key}", request.method),
+                None => format!("{} listing", request.method),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_listing_that_resolves_an_object_states_its_size() {
+        let store = store();
+        store.put(BUCKET, "lake/part.parquet", b"PAR1....PAR1");
+
+        // The one listing that settles the role states the size beside the
+        // key, and the object resolved keeps it: no `HEAD` follows.
+        let leaf = path(&store, "lake/part.parquet");
+        store.clear_requests();
+        assert_eq!(leaf.size(), 12);
+        assert_eq!(asked(&store), ["GET listing"], "no HEAD after the listing");
+        store.clear_requests();
+        assert_eq!(leaf.size(), 12);
+        assert_eq!(store.request_count(), 0, "asked again, nothing more");
+
+        // A footer-first read is the object's one suffix-ranged `GET` after it.
+        let fresh = path(&store, "lake/part.parquet");
+        store.clear_requests();
+        assert_eq!(
+            fresh.read_tail_bytes(4).expect("the tail"),
+            (b"PAR1".to_vec(), 12)
+        );
+        assert_eq!(asked(&store), ["GET listing", "GET lake/part.parquet"]);
+        let range = store.requests()[1]
+            .headers
+            .iter()
+            .find(|(name, _)| name == "range")
+            .map(|(_, value)| value.clone());
+        assert_eq!(range.as_deref(), Some("bytes=-4"));
+
+        // A write through the location drops what the listing said.
+        let mut written = path(&store, "lake/part.parquet");
+        assert_eq!(written.size(), 12);
+        written.write_all_bytes(b"PAR1").expect("a write");
+        store.clear_requests();
+        assert_eq!(written.size(), 4);
+        assert_eq!(asked(&store), ["HEAD lake/part.parquet"]);
+
+        // Nothing at the location is one listing and no size at all.
+        let absent = path(&store, "lake/none.parquet");
+        store.clear_requests();
+        assert_eq!(absent.size(), 0);
+        assert_eq!(absent.read_tail_bytes(4).expect("nothing"), (Vec::new(), 0));
+        assert_eq!(asked(&store), ["GET listing"], "the probe is kept");
+    }
+
+    /// A Parquet read through a location - what `Holder::from_url` hands a
+    /// reader for `s3://bucket/part.parquet` - is the listing that settles
+    /// the role and the object's one suffix-ranged `GET`: the listing's size
+    /// and the tail's `Content-Range` leave no `HEAD` to send.
+    #[cfg(feature = "parquet")]
+    #[test]
+    fn a_parquet_read_through_a_location_is_its_listing_and_one_tail_get() {
+        use std::sync::Arc;
+
+        use arrow_array::{Int64Array, RecordBatch};
+        use arrow_schema::{DataType, Field, Schema};
+        use yggdryl::IOMedia;
+
+        let store = store();
+        let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, false)]));
+        let batch = RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(vec![1_i64, 2]))])
+            .expect("a batch");
+        let mut writer = crate::mod_::file(&store, "lake/part.parquet");
+        let options = writer.record_options().expect("an encoding");
+        writer
+            .overwrite_arrow_batch(batch, &options)
+            .expect("a written batch");
+
+        let location = path(&store, "lake/part.parquet");
+        store.clear_requests();
+        let read: usize = location
+            .read_arrow_reader(&options)
+            .expect("a reader")
+            .map(|batch| batch.expect("a batch").num_rows())
+            .sum();
+        assert_eq!(read, 2);
+        assert_eq!(asked(&store), ["GET listing", "GET lake/part.parquet"]);
+        let range = store.requests()[1]
+            .headers
+            .iter()
+            .find(|(name, _)| name == "range")
+            .map(|(_, value)| value.clone());
+        assert_eq!(range.as_deref(), Some("bytes=-1048576"));
+    }
+
     /// Two objects under `logs/`, one a level deeper and one without a final
     /// newline, beside a hidden one and one outside the prefix.
     fn logs(store: &crate::server::FakeS3) {

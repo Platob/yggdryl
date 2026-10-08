@@ -7,7 +7,7 @@ The [field](field.md) is the cast target: an Arrow array, a record batch, a stre
 | Key | Value |
 | --- | --- |
 | Owns | `ArrowCastPlan`, `ArrowCastOptions`, `Representation`; `validate_value` and `canonicalize_value` for rows |
-| Ways in | `Serie::cast` for a column in hand; `ChunkedSerie::cast` for chunked columns, one plan over every chunk, and `ArrowCastPlan::apply_chunked` for a held one; `Serie::from_arrow_array`, `from_arrow_batch`, `from_arrow_reader` for Arrow buffers; `SerieReader::from_arrow_reader` for a stream; an `ArrowCastPlan` held and applied wherever one cast repeats; `Field::apply_arrow_batch`, `apply_arrow_schema`, `apply_arrow_reader` and the record options' `apply_arrow_batch`, `apply_arrow_reader`, this same plan at its `RecordBatch` and `BatchReader` face ([Eager and lazy](#eager-and-lazy)) |
+| Ways in | `Serie::cast` for a column in hand; `ChunkedSerie::cast` for chunked columns, one plan over every chunk, and `ArrowCastPlan::apply_chunked` for a held one; `Serie::from_arrow_array`, `from_arrow_batch`, `from_arrow_reader` for Arrow buffers; `StreamChunkedSerie::from_arrow_reader` for a stream; an `ArrowCastPlan` held and applied wherever one cast repeats; `Field::apply_arrow_batch`, `apply_arrow_schema`, `apply_arrow_reader` and the record options' `apply_arrow_batch`, `apply_arrow_reader`, this same plan at its `RecordBatch` and `BatchReader` face ([Eager and lazy](#eager-and-lazy)) |
 | Target | The field, never the source. A `DataType` target is its required `value` field (`dtype.required_field("value")`), so a refusal names `$.value` |
 | Returns | A `Serie` under the target field - a `ChunkedSerie` of as many chunks from `ChunkedSerie::cast` and `apply_chunked`. A typed read is a narrowing of it: `as_int64().values()`, `as_utf8()`, `as_date32()`, `as_fixed_bytes()` |
 | Exact input | The identity plan: the same buffers, and a column already under the target is itself - where the source states every nullability the target requires; a nullable source under a required target is read for its nulls |
@@ -23,7 +23,7 @@ The [field](field.md) is the cast target: an Arrow array, a record batch, a stre
 | Batch children | Target order, ASCII-case-insensitive names |
 | Proof | A landed column holds only rows its field accepts; an extension label is never proof of that ([What a landing proves](#what-a-landing-proves)) |
 | Errors | The dot/bracket path of the first misfit, from the cast root: `$.users[].zip`; a column is its own first segment, `$.id` |
-| Bindings | `Serie`, `ChunkedSerie`, `SerieReader` and `ArrowCastPlan` in Rust, Python and JavaScript, the two options by name; `Scalar` rows in Rust and Python |
+| Bindings | `Serie`, `ChunkedSerie`, `StreamChunkedSerie` and `ArrowCastPlan` in Rust, Python and JavaScript, the two options by name; `Scalar` rows in Rust and Python |
 
 ## Use
 
@@ -971,8 +971,8 @@ immutable and `Send + Sync`, so one serves every column of a stream and every th
 parallel scan; only the masks, offsets, and dictionary reachability a column actually carries vary.
 
 `Serie::cast` and the `Serie` Arrow doors compile one plan for their one input, so a loop that
-calls them compiles per iteration. A loop holds the plan instead - and `SerieReader` already
-does, so a stream never plans twice, and `SerieReader::cast` re-roots a stream under one more.
+calls them compiles per iteration. A loop holds the plan instead - and `StreamChunkedSerie` already
+does, so a stream never plans twice, and `StreamChunkedSerie::cast` re-roots a stream under one more.
 A plan also resolves the target's tree once - every level's field and projection - and lands
 each column under that tree, so what a landing proves per batch is the buffers alone: the
 validity words, and each row of a leaf whose layout is not its datatype's whole contract. A
@@ -1176,7 +1176,7 @@ here is a whole day.
 
 A cast of held data is eager and a cast of a stream is lazy, and the type says which.
 `Serie::from_arrow_reader` drains a stream into one column: a column is one contiguous set of
-buffers, so the bound is the stream itself. `SerieReader::from_arrow_reader` compiles one plan
+buffers, so the bound is the stream itself. `StreamChunkedSerie::from_arrow_reader` compiles one plan
 from the stream's schema before a batch is pulled - a planning failure is raised there - and then
 yields one record `Serie` per batch as it is pulled, holding at most one source batch, so a
 resource larger than memory casts in bounded memory. A batch's failure therefore surfaces when
@@ -1192,7 +1192,7 @@ The schema doors are this plan at the same face, never a second cast.
 [`Field::apply_arrow_batch`](field.md#applying-a-schema) compiles the plan from the batch's schema
 and reconciles the batch through it, once per call; `apply_arrow_schema` answers the plan's target
 schema with no row read; and `Field::apply_arrow_reader` is
-`SerieReader::from_arrow_reader(Some(root), reader, options).into_arrow_reader()`, one plan for
+`StreamChunkedSerie::from_arrow_reader(Some(root), reader, options).into_arrow_reader()`, one plan for
 the stream. The record options' `apply_arrow_batch` and `apply_arrow_reader` run the same cast
 twice - onto the declared field, then onto the stored field a write completes onto - with the
 `where` and `select` sections between them ([Options](../media/index.md#options)). They take and
@@ -1208,7 +1208,7 @@ under the same names; JavaScript binds none of them.
     use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
     use yggdryl::arrow::batch_reader;
-    use yggdryl::{ArrowCastOptions, DataType, Serie, SerieReader, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, Serie, StreamChunkedSerie, StructType};
 
     let root = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
@@ -1244,15 +1244,15 @@ under the same names; JavaScript binds none of them.
 
     // Lazy: one plan compiled now, and nothing cast until a batch is pulled.
     let stream = batch_reader(Arc::clone(&schema), [quoted.clone(), unquoted, quoted]);
-    let mut series = SerieReader::from_arrow_reader(Some(&root), stream, ArrowCastOptions::new())?;
+    let mut series = StreamChunkedSerie::from_arrow_reader(Some(&root), stream, ArrowCastOptions::new())?;
     assert_eq!(series.field(), &root);
-    assert_eq!(series.next().transpose()?.map(|serie| serie.len()), Some(1));
+    assert_eq!(series.next_chunk().transpose()?.map(|serie| serie.len()), Some(1));
 
     // The refusal arrives with the batch that carries it, and the reader is
     // fused after it.
-    let refusal = series.next().expect("a second batch").unwrap_err();
+    let refusal = series.next_chunk().expect("a second batch").unwrap_err();
     assert!(refusal.to_string().contains("$.symbol"), "{refusal}");
-    assert!(series.next().is_none());
+    assert!(series.next_chunk().is_none());
     ```
 
 === "Python"
@@ -1260,7 +1260,7 @@ under the same names; JavaScript binds none of them.
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, Field, Serie, SerieReader
+    from yggdryl import DataType, Field, Serie, StreamChunkedSerie
 
     root = Field("row", DataType("struct<id: int64, symbol: string not null>"), False)
     table = pa.table({
@@ -1280,7 +1280,7 @@ under the same names; JavaScript binds none of them.
         raise AssertionError("the null must be refused while draining")
 
     # Lazy: one plan compiled now, and nothing cast until a batch is pulled.
-    series = SerieReader.from_arrow_reader(table.to_reader(max_chunksize=1), root)
+    series = StreamChunkedSerie.from_arrow_reader(table.to_reader(max_chunksize=1), root)
     assert series.field == root
     assert next(series).as_py() == [{"id": 1, "symbol": "AAPL"}]
 
@@ -1293,7 +1293,7 @@ under the same names; JavaScript binds none of them.
         raise AssertionError("the null must be refused at the pull")
 
     # The transport face is a pyarrow reader that casts as it is read.
-    reader = SerieReader.from_arrow_reader(table, root).into_arrow_reader()
+    reader = StreamChunkedSerie.from_arrow_reader(table, root).into_arrow_reader()
     assert reader.schema.names == ["id", "symbol"]
     try:
         reader.read_all()
@@ -1308,7 +1308,7 @@ under the same names; JavaScript binds none of them.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { BatchReader, Field, Serie, SerieReader, fields } = require('yggdryl')
+    const { BatchReader, Field, Serie, StreamChunkedSerie, fields } = require('yggdryl')
 
     const root = fields.struct(
       'row',
@@ -1332,7 +1332,7 @@ under the same names; JavaScript binds none of them.
     )
 
     // Lazy: one plan compiled now, and nothing cast until a batch is pulled.
-    const series = SerieReader.fromArrowReader(BatchReader.from(source()), root)
+    const series = StreamChunkedSerie.fromArrowReader(BatchReader.from(source()), root)
     assert.ok(series.field.equals(root))
     const pulled = series[Symbol.iterator]()
     assert.deepEqual(pulled.next().value.child('id').asJs(), [1])
@@ -1356,7 +1356,7 @@ What each binding door accepts, each resolved once at the door:
 | --- | --- | --- |
 | `from_arrow_array` / `fromArrowArray` | a pyarrow `Array`, or anything exporting the Arrow C array interface | an Arrow JS `Vector`, chunks cast as one column |
 | `from_arrow_batch` / `fromArrowBatch` | a pyarrow `RecordBatch` | an Arrow JS `RecordBatch` or `Table` |
-| `from_arrow_reader` / `fromArrowReader`, `SerieReader` | a pyarrow `RecordBatchReader`, `Table`, `RecordBatch`, `Dataset` or `Scanner`, an Arrow C stream exporter, a pandas or polars frame, or an iterable of any of those | a native `BatchReader`; `BatchReader.from(value)` converts anything else |
+| `from_arrow_reader` / `fromArrowReader`, `StreamChunkedSerie` | a pyarrow `RecordBatchReader`, `Table`, `RecordBatch`, `Dataset` or `Scanner`, an Arrow C stream exporter, a pandas or polars frame, or an iterable of any of those | a native `BatchReader`; `BatchReader.from(value)` converts anything else |
 | `cast` | a `Field`, a field expression, a pyarrow `Field`, or a `DataType` | a `Field` or a field expression |
 
 === "Rust"
@@ -1477,7 +1477,7 @@ What each binding door accepts, each resolved once at the door:
 - A foreign column carrying a `yggdryl.*` extension label -> its rows read once under the field's rule, a refused row named with its column and row under every option; a label is never a proof.
 - A column of another layout handed to a compiled plan -> error naming both layouts; a plan is compiled for one source.
 - An equal layout whose source is nullable where the target is required -> not the identity: the plan reads for the null the source may hold.
-- `SerieReader::into_arrow_reader` whose plan is the identity - the target's layout, every nullability included -> the inner reader itself, unwrapped; a batch only moved is its producer's claim, and a `Serie` landed from it is proven at its landing.
+- `StreamChunkedSerie::into_arrow_reader` whose plan is the identity - the target's layout, every nullability included -> the inner reader itself, unwrapped; a batch only moved is its producer's claim, and a `Serie` landed from it is proven at its landing.
 
 ## Commands
 

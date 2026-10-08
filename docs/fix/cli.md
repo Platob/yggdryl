@@ -230,7 +230,7 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 - `create` refuses a duplicate even when its supplied document is identical.
 - `update` requires an existing identity and is a full replacement.
 - Scalar fields require tags; a named definition whose document states none takes the tag derived from its name, inside `[100000, 1100000)`.
-- Wire group counters remain separate `int32` fields. The built-in `metadata` (65036) Map group has no scalar counter; a map's length is its cardinality.
+- Wire group counters remain separate `int32` fields. The built-in `metadata` (65037) Map group has no scalar counter; a map's length is its cardinality.
 - Deleting a referenced field, component, or group fails before saving, and so does deleting a code set a field still reads by; `codesets delete` names that field.
 - `fields create` and `fields update` refuse a `--codes` name the dictionary does not hold, so the set is written first and a field never names a vocabulary nothing states.
 - `ingest` always folds, whatever it is pointed at: a declaration the dictionary already holds otherwise is passed over and named, and the rest still arrives or merges, so running it again over an unchanged file leaves the store as it was. The one exception is a definition the fold filed under another name of its structure, where a file states that name with fewer members than the structure: running that file again lands its narrower definition under the name once more, read by no message already folded, and a later file widening it again files the structure under that name in turn ([one structure is one definition](registry.md#what-a-source-says-otherwise-than-the-dictionary-is-passed-over)).

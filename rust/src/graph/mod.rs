@@ -24,16 +24,18 @@
 //! [`OperationEvent`] are the one undated and one dated operation type - an
 //! order, a quote or an execution by the sealed [`OperationKind`] they are
 //! generic over - and [`MarketData`] is the one value over every leaf, read
-//! generically past the boundary that resolved it. [`BookEvent`] holds the
-//! deltas applied since the book before it, in the order applied - never
-//! an execution - and, complete, its alive [`OrderEvent`]/[`QuoteEvent`]
-//! entries, answering each side as its price levels, best first; a
-//! [`BookIterator`] emits a book complete only at a snapshot tick and its
-//! deltas alone between, which [`Element::with_previous`] rebuilds. The one walk,
+//! generically past the boundary that resolved it. [`BookEvent`] holds its
+//! `delta` - the orders and quotes its instant applied, in the order
+//! applied - and its `events` - every other event the instant recorded:
+//! the executions, resting on no side, and the snapshot controls - and, a
+//! complete book, its alive [`OrderEvent`]/[`QuoteEvent`] entries,
+//! answering each side as its price levels, best first; a [`BookIterator`]
+//! emits a complete book only at a snapshot tick and a delta book between,
+//! which [`Element::with_previous`] rebuilds. The one walk,
 //! [`EventIterator`], reads operations in their order and states each as
 //! the one after the live element it follows. [`ElementColumn`] is the six
 //! columns every generated schema of an element opens with,
-//! [`EventColumn`] the nine an event adds, [`MarketColumn`] the thirty-five
+//! [`EventColumn`] the nine an event adds, [`MarketColumn`] the thirty-six
 //! of a market and [`OperationColumn`] the five of an operation - one per
 //! fact the traits answer, under one name and one datatype each, in that
 //! order - so a text line's batch, a FIX row, a chained message and a
@@ -160,6 +162,12 @@ macro_rules! delegate_market {
             }
             fn set_currency(&mut self, currency: $crate::Ccy, overwrite: bool) {
                 $crate::graph::Market::set_currency(&mut self.$($field).+, currency, overwrite);
+            }
+            fn get_origccy(&self) -> &$crate::Ccy {
+                $crate::graph::Market::get_origccy(&self.$($field).+)
+            }
+            fn set_origccy(&mut self, ccy: $crate::Ccy, overwrite: bool) {
+                $crate::graph::Market::set_origccy(&mut self.$($field).+, ccy, overwrite);
             }
             fn get_quantity(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_quantity(&self.$($field).+)
@@ -358,9 +366,11 @@ macro_rules! delegate_market {
 }
 
 /// `impl Operation` forwarding every fact to a field that is a
-/// `Operation`.
+/// `Operation`, and the conflict a lifecycle notes with them; what the type
+/// states over its own facts - [`Operation::follow_identity`], provided -
+/// stays its own unless items after a `;` override it.
 macro_rules! delegate_operation {
-    ($type:ty, $($field:ident).+) => {
+    ($type:ty, $($field:ident).+ $(; $($item:item)*)?) => {
         impl $crate::graph::Operation for $type {
             fn get_ordqty(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Operation::get_ordqty(&self.$($field).+)
@@ -413,6 +423,10 @@ macro_rules! delegate_operation {
             fn parent_of(&self, kind: &$crate::IdType) -> Option<($crate::IdType, usize)> {
                 $crate::graph::Operation::parent_of(&self.$($field).+, kind)
             }
+            fn note_conflict(&mut self, cited: &str) {
+                $crate::graph::Operation::note_conflict(&mut self.$($field).+, cited);
+            }
+            $($($item)*)?
         }
     };
 }

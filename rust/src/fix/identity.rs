@@ -7,8 +7,8 @@ use crate::Decimal;
 use crate::graph::Market;
 use crate::graph::facts::OperationEventFacts;
 use crate::{
-    Bbg, DataType, Error, Field, Figi, Forex, IdType, Identifiers, Isin, Mic, PluginSide, Result,
-    Scalar, TimeUnit, Timezone, Value,
+    Bbg, DataType, Error, Field, Figi, Forex, IdType, Identifiers, Isin, MarketDataKind, Mic,
+    PluginSide, Result, Scalar, TimeUnit, Timezone, Value,
 };
 
 use super::schema::CLOCK_DATATYPE;
@@ -397,7 +397,24 @@ impl FixCapture {
 /// replaced, `OrigClOrdID(41)`, then a quote's `QuoteID(117)`, the request
 /// it answers, `QuoteReqID(131)`, and a market data request's
 /// `MDReqID(262)`.
-pub(super) const CROSS_TAGS: [i32; 6] = [37, 11, 41, 117, 131, 262];
+const CROSS_TAGS: [i32; 6] = [37, 11, 41, 117, 131, 262];
+
+/// [`CROSS_TAGS`] led by a trade's own: its `TradeID(1003)` and its
+/// `TradeReportID(571)`, so a trade capture is keyed by the trade it
+/// reports rather than by an order it names - two reports of one order are
+/// two trades - and by its order's tags only where it states neither.
+const TRADE_CROSS_TAGS: [i32; 8] = [1003, 571, 37, 11, 41, 117, 131, 262];
+
+/// The tags a message of `kind` reads its cross code from, strongest
+/// first: [`TRADE_CROSS_TAGS`] for a [`MarketDataKind::Trade`] message and
+/// [`CROSS_TAGS`] for every other kind, a trade's tags standing nowhere
+/// else.
+pub(super) const fn cross_tags(kind: MarketDataKind) -> &'static [i32] {
+    match kind {
+        MarketDataKind::Trade => &TRADE_CROSS_TAGS,
+        _ => &CROSS_TAGS,
+    }
+}
 
 /// Every root tag a typed market column reads, one line per tag naming the
 /// column it feeds: the reads of `FixMsg::state_market`,

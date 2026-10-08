@@ -464,7 +464,9 @@ pub fn read_arrow_schema<H: IOBase + ?Sized>(handle: &H) -> Result<Arc<Schema>> 
 /// Read the exact non-null Struct root Field of the file `handle` holds.
 ///
 /// A declared schema in `options` is returned as-is; otherwise the footer
-/// supplies one, named by the options' root name.
+/// supplies one, named by the options' root name, read with the one
+/// [`IOBase::read_tail_bytes`] that holds it. An empty or missing file is the
+/// empty root, as its read is the empty stream.
 ///
 /// # Errors
 ///
@@ -473,7 +475,10 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ParquetOptions) -> R
     if let Some(field) = options.field() {
         return Ok(field.clone());
     }
-    let schema = read_arrow_schema(handle)?;
+    let schema = match read_footer(handle)?.0 {
+        Some(metadata) => schema_from_metadata(metadata)?,
+        None => Arc::new(Schema::empty()),
+    };
     field_from_arrow_schema(options.name(), schema.as_ref())
 }
 
@@ -487,6 +492,12 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ParquetOptions) -> R
 /// `field` naming anything the file does not store is ignored, because a mask
 /// can only drop columns, never invent them.
 ///
+/// The file's end is read once, by [`IOBase::read_tail_bytes`], which also
+/// answers its length, so no size is asked first; a file of at most a
+/// megabyte arrives whole in that read. A handle already holding the decoded
+/// footer - an opened [`Parquet`] - hands it over, and the read then fetches
+/// only the column chunks it keeps.
+///
 /// # Errors
 ///
 /// Returns a read, footer, or decoding failure.
@@ -495,9 +506,30 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     field: Option<&Field>,
     options: &ParquetOptions,
 ) -> Result<BatchReader> {
+    read_batch_reader_with(
+        handle,
+        field,
+        options,
+        crate::IOMedia::parquet_footer(handle),
+    )
+}
+
+/// [`read_batch_reader`] over `footer`, the file's decoded footer when the
+/// caller already holds it: then no byte of the file's end is read again, and
+/// the file's length is the handle's [`IOBase::size`] - a length a manifest
+/// recorded, or the one an opened [`Parquet`] learnt with its footer.
+///
+/// # Errors
+///
+/// Returns a read, footer, or decoding failure.
+pub(crate) fn read_batch_reader_with<H: IOBase + ?Sized>(
+    handle: &H,
+    field: Option<&Field>,
+    options: &ParquetOptions,
+    footer: Option<Arc<ParquetMetaData>>,
+) -> Result<BatchReader> {
     let columns = options.apply_columns();
-    let size = handle.size();
-    if size == 0 {
+    let Some(mut source) = open_footer(handle, Some(options), footer)? else {
         // Per the laziness contract, a missing file holds no batches.
         let schema = match options.field() {
             Some(field) => arrow_schema_from_field(&field)?,
@@ -511,8 +543,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
             std::iter::empty(),
             schema,
         )));
-    }
-    let mut source = open_footer(handle, size, Some(options))?;
+    };
     // Every array a batch holds is allocated, decoded into and handed on per
     // batch, so an unbounded read takes the crate's batch size - the one the
     // other record encodings read at - rather than the Parquet crate's 1,024
@@ -571,17 +602,26 @@ pub fn overwrite_arrow_reader<H>(
 where
     H: IOBase + ?Sized,
 {
-    overwrite_buffered(handle, batches, options, WRITE_BUFFER_BYTES)
+    overwrite_buffered(handle, batches, options, WRITE_BUFFER_BYTES).map(|_| ())
 }
 
 /// [`overwrite_arrow_reader`] holding at most `buffer` Arrow bytes of input
-/// before it feeds the column writers.
-fn overwrite_buffered<H>(
+/// before it feeds the column writers, answering the footer the writer closed
+/// the file with and the bytes it wrote.
+///
+/// What a write knows is recorded rather than read back: the footer is the
+/// one [`SerializedFileWriter::close`] encoded, so the statistics a manifest
+/// states and the length it records cost the store no read.
+///
+/// # Errors
+///
+/// Returns what [`overwrite_arrow_reader`] returns.
+pub(crate) fn overwrite_buffered<H>(
     handle: &mut H,
     batches: BatchReader,
     options: &ParquetOptions,
     buffer: usize,
-) -> Result<()>
+) -> Result<(ParquetMetaData, u64)>
 where
     H: IOBase + ?Sized,
 {
@@ -669,9 +709,9 @@ where
     if let Some(encoder) = group.take() {
         encoder.close(&mut file, &schema)?;
     }
-    file.close()?;
+    let metadata = file.close()?;
     handle.write_all_bytes(&encoded)?;
-    Ok(())
+    Ok((metadata, encoded.len() as u64))
 }
 
 /// The Arrow bytes worth spreading one feed of the column writers over
@@ -690,7 +730,7 @@ const PARALLEL_ROW_GROUP_BYTES: usize = 1024 * 1024;
 /// slices themselves, their levels computed only as each is fed - plus the
 /// batch that crossed it, beside the pages already encoded, however many
 /// rows a row group takes.
-const WRITE_BUFFER_BYTES: usize = 32 * 1024 * 1024;
+pub(crate) const WRITE_BUFFER_BYTES: usize = 32 * 1024 * 1024;
 
 /// One open row group: a writer per leaf column and, per root column, the
 /// input its writers have yet to be fed.
@@ -924,10 +964,10 @@ pub(crate) fn row_size<H: IOBase + ?Sized>(
     handle: &H,
     _options: &ParquetOptions,
 ) -> crate::Result<u64> {
-    if handle.is_empty() {
-        return Ok(0);
+    match read_footer(handle)?.0 {
+        Some(metadata) => metadata_row_size(metadata.as_ref()),
+        None => Ok(0),
     }
-    metadata_row_size(load_metadata(handle)?.as_ref())
 }
 
 /// Convert Parquet's signed footer count into the public unsigned dimension.
@@ -941,56 +981,68 @@ fn metadata_row_size(metadata: &ParquetMetaData) -> crate::Result<u64> {
 }
 
 /// Parse a file's footer without caching it.
-fn load_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<Arc<ParquetMetaData>> {
+///
+/// One [`IOBase::read_tail_bytes`] of the file's last
+/// [`FOOTER_PREFETCH_BYTES`], which also answers its length, holds the footer
+/// whenever it is shorter than that; a longer one is read from its own range
+/// after. An empty or missing file is refused as a file too short to end in a
+/// footer.
+///
+/// # Errors
+///
+/// Returns a read failure, a file too short to end in a footer, a file that
+/// does not end in the Parquet magic, a footer length reaching before the
+/// file's start, or a footer that does not decode.
+pub(crate) fn load_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<Arc<ParquetMetaData>> {
+    match read_footer(handle)? {
+        (Some(metadata), _) => Ok(metadata),
+        (None, size) => Err(short_tail(size)),
+    }
+}
+
+/// Read a file's footer and its length: [`load_metadata`], answering `None`
+/// beside a length of `0` for an empty or missing file rather than refusing
+/// it.
+///
+/// # Errors
+///
+/// Returns what [`load_metadata`] returns for a file holding a byte.
+fn read_footer<H: IOBase + ?Sized>(handle: &H) -> Result<(Option<Arc<ParquetMetaData>>, u64)> {
     use parquet::errors::ParquetError;
 
     reject_outer_coding(handle)?;
-    const TAIL: u64 = 8;
-    let size = handle.size();
-    if size < TAIL {
-        return Err(ParquetError::EOF(format!(
-            "expected an eight-byte Parquet footer tail, got {size} bytes"
-        ))
-        .into());
+    let (end, size) = handle.read_tail_bytes(FOOTER_PREFETCH_BYTES)?;
+    if size == 0 {
+        return Ok((None, 0));
     }
-    let tail = handle.read_range_bytes(size - TAIL, TAIL as usize)?;
-    if tail.len() != TAIL as usize {
-        return Err(ParquetError::EOF(format!(
-            "expected an eight-byte Parquet footer tail, got {} bytes",
-            tail.len()
-        ))
-        .into());
-    }
-    if &tail[4..] != b"PAR1" {
-        return Err(ParquetError::General(
-            "expected Parquet magic at the end of the file".to_owned(),
-        )
-        .into());
-    }
-    let footer_length = u64::from(u32::from_le_bytes([tail[0], tail[1], tail[2], tail[3]]));
-    let footer_start = (size - TAIL).checked_sub(footer_length).ok_or_else(|| {
-        Error::from(ParquetError::EOF(format!(
-            "footer declares {footer_length} metadata bytes in a {size}-byte file"
-        )))
-    })?;
-    let footer_length = usize::try_from(footer_length).map_err(|_| {
-        Error::from(ParquetError::General(
-            "Parquet footer length does not fit this address space".to_owned(),
-        ))
-    })?;
-    let footer = handle.read_range_bytes(footer_start, footer_length)?;
-    if footer.len() != footer_length {
-        return Err(ParquetError::EOF(format!(
-            "expected {footer_length} Parquet footer bytes, got {} bytes",
-            footer.len()
-        ))
-        .into());
-    }
-    Ok(Arc::new(ParquetMetaDataReader::decode_metadata(&footer)?))
+    let footer = match closing(size, &end)? {
+        Closing::Held(footer) => ParquetMetaDataReader::decode_metadata(footer)?,
+        Closing::At { start, length } => {
+            let footer = handle.read_range_bytes(start, length)?;
+            if footer.len() != length {
+                return Err(ParquetError::EOF(format!(
+                    "expected {length} Parquet footer bytes, got {} bytes",
+                    footer.len()
+                ))
+                .into());
+            }
+            ParquetMetaDataReader::decode_metadata(&footer)?
+        }
+    };
+    Ok((Some(Arc::new(footer)), size))
+}
+
+/// The refusal of a file whose last bytes cannot hold the footer length and
+/// the closing magic.
+fn short_tail(bytes: u64) -> Error {
+    parquet::errors::ParquetError::EOF(format!(
+        "expected an eight-byte Parquet footer tail, got {bytes} bytes"
+    ))
+    .into()
 }
 
 /// Recover the embedded Arrow schema from a footer already in hand.
-fn schema_from_metadata(metadata: Arc<ParquetMetaData>) -> Result<Arc<Schema>> {
+pub(crate) fn schema_from_metadata(metadata: Arc<ParquetMetaData>) -> Result<Arc<Schema>> {
     let metadata = reader_metadata(metadata)?;
     Ok(Arc::clone(metadata.schema()))
 }
@@ -1023,6 +1075,9 @@ struct ParquetSource {
     /// The fetched column chunks: empty until [`Self::fetch`], then the
     /// ranges the kept row groups and projected columns occupy.
     data: FetchedRanges,
+    /// The file's end the footer was read out of, with the offset it starts
+    /// at: the column chunks lying in it are read from it rather than fetched.
+    held: Option<(u64, Bytes)>,
     /// The decoded footer and the Arrow schema it describes.
     metadata: ArrowReaderMetadata,
     /// The row groups the read keeps, when a row bound or the filter spares
@@ -1049,13 +1104,6 @@ impl ParquetSource {
             return;
         }
         let stored = Arc::clone(self.metadata.schema());
-        if crate::expression::filter_after_select(
-            filter,
-            options.select(),
-            stored.fields().iter().map(|field| field.name().as_str()),
-        ) {
-            return;
-        }
         let root = match options.field() {
             Some(field) => field,
             None => match field_from_arrow_schema(options.name(), stored.as_ref()) {
@@ -1063,7 +1111,12 @@ impl ParquetSource {
                 Err(_) => return,
             },
         };
-        self.prune(&filter.simplify().conjuncts(), &root, &stored);
+        let (early, _) = crate::expression::filter_phases(
+            filter,
+            options.select(),
+            root.fields().iter().map(Field::name),
+        );
+        self.prune(&early.simplify().conjuncts(), &root, &stored);
     }
 
     /// Keep only the row groups the bound conjuncts could find a row in.
@@ -1197,7 +1250,11 @@ impl ParquetSource {
     /// ranges no more than [`FETCH_GAP_BYTES`] apart coalesced into one read:
     /// a pruned row group or an unprojected column is read only when it lies
     /// in such a gap between kept ones, and on an object store a gap costs
-    /// less than the request it saves. The copies are the reader's own:
+    /// less than the request it saves. A chunk starting inside the end the
+    /// footer was read out of is read from that end and costs no read, and one
+    /// running into it is fetched only up to where the end begins, the fetch
+    /// and the end joined into the one range the chunk is read out of, so no
+    /// byte the end holds is fetched again. The copies are the reader's own:
     /// nothing a batch holds points back into the handle's storage, so
     /// rewriting the file while a reader or its batches live is safe.
     ///
@@ -1250,6 +1307,25 @@ impl ParquetSource {
                 }
             }
         }
+        // A chunk starting inside the held end lies in it whole, because the
+        // end runs to the file's last byte and a chunk is cut at the length.
+        // One starting before it and running into it is fetched only up to
+        // where the end begins: the reader reads a chunk out of one range,
+        // so that fetch is joined to the end below.
+        let held_from = self.held.as_ref().map_or(u64::MAX, |(offset, _)| *offset);
+        let mut served = false;
+        let mut joins = false;
+        wanted.retain_mut(|(start, end)| {
+            if *start >= held_from {
+                served = true;
+                return false;
+            }
+            if *end > held_from {
+                *end = held_from;
+                joins = true;
+            }
+            true
+        });
         wanted.sort_unstable();
         let mut coalesced: Vec<(u64, u64)> = Vec::with_capacity(wanted.len());
         for (start, end) in wanted {
@@ -1260,7 +1336,8 @@ impl ParquetSource {
                 _ => coalesced.push((start, end)),
             }
         }
-        let mut ranges = Vec::with_capacity(coalesced.len());
+        let mut held = self.held.as_ref().filter(|_| served || joins);
+        let mut ranges = Vec::with_capacity(coalesced.len() + 1);
         for (start, end) in coalesced {
             let length = usize::try_from(end - start).map_err(|_| {
                 CoreError::from(crate::arrow::Error::from(ArrowError::ExternalError(
@@ -1271,7 +1348,24 @@ impl ParquetSource {
                     .into(),
                 )))
             })?;
-            ranges.push((start, Bytes::from(handle.read_range_bytes(start, length)?)));
+            let mut bytes = handle.read_range_bytes(start, length)?;
+            // Only the last range reaches the end, every other one ending a
+            // gap before the next. A short read stays apart from it, so the
+            // chunk it cuts is reported as the short chunk it is.
+            if joins
+                && end == held_from
+                && bytes.len() == length
+                && let Some((_, tail)) = held.take()
+            {
+                bytes.reserve_exact(tail.len());
+                bytes.extend_from_slice(tail);
+            }
+            ranges.push((start, Bytes::from(bytes)));
+        }
+        // Last: every fetched range starts before it, so the ranges stay in
+        // file order and a chunk inside it is found in it.
+        if let Some(held) = held {
+            ranges.push(held.clone());
         }
         self.data.ranges = ranges.into();
         Ok(())
@@ -1350,21 +1444,6 @@ fn stored_column(root: &Field, stored: &Schema, name: &str) -> Option<(usize, Fi
         .then(|| (index, declared.clone()))
 }
 
-/// Open a reader builder over a handle's complete bytes.
-///
-/// The whole-value door that geospatial statistics and the `internals`
-/// forwarder read through: a builder over bytes the caller may project any
-/// way it likes afterwards.
-fn open_builder<H: IOBase + ?Sized>(handle: &H) -> Result<ParquetRecordBatchReaderBuilder<Bytes>> {
-    reject_outer_coding(handle)?;
-    let bytes = Bytes::from(handle.read_all_bytes()?);
-    let metadata = ParquetMetaDataReader::new().parse_and_finish(&bytes)?;
-    Ok(ParquetRecordBatchReaderBuilder::new_with_metadata(
-        bytes,
-        reader_metadata(Arc::new(metadata))?,
-    ))
-}
-
 /// Gap between two needed byte ranges below which one read covers both.
 ///
 /// Reading a short gap costs less than a second request - a copy of a
@@ -1388,6 +1467,24 @@ struct FetchedRanges {
 }
 
 impl FetchedRanges {
+    /// Nothing fetched yet of a `length`-byte file.
+    fn fetched(length: u64) -> Self {
+        Self {
+            length,
+            whole: false,
+            ranges: Arc::from([]),
+        }
+    }
+
+    /// The whole file, in hand.
+    fn whole(bytes: Bytes) -> Self {
+        Self {
+            length: bytes.len() as u64,
+            whole: true,
+            ranges: Arc::from([(0, bytes)]),
+        }
+    }
+
     /// The fetched range holding `length` bytes from `start`.
     fn holding(&self, start: u64, length: usize) -> parquet::errors::Result<(usize, &Bytes)> {
         let after = self.ranges.partition_point(|(offset, _)| *offset <= start);
@@ -1427,33 +1524,16 @@ impl parquet::file::reader::ChunkReader for FetchedRanges {
     }
 }
 
-/// Files up to this size are fetched whole, in one read: a second request
-/// costs an object store more than the bytes a footer-first plan could skip.
-const WHOLE_READ_BYTES: u64 = 1024 * 1024;
+/// Files up to this size arrive whole in a read's one request: a read every
+/// row of which may be wanted takes this many bytes from the file's end, so
+/// only a larger file - whose end then holds its footer - costs a second.
+pub(crate) const WHOLE_READ_BYTES: usize = 1024 * 1024;
 
-/// Bytes a larger file's first read takes from its end, so the footer
-/// usually arrives with the eight-byte tail rather than in a second request.
-const FOOTER_PREFETCH_BYTES: u64 = 64 * 1024;
+/// Bytes a read that wants the footer first takes from a file's end - a
+/// schema, a count, statistics, a read a row bound may stop early - so the
+/// footer usually arrives in the one request that also learns the length.
+const FOOTER_PREFETCH_BYTES: usize = 64 * 1024;
 
-/// Read a file's footer, and the leading row groups a row bound keeps.
-///
-/// A file of at most [`WHOLE_READ_BYTES`] is read whole, in one request.
-/// A larger one - or any file under a row bound that may spare most of it -
-/// has its footer read first and its column chunks only through
-/// [`ParquetSource::fetch`], once pruning and projection have said which.
-/// With a row bound and no filter - stored rows then are result rows - only
-/// the leading row groups whose counts cover [`row_bound`] are kept. The bound is a
-/// fetch plan, not the limit itself: the record methods above still trim the
-/// result to the exact row count, so this changes what is *read*, never what
-/// a limited read yields.
-///
-/// A tail that is not a Parquet footer is read the whole-value way instead,
-/// so every malformed file is reported by the Parquet crate's own parser.
-///
-/// # Errors
-///
-/// Returns a read failure, a malformed footer, or a footer whose embedded
-/// Arrow schema cannot be interpreted.
 /// The stored rows an unfiltered read yields before its bounds are met: the
 /// [`row_offset`](IORecordOptions::row_offset) it skips plus the
 /// [`max_row_size`](IORecordOptions::max_row_size) it keeps, when it keeps a
@@ -1464,80 +1544,176 @@ fn row_bound(options: &ParquetOptions) -> Option<u64> {
         .map(|rows| rows.saturating_add(options.row_offset().unwrap_or(0)))
 }
 
+/// Read a file's footer, and the leading row groups a row bound keeps.
+///
+/// `footer` is the decoded footer a caller already holds - an opened
+/// [`Parquet`], a scan that read it to plan its projection - and then nothing
+/// of the file's end is read again: the length its offsets count in is the
+/// handle's [`IOBase::size`]. Otherwise the end is read by one
+/// [`IOBase::read_tail_bytes`], which answers the length too, so no size is
+/// asked first: the last [`WHOLE_READ_BYTES`] for a read every row of which
+/// may be wanted, so a file of at most that much is that one read, and the
+/// last [`FOOTER_PREFETCH_BYTES`] under a row bound, which may spare most of
+/// the file. A larger file's footer comes out of that end - or out of one
+/// more read of its own range, where it is longer - and its column chunks
+/// only through [`ParquetSource::fetch`], once pruning and projection have
+/// said which: a chunk the end holds is read from it, and of one reaching
+/// into it only what lies before the end is fetched. With a row bound
+/// and no filter - stored rows then are result rows - only the leading row
+/// groups whose counts cover [`row_bound`] are kept. The bound is a fetch
+/// plan, not the limit itself: the record methods above still trim the
+/// result to the exact row count, so this changes what is *read*, never what
+/// a limited read yields.
+///
+/// An end that is not a Parquet footer is read the whole-value way instead,
+/// so every malformed file is reported by the Parquet crate's own parser.
+/// `None` is an empty or missing file.
+///
+/// # Errors
+///
+/// Returns a read failure, a malformed footer, or a footer whose embedded
+/// Arrow schema cannot be interpreted.
 fn open_footer<H: IOBase + ?Sized>(
     handle: &H,
-    size: u64,
     options: Option<&ParquetOptions>,
-) -> Result<ParquetSource> {
+    footer: Option<Arc<ParquetMetaData>>,
+) -> Result<Option<ParquetSource>> {
     reject_outer_coding(handle)?;
     let bound = options
         .filter(|options| options.filter().is_always_true())
         .and_then(row_bound);
-    let footer = if size < FOOTER_TAIL {
-        None
-    } else if size <= WHOLE_READ_BYTES {
-        match bound {
-            // One read of the whole file is the cheapest plan it has.
-            None => None,
-            // The tail alone, so a bound that spares most of the file reads
-            // only the footer and the rows it keeps.
-            Some(_) => {
-                let tail = handle.read_range_bytes(size - FOOTER_TAIL, FOOTER_TAIL as usize)?;
-                footer_metadata(handle, size, &tail)?
+    let (metadata, data, held) = match footer {
+        Some(metadata) => (metadata, FetchedRanges::fetched(handle.size()), None),
+        None => {
+            let window = if bound.is_some() {
+                FOOTER_PREFETCH_BYTES
+            } else {
+                WHOLE_READ_BYTES
+            };
+            let (end, size) = handle.read_tail_bytes(window)?;
+            if size == 0 {
+                return Ok(None);
+            }
+            let end = Bytes::from(end);
+            let whole = end.len() as u64 == size;
+            let footer = if whole {
+                None
+            } else {
+                footer_metadata(handle, size, &end)?
+            };
+            match footer {
+                Some(metadata) => {
+                    let held_from = size - end.len() as u64;
+                    (
+                        Arc::new(metadata),
+                        FetchedRanges::fetched(size),
+                        Some((held_from, end)),
+                    )
+                }
+                None => {
+                    let bytes = if whole {
+                        end
+                    } else {
+                        Bytes::from(handle.read_all_bytes()?)
+                    };
+                    let metadata = ParquetMetaDataReader::new().parse_and_finish(&bytes)?;
+                    (Arc::new(metadata), FetchedRanges::whole(bytes), None)
+                }
             }
         }
-    } else {
-        let prefetch = size.min(FOOTER_PREFETCH_BYTES);
-        let end =
-            handle.read_range_bytes(size - prefetch, usize::try_from(prefetch).unwrap_or(0))?;
-        footer_metadata(handle, size, &end)?
     };
-    let Some(metadata) = footer else {
-        let bytes = Bytes::from(handle.read_all_bytes()?);
-        let metadata = ParquetMetaDataReader::new().parse_and_finish(&bytes)?;
-        return Ok(ParquetSource {
-            data: FetchedRanges {
-                length: bytes.len() as u64,
-                whole: true,
-                ranges: Arc::from([(0, bytes)]),
-            },
-            metadata: reader_metadata(Arc::new(metadata))?,
-            row_groups: None,
-        });
-    };
-    let mut row_groups = None;
-    if let Some(max_rows) = bound {
-        let mut selected = Vec::new();
-        let mut covered = 0_u64;
-        for (index, group) in metadata.row_groups().iter().enumerate() {
-            if covered >= max_rows {
-                break;
-            }
-            selected.push(index);
-            covered = covered.saturating_add(u64::try_from(group.num_rows()).unwrap_or(0));
-        }
-        if selected.len() < metadata.num_row_groups() {
-            row_groups = Some(selected);
-        }
-    }
-    Ok(ParquetSource {
-        data: FetchedRanges {
-            length: size,
-            whole: false,
-            ranges: Arc::from([]),
-        },
-        metadata: reader_metadata(Arc::new(metadata))?,
+    let row_groups = bound.and_then(|max_rows| leading_row_groups(&metadata, max_rows));
+    Ok(Some(ParquetSource {
+        data,
+        held,
+        metadata: reader_metadata(metadata)?,
         row_groups,
-    })
+    }))
+}
+
+/// The leading row groups whose counts cover `max_rows`, when they are fewer
+/// than the file holds.
+fn leading_row_groups(metadata: &ParquetMetaData, max_rows: u64) -> Option<Vec<usize>> {
+    let mut selected = Vec::new();
+    let mut covered = 0_u64;
+    for (index, group) in metadata.row_groups().iter().enumerate() {
+        if covered >= max_rows {
+            break;
+        }
+        selected.push(index);
+        covered = covered.saturating_add(u64::try_from(group.num_rows()).unwrap_or(0));
+    }
+    (selected.len() < metadata.num_row_groups()).then_some(selected)
 }
 
 /// The footer length and the closing magic every Parquet file ends in.
-const FOOTER_TAIL: u64 = 8;
+const FOOTER_TAIL: usize = 8;
+
+/// Where the footer that a file's last bytes finish with lies.
+enum Closing<'a> {
+    /// Inside those bytes.
+    Held(&'a [u8]),
+    /// Before them: `length` bytes from `start`.
+    At { start: u64, length: usize },
+}
+
+/// Locate the footer that `end`, the last bytes of a `size`-byte file,
+/// finishes with - the one reading of a file's closing bytes, shared by the
+/// footer read and the record read.
+///
+/// # Errors
+///
+/// Returns an end too short to hold the footer length and the magic, an end
+/// that does not close with the Parquet magic, or a footer length reaching
+/// before the file's start or past this address space.
+fn closing(size: u64, end: &[u8]) -> Result<Closing<'_>> {
+    use parquet::errors::ParquetError;
+
+    let Some(at) = end.len().checked_sub(FOOTER_TAIL) else {
+        return Err(short_tail(end.len() as u64));
+    };
+    let closing = &end[at..];
+    if &closing[4..] != b"PAR1" {
+        return Err(ParquetError::General(
+            "expected Parquet magic at the end of the file".to_owned(),
+        )
+        .into());
+    }
+    let length = u64::from(u32::from_le_bytes([
+        closing[0], closing[1], closing[2], closing[3],
+    ]));
+    let start = (size.saturating_sub(FOOTER_TAIL as u64))
+        .checked_sub(length)
+        .ok_or_else(|| {
+            Error::from(ParquetError::EOF(format!(
+                "footer declares {length} metadata bytes in a {size}-byte file"
+            )))
+        })?;
+    let length = usize::try_from(length).map_err(|_| {
+        Error::from(ParquetError::General(
+            "Parquet footer length does not fit this address space".to_owned(),
+        ))
+    })?;
+    let held_from = size.saturating_sub(end.len() as u64);
+    if start < held_from {
+        return Ok(Closing::At { start, length });
+    }
+    usize::try_from(start - held_from)
+        .ok()
+        .and_then(|from| end.get(from..at))
+        .map(Closing::Held)
+        .ok_or_else(|| {
+            Error::from(ParquetError::EOF(format!(
+                "expected {length} Parquet footer bytes, got {} bytes",
+                end.len()
+            )))
+        })
+}
 
 /// Decode the footer that a file's last bytes, `end`, finish with.
 ///
 /// Answers from `end` when it holds the whole footer, and reads the footer's
-/// own range otherwise. `None` is a tail that is not a Parquet footer, or a
+/// own range otherwise. `None` is an end that is not a Parquet footer, or a
 /// footer that does not decode - left for the whole-value parser to report.
 ///
 /// # Errors
@@ -1548,31 +1724,14 @@ fn footer_metadata<H: IOBase + ?Sized>(
     size: u64,
     end: &[u8],
 ) -> Result<Option<ParquetMetaData>> {
-    let tail = FOOTER_TAIL as usize;
-    let Some(closing) = end.len().checked_sub(tail).map(|at| &end[at..]) else {
-        return Ok(None);
-    };
-    if &closing[4..] != b"PAR1" {
-        return Ok(None);
+    match closing(size, end) {
+        Ok(Closing::Held(footer)) => Ok(ParquetMetaDataReader::decode_metadata(footer).ok()),
+        Ok(Closing::At { start, length }) => {
+            let footer = handle.read_range_bytes(start, length)?;
+            Ok(ParquetMetaDataReader::decode_metadata(&footer).ok())
+        }
+        Err(_) => Ok(None),
     }
-    let length = u64::from(u32::from_le_bytes([
-        closing[0], closing[1], closing[2], closing[3],
-    ]));
-    let (Some(start), Ok(length)) = (
-        (size - FOOTER_TAIL).checked_sub(length),
-        usize::try_from(length),
-    ) else {
-        return Ok(None);
-    };
-    let held_from = size - end.len() as u64;
-    if start >= held_from {
-        let from = usize::try_from(start - held_from).unwrap_or(usize::MAX);
-        return Ok(end
-            .get(from..end.len() - tail)
-            .and_then(|footer| ParquetMetaDataReader::decode_metadata(footer).ok()));
-    }
-    let footer = handle.read_range_bytes(start, length)?;
-    Ok(ParquetMetaDataReader::decode_metadata(&footer).ok())
 }
 
 /// The compressed column bytes a read decodes before it splits across
@@ -1731,6 +1890,8 @@ impl ParallelRead {
             schema,
             source: ParquetSource {
                 data: source.data.clone(),
+                // Fetched already: the held end is among the data's ranges.
+                held: None,
                 metadata: source.metadata.clone(),
                 row_groups: None,
             },
@@ -1883,9 +2044,10 @@ impl arrow_array::RecordBatchReader for ParallelRead {
 ///
 /// Every read and write goes through this type, so the handle, the options,
 /// and the cached footer live in one place instead of being repeated at each
-/// call. [`IOBase::open`] materializes the handle and caches the footer, so
-/// repeated schema or statistics reads do not re-parse it; [`IOBase::close`]
-/// releases both.
+/// call. [`IOBase::open`] materializes the handle and caches the footer and
+/// the file's length, read together by one [`IOBase::read_tail_bytes`], so
+/// repeated schema or statistics reads do not re-parse it and a record read
+/// fetches only the column chunks it keeps; [`IOBase::close`] releases both.
 #[derive(Debug)]
 pub struct Parquet<H: IOBase> {
     handle: H,
@@ -1896,8 +2058,9 @@ pub struct Parquet<H: IOBase> {
     /// Whether the opened session is over a container, asked once at `open`:
     /// its leaves answer every dimension ask, so it caches nothing.
     container: bool,
-    /// `Some(None)` is the stable opened-session answer for an empty handle.
-    cached: OnceLock<Option<Arc<ParquetMetaData>>>,
+    /// The footer and the length of the file it closes; `Some((None, 0))` is
+    /// the stable opened-session answer for an empty handle.
+    cached: OnceLock<(Option<Arc<ParquetMetaData>>, u64)>,
     /// The schema conversion is also metadata-only, but materially more
     /// expensive than returning its result. Cache the derived width only for
     /// the explicitly opened session, under the same invalidation rules as
@@ -2005,24 +2168,19 @@ impl<H: IOBase> Parquet<H> {
     /// Return opened-session footer metadata, or a fresh uncached closed read.
     fn metadata(&self) -> Result<Option<Arc<ParquetMetaData>>> {
         if !self.caches() {
-            return if self.handle.is_empty() {
-                Ok(None)
-            } else {
-                load_metadata(&self.handle).map(Some)
-            };
+            return Ok(read_footer(&self.handle)?.0);
         }
-        if let Some(cached) = self.cached.get() {
+        if let Some((cached, _)) = self.cached.get() {
             return Ok(cached.clone());
         }
-        let loaded = if self.handle.is_empty() {
-            None
-        } else {
-            Some(load_metadata(&self.handle)?)
-        };
+        let loaded = read_footer(&self.handle)?;
         // Concurrent immutable asks may race to refill an invalidated cache;
         // whichever answer wins defines this opened session consistently.
         let _ = self.cached.set(loaded.clone());
-        Ok(self.cached.get().cloned().unwrap_or(loaded))
+        Ok(self
+            .cached
+            .get()
+            .map_or(loaded.0, |(cached, _)| cached.clone()))
     }
 
     /// Refresh the footer after publication without implicitly opening a
@@ -2030,12 +2188,7 @@ impl<H: IOBase> Parquet<H> {
     fn refresh_metadata(&mut self) -> crate::Result<()> {
         self.invalidate_metadata();
         if self.caches() {
-            let loaded = if self.handle.is_empty() {
-                None
-            } else {
-                Some(load_metadata(&self.handle)?)
-            };
-            let _ = self.cached.set(loaded);
+            let _ = self.cached.set(read_footer(&self.handle)?);
         }
         Ok(())
     }
@@ -2044,15 +2197,10 @@ impl<H: IOBase> Parquet<H> {
     /// The original write error remains authoritative.
     fn refresh_metadata_after_error(&mut self) {
         self.invalidate_metadata();
-        if self.caches() {
-            let loaded = if self.handle.is_empty() {
-                Some(None)
-            } else {
-                load_metadata(&self.handle).ok().map(Some)
-            };
-            if let Some(loaded) = loaded {
-                let _ = self.cached.set(loaded);
-            }
+        if self.caches()
+            && let Ok(loaded) = read_footer(&self.handle)
+        {
+            let _ = self.cached.set(loaded);
         }
     }
 
@@ -2197,30 +2345,47 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         Ok(self.read_geospatial_statistics(column)?)
     }
 
-    fn overwrite_arrow_reader(
+    /// The footer the opened session holds, which the record read then reads
+    /// no byte of the file's end for; a closed wrapper's, a container's and
+    /// an empty file's none.
+    fn parquet_footer(&self) -> Option<Arc<ParquetMetaData>> {
+        if !self.caches() {
+            return None;
+        }
+        self.cached.get().and_then(|(footer, _)| footer.clone())
+    }
+
+    fn overwrite_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> crate::Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
         // Publication may have changed the visible file before a later source
         // or storage failure. Never retain a footer from before the attempt.
-        let result = match crate::iobase::overwrite_arrow_reader_default(self, batches, options) {
-            Ok(result) => result,
-            Err(error) => {
-                self.refresh_metadata_after_error();
-                return Err(error);
-            }
-        };
+        let result =
+            match crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
+                .map(|(_, result)| result)
+            {
+                Ok(result) => result,
+                Err(error) => {
+                    self.refresh_metadata_after_error();
+                    return Err(error);
+                }
+            };
         self.refresh_metadata()?;
         Ok(result)
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
         &mut self,
-        batches: BatchReader,
+        value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> crate::Result<()> {
+        let batches = value.into_arrow_reader();
         self.require_record_options(options)?;
         let result = crate::iobase::leaf_writer(self, batches, options);
         if let Err(error) = result {
@@ -2231,29 +2396,44 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         Ok(())
     }
 
-    fn append_arrow_reader(
+    fn append_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> crate::Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
 
-    fn merge_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> crate::Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
         crate::iobase::merge_arrow_reader_default(self, batches, options)
     }
 }
 
 impl<H: IOBase> IOBase for Parquet<H> {
-    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
-        size, capacity, reserve, uri, url,
+    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, read_tail_bytes,
+        pstream_bytes, capacity, reserve, uri, url,
         bound_location, mtime, media_type, set_media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container);
+
+    /// The length the opened session read with its footer, asked of nothing;
+    /// the handle's otherwise.
+    fn size(&self) -> u64 {
+        match self.cached.get() {
+            Some((_, size)) if self.caches() => *size,
+            _ => self.handle.size(),
+        }
+    }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
         self.invalidate_metadata();
@@ -2293,12 +2473,7 @@ impl<H: IOBase> IOBase for Parquet<H> {
         // caches nothing one leaf's footer would answer.
         self.container = self.handle.is_container();
         if !self.container {
-            let metadata = if self.handle.is_empty() {
-                None
-            } else {
-                Some(load_metadata(&self.handle)?)
-            };
-            let _ = self.cached.set(metadata);
+            let _ = self.cached.set(read_footer(&self.handle)?);
         }
         self.opened = true;
         Ok(())
@@ -2327,7 +2502,7 @@ impl<H: IOBase> IOBase for Parquet<H> {
         let result = self.handle.clear();
         if self.caches() {
             if result.is_ok() {
-                let _ = self.cached.set(None);
+                let _ = self.cached.set((None, 0));
             } else {
                 self.refresh_metadata_after_error();
             }
@@ -2371,7 +2546,8 @@ pub mod internals {
     use crate::IOBase;
     use crate::arrow::Result;
 
-    /// Open the reader builder a Parquet read goes through.
+    /// Open a reader builder over a handle's complete bytes, decoded as a
+    /// Parquet read decodes them.
     ///
     /// # Errors
     ///
@@ -2380,12 +2556,20 @@ pub mod internals {
     pub fn open_builder<H: IOBase + ?Sized>(
         handle: &H,
     ) -> Result<ParquetRecordBatchReaderBuilder<Bytes>> {
-        super::open_builder(handle)
+        super::reject_outer_coding(handle)?;
+        let bytes = Bytes::from(handle.read_all_bytes()?);
+        let metadata =
+            parquet::file::metadata::ParquetMetaDataReader::new().parse_and_finish(&bytes)?;
+        Ok(ParquetRecordBatchReaderBuilder::new_with_metadata(
+            bytes,
+            super::reader_metadata(std::sync::Arc::new(metadata))?,
+        ))
     }
 
     /// Replace the file `handle` holds as [`super::overwrite_arrow_reader`]
     /// does, feeding the column writers every `buffer` Arrow bytes - small
-    /// enough, in a test, that one row group takes several feeds.
+    /// enough, in a test, that one row group takes several feeds - and answer
+    /// the footer the writer closed the file with and the bytes it wrote.
     ///
     /// # Errors
     ///
@@ -2395,7 +2579,7 @@ pub mod internals {
         batches: crate::arrow::BatchReader,
         options: &super::ParquetOptions,
         buffer: usize,
-    ) -> Result<()> {
+    ) -> Result<(parquet::file::metadata::ParquetMetaData, u64)> {
         super::overwrite_buffered(handle, batches, options, buffer)
     }
 
@@ -2409,3 +2593,5 @@ pub mod internals {
         options
     }
 }
+
+crate::media_serie::media_serie!(ParquetSerie, Parquet, as_parquet, get_parquet_mut);

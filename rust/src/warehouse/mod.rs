@@ -408,3 +408,5 @@ enum Parent<'a> {
     Catalog(&'a mut MemoryCatalog),
     Namespace(&'a mut MemoryNamespace),
 }
+
+pub use table::WarehouseTableSerie;

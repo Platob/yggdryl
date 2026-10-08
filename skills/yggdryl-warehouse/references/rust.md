@@ -31,9 +31,9 @@ assert_eq!(trades.storage(), "text/csv");
 assert_eq!(trades.field()?.field_len(), 2);
 assert_eq!(trades.row_size()?, 2);
 
-// Every record verb is the table's: a `SerieReader` under its own options.
+// Every record verb is the table's: a `StreamChunkedSerie` under its own options.
 let mut rows = 0;
-for serie in trades.read_serie(None)? {
+for serie in trades.read_serie(None)?.into_chunked_stream(None, None)?.into_chunks() {
     rows += serie?.len();
 }
 assert_eq!(rows, 2);

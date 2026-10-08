@@ -186,7 +186,7 @@ with pytest.raises(ValueError, match=r"\$\.merge_by"):
 
 ## Choose the write mode at run time
 
-`write_arrow_reader|table|batch` and `write_records` take the mode as a string, and so does `write_serie(value, mode="overwrite")`, whose `overwrite_serie`/`append_serie`/`merge_serie` name it: `value` is a `Serie`, a `ChunkedSerie`, a `SerieReader` or anything `SerieReader.from_` reads, and with `read_serie` they are also the record door of JSON, JSON Lines, YAML, TOML and XML handles.
+`write_arrow_reader|table|batch` and `write_records` take the mode as a string, and so does `write_serie(value, mode="overwrite")`, whose `overwrite_serie`/`append_serie`/`merge_serie` name it: `value` is a `Serie`, a `ChunkedSerie`, a `StreamChunkedSerie` or anything `StreamChunkedSerie.from_` reads, and with `read_serie` they are also the record door of JSON, JSON Lines, YAML, TOML and XML handles.
 
 ```python
 import pathlib
@@ -194,7 +194,7 @@ import tempfile
 
 import pyarrow as pa
 
-from yggdryl import ChunkedSerie, IOBase, Serie, SerieReader
+from yggdryl import ChunkedSerie, IOBase, Serie, StreamChunkedSerie
 
 root = pathlib.Path(tempfile.mkdtemp())
 handle = IOBase(root / "trades.arrows")
@@ -212,7 +212,7 @@ lines = IOBase(root / "quotes.jsonl")
 lines.overwrite_serie(pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 200]}))
 assert lines.read_bytes().count(b"\n") == 2
 read = lines.read_serie()
-assert isinstance(read, SerieReader)
+assert isinstance(read, Serie)
 assert len(Serie.from_(read)) == 2
 
 # A document is written whole: write_serie on it takes "overwrite" only.

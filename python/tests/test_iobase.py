@@ -20,7 +20,7 @@ from yggdryl import (
     IOResult,
     RecordOptions,
     Serie,
-    SerieReader,
+    StreamChunkedSerie,
     Url,
 )
 from yggdryl.holder import Buffer, Buffered
@@ -1052,7 +1052,7 @@ def test_a_handle_is_addressed_by_an_identifier_and_a_location_is_one(
 # ---------------------------------------------------------------------------
 # `read_serie` and the `*_serie` writes - mirrors the serie cases of
 # rust/tests/root/iomedia.rs through the binding's intake: one read answering
-# a `SerieReader` whatever the resource is, one write taking rows in any
+# a `StreamChunkedSerie` whatever the resource is, one write taking rows in any
 # shape the crate or a columnar library holds them.
 # ---------------------------------------------------------------------------
 
@@ -1070,14 +1070,14 @@ def quote_rows() -> list[dict[str, Any]]:
 
 
 def rows_of(handle: IOBase, **properties: Any) -> list[dict[str, Any]]:
-    return [row for serie in handle.read_serie(**properties) for row in serie.as_py()]
+    return [row for serie in StreamChunkedSerie.from_serie(handle.read_serie(**properties)) for row in serie.as_py()]
 
 
 # Every shape a written value takes, each built fresh: a stream is pulled once.
 SOURCES: dict[str, Callable[[], object]] = {
     "serie": lambda: Serie.from_(quote_table()),
     "chunked_serie": lambda: ChunkedSerie.from_(quote_table()),
-    "serie_reader": lambda: SerieReader.from_(quote_table()),
+    "serie_reader": lambda: StreamChunkedSerie.from_(quote_table()),
     "table": quote_table,
     "record_batch_reader": lambda: quote_table().to_reader(),
     "pandas": lambda: quote_table().to_pandas(),
@@ -1127,7 +1127,7 @@ class TestSerieVerbs:
         # over one is written with it released and takes it back per pull.
         handle.overwrite_serie(batches())
         assert rows_of(handle) == quote_rows()
-        handle.append_serie(SerieReader.from_(batches()))
+        handle.append_serie(StreamChunkedSerie.from_(batches()))
         assert rows_of(handle) == quote_rows() * 2
         # Rows as mappings are a record stream too.
         handle.overwrite_serie(quote_rows())
@@ -1137,9 +1137,9 @@ class TestSerieVerbs:
         self, tmp_path: pathlib.Path
     ) -> None:
         handle = IOBase(tmp_path / "quotes.arrows")
-        reader = SerieReader.from_(quote_table())
+        reader = StreamChunkedSerie.from_(quote_table())
         handle.overwrite_serie(reader)
-        with pytest.raises(ValueError, match="handed over"):
+        with pytest.raises(ValueError, match="already consumed"):
             handle.append_serie(reader)
         assert rows_of(handle) == quote_rows()
 
@@ -1155,8 +1155,8 @@ class TestSerieVerbs:
         assert rows_of(handle, options=RecordOptions("quotes.arrows", filter="size > 100")) == (
             quote_rows()[1:]
         )
-        read = handle.read_serie(field=quote_root())
-        assert isinstance(read, SerieReader)
+        read = StreamChunkedSerie.from_serie(handle.read_serie(field=quote_root()))
+        assert isinstance(read, StreamChunkedSerie)
         assert read.field == quote_root()
         assert Serie.from_(read).as_py() == quote_rows()
 
@@ -1183,8 +1183,8 @@ class TestSerieVerbs:
     ) -> None:
         handle = IOBase(tmp_path / name)
         handle.write_serie(quote_table())
-        read = handle.read_serie(field=quote_root())
-        assert isinstance(read, SerieReader)
+        read = StreamChunkedSerie.from_serie(handle.read_serie(field=quote_root()))
+        assert isinstance(read, StreamChunkedSerie)
         assert Serie.from_(read).as_py() == quote_rows()
 
     def test_a_structured_document_takes_an_overwrite_only_and_names_the_mode(
@@ -1226,14 +1226,14 @@ class TestSerieVerbs:
     ) -> None:
         column = IOBase(tmp_path / "column.arrows")
         column.write_serie(Serie.from_(quote_table()))
-        read = column.read_serie()
-        assert isinstance(read, SerieReader)
+        read = StreamChunkedSerie.from_serie(column.read_serie())
+        assert isinstance(read, StreamChunkedSerie)
         copied = IOBase(tmp_path / "copied.arrows")
         copied.write_serie(read)
-        assert copied.read_serie().into_arrow_reader().read_all().equals(quote_table())
+        assert StreamChunkedSerie.from_serie(copied.read_serie()).into_arrow_reader().read_all().equals(quote_table())
         frames = IOBase(tmp_path / "quotes.jsonl")
         frames.write_serie(quote_table().to_pandas())
-        assert len(Serie.from_(frames.read_serie(field=quote_root()))) == 2
+        assert len(Serie.from_(StreamChunkedSerie.from_serie(frames.read_serie(field=quote_root())))) == 2
 
 
 # ---------------------------------------------------------------------------

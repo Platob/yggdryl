@@ -304,7 +304,7 @@ mod iceberg {
         let path = root("update-schema");
         let mut first = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -345,7 +345,7 @@ mod iceberg {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec,
         )
@@ -368,7 +368,7 @@ mod iceberg {
         let by_symbol = root("sorted-by-symbol");
         let mut sorted = IcebergTable::create_sorted(
             LocalFolder::new(&by_symbol).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
             SortOrder {
@@ -412,7 +412,7 @@ mod iceberg {
         let plain = root("unsorted");
         let mut unsorted = IcebergTable::create_sorted(
             LocalFolder::new(&plain).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
             SortOrder::unsorted(),
@@ -467,7 +467,7 @@ mod iceberg {
         let appended = |label: &str, batches: Vec<RecordBatch>| -> Vec<i64> {
             let mut table = IcebergTable::create_sorted(
                 LocalFolder::new(root(label)).unwrap(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema.clone(),
                 PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
                 order_by_symbol().clone(),
@@ -515,8 +515,8 @@ mod iceberg {
         assert_eq!(ordered, [1, 2, 3, 4]);
 
         // Runs at a batch's start, middle and end, then two partitions
-        // interleaved: files follow the groups' first rows, each group's
-        // rows in symbol order.
+        // interleaved: files follow the groups' tuples in order, each
+        // group's rows in symbol order.
         let runs = appended(
             "runs",
             vec![
@@ -528,7 +528,348 @@ mod iceberg {
                 batch(&[6, 7, 8], &["b", "a", "a"], &["W", "V", "W"]),
             ],
         );
-        assert_eq!(runs, [1, 2, 3, 4, 5, 8, 6, 7]);
+        assert_eq!(runs, [7, 8, 6, 1, 2, 3, 4, 5]);
+    }
+
+    /// A source whose schema declares the order its rows keep, and the
+    /// writer reading that declaration to close each partition as the
+    /// stream moves past it.
+    mod clustered {
+        use super::{root, schema};
+        use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
+        use arrow_schema::{ArrowError, SchemaRef};
+        use std::collections::HashMap;
+        use std::sync::{Arc, Mutex};
+        use yggdryl::iceberg::{FormatVersion, IcebergOptions, IcebergTable, PartitionSpec};
+        use yggdryl::local::LocalFolder;
+
+        /// A batch stream that records, as each batch is pulled, how many
+        /// data files the table beneath `data` has written so far.
+        struct Watched {
+            schema: SchemaRef,
+            batches: std::vec::IntoIter<RecordBatch>,
+            data: std::path::PathBuf,
+            seen: Arc<Mutex<Vec<usize>>>,
+        }
+
+        fn data_files(folder: &std::path::Path) -> usize {
+            let Ok(entries) = std::fs::read_dir(folder) else {
+                return 0;
+            };
+            entries
+                .map(|entry| entry.unwrap().path())
+                .map(|path| {
+                    if path.is_dir() {
+                        data_files(&path)
+                    } else {
+                        usize::from(
+                            path.extension()
+                                .is_some_and(|extension| extension == "parquet"),
+                        )
+                    }
+                })
+                .sum()
+        }
+
+        impl Iterator for Watched {
+            type Item = Result<RecordBatch, ArrowError>;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                let batch = self.batches.next()?;
+                self.seen.lock().unwrap().push(data_files(&self.data));
+                Some(Ok(batch))
+            }
+        }
+
+        impl RecordBatchReader for Watched {
+            fn schema(&self) -> SchemaRef {
+                Arc::clone(&self.schema)
+            }
+        }
+
+        /// The arrow schema of the test rows, declaring `order` where given.
+        fn arrow_schema(order: Option<&str>) -> SchemaRef {
+            let plain = schema().into_arrow_schema().unwrap();
+            match order {
+                Some(order) => Arc::new(
+                    plain
+                        .as_ref()
+                        .clone()
+                        .with_metadata(HashMap::from([("SORT:by".to_owned(), order.to_owned())])),
+                ),
+                None => plain,
+            }
+        }
+
+        /// One batch of a row per venue in `venues`, its ids from `first`.
+        fn venue_batch(first: i64, venues: &[&str]) -> RecordBatch {
+            let ids: Vec<i64> = (first..).take(venues.len()).collect();
+            RecordBatch::try_new(
+                arrow_schema(None),
+                vec![
+                    Arc::new(Int64Array::from(ids)),
+                    Arc::new(StringArray::from(vec!["S"; venues.len()])),
+                    Arc::new(StringArray::from(venues.to_vec())),
+                ],
+            )
+            .unwrap()
+        }
+
+        /// Append `batches` - each the venues of its rows, ids counted from
+        /// zero across them - on one thread under a stream declaring
+        /// `order`: the data files written before each pull, the files each
+        /// venue holds, and every id read back.
+        fn appended(
+            label: &str,
+            order: Option<&str>,
+            batches: &[&[&str]],
+        ) -> (Vec<usize>, Vec<(String, usize)>, Vec<i64>) {
+            let path = root(label);
+            let schema = schema();
+            let mut table = IcebergTable::create(
+                LocalFolder::new(&path).unwrap(),
+                FormatVersion::V3,
+                schema.clone(),
+                PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+            )
+            .unwrap();
+            table.set_options(IcebergOptions::new().try_with_write_parallelism(1).unwrap());
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let mut first = 0_i64;
+            let batches: Vec<RecordBatch> = batches
+                .iter()
+                .map(|venues| {
+                    let batch = venue_batch(first, venues);
+                    first += i64::try_from(venues.len()).unwrap();
+                    batch
+                })
+                .collect();
+            let source = Watched {
+                schema: arrow_schema(order),
+                batches: batches.into_iter(),
+                data: path.join("data"),
+                seen: Arc::clone(&seen),
+            };
+            table.commit_append(Box::new(source)).unwrap();
+            let mut files: Vec<(String, usize)> = Vec::new();
+            for (file, _) in table.data_files().unwrap() {
+                let path = file.file_path.to_string().replace('\\', "/");
+                let venue = path
+                    .split('/')
+                    .find_map(|part| part.strip_prefix("venue="))
+                    .unwrap()
+                    .to_owned();
+                match files.iter_mut().find(|(held, _)| *held == venue) {
+                    Some((_, count)) => *count += 1,
+                    None => files.push((venue, 1)),
+                }
+            }
+            files.sort();
+            let mut ids: Vec<i64> = table
+                .scan(None)
+                .unwrap()
+                .flat_map(|batch| {
+                    let batch = batch.unwrap();
+                    let ids = batch.column_by_name("id").unwrap();
+                    ids.as_any()
+                        .downcast_ref::<Int64Array>()
+                        .unwrap()
+                        .values()
+                        .to_vec()
+                })
+                .collect();
+            ids.sort_unstable();
+            let _ = std::fs::remove_dir_all(&path);
+            let seen = seen.lock().unwrap().clone();
+            (seen, files, ids)
+        }
+
+        const IN_ORDER: &[&[&str]] = &[&["A", "A"], &["B", "B"], &["C", "C"], &["D", "D"]];
+
+        #[test]
+        fn a_source_declaring_its_partition_order_writes_each_partition_once_the_next_arrives() {
+            // Declared in venue order and kept, each venue is written while
+            // the source still streams: by the third pull the first venue's
+            // file is on disk, the second one's by the fourth.
+            let (seen, files, ids) = appended("clustered-declared", Some(r#"["venue"]"#), IN_ORDER);
+            assert_eq!(seen, [0, 0, 1, 2]);
+            assert_eq!(
+                files,
+                [
+                    ("A".into(), 1),
+                    ("B".into(), 1),
+                    ("C".into(), 1),
+                    ("D".into(), 1)
+                ]
+            );
+            assert_eq!(ids, (0..8).collect::<Vec<_>>());
+
+            // Descending, and the venue ahead of other keys, cluster as well.
+            let (seen, _, _) = appended(
+                "clustered-descending",
+                Some(r#"["venue desc", "id"]"#),
+                &[&["D", "D"], &["C", "C"], &["B", "B"], &["A", "A"]],
+            );
+            assert_eq!(seen, [0, 0, 1, 2]);
+
+            // Undeclared, or declared on another column first, every
+            // partition stays open until the source ends.
+            let (seen, files, _) = appended("clustered-undeclared", None, IN_ORDER);
+            assert_eq!(seen, [0, 0, 0, 0]);
+            assert_eq!(files.len(), 4);
+            let (seen, _, _) =
+                appended("clustered-other-key", Some(r#"["id", "venue"]"#), IN_ORDER);
+            assert_eq!(seen, [0, 0, 0, 0]);
+        }
+
+        #[test]
+        fn a_claim_the_rows_break_is_dropped_at_the_first_batch_out_of_it() {
+            // Broken in the first batch - a venue's rows not one run - or by
+            // the second running against the claimed direction: dropped
+            // before any partition closed, one file per venue.
+            let (seen, files, ids) = appended(
+                "clustered-broken-at-once",
+                Some(r#"["venue"]"#),
+                &[&["A", "B", "A"], &["B", "B"]],
+            );
+            assert_eq!(seen, [0, 0]);
+            assert_eq!(files, [("A".into(), 1), ("B".into(), 1)]);
+            assert_eq!(ids, (0..5).collect::<Vec<_>>());
+            let (seen, files, _) = appended(
+                "clustered-wrong-direction",
+                Some(r#"["venue desc"]"#),
+                &[&["A", "A"], &["B", "B"], &["C", "C"]],
+            );
+            assert_eq!(seen, [0, 0, 0]);
+            assert_eq!(files, [("A".into(), 1), ("B".into(), 1), ("C".into(), 1)]);
+
+            // Kept long enough to close A, then broken by A returning: A's
+            // rows land in two files, every row read back - a second file,
+            // never a row.
+            let (_, files, ids) = appended(
+                "clustered-broken-late",
+                Some(r#"["venue"]"#),
+                &[&["A", "A"], &["B", "B"], &["A", "A"]],
+            );
+            assert_eq!(files, [("A".into(), 2), ("B".into(), 1)]);
+            assert_eq!(ids, (0..6).collect::<Vec<_>>());
+            // The same rows undeclared hold A open: one file each.
+            let (_, files, _) = appended(
+                "clustered-broken-undeclared",
+                None,
+                &[&["A", "A"], &["B", "B"], &["A", "A"]],
+            );
+            assert_eq!(files, [("A".into(), 1), ("B".into(), 1)]);
+        }
+
+        #[test]
+        fn a_serie_sorted_by_venue_closes_its_partitions_in_the_order_they_arrive() {
+            use yggdryl::{IOMedia, IOMode, Serie};
+
+            // The serie's sort declares the order, proven, and its record
+            // stream carries it: each venue closes as the next arrives, so the
+            // manifest lists them as they arrived, venue descending. The same
+            // rows through the arrow door claim nothing - the shaping onto
+            // the table's schema, which states the table's own order, is no
+            // claim - and close in key order when the source ends.
+            let written = |label: &str, serie: bool| -> Vec<String> {
+                let path = root(label);
+                let schema = schema();
+                let mut table = IcebergTable::create(
+                    LocalFolder::new(&path).unwrap(),
+                    FormatVersion::V3,
+                    schema.clone(),
+                    PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+                )
+                .unwrap();
+                table.set_options(IcebergOptions::new().try_with_write_parallelism(1).unwrap());
+                let rows = Serie::from_arrow_batch(
+                    None,
+                    &venue_batch(0, &["C", "A", "B", "A", "C", "B"]),
+                    yggdryl::ArrowCastOptions::new(),
+                )
+                .unwrap()
+                .into_sort_by("venue desc")
+                .unwrap();
+                let result = if serie {
+                    table.write_serie(rows, IOMode::Append, None).unwrap()
+                } else {
+                    let batch = rows.into_arrow_batch().unwrap();
+                    let plain = arrow_schema(None);
+                    let batch = RecordBatch::try_new(plain, batch.columns().to_vec()).unwrap();
+                    let options = table.record_options().unwrap();
+                    table
+                        .append_arrow_reader(
+                            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+                            &options,
+                        )
+                        .unwrap()
+                };
+                assert_eq!(result.written_rows, 6);
+                let venues = table
+                    .data_files()
+                    .unwrap()
+                    .into_iter()
+                    .map(|(file, _)| {
+                        let path = file.file_path.to_string().replace('\\', "/");
+                        path.split('/')
+                            .find_map(|part| part.strip_prefix("venue="))
+                            .unwrap()
+                            .to_owned()
+                    })
+                    .collect();
+                let _ = std::fs::remove_dir_all(&path);
+                venues
+            };
+            assert_eq!(written("clustered-serie", true), ["C", "B", "A"]);
+            assert_eq!(written("clustered-serie-arrow", false), ["A", "B", "C"]);
+        }
+    }
+
+    #[test]
+    fn a_root_bound_to_its_thread_is_written_and_scanned_there_alone() {
+        // A filesystem that answers only on the thread that made it - a
+        // JavaScript handler's - holds a table asked to write and scan on
+        // four threads: every call reaches it from the calling thread, and
+        // every row lands and reads back.
+        let (filesystem, folder) = crate::counting_filesystem::counted_folder("thread-bound");
+        filesystem.bind_to_current_thread();
+        let schema = schema();
+        let mut table = IcebergTable::create(
+            folder,
+            FormatVersion::V3,
+            schema.clone(),
+            PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+        )
+        .unwrap();
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_write_parallelism(4)
+                .unwrap()
+                .try_with_read_parallelism(4)
+                .unwrap()
+                .with_read_parallel_min_files(1)
+                .with_read_parallel_min_file_size_bytes(0),
+        );
+        let ids: Vec<i64> = (0..64).collect();
+        let symbols: Vec<&str> = ids.iter().map(|_| "S").collect();
+        let venues: Vec<&str> = ids
+            .iter()
+            .map(|id| ["XNAS", "XLON", "XPAR", "XAMS"][usize::try_from(*id).unwrap() % 4])
+            .collect();
+        table.commit_append(rows(&ids, &symbols, &venues)).unwrap();
+        assert_eq!(table.data_files().unwrap().len(), 4);
+        let read: usize = table
+            .scan(None)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        assert_eq!(read, 64);
+        assert_eq!(
+            filesystem.off_thread_calls(),
+            0,
+            "every call on the calling thread"
+        );
     }
 
     #[test]
@@ -538,7 +879,7 @@ mod iceberg {
         let path = root("no-bytes");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -576,7 +917,7 @@ mod iceberg {
         let schema = schema();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
         )
@@ -711,9 +1052,9 @@ mod iceberg {
         let spec = PartitionSpec::identity(1, schema, &["venue"]).unwrap();
         let mut table = match order {
             Some(order) => {
-                IcebergTable::create_sorted(folder, FormatVersion::V2, schema.clone(), spec, order)
+                IcebergTable::create_sorted(folder, FormatVersion::V3, schema.clone(), spec, order)
             }
-            None => IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec),
+            None => IcebergTable::create(folder, FormatVersion::V3, schema.clone(), spec),
         }
         .unwrap();
         for commit in commits {
@@ -750,10 +1091,8 @@ mod iceberg {
     }
 
     /// The records a whole-table record read yields, each as its batch.
-    fn records_of(reader: yggdryl::SerieReader) -> Vec<RecordBatch> {
-        reader
-            .map(|record| record.unwrap().into_arrow_batch().unwrap())
-            .collect()
+    fn records_of(reader: yggdryl::StreamChunkedSerie) -> Vec<RecordBatch> {
+        reader.map(Result::unwrap).collect()
     }
 
     /// The `order by` keys a record declares, as text.
@@ -790,9 +1129,10 @@ mod iceberg {
         );
         let expected = [9, 4, 3, 7, 5, 2, 6, 8, 1];
 
-        let reader = table.read_serie(None).unwrap();
+        let reader = yggdryl::StreamChunkedSerie::from_serie(table.read_serie(None).unwrap())
+            .expect("native record stream");
         assert_eq!(reader.field().get_metadata("SORT:by"), order);
-        let records: Vec<yggdryl::Serie> = reader.map(Result::unwrap).collect();
+        let records: Vec<yggdryl::Serie> = reader.into_chunks().map(Result::unwrap).collect();
         for record in &records {
             assert_eq!(declared_keys(record), ["venue", "ts", "id"]);
         }
@@ -862,11 +1202,12 @@ mod iceberg {
                 &[("XNAS", 11, 7), ("XLON", 10, 8), ("XNAS", 10, 9)],
             ],
         );
-        let records: Vec<yggdryl::Serie> = table
-            .read_serie(None)
-            .unwrap()
-            .map(Result::unwrap)
-            .collect();
+        let records: Vec<yggdryl::Serie> =
+            yggdryl::StreamChunkedSerie::from_serie(table.read_serie(None).unwrap())
+                .expect("native record stream")
+                .into_chunks()
+                .map(Result::unwrap)
+                .collect();
         assert_eq!(records.len(), table.data_files().unwrap().len());
         assert_eq!(
             records.iter().map(yggdryl::Serie::len).collect::<Vec<_>>(),
@@ -892,7 +1233,7 @@ mod iceberg {
         let (filesystem, folder) = counted_folder("ordered-window");
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table =
-            IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec).unwrap();
+            IcebergTable::create(folder, FormatVersion::V3, schema.clone(), spec).unwrap();
         let commits: [&[Quote]; 3] = [
             &[("XNAS", 1, 1), ("XLON", 2, 2), ("XNYS", 3, 3)],
             &[("XNAS", 11, 4), ("XLON", 12, 5), ("XNYS", 13, 6)],
@@ -908,20 +1249,54 @@ mod iceberg {
         let plan = table.plan_matching(window).unwrap();
         assert_eq!((plan.tasks.len(), plan.files_skipped()), (3, 6));
         let windowed = table.record_options().unwrap().with_filter(window).unwrap();
-        let reader = table.read_serie(Some(&windowed)).unwrap();
+        let reader =
+            yggdryl::StreamChunkedSerie::from_serie(table.read_serie(Some(&windowed)).unwrap())
+                .expect("native record stream");
         assert_eq!(
             reader.field().get_metadata("SORT:by"),
             Some(r#"["venue","ts","id"]"#)
         );
         assert_eq!(ids_of(&quote_rows(&records_of(reader))), [5, 4, 6]);
 
-        // A whole read opens the manifest list, the three manifests and all
-        // nine data files, each of those sized five times on its way to a
-        // reader; one row is the first partition's first, and only that
-        // partition's three files are opened to answer it.
+        let window_cost = filesystem.costs(|| {
+            table
+                .read_serie(Some(&windowed))
+                .unwrap()
+                .into_stream()
+                .unwrap()
+                .collect_rows()
+                .unwrap();
+        });
+        let aliased = windowed
+            .clone()
+            .with_select("id as key, ts, venue")
+            .unwrap()
+            .with_filter("key >= 0 and ts >= 10 and ts < 20")
+            .unwrap();
+        let alias_cost = filesystem.costs(|| {
+            let rows = table
+                .read_serie(Some(&aliased))
+                .unwrap()
+                .into_stream()
+                .unwrap()
+                .collect_rows()
+                .unwrap();
+            assert_eq!(rows.len(), 3);
+        });
+        assert_eq!(alias_cost, window_cost);
+
+        // A whole read opens the three manifests - their list is the one this
+        // handle's last commit wrote, carried rather than read back - and
+        // reads each of the nine data files once, in the one read of its end
+        // that takes a file this short whole, each sized five times on its
+        // way to a reader; one row is the first partition's first, and only
+        // that partition's three files are read to answer it.
         let options = table.record_options().unwrap();
         let whole = filesystem.costs(|| {
-            let rows = quote_rows(&records_of(table.read_serie(Some(&options)).unwrap()));
+            let rows = quote_rows(&records_of(
+                yggdryl::StreamChunkedSerie::from_serie(table.read_serie(Some(&options)).unwrap())
+                    .expect("native record stream"),
+            ));
             assert_eq!(rows.len(), 9);
         });
         // Ordering costs no call: the bounds it opens files by are the
@@ -932,14 +1307,17 @@ mod iceberg {
         assert_eq!(scanned, whole);
         let limited = options.clone().with_max_row_size(1);
         let first = filesystem.costs(|| {
-            let rows = quote_rows(&records_of(table.read_serie(Some(&limited)).unwrap()));
+            let rows = quote_rows(&records_of(
+                yggdryl::StreamChunkedSerie::from_serie(table.read_serie(Some(&limited)).unwrap())
+                    .expect("native record stream"),
+            ));
             assert_eq!(ids_of(&rows), [2]);
         });
         assert_eq!(
             (whole.as_str(), first.as_str()),
             (
-                "file_info=45 open_input_stream=13",
-                "file_info=15 open_input_stream=7"
+                "file_info=45 open_input_file=9 open_input_stream=3",
+                "file_info=15 open_input_file=3 open_input_stream=3"
             )
         );
     }
@@ -962,7 +1340,8 @@ mod iceberg {
             Some(SortOrder::unsorted()),
             commits,
         );
-        let reader = unsorted.read_serie(None).unwrap();
+        let reader = yggdryl::StreamChunkedSerie::from_serie(unsorted.read_serie(None).unwrap())
+            .expect("native record stream");
         assert_eq!(reader.field().get_metadata("SORT:by"), None);
         assert_eq!(ids_of(&quote_rows(&records_of(reader))), [3, 2, 4, 1]);
         let options = unsorted.record_options().unwrap();
@@ -977,12 +1356,13 @@ mod iceberg {
         // A partitioned table declaring no order keeps its partition
         // column's, ascending with nulls first.
         let by_venue = quotes_table("ordered-by-venue", &quotes_schema(&[]), None, commits);
-        let reader = by_venue.read_serie(None).unwrap();
+        let reader = yggdryl::StreamChunkedSerie::from_serie(by_venue.read_serie(None).unwrap())
+            .expect("native record stream");
         assert_eq!(
             reader.field().get_metadata("SORT:by"),
             Some(r#"["venue nulls first"]"#)
         );
-        let records: Vec<yggdryl::Serie> = reader.map(Result::unwrap).collect();
+        let records: Vec<yggdryl::Serie> = reader.into_chunks().map(Result::unwrap).collect();
         for record in &records {
             assert_eq!(declared_keys(record), ["venue nulls first"]);
         }
@@ -1016,7 +1396,9 @@ mod iceberg {
             .unwrap()
             .with_select("venue, id")
             .unwrap();
-        let reader = table.read_serie(Some(&options)).unwrap();
+        let reader =
+            yggdryl::StreamChunkedSerie::from_serie(table.read_serie(Some(&options)).unwrap())
+                .expect("native record stream");
         assert_eq!(reader.field().get_metadata("SORT:by"), Some(r#"["venue"]"#));
         let mut rows: Vec<(String, i64)> = Vec::new();
         for batch in records_of(reader) {
@@ -1076,7 +1458,10 @@ mod iceberg {
                     .with_read_parallel_min_files(2)
                     .with_read_parallel_min_file_size_bytes(0),
             );
-            let records = records_of(table.read_serie(None).unwrap());
+            let records = records_of(
+                yggdryl::StreamChunkedSerie::from_serie(table.read_serie(None).unwrap())
+                    .expect("native record stream"),
+            );
             (
                 records
                     .iter()
@@ -1097,7 +1482,7 @@ mod iceberg {
     /// door that reads a declared order before it believes it - and answer
     /// its rows.
     fn relanded(reader: BatchReader) -> Vec<(String, i64, i64)> {
-        let landed = yggdryl::SerieReader::from_arrow_reader(
+        let landed = yggdryl::StreamChunkedSerie::from_arrow_reader(
             None,
             reader,
             yggdryl::ArrowCastOptions::default(),
@@ -1123,7 +1508,8 @@ mod iceberg {
             &[&[("XNAS", 11, 1), ("XLON", 3, 2), ("XNAS", 10, 5)]],
         );
         let declared = Some(r#"["venue","truncate(ts, 10)"]"#);
-        let reader = table.read_serie(None).unwrap();
+        let reader = yggdryl::StreamChunkedSerie::from_serie(table.read_serie(None).unwrap())
+            .expect("native record stream");
         assert_eq!(reader.field().get_metadata("SORT:by"), declared);
         assert_eq!(ids_of(&quote_rows(&records_of(reader))), [2, 5, 1]);
         let options = table.record_options().unwrap();
@@ -1139,7 +1525,7 @@ mod iceberg {
 
         let mut unpartitioned = IcebergTable::create(
             LocalFolder::new(root("ordered-transform-whole")).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             quotes_schema(&["truncate(ts, 10)", "id"]),
             PartitionSpec::unpartitioned(),
         )
@@ -1147,7 +1533,9 @@ mod iceberg {
         unpartitioned
             .commit_append(quotes(&[("XNAS", 11, 1), ("XNAS", 10, 5)]))
             .unwrap();
-        let reader = unpartitioned.read_serie(None).unwrap();
+        let reader =
+            yggdryl::StreamChunkedSerie::from_serie(unpartitioned.read_serie(None).unwrap())
+                .expect("native record stream");
         assert_eq!(
             reader.field().get_metadata("SORT:by"),
             Some(r#"["truncate(ts, 10)"]"#)
@@ -1171,7 +1559,7 @@ mod iceberg {
         let spec = PartitionSpec::identity(1, &schema, &["ts"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(root("ordered-retyped")).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema.clone(),
             spec,
         )
@@ -1180,7 +1568,8 @@ mod iceberg {
             .commit_append(quotes(&[("XNAS", 10, 1), ("XNAS", 9, 2)]))
             .unwrap();
         // Stored as it is, the partition column orders the read.
-        let reader = table.read_serie(None).unwrap();
+        let reader = yggdryl::StreamChunkedSerie::from_serie(table.read_serie(None).unwrap())
+            .expect("native record stream");
         assert_eq!(
             reader.field().get_metadata("SORT:by"),
             Some(r#"["ts","id"]"#)
@@ -1197,10 +1586,12 @@ mod iceberg {
         .required_field("row");
         assign_field_ids(&mut text, 1).unwrap();
         let options = table.record_options().unwrap().with_field(text);
-        let reader = table.read_serie(Some(&options)).unwrap();
+        let reader =
+            yggdryl::StreamChunkedSerie::from_serie(table.read_serie(Some(&options)).unwrap())
+                .expect("native record stream");
         assert_eq!(reader.field().get_metadata("SORT:by"), None);
         let mut instants = Vec::new();
-        for record in reader {
+        for record in reader.into_chunks() {
             let batch = record.unwrap().into_arrow_batch().unwrap();
             let column = Arc::clone(batch.column_by_name("ts").unwrap());
             let column = column.as_any().downcast_ref::<StringArray>().unwrap();
@@ -1214,13 +1605,19 @@ mod iceberg {
                 .get_metadata("SORT:by"),
             None
         );
-        let landed = yggdryl::SerieReader::from_arrow_reader(
+        let landed = yggdryl::StreamChunkedSerie::from_arrow_reader(
             None,
             table.read_arrow_reader(&options).unwrap(),
             yggdryl::ArrowCastOptions::default(),
         )
         .unwrap();
-        assert_eq!(landed.map(|record| record.unwrap().len()).sum::<usize>(), 2);
+        assert_eq!(
+            landed
+                .into_chunks()
+                .map(|record| record.unwrap().len())
+                .sum::<usize>(),
+            2
+        );
     }
 
     /// The ids of every row the table's current snapshot holds, ascending.
@@ -1248,7 +1645,7 @@ mod iceberg {
     fn three_versions(path: &std::path::Path) -> IcebergTable<LocalFolder> {
         let mut table = IcebergTable::create(
             LocalFolder::new(path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -1629,11 +2026,12 @@ mod derived_columns {
         assert_eq!(plan.skipped.len(), 3);
         assert_eq!(plan.tasks.len(), 1);
         let options = table.record_options().unwrap().with_filter(window).unwrap();
-        let read: usize = table
-            .read_serie(Some(&options))
-            .unwrap()
-            .map(|record| record.unwrap().len())
-            .sum();
+        let read: usize =
+            yggdryl::StreamChunkedSerie::from_serie(table.read_serie(Some(&options)).unwrap())
+                .expect("native record stream")
+                .into_chunks()
+                .map(|record| record.unwrap().len())
+                .sum();
         assert_eq!(read, 2);
 
         // A bucket bounds its source by its whole range, not its start: a
@@ -1667,7 +2065,7 @@ mod own_key {
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{
         ArrowCastOptions, ArrowWriteSession, DataType, Field, Handle, IOMedia, IOMode, IOResult,
-        Properties, Scalar, Selector, Serie, SerieReader, SerieSource, StructType, Table, Url,
+        Properties, Scalar, Selector, Serie, StreamChunkedSerie, StructType, Table, Url,
     };
 
     /// A location nothing occupies, unique to this test and this process.
@@ -1721,7 +2119,7 @@ mod own_key {
     }
 
     fn reader(rows: &[(i64, &str, &str)]) -> BatchReader {
-        SerieReader::from_serie(trades(rows))
+        StreamChunkedSerie::from_serie(trades(rows))
             .unwrap()
             .into_arrow_reader()
     }
@@ -1761,7 +2159,7 @@ mod own_key {
     ) -> (std::path::PathBuf, IcebergTable<Handle>) {
         let (path, mut table) = table(label, version, ids, partitioned);
         table
-            .append_serie(trades(&[(1, "A", "XNAS"), (2, "B", "XLON")]).into(), None)
+            .append_serie(trades(&[(1, "A", "XNAS"), (2, "B", "XLON")]), None)
             .unwrap();
         (path, table)
     }
@@ -1776,6 +2174,9 @@ mod own_key {
         let mut rows: Vec<Scalar> = table
             .read_serie(None)
             .unwrap()
+            .into_chunked_stream(None, None)
+            .unwrap()
+            .into_chunks()
             .flat_map(|batch| batch.unwrap().rows().into_owned())
             .collect();
         rows.sort();
@@ -1813,7 +2214,7 @@ mod own_key {
         ] {
             let (path, table) = table(
                 &format!("answers-{label}"),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 ids,
                 partitioned,
             );
@@ -1837,13 +2238,14 @@ mod own_key {
         for door in [
             "serie", "reader", "generic", "records", "commit", "holder", "session",
         ] {
+            // A keyed merge: v2 only, refused on v3.
             let (path, mut table) =
                 seeded(&format!("doors-{door}"), FormatVersion::V2, &[1], false);
             let options: RecordOptions = IOMedia::record_options(&table).unwrap();
             assert!(options.merge_by().is_empty());
             match door {
                 "serie" => {
-                    table.merge_serie(trades(incoming).into(), None).unwrap();
+                    table.merge_serie(trades(incoming), None).unwrap();
                 }
                 "reader" => {
                     table
@@ -1871,7 +2273,7 @@ mod own_key {
                 }
                 "holder" => {
                     let mut holder = Holder::from(Table::from(table));
-                    holder.merge_serie(trades(incoming).into(), None).unwrap();
+                    holder.merge_serie(trades(incoming), None).unwrap();
                 }
                 _ => {
                     // A session is built before it meets a destination, so
@@ -1901,13 +2303,14 @@ mod own_key {
 
     #[test]
     fn a_key_the_options_name_wins_over_the_tables_own() {
+        // A keyed merge: v2 only, refused on v3.
         let (path, mut table) = seeded("named", FormatVersion::V2, &[1], false);
         let by_symbol = IOMedia::record_options(&table)
             .unwrap()
             .with_merge_by(["symbol"])
             .unwrap();
         table
-            .merge_serie(trades(&[(9, "A", "XPAR")]).into(), Some(&by_symbol))
+            .merge_serie(trades(&[(9, "A", "XPAR")]), Some(&by_symbol))
             .unwrap();
         assert_eq!(
             stored(&reopened(&path)),
@@ -1919,9 +2322,9 @@ mod own_key {
 
     #[test]
     fn a_partitioned_table_stating_no_identifier_replaces_partitions_through_the_record_doors() {
-        let (path, mut table) = seeded("partitions", FormatVersion::V2, &[], true);
+        let (path, mut table) = seeded("partitions", FormatVersion::V3, &[], true);
         table
-            .merge_serie(trades(&[(5, "E", "XNAS")]).into(), None)
+            .merge_serie(trades(&[(5, "E", "XNAS")]), None)
             .unwrap();
         assert_eq!(
             stored(&reopened(&path)),
@@ -1933,19 +2336,19 @@ mod own_key {
 
     #[test]
     fn an_unpartitioned_table_stating_no_key_refuses_naming_merge_by() {
-        let (path, mut table) = table("no-key", FormatVersion::V2, &[], false);
+        let (path, mut table) = table("no-key", FormatVersion::V3, &[], false);
         assert!(IOMedia::merge_by(&table).unwrap().is_empty());
         let options = IOMedia::record_options(&table).unwrap();
         let pulls = Arc::new(AtomicUsize::new(0));
 
-        let stream = SerieReader::from_arrow_reader(
+        let stream = StreamChunkedSerie::from_arrow_reader(
             None,
             counted(&pulls, &[(1, "A", "XNAS")]),
             ArrowCastOptions::default(),
         )
         .unwrap();
         let error = table
-            .merge_serie(SerieSource::from(stream), None)
+            .merge_serie(Serie::from(stream), None)
             .expect_err("the serie door has no key");
         assert!(error.to_string().contains("$.merge_by"), "{error}");
         let error = table
@@ -1992,6 +2395,7 @@ mod own_key {
         let mut table = IcebergTable::create_from_url(
             Url::from_path(&path).unwrap(),
             &Properties::new(),
+            // A keyed merge: v2 only, refused on v3.
             Some(FormatVersion::V2),
             schema,
             Some(PartitionSpec::unpartitioned()),
@@ -2006,10 +2410,10 @@ mod own_key {
             Serie::from_scalars(plain.clone(), values.iter().map(|(id, v)| row(*id, v))).unwrap()
         };
         table
-            .append_serie(rows(&[(1, "a"), (2, "b")]).into(), None)
+            .append_serie(rows(&[(1, "a"), (2, "b")]), None)
             .unwrap();
         table
-            .merge_serie(rows(&[(2, "B"), (3, "c")]).into(), None)
+            .merge_serie(rows(&[(2, "B"), (3, "c")]), None)
             .unwrap();
         assert_eq!(
             stored(&reopened(&path)),
@@ -2027,14 +2431,14 @@ mod own_key {
         let error = IcebergTable::create_from_url(
             Url::from_path(&path).unwrap(),
             &Properties::new(),
-            Some(FormatVersion::V2),
+            Some(FormatVersion::V3),
             schema(&[99]),
             Some(PartitionSpec::unpartitioned()),
         )
         .expect_err("no column carries field id 99");
         assert!(error.to_string().contains("identifier field 99"), "{error}");
 
-        let (path, _) = seeded("dangling-open", FormatVersion::V2, &[1], false);
+        let (path, _) = seeded("dangling-open", FormatVersion::V3, &[1], false);
         for entry in std::fs::read_dir(path.join("metadata")).unwrap() {
             let entry = entry.unwrap().path();
             if entry.to_string_lossy().ends_with(".metadata.json") {
@@ -2058,7 +2462,7 @@ mod own_key {
     fn a_keyless_merge_on_v3_is_refused_as_a_keyed_one_is() {
         let (path, mut table) = seeded("v3", FormatVersion::V3, &[1], false);
         let error = table
-            .merge_serie(trades(&[(2, "B2", "XLON")]).into(), None)
+            .merge_serie(trades(&[(2, "B2", "XLON")]), None)
             .expect_err("a v3 rewrite cannot keep its row ids yet");
         assert!(error.to_string().contains("format v3"), "{error}");
         assert_eq!(
@@ -2070,6 +2474,7 @@ mod own_key {
 
     #[test]
     fn a_true_merge_key_merges_on_the_tables_own_key() {
+        // A keyed merge: v2 only, refused on v3.
         let (path, mut table) = seeded("true-key", FormatVersion::V2, &[1], false);
         let options = IOMedia::record_options(&table)
             .unwrap()
@@ -2080,7 +2485,7 @@ mod own_key {
         assert!(options.merge_by().is_empty());
         table
             .merge_serie(
-                trades(&[(2, "B2", "XLON"), (3, "C", "XNAS")]).into(),
+                trades(&[(2, "B2", "XLON"), (3, "C", "XNAS")]),
                 Some(&options),
             )
             .unwrap();
@@ -2099,17 +2504,15 @@ mod own_key {
     fn a_merge_that_changes_no_row_commits_nothing() {
         for partitioned in [false, true] {
             let label = format!("unchanged-{partitioned}");
+            // A keyed merge: v2 only, refused on v3.
             let (path, mut table) = seeded(&label, FormatVersion::V2, &[1], partitioned);
             // A replay, and a first arrival that differs then a last that
             // does not: no row changes, so no snapshot is committed.
             table
-                .merge_serie(trades(&[(1, "A", "XNAS"), (2, "B", "XLON")]).into(), None)
+                .merge_serie(trades(&[(1, "A", "XNAS"), (2, "B", "XLON")]), None)
                 .unwrap();
             table
-                .merge_serie(
-                    trades(&[(2, "STALE", "XLON"), (2, "B", "XLON")]).into(),
-                    None,
-                )
+                .merge_serie(trades(&[(2, "STALE", "XLON"), (2, "B", "XLON")]), None)
                 .unwrap();
             table
                 .commit_merge(reader(&[(1, "A", "XNAS")]), &Selector::all(), true)
@@ -2131,7 +2534,7 @@ mod own_key {
                 .map(|(file, _)| file.file_path.to_string())
                 .collect();
             table
-                .merge_serie(trades(&[(1, "A", "XNAS"), (2, "B2", "XLON")]).into(), None)
+                .merge_serie(trades(&[(1, "A", "XNAS"), (2, "B2", "XLON")]), None)
                 .unwrap();
             let held = reopened(&path);
             assert_eq!(held.metadata().unwrap().snapshots().len(), 2, "{label}");
@@ -2160,6 +2563,7 @@ mod own_key {
     fn a_merge_whose_key_returns_to_its_stored_row_in_a_later_batch_commits_nothing() {
         for partitioned in [false, true] {
             let label = format!("unchanged-across-batches-{partitioned}");
+            // A keyed merge: v2 only, refused on v3.
             let (path, mut table) = seeded(&label, FormatVersion::V2, &[1], partitioned);
             // One stream of two batches: the first restates 1 with another
             // symbol, the second with the stored one. The last arrival is
@@ -2217,9 +2621,9 @@ mod own_key {
     fn a_merge_keyed_by_the_partition_alone_replaces_it_even_with_its_own_rows() {
         // The partition is the key, and a partition is replaced, never
         // compared: the same rows again are a new snapshot.
-        let (path, mut table) = seeded("partition-replay", FormatVersion::V2, &[], true);
+        let (path, mut table) = seeded("partition-replay", FormatVersion::V3, &[], true);
         table
-            .merge_serie(trades(&[(1, "A", "XNAS")]).into(), None)
+            .merge_serie(trades(&[(1, "A", "XNAS")]), None)
             .unwrap();
         let held = reopened(&path);
         assert_eq!(held.metadata().unwrap().snapshots().len(), 2);
@@ -2234,7 +2638,7 @@ mod own_key {
     fn an_overwrite_of_no_row_still_replaces_what_it_addresses() {
         // The exit a merge that changed nothing takes is not an overwrite's:
         // a stated scope with no incoming row is emptied.
-        let (path, mut table) = seeded("overwrite-empty", FormatVersion::V2, &[1], false);
+        let (path, mut table) = seeded("overwrite-empty", FormatVersion::V3, &[1], false);
         table.commit_overwrite_where(&[], reader(&[])).unwrap();
         let held = reopened(&path);
         assert_eq!(held.metadata().unwrap().snapshots().len(), 2);
@@ -2251,10 +2655,10 @@ mod own_key {
             "serie", "reader", "generic", "records", "commit", "holder", "session",
         ] {
             let (path, mut table) =
-                seeded(&format!("absent-{door}"), FormatVersion::V2, &[1], false);
+                seeded(&format!("absent-{door}"), FormatVersion::V3, &[1], false);
             let options: RecordOptions = IOMedia::record_options(&table).unwrap();
             let result = match door {
-                "serie" => Some(table.append_serie(trades(incoming).into(), None).unwrap()),
+                "serie" => Some(table.append_serie(trades(incoming), None).unwrap()),
                 "reader" => Some(
                     table
                         .append_arrow_reader(reader(incoming), &options)
@@ -2282,7 +2686,7 @@ mod own_key {
                 }
                 "holder" => {
                     let mut holder = Holder::from(Table::from(table));
-                    Some(holder.append_serie(trades(incoming).into(), None).unwrap())
+                    Some(holder.append_serie(trades(incoming), None).unwrap())
                 }
                 _ => {
                     let mut holder = Holder::from(Table::from(table));
@@ -2312,11 +2716,11 @@ mod own_key {
 
     #[test]
     fn an_append_whose_every_key_is_held_commits_nothing_on_every_version() {
-        for version in [FormatVersion::V2, FormatVersion::V3] {
+        for version in [FormatVersion::V3, FormatVersion::V2] {
             let label = format!("absent-replay-{version:?}");
             let (path, mut table) = seeded(&label, version, &[1], false);
             let replay = table
-                .append_serie(trades(&[(1, "A9", "XNAS"), (2, "B", "XLON")]).into(), None)
+                .append_serie(trades(&[(1, "A9", "XNAS"), (2, "B", "XLON")]), None)
                 .unwrap();
             assert_eq!(replay, IOResult::new(2, 0), "{label}");
             let held = reopened(&path);
@@ -2329,7 +2733,7 @@ mod own_key {
                 "{label}"
             );
             let added = table
-                .append_serie(trades(&[(2, "B", "XLON"), (4, "D", "XNAS")]).into(), None)
+                .append_serie(trades(&[(2, "B", "XLON"), (4, "D", "XNAS")]), None)
                 .unwrap();
             assert_eq!(added, IOResult::new(2, 1), "{label}");
             let held = reopened(&path);
@@ -2349,7 +2753,7 @@ mod own_key {
 
     #[test]
     fn a_cadenced_keyed_append_sees_its_earlier_commits_as_stored() {
-        let (path, mut table) = seeded("absent-cadence", FormatVersion::V2, &[1], false);
+        let (path, mut table) = seeded("absent-cadence", FormatVersion::V3, &[1], false);
         let options = IOMedia::record_options(&table)
             .unwrap()
             .with_commit_batch_num(1);
@@ -2385,10 +2789,10 @@ mod own_key {
     #[test]
     fn a_partitioned_keyed_table_holds_one_key_per_partition() {
         // The key is (venue, id): 2 under XNAS is not 2 under XLON.
-        let (path, mut table) = seeded("absent-partitioned", FormatVersion::V2, &[1], true);
+        let (path, mut table) = seeded("absent-partitioned", FormatVersion::V3, &[1], true);
         let result = table
             .append_serie(
-                trades(&[(2, "B9", "XNAS"), (2, "B2", "XLON"), (1, "A2", "XNAS")]).into(),
+                trades(&[(2, "B9", "XNAS"), (2, "B2", "XLON"), (1, "A2", "XNAS")]),
                 None,
             )
             .unwrap();
@@ -2409,7 +2813,7 @@ mod own_key {
         // Written unpartitioned, then partitioned by venue: the first file
         // belongs to no partition of the current spec, and the key is now
         // (venue, id).
-        let (path, mut table) = seeded("absent-foreign", FormatVersion::V2, &[1], false);
+        let (path, mut table) = seeded("absent-foreign", FormatVersion::V3, &[1], false);
         table
             .commit_metadata_changes(|metadata| {
                 let spec = PartitionSpec::identity(1, metadata.current_schema()?, &["venue"])?;
@@ -2419,7 +2823,7 @@ mod own_key {
             .unwrap();
         let result = table
             .append_serie(
-                trades(&[(1, "A2", "XNAS"), (2, "B9", "XNAS"), (3, "C", "XLON")]).into(),
+                trades(&[(1, "A2", "XNAS"), (2, "B9", "XNAS"), (3, "C", "XLON")]),
                 None,
             )
             .unwrap();
@@ -2444,7 +2848,7 @@ mod own_key {
         // no file holds is appended - its first arrival.
         let (path, mut table) = seeded(
             "absent-foreign-partition-key",
-            FormatVersion::V2,
+            FormatVersion::V3,
             &[3],
             false,
         );
@@ -2463,8 +2867,7 @@ mod own_key {
                     (11, "Y", "XLON"),
                     (12, "Z", "XPAR"),
                     (13, "W", "XPAR"),
-                ])
-                .into(),
+                ]),
                 None,
             )
             .unwrap();
@@ -2482,9 +2885,9 @@ mod own_key {
 
     #[test]
     fn a_table_stating_no_key_appends_every_row() {
-        let (path, mut table) = seeded("absent-unkeyed", FormatVersion::V2, &[], false);
+        let (path, mut table) = seeded("absent-unkeyed", FormatVersion::V3, &[], false);
         let result = table
-            .append_serie(trades(&[(1, "A", "XNAS"), (1, "A", "XNAS")]).into(), None)
+            .append_serie(trades(&[(1, "A", "XNAS"), (1, "A", "XNAS")]), None)
             .unwrap();
         assert_eq!(result, IOResult::new(2, 2));
         assert_eq!(stored(&reopened(&path)).len(), 4);
@@ -2493,7 +2896,7 @@ mod own_key {
 
     #[test]
     fn the_later_commits_of_an_overwrite_append_every_row_whatever_the_key() {
-        let (path, mut table) = seeded("absent-overwrite", FormatVersion::V2, &[1], false);
+        let (path, mut table) = seeded("absent-overwrite", FormatVersion::V3, &[1], false);
         let options = IOMedia::record_options(&table)
             .unwrap()
             .with_commit_batch_num(1);
@@ -2520,7 +2923,7 @@ mod own_key {
     fn a_keyed_append_beaten_by_a_concurrent_commit_conflicts_where_a_blind_one_rebases() {
         for (ids, conflicts) in [(&[1][..], true), (&[][..], false)] {
             let label = format!("absent-beaten-{conflicts}");
-            let (path, _) = seeded(&label, FormatVersion::V2, ids, false);
+            let (path, _) = seeded(&label, FormatVersion::V3, ids, false);
             let mut late = reopened(&path);
             late.set_options(
                 yggdryl::iceberg::IcebergOptions::new()
@@ -2560,6 +2963,7 @@ mod own_key {
         let (filesystem, folder) = counted_folder("own-key-costs");
         let mut table = IcebergTable::create(
             folder,
+            // A keyed merge: v2 only, refused on v3.
             FormatVersion::V2,
             schema(&[1]),
             PartitionSpec::unpartitioned(),
@@ -2604,6 +3008,7 @@ mod own_key {
         let (blind_filesystem, blind_folder) = counted_folder("own-key-costs-blind");
         let mut blind = IcebergTable::create(
             blind_folder,
+            // Like for like with the keyed table above, which a keyed merge holds to v2.
             FormatVersion::V2,
             schema(&[]),
             PartitionSpec::unpartitioned(),
@@ -2618,14 +3023,16 @@ mod own_key {
         let unkeyed = blind_filesystem.costs(|| {
             blind.commit_append(reader(&[(50, "X", "XNAS")])).unwrap();
         });
-        // The replay: the manifest list, both manifests and the one data
-        // file whose bounds hold 10, sized five times on its way to a
-        // reader - and nothing created or opened for writing. The keyed
-        // append outside every bound costs the blind one's commit - its
-        // data file, manifest, list and hint written, its document created
-        // - plus the two manifests its plan opens, and no data file read.
-        // Inside the second file's bounds it reads the list, the three
-        // manifests and that one file; spanning both, both files.
+        // The replay: both manifests of the list this handle's last commit
+        // wrote, carried rather than read back, and the one data file whose
+        // bounds hold 10, read in the one read of its end and sized five
+        // times on its way to a reader - and nothing created or opened for
+        // writing. The keyed append outside every bound costs the blind
+        // one's commit - its data file, manifest, list and hint written, its
+        // document created, the hint and the other spelling read - plus the
+        // two manifests its plan opens, and no data file read. Inside the
+        // second file's bounds it reads the three manifests and that one
+        // file; spanning both, both files.
         assert_eq!(
             [
                 replay.as_str(),
@@ -2635,11 +3042,84 @@ mod own_key {
                 spanning.as_str()
             ],
             [
-                "file_info=5 open_input_stream=4",
-                "create_file=1 file_info=1 open_input_stream=5 open_output_stream=4",
-                "create_file=1 file_info=1 open_input_stream=3 open_output_stream=4",
-                "file_info=5 open_input_stream=5",
-                "file_info=10 open_input_stream=6"
+                "file_info=5 open_input_file=1 open_input_stream=2",
+                "create_file=1 file_info=1 open_input_stream=4 open_output_stream=4",
+                "create_file=1 file_info=1 open_input_stream=2 open_output_stream=4",
+                "file_info=5 open_input_file=1 open_input_stream=3",
+                "file_info=10 open_input_file=2 open_input_stream=3"
+            ]
+        );
+    }
+
+    /// The keyed appends of the pin above, on format version 3: the same
+    /// two data files, then a key outside both files' bounds, one inside the
+    /// second's and one spanning both, beside the blind append to a table
+    /// stating no key. A v3 table refuses the replay merge, so the twin
+    /// measures the appends alone, and each costs what it costs on v2: row
+    /// lineage is the `first-row-id` and `added-rows` a v3 snapshot and its
+    /// manifest list state - fields of documents a commit writes anyway -
+    /// so it moves no call.
+    #[test]
+    fn a_keyed_append_on_format_version_3_opens_only_the_files_its_keys_may_be_in() {
+        use crate::counting_filesystem::counted_folder;
+
+        let (filesystem, folder) = counted_folder("own-key-costs-v3");
+        let mut table = IcebergTable::create(
+            folder,
+            FormatVersion::V3,
+            schema(&[1]),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table
+            .commit_append(reader(&[(1, "A", "XNAS"), (2, "B", "XLON")]))
+            .unwrap();
+        table
+            .commit_append(reader(&[(10, "J", "XNAS"), (11, "K", "XLON")]))
+            .unwrap();
+        assert_eq!(table.data_files().unwrap().len(), 2);
+        let outside = filesystem.costs(|| {
+            table.commit_append(reader(&[(50, "X", "XNAS")])).unwrap();
+        });
+        let inside = filesystem.costs(|| {
+            table.commit_append(reader(&[(11, "K2", "XLON")])).unwrap();
+        });
+        let spanning = filesystem.costs(|| {
+            table
+                .commit_append(reader(&[(2, "B2", "XLON"), (10, "J2", "XNAS")]))
+                .unwrap();
+        });
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 3);
+
+        let (blind_filesystem, blind_folder) = counted_folder("own-key-costs-blind-v3");
+        let mut blind = IcebergTable::create(
+            blind_folder,
+            FormatVersion::V3,
+            schema(&[]),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        blind
+            .commit_append(reader(&[(1, "A", "XNAS"), (2, "B", "XLON")]))
+            .unwrap();
+        blind
+            .commit_append(reader(&[(10, "J", "XNAS"), (11, "K", "XLON")]))
+            .unwrap();
+        let unkeyed = blind_filesystem.costs(|| {
+            blind.commit_append(reader(&[(50, "X", "XNAS")])).unwrap();
+        });
+        assert_eq!(
+            [
+                outside.as_str(),
+                unkeyed.as_str(),
+                inside.as_str(),
+                spanning.as_str()
+            ],
+            [
+                "create_file=1 file_info=1 open_input_stream=4 open_output_stream=4",
+                "create_file=1 file_info=1 open_input_stream=2 open_output_stream=4",
+                "file_info=5 open_input_file=1 open_input_stream=3",
+                "file_info=10 open_input_file=2 open_input_stream=3"
             ]
         );
     }
@@ -2670,12 +3150,12 @@ mod own_key {
 
     #[test]
     fn a_limit_on_a_keyless_merge_of_a_partitioned_table_is_refused() {
-        let (path, mut table) = seeded("limited", FormatVersion::V2, &[], true);
+        let (path, mut table) = seeded("limited", FormatVersion::V3, &[], true);
         let limited = IOMedia::record_options(&table)
             .unwrap()
             .with_max_row_size(1);
         let error = table
-            .merge_serie(trades(&[(5, "E", "XNAS")]).into(), Some(&limited))
+            .merge_serie(trades(&[(5, "E", "XNAS")]), Some(&limited))
             .expect_err("a truncated merge corrupts");
         assert!(error.to_string().contains("merge_by `venue`"), "{error}");
         assert_eq!(
@@ -2776,6 +3256,7 @@ mod located {
         let mut table =
             IcebergTable::create_from_url(&location, &properties, None, schema(), None).unwrap();
         let metadata = table.metadata().unwrap();
+        // format_version_for: 2 by default, pinned.
         assert_eq!(metadata.format_version(), FormatVersion::V2);
         assert_eq!(metadata.default_spec().unwrap().fields.len(), 1);
         assert_eq!(
@@ -2819,6 +3300,7 @@ mod located {
         .unwrap();
         assert_eq!(
             again.metadata().unwrap().format_version(),
+            // format_version_for: 2 by default, pinned.
             FormatVersion::V2
         );
         assert_eq!(ids(&again), [1, 2]);
@@ -2847,12 +3329,14 @@ mod located {
         let stated = IcebergTable::open_or_create_from_url(
             Url::from_path(path.join("stated")).unwrap(),
             &Properties::new(),
+            // A stated version, below the default, is taken as stated.
             Some(FormatVersion::V1),
             numbered,
             Some(spec.clone()),
         )
         .unwrap();
         let metadata = stated.metadata().unwrap();
+        // A stated version, below the default, is taken as stated.
         assert_eq!(metadata.format_version(), FormatVersion::V1);
         assert_eq!(metadata.default_spec().unwrap().fields, spec.fields);
 
@@ -3308,13 +3792,13 @@ mod stated_bits {
         assert_eq!(schema.fields()[0].dtype(), &DataType::Int64);
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
         table
-            .append_serie(digests(&logical(true), &DIGESTS).into(), None)
+            .append_serie(digests(&logical(true), &DIGESTS), None)
             .unwrap();
         let (longs, stated) = stored(&table);
         assert_eq!(longs, [i64::MIN, -1, 0]);
@@ -3330,7 +3814,7 @@ mod stated_bits {
             Representation::Bits
         );
         table
-            .append_serie(digests(&logical(false), &[u64::MAX - 1]).into(), None)
+            .append_serie(digests(&logical(false), &[u64::MAX - 1]), None)
             .unwrap();
         let (longs, _) = stored(&table);
         assert_eq!(longs, [i64::MIN, -2, -1, 0]);
@@ -3342,7 +3826,9 @@ mod stated_bits {
         let read = table
             .read_serie(Some(&options))
             .unwrap()
-            .map(|record| record.unwrap().into_arrow_batch().unwrap());
+            .into_chunked_stream(None, None)
+            .unwrap()
+            .map(Result::unwrap);
         assert_eq!(unsigned(read), [0, 1 << 63, u64::MAX - 1, u64::MAX]);
 
         // A stored long landed as itself casts back by the bits its field
@@ -3370,20 +3856,17 @@ mod stated_bits {
         schema.as_sort_mut().set_by_texts(["digest"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
         // Two files whose longs order the second before the first.
         table
-            .append_serie(digests(&logical(true), &[1, 2]).into(), None)
+            .append_serie(digests(&logical(true), &[1, 2]), None)
             .unwrap();
         table
-            .append_serie(
-                digests(&logical(true), &[u64::MAX - 1, u64::MAX]).into(),
-                None,
-            )
+            .append_serie(digests(&logical(true), &[u64::MAX - 1, u64::MAX]), None)
             .unwrap();
 
         let mut declared = logical(true);
@@ -3391,9 +3874,15 @@ mod stated_bits {
         assign_field_ids(&mut declared, 1).unwrap();
         let options = table.record_options().unwrap().with_field(declared);
         let reader = table.read_serie(Some(&options)).unwrap();
-        let order = reader.field().get_metadata("SORT:by").map(str::to_owned);
+        let order = reader
+            .require_field()
+            .unwrap()
+            .get_metadata("SORT:by")
+            .map(str::to_owned);
         let read: Vec<u64> = reader
-            .map(|record| record.unwrap().into_arrow_batch().unwrap())
+            .into_chunked_stream(None, None)
+            .unwrap()
+            .map(Result::unwrap)
             .flat_map(|batch| {
                 batch
                     .column(0)
@@ -3416,7 +3905,7 @@ mod stated_bits {
         let path = root("refused");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             StructType::from_fields([DataType::Int64.required_field("digest")])
                 .map(DataType::from)
                 .unwrap()
@@ -3425,7 +3914,7 @@ mod stated_bits {
         )
         .unwrap();
         let message = table
-            .append_serie(digests(&logical(false), &DIGESTS).into(), None)
+            .append_serie(digests(&logical(false), &DIGESTS), None)
             .unwrap_err()
             .to_string();
         assert!(message.contains("$.digest"), "{message}");

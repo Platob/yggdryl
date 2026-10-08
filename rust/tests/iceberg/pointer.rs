@@ -187,7 +187,7 @@ fn created(
     let pointer = Arc::new(MemoryPointer::default());
     let table = IcebergTable::create_pointed(
         folder,
-        FormatVersion::V2,
+        FormatVersion::V3,
         schema(),
         PartitionSpec::unpartitioned(),
         Arc::clone(&pointer) as Arc<dyn MetadataPointer>,
@@ -228,7 +228,7 @@ fn a_created_table_publishes_version_zero_and_writes_no_hint() {
         table = Some(
             IcebergTable::create_pointed(
                 folder,
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema(),
                 PartitionSpec::unpartitioned(),
                 Arc::clone(&pointer) as Arc<dyn MetadataPointer>,
@@ -261,7 +261,7 @@ fn a_pointer_that_names_a_document_refuses_a_second_creation() {
     let (_, folder) = counted_folder("twice-again");
     let error = IcebergTable::create_pointed(
         folder,
-        FormatVersion::V2,
+        FormatVersion::V3,
         schema(),
         PartitionSpec::unpartitioned(),
         pointer as Arc<dyn MetadataPointer>,
@@ -339,7 +339,7 @@ fn appends_and_overwrites_publish_through_the_pointer_and_remove_nothing() {
     let (plain_filesystem, plain) = counted_folder("plain");
     let mut plain = IcebergTable::create(
         plain,
-        FormatVersion::V2,
+        FormatVersion::V3,
         schema(),
         PartitionSpec::unpartitioned(),
     )
@@ -513,7 +513,7 @@ fn removing_a_pointed_table_asks_its_pointer_and_never_its_folder() {
     let pointer = Arc::new(DroppingPointer::default());
     let mut table = IcebergTable::create_pointed(
         folder,
-        FormatVersion::V2,
+        FormatVersion::V3,
         schema(),
         PartitionSpec::unpartitioned(),
         Arc::clone(&pointer) as Arc<dyn MetadataPointer>,
@@ -553,7 +553,7 @@ fn a_pointers_own_refusal_of_a_drop_reaches_the_caller_as_it_came() {
     let (filesystem, folder) = counted_folder("refused");
     let mut table = IcebergTable::create_pointed(
         folder,
-        FormatVersion::V2,
+        FormatVersion::V3,
         schema(),
         PartitionSpec::unpartitioned(),
         Arc::new(RefusingPointer::default()) as Arc<dyn MetadataPointer>,

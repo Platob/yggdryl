@@ -1,6 +1,6 @@
 # Plain text
 
-Records cut from text: one record per line, or per framed chain under `framing`, each read as the [event](../graph/event.md) a line is - its `body` the payload, and a `rowheader` regex lifting typed columns off its head.
+StreamSerie cut from text: one record per line, or per framed chain under `framing`, each read as the [event](../graph/event.md) a line is - its `body` the payload, and a `rowheader` regex lifting typed columns off its head.
 
 ## Overview
 
@@ -20,7 +20,7 @@ The header comes off where the line is made, so its captures are the line's and 
 
 A read cuts each object into records - one per line, or, under `framing`, one per chain of lines a row header opens - and answers each as a row: the event the line is, its `body`, its captures. Under `autotype` each capture's datatype is settled from the pattern before a byte is read ([Regex captures](../types/text/string.md#regex-captures)): a capture whose every literal alternative prints `true` or `false`, in any case, is a `boolean`, as a [CSV](csv.md) column is inferred, and a captured cell reads through its datatype's one text reader.
 
-`TextLine` exposes the [event identity](../graph/event.md#identity) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. The row number is the line's [place](../fix/lifecycle.md#a-place-counts-one-instant), where it stands and never what it says: `currhashcode` is the XXH3-64 of the `body` and nothing else - no capture, state, predecessor or cross code - so two lines of byte-identical bodies share it and differ by `curruuid` alone, which sorts the lines of one millisecond by row. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
+`TextLine` exposes the [event identity](../graph/event.md#identity) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. The row number is the line's [place](../fix/lifecycle.md#a-place-counts-one-instant), where it stands and never what it says: `currhashcode` is the XXH3-64 of the `body` and nothing else - no file URL, capture, state, predecessor or cross code - so two lines of byte-identical bodies share it and differ by `curruuid` alone, which sorts the lines of one millisecond by row. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
 
 An object's lines are one chain - they share the object as their cross code - so a read states when that chain began: every line whose own `creaunix` capture states none takes the earliest `currunix` the read has dated a line of its object by so far - never an instant after its own, the first line its own instant. A line the header does not date, of a handle with no time of its own, is dated by nothing and states no creation until a line that is dated; a `creaunix` capture that does not read as an instant stays refused by name. A line built by hand states what it is given.
 

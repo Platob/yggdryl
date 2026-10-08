@@ -157,8 +157,11 @@ pub(super) fn emit_text(
 /// a side, a state - spells the wire code the field's own code set gives
 /// its name, else, for an enum member, the code whose name the field reads
 /// as that member - so `BUYS` under `Side(54)` is `1` on the wire, the set
-/// naming it `Buy` - and `BUYS` in a dictionary that never coded it;
-/// everything else spells as it does under no field.
+/// naming it `Buy` - and `BUYS` in a dictionary that never coded it; an
+/// instant under a field declaring `TZTimeOnly` spells the clock it is -
+/// its UTC time of day closed by `Z`, no date - which
+/// `DateTime64::from_fix_clock` reads back to the same instant; everything
+/// else spells as it does under no field.
 pub(super) fn wire_text_under(
     registry: &super::FixRegistry,
     field: &crate::Field,
@@ -179,6 +182,14 @@ pub(super) fn wire_text_under(
         }) {
             return Some(code);
         }
+    }
+    if matches!(value, crate::Scalar::DateTime64(_))
+        && field.as_fix().shape() == super::field::FixShape::TzTimeOnly
+    {
+        let (count, unit, _) = value.as_datetime64()?;
+        let nanos = count.checked_mul(nanos_per(unit)?)?;
+        let clock = fix_clock(nanos.rem_euclid(NANOS_PER_DAY));
+        return Some(smol_str::format_smolstr!("{clock}Z"));
     }
     wire_text(value)
 }
@@ -249,25 +260,28 @@ fn fix_date(days: i64) -> SmolStr {
 /// One instant as FIX spells it: `YYYYMMDD-HH:MM:SS`, then the shortest of
 /// no fraction, three, six or nine digits that keeps the count exact.
 fn fix_timestamp(nanos: i64) -> SmolStr {
-    let days = nanos.div_euclid(NANOS_PER_DAY);
-    let rest = nanos.rem_euclid(NANOS_PER_DAY);
-    let seconds = rest / 1_000_000_000;
-    let fraction = rest % 1_000_000_000;
+    let date = fix_date(nanos.div_euclid(NANOS_PER_DAY));
+    let clock = fix_clock(nanos.rem_euclid(NANOS_PER_DAY));
+    smol_str::format_smolstr!("{date}-{clock}")
+}
+
+/// One time of day, `nanos` into its day, as FIX spells it: `HH:MM:SS`,
+/// then the shortest of no fraction, three, six or nine digits that keeps
+/// the count exact.
+fn fix_clock(nanos: i64) -> SmolStr {
+    let seconds = nanos / 1_000_000_000;
+    let fraction = nanos % 1_000_000_000;
     let (hour, minute, second) = (seconds / 3600, (seconds / 60) % 60, seconds % 60);
-    let date = fix_date(days);
     if fraction == 0 {
-        smol_str::format_smolstr!("{date}-{hour:02}:{minute:02}:{second:02}")
+        smol_str::format_smolstr!("{hour:02}:{minute:02}:{second:02}")
     } else if fraction % 1_000_000 == 0 {
         smol_str::format_smolstr!(
-            "{date}-{hour:02}:{minute:02}:{second:02}.{:03}",
+            "{hour:02}:{minute:02}:{second:02}.{:03}",
             fraction / 1_000_000
         )
     } else if fraction % 1_000 == 0 {
-        smol_str::format_smolstr!(
-            "{date}-{hour:02}:{minute:02}:{second:02}.{:06}",
-            fraction / 1_000
-        )
+        smol_str::format_smolstr!("{hour:02}:{minute:02}:{second:02}.{:06}", fraction / 1_000)
     } else {
-        smol_str::format_smolstr!("{date}-{hour:02}:{minute:02}:{second:02}.{fraction:09}")
+        smol_str::format_smolstr!("{hour:02}:{minute:02}:{second:02}.{fraction:09}")
     }
 }

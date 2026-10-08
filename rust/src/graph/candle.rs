@@ -706,9 +706,9 @@ impl Fold {
 }
 
 /// Candles from a sorted stream of books, one per cross code and bucket.
-/// A candle reads a book's top of book alone, which a book states whether
-/// it is complete or holds only its deltas, so a walk's books fold as they
-/// are emitted, none rebuilt.
+/// A candle reads a book's top of book alone, which a complete book and a
+/// delta book both state, so a walk's books fold as they are emitted, none
+/// rebuilt.
 ///
 /// Books must arrive sorted by [`Event::get_currunix`]; a regression is
 /// refused at `$.book.currunix`. The candles of a bucket are emitted, in

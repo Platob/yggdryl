@@ -1601,6 +1601,107 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     assert_eq!(serde_json::from_str::<Scalar>(&encoded).unwrap(), sequence);
 }
 
+/// The wire writes a temporal's ISO spelling only where the spelling reads
+/// back at the unit the value is held at - the fraction is the shortest
+/// exact one, so a nanosecond count at midnight spells seconds - and the
+/// structural triple otherwise, so the unit survives the round trip at
+/// every width and the value reads back as itself.
+#[test]
+fn a_temporal_spells_iso_on_the_wire_only_where_the_spelling_keeps_its_unit() {
+    let per = |unit: TimeUnit| match unit {
+        TimeUnit::Second => 1_i64,
+        TimeUnit::Millisecond => 1_000,
+        TimeUnit::Microsecond => 1_000_000,
+        _ => 1_000_000_000,
+    };
+    // The fractions, in nanoseconds, and the unit each spells.
+    let fractions = [
+        (0, TimeUnit::Second),
+        (500_000_000, TimeUnit::Millisecond),
+        (1_000, TimeUnit::Microsecond),
+        (1, TimeUnit::Nanosecond),
+    ];
+    for unit in [
+        TimeUnit::Second,
+        TimeUnit::Millisecond,
+        TimeUnit::Microsecond,
+        TimeUnit::Nanosecond,
+    ] {
+        for (nanos, spelled_unit) in fractions {
+            let step = 1_000_000_000 / per(unit);
+            if nanos % step != 0 {
+                continue;
+            }
+            let fraction = nanos / step;
+            let keeps = spelled_unit == unit;
+            let mut values = vec![
+                Scalar::datetime64(1_786_719_175 * per(unit) + fraction, unit, Timezone::UTC)
+                    .unwrap(),
+                Scalar::datetime64(1_786_719_175 * per(unit) + fraction, unit, Timezone::NAIVE)
+                    .unwrap(),
+                Scalar::duration64(90 * per(unit) + fraction, unit).unwrap(),
+                Scalar::duration64(-(90 * per(unit) + fraction), unit).unwrap(),
+                Scalar::from_time(34_200 * per(unit) + fraction, unit, Timezone::NAIVE).unwrap(),
+            ];
+            if let Ok(count) = i32::try_from(90 * per(unit) + fraction) {
+                values.push(Scalar::duration32(count, unit).unwrap());
+            }
+            for value in values {
+                let encoded = serde_json::to_string(&value).unwrap();
+                let document: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+                assert_eq!(
+                    document["value"].is_string(),
+                    keeps,
+                    "{encoded}: the ISO spelling only where it reads back at {unit}"
+                );
+                if !keeps {
+                    assert_eq!(
+                        document["value"][1],
+                        serde_json::to_value(unit).unwrap(),
+                        "{encoded}"
+                    );
+                }
+                let decoded: Scalar = serde_json::from_str(&encoded).unwrap();
+                assert_eq!(decoded, value, "{encoded}");
+                assert_eq!(decoded.temporal_unit(), Some(unit), "{encoded}");
+                assert_eq!(decoded.kind(), value.kind(), "{encoded}");
+                assert_eq!(serde_json::to_string(&decoded).unwrap(), encoded);
+            }
+        }
+    }
+    // The spellings written are the short ones.
+    assert_eq!(
+        serde_json::to_string(
+            &Scalar::datetime64(1_786_719_175, TimeUnit::Second, Timezone::UTC).unwrap()
+        )
+        .unwrap(),
+        r#"{"type":"datetime64","value":"2026-08-14T14:52:55Z"}"#
+    );
+    assert_eq!(
+        serde_json::to_string(
+            &Scalar::datetime64(
+                1_786_719_175_000_000_000,
+                TimeUnit::Nanosecond,
+                Timezone::UTC
+            )
+            .unwrap()
+        )
+        .unwrap(),
+        r#"{"type":"datetime64","value":[1786719175000000000,"nanosecond","UTC"]}"#
+    );
+    assert_eq!(
+        serde_json::to_string(
+            &Scalar::time64(34_200_500_000, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()
+        )
+        .unwrap(),
+        r#"{"type":"time64","value":[34200500000,"microsecond","NAIVE"]}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&Scalar::duration64(1_500, TimeUnit::Millisecond).unwrap()).unwrap(),
+        r#"{"type":"duration64","value":"PT1.500S"}"#
+    );
+}
+
 #[test]
 fn every_width_leaf_round_trips_under_its_unchanged_tag() {
     let cases = [

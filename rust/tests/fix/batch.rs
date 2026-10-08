@@ -779,7 +779,7 @@ fn a_walk_written_under_a_table_schema_keeps_its_enum_columns_as_their_codes() {
         .next()
         .expect("one walked message")
         .expect("a message");
-    let as_stored = yggdryl::SerieReader::from_arrow_reader(
+    let as_stored = yggdryl::StreamChunkedSerie::from_arrow_reader(
         Some(&stored),
         yggdryl::arrow::batch_reader(rows[0].schema(), rows),
         yggdryl::ArrowCastOptions::new(),
@@ -3278,8 +3278,9 @@ fn bridge_capture() -> (yggdryl::holder::Buffer, yggdryl::media::RecordOptions) 
 }
 
 /// Every record a serie face answered, as the batch it is.
-fn serie_batches(reader: yggdryl::SerieReader) -> Vec<RecordBatch> {
+fn serie_batches(reader: yggdryl::StreamChunkedSerie) -> Vec<RecordBatch> {
     reader
+        .into_chunks()
         .map(|record| {
             record
                 .expect("a record")
@@ -3305,7 +3306,12 @@ fn each_serie_face_yields_exactly_the_rows_its_arrow_door_yields() {
     let codec = codec();
     let (source, options) = bridge_capture();
     let text = || source.read_arrow_reader(&options).expect("a text reader");
-    let read = || source.read_serie(Some(&options)).expect("a text serie");
+    let read = || {
+        yggdryl::StreamChunkedSerie::from_serie(
+            source.read_serie(Some(&options)).expect("a text serie"),
+        )
+        .expect("native record stream")
+    };
 
     // Text rows in, FIX rows out: the root the Arrow door writes, declaring
     // no order, and its batches row for row.
@@ -3352,7 +3358,7 @@ fn each_serie_face_yields_exactly_the_rows_its_arrow_door_yields() {
             .unwrap(),
     );
     let faced = codec
-        .serie_reader(root.clone(), codec.messages(fix_rows()))
+        .chunked_stream(root.clone(), codec.messages(fix_rows()))
         .unwrap();
     assert_eq!(faced.field(), &root);
     assert_eq!(serie_batches(faced), written);
@@ -3382,7 +3388,12 @@ fn the_serie_faces_answer_alike_on_several_threads() {
     let one = codec();
     let four = codec().with_threads(4);
     let (source, options) = bridge_capture();
-    let read = || source.read_serie(Some(&options)).expect("a text serie");
+    let read = || {
+        yggdryl::StreamChunkedSerie::from_serie(
+            source.read_serie(Some(&options)).expect("a text serie"),
+        )
+        .expect("native record stream")
+    };
     let walk = |codec: &FixCodec| {
         serie_batches(
             codec
@@ -3416,7 +3427,7 @@ fn a_walk_states_no_order_its_source_declared() {
     assert!(!walked.schema().metadata().contains_key("SORT:by"));
     assert!(row_count(&batches(walked)) > 0);
 
-    let rows = yggdryl::SerieReader::from_arrow_reader(
+    let rows = yggdryl::StreamChunkedSerie::from_arrow_reader(
         None,
         yggdryl::arrow::batch_reader(schema, declared),
         yggdryl::ArrowCastOptions::new(),

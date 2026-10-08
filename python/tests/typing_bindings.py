@@ -51,14 +51,14 @@ from yggdryl import (
     ProtocolField,
     PythonMetadata,
     RecordOptions,
-    Records,
+    StreamSerie,
     RicField,
     Scalar,
     SedolField,
     Selector,
     Serie,
     SerieField,
-    SerieReader,
+    StreamChunkedSerie,
     Side,
     State,
     TimeInForce,
@@ -113,7 +113,7 @@ from yggdryl._native import (
     Tables,
 )
 from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
-from yggdryl.enums import MARKET_VIEWS, AsciiCode, Ccy, fixed_ascii
+from yggdryl.enums import MARKET_VIEWS, AsciiCode, Ccy, Country, Mic, fixed_ascii
 from yggdryl.holder import (
     Buffer,
     Buffered,
@@ -277,12 +277,12 @@ cast_field_batch: pa.RecordBatch = Serie.from_arrow_batch(
 drained_reader: Serie = Serie.from_arrow_reader(
     pa.RecordBatchReader.from_batches(source_batch.schema, [source_batch]), cast_root
 )
-serie_reader: SerieReader = SerieReader.from_arrow_reader(
+serie_reader: StreamChunkedSerie = StreamChunkedSerie.from_arrow_reader(
     pa.RecordBatchReader.from_batches(source_batch.schema, [source_batch]), cast_root
 )
 serie_reader_field: Field = serie_reader.field
 serie_reader_batches: list[Serie] = list(serie_reader)
-serie_reader_stream: pa.RecordBatchReader = SerieReader.from_arrow_reader(
+serie_reader_stream: pa.RecordBatchReader = StreamChunkedSerie.from_arrow_reader(
     pa.RecordBatchReader.from_batches(source_batch.schema, [source_batch])
 ).into_arrow_reader()
 cast_plan = ArrowCastPlan(source_batch.schema, cast_root, safe=True)
@@ -297,7 +297,7 @@ capsule_requested: tuple[object, object] = landed_array.__arrow_c_array__(
 )
 field_capsule: object = Field("value", "int64").__arrow_c_schema__()
 dtype_capsule: object = DataType("int64").__arrow_c_schema__()
-reader_capsule: object = SerieReader.from_(source_batch).__arrow_c_stream__()
+reader_capsule: object = StreamChunkedSerie.from_(source_batch).__arrow_c_stream__()
 cast_plan_column: Serie = ArrowCastPlan(Field("value", "int32"), Field("value", "int64")).apply(
     landed_array
 )
@@ -612,6 +612,11 @@ ascii_declared_enum: StringEnum = TypedCcy.as_enum()
 ascii_declared_field: Field = TypedCcy.into_field("ccy", nullable=False)
 ascii_recovered_class: type[AsciiCode] = AsciiCode.from_field(ascii_declared_field)
 ascii_base: type[AsciiCode] = TypedCcy
+country_tender: Ccy | None = Country.from_str("US").currency
+mic_operating_market: Mic | None = Mic.from_str("XNGS").operating
+mic_segment: bool = Mic.from_str("XNGS").is_segment
+mic_country_code: Country | None = Mic.from_str("XNGS").country
+assert country_tender == Ccy.from_str("USD") and mic_segment and mic_country_code == Country.from_str("US")
 
 ascii_declaration: StringEnum = StringEnum("Side", {"BUY": "B"})
 ascii_declaration_json: str = ascii_declaration.into_json()
@@ -887,8 +892,8 @@ record_handle.write_arrow_reader(record_batches, "overwrite", options=record_opt
 record_handle.write_arrow_reader(record_batches, "invalid")  # type: ignore[arg-type]
 record_handle.overwrite_arrow_reader(ForeignArrowReader())
 record_handle.overwrite_arrow_reader(NotArrowReader())  # type: ignore[arg-type]
-record_series: SerieReader = record_handle.read_serie()
-record_series = record_handle.read_serie(options=record_options, num_threads=2)
+record_series: StreamChunkedSerie = StreamChunkedSerie.from_serie(record_handle.read_serie())
+record_series = StreamChunkedSerie.from_serie(record_handle.read_serie(options=record_options, num_threads=2))
 record_handle.write_serie(record_series)
 record_handle.write_serie(record_batches, "append", options=record_options, num_threads=...)
 record_handle.overwrite_serie(lit_serie, commit_batch_num=1)
@@ -1127,6 +1132,9 @@ iceberg_options_scan: pa.RecordBatchReader = iceberg_table.scan(
     options=iceberg.IcebergOptions(read_parallelism=2)
 )
 iceberg_write_parallelism: int = iceberg.IcebergOptions(write_parallelism=2).write_parallelism
+iceberg_max_open_partitions: int = iceberg.IcebergOptions(
+    max_open_partitions=2
+).max_open_partitions
 iceberg_write_staging: str | None = iceberg.IcebergOptions(write_staging="off").write_staging
 
 assert iceberg_retries >= 0
@@ -1394,8 +1402,8 @@ plan_projected_table: pa.Table = plan.read_sections().apply_arrow(pa.Table.from_
 plan_projected_reader: pa.RecordBatchReader = plan.read_sections().apply_arrow(
     pa.RecordBatchReader.from_batches(plan_batch.schema, [plan_batch])
 )
-plan_records: Records = plan.read_sections().apply_records([{"ccy": "EUR", "price": 1}])
-plan_rows: list[dict[str, object]] = plan_records.collect()
+plan_records: StreamSerie = plan.read_sections().apply_records([{"ccy": "EUR", "price": 1}])
+plan_rows: list[Scalar] = plan_records.collect()
 
 expression: Expression = Expression("select ccy where ccy = 'EUR'")
 expression_parsed: Expression = Expression.parse("select ccy")
@@ -1415,7 +1423,7 @@ expression_batch: pa.RecordBatch = expression.apply_arrow_batch(plan_batch)
 expression_reader: pa.RecordBatchReader = expression.apply_arrow_reader(
     pa.RecordBatchReader.from_batches(plan_batch.schema, [plan_batch])
 )
-expression_records: Records = expression.apply_records([{"ccy": "EUR", "price": 1}])
+expression_records: StreamSerie = expression.apply_records([{"ccy": "EUR", "price": 1}])
 expression_records_reader: pa.RecordBatchReader = expression_records.into_arrow_reader()
 expression_explained: str = expression.explain()
 
@@ -2207,13 +2215,14 @@ graph_book_with_operations: graph.BookEvent = graph_book.with_operations(
     [graph_order_event, graph.MarketData(graph_quote_event)]
 )
 graph_book_alive: list[graph.MarketData] = graph_book_with_operations.alive
-graph_book_deltas: list[graph.MarketData] = graph_book_with_operations.deltas
+graph_book_delta: list[graph.MarketData] = graph_book_with_operations.delta
+graph_book_controls: list[graph.SnapshotEvent] = graph_book_with_operations.controls
 graph_book_ordlive: list[graph.OrderEvent] = graph_book_with_operations.ordlive
 graph_book_orddelta: list[graph.OrderEvent] = graph_book_with_operations.orddelta
 graph_book_quotes: list[graph.QuoteEvent] = graph_book_with_operations.quotes
 graph_book_executions: list[graph.ExecutionEvent] = graph_book_with_operations.executions
 graph_book_events: list[graph.MarketData] = graph_book_with_operations.events
-assert graph_book_events == []
+assert graph_book_events == [] and graph_book_controls == []
 graph_book_alive_on: list[graph.MarketData] = graph_book_with_operations.alive_on(Side.BUYS)
 graph_book_alive_on_text: list[graph.MarketData] = graph_book_with_operations.alive_on("SELL")
 graph_book_complete: bool = graph_book_with_operations.is_complete
@@ -2364,7 +2373,7 @@ assert not graph_book_ref_range_delete and not graph_book_ref_partial
 assert graph_quote_event_booked.book == graph_book_ref
 assert graph_trade_executions == [graph_fill]
 assert graph_trade_restated == graph_trade
-assert graph_book_alive[0] == graph.MarketData(graph_order_event) and len(graph_book_deltas) == 2
+assert graph_book_alive[0] == graph.MarketData(graph_order_event) and len(graph_book_delta) == 2
 assert graph_book_complete and not graph_book_crossed
 assert graph_book_alive_on == [graph.MarketData(graph_order_event)]
 assert graph_book_keyed.crosscode == "3:0:XX0000000000" and graph_book_keyed.is_complete
@@ -2465,7 +2474,7 @@ chunked_rows: list[Scalar] = chunked_prices.rows()
 chunked_values: list[Any] = chunked_prices.as_py()
 chunked_get: Scalar | None = chunked_prices.get(5)
 chunked_prices.push_chunk(serie_column, safe=False)
-chunked_reader: SerieReader = SerieReader.from_chunked(chunked_prices)
+chunked_reader: StreamChunkedSerie = StreamChunkedSerie.from_chunked(chunked_prices)
 chunked_plan: yggdryl.ChunkedSerie = ArrowCastPlan(
     Field("price", "int64"), Field("price", "float64")
 ).apply(chunked_prices)
@@ -2498,9 +2507,9 @@ order_distinct: yggdryl.Serie = order_prices.into_unique()
 order_reversed: yggdryl.Serie = order_prices.into_reversed()
 order_taken: yggdryl.Serie = order_prices.into_taken([2, 0])
 order_kept: yggdryl.Serie = order_prices.into_filtered([True, False, None])
-order_groups: list[tuple[Scalar, yggdryl.Serie]] = order_prices.partition_by(["a", "b", "a"])
+order_groups: yggdryl.KeySeries = order_prices.partition_by(["a", "b", "a"])
 order_record: yggdryl.Serie = yggdryl.Serie.from_(source_batch)
-order_by_paths: list[tuple[Scalar, yggdryl.Serie]] = order_record.partition_by_paths(["value"])
+order_by_paths: yggdryl.KeySeries = order_record.partition_by(["value"])
 order_bytes: int = order_prices.memory_size()
 order_chained: yggdryl.Serie = (
     order_prices.as_sorted().as_unique().as_reversed().as_taken([0]).as_filtered([True])
@@ -2517,10 +2526,10 @@ order_window.swap(0, 1)
 order_window.fill(4)
 order_window.splice(0, 1, [5])
 order_window.copy_from(order_window)
-order_window_groups: list[tuple[Scalar, yggdryl.Serie]] = order_window.partition_by([1, 1])
+order_window_groups: yggdryl.KeySeries = order_window.partition_by(yggdryl.Serie.from_(pa.array([1, 1])))
 order_window_equal: bool = order_window == order_prices
 chunked_order: yggdryl.ChunkedSerie = chunked_prices.into_sorted(descending=True)
-chunked_order_groups: list[tuple[Scalar, yggdryl.ChunkedSerie]] = chunked_prices.partition_by(
+chunked_order_groups: yggdryl.KeySeries = chunked_prices.partition_by(
     chunked_prices
 )
 chunked_order_chained: yggdryl.ChunkedSerie = chunked_prices.as_reversed().as_unique()
@@ -2535,38 +2544,40 @@ assert order_window_groups and not order_window_equal
 assert chunked_order is not None and chunked_order_groups and chunked_order_indices is not None
 assert chunked_order_chained is chunked_prices
 
-# Windows of equal adjacent keys: held windows over the serie object, each
-# stating its record as a struct value; a stream's windows are lazy readers.
+# Native windows and partitions expose explicit contexts and payloads.
 window_quotes: yggdryl.Serie = yggdryl.Serie.from_scalars(
     Field("quote", "struct<venue: utf8, price: int64>", nullable=False),
     [["XNAS", 1], ["XNAS", 2], ["XNYS", 3]],
 )
-window_by_venue: list[tuple[Scalar, yggdryl.WindowSerie]] = window_quotes.window_by("venue")
-window_by_sorted: list[tuple[Scalar, yggdryl.WindowSerie]] = window_quotes.window_by(
-    ["venue", yggdryl.Term.column("price")], sorted=True
-)
-window_by_default: list[tuple[Scalar, yggdryl.WindowSerie]] = window_quotes.window_by(
-    yggdryl.Selector("venue"), None
-)
-window_record: Scalar | None = window_by_venue[0][1].static_values
+window_by_venue: yggdryl.KeySeries = window_quotes.window_by("venue")
+window_by_sorted: yggdryl.KeySeries = window_quotes.window_by("venue, price", sorted=True)
+window_by_default: yggdryl.KeySeries = window_quotes.window_by(yggdryl.Selector("venue"), None)
+window_record: Scalar = window_by_venue[0].key
+window_payload: yggdryl.Serie = window_by_venue[0].rows
+window_start: int | None = window_by_venue[0].rownum
+window_paths: list[yggdryl.FieldPath | None] = window_by_venue[0].key_paths
 window_quotes.window_by("venue", "yes")  # type: ignore[arg-type]
-window_of_window: list[tuple[Scalar, yggdryl.WindowSerie]] = window_quotes.window(
-    0, 2
-).window_by("price")
-window_chunked: list[tuple[Scalar, yggdryl.ChunkedSerie]] = chunked_prices.window_by(
-    "price", sorted=False
-)
-window_walk: yggdryl.SerieReaderWindows = SerieReader.from_serie(window_quotes).window_by(
-    "venue", True
-)
+window_of_window: yggdryl.KeySeries = window_quotes.window(0, 2).window_by("price")
+window_chunked: yggdryl.KeySeries = chunked_prices.window_by("price", sorted=False)
+window_walk: yggdryl.StreamKeySerie = StreamChunkedSerie.from_serie(window_quotes).window_by("venue", True)
 window_walk_field: Field = window_walk.field
-window_walk_static: Field = window_walk.static_field
-window_readers: list[SerieReader] = list(window_walk)
-window_reader_record: Scalar | None = window_readers[0].static_values
-assert window_by_venue and window_by_sorted and window_by_default and window_of_window
-assert window_record is not None and window_chunked is not None
-assert window_walk_field is not None and window_walk_static is not None
-assert window_readers and window_reader_record is not None
+window_walk_key: Field = window_walk.key_field
+window_readers: list[yggdryl.KeySerie] = list(window_walk)
+window_reader_record: Scalar = window_readers[0].key
+partition_walk: yggdryl.StreamKeySerie = StreamChunkedSerie.from_serie(window_quotes).partition_by("venue", max_open=2, threads=1)
+partition_walk_field: Field = partition_walk.field
+partition_pairs: list[yggdryl.KeySerie] = list(partition_walk)
+partition_default: yggdryl.StreamKeySerie = StreamChunkedSerie.from_serie(window_quotes).partition_by(yggdryl.Selector("venue"), None, None)
+StreamChunkedSerie.from_serie(window_quotes).partition_by("venue", clustered="yes")  # type: ignore[arg-type]
+row_stream: yggdryl.StreamSerie = window_quotes.into_stream()
+row_scalar: Scalar = next(row_stream)
+chunk_stream: StreamChunkedSerie = row_stream.into_chunked_stream(None, None)
+chunk_schema: pa.Schema = chunk_stream.schema
+assert window_record is not None and window_payload is not None and window_start == 0
+assert window_paths and window_by_sorted and window_by_default and window_of_window
+assert window_chunked and window_walk_field and window_walk_key and window_reader_record
+assert partition_walk_field and partition_pairs is not None and partition_default is not None
+assert row_scalar is not None and chunk_schema is not None
 
 # Spill, `order by` keys and joins: a bound and a folder as `SpillOptions`
 # or its keywords, keys as one text, a list or a `Selector`, `how` a word.
@@ -2588,7 +2599,7 @@ spill_chunked_spilled: bool = spill_chunked.is_spilled()
 spill_window: yggdryl.WindowSerie = spill_column.window(0, 2)
 spill_window_resident: int = spill_window.resident_size()
 spill_window_spilled: bool = spill_window.is_spilled()
-spill_reader: SerieReader = SerieReader.from_serie(spill_column)
+spill_reader: StreamChunkedSerie = StreamChunkedSerie.from_serie(spill_column)
 spill_reader.spill(None, folder="/tmp")
 spill_reader_resident: int = spill_reader.resident_size()
 spill_reader_spilled: bool = spill_reader.is_spilled()
@@ -2597,8 +2608,8 @@ spill_column_chained: yggdryl.Serie = spill_column.as_spilled(byte_size=0).as_sp
 spill_column_copy: yggdryl.Serie = spill_column.into_spilled(spill_stated, folder=None)
 spill_chunked_chained: yggdryl.ChunkedSerie = spill_chunked.as_spilled(spill_stated)
 spill_chunked_copy: yggdryl.ChunkedSerie = spill_chunked.into_spilled(byte_size=0)
-spill_reader_chained: SerieReader = spill_reader.as_spilled(byte_size=0)
-spill_reader_moved: SerieReader = spill_reader.into_spilled(spill_stated)
+spill_reader_chained: StreamChunkedSerie = spill_reader.as_spilled(byte_size=0)
+spill_reader_moved: StreamChunkedSerie = spill_reader.into_spilled(spill_stated)
 assert spill_default == spill_env and spill_bound and spill_folder is not None and spill_never
 assert spill_resident >= 0 and spill_spilled in (True, False)
 assert spill_chunked_resident == 0 and spill_chunked_spilled
@@ -2620,8 +2631,8 @@ order_by_chunked_chained: yggdryl.ChunkedSerie = chunked_prices.as_sort_by("pric
 order_by_window: yggdryl.Serie = order_into.window(0, 2).into_sort_by("price")
 order_by_window_indices: yggdryl.Serie = order_into.window(0, 2).sort_indices_by("price")
 order_by_window_written: yggdryl.WindowSerie = order_into.window(0, 2).as_sort_by("price")
-order_by_reader: SerieReader = SerieReader.from_serie(window_quotes).into_sort_by("venue")
-order_by_reader_sorted: SerieReader = SerieReader.from_serie(window_quotes).into_sorted(
+order_by_reader: StreamChunkedSerie = StreamChunkedSerie.from_serie(window_quotes).into_sort_by("venue")
+order_by_reader_sorted: StreamChunkedSerie = StreamChunkedSerie.from_serie(window_quotes).into_sorted(
     descending=True, nulls_first=True
 )
 window_quotes.sort_indices_by(1)  # type: ignore[arg-type]
@@ -2656,7 +2667,7 @@ join_mapping: yggdryl.Serie = window_quotes.join_with(join_venues, {"venue": "ve
 join_chunked: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_serie(window_quotes).join_with(
     yggdryl.ChunkedSerie.from_serie(join_venues), "venue", "full", coalesce=True
 )
-join_reader: SerieReader = SerieReader.from_serie(window_quotes).join_with(
+join_reader: StreamChunkedSerie = StreamChunkedSerie.from_serie(window_quotes).join_with(
     join_venues, "venue", "right", prune=True, pushdown_keys=4
 )
 window_quotes.join_with(join_venues, "venue", coalesce="yes")  # type: ignore[arg-type]
@@ -2717,7 +2728,7 @@ def _http_client_usage(base: str) -> None:
     pages: yggdryl.http.Pages = session.pages("/orders", records="data")
     first: yggdryl.http.Response = next(pages)
     table: pa.RecordBatchReader = session.pages("/orders").into_arrow_reader()
-    series: SerieReader = session.pages("/orders").read_serie()
+    series: StreamChunkedSerie = session.pages("/orders").chunked_stream()
     prepared = yggdryl.http.Request("GET", f"{base}/orders", session=session)
     answers: list[yggdryl.http.Response] = list(session.send_all([prepared], concurrency=4))
     mixed: list[yggdryl.http.Response] = list(
@@ -2799,15 +2810,47 @@ isin_registry_row: dict[str, Any] | None = isin_registry.get("CH0012214059")
 isin_registry_dirty: bool = isin_registry.is_dirty
 isin_registry_committed: yggdryl.IOResult = yggdryl.IsinRegistry.from_url("instruments.arrows", 8).commit()
 isin_registry_default: yggdryl.IsinRegistry = yggdryl.IsinRegistry.from_env()
+isin_registry_seeded: yggdryl.IsinRegistry = yggdryl.IsinRegistry.seeded()
+isin_registry_seeded_store: yggdryl.IsinRegistry = yggdryl.IsinRegistry.seeded_from_url("instruments.arrows", 16384)
+isin_registry_short_name: object = (isin_registry_seeded.get("US0378331005") or {}).get("fisn")
 isin_registry_listed: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN")
 isin_registry_on_market: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN", "XSWX")
 isin_registry_bound: int = isin_registry.max_instruments
+isin_registry_rows: int = isin_registry.rows
+isin_registry_listings: list[dict[str, Any]] = isin_registry.listings("CH0012214059")
+isin_registry_listing: dict[str, Any] | None = isin_registry.get_listing("CH0012214059", "XSWX")
+isin_registry_removed: list[dict[str, Any]] = yggdryl.IsinRegistry().remove("CH0012214059")
+isin_registry_removed_listing: dict[str, Any] | None = yggdryl.IsinRegistry().remove_listing("CH0012214059", "XSWX")
 isin_registry_reader: pa.RecordBatchReader = isin_registry.into_arrow_reader()
 isin_registry_loaded: int = yggdryl.IsinRegistry().extend_from_arrow_reader(isin_registry.into_arrow_reader())
 isin_registry_codec: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, isin_registry=isin_registry)
 isin_registry_shared: yggdryl.IsinRegistry | None = isin_registry_codec.isin_registry
 assert isin_registry_merged and isin_registry_row is not None and isin_registry_bound == 8
 assert isin_registry_loaded == 1 and isin_registry_shared == isin_registry and len(isin_registry) == 1
+assert isin_registry_rows == len(isin_registry_listings) == 1 and isin_registry_listing is None
+isin_registry_by_code: dict[str, Any] | None = isin_registry_seeded.get_by_code("cusip", "037833100", "XNAS")
+isin_registry_lookup_codes: tuple[str, ...] = yggdryl.IsinRegistry.LOOKUP_CODES
+isin_registry_threshold: float = isin_registry.economic_threshold
+isin_registry.set_economic_threshold(yggdryl.IsinRegistry.DEFAULT_ECONOMIC_THRESHOLD)
+isin_registry_economic: bool = isin_registry.is_economic_match
+isin_registry.set_economic_match(False)
+isin_registry_resolution: yggdryl.Resolution = isin_registry_seeded.resolve(
+    yggdryl.graph.Order(securityids=[identifier_security])
+)
+isin_registry_resolved_tier: str | None = isin_registry_resolution.tier
+isin_registry_resolved_kind: str | None = isin_registry_resolution.kind
+isin_registry_resolved_entry: dict[str, Any] | None = isin_registry_resolution.entry
+isin_registry_resolved_why: str | None = isin_registry_resolution.unmatched
+isin_registry_resolved_isins: list[str] | None = isin_registry_resolution.isins
+isin_registry_resolved_best: float | None = isin_registry_resolution.best
+isin_registry_origccy: yggdryl.Scalar | None = graph_root_order.origccy
+isin_registry_origin_currency: yggdryl.Scalar = graph_root_order.origin_currency
+assert isin_registry_by_code is not None and "cusip" in isin_registry_lookup_codes and not isin_registry_economic
+assert isin_registry_resolution.matched and isin_registry_resolved_tier == "isin" and isin_registry_resolved_why is None
+assert isin_registry_resolved_entry is not None and isin_registry_resolved_isins is None and isin_registry_resolved_best is None
+assert isin_registry_resolved_kind is None and yggdryl.Resolution is yggdryl.isin_registry.Resolution
+assert isin_registry_threshold == 0.85 and isin_registry_origccy is None and isin_registry_origin_currency.as_py() == "XXX"
+assert isin_registry_removed == [] and isin_registry_removed_listing is None
 eusipa: yggdryl.Eusipa = yggdryl.Eusipa(2300)
 eusipa_text: yggdryl.Eusipa = yggdryl.Eusipa("1260")
 eusipa_code: int = eusipa.code

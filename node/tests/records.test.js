@@ -24,7 +24,7 @@ const {
   MimeType,
   RecordOptions,
   Serie,
-  SerieReader,
+  StreamChunkedSerie,
   TextOptions,
   fields,
   iceberg,
@@ -1281,7 +1281,7 @@ test('a CSV refuses a ragged record naming the row, and a bad dialect naming the
 
 // ---------------------------------------------------------------------------
 // The Serie record doors: rows in any shape the crate holds them, written
-// under one mode and read back as a SerieReader.
+// under one mode and read back as a StreamChunkedSerie.
 // ---------------------------------------------------------------------------
 
 // The trades as a held record column, typed by the root Arrow JS reads.
@@ -1294,11 +1294,11 @@ function tradesSerie(ids = [1n, 2n], symbols = ['AAPL', 'MSFT'], venues = ['XNAS
 
 // Every row a reader yields, as plain values.
 function serieRows(reader) {
-  assert.ok(reader instanceof SerieReader)
-  return [...reader].flatMap((serie) => serie.asJs())
+  assert.ok(reader instanceof Serie || reader instanceof StreamChunkedSerie)
+  return [...reader.intoChunkedStream()].flatMap((serie) => serie.asJs())
 }
 
-test('readSerie answers a SerieReader under the options, a property bag, or the handle own', () => {
+test('readSerie answers a generic Serie under the options, a property bag, or the handle own', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = MimeType.ARROW_STREAM
   handle.overwriteArrowTable(trades())
@@ -1320,7 +1320,7 @@ test('every write intent takes every shape the rows are held in', () => {
   const shapes = {
     Serie: () => tradesSerie(),
     ChunkedSerie: () => ChunkedSerie.fromSeries([tradesSerie([1n], ['AAPL'], ['XNAS']), tradesSerie([2n], ['MSFT'], ['XNAS'])]),
-    SerieReader: () => SerieReader.fromSerie(tradesSerie()),
+    StreamChunkedSerie: () => StreamChunkedSerie.fromSerie(tradesSerie()),
     BatchReader: () => BatchReader.from(trades()),
     ArrowTable: () => trades(),
     ArrowRecordBatch: () => trades().batches[0],
@@ -1368,7 +1368,7 @@ test('a write takes a held column apart from a stream, and consumes only the str
   handle.appendSerie(held)
   assert.equal(serieRows(handle.readSerie()).length, 4)
 
-  const stream = SerieReader.fromSerie(tradesSerie())
+  const stream = StreamChunkedSerie.fromSerie(tradesSerie())
   handle.overwriteSerie(stream)
   assert.throws(() => [...stream], /already been consumed/)
   assert.throws(() => handle.overwriteSerie(stream), /already been consumed/)
@@ -1386,12 +1386,12 @@ test('a write refuses a run, a value it cannot read and a mode it does not name'
 
   assert.throws(() => handle.overwriteSerie(new Serie([1, 2])), /run/)
   for (const value of [undefined, null, 7, 'trades', { id: 1 }]) {
-    assert.throws(() => handle.overwriteSerie(value), /value must be a Serie, a ChunkedSerie, a SerieReader/)
+    assert.throws(() => handle.overwriteSerie(value), /value must be a Serie, a ChunkedSerie, a StreamChunkedSerie/)
   }
   assert.throws(() => handle.writeSerie(tradesSerie(), 'readonly'), /expected a write mode - overwrite, append, merge - got readonly/)
   assert.throws(() => handle.writeSerie(tradesSerie(), null), /mode must be overwrite, append, or merge/)
   // A merge names its keys, and the refusal comes before the stream is taken.
-  const stream = SerieReader.fromSerie(tradesSerie())
+  const stream = StreamChunkedSerie.fromSerie(tradesSerie())
   assert.throws(() => handle.mergeSerie(stream, {}), /merge_by|mergeBy/)
   assert.equal(serieRows(stream).length, 2)
   assert.equal(handle.size(), 0)
@@ -1425,7 +1425,7 @@ test('a zero row bound writes no row and reads no source', () => {
   handle.overwriteSerie(tradesSerie())
 
   // An append bounded to no row is a no-op that never reads the source.
-  let stream = SerieReader.fromSerie(tradesSerie())
+  let stream = StreamChunkedSerie.fromSerie(tradesSerie())
   const appended = handle.appendSerie(stream, { maxRowSize: 0 })
   assert.deepEqual(counts(appended), [0, 0, 0])
   assert.equal(appended.isEmpty(), true)
@@ -1433,7 +1433,7 @@ test('a zero row bound writes no row and reads no source', () => {
   assert.equal(serieRows(handle.readSerie()).length, 2)
 
   // An overwrite publishes the declared field's empty value, the source unread.
-  stream = SerieReader.fromSerie(tradesSerie())
+  stream = StreamChunkedSerie.fromSerie(tradesSerie())
   const declared = handle.overwriteSerie(
     stream,
     handle.recordOptions().withField(schema()).withMaxRowSize(0),
@@ -1452,7 +1452,7 @@ test('a zero row bound writes no row and reads no source', () => {
 test('a zero thread count is refused by name before the source is read', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = MimeType.ARROW_STREAM
-  const stream = SerieReader.fromSerie(tradesSerie())
+  const stream = StreamChunkedSerie.fromSerie(tradesSerie())
   assert.throws(() => handle.overwriteSerie(stream, { numThreads: 0 }), /\$\.num_threads/)
   assert.throws(() => handle.writeSerie(stream, 'append', handle.recordOptions().withNumThreads(0)), /\$\.num_threads/)
   assert.equal(serieRows(stream).length, 2)

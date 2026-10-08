@@ -279,6 +279,17 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     let header = parse_header(&mut cursor, limits)?;
     let blocks_at = cursor.position;
 
+    read_batch_opened(bytes, header, blocks_at, limits, field, options)
+}
+
+fn read_batch_opened(
+    bytes: bytes::Bytes,
+    header: super::container::Header,
+    blocks_at: usize,
+    limits: Limits,
+    field: Option<&Field>,
+    options: &AvroOptions,
+) -> Result<BatchReader> {
     // A declared root says what the rows are meant to be; without one, the
     // expressions the options apply say which stored columns they read.
     let columns = options.apply_columns();
@@ -339,6 +350,204 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
         failed: false,
     }))
 }
+
+/// Read one datum at a time, skipping unselected writer columns.
+/// Block decompression is shared with the column decoder; no row batch is
+/// decoded before its rows are requested.
+///
+/// # Errors
+/// Container, schema and scan refusals; datum failures arrive while pulling.
+pub fn read_stream<H: IOBase + ?Sized>(
+    handle: &H,
+    options: &AvroOptions,
+) -> crate::Result<crate::StreamSerie> {
+    reject_outer_coding(handle)?;
+    let bytes = bytes::Bytes::from(handle.read_all_bytes()?);
+    if bytes.is_empty() {
+        let root = options.field().unwrap_or_else(|| {
+            crate::DataType::from(crate::StructType::from_fields([]).expect("empty record"))
+                .required_field(options.name())
+        });
+        return Ok(crate::StreamSerie::from_rows(root, []));
+    }
+    let limits = Limits::default();
+    let mut cursor = Cursor::new(&bytes);
+    check_magic(cursor.take(MAGIC.len())?)?;
+    let header = parse_header(&mut cursor, limits)?;
+    let position = cursor.position;
+    let stored = field_from_schema(&header.schema, options.name())?;
+    let declared = options.field();
+    // A schema cast keeps its compiled Arrow owner. A one-row decoder bound
+    // preserves native pull behavior even when that cast is necessary.
+    if let Some(field) = &declared
+        && field.fields().iter().any(|child| {
+            stored
+                .fields()
+                .iter()
+                .find(|source| source.name().eq_ignore_ascii_case(child.name()))
+                .is_none_or(|source| source.dtype() != child.dtype())
+        })
+    {
+        let one = options.clone().with_batch_row_size(1);
+        let reader = read_batch_opened(bytes, header, position, limits, Some(field), &one)?;
+        let reader = field.apply_arrow_reader(
+            reader,
+            crate::ArrowCastOptions::new().with_safe(options.safe()),
+        )?;
+        return crate::StreamChunkedSerie::from_arrow_reader(
+            Some(field),
+            reader,
+            crate::ArrowCastOptions::new(),
+        )?
+        .into_stream();
+    }
+    let columns = options.apply_columns();
+    let wanted = |name: &str| {
+        columns
+            .as_ref()
+            .is_none_or(|names| names.iter().any(|value| value.eq_ignore_ascii_case(name)))
+            && declared.as_ref().is_none_or(|field| {
+                field
+                    .fields()
+                    .iter()
+                    .any(|child| child.name().eq_ignore_ascii_case(name))
+            })
+    };
+    let kept: Vec<_> = stored
+        .fields()
+        .iter()
+        .filter(|child| wanted(child.name()))
+        .map(|child| child.name().to_owned())
+        .collect();
+    let base = declared.as_ref().unwrap_or(&stored);
+    let excluded = base
+        .fields()
+        .iter()
+        .filter(|child| {
+            !kept
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(child.name()))
+        })
+        .map(|child| child.name());
+    let root = crate::Selector::all_except(excluded).apply_field(base)?;
+    let position_of = |name: &str| {
+        root.fields()
+            .iter()
+            .position(|child| child.name().eq_ignore_ascii_case(name))
+    };
+    let steps = match &header.schema.node {
+        Node::Record(record) => record
+            .fields
+            .iter()
+            .map(|field| (field.schema.clone(), position_of(&field.name)))
+            .collect(),
+        node => vec![(node.clone(), position_of("value"))],
+    };
+    let width = root.field_len();
+    let rows = AvroRows {
+        bytes,
+        position,
+        writer: header.schema,
+        coding: header.coding,
+        sync: header.sync,
+        limits,
+        steps,
+        width,
+        block: None,
+        pending_error: None,
+        ended: false,
+    };
+    Ok(crate::StreamSerie::from_rows(root, rows))
+}
+
+struct AvroRows {
+    bytes: bytes::Bytes,
+    position: usize,
+    writer: Schema,
+    coding: BlockCoding,
+    sync: [u8; SYNC_LEN],
+    limits: Limits,
+    steps: Vec<(Node, Option<usize>)>,
+    width: usize,
+    block: Option<(Vec<u8>, usize, u64)>,
+    pending_error: Option<crate::Error>,
+    ended: bool,
+}
+impl AvroRows {
+    fn next_row(&mut self) -> crate::Result<Option<crate::Scalar>> {
+        loop {
+            if let Some((payload, offset, left)) = self.block.take() {
+                let mut cursor = Cursor::new(&payload);
+                cursor.position = offset;
+                let mut budget = self.limits.max_nodes();
+                let datum = DatumCodec {
+                    names: &self.writer.names,
+                    limits: self.limits,
+                };
+                let mut values = vec![crate::Scalar::Null; self.width];
+                for (node, position) in &self.steps {
+                    if let Some(position) = position {
+                        values[*position] = datum.decode(node, &mut cursor, 0, &mut budget)?;
+                    } else {
+                        datum.skip(node, &mut cursor, 0, &mut budget)?;
+                    }
+                }
+                let offset = cursor.position;
+                if left > 1 {
+                    self.block = Some((payload, offset, left - 1));
+                } else if offset != payload.len() {
+                    self.pending_error = Some(codec(
+                        offset,
+                        "expected the block to end after its declared rows".into(),
+                    ));
+                }
+                return Ok(Some(crate::Scalar::from_sequence(values)));
+            }
+            let mut cursor = Cursor::new(&self.bytes);
+            cursor.position = self.position;
+            if cursor.is_exhausted() {
+                return Ok(None);
+            }
+            let (count, payload) = read_block(&mut cursor, &self.sync, self.limits)?;
+            let decoded = self.coding.load(payload, self.limits)?;
+            self.position = cursor.position;
+            if count == 0 {
+                if !decoded.is_empty() {
+                    return Err(codec(
+                        0,
+                        "expected the block to end after its declared rows".into(),
+                    ));
+                }
+            } else {
+                self.block = Some((decoded, 0, count));
+            }
+        }
+    }
+}
+impl Iterator for AvroRows {
+    type Item = crate::Result<crate::Scalar>;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.ended {
+            return None;
+        }
+        if let Some(error) = self.pending_error.take() {
+            self.ended = true;
+            return Some(Err(error));
+        }
+        match self.next_row() {
+            Ok(Some(row)) => Some(Ok(row)),
+            Ok(None) => {
+                self.ended = true;
+                None
+            }
+            Err(error) => {
+                self.ended = true;
+                Some(Err(error))
+            }
+        }
+    }
+}
+impl std::iter::FusedIterator for AvroRows {}
 
 /// Replace the container `handle` holds with every batch `batches` yields.
 ///
@@ -2420,11 +2629,14 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
         Ok(read_field(&self.handle, options)?)
     }
 
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> crate::Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
         match crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options) {
             Ok((_published, result)) => {
@@ -2442,11 +2654,12 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
         }
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
         &mut self,
-        batches: BatchReader,
+        value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> crate::Result<()> {
+        let batches = value.into_arrow_reader();
         self.require_record_options(options)?;
         match crate::iobase::leaf_writer(self, batches, options) {
             Ok(()) => {
@@ -2460,27 +2673,34 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
         }
     }
 
-    fn append_arrow_reader(
+    fn append_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> crate::Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
 
-    fn merge_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> crate::Result<crate::IOResult> {
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
+        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
         crate::iobase::merge_arrow_reader_default(self, batches, options)
     }
 }
 
 impl<H: IOBase> IOBase for Avro<H> {
-    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
+    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, read_tail_bytes,
+        pstream_bytes,
         size, capacity, reserve, uri, url,
         bound_location, mtime, media_type, set_media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container);
 
@@ -2570,3 +2790,5 @@ impl<H: IOBase> IOBase for Avro<H> {
         self.handle.remove(recursive)
     }
 }
+
+crate::media_serie::media_serie!(AvroSerie, Avro, as_avro, get_avro_mut);

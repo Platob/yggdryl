@@ -16,7 +16,7 @@ const {
   Field,
   Filter,
   Plan,
-  Records,
+  StreamSerie,
   Selector,
   Scalar,
   Serie,
@@ -273,7 +273,7 @@ test('a filter is a where clause', () => {
     { ccy: 'EUR', size: 5n },
     { ccy: 'USD', size: 5n },
   ])
-  assert.ok(kept instanceof Records)
+  assert.ok(kept instanceof StreamSerie)
   assert.equal(kept.field.name, 'row')
   const rows = kept.collect()
   assert.equal(rows.length, 1)
@@ -455,7 +455,7 @@ test('records stream both ways', () => {
   assert.deepEqual([...reader.intoTable().getChild('size')], [10n, 20n])
   assert.throws(() => rows.intoArrowReader(), /consumed/)
   const batch = new arrow.Table({ size: arrow.vectorFromArray([3n, 4n], new arrow.Int64()) })
-  const back = Records.fromArrowReader(BatchReader.from(batch))
+  const back = StreamSerie.fromArrowReader(BatchReader.from(batch))
   assert.equal(back.field.name, 'row')
   assert.deepEqual([...back].map((row) => row.asJs()), [[3], [4]])
   assert.throws(() => new Selector('size').applyRecords([]), /schema/)

@@ -114,3 +114,5 @@ pub(crate) fn reject_outer_coding<H: crate::IOBase + ?Sized>(handle: &H) -> crat
         ),
     })
 }
+
+pub use media::ExcelSerie;

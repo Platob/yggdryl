@@ -13,7 +13,7 @@ The role of a FIX plugin - the side of the session a dialect's plugin stands on 
 | Refuses | An integer that is the code of no member, naming the code; a spelling that names no member, naming the spelling; a member of another enum, a [`Side`](side.md) among them |
 | Stores | `uint8` under `yggdryl.pluginside`: `UKNW` at `0`, `BUYS` at `1`, `SELL` at `2` |
 | Reads a CBlock | `from_plugin_type(class)` reads the plugin class a CBlock root's `type` attribute names - its last `.`-separated segment, folded - and never refuses: `buyside` in it is `BUYS`, `sellside` is `SELL`, anything else `UKNW` ([below](#a-cblock-names-its-plugins-role)) |
-| FIX | A dictionary's [source entry](../../fix/registry.md#membership) states its plugin's role, the crate's `msgpluginsidecodeset` renders the three members, and a codec reading under a source stamps the role on every message as the required [`msgpluginside`](../../fix/capture.md#the-plugins-role-is-the-sources) column, tag 65042 |
+| FIX | A dictionary's [source entry](../../fix/registry.md#membership) states its plugin's role, the crate's `msgpluginsidecodeset` renders the three members, and a codec reading under a source stamps the role on every message as the required [`msgpluginside`](../../fix/capture.md#the-plugins-role-is-the-sources) column, tag 65043 |
 | Default | `UKNW`, no role stated: a stated value, never an absence |
 
 A plugin's role is a fact about the session, not about an order: a Buy-Side plugin originates orders and cancels and receives execution reports, a Sell-Side plugin receives them and answers. It is a separate enum from [`Side`](side.md), though `BUYS` and `SELL` are spelled alike and stored under the same codes - never shared, and never cast one into the other.

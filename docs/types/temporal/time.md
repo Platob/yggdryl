@@ -282,16 +282,33 @@ which is the same rule stated once more.
 
 ## Text
 
-Text is `HH:MM:SS[.fraction]`, the fraction at the unit's full width - three
-digits are milliseconds, six microseconds - so the digits *are* the unit. The
-compact `HHMMSS[.fraction]` reads too. An hour past the day folds into it, and
-a zone is refused: a time of day is naive, and a zoned reading belongs in a
+Text is `HH:MM:SS[.fraction]`, the fraction written short: nothing where it
+is zero, else the shortest of three, six or nine digits that spells the count
+exactly - so `09:30:00` is a nanosecond column's half past nine as much as a
+second column's, and `.500` is half a second at every unit. Reading takes one
+to nine fraction digits after `.` or `,`, and a column restates the count it
+reads at its own unit, so a value reads back as it printed. The compact
+`HHMMSS[.fraction]` reads too. An hour past the day folds into it, and a zone
+is refused: a time of day is naive, and a zoned reading belongs in a
 [datetime](datetime.md).
+
+`Time32::from_text` and `Time64::from_text` are the two widths' own doors over
+that one reader, Rust only: the resolution is the one the digits spell, held at
+the width's floor - seconds or milliseconds at 32 bits, at least microseconds
+at 64 - and a fraction `Time32` cannot hold exactly is refused.
+
+| spelling | example | reads as |
+| --- | --- | --- |
+| `HH:MM:SS`, the compact `HHMMSS` | `09:30:00`, `093000` | the clock at seconds |
+| a fraction after `.` or `,`, one to nine digits | `09:30:00.5`, `09:30:00,500` | the clock at the width the digits spell |
+| an hour past the day, to `99` | `25:00:00` | folded into the day: `01:00:00` |
+| `Z` or an offset | `09:30:00Z` | refused, naming `DateTime64` |
+| FIX spellings: a clock that stops at its minutes, and the compact clock run into three, six or nine fraction digits with no decimal sign | `09:30`, `0930`, `093000123` | read by the width's crate-private FIX door, `Time32::from_fix_text`/`Time64::from_fix_text`, which the [FIX codec](../../fix/message.md#anomalies) reads every `UTCTimeOnly` and `LocalMktTime` field through and which also refuses `60` seconds and a run of ten to twelve fraction digits; no other door takes them |
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Scalar, TimeUnit, Timezone};
+    use yggdryl::{DataType, Scalar, Time64, TimeUnit, Timezone};
 
     let clock = DataType::time32(TimeUnit::Millisecond)?;
     assert_eq!(
@@ -310,6 +327,15 @@ a zone is refused: a time of day is naive, and a zoned reading belongs in a
     // A zone makes it an instant, and the refusal says which type to use.
     let refused = seconds.scalar("10:15:30Z").unwrap_err().to_string();
     assert!(refused.contains("DateTime64"), "{refused}");
+
+    // The width's own door reads at the resolution the digits spell, held
+    // at the width's floor; written back, the fraction is as short as it is
+    // exact, so a clock reads as it prints whatever the column's unit.
+    let half = Time64::from_text("09:30:00.5")?;
+    assert_eq!((half.count(), half.unit()), (34_200_500_000, TimeUnit::Microsecond));
+    assert_eq!(DataType::utf8().scalar(nanos.scalar("09:30:00")?)?, Scalar::from("09:30:00"));
+    assert_eq!(DataType::utf8().scalar(nanos.scalar("09:30:00.5")?)?, Scalar::from("09:30:00.500"));
+    assert!(Time64::from_text("09:30").is_err());
     ```
 
 === "Python"

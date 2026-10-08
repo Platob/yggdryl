@@ -434,6 +434,10 @@ impl IOBase for FsFile {
         self.file_is_atomic()
     }
 
+    fn is_thread_bound(&self) -> bool {
+        self.filesystem().is_thread_bound()
+    }
+
     fn is_tabular(&self) -> bool {
         self.file_is_tabular()
     }

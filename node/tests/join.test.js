@@ -9,7 +9,7 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const binding = require('yggdryl')
-const { ChunkedSerie, Field, Serie, SerieReader, SpillOptions } = binding
+const { ChunkedSerie, Field, Serie, StreamChunkedSerie, SpillOptions } = binding
 
 const trades = () =>
   Serie.fromScalars(Field.from('trade: struct<id: int64 not null, venue: utf8 not null> not null'), [
@@ -155,7 +155,7 @@ test('a refused option names itself, before any row is read', () => {
     () => ChunkedSerie.fromSerie(trades()).joinWith(ChunkedSerie.fromSerie(venues()), 'venue', 'inner', { build: 'middle' }),
     /`left` or `right`/,
   )
-  const stream = SerieReader.fromSerie(trades())
+  const stream = StreamChunkedSerie.fromSerie(trades())
   assert.throws(() => stream.joinWith(venues(), 'venue', 'inner', { build: 'middle' }), /`left` or `right`/)
   assert.equal([...stream].length, 1)
 })

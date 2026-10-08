@@ -8,6 +8,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "3000",
       "description": "Time at which volatility was computed.",
       "display": "VolatilityTime"
@@ -20,6 +21,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "3001",
       "description": "Volatility based on bid prices.",
       "display": "BidVolatility"
@@ -32,6 +34,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "3002",
       "description": "Volatility based on offer prices.",
       "display": "OfferVolatility"
@@ -44,6 +47,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "3003",
       "description": "Volatility based on mid prices.",
       "display": "MidVolatility"
@@ -58,6 +62,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "3004",
       "description": "Timestamp at which the relative valuation metric or analytic is calculated or captured.",
       "display": "RelativeValueTimestamp"
@@ -70,6 +75,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "3005",
       "description": "Number of trade types in repeating group.",
       "display": "NoTradeTypes"
@@ -83,6 +89,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "trdtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3006",
       "description": "Type of trade assigned to a trade.",
       "display": "TradeType"
@@ -96,6 +103,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "trdsubtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3007",
       "description": "Further qualification to the trade type defined in TradeType(3006).",
       "display": "TradeSubType"
@@ -108,6 +116,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "3008",
       "description": "Number of allocation timestamps.",
       "display": "NoAllocTrdRegTimestamps"
@@ -122,6 +131,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "3009",
       "description": "Same as TrdRegTimestamp(769). Used to provide relevant timestamp for the allocation account.",
       "display": "AllocTrdRegTimestamp"
@@ -135,6 +145,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "alloctrdregtimestamptypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3010",
       "description": "Same as TrdRegTimestampType(770). Used to indicate the timestamp type relevant for the allocation account.",
       "display": "AllocTrdRegTimestampType"
@@ -147,6 +158,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3011",
       "description": "Same as TrdRegTimestampOrigin(771). Used to indicate the \"origin\" or source of the timestamp relevant for the allocation account.",
       "display": "AllocTrdRegTimestampSrc"
@@ -159,6 +171,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3012",
       "description": "Unique identifier for a certificate issued by an algorithmic trading firm.",
       "display": "AlgoCertificateID"
@@ -171,6 +184,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3013",
       "description": "Description of a certificate issued by an algorithmic trading firm.",
       "display": "AlgoCertificateDesc"
@@ -183,6 +197,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3014",
       "description": "Unique identifier of the AlgoCertificateRequest(35=EH).",
       "display": "AlgoCertificateRequestID"
@@ -195,6 +210,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3015",
       "description": "Reference identifier of the AlgoCertificateRequest(35=EH).",
       "display": "AlgoCertificateRequestRefID"
@@ -208,6 +224,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "algocertificaterequesttranstypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3016",
       "description": "Identifies the message transaction type.",
       "display": "AlgoCertificateRequestTransType"
@@ -221,6 +238,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "algocertificaterequeststatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3017",
       "description": "Status of the AlgoCertificateRequest(35=EH) message being responded to.",
       "display": "AlgoCertificateRequestStatus"
@@ -233,6 +251,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3018",
       "description": "Unique identifier of the AlgoCertificateReport(35=EJ).",
       "display": "AlgoCertificateReportID"
@@ -245,6 +264,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3019",
       "description": "Reference identifier of the AlgoCertificateReport(35=EJ).",
       "display": "AlgoCertificateReportRefID"
@@ -258,6 +278,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "algocertificatereporttranstypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3020",
       "description": "Identifies the message transaction type.",
       "display": "AlgoCertificateReportTransType"
@@ -271,6 +292,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "algocertificatereportstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3021",
       "description": "Status of the report being responded to.",
       "display": "AlgoCertificateReportStatus"
@@ -284,6 +306,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "algocertificatestatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3022",
       "description": "Identifies the current status of the certificate as established by the certificate issuer.",
       "display": "AlgoCertificateStatus"
@@ -298,6 +321,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "3023",
       "description": "Date and time the details within the message have been approved.",
       "display": "ApprovalTime"
@@ -310,6 +334,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3024",
       "description": "Description of means of testing for an algorithm.",
       "display": "AlgoTestDesc"
@@ -322,6 +347,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "3025",
       "description": "Number of components making up a system for algorithmic trading.",
       "display": "NoAlgoSystemModules"
@@ -334,6 +360,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3026",
       "description": "Name of the component of a system for algorithmic trading.",
       "display": "AlgoSystemModuleName"
@@ -346,6 +373,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3027",
       "description": "Version (e.g. build or commit number) of the component of a system for algorithmic trading.",
       "display": "AlgoSystemModuleVersion"
@@ -358,6 +386,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "3028",
       "description": "Number of test scenarios for an algorithmic trading system.",
       "display": "NoTestScenarios"
@@ -370,6 +399,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3029",
       "description": "Unique identifier of a test scenario for a software system.",
       "display": "TestScenarioID"
@@ -383,6 +413,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "testsuitestatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3030",
       "description": "Identifies the overall result of a test scenario identified by TestScenarioID(3029).",
       "display": "TestScenarioStatus"
@@ -397,6 +428,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "3031",
       "description": "Starting date and time of test scenario execution for a software system.",
       "display": "TestScenarioStartTime"
@@ -411,6 +443,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "3032",
       "description": "Ending date and time of test scenario execution for a software system.",
       "display": "TestScenarioEndTime"
@@ -423,6 +456,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3033",
       "description": "Description of the origin of the market data.",
       "display": "MDOriginDesc"
@@ -437,6 +471,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "3034",
       "description": "Date and time of the market data.",
       "display": "MDOriginTime"
@@ -449,6 +484,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3035",
       "description": "Unique identifier for the group of test steps constituting a test scenario.",
       "display": "TestStepGroupID"
@@ -461,6 +497,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "3036",
       "description": "Number of test steps.",
       "display": "NoTestSteps"
@@ -473,6 +510,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3037",
       "description": "Unique identifier of a test step.",
       "display": "TestStepID"
@@ -485,6 +523,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3038",
       "description": "Description of a test step.",
       "display": "TestStepDesc"
@@ -499,6 +538,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "3039",
       "description": "Starting time of a test step.",
       "display": "TestStepStartTime"
@@ -511,6 +551,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "3040",
       "description": "Time unit multiplier for the starting time of a test step relative to the starting time of a test scenario.",
       "display": "TestStepStartOffsetPeriod"
@@ -524,6 +565,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderdelayunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3041",
       "description": "Time unit associated with the starting time of a test step relative to the starting time of a test scenario.",
       "display": "TestStepStartOffsetUnit"
@@ -538,6 +580,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "3042",
       "description": "Ending time of a test step.",
       "display": "TestStepEndTime"
@@ -550,6 +593,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "3043",
       "description": "Time unit multiplier for the ending time of a test step relative to the starting time of a test scenario.",
       "display": "TestStepEndOffsetPeriod"
@@ -563,6 +607,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderdelayunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3044",
       "description": "Time unit associated with the starting time of a test step relative to the ending time of a test scenario.",
       "display": "TestStepEndOffsetUnit"
@@ -575,6 +620,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "3045",
       "description": "Number of test step parameters.",
       "display": "NoTestStepParameters"
@@ -587,6 +633,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3046",
       "description": "Name of the test step parameter.",
       "display": "TestStepParameterName"
@@ -600,6 +647,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "strategyparametertypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3047",
       "description": "Datatype of the test step parameter.",
       "display": "TestStepParameterType"
@@ -612,6 +660,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3048",
       "description": "Value of the test step parameter.",
       "display": "TestStepParameterValue"
@@ -624,6 +673,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "3049",
       "description": "Number of components making up a testing system.",
       "display": "NoTestSystemModules"
@@ -636,6 +686,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3050",
       "description": "Name of the component of a testing system.",
       "display": "TestSystemModuleName"
@@ -648,6 +699,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3051",
       "description": "Version (e.g. build or commit number) of the component of a testing system.",
       "display": "TestSystemModuleVersion"
@@ -660,6 +712,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "3052",
       "description": "Number of results for a test scenario.",
       "display": "NoTestMeasures"
@@ -672,6 +725,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3053",
       "description": "Name of a test measure.",
       "display": "TestMeasureName"
@@ -684,6 +738,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3054",
       "description": "Description of a test measure.",
       "display": "TestMeasureDesc"
@@ -697,6 +752,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "strategyparametertypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3055",
       "description": "Datatype of the metric being used for a test.",
       "display": "TestMeasureType"
@@ -709,6 +765,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "3056",
       "description": "Number of decimal places for TestMeasureType(3055).",
       "display": "TestMeasurePrecision"
@@ -722,6 +779,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "testsuitestatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3057",
       "description": "Identifies the result of an individual test based on a measure.",
       "display": "TestMeasureResult"
@@ -735,6 +793,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "testthresholdtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3058",
       "description": "Identifies whether the value of a measure needs to be over or under a specific threshold to be successful.",
       "display": "TestThresholdType"
@@ -747,6 +806,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "3059",
       "description": "Value of the measure upon which a warning is issued for the test.",
       "display": "TestWarningLevelValue"
@@ -759,6 +819,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "3060",
       "description": "Value of the measure upon which the test is considered to have failed.",
       "display": "TestFailLevelValue"
@@ -771,6 +832,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "3061",
       "description": "Peak value of the measure achieved in testing.",
       "display": "TestPeakLevelValue"
@@ -783,6 +845,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3062",
       "description": "Unique identifier of the TestSuiteDefinitionRequest(35=EL).",
       "display": "TestSuiteRequestID"
@@ -795,6 +858,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3063",
       "description": "Reference identifier of the TestSuiteDefinitionRequest(35=EL).",
       "display": "TestSuiteRequestRefID"
@@ -808,6 +872,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "testsuiterequesttranstypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3064",
       "description": "Identifies the message transaction type.",
       "display": "TestSuiteRequestTransType"
@@ -821,6 +886,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "testsuiterequeststatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3065",
       "description": "Status of the TestSuiteDefinitionRequest(35=EL) message being responded to.",
       "display": "TestSuiteRequestStatus"
@@ -833,6 +899,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3066",
       "description": "Unique identifier of the TestActionRequest(35=EN).",
       "display": "TestActionRequestID"
@@ -846,6 +913,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "testactiontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3067",
       "description": "Specifies the type of action to take or that was taken for a given test suite.",
       "display": "TestActionType"
@@ -859,6 +927,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "testactionrequeststatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3068",
       "description": "Status of the TestActionRequest(35=EN) message being responded to.",
       "display": "TestActionRequestStatus"
@@ -872,6 +941,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "testsuiteactivitystatecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3069",
       "description": "Specifies the activity state the test suite is in.",
       "display": "TestSuiteActivityState"
@@ -885,6 +955,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "testsuitestatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3070",
       "description": "Identifies the overall test result of a group of individual test scenarios.",
       "display": "TestSuiteStatus"
@@ -897,6 +968,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3071",
       "description": "Identifier of the test action report.",
       "display": "TestActionReportID"
@@ -909,6 +981,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3072",
       "description": "Identifies the currency pair/symbol that the instance of the rate source information is applicable for the fixing.",
       "display": "RateSourceSymbol"
@@ -922,6 +995,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "fxbenchmarkcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3073",
       "description": "The source of where to obtain the FX benchmark rate to use for fixing the rate.",
       "display": "FXBenchmark"
@@ -935,6 +1009,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "3074",
       "description": "The local date of the FX rate fixing. The time applicable on the fixing date is specified in FXBenchmarkTime(3075).",
       "display": "FXBenchmarkDate"
@@ -948,6 +1023,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "3075",
       "description": "The local time of the FX rate fixing. The date applicable for the fixing time is specified in FXBenchmarkDate(3074).",
       "display": "FXBenchmarkTime"
@@ -960,6 +1036,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3076",
       "description": "A business center whose calendar is used for date/time adjustment. See https://www.fpml.org/coding-scheme/business-center to download the current (ISDA/FpML) standard 4-character code values for business center identification.",
       "display": "FXBenchmarkBusinessCenter"
@@ -973,6 +1050,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "algocertificaterequesttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3077",
       "description": "Specifies the type of business event related to an algo certification request.",
       "display": "AlgoCertificateRequestType"
@@ -986,6 +1064,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "algocertificatereporttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3078",
       "description": "Specifies the type of business event related to an algo certification report.",
       "display": "AlgoCertificateReportType"
@@ -998,6 +1077,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3079",
       "description": "Unique identifier for the group of test scenarios constituting a test suite.",
       "display": "TestScenarioGroupID"
@@ -1012,6 +1092,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "3080",
       "description": "Support Timestamp of last update to Algo System Module.",
       "display": "AlgoSystemModuleLastUpdateTime"
@@ -1026,6 +1107,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "3081",
       "description": "Support Timestamp of last update to Algo Test System Module.",
       "display": "TestSystemModuleLastUpdateTime"
@@ -1038,6 +1120,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "3082",
       "description": "Number of orders for testing.",
       "display": "NoTestOrders"
@@ -1050,6 +1133,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3083",
       "description": "Identifier of a test order.",
       "display": "TestOrderID"
@@ -1062,6 +1146,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3084",
       "description": "Used for the security symbol of a test order. See Symbol(55) field for description.",
       "display": "TestOrderSymbol"
@@ -1074,6 +1159,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3085",
       "description": "Used for the security identifier of a test order. See Security(48) field for description.",
       "display": "TestOrderSecurityID"
@@ -1086,6 +1172,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3086",
       "description": "Used for the source of the security identifier of a test order. See SecurityIDSource(22) field for description.",
       "display": "TestOrderSecurityIDSource"
@@ -1100,6 +1187,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "3087",
       "description": "Used for the price of a test order. See Price(44) field for description.",
       "display": "TestOrderPrice"
@@ -1113,6 +1201,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "testorderpricetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3088",
       "description": "Type of price of TestOrderPrice(3087).",
       "display": "TestOrderPriceType"
@@ -1127,6 +1216,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "3089",
       "description": "Used for the quantity of a test order. See OrderQty(80) field for description.",
       "display": "TestOrderQty"
@@ -1139,6 +1229,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "3090",
       "description": "Time unit multiplier for the effective time of an order relative to the starting time of a test scenario.",
       "display": "TestOrderOffsetPeriod"
@@ -1152,6 +1243,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderdelayunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3091",
       "description": "Time unit associated with the effective time of an order relative to the starting time of a test scenario.",
       "display": "TestOrderOffsetUnit"
@@ -1164,6 +1256,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "3092",
       "description": "Number of test gateway details.",
       "display": "NoTestGatewayDetails"
@@ -1176,6 +1269,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3093",
       "description": "Name of test gateway information.",
       "display": "TestGatewayDetailName"
@@ -1189,6 +1283,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "testgatewaydetailtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "3094",
       "description": "Type of test gateway information.",
       "display": "TestGatewayDetailType"
@@ -1201,6 +1296,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3095",
       "description": "Value of test gateway information.",
       "display": "TestGatewayDetailValue"
@@ -1213,6 +1309,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Exchange",
       "FIX:tag": "3096",
       "description": "Execution venue of test system.",
       "display": "TestGatewayMarketID"
@@ -1225,6 +1322,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3097",
       "description": "Identifies the behaviour or configuration that has been selected by the executing party for this order.",
       "display": "AlgoTrialID"
@@ -1237,6 +1335,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "3098",
       "description": "Identifies the algorithm a broker has opted to use when executing an order.",
       "display": "LastAlgoID"
@@ -1249,6 +1348,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "3099",
       "description": "Indicates number of trade attributes used to define a subgroup in an allocation group.",
       "display": "NoIndividualAllocSubQtyAttributes"

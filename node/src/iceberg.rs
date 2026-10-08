@@ -140,7 +140,7 @@ fn borrowed_pairs(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
 /// Every field is optional because an options value records only what was set
 /// on it: a field left out is not "the default" but unresolved, and a table
 /// still answers it from its own properties. The names are the ones the
-/// getters carry, so the object and the setters spell the same eleven things.
+/// getters carry, so the object and the setters spell the same twelve things.
 #[napi(object)]
 pub struct IcebergOptionsInput<'env> {
     /// How many beaten commit attempts are retried.
@@ -162,6 +162,8 @@ pub struct IcebergOptionsInput<'env> {
     pub read_parallel_min_file_size: Option<f64>,
     /// How many partition groups a commit writes at once.
     pub write_parallelism: Option<u32>,
+    /// How many partitions a write holds open at once.
+    pub max_open_partitions: Option<u32>,
     /// Where a commit stages its files: `off`, or a local folder URL or path.
     pub write_staging: Option<String>,
     /// The MIME type for new data files. Table writes encode Parquet and Avro.
@@ -215,6 +217,11 @@ fn apply_options_input(
     if let Some(threads) = input.write_parallelism {
         options
             .set_write_parallelism(threads as usize)
+            .map_err(napi_error)?;
+    }
+    if let Some(partitions) = input.max_open_partitions {
+        options
+            .set_max_open_partitions(partitions as usize)
             .map_err(napi_error)?;
     }
     if let Some(staging) = input.write_staging {
@@ -407,6 +414,32 @@ impl JsIcebergOptions {
     pub fn set_write_parallelism(&mut self, threads: u32) -> Result<()> {
         self.inner
             .set_write_parallelism(threads as usize)
+            .map_err(napi_error)
+    }
+
+    /// How many partitions an append, an overwrite or a compaction holds
+    /// open at once. Default: 128. Past it, the open partition of the
+    /// lowest tuple closes and its files are written while the source is
+    /// still read, so a source in partition order is written as it arrives
+    /// and never held whole; a partition arriving again after it closed is
+    /// written again, as further files of the same commit. A keyed merge
+    /// holds every partition open whatever this says.
+    #[napi(getter)]
+    pub fn max_open_partitions(&self) -> Result<u32> {
+        u32::try_from(self.inner.max_open_partitions())
+            .map_err(|_| napi::Error::from_reason("maxOpenPartitions exceeds a JavaScript u32"))
+    }
+
+    /// Set how many partitions a write holds open at once.
+    ///
+    /// # Errors
+    ///
+    /// Throws the core's typed error naming the value when the count is zero,
+    /// which would hold no partition at all.
+    #[napi(setter)]
+    pub fn set_max_open_partitions(&mut self, partitions: u32) -> Result<()> {
+        self.inner
+            .set_max_open_partitions(partitions as usize)
             .map_err(napi_error)
     }
 

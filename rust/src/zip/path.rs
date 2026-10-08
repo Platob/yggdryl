@@ -170,6 +170,13 @@ impl IOBase for ZipPath {
         self.as_leaf().read_range_bytes(offset, length)
     }
 
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        if self.is_folder() {
+            return self.as_node().read_tail_bytes(length);
+        }
+        self.as_leaf().read_tail_bytes(length)
+    }
+
     /// Stage a write into the member this location resolves to.
     ///
     /// The role is held, so the write stages exactly as it does on a member

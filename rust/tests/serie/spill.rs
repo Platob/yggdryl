@@ -13,8 +13,8 @@ use std::sync::Arc;
 use arrow_array::{Int64Array, RecordBatch, RecordBatchIterator};
 use yggdryl::local::LocalFolder;
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, SerieReader, SerieValue,
-    SortOptions, SpillOptions, StructType, TimeUnit, Timezone, UnionMode,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, SerieValue, SortOptions,
+    SpillOptions, StreamChunkedSerie, StructType, TimeUnit, Timezone, UnionMode,
 };
 
 /// The bound that spills every byte.
@@ -883,7 +883,7 @@ fn a_window_reads_where_the_rows_of_the_serie_it_views_lie() {
 #[test]
 fn a_held_reader_spills_the_records_it_holds_and_yields_them_spilled() {
     let column = quotes(512);
-    let mut reader = SerieReader::from_serie(column.clone()).expect("a held reader");
+    let mut reader = StreamChunkedSerie::from_serie(column.clone()).expect("a held reader");
     assert_eq!(reader.resident_size(), column.resident_size());
     assert!(!reader.is_spilled());
 
@@ -891,18 +891,18 @@ fn a_held_reader_spills_the_records_it_holds_and_yields_them_spilled() {
     assert!(reader.is_spilled());
     assert_eq!(reader.resident_size(), 0);
     let record = reader
-        .next()
+        .next_chunk()
         .expect("one record")
         .expect("a held record yields");
     assert!(record.is_spilled());
     assert_same_rows("a held reader's record", &column, &record);
     // Drained, it holds nothing and is not spilled.
-    assert!(reader.next().is_none());
+    assert!(reader.next_chunk().is_none());
     assert_eq!(reader.resident_size(), 0);
     assert!(!reader.is_spilled());
 
     // A non-record column is the one child of the record it is read as.
-    let mut reader = SerieReader::from_serie(prices(256)).expect("a held reader");
+    let mut reader = StreamChunkedSerie::from_serie(prices(256)).expect("a held reader");
     reader.spill(&everything()).expect("the held record spills");
     assert!(reader.is_spilled());
 
@@ -918,7 +918,7 @@ fn a_held_reader_spills_the_records_it_holds_and_yields_them_spilled() {
         vec![Arc::new(Int64Array::from((0..256).collect::<Vec<i64>>()))],
     )
     .expect("a batch");
-    let mut stream = SerieReader::from_arrow_reader(
+    let mut stream = StreamChunkedSerie::from_arrow_reader(
         None,
         Box::new(RecordBatchIterator::new([Ok(batch)], schema)),
         ArrowCastOptions::new(),
@@ -929,7 +929,10 @@ fn a_held_reader_spills_the_records_it_holds_and_yields_them_spilled() {
         .expect("a stream spills nothing");
     assert_eq!(stream.resident_size(), 0);
     assert!(!stream.is_spilled());
-    let landed = stream.next().expect("one batch").expect("a landed batch");
+    let landed = stream
+        .next_chunk()
+        .expect("one batch")
+        .expect("a landed batch");
     assert!(!landed.is_spilled());
 }
 
@@ -978,9 +981,8 @@ fn a_spilled_column_casts_sorts_takes_and_windows_its_own_rows() {
         let expected = records.window_by("venue", sorted).expect("windows");
         let windows = after.window_by("venue", sorted).expect("windows");
         assert_eq!(windows.len(), expected.len(), "sorted: {sorted}");
-        for ((key, window), (expected_key, expected_window)) in windows.iter().zip(expected.iter())
-        {
-            assert_eq!(key, expected_key, "sorted: {sorted}");
+        for (window, expected_window) in windows.iter().zip(expected.iter()) {
+            assert_eq!(window.key(), expected_window.key(), "sorted: {sorted}");
             assert_eq!(window.rows(), expected_window.rows(), "sorted: {sorted}");
         }
     }

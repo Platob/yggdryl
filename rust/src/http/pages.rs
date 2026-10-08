@@ -25,7 +25,8 @@ use smol_str::format_smolstr;
 use super::{NextPage, Pagination, Request, Response, Session};
 use crate::arrow::BatchReader;
 use crate::{
-    ArrowCastOptions, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie, SerieReader,
+    ArrowCastOptions, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie,
+    StreamChunkedSerie,
 };
 
 /// The pages of one request, walked lazily.
@@ -171,15 +172,15 @@ impl Pages {
         }))
     }
 
-    /// [`Self::into_arrow_reader`] as a [`SerieReader`], one record column
+    /// [`Self::into_arrow_reader`] as a [`StreamChunkedSerie`], one record column
     /// per page.
     ///
     /// # Errors
     ///
     /// As [`Self::into_arrow_reader`].
-    pub fn into_serie_reader(self, field: Option<&Field>) -> Result<SerieReader> {
+    pub fn chunked_stream(self, field: Option<&Field>) -> Result<StreamChunkedSerie> {
         let reader = self.into_arrow_reader(field, 0)?;
-        Ok(SerieReader::from_arrow_reader(
+        Ok(StreamChunkedSerie::from_arrow_reader(
             field,
             reader,
             ArrowCastOptions::default(),

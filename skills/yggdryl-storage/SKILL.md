@@ -13,7 +13,7 @@ derives from them. Hold one mental model: **a call is a round trip** - one
 syscall, one object-store request, one lock per wrapper - so the fastest code
 is the one that makes the fewest calls, and construction makes none.
 
-Records on a handle (`read_arrow_reader`, overwrite/append/merge,
+StreamSerie on a handle (`read_arrow_reader`, overwrite/append/merge,
 `RecordOptions`, partitions) are `yggdryl-records`; JSON/YAML/TOML/XML codecs
 are `yggdryl-documents`; parsing a URL, a glob or a Hive path is `yggdryl-uri`.
 Install and cross-language conventions are in `yggdryl`.

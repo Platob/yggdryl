@@ -174,7 +174,15 @@ fn record_options_of_another_encoding_are_refused_naming_both() {
     assert_eq!(
         refusal(
             media
-                .overwrite_prepared_arrow_reader(two_batches(), &ipc)
+                .overwrite_prepared_serie(
+                    yggdryl::StreamChunkedSerie::from_arrow_reader(
+                        None,
+                        two_batches(),
+                        yggdryl::ArrowCastOptions::new()
+                    )
+                    .unwrap(),
+                    &ipc
+                )
                 .unwrap_err()
         ),
         expected

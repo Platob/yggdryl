@@ -498,6 +498,7 @@ fn a_create_takes_the_stated_format_version_else_the_lowest_the_schema_needs() {
     };
     assert_eq!(
         version("nyc.micros", &row(micros), &none()),
+        // format_version_for: 2 by default, pinned.
         FormatVersion::V2
     );
     assert_eq!(
@@ -1430,5 +1431,155 @@ mod object_store {
                 "{name}"
             );
         }
+    }
+
+    /// The requests `operation` cost the store, in the order they arrived,
+    /// as `METHOD key` below the warehouse - a listing as `LIST prefix`.
+    fn methods<T>(store: &FakeS3, operation: impl FnOnce() -> T) -> (T, Vec<String>) {
+        store.clear_requests();
+        let answer = operation();
+        let sent = store
+            .requests()
+            .iter()
+            .map(|request| {
+                let prefix = request
+                    .query
+                    .iter()
+                    .find(|(name, value)| name == "list-type" && value == "2")
+                    .and_then(|_| request.query.iter().find(|(name, _)| name == "prefix"));
+                match prefix {
+                    Some((_, prefix)) => {
+                        format!("LIST {}", prefix.trim_start_matches("warehouse/"))
+                    }
+                    None => format!(
+                        "{} {}",
+                        request.method,
+                        request
+                            .key
+                            .as_deref()
+                            .unwrap_or_default()
+                            .trim_start_matches("warehouse/")
+                    ),
+                }
+            })
+            .collect();
+        (answer, sent)
+    }
+
+    /// What the catalog costs the store, operation by operation, by request:
+    /// the object-store leg of `call_counts`, which pins the bridged
+    /// filesystem's. A folder's presence is one listing of its prefix and a
+    /// listed entry carries its size, so no `HEAD` follows any listing; a
+    /// level's own document - the catalog's, a namespace's - is looked for
+    /// with one single-key listing, and read with one `GET` only where that
+    /// listing finds it; a table is told from a namespace by one listing of
+    /// its `metadata/`, settled as a folder by the one listing before it. A
+    /// clone of a listed table resolves on the catalog's own client - the
+    /// fake's endpoint, the catalog's key pair - and sends nothing until it
+    /// reads.
+    #[test]
+    fn what_the_catalog_costs_over_the_store() {
+        let (store, catalog) = lake(prefix);
+        // The catalog's document, which it has none of, then the level the
+        // path names and its own document, read for what a child inherits.
+        let descent = [
+            "LIST metadata/catalog.json",
+            "LIST sales/",
+            "LIST sales/metadata",
+            "LIST sales/metadata/",
+            "LIST sales/metadata/namespace.json",
+            "GET sales/metadata/namespace.json",
+        ];
+
+        let (_, sent) = methods(&store, || super::namespaces(&catalog, "sales"));
+        assert_eq!(
+            sent,
+            [
+                "LIST metadata/catalog.json",
+                "LIST sales/",
+                "LIST metadata/catalog.json",
+                "LIST sales/",
+                "LIST sales/metadata/namespace.json",
+                "PUT sales/metadata/namespace.json",
+            ],
+            "create a namespace"
+        );
+        let (_, sent) = methods(&store, || {
+            catalog
+                .tables()
+                .create("sales.orders", &super::taxi_schema(), &super::none())
+                .unwrap()
+        });
+        let created: Vec<&str> = descent
+            .iter()
+            .copied()
+            .chain([
+                "LIST sales/orders/",
+                "LIST sales/orders/metadata/",
+                "PUT sales/orders/metadata/v1.metadata.json",
+                "GET sales/orders/metadata/v1.gz.metadata.json",
+                "PUT sales/orders/metadata/version-hint.text",
+            ])
+            .collect();
+        assert_eq!(sent, created, "create a table");
+        let looked_up: Vec<&str> = descent
+            .iter()
+            .copied()
+            .chain([
+                "LIST sales/orders/",
+                "LIST sales/orders/metadata",
+                "LIST sales/orders/metadata/",
+            ])
+            .collect();
+        let (table, sent) = methods(&store, || catalog.tables().get("sales.orders").unwrap());
+        assert_eq!(sent, looked_up, "get an existing table");
+        let (present, sent) = methods(&store, || catalog.tables().contains("sales.orders"));
+        assert!(present.unwrap());
+        assert_eq!(sent, looked_up, "contains is the get's descent");
+        let (listed, sent) = methods(&store, || names(catalog.namespaces().iter()));
+        assert_eq!(listed, ["sales"]);
+        assert_eq!(
+            sent,
+            [
+                "LIST metadata/catalog.json",
+                "LIST ",
+                "LIST sales/metadata",
+                "LIST sales/metadata/",
+            ],
+            "list namespaces"
+        );
+        let sales = catalog.namespaces().get("sales").unwrap();
+        let (listed, sent) = methods(&store, || names(sales.tables().iter()));
+        assert_eq!(listed, ["orders"]);
+        assert_eq!(
+            sent,
+            [
+                "LIST sales/metadata/namespace.json",
+                "GET sales/metadata/namespace.json",
+                "LIST sales/",
+                "LIST sales/orders/metadata",
+                "LIST sales/orders/metadata/",
+            ],
+            "list tables"
+        );
+
+        let (twin, cloned) = methods(&store, || table.clone());
+        assert!(cloned.is_empty(), "a clone sends nothing: {cloned:?}");
+        let mut twin = twin;
+        let options = twin.record_options().unwrap();
+        twin.append_arrow_reader(reader(taxis(&[1], &[Some("XNAS")])), &options)
+            .unwrap();
+        let requests = store.requests();
+        assert!(!requests.is_empty());
+        for request in &requests {
+            assert!(
+                request.headers.iter().any(|(name, value)| {
+                    name.eq_ignore_ascii_case("authorization")
+                        && value.contains("Credential=AKIAIOSFODNN7EXAMPLE/")
+                }),
+                "the clone signs with the catalog's key pair: {request:?}"
+            );
+        }
+        assert_eq!(rows(&table), [(1, Some("XNAS".to_owned()))]);
     }
 }

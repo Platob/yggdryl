@@ -10,7 +10,7 @@ Signatures with no storage: a FIX message, a text line or a book entry can each 
 | --- | --- | --- |
 | `Element` | [Element](element.md) | identity, cross element/code, digest, sources; order, finalization, following, merging |
 | `Event: Element` | [Event](event.md) | instant, state, place at its instant, clocks (creation, recording, expiration, predecessor, snapshot), UUIDv7 identity; lifecycle walk `EventIterator` |
-| `Market` | [Market](market.md) | thirty-five facts, each setter [filling or overwriting](market.md#setting-fill-or-overwrite): the `marketdatatype`, price and stop price, the option's strike price, quantity and its shown and hidden parts, currency/unit, side, the security's identifiers (`securityids`) and the ISIN, classification/market, the last execution clock, trade and FX numbers, bid and ask, FX rates, ticker, metadata; `marketdatakind` - the category a lifecycle chains within - `is_sided` (true for an order or an execution, whose stored cross code `{kind}:{side}:{base}` states its side; a quote holds its bid and its ask and tags a side) and the [book key](market.md#the-book-key) - the ISIN, else the ticker, else `XX0000000000` |
+| `Market` | [Market](market.md) | thirty-six facts, each setter [filling or overwriting](market.md#setting-fill-or-overwrite): the `marketdatatype`, price and stop price, the option's strike price, quantity and its shown and hidden parts, currency/unit, the currency the instrument was issued in (`origccy`), side, the security's identifiers (`securityids`) and the ISIN, classification/market, the last execution clock, trade and FX numbers, bid and ask, FX rates, ticker, metadata; `marketdatakind` - the category a lifecycle chains within - `is_sided` (true for an order or an execution, whose stored cross code `{kind}:{side}:{base}` states its side; a quote holds its bid and its ask and tags a side) and the [book key](market.md#the-book-key) - the ISIN, else the ticker, else `XX0000000000` |
 | `Operation: Market` | [Operation](operation.md) | five more: the ordered quantity (`ordqty`), time in force, tradability, its own identifiers (`identifiers`), the parties it names (`partyids`) |
 
 - **Names.** Accessors `get_`, mutators `set_`, never bare; the three identifier maps and FX rates use fallible or filling `insert_`/`remove_`/`derive_` verbs instead: a view holder may refuse, a plain holder always answers `Ok` ([detail](market.md#security-identifiers)).
@@ -26,7 +26,7 @@ Signatures with no storage: a FIX message, a text line or a book entry can each 
 | Quote | [Quote](quote.md) | `Quote`, `QuoteEvent` | the same |
 | Execution | [Execution](execution.md) | `Execution`, `ExecutionEvent` | the same |
 | Trade | [Trade](trade.md) | `TradeEvent` | all four |
-| Book | [Book](book.md) | `BookEvent` - complete, or its deltas alone - `SnapshotEvent`, `BookIterator`, `yggdryl::Limit` | book/snapshot: `Element`, `Event`, `Market` |
+| Book | [Book](book.md) | `BookEvent` - a complete book or a delta book - `SnapshotEvent`, `BookIterator`, `yggdryl::Limit` | book/snapshot: `Element`, `Event`, `Market` |
 | Market data | [Market data](market-data.md) | `MarketData`, `MarketKind`, `ElementColumn`, `EventColumn`, `MarketColumn`, `OperationColumn`, `MarketView` | `Element`, `Market`, through the leaf held |
 | Row schemas | [Row schemas](schemas.md) | the text line, the FIX row and the `marketdata` row, column by column, over the one element, event, market and operation prefix | the same listing through `enums` and `MarketData.field()` |
 

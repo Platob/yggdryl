@@ -4,7 +4,7 @@
 //! its nullability. [`ArrowCastPlan`] is the schema-dependent half, compiled
 //! once from a source field to a target field and applied to every column of
 //! that layout; [`Serie::cast`](crate::Serie::cast), the `Serie` Arrow doors
-//! and [`SerieReader`](crate::SerieReader) are the ways in. The field is
+//! and [`StreamChunkedSerie`](crate::StreamChunkedSerie) are the ways in. The field is
 //! always the *target*: an incoming layout is reconciled to it, never the
 //! other way around, and a typed read is a narrowing of the column that
 //! comes out.

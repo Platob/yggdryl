@@ -10,22 +10,12 @@ use crate::Result;
 use crate::media::RecordOptions;
 
 /// What a handle opens as under `options`: a located table format, or the
-/// reader over a folder of leaves or over one leaf. Whether the handle is a
-/// container is asked exactly once here, because on the `fs` backend that
-/// question is a store round trip, and both the reader and the schema
-/// defaults read the answer.
+/// reader over a folder of leaves or over one leaf.
 enum Opened {
     // Boxed: a located table carries its whole metadata, a reader a pointer.
     #[cfg(feature = "iceberg")]
     Table(Box<crate::iceberg::Located>),
     Reader(crate::arrow::BatchReader),
-}
-
-fn open(handle: &dyn IOBase, options: &RecordOptions) -> Result<Opened> {
-    if handle.is_container() {
-        return open_container(handle, options);
-    }
-    Ok(Opened::Reader(crate::iobase::leaf_reader(handle, options)?))
 }
 
 /// What a handle already known to be a container opens as: the table format
@@ -77,15 +67,118 @@ pub(crate) fn container_field(
     opened_field(open_container(handle, options)?, options)
 }
 
-/// The refusal a structured text document answers any write but an
-/// overwrite with: it is one frame around its rows, so it is written whole.
-fn document_takes_overwrite_alone(mode: crate::IOMode) -> crate::Error {
-    crate::Error::InvalidRecord {
+/// `options`, or the handle's own where none were given: the one place an
+/// absent record option set is resolved.
+pub(crate) fn own_options<'o, M: IOMedia + ?Sized>(
+    media: &M,
+    options: Option<&'o RecordOptions>,
+) -> Result<std::borrow::Cow<'o, RecordOptions>> {
+    match options {
+        Some(options) => Ok(std::borrow::Cow::Borrowed(options)),
+        None => Ok(std::borrow::Cow::Owned(media.record_options()?)),
+    }
+}
+
+/// A stream of batches as the serie it is: read as transport, so a write of
+/// it through the serie doors hands the batches on untouched - over an
+/// identity plan the reader itself.
+pub(crate) fn arrow_serie(batches: crate::arrow::BatchReader) -> Result<crate::Serie> {
+    Ok(crate::Serie::from(landed(batches)?))
+}
+
+/// A read's batches as the stream of record columns they land as, one
+/// identity plan compiled from their schema.
+pub(crate) fn landed(reader: crate::arrow::BatchReader) -> Result<crate::StreamChunkedSerie> {
+    Ok(crate::StreamChunkedSerie::from_media_reader(
+        crate::media::DEFAULT_ROOT_NAME,
+        reader,
+    )?)
+}
+
+/// Land a native record read under the root the media options publish.
+pub(crate) fn landed_options(
+    reader: crate::arrow::BatchReader,
+    options: &RecordOptions,
+) -> Result<crate::StreamChunkedSerie> {
+    use crate::media::IORecordOptions;
+    let declared = options.field();
+    let name = declared
+        .as_ref()
+        .map_or_else(|| options.name(), crate::Field::name);
+    Ok(crate::StreamChunkedSerie::from_media_reader(name, reader)?)
+}
+
+/// Read one structured document under its optional declared field.
+pub(crate) fn read_document(
+    handle: &(impl IOBase + ?Sized),
+    options: Option<&RecordOptions>,
+) -> Result<crate::Serie> {
+    use crate::media::IORecordOptions;
+    let field = options.and_then(IORecordOptions::field);
+    crate::media::structured::read_arrow(handle, field.as_ref())
+}
+
+/// A document is replaced whole before its options or source are read.
+pub(crate) fn require_document_mode(mode: crate::IOMode) -> Result<()> {
+    if mode == crate::IOMode::Overwrite {
+        return Ok(());
+    }
+    Err(crate::Error::InvalidRecord {
         path: smol_str::SmolStr::new_static("$.mode"),
         reason: smol_str::format_smolstr!(
-            "a structured text document is one frame around its rows, so it is written whole; \
-             expected overwrite, got {mode}"
+            "a structured text document is one frame around its rows, so it is written \
+             whole; expected overwrite, got {mode}"
         ),
+    })
+}
+
+/// The structured-document publication behind the overwrite primitive.
+pub(crate) fn overwrite_document(
+    handle: &mut (impl IOBase + ?Sized),
+    value: crate::Serie,
+    options: Option<&RecordOptions>,
+) -> Result<crate::IOResult> {
+    use crate::media::IORecordOptions;
+    let mut reader = crate::StreamChunkedSerie::from_serie(value)?;
+    if let Some(field) = options.and_then(IORecordOptions::field) {
+        let safe = options.is_none_or(IORecordOptions::safe);
+        reader = reader.cast(&field, crate::ArrowCastOptions::new().with_safe(safe))?;
+    }
+    let rows =
+        crate::media::structured::write_arrow(handle, reader, crate::text::Formatting::default())?;
+    Ok(crate::IOResult::new(rows, rows))
+}
+
+pub(crate) fn require_serie_write_mode(mode: crate::IOMode) -> Result<()> {
+    match mode {
+        crate::IOMode::Overwrite | crate::IOMode::Append | crate::IOMode::Merge => Ok(()),
+        crate::IOMode::ReadOnly | crate::IOMode::Random => Err(crate::Error::InvalidRecord {
+            path: "$.mode".into(),
+            reason: smol_str::format_smolstr!("write mode {mode} is not supported for a write"),
+        }),
+    }
+}
+
+/// The generic write under `mode`, its options resolved: the serie door of
+/// that intent.
+fn write_serie_as<M: IOMedia + ?Sized>(
+    media: &mut M,
+    value: crate::Serie,
+    mode: crate::IOMode,
+    options: &RecordOptions,
+) -> Result<crate::IOResult> {
+    // The mode is checked before the source is touched, so a specialized
+    // intent cannot consume a one-shot stream before the intent and its key
+    // settings are known to agree.
+    let options = media.write_options(mode, options)?;
+    require_serie_write_mode(mode)?;
+    match mode {
+        crate::IOMode::Overwrite => media.overwrite_serie(value, Some(&options)),
+        crate::IOMode::Append => media.append_serie(value, Some(&options)),
+        crate::IOMode::Merge => media.merge_serie(value, Some(&options)),
+        crate::IOMode::ReadOnly | crate::IOMode::Random => {
+            unreachable!("write mode checked before dispatch")
+        }
     }
 }
 
@@ -258,7 +351,7 @@ pub trait IOMedia: Send {
 
         if mode == crate::IOMode::Merge {
             if crate::text::Format::from_media_type(self.as_io_base().media_type()).is_ok() {
-                return Err(document_takes_overwrite_alone(mode));
+                require_document_mode(mode)?;
             }
             if options.merge_by().is_empty() {
                 let own = IOMedia::merge_by(self)?;
@@ -307,11 +400,27 @@ pub trait IOMedia: Send {
         Ok(crate::parquet::read_geospatial_statistics(handle, column)?)
     }
 
+    /// The decoded footer this handle already holds for the Parquet file it
+    /// is, so a record read of it reads no byte of the file's end again: an
+    /// opened [`Parquet`](crate::parquet::Parquet) answers the footer its
+    /// `open` read; every other handle, and a closed one, `None`.
+    #[cfg(feature = "parquet")]
+    #[doc(hidden)]
+    fn parquet_footer(&self) -> Option<std::sync::Arc<::parquet::file::metadata::ParquetMetaData>> {
+        None
+    }
+
     /// Read the canonical non-null Struct root Field of this resource.
     ///
     /// A declared schema is returned as it stands; otherwise this is the shape
     /// [`Self::read_arrow_reader`] reports, so the schema a caller reads
-    /// and the batches a caller gets can never disagree.
+    /// and the batches a caller gets can never disagree. A leaf answers from
+    /// its encoding's header or footer - an Arrow IPC schema message, an Avro
+    /// header, a Parquet footer - typed by the plan its options state, the
+    /// filter and the selection in the phases a read runs them in, so a
+    /// `where` that does not bind still fails here and one over a column the
+    /// `select` builds is typed after it; no reader is built and no row is
+    /// read. A container answers as the table located in it or its leaves.
     ///
     /// # Errors
     ///
@@ -322,14 +431,32 @@ pub trait IOMedia: Send {
         if let Some(field) = options.field() {
             return Ok(field.clone());
         }
-        opened_field(open(self.as_io_base(), options)?, options)
+        let handle = self.as_io_base();
+        if handle.is_container() {
+            return opened_field(open_container(handle, options)?, options);
+        }
+        options
+            .plan()
+            .field_from(&crate::iobase::leaf_field(handle, options)?.with_name(options.name()))
     }
 
-    /// Read this resource's rows as one [`BatchReader`](crate::arrow::BatchReader).
-    ///
-    /// This is the one read path, so an encoding is decoded in exactly one
-    /// place, and the result streams: one batch at a time, never a materialized
+    /// Read this resource's rows as a [`StreamChunkedSerie`](crate::StreamChunkedSerie):
+    /// one record [`Serie`](crate::Serie) per batch. This is the one read
+    /// every medium implements; [`read_arrow_reader`](Self::read_arrow_reader)
+    /// is its transport face, so an encoding is decoded in exactly one place,
+    /// and the result streams: one batch at a time, never a materialized
     /// vector.
+    ///
+    /// A record encoding - Arrow IPC, Parquet, Avro, plain text, delimited
+    /// text - answers its batches, each landed as it is pulled. A structured
+    /// text document - JSON, JSON Lines, YAML, TOML, XML - answers the one
+    /// record column its rows parse into, because a document has no frame to
+    /// read a prefix of, and reads only the declared field off the options.
+    /// `options` absent is the handle's own: a record encoding answers its
+    /// stored schema, a document names the root its own contents prove, and
+    /// a container - a folder, a path ending in `/`, a glob, a table - reads
+    /// as the table its leaves hold, under the encoding
+    /// [`record_options`](Self::record_options) finds beneath it.
     ///
     /// **A declared schema selects and casts during the read.** The columns it
     /// names that the resource stores become the encoding's own projection - a
@@ -355,7 +482,7 @@ pub trait IOMedia: Send {
     /// never read back.
     ///
     /// Per the laziness contract, a resource that does not exist yet holds no
-    /// batches rather than failing.
+    /// rows rather than failing.
     ///
     /// The shaping order is fixed: declared schema, then partition filter,
     /// then the applied expressions, then
@@ -365,43 +492,6 @@ pub trait IOMedia: Send {
     /// means the first ten matching rows. A satisfied limit stops pulling, so
     /// the rest of the resource is never decoded.
     ///
-    /// # Errors
-    ///
-    /// Returns a listing, read, decoding, or cast failure.
-    fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
-        use crate::media::IORecordOptions;
-
-        match open(self.as_io_base(), options)? {
-            // The table pushes the clauses into its scan plan and wraps the
-            // selector and the limit itself: the reader is complete.
-            #[cfg(feature = "iceberg")]
-            Opened::Table(table) => table.read(options),
-            Opened::Reader(reader) => {
-                options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)
-            }
-        }
-    }
-
-    /// Read this resource's rows as a [`SerieReader`](crate::SerieReader):
-    /// one record [`Serie`](crate::Serie) per batch.
-    ///
-    /// This is the column-shaped sibling of
-    /// [`read_scalar`](crate::IOBase::read_scalar), and the one entry point
-    /// that does not need the caller to know first what the resource is. A
-    /// record encoding - Arrow IPC, Parquet, Avro, plain text - answers the
-    /// stream [`read_arrow_reader`](Self::read_arrow_reader) already
-    /// produces under `options`, each batch landed as it arrives; a
-    /// structured text document - JSON, JSON Lines, YAML, TOML, XML - answers the
-    /// one record column its rows parse into, because a document has no
-    /// frame to read a prefix of, and reads only the declared field off the
-    /// options.
-    ///
-    /// `options` absent is the handle's own encoding read whole: a record
-    /// encoding answers its stored schema, a document names the root its own
-    /// contents prove, and a container - a folder, a path ending in `/`, a
-    /// glob, a table - reads as the table its leaves hold, under the encoding
-    /// [`record_options`](Self::record_options) finds beneath it.
-    ///
     /// ```
     /// use yggdryl::{IOMedia, IOBase, Serie, Url, holder::Buffer};
     ///
@@ -410,7 +500,11 @@ pub trait IOMedia: Send {
     ///     .with_media_type(Url::from_str("file:///trades.jsonl")?.media_type());
     /// handle.write_all_bytes(b"{\"symbol\": \"AAPL\", \"size\": 100}\n")?;
     ///
-    /// let columns = handle.read_serie(None)?.collect::<Result<Vec<Serie>, _>>()?;
+    /// let columns = handle
+    ///     .read_serie(None)?
+    ///     .into_chunked_stream(None, None)?
+    ///     .into_chunks()
+    ///     .collect::<Result<Vec<Serie>, _>>()?;
     /// assert_eq!(columns.len(), 1);
     /// assert_eq!(columns[0].len(), 1);
     /// # Ok(())
@@ -419,48 +513,43 @@ pub trait IOMedia: Send {
     ///
     /// # Errors
     ///
-    /// Returns a read, decoding, parse, inference, or cast failure, or an
-    /// error naming the media type when it is neither a record encoding this
-    /// build implements nor a structured text format.
-    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
-        use crate::media::IORecordOptions;
-
-        let handle = self.as_io_base();
-        if crate::text::Format::from_media_type(handle.media_type()).is_ok() {
-            let field = options.and_then(IORecordOptions::field);
-            let records = crate::media::structured::read_arrow(handle, field.as_ref())?;
-            return Ok(crate::SerieReader::from_serie(records)?);
-        }
-        let reader = match options {
-            Some(options) => self.read_arrow_reader(options)?,
-            // What the resource says it holds - a container answering for the
-            // leaves beneath it - rather than a guess from a media type a
-            // container states as a directory.
-            None => self.read_arrow_reader(&self.record_options()?)?,
-        };
-        Ok(crate::SerieReader::from_arrow_reader(
-            None,
-            reader,
-            crate::ArrowCastOptions::default(),
-        )?)
+    /// Returns a listing, read, decoding, parse, inference, or cast failure,
+    /// or an error naming the media type when it is neither a record encoding
+    /// this build implements nor a structured text format.
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
+        read_serie_default(self, options)
     }
 
-    /// Write rows in any shape the crate holds them - a held
-    /// [`Serie`](crate::Serie), a [`ChunkedSerie`](crate::ChunkedSerie), a
-    /// [`SerieReader`](crate::SerieReader) - as this resource's rows, under
-    /// one explicit [`IOMode`](crate::IOMode).
+    /// Read this resource's rows as one [`BatchReader`](crate::arrow::BatchReader):
+    /// [`read_serie`](Self::read_serie)'s transport face, each batch
+    /// reconciled to the root and never landed - over an identity plan the
+    /// encoding's own reader, handed back untouched.
     ///
-    /// The column-shaped sibling of
-    /// [`write_scalar`](crate::IOBase::write_scalar), and the generic write:
-    /// the source becomes the stream of the batches it already is
-    /// ([`SerieSource::into_reader`](crate::SerieSource::into_reader) - a
-    /// record column one batch, a chunk one each, a stream itself, nothing
-    /// copied or re-landed) and goes to
-    /// [`write_arrow_reader`](Self::write_arrow_reader) as its transport
-    /// face, so every mode and every option applies. `options` absent is the
-    /// handle's own: the encoding its media type names, a container's the
-    /// table beneath it. A structured text document is one frame around
-    /// every row it holds, so it is replaced whole, only
+    /// # Errors
+    ///
+    /// [`read_serie`](Self::read_serie)'s.
+    fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
+        Ok(
+            crate::StreamChunkedSerie::from_serie(self.read_serie(Some(options))?)?
+                .into_arrow_reader(),
+        )
+    }
+
+    /// Write a [`Serie`](crate::Serie) of any kind - a held column, a
+    /// chunked one, a stream of rows or of record columns - as this
+    /// resource's rows, under one explicit [`IOMode`](crate::IOMode): the
+    /// generic write, which hands the rows to
+    /// [`overwrite_serie`](Self::overwrite_serie),
+    /// [`append_serie`](Self::append_serie) or
+    /// [`merge_serie`](Self::merge_serie).
+    ///
+    /// The rows cross as the batches they already are
+    /// ([`StreamChunkedSerie::from_serie`](crate::StreamChunkedSerie::from_serie)):
+    /// a record column one batch, a chunk one each, a stream itself,
+    /// nothing copied or re-landed, so every mode and every option applies.
+    /// `options` absent is the handle's own: the encoding its media type
+    /// names, a container's the table beneath it. A structured text document
+    /// is one frame around every row it holds, so it is replaced whole, only
     /// [`IOMode::Overwrite`](crate::IOMode::Overwrite) applies, and of the
     /// options only the declared `field` - which the rows are cast onto -
     /// reaches it: a document has no frame to select, filter or bound within.
@@ -480,10 +569,15 @@ pub trait IOMedia: Send {
     ///     DataType::Int64.required_field("size"),
     ///     [Scalar::from(100_i64), Scalar::from(250_i64)],
     /// )?;
-    /// handle.write_serie(sizes.clone().into(), IOMode::Overwrite, None)?;
-    /// let appended = handle.append_serie(sizes.into(), None)?;
+    /// handle.write_serie(sizes.clone(), IOMode::Overwrite, None)?;
+    /// let appended = handle.append_serie(sizes, None)?;
     /// assert_eq!((appended.read_rows, appended.written_rows, appended.skipped_rows), (2, 2, 0));
-    /// let rows: usize = handle.read_serie(None)?.map(|batch| Ok::<_, yggdryl::Error>(batch?.len())).sum::<Result<_, _>>()?;
+    /// let rows: usize = handle
+    ///     .read_serie(None)?
+    ///     .into_chunked_stream(None, None)?
+    ///     .into_chunks()
+    ///     .map(|batch| Ok::<_, yggdryl::Error>(batch?.len()))
+    ///     .sum::<Result<_, _>>()?;
     /// assert_eq!(rows, 4);
     /// # Ok(())
     /// # }
@@ -495,138 +589,31 @@ pub trait IOMedia: Send {
     /// record holding an absent row, which no table states, an error naming
     /// the media type when it names no format, or an error naming the mode
     /// when a structured text document is asked for anything but an
-    /// overwrite.
+    /// overwrite; merge requires non-empty match keys while the other modes
+    /// refuse them.
     fn write_serie(
         &mut self,
-        value: crate::SerieSource,
+        value: crate::Serie,
         mode: crate::IOMode,
         options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        use crate::media::IORecordOptions;
-
         if crate::text::Format::from_media_type(self.as_io_base().media_type()).is_ok() {
-            if mode != crate::IOMode::Overwrite {
-                return Err(document_takes_overwrite_alone(mode));
-            }
-            // A document reads the declared field off the options and
-            // nothing else: it has no frame to select, filter or bound within.
-            let mut reader = value.into_reader()?;
-            if let Some(field) = options.and_then(IORecordOptions::field) {
-                let safe = options.is_none_or(IORecordOptions::safe);
-                reader = reader.cast(&field, crate::ArrowCastOptions::new().with_safe(safe))?;
-            }
-            let rows = crate::media::structured::write_arrow(
-                self.as_io_base_mut(),
-                reader,
-                crate::text::Formatting::default(),
-            )?;
-            return Ok(crate::IOResult::new(rows, rows));
+            require_document_mode(mode)?;
+            return self.overwrite_serie(value, options);
         }
-        let own;
-        let options = match options {
-            Some(options) => options,
-            None => {
-                own = self.record_options()?;
-                &own
-            }
-        };
-        self.write_arrow_reader(value.into_reader()?.into_arrow_reader(), mode, options)
+        let options = own_options(self, options)?;
+        write_serie_as(self, value, mode, &options)
     }
 
-    /// Replace this resource's rows with `value`'s:
-    /// [`write_serie`](Self::write_serie) under
-    /// [`IOMode::Overwrite`](crate::IOMode::Overwrite).
-    ///
-    /// # Errors
-    ///
-    /// [`write_serie`](Self::write_serie)'s.
-    fn overwrite_serie(
-        &mut self,
-        value: crate::SerieSource,
-        options: Option<&RecordOptions>,
-    ) -> Result<crate::IOResult> {
-        self.write_serie(value, crate::IOMode::Overwrite, options)
-    }
-
-    /// Add `value`'s rows after this resource's:
-    /// [`write_serie`](Self::write_serie) under
-    /// [`IOMode::Append`](crate::IOMode::Append).
-    ///
-    /// # Errors
-    ///
-    /// [`write_serie`](Self::write_serie)'s.
-    fn append_serie(
-        &mut self,
-        value: crate::SerieSource,
-        options: Option<&RecordOptions>,
-    ) -> Result<crate::IOResult> {
-        self.write_serie(value, crate::IOMode::Append, options)
-    }
-
-    /// Merge `value`'s rows into this resource's by the options'
-    /// [`merge_by`](crate::media::IORecordOptions::merge_by) key, else this
-    /// resource's own [`merge_by`](Self::merge_by):
-    /// [`write_serie`](Self::write_serie) under
-    /// [`IOMode::Merge`](crate::IOMode::Merge).
-    ///
-    /// # Errors
-    ///
-    /// [`write_serie`](Self::write_serie)'s, and the refusal of an empty key
-    /// where the destination has none of its own.
-    fn merge_serie(
-        &mut self,
-        value: crate::SerieSource,
-        options: Option<&RecordOptions>,
-    ) -> Result<crate::IOResult> {
-        self.write_serie(value, crate::IOMode::Merge, options)
-    }
-
-    /// Write a batch stream using one explicit [`IOMode`](crate::IOMode).
-    ///
-    /// This is the configurable counterpart to the three intent-specific
-    /// primitives. The canonical argument order is input, mode, options; the
-    /// Python and JavaScript bindings keep that order and infer/cast their
-    /// input before redirecting here.
-    ///
-    /// # Errors
-    ///
-    /// Returns the selected primitive's validation, cast, read, or publication
-    /// failure. In particular, merge requires a match key - the options', else
-    /// this resource's own [`merge_by`](Self::merge_by) - while the other
-    /// modes refuse one.
-    fn write_arrow_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        mode: crate::IOMode,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        // The generic entry point owns mode validation so an implementor's
-        // specialized primitive cannot consume a one-shot reader before the
-        // authoritative intent and its key - the options', else this
-        // resource's own - are known to agree.
-        let options = self.write_options(mode, options)?;
-        match mode {
-            crate::IOMode::Overwrite => self.overwrite_arrow_reader(batches, &options),
-            crate::IOMode::Append => self.append_arrow_reader(batches, &options),
-            crate::IOMode::Merge => self.merge_arrow_reader(batches, &options),
-            crate::IOMode::ReadOnly | crate::IOMode::Random => Err(crate::Error::InvalidRecord {
-                path: smol_str::SmolStr::new_static("$.mode"),
-                reason: smol_str::SmolStr::new_static(
-                    "write mode readonly or random is not supported for write_arrow_reader",
-                ),
-            }),
-        }
-    }
-
-    /// Replace this resource's rows with every batch `batches` yields.
+    /// Replace this resource's rows with `value`'s.
     ///
     /// This is the required publication hook each handle implements. The
-    /// workspace implementations use [`super::overwrite_arrow_reader_default`] for
+    /// workspace implementations use [`super::overwrite_serie_default`] for
     /// byte and folder handles; table formats override it so one call is one
-    /// native commit. A declared field is cast onto the incoming rows exactly
-    /// once, followed by selection and completion onto the stored field; a
-    /// `TRANSFORM:`, `PARTITION:` or `DIGEST:` declaration it carries fills no
-    /// column.
+    /// native commit. `options` absent is the handle's own. A declared field
+    /// is cast onto the incoming rows exactly once, followed by selection and
+    /// completion onto the stored field; a `TRANSFORM:`, `PARTITION:` or
+    /// `DIGEST:` declaration it carries fills no column.
     ///
     /// A folder routes each row to the leaf its partition values name, creating
     /// the `column=value` directory when the layout has one and no leaf holds
@@ -637,12 +624,12 @@ pub trait IOMedia: Send {
     /// A limited overwrite truncates data the caller offered:
     /// [`max_row_size`](crate::media::IORecordOptions::max_row_size) and
     /// [`max_byte_size`](crate::media::IORecordOptions::max_byte_size) bound
-    /// the incoming reader exactly as they bound a read, and what they cut off
-    /// is never pulled from it. A match key is refused: use
-    /// [`merge_arrow_reader`](Self::merge_arrow_reader) for that intent.
+    /// the incoming rows exactly as they bound a read, and what they cut off
+    /// is never pulled from them. A match key is refused: use
+    /// [`merge_serie`](Self::merge_serie) for that intent.
     ///
     /// [`commit_batch_num`](crate::media::IORecordOptions::commit_batch_num)
-    /// changes publication, not shaping: the incoming reader is cast and
+    /// changes publication, not shaping: the incoming rows are cast and
     /// limited once, then cut into cadences of that many batches, no batch
     /// ever split. The first cadence overwrites and every later one appends.
     /// Successful prefixes remain visible if a later cadence fails; zero is
@@ -654,17 +641,17 @@ pub trait IOMedia: Send {
     /// outgrow the spill folder.
     ///
     /// The answer counts the whole write, every cadence included: the rows
-    /// pulled from `batches`, the rows the destination took, and the rows a
+    /// pulled from `value`, the rows the destination took, and the rows a
     /// `where` kept out or a bound cut off the batch it fell in. It says
     /// nothing of what was replaced.
     ///
     /// # Errors
     ///
     /// Returns a listing, read, schema, cast, encoding, or write failure.
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult>;
 
     /// Publish one complete leaf value that generic write shaping already
@@ -680,12 +667,132 @@ pub trait IOMedia: Send {
     ///
     /// Returns an encoding or publication failure.
     #[doc(hidden)]
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
+        &mut self,
+        value: crate::StreamChunkedSerie,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        crate::iobase::leaf_writer(self.as_io_base_mut(), value.into_arrow_reader(), options)
+    }
+
+    /// Add `value`'s rows after the rows this resource holds.
+    ///
+    /// The encodings here are whole-value containers - an Arrow IPC stream and a
+    /// Parquet file each carry one schema and one footer - so appending means
+    /// reading what is there, adding to it, and rewriting. The current rows are
+    /// read as the declared schema when there is one and as the stored schema
+    /// otherwise, a resource holding nothing is skipped rather than decoded, and
+    /// the incoming rows are cast to that same shape, so a caller may append
+    /// data whose schema merely *fits*. Both sides stream: the stored batches
+    /// are chained ahead of the incoming ones and encoded as they arrive, so
+    /// neither is collected. `options` absent is the handle's own.
+    ///
+    /// A folder appends into each partition the incoming rows name, leaving
+    /// every other partition untouched. A folder holding a table format appends
+    /// the way that format does: an Iceberg table writes new data files and
+    /// commits a snapshot per cadence that keeps every manifest the last one
+    /// had, so nothing already stored is read, rewritten, or even listed.
+    ///
+    /// A limited write truncates data the caller offered: an append is a
+    /// write, so
+    /// [`max_row_size`](crate::media::IORecordOptions::max_row_size) and
+    /// [`max_byte_size`](crate::media::IORecordOptions::max_byte_size) bound
+    /// the incoming rows here exactly as they do on
+    /// [`overwrite_serie`](Self::overwrite_serie), and a limit combined with
+    /// a non-empty match key is refused the same way. `commit_batch_num`
+    /// retains append intent for every bounded publication; successful
+    /// prefixes remain visible after a later failure. With no cadence a leaf,
+    /// a folder and an Iceberg table publish once at the end, the table
+    /// holding every partition's rows under the process spill bound until
+    /// then.
+    ///
+    /// # Errors
+    ///
+    /// Returns a listing, read, cast, encoding, or write failure. A leaf or a
+    /// folder with no commit cadence stays unchanged until the rewrite is
+    /// complete; an Iceberg table with none, and any destination with a
+    /// positive cadence, keeps the commits completed before the failure
+    /// published.
+    fn append_serie(
+        &mut self,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
+    ) -> Result<crate::IOResult> {
+        crate::iobase::append_serie_default(self.as_io_base_mut(), value, options)
+    }
+
+    /// Merge `value`'s rows into this resource by the declared match key.
+    ///
+    /// The match key is required. Stored rows are indexed because a stream
+    /// cannot be rewound; the incoming side remains streaming and is folded in
+    /// one batch at a time. The resulting stream is published through the
+    /// implementor's [`overwrite_serie`](Self::overwrite_serie) after the
+    /// declared field has been popped from a cloned options value, so the
+    /// already-cast rows are never cast to that field twice. `options` absent
+    /// is the handle's own.
+    ///
+    /// A folder holding an Iceberg table merges the way the table does: the
+    /// partition columns lead the match key, so a key naming nothing beyond
+    /// them replaces the partitions the rows fall in, and otherwise only the
+    /// data files whose statistics say they can hold an incoming key are
+    /// read, the rest carried forward untouched. With no cadence it commits
+    /// once when the source ends, and under one every commit merges by the
+    /// key: a keyed merge upserts per commit, and a merge keyed by the
+    /// partition alone replaces a partition on the first commit of the write
+    /// that reaches it and appends to it on every later one, so no commit
+    /// drops the rows an earlier one wrote.
+    ///
+    /// # Errors
+    ///
+    /// Returns a read, cast, merge, encoding, or write failure. An empty match
+    /// key is refused: use overwrite or append when rows have no identity.
+    /// `commit_batch_num`, and an Iceberg table's own cadence where none is
+    /// stated, retain merge intent for every bounded publication; successful
+    /// prefixes remain visible after a later failure.
+    fn merge_serie(
+        &mut self,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
+    ) -> Result<crate::IOResult> {
+        crate::iobase::merge_serie_default(self.as_io_base_mut(), value, options)
+    }
+
+    /// Write a batch stream using one explicit [`IOMode`](crate::IOMode): the
+    /// stream read as a [`StreamChunkedSerie`](crate::StreamChunkedSerie) -
+    /// transport, nothing landed - and handed to the serie door of that
+    /// intent.
+    ///
+    /// The canonical argument order is input, mode, options; the Python and
+    /// JavaScript bindings keep that order and infer/cast their input before
+    /// redirecting here.
+    ///
+    /// # Errors
+    ///
+    /// Returns the selected intent's validation, cast, read, or publication
+    /// failure. In particular, merge requires non-empty match keys while the
+    /// other modes refuse them.
+    fn write_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        mode: crate::IOMode,
+        options: &RecordOptions,
+    ) -> Result<crate::IOResult> {
+        self.write_serie(arrow_serie(batches)?, mode, Some(options))
+    }
+
+    /// Replace this resource's rows with every batch `batches` yields:
+    /// [`overwrite_serie`](Self::overwrite_serie) over the stream, read as
+    /// transport.
+    ///
+    /// # Errors
+    ///
+    /// [`overwrite_serie`](Self::overwrite_serie)'s.
+    fn overwrite_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
-        crate::iobase::leaf_writer(self.as_io_base_mut(), batches, options)
+    ) -> Result<crate::IOResult> {
+        self.overwrite_serie(arrow_serie(batches)?, Some(options))
     }
 
     /// Replace this resource with one Arrow record batch.
@@ -710,8 +817,7 @@ pub trait IOMedia: Send {
     /// Write one held Arrow batch using one explicit intent.
     ///
     /// The selected same-shape adapter remains authoritative: it widens the
-    /// batch into a one-item reader without copying, while an implementation
-    /// may preserve a more specialized record-batch override.
+    /// batch into a one-item reader without copying.
     ///
     /// # Errors
     ///
@@ -723,64 +829,23 @@ pub trait IOMedia: Send {
         mode: crate::IOMode,
         options: &RecordOptions,
     ) -> Result<crate::IOResult> {
-        let options = self.write_options(mode, options)?;
-        match mode {
-            crate::IOMode::Overwrite => self.overwrite_arrow_batch(batch, &options),
-            crate::IOMode::Append => self.append_arrow_batch(batch, &options),
-            crate::IOMode::Merge => self.merge_arrow_batch(batch, &options),
-            crate::IOMode::ReadOnly | crate::IOMode::Random => Err(crate::Error::InvalidRecord {
-                path: smol_str::SmolStr::new_static("$.mode"),
-                reason: smol_str::SmolStr::new_static(
-                    "write mode readonly or random is not supported for write_arrow_batch",
-                ),
-            }),
-        }
+        let schema = batch.schema();
+        self.write_arrow_reader(crate::arrow::batch_reader(schema, [batch]), mode, options)
     }
 
-    /// Add every batch `batches` yields after the rows this resource holds.
-    ///
-    /// The encodings here are whole-value containers - an Arrow IPC stream and a
-    /// Parquet file each carry one schema and one footer - so appending means
-    /// reading what is there, adding to it, and rewriting. The current rows are
-    /// read as the declared schema when there is one and as the stored schema
-    /// otherwise, a resource holding nothing is skipped rather than decoded, and
-    /// the incoming batches are cast to that same shape, so a caller may append
-    /// data whose schema merely *fits*. Both sides stream: the stored batches
-    /// are chained ahead of the incoming ones and encoded as they arrive, so
-    /// neither is collected.
-    ///
-    /// A folder appends into each partition the incoming rows name, leaving
-    /// every other partition untouched. A folder holding a table format appends
-    /// the way that format does: an Iceberg table writes new data files and
-    /// commits a snapshot per cadence that keeps every manifest the last one
-    /// had, so nothing already stored is read, rewritten, or even listed.
-    ///
-    /// A limited write truncates data the caller offered: an append is a
-    /// write, so
-    /// [`max_row_size`](crate::media::IORecordOptions::max_row_size) and
-    /// [`max_byte_size`](crate::media::IORecordOptions::max_byte_size) bound
-    /// the incoming reader here exactly as they do on
-    /// [`overwrite_arrow_reader`](Self::overwrite_arrow_reader), and a
-    /// limit combined with a non-empty match key is refused the same way.
-    /// `commit_batch_num` retains append intent for every bounded publication;
-    /// successful prefixes remain visible after a later failure. With no
-    /// cadence a leaf, a folder and an Iceberg table publish once at the
-    /// end, the table holding every partition's rows under the process spill
-    /// bound until then.
+    /// Add every batch `batches` yields after the rows this resource holds:
+    /// [`append_serie`](Self::append_serie) over the stream, read as
+    /// transport.
     ///
     /// # Errors
     ///
-    /// Returns a listing, read, cast, encoding, or write failure. A leaf or a
-    /// folder with no commit cadence stays unchanged until the rewrite is
-    /// complete; an Iceberg table with none, and any destination with a
-    /// positive cadence, keeps the commits completed before the failure
-    /// published.
+    /// [`append_serie`](Self::append_serie)'s.
     fn append_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<crate::IOResult> {
-        crate::iobase::append_arrow_reader_default(self.as_io_base_mut(), batches, options)
+        self.append_serie(arrow_serie(batches)?, Some(options))
     }
 
     /// Append one Arrow record batch to this resource.
@@ -801,46 +866,19 @@ pub trait IOMedia: Send {
         self.append_arrow_reader(crate::arrow::batch_reader(schema, [batch]), options)
     }
 
-    /// Merge every incoming row into this resource by the declared match key.
-    ///
-    /// The match key is required: the options'
-    /// [`merge_by`](crate::media::IORecordOptions::merge_by), which every
-    /// generic door ([`write_arrow_reader`](Self::write_arrow_reader),
-    /// [`merge_serie`](Self::merge_serie),
-    /// [`merge_records`](Self::merge_records)) takes from this resource's own
-    /// [`merge_by`](Self::merge_by) where the options name none. Stored rows
-    /// are indexed because a reader cannot be rewound; the incoming side
-    /// remains streaming and is folded in one batch at a time. The resulting
-    /// stream is published through the
-    /// implementor's [`overwrite_arrow_reader`](Self::overwrite_arrow_reader)
-    /// after the declared field has been popped from a cloned options value, so
-    /// the already-cast rows are never cast to that field twice.
-    ///
-    /// A folder holding an Iceberg table merges the way the table does: the
-    /// partition columns lead the match key, so a key naming nothing beyond
-    /// them replaces the partitions the rows fall in, and otherwise only the
-    /// data files whose statistics say they can hold an incoming key are
-    /// read, the rest carried forward untouched. With no cadence it commits
-    /// once when the source ends, and under one every commit merges by the
-    /// key: a keyed merge upserts per commit, and a merge keyed by the
-    /// partition alone replaces a partition on the first commit of the write
-    /// that reaches it and appends to it on every later one, so no commit
-    /// drops the rows an earlier one wrote.
+    /// Merge every batch `batches` yields into this resource by the declared
+    /// match key: [`merge_serie`](Self::merge_serie) over the stream, read as
+    /// transport.
     ///
     /// # Errors
     ///
-    /// Returns a read, cast, merge, encoding, or write failure. An empty match
-    /// key is refused where the resource states no key of its own: use
-    /// overwrite or append when rows have no identity.
-    /// `commit_batch_num`, and an Iceberg table's own cadence where none is
-    /// stated, retain merge intent for every bounded publication; successful
-    /// prefixes remain visible after a later failure.
+    /// [`merge_serie`](Self::merge_serie)'s.
     fn merge_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<crate::IOResult> {
-        crate::iobase::merge_arrow_reader_default(self.as_io_base_mut(), batches, options)
+        self.merge_serie(arrow_serie(batches)?, Some(options))
     }
 
     /// Merge one Arrow record batch into this resource by explicit keys.
@@ -1147,12 +1185,12 @@ macro_rules! impl_default_iomedia {
             self
         }
 
-        fn overwrite_arrow_reader(
+        fn overwrite_serie(
             &mut self,
-            batches: $crate::arrow::BatchReader,
-            options: &$crate::media::RecordOptions,
+            value: $crate::Serie,
+            options: Option<&$crate::media::RecordOptions>,
         ) -> $crate::Result<$crate::IOResult> {
-            $crate::overwrite_arrow_reader_default(self, batches, options)
+            $crate::overwrite_serie_default(self, value, options)
         }
     };
 }
@@ -1185,76 +1223,45 @@ macro_rules! __delegate_iomedia_arrow {
             $crate::IOMedia::read_arrow_field(&self.$handle, options)
         }
 
-        fn read_arrow_reader(
-            &self,
-            options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<$crate::arrow::BatchReader> {
-            $crate::IOMedia::read_arrow_reader(&self.$handle, options)
-        }
-
         // Forwarded, because a handle can answer its rows other than through
         // its bytes - an HTTP request walks the pages of a paginated document.
         fn read_serie(
             &self,
             options: Option<&$crate::media::RecordOptions>,
-        ) -> $crate::Result<$crate::SerieReader> {
+        ) -> $crate::Result<$crate::Serie> {
             $crate::IOMedia::read_serie(&self.$handle, options)
         }
 
-        fn overwrite_arrow_reader(
+        fn overwrite_serie(
             &mut self,
-            batches: $crate::arrow::BatchReader,
-            options: &$crate::media::RecordOptions,
+            value: $crate::Serie,
+            options: Option<&$crate::media::RecordOptions>,
         ) -> $crate::Result<$crate::IOResult> {
-            $crate::IOMedia::overwrite_arrow_reader(&mut self.$handle, batches, options)
+            $crate::IOMedia::overwrite_serie(&mut self.$handle, value, options)
         }
 
-        fn overwrite_prepared_arrow_reader(
+        fn overwrite_prepared_serie(
             &mut self,
-            batches: $crate::arrow::BatchReader,
+            value: $crate::StreamChunkedSerie,
             options: &$crate::media::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::IOMedia::overwrite_prepared_arrow_reader(&mut self.$handle, batches, options)
+            $crate::IOMedia::overwrite_prepared_serie(&mut self.$handle, value, options)
         }
 
-        fn overwrite_arrow_batch(
+        fn append_serie(
             &mut self,
-            batch: arrow_array::RecordBatch,
-            options: &$crate::media::RecordOptions,
+            value: $crate::Serie,
+            options: Option<&$crate::media::RecordOptions>,
         ) -> $crate::Result<$crate::IOResult> {
-            $crate::IOMedia::overwrite_arrow_batch(&mut self.$handle, batch, options)
+            $crate::IOMedia::append_serie(&mut self.$handle, value, options)
         }
 
-        fn append_arrow_reader(
+        fn merge_serie(
             &mut self,
-            batches: $crate::arrow::BatchReader,
-            options: &$crate::media::RecordOptions,
+            value: $crate::Serie,
+            options: Option<&$crate::media::RecordOptions>,
         ) -> $crate::Result<$crate::IOResult> {
-            $crate::IOMedia::append_arrow_reader(&mut self.$handle, batches, options)
-        }
-
-        fn append_arrow_batch(
-            &mut self,
-            batch: arrow_array::RecordBatch,
-            options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<$crate::IOResult> {
-            $crate::IOMedia::append_arrow_batch(&mut self.$handle, batch, options)
-        }
-
-        fn merge_arrow_reader(
-            &mut self,
-            batches: $crate::arrow::BatchReader,
-            options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<$crate::IOResult> {
-            $crate::IOMedia::merge_arrow_reader(&mut self.$handle, batches, options)
-        }
-
-        fn merge_arrow_batch(
-            &mut self,
-            batch: arrow_array::RecordBatch,
-            options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<$crate::IOResult> {
-            $crate::IOMedia::merge_arrow_batch(&mut self.$handle, batch, options)
+            $crate::IOMedia::merge_serie(&mut self.$handle, value, options)
         }
 
         fn overwrite_records<I, R>(
@@ -1382,74 +1389,43 @@ macro_rules! __delegate_resolved_iomedia {
             $crate::IOMedia::read_arrow_field(self.$get()?, options)
         }
 
-        fn read_arrow_reader(
-            &self,
-            options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<$crate::arrow::BatchReader> {
-            $crate::IOMedia::read_arrow_reader(self.$get()?, options)
-        }
-
         fn read_serie(
             &self,
             options: Option<&$crate::media::RecordOptions>,
-        ) -> $crate::Result<$crate::SerieReader> {
+        ) -> $crate::Result<$crate::Serie> {
             $crate::IOMedia::read_serie(self.$get()?, options)
         }
 
-        fn overwrite_arrow_reader(
+        fn overwrite_serie(
             &mut self,
-            batches: $crate::arrow::BatchReader,
-            options: &$crate::media::RecordOptions,
+            value: $crate::Serie,
+            options: Option<&$crate::media::RecordOptions>,
         ) -> $crate::Result<$crate::IOResult> {
-            $crate::IOMedia::overwrite_arrow_reader(self.$get_mut()?, batches, options)
+            $crate::IOMedia::overwrite_serie(self.$get_mut()?, value, options)
         }
 
-        fn overwrite_prepared_arrow_reader(
+        fn overwrite_prepared_serie(
             &mut self,
-            batches: $crate::arrow::BatchReader,
+            value: $crate::StreamChunkedSerie,
             options: &$crate::media::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::IOMedia::overwrite_prepared_arrow_reader(self.$get_mut()?, batches, options)
+            $crate::IOMedia::overwrite_prepared_serie(self.$get_mut()?, value, options)
         }
 
-        fn overwrite_arrow_batch(
+        fn append_serie(
             &mut self,
-            batch: arrow_array::RecordBatch,
-            options: &$crate::media::RecordOptions,
+            value: $crate::Serie,
+            options: Option<&$crate::media::RecordOptions>,
         ) -> $crate::Result<$crate::IOResult> {
-            $crate::IOMedia::overwrite_arrow_batch(self.$get_mut()?, batch, options)
+            $crate::IOMedia::append_serie(self.$get_mut()?, value, options)
         }
 
-        fn append_arrow_reader(
+        fn merge_serie(
             &mut self,
-            batches: $crate::arrow::BatchReader,
-            options: &$crate::media::RecordOptions,
+            value: $crate::Serie,
+            options: Option<&$crate::media::RecordOptions>,
         ) -> $crate::Result<$crate::IOResult> {
-            $crate::IOMedia::append_arrow_reader(self.$get_mut()?, batches, options)
-        }
-
-        fn append_arrow_batch(
-            &mut self,
-            batch: arrow_array::RecordBatch,
-            options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<$crate::IOResult> {
-            $crate::IOMedia::append_arrow_batch(self.$get_mut()?, batch, options)
-        }
-
-        fn merge_arrow_reader(
-            &mut self,
-            batches: $crate::arrow::BatchReader,
-            options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<$crate::IOResult> {
-            $crate::IOMedia::merge_arrow_reader(self.$get_mut()?, batches, options)
-        }
-
-        fn merge_arrow_batch(
-            &mut self,
-            batch: arrow_array::RecordBatch,
-            options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<$crate::IOResult> {
-            $crate::IOMedia::merge_arrow_batch(self.$get_mut()?, batch, options)
+            $crate::IOMedia::merge_serie(self.$get_mut()?, value, options)
         }
     };
 }
@@ -1472,4 +1448,69 @@ macro_rules! delegate_iomedia {
         $crate::__delegate_iomedia_arrow!($handle);
         $crate::__delegate_iomedia_parquet!($handle);
     };
+}
+
+/// The common native read behind the generic serie door.
+pub(crate) fn read_serie_default<M: IOMedia + ?Sized>(
+    media: &M,
+    options: Option<&RecordOptions>,
+) -> Result<crate::Serie> {
+    let handle = media.as_io_base();
+    // A retained plain-text reader owns its encoding even when its bytes
+    // resemble a structured document (for example a bracketed log header).
+    if !matches!(options, Some(RecordOptions::Text(_)))
+        && crate::text::Format::from_media_type(handle.media_type()).is_ok()
+    {
+        return read_document(handle, options);
+    }
+    read_record_serie(media, options)
+}
+
+/// Read a retained record encoding, whose owner already chose its format.
+pub(crate) fn read_record_serie<M: IOMedia + ?Sized>(
+    media: &M,
+    options: Option<&RecordOptions>,
+) -> Result<crate::Serie> {
+    use crate::media::IORecordOptions;
+
+    let handle = media.as_io_base();
+    let options = own_options(media, options)?;
+    let container = handle.is_container();
+    if !container {
+        let rows = match options.as_ref() {
+            RecordOptions::Csv(csv) => Some(crate::csv::read_stream(
+                handle,
+                options.field().as_ref(),
+                csv,
+            )?),
+            RecordOptions::Text(text) => Some(crate::text::arrow::read_leaf_stream(handle, text)?),
+            RecordOptions::Avro(avro) => Some(crate::avro::read_stream(handle, avro)?),
+            _ => None,
+        };
+        if let Some(rows) = rows {
+            let rows = options.apply_stream(rows)?;
+            if options.batch_row_size().is_some() || options.batch_byte_size().is_some() {
+                return rows
+                    .into_chunked_stream(options.batch_row_size(), options.batch_byte_size())
+                    .map(crate::Serie::from)
+                    .map_err(Into::into);
+            }
+            return Ok(crate::Serie::from(rows));
+        }
+    }
+    let opened = if container {
+        open_container(handle, &options)?
+    } else {
+        Opened::Reader(crate::iobase::leaf_reader(handle, &options)?)
+    };
+    let reader = match opened {
+        // The table pushes the clauses into its scan plan and wraps the
+        // selector and the limit itself: the reader is complete.
+        #[cfg(feature = "iceberg")]
+        Opened::Table(table) => table.read(&options)?,
+        Opened::Reader(reader) => {
+            options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)?
+        }
+    };
+    landed_options(reader, &options).map(crate::Serie::from)
 }

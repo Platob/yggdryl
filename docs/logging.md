@@ -526,7 +526,7 @@ Each publish is a stated number of calls on the handle, pinned in `rust/tests/io
 | `flush` holding nothing | none |
 | `close` | the publish of what is held - and one more for what that publish raised - then `close` |
 
-An append is a whole publish on every backend - one `PUT` of the object on an [object store](holder/index.md#object-stores), a rewrite of the member in an archive - so a handler over a remote store states a capacity: `with_capacity(1 << 20)` turns a `PUT` per record into one per mebibyte, and the flush level still publishes an `ERROR` at once. Records are held in memory until then, and a publish that fails loses the records it carried and says so on standard error.
+An append is a whole publish on every backend - one `PUT` of the object on an [object store](holder/index.md#object-stores), a rewrite of the member in an archive - so a handler over a remote store states a capacity: `with_capacity(1 << 20)` turns a `PUT` per record into one per mebibyte, and the flush level still publishes an `ERROR` at once. StreamSerie are held in memory until then, and a publish that fails loses the records it carried and says so on standard error.
 
 === "Rust"
 

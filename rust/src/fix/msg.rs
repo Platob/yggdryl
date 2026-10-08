@@ -18,7 +18,7 @@ use super::registry::FixMap;
 use super::{FixId, FixIdMapKind, FixKey, FixRegistry};
 use crate::graph::facts::OperationEventFacts;
 use crate::graph::{Element, Event, FxRates, Market, Metadata, Operation};
-use crate::isin_registry::IsinTable;
+use crate::isin_registry::{EconomicMemo, IsinTable};
 use crate::xxhash;
 use crate::{
     Ccy, Cfi, Country, Decimal, Forex, IdKey, IdSource, IdType, Identifier, Identifiers,
@@ -2006,7 +2006,9 @@ impl FixMsg {
     /// derive.
     ///
     /// The cross code names the chain and defaults to the first nonempty FIX
-    /// identifier in [`identity::CROSS_TAGS`], `OrderID(37)` first. The
+    /// identifier in [`identity::cross_tags`] of its category: a trade's
+    /// `TradeID(1003)` then `TradeReportID(571)` first, and for every other
+    /// category - a trade stating neither too - `OrderID(37)` first. The
     /// message type, capture session/context and message sequence name where
     /// a bridge observed the message instead: when all four are present,
     /// `sync_session_event_identifier` states their joined values as the
@@ -2027,7 +2029,15 @@ impl FixMsg {
     pub(super) fn settle_facts(&mut self) {
         self.sync_session_event_identifier();
         if self.event.get_crosscode().is_empty() {
-            let code = identity::CROSS_TAGS.iter().find_map(|tag| {
+            // The category the message stands under, else the one its type
+            // files under: what a parse knows before any fact is stated.
+            let kind = match self.event.marketdatakind() {
+                MarketDataKind::Unknown => {
+                    filed_marketdatakind(&self.registry, self.header.msgtype())
+                }
+                kind => kind,
+            };
+            let code = identity::cross_tags(kind).iter().find_map(|tag| {
                 self.get_by_tag(*tag)
                     .and_then(|value| value.as_str().map(str::to_owned))
                     .filter(|code| !code.is_empty())
@@ -3872,11 +3882,13 @@ impl FixMsg {
     /// ([`IsinTable::fill_unsettled`]): the identifiers
     /// [`Self::fill_instrument_ids`] derives, the ticker on the same market,
     /// the CFI code where the row's refines it and the currency on the same
-    /// stated market under the row's ticker - then the market facts they
-    /// imply, and nothing more: a parsed message is settled already, and a
-    /// fill moves nothing its identity reads. Whether anything moved.
-    pub(super) fn fill_instrument(&mut self, table: &IsinTable) -> bool {
-        let moved = table.fill_unsettled(self);
+    /// stated market under the row's ticker - from the exact match, else,
+    /// where the table states the economic match, the economic one, `memo`
+    /// keeping the walk's answers - then the market facts they imply, and
+    /// nothing more: a parsed message is settled already, and a fill moves
+    /// nothing its identity reads. Whether anything moved.
+    pub(super) fn fill_instrument(&mut self, table: &IsinTable, memo: &mut EconomicMemo) -> bool {
+        let moved = table.fill_unsettled(self, Some(memo));
         if moved {
             self.event.fill_market();
         }
@@ -3902,6 +3914,19 @@ impl FixMsg {
             .filter(|isin| IdType::Isin.is_real(isin))
             .map(|isin| &isin[..2]);
         (prefix != Some(country.as_str())).then_some(country)
+    }
+
+    /// The currency of issue the message states: its crate `origccy`
+    /// column, read by its tag as [`Self::stated_country`] reads
+    /// `CountryOfIssue(470)` - no FIX field states one. What the lifecycle
+    /// learns before it fills ([`Self::fill_instrument`]); none where the
+    /// message holds none, and never the currency
+    /// [`Market::origin_currency`] defaults it to.
+    pub(super) fn stated_origccy(&self) -> Option<Ccy> {
+        match self.get_by_tag(super::crated::ORIGCCY_TAG_NAME.0)? {
+            Scalar::Ccy(held) if !held.is_none() => Some(held),
+            _ => None,
+        }
     }
 
     /// The ISIN of the one instrument this message's own is written on - its
@@ -6500,6 +6525,16 @@ impl Market for FixMsg {
         self.event.set_currency(currency, overwrite);
     }
 
+    /// No FIX field states it: the crate's `origccy` column is its one
+    /// source, so no settle restates it and no bit marks it.
+    fn get_origccy(&self) -> &Ccy {
+        self.event.get_origccy()
+    }
+
+    fn set_origccy(&mut self, ccy: Ccy, overwrite: bool) {
+        self.event.set_origccy(ccy, overwrite);
+    }
+
     fn get_quantity(&self) -> Option<Decimal> {
         self.event.get_quantity()
     }
@@ -6944,6 +6979,33 @@ impl Operation for FixMsg {
                 .registry
                 .parent_of(id.kind())
                 .is_some_and(|(base, _)| follows(&base))
+    }
+
+    /// The side and the stored cross code of the chain `live` stands in,
+    /// which a walk forces on a message it states as that chain's: the
+    /// chain's side written as `Side(54)` where the message states none and
+    /// the chain is sided, so its row and its digest state it too, then the
+    /// chain's cross code where it states one and this message's stored
+    /// spelling of it differs, the cross codes in step. Whether either
+    /// moved; nothing is settled, so the walk settles a message this moved
+    /// once, under the side it was lent.
+    fn follow_identity(&mut self, live: &Self) -> bool {
+        let mut moved = super::enrich::inherit_side(self, live);
+        let code = live.get_crosscode();
+        if !code.is_empty() && self.stored_crosscode(code) != self.get_crosscode() {
+            self.set_crosscode(code.to_owned());
+            self.sync_cross();
+            moved = true;
+        }
+        moved
+    }
+
+    /// The walk's conflict kept beside the message as its parse keeps a
+    /// refusal: a [`FixAnomaly`](super::FixAnomaly) under `crosscode`
+    /// naming the chains `cited` spells, once, so a twin carrying the same
+    /// citations records the same.
+    fn note_conflict(&mut self, cited: &str) {
+        self.note_anomaly(super::FixAnomaly::new("crosscode", cited));
     }
 }
 

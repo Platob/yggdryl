@@ -1641,7 +1641,7 @@ mod streams {
             .unwrap();
         let batch = collected(reader).unwrap();
         assert_eq!(ids(&batch), [10, 20, 30]);
-        let back = yggdryl::expression::Records::from_arrow_reader(one_batch(&batch)).unwrap();
+        let back = yggdryl::StreamSerie::from_arrow_reader(one_batch(&batch)).unwrap();
         assert_eq!(back.field().fields()[0].name(), "id");
         assert_eq!(back.collect_rows().unwrap().len(), 3);
         // Without a schema and without a record there is nothing to bind to.
@@ -1880,4 +1880,34 @@ fn an_ordering_record_reads_its_nulls_flag_under_either_spelling() {
         let refused = Ordering::from_scalar(&record).unwrap_err().to_string();
         assert!(refused.contains("$.descending"), "{refused}");
     }
+}
+
+#[test]
+fn mixed_source_and_alias_predicates_share_the_media_filter_phases() {
+    let field = yggdryl::DataType::from_str("struct<id: int64 not null, value: int64 not null>")
+        .unwrap()
+        .required_field("rows");
+    let rows = yggdryl::Serie::from_scalars(
+        field,
+        [
+            yggdryl::Scalar::from_sequence([1_i64, 2_i64].map(yggdryl::Scalar::from)),
+            yggdryl::Scalar::from_sequence([2_i64, 4_i64].map(yggdryl::Scalar::from)),
+            yggdryl::Scalar::from_sequence([3_i64, 6_i64].map(yggdryl::Scalar::from)),
+        ],
+    )
+    .unwrap();
+    let expression = "select id as key, value where key > 1 and id = 2"
+        .parse::<yggdryl::expression::Expression>()
+        .unwrap();
+    let batch = rows.into_arrow_batch().unwrap();
+    let output = expression.apply_arrow_batch(&batch).unwrap();
+    assert_eq!(output.num_rows(), 1);
+    assert_eq!(output.schema().field(0).name(), "key");
+    assert_eq!(
+        yggdryl::Serie::from_arrow_batch(None, &output, yggdryl::ArrowCastOptions::new())
+            .unwrap()
+            .scalar(0)
+            .unwrap(),
+        yggdryl::Scalar::from_sequence([2_i64, 4_i64].map(yggdryl::Scalar::from))
+    );
 }

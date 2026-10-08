@@ -316,9 +316,9 @@ function limitsTable(document, title, limits, side, emptyText) {
 /**
  * Render the point summary of a book - the two bests and their quantities,
  * the spread, the mid, the imbalance, whether the book is locked or crossed,
- * the alive and delta counts and the top five limits of each side - under
- * `node`; `null` renders the empty state, saying `emptyText`. A book the
- * service could not rebuild (`complete` false) states its deltas alone: its
+ * the alive, delta and events counts and the top five limits of each side -
+ * under `node`; `null` renders the empty state, saying `emptyText`. A book
+ * the service could not rebuild (`complete` false) is a delta book: its
  * touch stands, and it is flagged, with no entry and no limit counted.
  */
 export function renderSummary(node, book, { zone = 'UTC', emptyText = 'Select a bucket - click a candle, or focus the chart and press Enter - to read its last book.' } = {}) {
@@ -337,7 +337,7 @@ export function renderSummary(node, book, { zone = 'UTC', emptyText = 'Select a 
   else if (isEmpty(book.bestbid) || isEmpty(book.bestask)) flags.append(make(document, 'span', 'chip', 'One-sided'))
   else flags.append(make(document, 'span', 'chip chip-ok', 'Two-sided'))
   const complete = book.complete !== false
-  if (!complete) flags.append(make(document, 'span', 'chip chip-warn', 'Deltas only'))
+  if (!complete) flags.append(make(document, 'span', 'chip chip-warn', 'Delta book'))
   head.append(flags)
   node.append(head)
 
@@ -348,11 +348,12 @@ export function renderSummary(node, book, { zone = 'UTC', emptyText = 'Select a 
   stats.append(stat(document, 'Mid', formatDecimal(book.midpoint), null, 'mid'))
   stats.append(stat(document, 'Imbalance', formatDecimal(book.imbalance, { fraction: 4 }), 'bid depth less ask, over both'))
   stats.append(stat(document, 'Alive', complete ? String(book.alive ?? 0) : '', complete ? 'entries' : 'not rebuilt'))
-  stats.append(stat(document, 'Deltas', String(book.deltas ?? 0), 'since the previous book'))
+  stats.append(stat(document, 'Delta', String(book.delta ?? 0), 'since the previous book'))
+  stats.append(stat(document, 'Events', String(book.events ?? 0), 'recorded at this instant'))
   node.append(stats)
 
   const sides = make(document, 'div', 'limit-sides')
-  const noLimits = complete ? 'No limits on this side.' : 'Not rebuilt: this book states its deltas alone.'
+  const noLimits = complete ? 'No limits on this side.' : 'Not rebuilt: this is a delta book.'
   sides.append(limitsTable(document, 'Top bid limits', book.bidlimits, 'bid', noLimits))
   sides.append(limitsTable(document, 'Top ask limits', book.asklimits, 'ask', noLimits))
   node.append(sides)

@@ -5,7 +5,8 @@
 //! cheaply: the instrument it is about - its security identifiers, its
 //! classification, the market it trades on, the ticker it goes by and an
 //! option's strike - the
-//! side it takes, what it is priced and counted in, the price and quantity
+//! side it takes, what it is priced and counted in and the currency it
+//! originates in, the price and quantity
 //! it is about, its last executed price and quantity and its average, how far it has got, the
 //! step before it, the two FX parts of a price, the FX rates to other
 //! currencies, and free-form metadata.
@@ -101,6 +102,7 @@ pub fn empty_fxrates() -> &'static FxRates {
 /// | a predecessor's `hiddenqty`, followed | a follower stating none: what it kept back less what traded since - the rise in `cumqty`, else `lastqty` | |
 /// | a predecessor's side, followed | a sided follower stating none takes it: the side is part of its identity | |
 /// | a predecessor's `strikepx`, followed | a follower of the same instrument stating none takes it: the strike is the option's | |
+/// | a predecessor's `origccy`, followed | a follower of the same instrument holding none takes it: the origin is the instrument's | |
 /// | a predecessor's bid or ask, followed | an unsided follower tagging no side and stating neither the price nor the quantity of that leg: the leg whole, its currency with it | |
 /// | a predecessor's `ordqty`, `cumqty`, `avgpx`, followed | an operation's follower stating none of them: what its chain ordered, traded and at what average - never a last fill, which no rise in `cumqty` invents | |
 /// | `lastpx`, `spotrate`, `forwardpoints` | | the third, where two are stated: `lastpx` is spot plus points |
@@ -162,6 +164,17 @@ pub trait Market {
     fn get_currency(&self) -> &Ccy;
     /// Sets [`Self::get_currency`].
     fn set_currency(&mut self, currency: Ccy, overwrite: bool);
+    /// The currency the instrument originates in - the one it was issued
+    /// in, which a depositary receipt or a share class listed in another
+    /// currency trades apart from - where the element states it or the
+    /// lifecycle's registry filled it, [`Ccy::none`] where neither did.
+    /// Never defaulted, so a fill lands wherever nothing is held:
+    /// [`Self::origin_currency`] is the reading that answers the currency
+    /// where it is unheld.
+    fn get_origccy(&self) -> &Ccy;
+    /// Sets [`Self::get_origccy`]. Nothing else moves: the currency is
+    /// never filled from it, nor it from the currency.
+    fn set_origccy(&mut self, ccy: Ccy, overwrite: bool);
     /// The quantity the element states; `None` where it states none. Never
     /// defaulted: a last executed quantity is [`Self::get_lastqty`], not this.
     fn get_quantity(&self) -> Option<Decimal>;
@@ -459,6 +472,39 @@ pub trait Market {
         self.get_isincode()
             .or_else(|| self.get_ticker().filter(|ticker| !ticker.is_empty()))
             .unwrap_or(Isin::NONE)
+    }
+
+    /// The currency an amount the element states converts from: its
+    /// [`Self::get_origccy`] where it holds one, else its
+    /// [`Self::get_currency`] - the origin defaulted by the currency at
+    /// read, never stored, so it answers [`Ccy::none`] only where the
+    /// element states neither. One direction only: the currency is never
+    /// read off the origin. Borrows, so no input allocates.
+    ///
+    /// ```
+    /// use yggdryl::graph::{Market, OrderEvent};
+    /// use yggdryl::Ccy;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut order = OrderEvent::at(1);
+    /// order.set_currency(Ccy::new("EUR")?, true);
+    /// // No origin held: the currency answers, and nothing is stored.
+    /// assert!(order.get_origccy().is_none());
+    /// assert_eq!(order.origin_currency().as_str(), "EUR");
+    /// // A USD-issued share listed in EUR states its origin apart.
+    /// order.set_origccy(Ccy::new("USD")?, true);
+    /// assert_eq!(order.origin_currency().as_str(), "USD");
+    /// assert_eq!(order.get_currency().as_str(), "EUR");
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn origin_currency(&self) -> &Ccy {
+        let held = self.get_origccy();
+        if held.is_none() {
+            self.get_currency()
+        } else {
+            held
+        }
     }
 
     /// Fills every market fact this element implies from the ones it
@@ -836,6 +882,28 @@ pub trait Operation: Market {
     fn parent_of(&self, kind: &IdType) -> Option<(IdType, usize)> {
         kind.parent_of()
     }
+    /// Stands this operation under the identity of `live`, the live
+    /// statement of the chain a lifecycle states it in: a sided operation
+    /// stating no side takes the live one's, as a follower does, and then
+    /// the live statement's stored cross code where that states one and
+    /// this one's differs, its cross hash code and cross element brought in
+    /// step - the side first, because a code is stored under the side its
+    /// holder takes. Whether anything moved; the caller finalizes where it
+    /// did. A holder whose side is content of its own - a FIX message
+    /// writing `Side(54)` - overrides it to state the side there.
+    fn follow_identity(&mut self, live: &Self) -> bool
+    where
+        Self: Element + Sized,
+    {
+        follow_identity(self, live)
+    }
+    /// Says that a lifecycle found this operation citing two live chains -
+    /// `cited` naming its own stored cross code and each chain's with the
+    /// name that cited it - and stood it under its own identity. Nothing by
+    /// default; a FIX message records it as an anomaly of its own.
+    fn note_conflict(&mut self, cited: &str) {
+        let _ = cited;
+    }
     /// Continues [`Market::digest_market`] with the operation's facts.
     fn digest_operation(&self) -> Xxh3
     where
@@ -1050,6 +1118,12 @@ pub(crate) fn feed_market<E: Market + ?Sized>(state: &mut Xxh3, this: &E) {
         staged.feed("price", &price.units().to_le_bytes());
     }
     staged.feed("currency", this.get_currency().as_str().as_bytes());
+    // Fed only where held, so an element stating no origin digests as it
+    // did before the origin was a fact.
+    let origccy = this.get_origccy();
+    if !origccy.is_none() {
+        staged.feed("origccy", origccy.as_str().as_bytes());
+    }
     if let Some(quantity) = this.get_quantity() {
         staged.feed("quantity", &quantity.units().to_le_bytes());
     }
@@ -1153,6 +1227,24 @@ pub(crate) fn feed_operation<E: Operation + ?Sized>(state: &mut Xxh3, this: &E) 
     }
 }
 
+/// [`Operation::follow_identity`] over any element of a market, the live
+/// one of any holder the same type reads: what a walk over
+/// [`MarketData`](super::MarketData) states a follower under where its
+/// live statement is another variant. A sided element stating no side takes
+/// the live one's as [`chain_market`] does, then the live stored cross code
+/// is forced as [`follow_element`](super::element::follow_element) forces it.
+pub(crate) fn follow_identity<E: Element + Market + ?Sized>(this: &mut E, live: &E) -> bool {
+    let mut changed = false;
+    if this.is_sided() {
+        changed |= moved(
+            this.get_side(),
+            this.get_side().merge_with(live.get_side().tagged()),
+            |side| this.set_side(side, true),
+        );
+    }
+    changed | super::element::follow_element(this, live)
+}
+
 /// The market facts an event takes from the statement it follows: the
 /// price and the quantity that statement settled on as the step before this
 /// one, and what the chain is about where this statement says nothing.
@@ -1243,6 +1335,12 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
             this.get_strikepx(),
             stated(this.get_strikepx(), previous.get_strikepx(), false),
             |px| this.set_strikepx(px, true),
+        );
+        // And the currency the instrument originates in, another.
+        changed |= moved(
+            this.get_origccy().clone(),
+            better(this.get_origccy().clone(), previous.get_origccy(), false),
+            |ccy| this.set_origccy(ccy, true),
         );
     }
     changed |= moved(
@@ -1454,6 +1552,11 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
         this.get_currency().clone(),
         better(this.get_currency().clone(), other.get_currency(), later),
         |currency| this.set_currency(currency, true),
+    );
+    changed |= moved(
+        this.get_origccy().clone(),
+        better(this.get_origccy().clone(), other.get_origccy(), later),
+        |ccy| this.set_origccy(ccy, true),
     );
     changed |= moved(
         this.get_side(),

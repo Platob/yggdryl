@@ -11,7 +11,7 @@ import pyarrow as pa
 import pyarrow.ipc
 import pytest
 
-from yggdryl import ChunkedSerie, DataType, Field, Scalar, Serie, SerieReader, extension
+from yggdryl import ChunkedSerie, DataType, Field, Scalar, Serie, StreamChunkedSerie, extension
 from yggdryl.extension import YggdrylArray, YggdrylType
 
 #: One datatype per `yggdryl.*` name the core writes, each spelled as a
@@ -215,7 +215,7 @@ def test_a_view_leaf_crosses_back_whole_on_every_pyarrow(spelled: str) -> None:
     assert Serie.from_(batch).as_py() == expected
     assert Serie.from_(pa.table({"x": arrow})).as_py() == expected
     reader = pa.RecordBatchReader.from_batches(batch.schema, [batch])
-    assert SerieReader.from_(reader).field == Serie.from_(batch).field
+    assert StreamChunkedSerie.from_(reader).field == Serie.from_(batch).field
 
 
 @pytest.mark.parametrize("spelled", VIEWS)

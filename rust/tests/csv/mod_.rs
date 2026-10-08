@@ -2,8 +2,8 @@
 //! caller reads a default by.
 
 use yggdryl::csv::{
-    Csv, CsvOptions, DEFAULT_CSV_BATCH_BYTE_SIZE, DEFAULT_CSV_INFER_ROW_SIZE,
-    overwrite_arrow_reader, read_batch_reader, read_field,
+    Csv, CsvOptions, DEFAULT_CSV_INFER_ROW_SIZE, overwrite_arrow_reader, read_batch_reader,
+    read_field,
 };
 use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
@@ -11,8 +11,8 @@ use yggdryl::media::IORecordOptions;
 #[test]
 fn the_defaults_are_the_constants() {
     let options = CsvOptions::new();
-    assert_eq!(options.batch_byte_size(), Some(DEFAULT_CSV_BATCH_BYTE_SIZE));
-    assert_eq!(DEFAULT_CSV_BATCH_BYTE_SIZE, 64 * 1024 * 1024);
+    assert_eq!(options.batch_byte_size(), None);
+    assert_eq!(options.batch_row_size(), None);
     assert_eq!(options.infer_row_size(), DEFAULT_CSV_INFER_ROW_SIZE);
     assert_eq!(DEFAULT_CSV_INFER_ROW_SIZE, 1024);
 }

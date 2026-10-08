@@ -1,6 +1,6 @@
 # Market
 
-`Market` states thirty-five facts: the kind and type of the element, the instrument and an option's strike, the side, the price and quantity - shown, hidden and stopped at -, the bid and the ask, what has traded and when it last did, the rates to other currencies and free-form metadata.
+`Market` states thirty-six facts: the kind and type of the element, the instrument and an option's strike, the side, the price and quantity - shown, hidden and stopped at -, the bid and the ask, what has traded and when it last did, the currency the instrument was issued in, the rates to other currencies and free-form metadata.
 
 ## Contract
 
@@ -8,7 +8,7 @@
 | --- | --- |
 | Owner | trait `yggdryl::graph::Market` (`graph::market`), no supertrait; Rust-only - [leaves](index.md#leaves) answer it in Python/JavaScript |
 | Price, quantity, numbers | `get_price`/`get_quantity` + `set_`: what the element states, exact as [`Decimal`](../types/numeric/decimal.md#decimal), `None` if none - never last-executed, never a default; likewise `lastpx`/`lastqty` (last executed price/quantity), `avgpx`, `cumqty`, `leavesqty`, `prevpx`/`prevqty` (prior step's settlement), `spotrate`/`forwardpoints` (FX parts), `stoppx` (the price a stop order triggers at) and `strikepx` (the strike price of the option the element is about - an instrument fact, which a follower of the same instrument [takes along its chain](#following-and-merging); a FIX message's `StrikePrice(202)`) |
-| Currency, unit | `get_currency`/`set_currency`: [`Ccy::none()`](../types/codes/ccy.md) if unstated; `get_unit`/`set_unit`: [`Unit::none()`](../types/codes/unit.md) if unstated |
+| Currency, unit | `get_currency`/`set_currency`: [`Ccy::none()`](../types/codes/ccy.md) if unstated; `get_unit`/`set_unit`: [`Unit::none()`](../types/codes/unit.md) if unstated; `get_origccy`/`set_origccy`: the currency the instrument was issued in, `Ccy::none()` where neither the element nor a registry stated one, and `origin_currency()` that or else the currency ([below](#origin-currency)) |
 | Side | `get_side`/`set_side`: the [side](../types/enum/side.md) by value, never absent - `Side::Unknown` (code `0`) where none is stated, which means "not stated": nothing invents a side. An order's or an execution's side is the one side it takes, and its stored cross code states its code ([below](#sides-and-cross-codes)); any other element's is a tag - a [quote](#a-quotes-two-legs) holds its bid and its ask and tags the leg it states, a two-sided one `Side::Both` (`BOTH`, code `99`), and a [book](book.md) is always `BOTH` |
 | Kind | `marketdatakind()`: required - the [category](../types/enum/marketdatakind.md) the element is filed under and a [lifecycle](event.md#lifecycle-walk) chains within (a leaf answers its own kind, a [FIX message](../fix/message.md#market-data) the category its dictionary files its type under) |
 | Sided | `is_sided()`: provided as `marketdatakind().is_sided()` - whether the element's stored cross code states its side, true exactly for an order or an execution - any other kind, a quote among them, states `0` there: [`MarketDataKind::is_sided`](../types/enum/marketdatakind.md#sided-kinds-and-batches), the one owner of the rule |
@@ -156,6 +156,7 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
 | Stored | every holder the crate ships stores its cross code through it, so `set_crosscode`, `set_side` and the kind a holder stamps converge in any order; [`crosshashcode` and `crossuuid`](element.md#contract) follow the stored text, and the two sides of one identifier are two chains ([walk](event.md#lifecycle-walk)) |
 | Unsided | an order or an execution stating no side states `0`, and so does every other element whatever side it takes or tags - a quote, a trade, a book, a snapshot control, a FIX message filed under any other category: `14:0:Q-1`, `21:0:T-1`, `3:0:AAPL`, whatever the side, `BOTH` included |
 | Copied | a trade or a snapshot control built over a sided element - `TradeEvent::from_parts(&order, ..)`, `SnapshotEvent::snapshot(&order, ..)` - takes the base code under its own kind's prefix (`21:0:O-1001` from `10:1:O-1001`), with the cross hash and element of that stored code; a sided leaf built over such facts stores it under its side again |
+| Chained | a [lifecycle walk](event.md#names-re-keying-and-conflicts) states every element of a chain under the chain's side and stored cross code: a sided element stating no side takes the live statement's, quoting its price and quantity as that side's as any side does, then the live statement's stored code where that states one - [`Operation::follow_identity`](operation.md#following-and-merging), the side first because a code is stored under the side its holder takes - so an identifier change, a replace under a new `ClOrdID` or `OrderID`, moves no element onto another code: `crosshashcode` and `crossuuid` derive from the chain's code, and the [book key](#the-book-key) and the entry a book keys by `crossuuid` stay where they stood |
 
 ## The book key
 
@@ -189,6 +190,78 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 | Filled | from the element's own price, quantity and currency on the side it takes or tags - a buy order at 189.50 bids 189.50 - and back: a bid or ask fills the price and quantity of an element taking that side ([Setting](#setting-fill-or-overwrite)); never from the last executed price |
 | Sources | a [book](book.md#books) states its best tradable levels, in its currency; a FIX message its `BidPx(132)`/`BidSize(134)` and `OfferPx(133)`/`OfferSize(135)`, each currency from a stated `BidCurrency`/`AskCurrency` (or `OfferCurrency`) field, else the message's ([FIX](../fix/message.md#market-data)) |
 | Following, merging | following carries a quote's legs to a follower tagging no side ([A quote's two legs](#a-quotes-two-legs)) and none to a sided element; a merge takes each from the leading statement where it states one, else from the other |
+
+## Origin currency
+
+`origccy` is the currency the instrument was issued in - the one a depositary receipt or a share class listed in another currency trades apart from. It is held only where something stated it, and `origin_currency()` is the reading with its default: `origccy` where held, else `currency`. That default is applied when read, never stored, so a fill always finds an empty slot and nothing derived is learned back.
+
+| Key | Rule |
+| --- | --- |
+| Held | `get_origccy`/`set_origccy(ccy, overwrite)`: `Ccy::none()` (`XXX`) until a row's cell, a caller's `set_origccy(.., true)` or the [registry's fill](isin-registry.md#matching) states one; the fill writes with `overwrite = false`, so a statement stands |
+| Read | `origin_currency()`: `origccy` where held, else `currency` - never `XXX` where a currency is stated. It is the currency an amount converts *from*; [FX rates](#fx-rates) are where it converts *to*, and nothing converts yet |
+| One direction | `currency` is never filled from `origccy`, nor `origccy` from `currency`; an FX pair reads its `currency` like any other element |
+| Precedence | a statement, then the registry's stated instrument value, then `currency` at read |
+| Following | a follower carries it as it carries every market fact it lacks ([below](#following-and-merging)) |
+| Columns | `origccy` after `currency` in `MarketColumn::ALL`, `ccy`, null where unheld, on a [`marketdata` row](market-data.md#columns) and on a [FIX row](../fix/capture.md#the-crates-own-columns) (crate tag 65018); fed to the digest only where held, so an element stating none hashes as it did before the fact existed |
+| Bindings | Python `origccy` (a `Scalar`, `None` where unheld) and `origin_currency` (`Scalar`); JavaScript `origccy` (a `string`, `null` where unheld) and `originCurrency` (`string`); the constructors take `origccy` like any other column |
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::Ccy;
+    use yggdryl::graph::{Market, OrderEvent};
+
+    let mut order = OrderEvent::at(1_700_000_000_000_000_000);
+    order.set_currency(Ccy::new("EUR")?, true);
+    // Unheld: the origin is the currency, read and never stored.
+    assert!(order.get_origccy().is_none());
+    assert_eq!(order.origin_currency().as_str(), "EUR");
+
+    // A USD-issued share listed in EUR states its origin.
+    order.set_origccy(Ccy::new("USD")?, true);
+    assert_eq!(order.origin_currency().as_str(), "USD");
+    assert_eq!(order.get_currency().as_str(), "EUR", "never filled from it");
+    // A fill never displaces a statement.
+    order.set_origccy(Ccy::new("CHF")?, false);
+    assert_eq!(order.get_origccy().as_str(), "USD");
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import graph
+
+    listed = graph.OrderEvent(1_700_000_000_000_000_000, currency="EUR")
+    # Unheld: the origin is the currency, read and never stored.
+    assert listed.origccy is None
+    assert listed.origin_currency.as_py() == "EUR"
+
+    # A USD-issued share listed in EUR states its origin.
+    issued = graph.OrderEvent(1_700_000_000_000_000_000, currency="EUR", origccy="USD")
+    assert issued.origccy is not None and issued.origccy.as_py() == "USD"
+    assert (issued.origin_currency.as_py(), issued.currency.as_py()) == ("USD", "EUR")
+
+    # A row's cell is the held value, null otherwise.
+    rows = graph.MarketData.arrow_reader([listed, issued]).read_all()
+    assert rows.column("origccy").to_pylist() == [None, "USD"]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { graph } = require('yggdryl')
+
+    const listed = new graph.OrderEvent(1_700_000_000_000_000_000n, { currency: 'EUR' })
+    // Unheld: the origin is the currency, read and never stored.
+    assert.equal(listed.origccy, null)
+    assert.equal(listed.originCurrency, 'EUR')
+
+    // A USD-issued share listed in EUR states its origin.
+    const issued = new graph.OrderEvent(1_700_000_000_000_000_000n, { currency: 'EUR', origccy: 'USD' })
+    assert.equal(issued.origccy, 'USD')
+    assert.deepEqual([issued.originCurrency, issued.currency], ['USD', 'EUR'])
+    ```
 
 ## FX rates
 
@@ -227,7 +300,7 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 
 | Reading | Rule |
 | --- | --- |
-| `following_market` | [`Event::following`](event.md#following); `prevpx`/`prevqty`, currency, unit, a sided element's side (this element's where it states one, the chain's where it states `UKNW` - never a `BOTH` the chain held, which tags no one side) - any other element's side is its own tag, and a quote takes the [legs](#a-quotes-two-legs) it states nothing of - ticker, each security id it lacks and the strike price - neither where it names another instrument, below -, classification, market, and every metadata key it lacks - all from the predecessor where this event says nothing, this element's own values standing; always leads, even with the timed link unchanged |
+| `following_market` | [`Event::following`](event.md#following); `prevpx`/`prevqty`, currency, `origccy`, unit, a sided element's side (this element's where it states one, the chain's where it states `UKNW` - never a `BOTH` the chain held, which tags no one side) - any other element's side is its own tag, and a quote takes the [legs](#a-quotes-two-legs) it states nothing of - ticker, each security id it lacks and the strike price - neither where it names another instrument, below -, classification, market, and every metadata key it lacks - all from the predecessor where this event says nothing, this element's own values standing; always leads, even with the timed link unchanged |
 | A FIX message | follows the metadata too, as a [`FixMsg`](../fix/message.md) in the [lifecycle](../fix/lifecycle.md): its metadata is the bridge's namespaced keys its row's `metadata` column holds, so a followed message's row carries the chain's keys |
 | Identity | a follower's `currhashcode` and `curruuid` digest what it takes ([`digest_market`](#contract) feeds the metadata), so they move where it took a key |
 | Two instruments | two stated real ISINs that differ - each closing under a listed prefix - name two instruments: no identifier and no strike price is taken from the predecessor, and a merge keeps the leading statement's identifiers whole. A number that is not real - a `ZZ`, a masked one, a typo - names no country's instrument, so it is never the other one: it yields to the higher-ranked ISIN, which replaces it and everything derived under it, whichever statement leads |

@@ -2,22 +2,29 @@
 //! [`MarketData`] leaf is written in and read back from.
 //!
 //! A row is the six [`ElementColumn`]s and the nine [`EventColumn`]s, the
-//! thirty-five [`MarketColumn`]s - opening with `marketdatakind`, the
+//! thirty-six [`MarketColumn`]s - opening with `marketdatakind`, the
 //! [`MarketDataKind`] its leaf stands under - the five
 //! [`OperationColumn`]s, the book controls a market-data entry states -
-//! `bookscope`, `bookaction` and `bookposition`, which a book's deltas
-//! replay by - and the nested columns a composite leaf fills: `alive` and
-//! `deltas` (a book's orders and quotes,
-//! alive on either side and applied since the book before it, in the order
-//! applied), `executions` (a trade's: a book holds none), and `bidlimits`
-//! and `asklimits` - a book's two sides as their price levels, one
-//! [`Limit`] each, best first and the unpriced one last, an empty side an
-//! empty list. A book holding only its deltas
-//! ([`BookEvent::is_complete`]) states its `deltas` and leaves `alive`,
-//! `bidlimits` and `asklimits` null. Every fact
+//! `bookscope`, `bookaction` and `bookposition`, which a book's delta
+//! replays by - and the six nested columns a composite leaf fills: `alive`
+//! (a complete book's orders and quotes alive on either side), `delta`
+//! (the membership operations its instant applied - the orders and quotes
+//! placed, changed, ended, expired or withdrawn - in the order applied),
+//! `events` (every other event its instant recorded, in the order applied:
+//! the executions and the snapshot controls), `executions` (a trade's: a
+//! book holds none), and `bidlimits` and `asklimits` - a complete book's
+//! two sides as their price levels, one [`Limit`] each, best first and the
+//! unpriced one last, an empty side an empty list. A delta book
+//! ([`BookEvent::is_complete`] false) states its `delta` and its `events`
+//! and leaves `alive`, `bidlimits` and `asklimits` null. Every fact
 //! is its own typed column; a leaf leaves null what it does not state. A
 //! nested operation row is `marketdatakind`, the event, market and
 //! operation columns and the three book controls, and nests nothing.
+//! A book states no `srcuuids`, and neither does an entry nested in its
+//! `alive`: that entry is the very one the `delta` of the book that applied
+//! it holds, whose row writes its sources, as a trade's `executions` and a
+//! book's `delta` and `events` do. Read back, either cell lands as none,
+//! whatever it holds.
 //!
 //! Written column by column from the typed leaves, and read back
 //! tolerantly: the reader's columns are resolved by name once per stream,
@@ -31,13 +38,15 @@
 //! execution, a dated one the event; a `TRAD` row is a trade and a `BOOK`
 //! row a book or a snapshot control, and both must be dated - a dated
 //! `BOOK` row is a complete book where it states its `alive` entries, even
-//! none, a book holding only its deltas where its `alive` cell is null and
-//! its `deltas` cell a list, and a snapshot control where both are null. A
-//! table may store a null list as an empty one, so a row whose `alive`
-//! holds no entry is the snapshot control where it states no delta and the
-//! `curruuid` a snapshot control derives, and a book holding only its
-//! deltas where it states one and no snapshot instant - a book holding no
-//! entry and stating none is the same book either way but whether it is
+//! none, a delta book where its `alive` cell is null and its `delta` or
+//! its `events` cell a list, and a snapshot control where all three are
+//! null. A table may store a null list as an empty one, so a row whose
+//! `alive` holds no entry and whose `delta` and `events` hold none is the
+//! snapshot control where it states the `curruuid` a snapshot control
+//! derives, and a delta book where `delta` or `events` holds one and it
+//! states no snapshot instant - an event-only row, its `delta` empty and
+//! its `events` holding an execution, is a delta book and never a control;
+//! a book holding no entry is the same book either way but whether it is
 //! complete. A `BOOK` row states no `executions`: a null or empty cell
 //! reads as none, and a cell holding any is refused there.
 
@@ -73,8 +82,8 @@ use crate::serie::{
 };
 use crate::{
     ArrowCastOptions, Ccy, Cfi, CodeValue, DataType, Decimal, Error, Field, Limit, MarketDataKind,
-    Mic, Representation, Result, Serie, SerieReader, Side, State, StructType, TimeInForce, Unit,
-    Uuid,
+    Mic, Representation, Result, Serie, Side, State, StreamChunkedSerie, StructType, TimeInForce,
+    Unit, Uuid,
 };
 use crate::{IdKey, IdType, Identifier, Identifiers};
 
@@ -86,7 +95,8 @@ const BOOKSCOPE: &str = "bookscope";
 const BOOKACTION: &str = "bookaction";
 const BOOKPOSITION: &str = "bookposition";
 pub(super) const ALIVE: &str = "alive";
-pub(super) const DELTAS: &str = "deltas";
+pub(super) const DELTA: &str = "delta";
+pub(super) const EVENTS: &str = "events";
 pub(super) const EXECUTIONS: &str = "executions";
 pub(super) const BIDLIMITS: &str = "bidlimits";
 pub(super) const ASKLIMITS: &str = "asklimits";
@@ -108,9 +118,10 @@ impl MarketData {
     /// its `marketdatatype`, [`OperationColumn::ALL`], the book controls a
     /// market-data entry states - `bookscope`, `bookaction` (its
     /// `MDUpdateAction(279)` code, or `snapshot`) and `bookposition` (its
-    /// `MDEntryPositionNo(290)`) - then the nullable nested columns: `alive`
-    /// and `deltas` (a book's operation rows), `executions` (a trade's),
-    /// and `bidlimits` and `asklimits` (a book's price levels).
+    /// `MDEntryPositionNo(290)`) - then the six nullable nested columns:
+    /// `alive`, `delta` and `events` (a book's operation rows),
+    /// `executions` (a trade's), and `bidlimits` and `asklimits` (a
+    /// complete book's price levels).
     ///
     /// ```
     /// use yggdryl::graph::MarketData;
@@ -123,7 +134,9 @@ impl MarketData {
     /// assert!(field.fields()[6].is_nullable());
     /// assert_eq!(field.fields()[15].name(), "marketdatakind");
     /// assert!(!field.fields()[15].is_nullable());
-    /// assert_eq!(field.field_len(), 6 + 9 + 35 + 5 + 3 + 5);
+    /// assert_eq!(field.field_len(), 6 + 9 + 36 + 5 + 3 + 6);
+    /// let nested: Vec<&str> = field.fields()[59..].iter().map(|field| field.name()).collect();
+    /// assert_eq!(nested, ["alive", "delta", "events", "executions", "bidlimits", "asklimits"]);
     /// # Ok(())
     /// # }
     /// ```
@@ -179,17 +192,19 @@ impl MarketData {
         }))
     }
 
-    /// The deltas of the books `source` holds, laid out as `marketdata`
-    /// rows in book order, as a stream: every event each book states among
-    /// its deltas - of `kind` where one is stated, every kind otherwise -
-    /// as the leaf it is, one record batch at a time under one plan compiled
-    /// from the row field once, the books pulled as the rows are. What a
-    /// stage reads the orders, the quotes or the executions of a window out
-    /// of a table of books with: `read_serie` into this, into the write.
+    /// The delta of the books `source` holds, laid out as `marketdata` rows
+    /// in book order, as a stream: the membership operations each book's
+    /// instant applied - the orders and quotes placed, changed, ended,
+    /// expired or withdrawn, of `kind` (`ORDR` or `QUOT`) where one is
+    /// stated - as the leaf each is, in the order applied, one record batch
+    /// at a time under one plan compiled from the row field once, the books
+    /// pulled as the rows are. What a stage reads the orders or the quotes
+    /// of a window out of a table of books with: `read_serie` into this,
+    /// into the write; [`Self::events_serie`] reads the executions.
     ///
     /// # Errors
     ///
-    /// Returns [`SerieSource::into_reader`](crate::SerieSource::into_reader)'s
+    /// Returns [`StreamChunkedSerie::from_serie`](crate::StreamChunkedSerie::from_serie)'s
     /// refusal of a run or of a record column holding an absent row, and the
     /// row field's when it cannot be built; past it, every refusal is an item
     /// of the stream - [`Self::from_arrow_reader`]'s of a row, and a row that
@@ -199,7 +214,7 @@ impl MarketData {
     ///
     /// ```
     /// use yggdryl::graph::{BookIterator, Element, ExecutionEvent, Market, MarketData, OrderEvent};
-    /// use yggdryl::{ArrowCastOptions, Decimal, MarketDataKind, Serie, Side};
+    /// use yggdryl::{ArrowCastOptions, Decimal, MarketDataKind, Serie, Side, StreamChunkedSerie};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// const T: i64 = 1_700_000_000_000_000_000;
@@ -221,32 +236,65 @@ impl MarketData {
     /// fill.finalize();
     /// let inputs = vec![order(T, "B-1", Side::Buy), order(T + 1, "A-1", Side::Sell), MarketData::from(fill)];
     ///
-    /// // Three books, one per instant, laid out as rows once and held: what a
-    /// // table of books holds.
+    /// // Three books, one per instant - the fill's an event-only delta book -
+    /// // laid out as rows once and held: what a table of books holds.
     /// let books = BookIterator::new(inputs.into_iter(), 0)?.map(|book| book.map(MarketData::from));
     /// let rows = Serie::from_arrow_reader(None, MarketData::arrow_reader(books, None, None)?, ArrowCastOptions::new())?;
     /// assert_eq!(rows.len(), 3);
     ///
-    /// // Every delta of every book, in book order; the executions alone.
-    /// let count = |kind: Option<MarketDataKind>| -> yggdryl::Result<usize> {
-    ///     MarketData::deltas_serie(rows.clone(), kind)?
-    ///         .map(|serie| -> yggdryl::Result<usize> { Ok(serie?.len()) })
-    ///         .sum()
+    /// // The two orders are the books' delta, the fill their events.
+    /// let count = |serie: StreamChunkedSerie| -> yggdryl::Result<usize> {
+    ///     serie.into_chunks().map(|serie| -> yggdryl::Result<usize> { Ok(serie?.len()) }).sum()
     /// };
-    /// assert_eq!(count(None)?, 3);
-    /// assert_eq!(count(Some(MarketDataKind::Execution))?, 1);
+    /// assert_eq!(count(MarketData::delta_serie(rows.clone(), None)?)?, 2);
+    /// assert_eq!(count(MarketData::delta_serie(rows.clone(), Some(MarketDataKind::Quotation))?)?, 0);
+    /// assert_eq!(count(MarketData::events_serie(rows.clone(), None)?)?, 1);
+    /// assert_eq!(count(MarketData::events_serie(rows, Some(MarketDataKind::Execution))?)?, 1);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn deltas_serie(
-        source: impl Into<crate::SerieSource>,
+    pub fn delta_serie(
+        source: impl Into<crate::Serie>,
         kind: Option<MarketDataKind>,
-    ) -> Result<SerieReader> {
-        let books = Self::from_arrow_reader(source.into().into_reader()?.into_arrow_reader())?;
-        let deltas = books.flat_map(move |book| match book {
-            Ok(MarketData::BookEvent(book)) => book
-                .deltas()
-                .filter(|delta| kind.is_none_or(|kind| delta.marketdatakind() == kind))
+    ) -> Result<StreamChunkedSerie> {
+        Self::book_rows_serie(source, kind, |book| book.delta().collect())
+    }
+
+    /// The events of the books `source` holds, laid out as `marketdata`
+    /// rows in book order, as a stream: every other event each book's
+    /// instant recorded - the executions and the snapshot controls, of
+    /// `kind` (`EXEC`, or `BOOK` for the controls) where one is stated - as
+    /// the leaf each is, in the order applied, one record batch at a time
+    /// under one plan compiled from the row field once, the books pulled as
+    /// the rows are. What a stage reads the executions of a window out of a
+    /// table of books with; [`Self::delta_serie`] reads the orders and the
+    /// quotes, and its example reads both.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Self::delta_serie`]'s refusals.
+    pub fn events_serie(
+        source: impl Into<crate::Serie>,
+        kind: Option<MarketDataKind>,
+    ) -> Result<StreamChunkedSerie> {
+        Self::book_rows_serie(source, kind, |book| book.events().collect())
+    }
+
+    /// The rows `pick` takes out of each book `source` holds, of `kind`
+    /// where one is stated, as a stream of `marketdata` rows: the two doors
+    /// over a table of books.
+    fn book_rows_serie(
+        source: impl Into<crate::Serie>,
+        kind: Option<MarketDataKind>,
+        pick: fn(&BookEvent) -> Vec<&MarketData>,
+    ) -> Result<StreamChunkedSerie> {
+        let books = Self::from_arrow_reader(
+            crate::StreamChunkedSerie::from_serie(source.into())?.into_arrow_reader(),
+        )?;
+        let picked = books.flat_map(move |book| match book {
+            Ok(MarketData::BookEvent(book)) => pick(&book)
+                .into_iter()
+                .filter(|row| kind.is_none_or(|kind| row.marketdatakind() == kind))
                 .cloned()
                 .map(Ok)
                 .collect::<Vec<_>>(),
@@ -259,8 +307,8 @@ impl MarketData {
             ))],
             Err(error) => vec![Err(error)],
         });
-        let rows = Self::arrow_reader(deltas, None, None)?;
-        Ok(SerieReader::from_arrow_reader(
+        let rows = Self::arrow_reader(picked, None, None)?;
+        Ok(StreamChunkedSerie::from_arrow_reader(
             Some(&Self::field()?),
             rows,
             ArrowCastOptions::new(),
@@ -318,7 +366,7 @@ impl MarketData {
             .collect();
         let target = struct_field(ROOT, &columns, Role::Read, false)?;
         let batches =
-            SerieReader::from_arrow_reader(Some(&target), batches, ArrowCastOptions::new())?;
+            StreamChunkedSerie::from_arrow_reader(Some(&target), batches, ArrowCastOptions::new())?;
         Ok(Rows {
             batches,
             layouts: Layouts::new(columns),
@@ -345,7 +393,8 @@ enum Column {
     BookAction,
     BookPosition,
     Alive,
-    Deltas,
+    Delta,
+    Events,
     Executions,
     BidLimits,
     AskLimits,
@@ -387,7 +436,8 @@ impl Column {
             Self::BookAction => BOOKACTION,
             Self::BookPosition => BOOKPOSITION,
             Self::Alive => ALIVE,
-            Self::Deltas => DELTAS,
+            Self::Delta => DELTA,
+            Self::Events => EVENTS,
             Self::Executions => EXECUTIONS,
             Self::BidLimits => BIDLIMITS,
             Self::AskLimits => ASKLIMITS,
@@ -409,8 +459,14 @@ impl Column {
             Self::Alive => Some(
                 "The entries standing in the book, stated where the book is complete: at a snapshot tick.",
             ),
-            Self::Deltas => Some(
-                "The entries the book changed by since the book before it, in the order applied.",
+            Self::Delta => Some(
+                "The orders and quotes the book's instant applied - placed, changed, ended, expired \
+                 or withdrawn - in the order applied.",
+            ),
+            Self::Events => Some(
+                "Every other event the book's instant recorded, in the order applied: the \
+                 executions, resting on no side, and the snapshot controls that replaced its \
+                 membership; null on a snapshot control's own row.",
             ),
             Self::Executions => Some("The executions a trade is made of; null on a book."),
             Self::BidLimits => Some("The price levels of the bid side, best first."),
@@ -447,7 +503,7 @@ impl Column {
                 field.set_display("Book Position")?;
                 field
             }
-            Self::Alive | Self::Deltas | Self::Executions => {
+            Self::Alive | Self::Delta | Self::Events | Self::Executions => {
                 DataType::serie(operation_row_field(role.item())?).nullable_field(self.name())
             }
             Self::BidLimits | Self::AskLimits => {
@@ -528,9 +584,10 @@ impl Column {
                 MarketColumn::Ticker => Storage::Text,
                 MarketColumn::ExecUnix => Storage::Clock,
                 MarketColumn::SecurityIds | MarketColumn::Metadata => Storage::Pairs,
-                MarketColumn::Currency | MarketColumn::BidCcy | MarketColumn::AskCcy => {
-                    Storage::Code(Code::Ccy)
-                }
+                MarketColumn::Currency
+                | MarketColumn::OrigCcy
+                | MarketColumn::BidCcy
+                | MarketColumn::AskCcy => Storage::Code(Code::Ccy),
                 MarketColumn::Unit => Storage::Code(Code::Unit),
                 MarketColumn::Side => Storage::Side,
                 MarketColumn::IsinCode => Storage::Code(Code::Isin),
@@ -546,7 +603,7 @@ impl Column {
             },
             Self::BookScope | Self::BookAction => Storage::Text,
             Self::BookPosition => Storage::UInt32,
-            Self::Alive | Self::Deltas | Self::Executions => Storage::Nested,
+            Self::Alive | Self::Delta | Self::Events | Self::Executions => Storage::Nested,
             Self::BidLimits | Self::AskLimits => Storage::Limits,
         }
     }
@@ -557,7 +614,8 @@ fn root_columns() -> Vec<Column> {
     let mut columns = operation_columns();
     columns.extend([
         Column::Alive,
-        Column::Deltas,
+        Column::Delta,
+        Column::Events,
         Column::Executions,
         Column::BidLimits,
         Column::AskLimits,
@@ -568,7 +626,7 @@ fn root_columns() -> Vec<Column> {
 /// Every column of an operation row, in canonical order: the element's,
 /// the event's, the market's and the operation's facts, then the book
 /// controls an entry states - its scope, its update action and its
-/// position - which a book's deltas replay by.
+/// position - which a book's delta replays by.
 fn operation_columns() -> Vec<Column> {
     ElementColumn::ALL
         .map(Column::Element)
@@ -592,9 +650,9 @@ fn struct_field(name: &str, columns: &[Column], role: Role, nullable: bool) -> R
     ))
 }
 
-/// The item of `alive`, `deltas` and `executions`: one dated operation,
-/// built for `role` - [`Role::Operation`], or [`Role::ReadOperation`] under
-/// the read root.
+/// The item of `alive`, `delta`, `events` and `executions`: one dated
+/// operation or snapshot control, built for `role` - [`Role::Operation`],
+/// or [`Role::ReadOperation`] under the read root.
 fn operation_row_field(role: Role) -> Result<Field> {
     struct_field(OPERATION_ROW, &operation_columns(), role, false)
 }
@@ -702,6 +760,10 @@ struct Row<'a> {
     control: Option<&'a BookRef>,
     executions: Option<&'a [ExecutionEvent]>,
     book: Option<&'a BookEvent>,
+    /// Whether the row writes its sources: every row but an entry alive on
+    /// a book, the very entry the delta of the book that applied it holds,
+    /// whose row writes them.
+    sources: bool,
 }
 
 impl<'a> Row<'a> {
@@ -739,6 +801,14 @@ impl<'a> Row<'a> {
         Self::operation(MarketKind::ExecutionEvent, execution, execution.book())
     }
 
+    /// An entry alive on a book, as the book's row nests it: with no sources.
+    fn resting(entry: &'a MarketData) -> Self {
+        Self {
+            sources: false,
+            ..Self::of(entry)
+        }
+    }
+
     fn undated(
         kind: MarketKind,
         element: &'a dyn Element,
@@ -754,6 +824,7 @@ impl<'a> Row<'a> {
             control: None,
             executions: None,
             book: None,
+            sources: true,
         }
     }
 
@@ -781,11 +852,14 @@ impl<'a> Row<'a> {
     /// its own per row.
     fn extend_nested(&self, column: Column, items: &mut Vec<Self>) -> bool {
         match (column, self.book, self.executions) {
-            // A book holding only its deltas states no alive entry.
+            // A delta book states no alive entry.
             (Column::Alive, Some(book), _) if book.is_complete() => {
-                items.extend(book.alive().map(Self::of));
+                items.extend(book.alive().map(Self::resting));
             }
-            (Column::Deltas, Some(book), _) => items.extend(book.deltas().map(Self::of)),
+            (Column::Delta, Some(book), _) => items.extend(book.delta().map(Self::of)),
+            // The executions and the snapshot controls, each the dated row it
+            // is: a control states its book control and no operation fact.
+            (Column::Events, Some(book), _) => items.extend(book.events().map(Self::of)),
             (Column::Executions, _, Some(executions)) => {
                 items.extend(executions.iter().map(Self::execution));
             }
@@ -825,11 +899,11 @@ impl<'a> Row<'a> {
         }
     }
 
-    /// The sources a row states; none where it names none.
+    /// The sources a row states; none where it names none or writes none.
     fn uuids(&self, column: Column) -> Option<&'a [Uuid]> {
         let element: &'a dyn Element = self.element;
         match column {
-            Column::Element(ElementColumn::SrcUuids) => {
+            Column::Element(ElementColumn::SrcUuids) if self.sources => {
                 Some(element.get_srcuuids()).filter(|uuids| !uuids.is_empty())
             }
             _ => None,
@@ -899,6 +973,11 @@ impl<'a> Row<'a> {
         match column {
             Column::Element(ElementColumn::CrossCode) => Some(element.get_crosscode()),
             Column::Market(MarketColumn::Currency) => Some(market.get_currency().as_str()),
+            // The origin held, null where none is: never the currency it
+            // defaults to at read, which a reader would take for a statement.
+            Column::Market(MarketColumn::OrigCcy) => Some(market.get_origccy())
+                .filter(|held| !held.is_none())
+                .map(Ccy::as_str),
             Column::Market(MarketColumn::BidCcy) => market.get_bidccy().map(Ccy::as_str),
             Column::Market(MarketColumn::AskCcy) => market.get_askccy().map(Ccy::as_str),
             Column::Market(MarketColumn::Unit) => Some(market.get_unit().as_str()),
@@ -1055,7 +1134,7 @@ impl<'a> Row<'a> {
 fn charge(value: &MarketData) -> u64 {
     let nested = match value {
         MarketData::TradeEvent(trade) => trade.executions().len(),
-        MarketData::BookEvent(book) => book.alive_len() + book.deltas().len(),
+        MarketData::BookEvent(book) => book.alive_len() + book.delta().len() + book.events().len(),
         _ => 0,
     };
     (1 + nested as u64) * (crate::arrow::size::ROW_OVERHEAD as u64 + OPERATION_ROW_BYTES)
@@ -1085,7 +1164,7 @@ impl Shape {
             .map(|(column, arrow)| {
                 let nested = match (column, arrow.data_type()) {
                     (
-                        Column::Alive | Column::Deltas | Column::Executions,
+                        Column::Alive | Column::Delta | Column::Events | Column::Executions,
                         ArrowType::List(item),
                     ) => Some((
                         Arc::clone(item),
@@ -1656,28 +1735,37 @@ fn validate_trade_for_write(trade: &TradeEvent, path: &Path<'_>) -> Result<()> {
 }
 
 fn validate_book_for_write(book: &BookEvent, path: &Path<'_>) -> Result<()> {
+    // `alive` and `delta` hold the orders and quotes; `events` every other
+    // event the instant recorded - an execution, resting on no side, or a
+    // snapshot control.
     let entries = |name: &'static str, entries: &mut dyn Iterator<Item = &MarketData>| {
         let list = path.field(name);
+        let recorded = name == EVENTS;
         for (index, entry) in entries.enumerate() {
             let item = list.child(Segment::Index(index));
             match entry {
-                MarketData::OrderEvent(operation) => {
+                MarketData::OrderEvent(operation) if !recorded => {
                     validate_operation_for_write(operation, &item)?
                 }
-                MarketData::QuoteEvent(operation) => {
+                MarketData::QuoteEvent(operation) if !recorded => {
                     validate_operation_for_write(operation, &item)?
                 }
-                // An execution is recorded among the deltas and rests on no
-                // side: alive, it is no entry of this crate's.
-                MarketData::ExecutionEvent(operation) if name == DELTAS => {
+                MarketData::ExecutionEvent(operation) if recorded => {
                     validate_operation_for_write(operation, &item)?
+                }
+                MarketData::SnapshotEvent(control) if recorded => {
+                    validate_control_for_write(control, &item)?
                 }
                 other => {
+                    let expected = if recorded {
+                        "execution_event or snapshot_event"
+                    } else {
+                        "order_event or quote_event"
+                    };
                     return Err(invalid(
                         at(&item, MarketColumn::MarketDataKind.name()),
                         format_smolstr!(
-                            "expected order_event or quote_event alive on a book, or an \
-                             execution_event among its deltas, got {}",
+                            "expected {expected} among a book's {name}, got {}",
                             other.kind().as_str()
                         ),
                     ));
@@ -1687,7 +1775,8 @@ fn validate_book_for_write(book: &BookEvent, path: &Path<'_>) -> Result<()> {
         Ok(())
     };
     entries(ALIVE, &mut book.alive())?;
-    entries(DELTAS, &mut book.deltas())?;
+    entries(DELTA, &mut book.delta())?;
+    entries(EVENTS, &mut book.events())?;
     book.validate_parts().map_err(|error| path.reroot(error))?;
     let canonical = book.canonical_event().map_err(|error| path.reroot(error))?;
     if book.event() == &canonical {
@@ -2284,7 +2373,8 @@ struct Landed {
     bookaction: Option<Leaf>,
     bookposition: Option<Leaf>,
     alive: Option<Operations>,
-    deltas: Option<Operations>,
+    delta: Option<Operations>,
+    events: Option<Operations>,
     executions: Option<Operations>,
     bidlimits: Option<Limits>,
     asklimits: Option<Limits>,
@@ -2319,7 +2409,8 @@ impl Landed {
             bookaction: None,
             bookposition: None,
             alive: None,
-            deltas: None,
+            delta: None,
+            events: None,
             executions: None,
             bidlimits: None,
             asklimits: None,
@@ -2347,7 +2438,10 @@ impl Landed {
                 Column::BookAction => landed.bookaction = Some(Leaf::of(*column, serie)?),
                 Column::BookPosition => landed.bookposition = Some(Leaf::of(*column, serie)?),
                 Column::Alive => landed.alive = Some(Operations::new(*column, serie, layouts)?),
-                Column::Deltas => landed.deltas = Some(Operations::new(*column, serie, layouts)?),
+                Column::Delta => landed.delta = Some(Operations::new(*column, serie, layouts)?),
+                Column::Events => {
+                    landed.events = Some(Operations::new(*column, serie, layouts)?);
+                }
                 Column::Executions => {
                     landed.executions = Some(Operations::new(*column, serie, layouts)?);
                 }
@@ -2360,7 +2454,7 @@ impl Landed {
 
     /// Root row `row` as the leaf its `marketdatakind` and its shape name:
     /// dated where it states `currunix`, and a dated book a book or a
-    /// snapshot control by whether it states its `alive` entries.
+    /// snapshot control by the lists it states ([`Self::dated_book`]).
     fn value(&self, row: usize, path: &Path<'_>) -> Result<MarketData> {
         let dated = self
             .event_leaf(EventColumn::CurrUnix)
@@ -2475,20 +2569,23 @@ impl Landed {
     }
 
     /// A dated `BOOK` row: a complete book where it states its `alive`
-    /// entries - none is a statement too - a book holding only its deltas
-    /// where `alive` is null and `deltas` a list, and a snapshot control
-    /// where both are null. A table may store a null list as an empty one -
+    /// entries - none is a statement too - a delta book where `alive` is
+    /// null and `delta` or `events` a list, and a snapshot control where
+    /// all three are null. A table may store a null list as an empty one -
     /// PyIceberg reads a null list of structs back as `[]` - so a row whose
-    /// `alive` holds no entry is the snapshot control where it states no
-    /// delta and the `curruuid` that control derives, which no book shares,
-    /// and a book holding only its deltas where it states one and no
-    /// snapshot instant, which every complete book a walk emits states. So a
-    /// complete book holding no live entry and stating deltas with no
-    /// snapshot instant - one built or rebuilt rather than emitted - reads
-    /// back as a book holding only its deltas, its identity and its deltas
-    /// kept: a row does not carry the completeness of an empty book. A
-    /// batch that landed no `alive` column says none of it, and the row is
-    /// refused rather than typed.
+    /// `alive` holds no entry is a delta book where `delta` or `events`
+    /// holds one and it states no snapshot instant, which every complete
+    /// book a walk emits states, and a complete book where it states one;
+    /// where neither holds any, it is the snapshot control where it states
+    /// the `curruuid` that control derives, which no book shares, and an
+    /// empty complete book otherwise. An event-only row - `delta` empty,
+    /// `events` holding an execution, no snapshot instant - is therefore a
+    /// delta book and never a control. So a complete book holding no live
+    /// entry and stating its delta or its events with no snapshot instant -
+    /// one built or rebuilt rather than emitted - reads back as a delta
+    /// book, its identity and its two lists kept: a row does not carry the
+    /// completeness of an empty book. A batch that landed no `alive` column
+    /// says none of it, and the row is refused rather than typed.
     fn dated_book(&self, row: usize, path: &Path<'_>) -> Result<MarketData> {
         let Some(alive) = &self.alive else {
             return Err(invalid(
@@ -2498,11 +2595,15 @@ impl Landed {
             ));
         };
         let entries = alive.list.range(row);
-        let deltas = self.deltas.as_ref().and_then(|list| list.list.range(row));
-        let states_deltas = deltas.as_ref().is_some_and(|range| !range.is_empty());
+        let delta = self.delta.as_ref().and_then(|list| list.list.range(row));
+        let events = self.events.as_ref().and_then(|list| list.list.range(row));
+        let lists = delta.is_some() || events.is_some();
+        let recorded = [&delta, &events]
+            .into_iter()
+            .any(|range| range.as_ref().is_some_and(|range| !range.is_empty()));
         match &entries {
-            None if deltas.is_some() => return self.book(row, false, path).map(MarketData::from),
-            Some(entries) if entries.is_empty() && states_deltas => {
+            None if lists => return self.book(row, false, path).map(MarketData::from),
+            Some(entries) if entries.is_empty() && recorded => {
                 let snapshot = self
                     .event_leaf(EventColumn::SnapUnix)
                     .and_then(|leaf| leaf.clock(row));
@@ -2553,6 +2654,7 @@ impl Landed {
         element.finalize();
         claims.validate(&element, path)?;
         self.check_element(row, &element, path)?;
+        self.check_sources(row, &element, path)?;
         self.check_market(row, &element, path)?;
         self.check_operation(row, &element, path)?;
         self.check_metadata(
@@ -2602,6 +2704,7 @@ impl Landed {
     ) -> Result<()> {
         claims.validate(canonical, path)?;
         self.check_event(row, canonical, path)?;
+        self.check_sources(row, canonical, path)?;
         self.check_market(row, canonical, path)?;
         self.check_operation(row, canonical, path)?;
         self.check_metadata(
@@ -2657,13 +2760,15 @@ impl Landed {
     ) -> Result<SnapshotEvent> {
         claims.validate(&control, path)?;
         self.check_event(row, &control, path)?;
+        self.check_sources(row, &control, path)?;
         self.check_market(row, &control, path)?;
         self.check_metadata(row, &control, None, path)?;
         Ok(control)
     }
 
-    /// The book a row states: `complete`, its `alive` entries and its
-    /// sides, else its deltas alone.
+    /// The book a row states, its `delta` and its `events` beside: a
+    /// complete book - its `alive` entries and its sides - where `complete`,
+    /// else a delta book.
     fn book(&self, row: usize, complete: bool, path: &Path<'_>) -> Result<BookEvent> {
         let mut event = MarketEventFacts::default();
         event.set_marketdatakind(crate::MarketDataKind::Book);
@@ -2673,7 +2778,7 @@ impl Landed {
         self.read_market(row, &mut event, path, Lift::Security)?;
         self.read_crosscode(row, &mut event);
         // A book's row states no `executions` - a trade's column, its own
-        // executions being among its deltas: a row stating one is not a book
+        // executions being among its events: a row stating one is not a book
         // this crate wrote, and an empty or null cell states none.
         if let Some(held) = self
             .executions
@@ -2692,7 +2797,8 @@ impl Landed {
         } else {
             None
         };
-        let deltas = Self::entries(self.deltas.as_ref(), DELTAS, row, path)?;
+        let delta = Self::entries(self.delta.as_ref(), DELTA, row, path)?;
+        let events = Self::event_entries(self.events.as_ref(), row, path)?;
         // The price levels it states, read once: each side's order of its
         // entries, which a two-sided quote listed once in `alive` cannot
         // state for both sides, and what the rebuilt sides must derive.
@@ -2716,11 +2822,13 @@ impl Landed {
         let book = BookEvent::from_parts(
             event,
             alive,
-            deltas,
+            delta,
+            events,
             orders.each_ref().map(Option::as_deref),
         )
         .map_err(|error| path.reroot(error))?;
         claims.validate(&book, path)?;
+        // A book states no sources: a cell stating some lands as none.
         self.check_event(row, &book, path)?;
         self.check_market(row, &book, path)?;
         self.check_metadata(row, &book, None, path)?;
@@ -2730,8 +2838,8 @@ impl Landed {
 
     /// The price levels a book row states - `stated`, the bid's then the
     /// ask's - must be the ones its sides derive, level for level, and a
-    /// book holding only its deltas states none - a table storing a null
-    /// list as an empty one states an empty one; a null cell states nothing.
+    /// delta book states none - a table storing a null list as an empty
+    /// one states an empty one; a null cell states nothing.
     fn check_book(
         stated: [Option<Vec<Limit>>; 2],
         book: &BookEvent,
@@ -2751,10 +2859,7 @@ impl Landed {
                 }
                 return Err(invalid(
                     at(path, name),
-                    format_smolstr!(
-                        "expected no limits on a book holding only its deltas, got {}",
-                        stated.len()
-                    ),
+                    format_smolstr!("expected no limits on a delta book, got {}", stated.len()),
                 ));
             }
             let derived: Vec<Limit> = book.limits(side).collect();
@@ -2765,8 +2870,8 @@ impl Landed {
         Ok(())
     }
 
-    /// The orders and quotes one of a book's lists holds for row `row`:
-    /// none where it states none.
+    /// The orders and quotes one of a book's lists - `alive` or `delta` -
+    /// holds for row `row`: none where it states none.
     fn entries(
         list: Option<&Operations>,
         name: &'static str,
@@ -2790,16 +2895,51 @@ impl Landed {
                         .items
                         .operation_event::<QuoteKind>(at, &item)
                         .map(MarketData::from),
-                    // Recorded among the deltas, resting on no side: the
-                    // book's own validation refuses one alive.
+                    // An execution rests on no side and changes no
+                    // membership: it is among the book's events.
+                    other => Err(invalid(
+                        self::at(&item, MarketColumn::MarketDataKind.name()),
+                        format_smolstr!(
+                            "expected ORDR or QUOT among a book's {name}, got {}",
+                            other.as_str()
+                        ),
+                    )),
+                }
+            })
+            .collect()
+    }
+
+    /// The events a book's `events` holds for row `row` - its executions,
+    /// as the events they are, and its snapshot controls, each checked as
+    /// its own row: none where it states none.
+    fn event_entries(
+        list: Option<&Operations>,
+        row: usize,
+        path: &Path<'_>,
+    ) -> Result<Vec<MarketData>> {
+        let Some((list, range)) = list.and_then(|list| Some((list, list.list.range(row)?))) else {
+            return Ok(Vec::new());
+        };
+        let here = path.field(EVENTS);
+        range
+            .enumerate()
+            .map(|(index, at)| {
+                let item = here.child(Segment::Index(index));
+                match list.items.category(at, &item)? {
                     MarketDataKind::Execution => list
                         .items
                         .operation_event::<ExecutionKind>(at, &item)
                         .map(MarketData::from),
+                    MarketDataKind::Book => {
+                        let (control, claims) = list.items.snapshot_control(at, &item)?;
+                        list.items
+                            .checked_snapshot(at, control, claims, &item)
+                            .map(MarketData::from)
+                    }
                     other => Err(invalid(
                         self::at(&item, MarketColumn::MarketDataKind.name()),
                         format_smolstr!(
-                            "expected ORDR, QUOT or EXEC on a book, got {}",
+                            "expected EXEC or BOOK among a book's events, got {}",
                             other.as_str()
                         ),
                     )),
@@ -2839,7 +2979,7 @@ impl Landed {
     }
 
     /// The book controls a row states - its scope, its update action and
-    /// its position - which a book's deltas replay by; none where it states
+    /// its position - which a book's delta replays by; none where it states
     /// none.
     ///
     /// # Errors
@@ -3053,6 +3193,11 @@ impl Landed {
                             target.set_currency(held, true);
                         }
                     }
+                    MarketColumn::OrigCcy => {
+                        if let Some(held) = leaf.code(row, path, name, |text| Ccy::new(text))? {
+                            target.set_origccy(held, true);
+                        }
+                    }
                     MarketColumn::BidCcy => {
                         if let Some(held) = leaf.code(row, path, name, |text| Ccy::new(text))? {
                             target.set_bidccy(Some(held), true);
@@ -3139,7 +3284,8 @@ impl Landed {
     }
 
     /// Every element fact the row states but the identities, which the
-    /// claims hold, must be the one `canonical` settled on.
+    /// claims hold, and the sources ([`Self::check_sources`]), must be the
+    /// one `canonical` settled on.
     fn check_element<E: Element + ?Sized>(
         &self,
         row: usize,
@@ -3158,6 +3304,18 @@ impl Landed {
                 &code,
             ));
         }
+        Ok(())
+    }
+
+    /// The sources the row states must be the ones `canonical` holds: what
+    /// it read, in their canonical order. Never asked of a book, which
+    /// states none whatever its row holds.
+    fn check_sources<E: Element + ?Sized>(
+        &self,
+        row: usize,
+        canonical: &E,
+        path: &Path<'_>,
+    ) -> Result<()> {
         if let Some(uuids) = self
             .element_leaf(ElementColumn::SrcUuids)
             .and_then(|leaf| leaf.uuids(row))
@@ -3307,6 +3465,14 @@ impl Landed {
                         leaf,
                         row,
                         Some(canonical.get_currency()),
+                        |text| Ccy::new(text),
+                        path,
+                        name,
+                    )?,
+                    MarketColumn::OrigCcy => check_code(
+                        leaf,
+                        row,
+                        Some(canonical.get_origccy()).filter(|held| !held.is_none()),
                         |text| Ccy::new(text),
                         path,
                         name,
@@ -3697,13 +3863,15 @@ impl Operations {
         let Serie::Serie(list) = serie else {
             return Err(unlanded(column, Storage::Nested));
         };
+        let mut items = Landed::new(list.items().children(), &layouts.operation, layouts)?;
+        // An entry alive on a book states no sources there, whatever the
+        // cell holds: the row of the delta that applied it states them.
+        if column == Column::Alive {
+            items.element[position(&ElementColumn::ALL, &ElementColumn::SrcUuids)] = None;
+        }
         Ok(Self {
             list: Arc::clone(list),
-            items: Box::new(Landed::new(
-                list.items().children(),
-                &layouts.operation,
-                layouts,
-            )?),
+            items: Box::new(items),
         })
     }
 }
@@ -3795,7 +3963,7 @@ impl Limits {
 
 /// The lazy, fused read of every row of every batch.
 struct Rows {
-    batches: SerieReader,
+    batches: StreamChunkedSerie,
     layouts: Layouts,
     landed: Option<(Landed, usize)>,
     row: usize,
@@ -3833,7 +4001,7 @@ impl Iterator for Rows {
                 .take()
                 .map(|(landed, _)| landed.keys.into_inner());
             self.row = 0;
-            let batch = match self.batches.next() {
+            let batch = match self.batches.next_chunk() {
                 Some(Ok(batch)) => batch,
                 Some(Err(error)) => {
                     self.done = true;

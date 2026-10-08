@@ -3,7 +3,7 @@
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -13,12 +13,20 @@ use crate::holder::Holder;
 use crate::{Error, IOBase, IOMedia, Result, Uri, Url};
 
 /// Where an object's storage is, as it was given: a location every backend
-/// is reached by, or a binding to a foreign filesystem a caller supplied.
+/// is reached by, a native handle a caller built over a store, or a binding
+/// to a foreign filesystem a caller supplied.
 #[derive(Clone)]
 pub(crate) enum Site {
     /// A location, opened through [`Holder::from_url`] with the object's
-    /// effective properties.
+    /// effective properties: a local one, or one named rather than handed
+    /// over as a handle.
     Url(Url),
+    /// A native object-store or HTTP role a caller handed over, held as its
+    /// own reopen ([`Holder::from_handle`]) and opened again from it by
+    /// every resolution: the endpoint, the credentials, the session and the
+    /// pool the caller built it with reach every clone, which a location
+    /// would open under default options instead.
+    Native { url: Url, held: Arc<Holder> },
     /// A caller's filesystem and a path on it, re-held as it was bound.
     Bound(BoundLocation),
     /// An object-store location opened under the session its owner signs
@@ -45,6 +53,7 @@ impl fmt::Debug for Site {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Url(url) => formatter.debug_tuple("Url").field(url).finish(),
+            Self::Native { url, .. } => formatter.debug_tuple("Native").field(url).finish(),
             Self::Bound(bound) => formatter.debug_tuple("Bound").field(bound).finish(),
             #[cfg(feature = "s3tables")]
             Self::Store {
@@ -64,23 +73,36 @@ impl fmt::Debug for Site {
 
 impl Site {
     /// The site a handle was built from, when it has one to rebuild from: a
-    /// binding, or a location of a scheme [`Holder::from_url`] holds - an
-    /// in-memory buffer spells a `mem:` identity nothing opens, so it has
-    /// none.
+    /// binding; a native object-store or HTTP role, held as its own reopen
+    /// on the client it was built with - one HTTP answer, which has no
+    /// client to reopen on, is held by its location alone; or a local
+    /// location. An in-memory buffer spells a `mem:` identity nothing opens,
+    /// so it has none. Building a site sends no request.
     pub(crate) fn of(holder: &Holder) -> Option<Self> {
         if let Some(bound) = holder.bound_location() {
             return Some(Self::Bound(bound.clone()));
         }
         let url = holder.url()?;
+        if url.is_local() {
+            return Some(Self::Url(url.clone()));
+        }
         let scheme = url.scheme();
-        (url.is_local() || scheme.is_object_store() || scheme.is_http())
-            .then(|| Self::Url(url.clone()))
+        if !(scheme.is_object_store() || scheme.is_http()) {
+            return None;
+        }
+        Some(match Holder::from_handle(holder) {
+            Ok(held) => Self::Native {
+                url: url.clone(),
+                held: Arc::new(held),
+            },
+            Err(_) => Self::Url(url.clone()),
+        })
     }
 
     /// The location, as a URL: a bound site's diagnostic one.
     pub(crate) fn url(&self) -> &Url {
         match self {
-            Self::Url(url) => url,
+            Self::Url(url) | Self::Native { url, .. } => url,
             Self::Bound(bound) => bound.diagnostic_url(),
             #[cfg(feature = "s3tables")]
             Self::Store { url, .. } => url,
@@ -91,6 +113,13 @@ impl Site {
     pub(crate) fn resolve(&self, properties: &Properties) -> Result<Holder> {
         match self {
             Self::Url(url) => Holder::from_url(url, properties),
+            Self::Native { held, .. } => {
+                let properties: Vec<(String, String)> = properties
+                    .iter()
+                    .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                    .collect();
+                Holder::from_handle_with(held, &properties)
+            }
             Self::Bound(bound) => Ok(crate::fs::located(bound.clone())),
             #[cfg(feature = "s3tables")]
             Self::Store {
@@ -116,7 +145,8 @@ impl Site {
 impl PartialEq for Site {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Url(left), Self::Url(right)) => left == right,
+            (Self::Url(left), Self::Url(right))
+            | (Self::Native { url: left, .. }, Self::Native { url: right, .. }) => left == right,
             (Self::Bound(left), Self::Bound(right)) => left.same_location(right),
             #[cfg(feature = "s3tables")]
             (Self::Store { url: left, .. }, Self::Store { url: right, .. }) => left == right,
@@ -130,7 +160,7 @@ impl Eq for Site {}
 impl Hash for Site {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Self::Url(url) => url.hash(state),
+            Self::Url(url) | Self::Native { url, .. } => url.hash(state),
             Self::Bound(bound) => {
                 bound.diagnostic_url().hash(state);
                 bound.path().hash(state);
@@ -157,7 +187,9 @@ impl Hash for Site {
 /// mappings and wrapper caches while retaining the holder's media and backend
 /// options; a bound handle with no site is retained as the data itself. Folder
 /// and format writes and direct byte operations keep their held session. A clone starts
-/// unresolved and rebuilds from the site under the same properties; an
+/// unresolved and rebuilds from the site under the same properties - a
+/// native object-store or HTTP handle on the client it was built with
+/// ([`Holder::from_handle`]), sending nothing to resolve; an
 /// object bound to a handle with no site cannot be rebuilt after a clone,
 /// and says so by name when its handle is next needed. Equality and the
 /// hash read the site, never what was resolved. The warehouse builds its

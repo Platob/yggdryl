@@ -79,7 +79,9 @@ pub struct Ordered<I: Iterator, R, F> {
     work: Arc<F>,
     /// The chunk drained last, its answers still to be yielded, in order.
     answered: VecDeque<R>,
-    /// The workers, spawned on the first pull that needs them.
+    /// The workers, each spawned when the first chunk it takes is
+    /// dispatched, so a stream of fewer chunks than threads starts only as
+    /// many workers as it has chunks.
     lanes: Option<Lanes<I::Item, R>>,
     /// Whether the source answered its last item.
     exhausted: bool,
@@ -115,9 +117,7 @@ where
             }
             let (threads, chunk) = (self.threads, self.chunk);
             let work = &self.work;
-            let lanes = self
-                .lanes
-                .get_or_insert_with(|| Lanes::spawn(threads, work));
+            let lanes = self.lanes.get_or_insert_with(|| Lanes::new(threads));
             // Every lane full, while the source lasts: the puller reads
             // ahead exactly what the workers can hold, and no further.
             while !self.exhausted && lanes.in_flight() < threads.saturating_mul(self.lane_depth) {
@@ -126,7 +126,7 @@ where
                     self.exhausted = true;
                     break;
                 }
-                lanes.dispatch(items);
+                lanes.dispatch(items, work);
             }
             if lanes.in_flight() == 0 {
                 return None;
@@ -140,9 +140,11 @@ where
 /// order, or the panic it raised working them.
 type Answered<R> = Result<Vec<R>, Box<dyn Any + Send>>;
 
-/// The workers of one stream, each behind its lane.
+/// The workers of one stream, each behind its lane: at most `threads`,
+/// chunk `k` taken by lane `k % threads`.
 struct Lanes<T, R> {
     lanes: Vec<Lane<T, R>>,
+    threads: usize,
     /// How many chunks were handed out, which names the lane the next goes
     /// to.
     dispatched: usize,
@@ -163,35 +165,11 @@ where
     T: Send + 'static,
     R: Send + 'static,
 {
-    fn spawn<F>(threads: usize, work: &Arc<F>) -> Self
-    where
-        F: Fn(T) -> R + Send + Sync + 'static,
-    {
-        let lanes = (0..threads)
-            .map(|_| {
-                let (tasks, chunks) = channel::<Vec<T>>();
-                let (answers, drained) = channel::<Answered<R>>();
-                let work = Arc::clone(work);
-                let worker = std::thread::spawn(move || {
-                    while let Ok(items) = chunks.recv() {
-                        let answered = catch_unwind(AssertUnwindSafe(|| {
-                            items.into_iter().map(&*work).collect::<Vec<R>>()
-                        }));
-                        let panicked = answered.is_err();
-                        if answers.send(answered).is_err() || panicked {
-                            return;
-                        }
-                    }
-                });
-                Lane {
-                    tasks: Some(tasks),
-                    answers: drained,
-                    worker: Some(worker),
-                }
-            })
-            .collect();
+    /// No worker yet: each lane is spawned by the first chunk it takes.
+    fn new(threads: usize) -> Self {
         Self {
-            lanes,
+            lanes: Vec::with_capacity(threads),
+            threads,
             dispatched: 0,
             drained: 0,
         }
@@ -207,8 +185,15 @@ where
     /// A lane whose worker died refuses the chunk; the panic that killed
     /// it is raised by the drain of the chunk it died on, which comes
     /// first.
-    fn dispatch(&mut self, items: Vec<T>) {
-        let at = self.dispatched % self.lanes.len();
+    fn dispatch<F>(&mut self, items: Vec<T>, work: &Arc<F>)
+    where
+        F: Fn(T) -> R + Send + Sync + 'static,
+    {
+        let at = self.dispatched % self.threads;
+        // Chunks go round from lane 0, so a lane not spawned yet is the next.
+        if at == self.lanes.len() {
+            self.lanes.push(Lane::spawn(work));
+        }
         if let Some(tasks) = &self.lanes[at].tasks {
             let _ = tasks.send(items);
         }
@@ -217,7 +202,7 @@ where
 
     /// The answers of the oldest chunk still out, in its order.
     fn drain(&mut self) -> Vec<R> {
-        let at = self.drained % self.lanes.len();
+        let at = self.drained % self.threads;
         self.drained += 1;
         match self.lanes[at].answers.recv() {
             Ok(Ok(answers)) => answers,
@@ -226,6 +211,38 @@ where
             // leaves only after; a lane that went quiet lost its worker to
             // something no unwind reports.
             Err(_) => panic!("a worker thread ended without answering its chunk"),
+        }
+    }
+}
+
+impl<T, R> Lane<T, R>
+where
+    T: Send + 'static,
+    R: Send + 'static,
+{
+    /// One worker over `work`, answering each chunk it is handed in order.
+    fn spawn<F>(work: &Arc<F>) -> Self
+    where
+        F: Fn(T) -> R + Send + Sync + 'static,
+    {
+        let (tasks, chunks) = channel::<Vec<T>>();
+        let (answers, drained) = channel::<Answered<R>>();
+        let work = Arc::clone(work);
+        let worker = std::thread::spawn(move || {
+            while let Ok(items) = chunks.recv() {
+                let answered = catch_unwind(AssertUnwindSafe(|| {
+                    items.into_iter().map(&*work).collect::<Vec<R>>()
+                }));
+                let panicked = answered.is_err();
+                if answers.send(answered).is_err() || panicked {
+                    return;
+                }
+            }
+        });
+        Self {
+            tasks: Some(tasks),
+            answers: drained,
+            worker: Some(worker),
         }
     }
 }

@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "50000",
       "description": "Unique Identifier for a batch of messages.",
       "display": "BatchID"
@@ -18,6 +19,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "50001",
       "description": "Total # of messages contained within batch.",
       "display": "BatchTotalMessages"
@@ -31,6 +33,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "batchprocessmodecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "50002",
       "description": "Indicates the processing mode for a batch of messages.",
       "display": "BatchProcessMode"

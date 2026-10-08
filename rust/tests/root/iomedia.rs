@@ -3,6 +3,38 @@
 
 use super::counting;
 
+#[test]
+fn retained_text_options_override_structured_content_inference() {
+    use arrow_array::StringArray;
+    use yggdryl::holder::{Buffer, Holder};
+    use yggdryl::media::IORecordOptions as _;
+    use yggdryl::text::TextOptions;
+    use yggdryl::{IOMedia as _, MimeType};
+
+    let bytes = Buffer::from_bytes(b"[INFO] first\n[WARN] second\n".to_vec())
+        .with_media_type(MimeType::JSON.into());
+    let options = TextOptions::new()
+        .try_with_rowheader(r"^\[(?<level>[A-Z]+)\] ")
+        .unwrap()
+        .with_max_row_size(1);
+    let source = Holder::from(bytes).into_text_with(options);
+    let options = source.record_options().unwrap();
+    let batches = source
+        .read_arrow_reader(&options)
+        .unwrap()
+        .map(Result::unwrap)
+        .collect::<Vec<_>>();
+    assert_eq!(batches.len(), 1);
+    assert_eq!(batches[0].num_rows(), 1);
+    let level = batches[0]
+        .column_by_name("level")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
+    assert_eq!(level.value(0), "INFO");
+}
+
 mod positional {
 
     use yggdryl::IOBase;
@@ -181,13 +213,11 @@ mod dispatch {
         assert_eq!(record_handle.publications.load(Ordering::SeqCst), 2);
     }
 
-    /// A media may preserve a same-shape optimization while still converging
-    /// on the reader primitives. The generic entry points must select that
-    /// authoritative adapter rather than rebuilding its input themselves.
+    /// Every Arrow shape redirects to the same serie intent; row adapters
+    /// retain their native intake before that boundary.
     struct TypedDispatchProbe {
         handle: Buffer,
-        reader_calls: [usize; 3],
-        batch_calls: [usize; 3],
+        serie_calls: [usize; 3],
         record_calls: [usize; 3],
     }
 
@@ -195,8 +225,7 @@ mod dispatch {
         fn new() -> Self {
             Self {
                 handle: handle("typed-dispatch-probe.arrows"),
-                reader_calls: [0; 3],
-                batch_calls: [0; 3],
+                serie_calls: [0; 3],
                 record_calls: [0; 3],
             }
         }
@@ -211,57 +240,30 @@ mod dispatch {
             self
         }
 
-        fn overwrite_arrow_reader(
+        fn overwrite_serie(
             &mut self,
-            _batches: BatchReader,
-            _options: &RecordOptions,
+            _value: yggdryl::Serie,
+            _options: Option<&RecordOptions>,
         ) -> yggdryl::Result<yggdryl::IOResult> {
-            self.reader_calls[0] += 1;
+            self.serie_calls[0] += 1;
             Ok(yggdryl::IOResult::default())
         }
 
-        fn append_arrow_reader(
+        fn append_serie(
             &mut self,
-            _batches: BatchReader,
-            _options: &RecordOptions,
+            _value: yggdryl::Serie,
+            _options: Option<&RecordOptions>,
         ) -> yggdryl::Result<yggdryl::IOResult> {
-            self.reader_calls[1] += 1;
+            self.serie_calls[1] += 1;
             Ok(yggdryl::IOResult::default())
         }
 
-        fn merge_arrow_reader(
+        fn merge_serie(
             &mut self,
-            _batches: BatchReader,
-            _options: &RecordOptions,
+            _value: yggdryl::Serie,
+            _options: Option<&RecordOptions>,
         ) -> yggdryl::Result<yggdryl::IOResult> {
-            self.reader_calls[2] += 1;
-            Ok(yggdryl::IOResult::default())
-        }
-
-        fn overwrite_arrow_batch(
-            &mut self,
-            _batch: RecordBatch,
-            _options: &RecordOptions,
-        ) -> yggdryl::Result<yggdryl::IOResult> {
-            self.batch_calls[0] += 1;
-            Ok(yggdryl::IOResult::default())
-        }
-
-        fn append_arrow_batch(
-            &mut self,
-            _batch: RecordBatch,
-            _options: &RecordOptions,
-        ) -> yggdryl::Result<yggdryl::IOResult> {
-            self.batch_calls[1] += 1;
-            Ok(yggdryl::IOResult::default())
-        }
-
-        fn merge_arrow_batch(
-            &mut self,
-            _batch: RecordBatch,
-            _options: &RecordOptions,
-        ) -> yggdryl::Result<yggdryl::IOResult> {
-            self.batch_calls[2] += 1;
+            self.serie_calls[2] += 1;
             Ok(yggdryl::IOResult::default())
         }
 
@@ -336,8 +338,7 @@ mod dispatch {
                 .unwrap();
         }
 
-        assert_eq!(probe.reader_calls, [1, 1, 1]);
-        assert_eq!(probe.batch_calls, [1, 1, 1]);
+        assert_eq!(probe.serie_calls, [2, 2, 2]);
         assert_eq!(probe.record_calls, [1, 1, 1]);
     }
 
@@ -354,8 +355,7 @@ mod dispatch {
             .write_arrow_batch(batch(), IOMode::Append, &options)
             .unwrap();
 
-        assert_eq!(probe.reader_calls, [1, 0, 0]);
-        assert_eq!(probe.batch_calls, [0, 1, 0]);
+        assert_eq!(probe.serie_calls, [1, 1, 0]);
     }
 
     #[test]
@@ -784,6 +784,52 @@ mod pushdown {
             .collect::<Vec<_>>();
         assert_eq!(batches[0].schema().field(0).name(), "price");
         assert_eq!(batches[0].schema().field(1).name(), "id");
+    }
+
+    /// A leaf's schema is its encoding's own header or footer typed by the
+    /// plan its options state - the filter and the selection in the phases a
+    /// read runs them in - and it is the schema that leaf's read publishes,
+    /// whatever the encoding: a `where` over a column the `select` builds is
+    /// typed after it, and one that does not bind is refused.
+    #[test]
+    fn a_leafs_schema_is_the_shape_its_read_publishes() {
+        let mut names = vec!["typed.arrows", "typed.avro", "typed.csv"];
+        if cfg!(feature = "parquet") {
+            names.push("typed.parquet");
+        }
+        for name in names {
+            let handle = stored(name);
+            let plain = handle.record_options().unwrap();
+            for options in [
+                plain.clone(),
+                plain.clone().with_select("price, id").unwrap(),
+                plain
+                    .clone()
+                    .with_select("id, price * 2 as doubled")
+                    .unwrap()
+                    .with_filter("doubled > 3")
+                    .unwrap(),
+                plain
+                    .clone()
+                    .with_filter("symbol = 'AAPL'")
+                    .unwrap()
+                    .with_select("id")
+                    .unwrap(),
+            ] {
+                let field = handle
+                    .read_arrow_field(&options)
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+                let read = handle.read_arrow_reader(&options).unwrap().schema();
+                assert_eq!(
+                    field,
+                    Field::from_arrow_schema(options.name(), read.as_ref()).unwrap(),
+                    "{name}: {}",
+                    options.plan()
+                );
+            }
+            let unbound = plain.with_filter("nowhere > 1").unwrap();
+            assert!(handle.read_arrow_field(&unbound).is_err(), "{name}");
+        }
     }
 
     #[test]
@@ -1427,6 +1473,33 @@ mod write {
         // An encoding with no implementation is named rather than guessed.
         let message = handle("t.orc").record_options().unwrap_err().to_string();
         assert!(message.contains("application/vnd.apache.orc"), "{message}");
+    }
+
+    /// A Parquet file's key-value pairs and a declared root's own metadata
+    /// ride its footer, and its reader lands the rows under a root stating
+    /// none of them: the schema a leaf answers is that root, never a richer
+    /// one the rows then contradict.
+    #[cfg(feature = "parquet")]
+    #[test]
+    fn a_parquet_leaf_answers_the_root_its_rows_land_under() {
+        let mut handle = handle("t.parquet");
+        let RecordOptions::Parquet(parquet) = handle.record_options().unwrap() else {
+            panic!("a .parquet name reads as Parquet");
+        };
+        let mut declared = schema();
+        declared.set_metadata([("comment", "trades")]).unwrap();
+        let options = RecordOptions::Parquet(parquet.with_key_value("writer", "rust"))
+            .with_field(declared)
+            .with_safe(true);
+        handle.overwrite_arrow_reader(reader(), &options).unwrap();
+
+        let plain = handle.record_options().unwrap();
+        let field = handle.read_arrow_field(&plain).unwrap();
+        assert_eq!(field, schema());
+        assert_eq!(
+            Some(&field),
+            handle.read_serie(Some(&plain)).unwrap().field()
+        );
     }
 
     #[test]
@@ -2356,7 +2429,7 @@ mod results {
     //! rows that reached the destination, and the difference.
 
     use super::*;
-    use yggdryl::{IOResult, Serie, SerieSource};
+    use yggdryl::{IOResult, Serie};
 
     fn options(handle: &Buffer) -> RecordOptions {
         handle.record_options().unwrap().with_field(schema())
@@ -2434,10 +2507,7 @@ mod results {
                     &options,
                 ),
                 "serie" => handle.overwrite_serie(
-                    SerieSource::from(
-                        Serie::from_arrow_batch(Some(&field), &incoming(), Default::default())
-                            .unwrap(),
-                    ),
+                    Serie::from_arrow_batch(Some(&field), &incoming(), Default::default()).unwrap(),
                     Some(&options),
                 ),
                 _ => handle.write_arrow_reader(batches(&[&[1, 2, 3]]), IOMode::Overwrite, &options),
@@ -2529,7 +2599,7 @@ mod results {
                     .unwrap();
 
             let result = handle
-                .overwrite_serie(SerieSource::from(rows), None)
+                .overwrite_serie(rows, None)
                 .unwrap_or_else(|error| panic!("{name}: {error}"));
 
             assert_eq!(result, IOResult::new(3, 3), "{name}");
@@ -2543,12 +2613,99 @@ mod record_columns {
     //! schema or a declared root.
 
     use super::handle;
-    use yggdryl::SerieSource;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{
         ArrowCastOptions, DataType, Field, IOMedia, IOMode, MediaType, MimeType, Scalar, Serie,
-        SerieReader, StructType,
+        StreamChunkedSerie, StructType,
     };
+
+    #[test]
+    fn the_overwrite_serie_primitive_replaces_a_structured_document() {
+        let root = DataType::from(
+            StructType::from_fields([DataType::Int64.required_field("qty")]).unwrap(),
+        )
+        .required_field("row");
+        let value =
+            Serie::from_scalars(root, [Scalar::from_sequence([Scalar::from(2_i64)])]).unwrap();
+        let mut output = handle("serie-primitive.json");
+        assert_eq!(
+            output
+                .overwrite_serie(value.clone(), None)
+                .unwrap()
+                .written_rows,
+            1
+        );
+        assert_eq!(
+            Serie::from(
+                yggdryl::StreamChunkedSerie::from_serie(output.read_serie(None).unwrap())
+                    .expect("native record stream")
+            ),
+            value
+        );
+    }
+
+    #[test]
+    fn a_coding_reads_its_structured_document_through_the_serie_primitive() {
+        use yggdryl::IOBase;
+        let root = DataType::from(
+            StructType::from_fields([DataType::Int64.required_field("qty")]).unwrap(),
+        )
+        .required_field("row");
+        let value =
+            Serie::from_scalars(root, [Scalar::from_sequence([Scalar::from(2_i64)])]).unwrap();
+        let mut output = yggdryl::coding::Coding::new(handle("coded.json"), yggdryl::Codec::Gzip);
+        output.overwrite_serie(value.clone(), None).unwrap();
+        output.flush().unwrap();
+        assert_eq!(
+            Serie::from(
+                yggdryl::StreamChunkedSerie::from_serie(output.read_serie(None).unwrap())
+                    .expect("native record stream")
+            ),
+            value
+        );
+    }
+
+    #[test]
+    fn an_arrow_overwrite_reaches_a_leaf_with_the_source_arrays_untouched() {
+        use arrow_array::{ArrayRef, Int64Array};
+        use std::sync::Arc;
+        use yggdryl::holder::Buffer;
+        use yggdryl::{IOBase, IOResult};
+        struct Leaf {
+            handle: Buffer,
+            column: ArrayRef,
+        }
+        impl IOMedia for Leaf {
+            yggdryl::impl_default_iomedia!();
+            fn overwrite_prepared_serie(
+                &mut self,
+                value: StreamChunkedSerie,
+                _options: &RecordOptions,
+            ) -> yggdryl::Result<()> {
+                let mut batches = value.into_arrow_reader();
+                let batch = batches.next().unwrap()?;
+                assert!(Arc::ptr_eq(batch.column(0), &self.column));
+                assert!(batches.next().is_none());
+                Ok(())
+            }
+        }
+        impl IOBase for Leaf {
+            yggdryl::delegate_iobase!(handle);
+        }
+        let column: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
+        let batch =
+            arrow_array::RecordBatch::try_from_iter([("qty", Arc::clone(&column))]).unwrap();
+        let mut leaf = Leaf {
+            handle: handle("transport.arrows"),
+            column,
+        };
+        let options = leaf.record_options().unwrap();
+        let batches = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
+        assert_eq!(
+            leaf.overwrite_arrow_reader(batches, &options).unwrap(),
+            IOResult::new(2, 2)
+        );
+    }
 
     /// The non-null record root the rows land under.
     fn record(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -2573,12 +2730,12 @@ mod record_columns {
     }
 
     /// The stream of one record column a write takes, over `rows`.
-    fn stream_of(root: &Field, rows: Vec<Scalar>) -> SerieReader {
+    fn stream_of(root: &Field, rows: Vec<Scalar>) -> StreamChunkedSerie {
         let column = Serie::from_scalars(root.clone(), rows).expect("the rows materialize");
-        SerieReader::from_serie(column).expect("a record column is one stream")
+        StreamChunkedSerie::from_serie(column).expect("a record column is one stream")
     }
 
-    fn quotes() -> SerieReader {
+    fn quotes() -> StreamChunkedSerie {
         stream_of(&quote_root(), quote_rows())
     }
 
@@ -2591,22 +2748,26 @@ mod record_columns {
     }
 
     /// Every row a stream of record columns yields, as one sequence.
-    fn drained(reader: SerieReader) -> Scalar {
+    fn drained(reader: StreamChunkedSerie) -> Scalar {
         let columns = reader
+            .into_chunks()
             .collect::<Result<Vec<Serie>, _>>()
             .expect("every batch lands");
         Scalar::from_sequence(columns.iter().flat_map(|column| column.rows().into_owned()))
     }
 
     /// The rows `name` holds after `quotes()` was written to it.
-    fn stored(name: &str) -> SerieReader {
+    fn stored(name: &str) -> StreamChunkedSerie {
         let mut target = handle(name);
         target
-            .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
+            .write_serie(Serie::from(quotes()), IOMode::Overwrite, None)
             .unwrap_or_else(|error| panic!("{name} writes: {error}"));
-        target
-            .read_serie(None)
-            .unwrap_or_else(|error| panic!("{name} reads: {error}"))
+        StreamChunkedSerie::from_serie(
+            target
+                .read_serie(None)
+                .unwrap_or_else(|error| panic!("{name} reads: {error}")),
+        )
+        .expect("native record stream")
     }
 
     fn nested_root() -> Field {
@@ -2670,13 +2831,16 @@ mod record_columns {
     fn an_append_keeps_the_rows_a_record_encoding_already_holds() {
         let mut target = handle("quotes.arrows");
         target
-            .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
+            .write_serie(Serie::from(quotes()), IOMode::Overwrite, None)
             .expect("the rows write");
         target
-            .write_serie(SerieSource::from(quotes()), IOMode::Append, None)
+            .write_serie(Serie::from(quotes()), IOMode::Append, None)
             .expect("the rows append");
 
-        let read = target.read_serie(None).expect("the rows read");
+        let read = yggdryl::StreamChunkedSerie::from_serie(
+            target.read_serie(None).expect("the rows read"),
+        )
+        .expect("native record stream");
         assert_eq!(
             drained(read),
             Scalar::from_sequence([quote_rows(), quote_rows()].concat())
@@ -2687,7 +2851,7 @@ mod record_columns {
     fn a_declared_root_casts_the_rows_a_record_encoding_stored() {
         let mut target = handle("quotes.arrows");
         target
-            .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
+            .write_serie(Serie::from(quotes()), IOMode::Overwrite, None)
             .expect("the rows write");
 
         let declared = record([
@@ -2698,9 +2862,12 @@ mod record_columns {
             }
             .required_field("size"),
         ]);
-        let read = target
-            .read_serie(Some(&declaring(&declared)))
-            .expect("the declared root casts the stored int64 column");
+        let read = yggdryl::StreamChunkedSerie::from_serie(
+            target
+                .read_serie(Some(&declaring(&declared)))
+                .expect("the declared root casts the stored int64 column"),
+        )
+        .expect("native record stream");
 
         assert_eq!(read.field(), &declared);
         assert_eq!(
@@ -2718,7 +2885,7 @@ mod record_columns {
             .expect("the rows materialize")
             .into_arrow_batch()
             .expect("a record column is one table");
-        let stream = SerieReader::from_arrow_reader(
+        let stream = StreamChunkedSerie::from_arrow_reader(
             None,
             yggdryl::arrow::batch_reader(batch.schema(), vec![batch; 3]),
             ArrowCastOptions::default(),
@@ -2726,18 +2893,22 @@ mod record_columns {
         .expect("the reader names its root");
         let mut target = handle("stream.arrows");
         target
-            .write_serie(SerieSource::from(stream), IOMode::Overwrite, None)
+            .write_serie(Serie::from(stream), IOMode::Overwrite, None)
             .expect("the stream writes");
 
         let declared = record([
             DataType::utf8().required_field("symbol"),
             DataType::Float64.required_field("size"),
         ]);
-        let columns = target
-            .read_serie(Some(&declaring(&declared)))
-            .expect("the plan compiles from the stored schema")
-            .collect::<Result<Vec<Serie>, _>>()
-            .expect("every batch lands");
+        let columns = yggdryl::StreamChunkedSerie::from_serie(
+            target
+                .read_serie(Some(&declaring(&declared)))
+                .expect("the plan compiles from the stored schema"),
+        )
+        .expect("native record stream")
+        .into_chunks()
+        .collect::<Result<Vec<Serie>, _>>()
+        .expect("every batch lands");
 
         // The plan is compiled once, so every batch - not only the first -
         // lands under the declared root.
@@ -2762,15 +2933,18 @@ mod record_columns {
         let mut target = handle("empty.arrows");
         target
             .write_serie(
-                SerieSource::from(
-                    SerieReader::from_serie(empty).expect("a record column is one stream"),
+                Serie::from(
+                    StreamChunkedSerie::from_serie(empty).expect("a record column is one stream"),
                 ),
                 IOMode::Overwrite,
                 None,
             )
             .expect("the rows write");
 
-        let read = target.read_serie(None).expect("the rows read");
+        let read = yggdryl::StreamChunkedSerie::from_serie(
+            target.read_serie(None).expect("the rows read"),
+        )
+        .expect("native record stream");
         // The schema is what an empty table carries, so it is the whole claim.
         assert_eq!(read.field(), &quote_root());
         assert_eq!(drained(read), Scalar::from_sequence([]));
@@ -2787,13 +2961,16 @@ mod record_columns {
         let mut target = handle("wide.arrows");
         target
             .write_serie(
-                SerieSource::from(stream_of(&quote_root(), rows.clone())),
+                Serie::from(stream_of(&quote_root(), rows.clone())),
                 IOMode::Overwrite,
                 None,
             )
             .expect("the rows write");
 
-        let read = target.read_serie(None).expect("the rows read");
+        let read = yggdryl::StreamChunkedSerie::from_serie(
+            target.read_serie(None).expect("the rows read"),
+        )
+        .expect("native record stream");
         assert_eq!(drained(read), Scalar::from_sequence(rows));
     }
 
@@ -2802,15 +2979,18 @@ mod record_columns {
         let mut target = handle("nested.arrows");
         target
             .write_serie(
-                SerieSource::from(stream_of(&nested_root(), nested_rows())),
+                Serie::from(stream_of(&nested_root(), nested_rows())),
                 IOMode::Overwrite,
                 None,
             )
             .expect("the rows write");
 
-        let read = target
-            .read_serie(Some(&declaring(&nested_root())))
-            .expect("the rows read");
+        let read = yggdryl::StreamChunkedSerie::from_serie(
+            target
+                .read_serie(Some(&declaring(&nested_root())))
+                .expect("the rows read"),
+        )
+        .expect("native record stream");
         assert_eq!(drained(read), Scalar::from_sequence(nested_rows()));
     }
 
@@ -2819,7 +2999,7 @@ mod record_columns {
         let mut target = handle("nested.arrows");
         target
             .write_serie(
-                SerieSource::from(stream_of(&nested_root(), nested_rows())),
+                Serie::from(stream_of(&nested_root(), nested_rows())),
                 IOMode::Overwrite,
                 None,
             )
@@ -2828,9 +3008,12 @@ mod record_columns {
         // Nothing is declared on the read: the struct child, the serie item,
         // the nullable column, the decimal, and the temporal all come back
         // named and parameterized by the schema the write stored.
-        let read = target
-            .read_serie(None)
-            .expect("the stored schema names the columns");
+        let read = yggdryl::StreamChunkedSerie::from_serie(
+            target
+                .read_serie(None)
+                .expect("the stored schema names the columns"),
+        )
+        .expect("native record stream");
         assert_eq!(read.field(), &nested_root());
     }
 }
@@ -3257,9 +3440,9 @@ mod shape {
 
         // The folder declares a directory; what it holds is found beneath it.
         let folder = yggdryl::local::LocalFolder::new(&lake).unwrap();
-        let rows: usize = folder
-            .read_serie(None)
-            .unwrap()
+        let rows: usize = yggdryl::StreamChunkedSerie::from_serie(folder.read_serie(None).unwrap())
+            .expect("native record stream")
+            .into_chunks()
             .map(|serie| serie.unwrap().len())
             .sum();
         assert_eq!(rows, 3);
@@ -3270,15 +3453,15 @@ mod shape {
 
 mod serie_verbs {
     //! `write_serie`, `overwrite_serie`, `append_serie` and `merge_serie`
-    //! over a [`SerieSource`]: every shape rows are held in reaches the one
+    //! over a [`Serie`]: every shape rows are held in reaches the one
     //! publication path, and the refusals land before the destination is
     //! touched.
 
     use super::handle;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{
-        ChunkedSerie, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Serie, SerieReader,
-        SerieSource, StructType,
+        ChunkedSerie, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Serie, StreamChunkedSerie,
+        StructType,
     };
 
     fn trade_root() -> Field {
@@ -3302,9 +3485,9 @@ mod serie_verbs {
 
     /// Every row `handle` holds, in order.
     fn stored(handle: &impl IOMedia) -> Vec<Scalar> {
-        handle
-            .read_serie(None)
-            .expect("the rows read")
+        yggdryl::StreamChunkedSerie::from_serie(handle.read_serie(None).expect("the rows read"))
+            .expect("native record stream")
+            .into_chunks()
             .collect::<Result<Vec<Serie>, _>>()
             .expect("every batch lands")
             .iter()
@@ -3314,18 +3497,18 @@ mod serie_verbs {
 
     /// The same rows in the three shapes: held, cut into a chunk per row,
     /// streamed.
-    fn sources(rows: impl IntoIterator<Item = i64> + Clone) -> [SerieSource; 3] {
+    fn sources(rows: impl IntoIterator<Item = i64> + Clone) -> [Serie; 3] {
         let held = trades(rows.clone());
         let chunks: Vec<Serie> = (0..held.len())
             .map(|row| held.slice(row, 1).expect("one row"))
             .collect();
         [
-            SerieSource::from(held),
-            SerieSource::from(
+            held,
+            Serie::from(
                 ChunkedSerie::from_series(Some(&trade_root()), chunks, Default::default())
                     .expect("a chunk per row"),
             ),
-            SerieSource::from(SerieReader::from_serie(trades(rows)).expect("a stream")),
+            Serie::from(StreamChunkedSerie::from_serie(trades(rows)).expect("a stream")),
         ]
     }
 
@@ -3369,7 +3552,7 @@ mod serie_verbs {
                 let incoming = Serie::from_scalars(trade_root(), [trade(2, 99), trade(5, 50)])
                     .expect("the rows");
                 target
-                    .merge_serie(SerieSource::from(incoming), Some(&options))
+                    .merge_serie(incoming, Some(&options))
                     .unwrap_or_else(|error| panic!("{name} shape {shape} merges: {error}"));
                 let rows = stored(&target);
                 assert_eq!(rows.len(), 5, "{name} shape {shape}: {rows:?}");
@@ -3398,9 +3581,12 @@ mod serie_verbs {
         )
         .expect("a column");
         target
-            .overwrite_serie(sizes.into(), None)
+            .overwrite_serie(sizes, None)
             .expect("the column writes");
-        let read = target.read_serie(None).expect("the rows read");
+        let read = yggdryl::StreamChunkedSerie::from_serie(
+            target.read_serie(None).expect("the rows read"),
+        )
+        .expect("native record stream");
         assert_eq!(read.field().name(), "row");
         assert_eq!(
             read.field()
@@ -3423,12 +3609,12 @@ mod serie_verbs {
     fn a_run_and_an_absent_row_are_refused_before_the_destination_is_touched() {
         let mut target = handle("trades.arrows");
         target
-            .overwrite_serie(trades([1]).into(), None)
+            .overwrite_serie(trades([1]), None)
             .expect("the rows write");
 
         let run = Serie::new(vec![Scalar::from(1_i64)]);
         let error = target
-            .append_serie(run.into(), None)
+            .append_serie(run, None)
             .expect_err("a run names no layout");
         assert!(
             error.to_string().contains("run") || error.to_string().contains("field"),
@@ -3442,7 +3628,7 @@ mod serie_verbs {
         )
         .expect("a nullable record holds an absent row");
         let error = target
-            .append_serie(absent.into(), None)
+            .append_serie(absent, None)
             .expect_err("a table states no absent row");
         assert!(
             error.to_string().contains("null") || error.to_string().contains("absent"),
@@ -3455,12 +3641,12 @@ mod serie_verbs {
     fn a_structured_document_takes_an_overwrite_alone() {
         let mut target = handle("trades.jsonl");
         target
-            .overwrite_serie(trades([1, 2]).into(), None)
+            .overwrite_serie(trades([1, 2]), None)
             .expect("a document is replaced whole");
         assert_eq!(stored(&target), [trade(1, 10), trade(2, 20)]);
         for (verb, mode) in [("append", IOMode::Append), ("merge", IOMode::Merge)] {
             let error = target
-                .write_serie(trades([3]).into(), mode, None)
+                .write_serie(trades([3]), mode, None)
                 .expect_err("a document is written whole");
             assert!(
                 error.to_string().contains("expected overwrite"),
@@ -3479,10 +3665,10 @@ mod serie_verbs {
         // Under the handle's own options, the stored schema is the rows' own.
         let mut target = handle("trades.arrows");
         target
-            .append_serie(trades([1]).into(), None)
+            .append_serie(trades([1]), None)
             .expect("an append creates the leaf");
         target
-            .append_serie(trades([2]).into(), None)
+            .append_serie(trades([2]), None)
             .expect("a second append keeps the first");
         assert_eq!(stored(&target), [trade(1, 10), trade(2, 20)]);
         // An encoding stores the columns, so the stored root carries the
@@ -3511,7 +3697,7 @@ mod serie_verbs {
         options.set_field(wide.clone());
         let mut declared = handle("wide.arrows");
         declared
-            .overwrite_serie(trades([3]).into(), Some(&options))
+            .overwrite_serie(trades([3]), Some(&options))
             .expect("the rows cast onto the declared field");
         assert_eq!(
             stored(&declared),
@@ -3533,7 +3719,7 @@ mod own_key {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use yggdryl::media::IORecordOptions;
-    use yggdryl::{ArrowCastOptions, IOBase, IOMedia, IOMode, SerieReader, SerieSource};
+    use yggdryl::{ArrowCastOptions, IOBase, IOMedia, IOMode, Serie, StreamChunkedSerie};
 
     use super::{counted_source, handle, rows_batch};
 
@@ -3567,14 +3753,14 @@ mod own_key {
             "the source is never pulled"
         );
 
-        let stream = SerieReader::from_arrow_reader(
+        let stream = StreamChunkedSerie::from_arrow_reader(
             None,
             counted_source(Arc::clone(&pulls), [Ok(rows_batch(&[3]))]),
             ArrowCastOptions::default(),
         )
         .unwrap();
         let error = target
-            .merge_serie(SerieSource::from(stream), None)
+            .merge_serie(Serie::from(stream), None)
             .expect_err("the serie door refuses the empty key");
         assert!(error.to_string().contains("$.merge_by"), "{error}");
         assert_eq!(

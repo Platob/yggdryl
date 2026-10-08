@@ -51,8 +51,9 @@
 //! | --- | --- |
 //! | building any handle | none |
 //! | resolving a `lake/` location | none |
-//! | resolving any other location | one listing of one key |
+//! | resolving any other location | one listing of one key, which also states an object's size: no `HEAD` follows |
 //! | a ranged read | one `GET`, transferring the range |
+//! | a footer-first read ([`IOBase::read_tail_bytes`](crate::IOBase::read_tail_bytes)) | one `GET` with `Range: bytes=-N`, the size learned from its `Content-Range`; on Azure one `HEAD` and one ranged `GET` |
 //! | a whole read, or a full stream drain | one `GET` |
 //! | a whole write | one write, or a chunked upload when large |
 //! | listing a level, or a whole subtree | one listing per page |

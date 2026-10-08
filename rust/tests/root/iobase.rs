@@ -311,6 +311,39 @@ mod backends {
     }
 
     #[test]
+    fn every_backend_answers_its_tail_with_the_total() {
+        for (name, mut handle) in backends("tail") {
+            // Nothing written is no bytes and nothing in all.
+            assert_eq!(
+                handle.read_tail_bytes(8).expect("a readable handle"),
+                (Vec::new(), 0),
+                "{name}"
+            );
+
+            handle
+                .write_all_bytes(b"0123456789")
+                .expect("a writable handle");
+            assert_eq!(
+                handle.read_tail_bytes(3).expect("a readable handle"),
+                (b"789".to_vec(), 10),
+                "{name}"
+            );
+            // A window wider than the value is the whole value, and the total.
+            assert_eq!(
+                handle.read_tail_bytes(100).expect("a readable handle"),
+                (b"0123456789".to_vec(), 10),
+                "{name}"
+            );
+            assert_eq!(
+                handle.read_tail_bytes(0).expect("a readable handle"),
+                (Vec::new(), 10),
+                "{name}"
+            );
+        }
+        cleanup("tail");
+    }
+
+    #[test]
     fn every_backend_names_the_shortfall_of_an_exact_read() {
         for (name, mut handle) in backends("exact") {
             handle.write_all_bytes(b"abc").expect("a writable handle");
@@ -1014,6 +1047,41 @@ mod positional {
         // Asking past the end yields what exists rather than failing.
         assert_eq!(buffer.read_range_bytes(8, 100).unwrap(), b"89");
         assert!(buffer.read_range_bytes(50, 4).unwrap().is_empty());
+    }
+
+    #[test]
+    fn read_tail_answers_the_last_bytes_and_the_total() {
+        let buffer = Buffer::from_bytes(b"PAR1....footerPAR1".to_vec());
+        assert_eq!(buffer.read_tail_bytes(4).unwrap(), (b"PAR1".to_vec(), 18));
+        assert_eq!(
+            buffer.read_tail_bytes(10).unwrap(),
+            (b"footerPAR1".to_vec(), 18)
+        );
+        // A window over the total answers the whole value and the total.
+        assert_eq!(
+            buffer.read_tail_bytes(usize::MAX).unwrap(),
+            (b"PAR1....footerPAR1".to_vec(), 18)
+        );
+        assert_eq!(Buffer::new().read_tail_bytes(8).unwrap(), (Vec::new(), 0));
+    }
+
+    #[test]
+    fn read_tail_is_one_call_by_its_own_name() {
+        use yggdryl::holder::counted::{Call, Counted, Group};
+
+        // The tally names the verb rather than the size and range reads its
+        // default makes below the counter, so a backend answering the tail in
+        // one request shows as the one call it is.
+        let counted = Counted::new(Buffer::from_bytes(b"PAR1....footerPAR1".to_vec()));
+        assert_eq!(
+            counted.read_tail_bytes(8).unwrap(),
+            (b"oterPAR1".to_vec(), 18)
+        );
+        let counts = counted.counts();
+        assert_eq!(counts.to_string(), "read_tail_bytes=1");
+        assert_eq!(counts.get(Call::ReadTailBytes), 1);
+        assert_eq!(counts.group(Group::Read), 1);
+        assert_eq!(Call::ReadTailBytes.name(), "read_tail_bytes");
     }
 
     #[test]

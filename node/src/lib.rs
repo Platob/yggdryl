@@ -17,6 +17,7 @@ mod cast;
 pub mod charset;
 mod chunked_serie;
 pub mod coding;
+mod country;
 mod datatype;
 // Discovered through NAPI's generated registration inventory rather than
 // ordinary Rust call sites, like `uri` below.
@@ -42,8 +43,11 @@ mod iomedia;
 mod ioresult;
 mod isin_registry;
 mod join;
+mod key_serie;
+pub use key_serie::{JsKeySerie, JsKeySeries, JsStreamKeySerie};
 mod logging;
 mod media;
+mod mic;
 mod text;
 mod timezone;
 // These private exports are discovered through NAPI's generated registration
@@ -87,8 +91,8 @@ pub use chunked_serie::JsChunkedSerie;
 pub use datatype::JsDataType;
 pub use enums::{JsMediaType, JsMimeType};
 pub use expression::{
-    ExpressionVocabularies, JsBound, JsBoundSelector, JsExpression, JsFilter, JsPlan, JsRecords,
-    JsSelector, JsTerm, PartitionSplit, PlanOrder, expression_needs_quoting,
+    ExpressionVocabularies, JsBound, JsBoundSelector, JsExpression, JsFilter, JsPlan, JsSelector,
+    JsStreamSerie, JsTerm, PartitionSplit, PlanOrder, expression_needs_quoting,
     expression_vocabularies,
 };
 pub use field::{JsField, JsProtocolField, MetadataEntry};
@@ -119,7 +123,7 @@ pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBas
 pub use iomedia::JsBatchReader;
 pub use ioresult::JsIOResult;
 pub use media::options::JsRecordOptions;
-pub use serie::{JsSerie, JsSerieIterator, JsSerieReader, JsSerieReaderWindows};
+pub use serie::{JsSerie, JsSerieIterator, JsStreamChunkedSerie};
 pub use spill::JsSpillOptions;
 pub use text::codec::{
     CodecLimitsInput, JsScalar, JsScalarIterator, codec_infer_format, codec_loads_inferred_native,

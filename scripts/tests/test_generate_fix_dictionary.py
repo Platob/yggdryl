@@ -280,6 +280,106 @@ class FixCatalogGeneration(unittest.TestCase):
         self.assertEqual("othersourcecodeset", fields[900]["metadata"]["FIX:codeset"])
         self.assertNotIn("aliases", code_sets["othersourcecodeset"][0])
 
+    def test_every_field_states_the_fix_datatype_it_was_declared_under(self) -> None:
+        catalog, _ = built(b'''<repository xmlns="http://fixprotocol.io/2020/orchestra/repository" version="FIX.5.0SP2">
+          <codeSets><codeSet name="SideCodeSet" type="char"><code name="Buy" value="1"/></codeSet></codeSets>
+          <fields>
+            <field id="54" name="Side" type="SideCodeSet"/>
+            <field id="60" name="TransactTime" type="UTCTimestamp"/>
+            <field id="1079" name="MaturityTime" type="TZTimeOnly"/>
+            <field id="273" name="MDEntryTime" type="UTCTimeOnly"/>
+            <field id="38" name="OrderQty" type="Qty"/>
+          </fields>
+        </repository>''')
+        fields = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
+        # A field typed by a code set states the set's base type; every other
+        # the type it declares, spelled as the specification spells it. The
+        # crate datatype beside it does not say: three of these are one
+        # `datetime64` and only `TZTimeOnly` is a clock with no date.
+        self.assertEqual("char", fields[54]["metadata"]["FIX:datatype"])
+        self.assertEqual({"type": "side"}, fields[54]["dtype"])
+        self.assertEqual("UTCTimestamp", fields[60]["metadata"]["FIX:datatype"])
+        self.assertEqual("TZTimeOnly", fields[1079]["metadata"]["FIX:datatype"])
+        self.assertEqual(fields[60]["dtype"], fields[1079]["dtype"])
+        self.assertEqual("UTCTimeOnly", fields[273]["metadata"]["FIX:datatype"])
+        self.assertEqual("Qty", fields[38]["metadata"]["FIX:datatype"])
+        self.assertEqual(GENERATOR.DECIMAL_DOCUMENT, fields[38]["dtype"])
+        # The key sorts with the other `FIX:` keys, ahead of the tag.
+        self.assertEqual(["FIX:datatype", "FIX:tag"], list(fields[60]["metadata"])[:2])
+
+    def test_a_parent_is_named_by_its_own_field_alone(self) -> None:
+        catalog, _ = built(b'''<repository xmlns="http://fixprotocol.io/2020/orchestra/repository" version="FIX.5.0SP2">
+          <fields>
+            <field id="11" name="ClOrdID" type="String"/>
+            <field id="41" name="OrigClOrdID" type="String"/>
+            <field id="70" name="AllocID" type="String"/>
+            <field id="1593" name="ParentAllocID" type="String"/>
+            <field id="1003" name="TradeID" type="String"/>
+            <field id="1126" name="OrigTradeID" type="String"/>
+            <field id="571" name="TradeReportID" type="String"/>
+            <field id="572" name="TradeReportRefID" type="String"/>
+          </fields>
+        </repository>''')
+        fields = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
+        # The parents a base's field names say it has, as FIX names them.
+        self.assertEqual(["origclordid"], fields[11]["metadata"]["FIX:parents"])
+        self.assertEqual(["parentallocid"], fields[70]["metadata"]["FIX:parents"])
+        self.assertEqual(["origtradeid"], fields[1003]["metadata"]["FIX:parents"])
+        # A parent goes by its own name and no other prefix: a bridge's
+        # `parentclordid` is a hierarchy parent, never OrigClOrdID(41).
+        for tag in (41, 1593, 1126):
+            with self.subTest(tag=tag):
+                self.assertNotIn("FIX:names", fields[tag]["metadata"])
+        # TradeReportRefID(572) is TradeReportID(571)'s parent by the crate's
+        # vocabulary, which no field restates.
+        self.assertNotIn("FIX:parents", fields[571]["metadata"])
+
+    def test_a_trades_lineage_fields_name_its_identifiers(self) -> None:
+        sources = dict(GENERATOR.IDMAP_SOURCES)
+        expected = {
+            571: "tradereportid",
+            572: "tradereportrefid",
+            1126: "origtradeid",
+            1127: "origsecondarytradeid",
+        }
+        for tag, key in expected.items():
+            with self.subTest(tag=tag):
+                self.assertEqual([{"map": "identifiers", "key": key}], sources[tag])
+        # One entry per tag, in tag order: seventeen order, quote and trade
+        # fields and these four.
+        tags = [tag for tag, _ in GENERATOR.IDMAP_SOURCES]
+        self.assertEqual(sorted(set(tags)), tags)
+        self.assertEqual(21, len(tags))
+
+    def test_aggressor_indicator_takes_the_bridge_aggressor_and_passive_spellings(self) -> None:
+        catalog, code_sets = built(b'''<repository xmlns="http://fixprotocol.io/2020/orchestra/repository" version="FIX.5.0SP2">
+          <codeSets>
+            <codeSet name="AggressorIndicatorCodeSet" type="Boolean">
+              <code name="OrderInitiatorIsAggressor" value="Y"/>
+              <code name="OrderInitiatorIsPassive" value="N"/>
+            </codeSet>
+            <codeSet name="OtherFlagCodeSet" type="Boolean"><code name="OrderInitiatorIsAggressor" value="Y"/></codeSet>
+          </codeSets>
+          <fields>
+            <field id="1057" name="AggressorIndicator" type="AggressorIndicatorCodeSet"/>
+            <field id="9000" name="OtherFlag" type="OtherFlagCodeSet"/>
+          </fields>
+        </repository>''')
+        fields = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
+        self.assertEqual("Boolean", fields[1057]["metadata"]["FIX:datatype"])
+        self.assertEqual({"type": "boolean"}, fields[1057]["dtype"])
+        # A two-member set in which each bridge word has exactly one meaning:
+        # the words are aliases of the member they name, and nowhere else. A
+        # source ranking no code lists them in wire-value order.
+        self.assertEqual(
+            [
+                {"value": "N", "name": "OrderInitiatorIsPassive", "aliases": ["Passive"]},
+                {"value": "Y", "name": "OrderInitiatorIsAggressor", "aliases": ["Aggressor"]},
+            ],
+            code_sets["aggressorindicatorcodeset"],
+        )
+        self.assertNotIn("aliases", code_sets["otherflagcodeset"][0])
+
     def test_message_type_is_text_reading_by_its_code_set(self) -> None:
         catalog, code_sets = built(b'''<repository xmlns="http://fixprotocol.io/2020/orchestra/repository" version="FIX.5.0SP2">
           <codeSets><codeSet name="MsgTypeCodeSet" type="String"><code name="NewOrderSingle" value="D"/></codeSet></codeSets>

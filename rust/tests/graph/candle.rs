@@ -756,8 +756,8 @@ fn candles_of_a_walk_round_trip_through_arrow() {
 }
 
 /// A candle reads a book's top of book, which every book states whether it
-/// holds its sides or its deltas alone: the candles of a walk's books -
-/// each its deltas alone, the first following no book - are the candles of
+/// is complete or a delta book: the candles of a walk's books - each a
+/// delta book, the first following no book - are the candles of
 /// those books rebuilt whole, with no rebuild.
 #[test]
 fn candles_from_delta_books_equal_candles_from_complete_books() {
@@ -786,7 +786,7 @@ fn candles_from_delta_books_equal_candles_from_complete_books() {
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap()
     };
-    let (deltas, rebuilt) = (fold(books), fold(whole));
-    assert_eq!(deltas.len(), 3);
-    assert_eq!(deltas, rebuilt);
+    let (delta, rebuilt) = (fold(books), fold(whole));
+    assert_eq!(delta.len(), 3);
+    assert_eq!(delta, rebuilt);
 }

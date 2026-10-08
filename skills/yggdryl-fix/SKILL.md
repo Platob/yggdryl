@@ -29,9 +29,9 @@ order, so a report and the execution split off it are places 0 and 1.
 **Lifecycle is the only cross-message stage**: `lifecycle` collects a finite
 capture, sorts it by event time, folds duplicate deliveries, places each
 message by content among the messages of its instant (a content repeated
-there keeps its place), chains it to the live one of its order within its own `marketdatakind` (`crossuuid`,
-`prevuuid`; an order and an execution under one cross code are two chains), takes every bridge `metadata` key of the chain it does not state
-and the ids its dictionary follows, each with its parents, and learns instrument associations.
+there keeps its place), chains it to the live one of its order within its own `marketdatakind` - by its chain identities, `orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid` and their secondary ones, never `execid`, `trdmatchid` or `quotereqid`, and by the first value a lineage field names, `OrigClOrdID(41)`, `OrigTradeID(1126)`, `TradeReportRefID(572)` - (`crossuuid`,
+`prevuuid`; an order and an execution under one cross code are two chains), re-keys it onto its chain's side and first cross code, takes every bridge `metadata` key of the chain it does not state
+and the ids its dictionary follows, each with its parents, states a message citing two live chains as a conflict - a `FixAnomaly` under `crosscode`, warned once per kind - rather than picking one, and learns instrument associations.
 Nothing chains unasked.
 
 The dictionary is data, not code: the committed FIX Latest dictionary
@@ -81,6 +81,9 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | chain order lifecycles | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` |
 | chain rows already in Arrow | `codec.lifecycle_arrow_reader(reader)?` | `codec.lifecycle_arrow_reader(reader)` | `codec.lifecycleArrowReader(reader)` |
 | share what lifecycles learn about instruments, and what parses fill from | `codec.with_isin_registry(Arc::new(Mutex::new(IsinRegistry::from_url(&url, props)?)))`, `FixCodec::from_env()?` for the process's own, `registry.lock()?.commit()?` to write it back | `FixCodec(registry, isin_registry=IsinRegistry.from_url(path))`, `FixCodec.from_env()`, `registry.commit()` | `new fix.FixCodec(registry, { isinRegistry: IsinRegistry.fromUrl(path) })`, `fix.FixCodec.fromEnv()`, `registry.commit()` |
+| the common instruments, before any store | `IsinRegistry::seeded()` - what `from_env` lays its store over; `IsinRegistry::seeded_from_url(&url, props)?` lays a store you name over it, its rows winning | `IsinRegistry.seeded()`, `IsinRegistry.seeded_from_url(path)` | `IsinRegistry.seeded()`, `IsinRegistry.seededFromUrl(path)` |
+| what a lifecycle learned about an instrument, per market | `registry.listings(isin)` (one row per market, MIC order), `get_listing(isin, &mic)`, `entry.firstunix()` and `entry.lastunix()` - the earliest and the latest message instants stating the ISIN, moved by every learn that passes either - beside `updunix()`, the last moved fact, and `entry.origccy()`, the issue currency a message stated in crate tag `65018` | `listings(isin)`, `get_listing(isin, "XSWX")`, `row["firstunix"]`, `row["lastunix"]`, `row["origccy"]` | `listings(isin)`, `getListing(isin, 'XSWX')`, `row.firstunix`, `row.lastunix`, `row.origccy` |
+| which instrument a message means | `registry.resolve(&msg)` (ISIN, then `LOOKUP_CODES`, then ticker on its market, then - scored, a fill taking it only under `set_economic_match(true)` - its `FinancialInstrumentShortName(2737)` in its currency) | `registry.resolve(msg)` -> `Resolution` | `registry.resolve(msg)` -> a plain object |
 | one message as graph leaves | `msg.market_data()?`, `msg.into_market_data()?` | `msg.market_data()` | `msg.marketData()` |
 | sorted market data | `codec.market_data(messages)` | `codec.market_data(messages)` | `codec.marketData(messages)` |
 | books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0, None)?`, `Some(&filter)` to narrow | `codec.book_arrow_reader(msgs, snapshot_millis=0, filter=None)` | `codec.bookArrowReader(msgs, 0, filter)` |
@@ -119,7 +122,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    project in the parallel doors; chain once. The walk yields each
    `curruuid` once within `dedup_window_ms` of event time (one minute by
    default; `None`/`null`/`0` yields every restated twin too), so a
-   consumer keyed by `curruuid` needs no dedup of its own.
+   consumer keyed by `curruuid` needs no dedup of its own. Join a chain on
+   `crossuuid`: every message of one chain carries the chain's first
+   `crosscode` - a replace under a new `ClOrdID` keeps it - so never re-key by
+   an identifier yourself. A message citing two live chains is joined to
+   neither: it stands under its own identity and its `anomalies` hold a
+   `crosscode` entry naming both, so read them before trusting a split.
 6. Market hand-off is `market_data(lifecycle(messages))`: the walk settles
    each message, the sorted door orders every leaf by the instant a book folds
    it. One message is one leaf - an order, a quote holding both its legs, an
@@ -328,7 +336,11 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   of side `UKNW`, no `price` of its own, its `bidpx`/`bidqty` and
   `askpx`/`askqty` the two legs; one stating `Side(54)` tags the leg it
   quotes. A derived execution is chained under its `ExecID(17)` as given
-  (`8:1:E-1`), else `TradeID=<TradeID(1003)>`. Count messages after the
+  (`8:1:E-1`), else `TradeID=<TradeID(1003)>`. A trade capture (`TRAD`)
+  reads `TradeID(1003)` and `TradeReportID(571)` before any order tag
+  (`21:0:T1`). After `lifecycle` every message of a chain carries its first
+  message's code, `crosshashcode` and `crossuuid` derived from it: read a
+  message's own spelling off its fields. Count messages after the
   parse, not lines: one filling report is two messages.
 - A message's identifiers are logical `Identifiers` maps keyed `src:type`, read
   off its fields, the wire kept as sent, each identifier `key=value` in
@@ -376,7 +388,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   settle fill the parent's own type from its nearest stated parent (`orderid` from
   `parentorderid`, else `origorderid`); a follower whose `orderid` changed keeps
   the previous value as `parentorderid` and the chain's first as `origorderid`,
-  and one naming no `orderid` carries the chain's with both. A caller's
+  and one naming no `orderid` carries the chain's with both. Only a chain
+  identity has parents: `ExecID(17)` and `TrdMatchID(880)` carry none, and
+  `TradeReportID(571)`'s is `tradereportrefid` (`572`). A bridge's
+  `PARENTCLORDID` is the word `parentclordid` - no parent, no chain - and its
+  `PARENTORDERID` the previous-value slot `parentorderid`, which names no
+  chain but fills a missing `orderid`. A caller's
   `insert_*`/`set_*` is the message's word and writes no field: to change the
   wire, write the field. `SecurityID(48)`, `SecurityIDSource(22)`,
   `Parties(453)` and `SecAltIDGrp(454)` are no columns of the fixed row (151
@@ -426,9 +443,25 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   registry - bound to a store with `from_url` and written back with
   `commit()` only where it moved, or the process's own `from_env()`, which
   `FixCodec.from_env()` attaches - to share it across walks run one after
-  another. A RIC or a Bloomberg symbol is an equivalent, never a key.
+  another. A code of `IsinRegistry::LOOKUP_CODES` - a CUSIP, a SEDOL, a RIC, a
+  Bloomberg symbol - leads back to its instrument like a ticker on its market,
+  one instrument per code; a parse fills from those exact keys alone, never
+  from a short name's score. A message's `origccy` (crate tag `65018`, no FIX
+  field) is learned as the instrument's issue currency and filled where a
+  later message states none; `origin_currency` reads the currency otherwise.
+  `from_env()` starts from the embedded seed of common instruments
+  (`IsinRegistry.seeded()`, the store's rows winning), and a row the
+  registry folds carries the CUSIP, SEDOL, WKN or Valor its ISIN embeds and
+  its market's country's currency where it states none - defaults a
+  statement replaces. In a medallion pipeline commit the codec's registry
+  once, as the stage right after the FIX-message parse, after the refined
+  write has drained the lifecycle: one snapshot, nothing where clean. The
+  capture's own lines are appended by key (`append_serie` on a table whose
+  `identifier-field-ids` is the row's key: a line already stored in its
+  partition is skipped, no file rewritten); every derived table is
+  overwritten partition by partition.
 - `StrikePrice(202)` is read into the market fact `strikepx` (`Market`), the
-  fixed row's `strikepx` column right after `ticker` (crate tag `65035`), so
+  fixed row's `strikepx` column right after `ticker` (crate tag `65036`), so
   a graph leaf carries no `strikeprice` metadata key; `msg.set(202, v)`
   restates it, a row stating `strikepx` is the row's word, and an unreadable
   202 is an anomaly named `strikeprice`. A follower of the same instrument

@@ -366,7 +366,7 @@ fn a_temporal_is_set_only_where_the_sheets_date_system_spells_it() {
     assert_eq!(
         refusal,
         "invalid record value at A2: expected an instant the 1904 date system spells, \
-         from its first day to 9999-12-31, got 1903-12-31T00:00:00.000"
+         from its first day to 9999-12-31, got 1903-12-31T00:00:00"
     );
     assert!(sheet.cell(at("A2")).is_none());
 

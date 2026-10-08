@@ -2,8 +2,8 @@
 //!
 //! A `.csv` handle, or a `.tsv` one, which is the same document under a
 //! tab, reads and writes through the ordinary record surface. Reading streams:
-//! records are cut from the decoded transport one at a time, so a read holds
-//! one batch and a count holds one record. A declared field is the contract
+//! records are cut from the decoded transport one at a time, so a row read
+//! and a count hold one record. A declared field is the contract
 //! every cell is read under; without one the header names the columns and a
 //! bounded sample of the records types them - boolean, integer, float, date,
 //! instant, else text, every inferred column nullable - and a later cell its
@@ -41,8 +41,9 @@
 //! )?
 //! .required_field("trade");
 //! let rows = handle.read_serie(Some(&options.with_field(declared)))?
-//!     .map(|batch| batch.map(|batch| batch.len()))
-//!     .sum::<yggdryl::arrow::Result<usize>>()?;
+//!     .into_stream()?
+//!     .map(|row| row.map(|_| 1))
+//!     .sum::<yggdryl::Result<usize>>()?;
 //! assert_eq!(rows, 2);
 //!
 //! // A tab-separated document, by name; a `;` separator, by option.
@@ -61,4 +62,8 @@ mod writer;
 
 pub use media::{Csv, overwrite_arrow_reader, read_batch_reader, read_field};
 pub(crate) use media::{append_arrow_reader, row_size, stated_field, write_target};
-pub use options::{CsvOptions, DEFAULT_CSV_BATCH_BYTE_SIZE, DEFAULT_CSV_INFER_ROW_SIZE};
+pub use options::{CsvOptions, DEFAULT_CSV_INFER_ROW_SIZE};
+
+pub use media::CSVSerie;
+
+pub use media::read_stream;

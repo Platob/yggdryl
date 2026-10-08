@@ -83,7 +83,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::graph::iterator::order;
 use crate::graph::{Element, Event, EventIterator, Market};
-use crate::isin_registry::{IsinTable, warn_full};
+use crate::isin_registry::{EconomicMemo, IsinTable, warn_full};
 use crate::logging::warning::warned;
 use crate::{Error, IsinRegistry, Result, Scalar, Side, State, Uuid};
 
@@ -452,8 +452,10 @@ fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
 /// always stands, a chain stating none lends none, and an unsided chain - a
 /// quote's, whose side is each statement's own tag - lends none either. A
 /// write the rebuild refuses leaves the side the message stated, `UKNW`,
-/// beside a warning.
-fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> bool {
+/// beside a warning. Unsettled: following settles the message after, and
+/// so does the walk re-keying one onto its chain
+/// ([`Operation::follow_identity`](crate::graph::Operation::follow_identity)).
+pub(super) fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> bool {
     let side = previous.get_side();
     if !previous.is_sided()
         || side == Side::Unknown
@@ -706,7 +708,8 @@ enum Codes {
 }
 
 impl Codes {
-    /// Learns what `message` states about its instrument - its country of
+    /// Learns what `message` states about its instrument - its origin
+    /// currency ([`FixMsg::stated_origccy`]), its country of
     /// issue beside it, where it states one its ISIN does not already say
     /// ([`FixMsg::stated_country`]), the instrument it is written on
     /// ([`FixMsg::stated_underlying_isin`]) and the EUSIPA product category
@@ -716,26 +719,40 @@ impl Codes {
     /// ([`FixMsg::fill_instrument`]): the identifiers, the ticker, the CFI
     /// code and the currency, settled no further than the market facts
     /// they imply, since a parsed message is already clean and nothing a
-    /// fill writes reaches its identity. The one lock is held across the
+    /// fill writes reaches its identity - an economic match only where the
+    /// registry states it ([`IsinRegistry::is_economic_match`]), answered
+    /// once per short name and currency the walk meets while the
+    /// instruments stand still (`memo`). The one lock is held across the
     /// learn and the fill, and the warning a full registry owes is raised
     /// once it is let go of: the host a warning reaches may be waiting on
     /// that very lock.
-    fn learn_and_fill(&mut self, message: &mut FixMsg) {
+    fn learn_and_fill(&mut self, message: &mut FixMsg, memo: &mut EconomicMemo) {
         let country = message.stated_country();
         let underlying = message.stated_underlying_isin();
         let product = message.stated_eusipa();
+        let origccy = message.stated_origccy();
         let full = match self {
             Self::Walk(registry) => {
-                let learned =
-                    registry.learn_stating(message, country.as_ref(), underlying.as_ref(), product);
-                message.fill_instrument(registry.as_table());
+                let learned = registry.learn_stating(
+                    message,
+                    origccy.as_ref(),
+                    country.as_ref(),
+                    underlying.as_ref(),
+                    product,
+                );
+                message.fill_instrument(registry.as_table(), memo);
                 learned.full
             }
             Self::Shared(registry) => {
                 let mut registry = registry.lock().unwrap_or_else(PoisonError::into_inner);
-                let learned =
-                    registry.learn_stating(message, country.as_ref(), underlying.as_ref(), product);
-                message.fill_instrument(registry.as_table());
+                let learned = registry.learn_stating(
+                    message,
+                    origccy.as_ref(),
+                    country.as_ref(),
+                    underlying.as_ref(),
+                    product,
+                );
+                message.fill_instrument(registry.as_table(), memo);
                 learned.full
             }
         };
@@ -750,6 +767,8 @@ impl Codes {
 struct Prepared<I> {
     source: Intake<I>,
     codes: Codes,
+    /// The economic matches this walk answered.
+    memo: EconomicMemo,
     /// At most one key per distinct delivery in this already collected finite
     /// capture. A late retransmission must remain a repeat after any number of
     /// intervening deliveries; retaining only a recent window loses that fact.
@@ -764,6 +783,7 @@ impl<I> Prepared<I> {
         Self {
             source,
             codes: registry.map_or_else(|| Codes::Walk(IsinRegistry::new()), Codes::Shared),
+            memo: EconomicMemo::default(),
             seen: HashSet::with_capacity(capacity),
         }
     }
@@ -778,7 +798,7 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Prepared<I> {
             if !self.seen.insert(delivery_key(&message)) {
                 continue;
             }
-            self.codes.learn_and_fill(&mut message);
+            self.codes.learn_and_fill(&mut message, &mut self.memo);
             return Some(message.into());
         }
     }
@@ -1110,7 +1130,15 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Walked<I> {
 impl<I: Iterator<Item = Result<FixMsg>>> FusedIterator for Walked<I> {}
 
 crate::graph::delegate_market!(LifecycleMessage, message);
-crate::graph::delegate_operation!(LifecycleMessage, message);
+crate::graph::delegate_operation!(LifecycleMessage, message;
+    /// The message's own: the side the chain lends written as `Side(54)`,
+    /// [`inherit_side`] as following writes it, so the row and the digest
+    /// state it, then the chain's stored cross code, the cross codes in
+    /// step - unsettled, for the walk to settle once.
+    fn follow_identity(&mut self, live: &Self) -> bool {
+        crate::graph::Operation::follow_identity(&mut self.message, &live.message)
+    }
+);
 
 #[cfg(feature = "internals")]
 #[doc(hidden)]

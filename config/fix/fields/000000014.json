@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1400",
       "description": "Enumeration defining the encryption method used to encrypt password fields.",
       "display": "EncryptedPasswordMethod"
@@ -18,6 +19,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "1401",
       "description": "Length of the EncryptedPassword(1402) field",
       "display": "EncryptedPasswordLen"
@@ -30,6 +32,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "1402",
       "description": "Encrypted password - encrypted via the method specified in the field EncryptedPasswordMethod(1400)",
       "display": "EncryptedPassword"
@@ -42,6 +45,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "1403",
       "description": "Length of the EncryptedNewPassword(1404) field",
       "display": "EncryptedNewPasswordLen"
@@ -54,6 +58,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "1404",
       "description": "Encrypted new password - encrypted via the method specified in the field EncryptedPasswordMethod(1400)",
       "display": "EncryptedNewPassword"
@@ -68,6 +73,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "TZTimeOnly",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1405",
       "description": "Time of security's maturity expressed in local time with offset to UTC specified",
@@ -81,6 +87,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1406",
       "description": "The extension pack number associated with an application message.",
       "display": "RefApplExtID"
@@ -93,6 +100,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1407",
       "description": "The extension pack number that is the default for a FIX session.",
       "display": "DefaultApplExtID"
@@ -105,6 +113,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1408",
       "description": "The default custom application version ID that is the default for a session.",
       "display": "DefaultCstmApplVerID"
@@ -118,6 +127,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "sessionstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1409",
       "description": "Status of a FIX session",
       "display": "SessionStatus"
@@ -130,6 +140,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1410",
       "description": "Indicates that the application version identified in the fields RefApplVerID(1130), RefApplExtID(1406), and RefCstmApplVerID(1131) is the default for the message type identified in RefMsgType(372) field.",
       "display": "DefaultVerIndicator"
@@ -143,6 +154,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partysubidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1411",
       "description": "Refer to definition of PartySubIDType(803)",
       "display": "Nested4PartySubIDType"
@@ -155,6 +167,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1412",
       "description": "Refer to definition of PartySubID(523)",
       "display": "Nested4PartySubID"
@@ -167,6 +180,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1413",
       "description": "Refer to definition of NoPartySubIDs(802)",
       "display": "NoNested4PartySubIDs"
@@ -179,6 +193,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1414",
       "description": "Refer to definition of NoPartyIDs(453)",
       "display": "NoNested4PartyIDs"
@@ -191,6 +206,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1415",
       "description": "Refer to definition of PartyID(448)",
       "display": "Nested4PartyID"
@@ -204,6 +220,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyidsourcecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1416",
       "description": "Refer to definition of PartyIDSource(447)",
       "display": "Nested4PartyIDSource"
@@ -217,6 +234,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrolecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1417",
       "description": "Refer to definition of PartyRole(452)",
       "display": "Nested4PartyRole"
@@ -231,6 +249,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1418",
       "description": "Fill quantity for the leg instrument",
       "display": "LegLastQty"
@@ -244,6 +263,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "exercisestylecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1419",
       "description": "Type of exercise of a derivatives security",
       "display": "UnderlyingExerciseStyle"
@@ -257,6 +277,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "exercisestylecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1420",
       "description": "Type of exercise of a derivatives security",
       "display": "LegExerciseStyle"
@@ -270,6 +291,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1421",
       "description": "Refer to definition for PriceUnitOfMeasure(1191)",
       "display": "LegPriceUnitOfMeasure"
@@ -284,6 +306,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1422",
       "description": "Refer to definition of PriceUnitOfMeasureQty(1192)",
       "display": "LegPriceUnitOfMeasureQty"
@@ -298,6 +321,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1423",
       "description": "Refer to definition of UnitOfMeasureQty(1147)",
       "display": "UnderlyingUnitOfMeasureQty"
@@ -311,6 +335,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1424",
       "description": "Refer to definition for PriceUnitOfMeasure(1191)",
       "display": "UnderlyingPriceUnitOfMeasure"
@@ -325,6 +350,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1425",
       "description": "Refer to definition of PriceUnitOfMeasureQty(1192)",
       "display": "UnderlyingPriceUnitOfMeasureQty"
@@ -338,6 +364,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "applreporttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1426",
       "description": "Type of report",
       "display": "ApplReportType"
@@ -350,6 +377,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1427",
       "description": "When reporting trades, used to reference the identifier of the execution (ExecID) being reported if different ExecIDs were assigned to each side of the trade.",
       "display": "SideExecID"
@@ -362,6 +390,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1428",
       "description": "Time lapsed from order entry until match, based on the unit of time specified in OrderDelayUnit. Default is seconds if OrderDelayUnit is not specified. Value = 0, indicates the aggressor (the initiating side of the trade).",
       "display": "OrderDelay"
@@ -375,6 +404,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderdelayunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1429",
       "description": "Time unit in which the OrderDelay(1428) is expressed",
       "display": "OrderDelayUnit"
@@ -388,6 +418,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "venuetypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1430",
       "description": "Identifies the type of venue where a trade was executed.",
       "display": "VenueType"
@@ -401,6 +432,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "refordidreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1431",
       "description": "The reason for updating the RefOrdID",
       "display": "RefOrdIDReason"
@@ -414,6 +446,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "origcustordercapacitycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1432",
       "description": "The customer capacity for this trade at the time of the order/execution.",
       "display": "OrigCustOrderCapacity"
@@ -426,6 +459,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1433",
       "description": "Used to reference a previously submitted ApplReqID (1346) from within a subsequent ApplicationMessageRequest(MsgType=BW)",
       "display": "RefApplReqID"
@@ -439,6 +473,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "modeltypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1434",
       "description": "Type of pricing model used",
       "display": "ModelType"
@@ -452,6 +487,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "contractmultiplierunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1435",
       "description": "Indicates the type of multiplier being applied to the contract. Can be optionally used to further define what unit ContractMultiplier(tag 231) is expressed in.",
       "display": "ContractMultiplierUnit"
@@ -465,6 +501,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "contractmultiplierunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1436",
       "description": "Indicates the type of multiplier being applied to the contract. Can be optionally used to further define what unit LegContractMultiplier(614) is expressed in.",
       "display": "LegContractMultiplierUnit"
@@ -478,6 +515,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "contractmultiplierunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1437",
       "description": "Indicates the type of multiplier being applied to the contract.",
       "display": "UnderlyingContractMultiplierUnit"
@@ -491,6 +529,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "contractmultiplierunitcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1438",
       "description": "Indicates the type of multiplier being applied to the contract. Can be optionally used to further define what unit DerivativeContractMultiplier(1266)is expressed in.",
       "display": "DerivativeContractMultiplierUnit"
@@ -504,6 +543,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "flowscheduletypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1439",
       "description": "The industry standard flow schedule by which electricity or natural gas is traded. Schedules may exist by regions and on-peak and off-peak status, such as \"Western Peak\".",
       "display": "FlowScheduleType"
@@ -517,6 +557,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "flowscheduletypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1440",
       "description": "The industry standard flow schedule by which electricity or natural gas is traded. Schedules exist by regions and on-peak and off-peak status, such as \"Western Peak\".",
       "display": "LegFlowScheduleType"
@@ -530,6 +571,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "flowscheduletypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1441",
       "description": "The industry standard flow schedule by which electricity or natural gas is traded. Schedules exist by regions and on-peak and off-peak status, such as \"Western Peak\".",
       "display": "UnderlyingFlowScheduleType"
@@ -543,6 +585,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "flowscheduletypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1442",
       "description": "The industry standard flow schedule by which electricity or natural gas is traded. Schedules exist by regions and on-peak and off-peak status, such as \"Western Peak\".",
       "display": "DerivativeFlowScheduleType"
@@ -556,6 +599,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "lastliquidityindcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1443",
       "description": "Indicator to identify whether this fill was a result of a liquidity provider providing or liquidity taker taking the liquidity. Applicable only for OrdStatus of Partial or Filled",
       "display": "FillLiquidityInd"
@@ -569,6 +613,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "lastliquidityindcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1444",
       "description": "Indicator to identify whether this fill was a result of a liquidity provider providing or liquidity taker taking the liquidity. Applicable only for OrdStatus of Partial or Filled.",
       "display": "SideLiquidityInd"
@@ -581,6 +626,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1445",
       "description": "Number of rate sources being specified.",
       "display": "NoRateSources"
@@ -594,6 +640,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ratesourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1446",
       "description": "Identifies the source of rate information.",
       "display": "RateSource"
@@ -607,6 +654,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ratesourcetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1447",
       "description": "Indicates whether the rate source specified is a primary or secondary source.",
       "display": "RateSourceType"
@@ -619,6 +667,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1448",
       "description": "Identifies the reference \"page\" from the rate source. For FX, the reference page to the spot rate to be used for the reference FX spot rate. When RateSource(1446) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
       "display": "ReferencePage"
@@ -632,6 +681,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "restructuringtypecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1449",
       "description": "A category of CDS credit event in which the underlying bond experiences a restructuring.",
       "display": "RestructuringType"
@@ -645,6 +695,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "senioritycodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1450",
       "description": "Specifies which issue (underlying bond) will receive payment priority in the event of a default.",
       "display": "Seniority"
@@ -657,6 +708,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1451",
       "description": "Indicates the notional percentage of the deal that is still outstanding based on the remaining components of the index.",
       "display": "NotionalPercentageOutstanding"
@@ -669,6 +721,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1452",
       "description": "Used to reflect the Original value prior to the application of a credit event. See NotionalPercentageOutstanding(1451).",
       "display": "OriginalNotionalPercentageOutstanding"
@@ -682,6 +735,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "restructuringtypecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1453",
       "description": "See RestructuringType(1449)",
       "display": "UnderlyingRestructuringType"
@@ -695,6 +749,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "senioritycodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1454",
       "description": "See Seniority(1450)",
       "display": "UnderlyingSeniority"
@@ -707,6 +762,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1455",
       "description": "See NotionalPercentageOutstanding(1451)",
       "display": "UnderlyingNotionalPercentageOutstanding"
@@ -719,6 +775,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1456",
       "description": "See OriginalNotionalPercentageOutstanding(1452)",
       "display": "UnderlyingOriginalNotionalPercentageOutstanding"
@@ -731,6 +788,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1457",
       "description": "Lower bound percentage of the loss that the tranche can endure.",
       "display": "AttachmentPoint"
@@ -743,6 +801,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1458",
       "description": "Upper bound percentage of the loss the tranche can endure.",
       "display": "DetachmentPoint"
@@ -755,6 +814,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1459",
       "description": "See AttachmentPoint(1457).",
       "display": "UnderlyingAttachmentPoint"
@@ -767,6 +827,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1460",
       "description": "See DetachmentPoint(1458).",
       "display": "UnderlyingDetachmentPoint"
@@ -779,6 +840,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1461",
       "description": "Identifies the number of target parties identified in a mass action.",
       "display": "NoTargetPartyIDs"
@@ -791,6 +853,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1462",
       "description": "PartyID value within an target party repeating group.",
       "display": "TargetPartyID"
@@ -804,6 +867,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyidsourcecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1463",
       "description": "PartyIDSource value within an target party repeating group.",
       "display": "TargetPartyIDSource"
@@ -817,6 +881,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrolecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1464",
       "description": "PartyRole value within an target party repeating group.",
       "display": "TargetPartyRole"
@@ -829,6 +894,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1465",
       "description": "Specifies an identifier for a Security List",
       "display": "SecurityListID"
@@ -841,6 +907,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1466",
       "description": "Specifies a reference from one Security List to another. Used to support a hierarchy of Security Lists.",
       "display": "SecurityListRefID"
@@ -853,6 +920,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1467",
       "description": "Specifies a description or name of a Security List.",
       "display": "SecurityListDesc"
@@ -865,6 +933,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "1468",
       "description": "Byte length of encoded (non-ASCII characters) EncodedSecurityListDesc(1469) field.",
       "display": "EncodedSecurityListDescLen"
@@ -877,6 +946,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "1469",
       "description": "Encoded (non-ASCII characters) representation of the SecurityListDesc(1467) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the SecurityListDesc(1467) field.",
       "display": "EncodedSecurityListDesc"
@@ -890,6 +960,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securitylisttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1470",
       "description": "Specifies a type of Security List.",
       "display": "SecurityListType"
@@ -903,6 +974,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securitylisttypesourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1471",
       "description": "Specifies a specific source for a SecurityListType. Relevant when a certain type can be provided from various sources.",
       "display": "SecurityListTypeSource"
@@ -915,6 +987,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1472",
       "description": "Unique identifier for a News message",
       "display": "NewsID"
@@ -928,6 +1001,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "newscategorycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1473",
       "description": "Category of news message.",
       "display": "NewsCategory"
@@ -942,6 +1016,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Language",
       "FIX:tag": "1474",
       "description": "The national language in which the news item is provided.",
       "display": "LanguageCode"
@@ -954,6 +1029,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1475",
       "description": "Number of News reference items",
       "display": "NoNewsRefIDs"
@@ -966,6 +1042,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1476",
       "description": "Reference to another News message identified by NewsID(1474).",
       "display": "NewsRefID"
@@ -979,6 +1056,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "newsreftypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1477",
       "description": "Type of reference to another News(35=B) message item.",
       "display": "NewsRefType"
@@ -992,6 +1070,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "strikepricedeterminationmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1478",
       "description": "Specifies how the strike price is determined at the point of option exercise. The strike may be fixed throughout the life of the option, set at expiration to the value of the underlying, set to the average value of the underlying , or set to the optimal value of the underlying.",
       "display": "StrikePriceDeterminationMethod"
@@ -1005,6 +1084,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "strikepriceboundarymethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1479",
       "description": "Specifies the boundary condition to be used for the strike price relative to the underlying price at the point of option exercise.",
       "display": "StrikePriceBoundaryMethod"
@@ -1017,6 +1097,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1480",
       "description": "Used in combination with StrikePriceBoundaryMethod to specify the percentage of the strike price in relation to the underlying price. The percentage is generally 100 or greater for puts and 100 or less for calls.",
       "display": "StrikePriceBoundaryPrecision"
@@ -1030,6 +1111,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "underlyingpricedeterminationmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1481",
       "description": "Specifies how the underlying price is determined at the point of option exercise. The underlying price may be set to the current settlement price, set to a special reference, set to the optimal value of the underlying during the defined period (\"Look-back\") or set to the average value of the underlying during the defined period (\"Asian option\").",
       "display": "UnderlyingPriceDeterminationMethod"
@@ -1043,6 +1125,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "optpayouttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1482",
       "description": "Indicates the type of valuation method or payout trigger for an in-the-money option.",
       "display": "OptPayoutType"
@@ -1055,6 +1138,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1483",
       "description": "Number of complex event occurrences.",
       "display": "NoComplexEvents"
@@ -1068,6 +1152,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1484",
       "description": "Identifies the type of complex event.",
       "display": "ComplexEventType"
@@ -1082,6 +1167,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "1485",
       "description": "Cash amount indicating the pay out associated with an event. For binary options this is a fixed amount.",
       "display": "ComplexOptPayoutAmount"
@@ -1096,6 +1182,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1486",
       "description": "Specifies the price at which the complex event takes effect. Impact of the event price is determined by the ComplexEventType(1484).",
       "display": "ComplexEventPrice"
@@ -1109,6 +1196,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventpriceboundarymethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1487",
       "description": "Specifies the boundary condition to be used for the event price relative to the underlying price at the point the complex event outcome takes effect as determined by the ComplexEventPriceTimeType.",
       "display": "ComplexEventPriceBoundaryMethod"
@@ -1121,6 +1209,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1488",
       "description": "Used in combination with ComplexEventPriceBoundaryMethod to specify the percentage of the strike price in relation to the underlying price. The percentage is generally 100 or greater for puts and 100 or less for calls.",
       "display": "ComplexEventPriceBoundaryPrecision"
@@ -1134,6 +1223,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventpricetimetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1489",
       "description": "Specifies when the complex event outcome takes effect. The outcome of a complex event is a payout or barrier action as specified by the ComplexEventType(1484).",
       "display": "ComplexEventPriceTimeType"
@@ -1147,6 +1237,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventconditioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1490",
       "description": "Specifies the condition between complex events when more than one event is specified.",
       "display": "ComplexEventCondition"
@@ -1159,6 +1250,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1491",
       "description": "Number of complex event date occurrences for a given complex event.",
       "display": "NoComplexEventDates"
@@ -1173,6 +1265,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCDateOnly",
       "FIX:tag": "1492",
       "description": "Specifies the start date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options",
       "display": "ComplexEventStartDate"
@@ -1187,6 +1280,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCDateOnly",
       "FIX:tag": "1493",
       "description": "Specifies the end date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options",
       "display": "ComplexEventEndDate"
@@ -1199,6 +1293,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1494",
       "description": "Number of complex event time occurrences for a given complex event date",
       "display": "NoComplexEventTimes"
@@ -1212,6 +1307,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimeOnly",
       "FIX:tag": "1495",
       "description": "Specifies the start time of the time range on which a complex event date is effective.",
       "display": "ComplexEventStartTime"
@@ -1225,6 +1321,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimeOnly",
       "FIX:tag": "1496",
       "description": "Specifies the end time of the time range on which a complex event date is effective.",
       "display": "ComplexEventEndTime"
@@ -1237,6 +1334,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1497",
       "description": "Unique identifier for the stream assignment request provided by the requester.",
       "display": "StreamAsgnReqID"
@@ -1250,6 +1348,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "streamasgnreqtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1498",
       "description": "Type of stream assignment request.",
       "display": "StreamAsgnReqType"
@@ -1262,6 +1361,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1499",
       "description": "Number of assignment requests.",
       "display": "NoAsgnReqs"

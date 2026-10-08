@@ -11,7 +11,7 @@
 //! value. `PyArrow`, pandas, polars, `NumPy` and anything implementing the
 //! Arrow C data or stream protocol is read once, by [`columnar`], as a column
 //! in hand, as chunks in hand or as a stream: a held column is a [`PySerie`],
-//! held chunks a [`PyChunkedSerie`], a stream a [`PySerieReader`], and nothing
+//! held chunks a [`PyChunkedSerie`], a stream a [`PyStreamChunkedSerie`], and nothing
 //! else. A frame is converted by its own library, and the declared `Field` is
 //! applied by the core's one cast.
 //!
@@ -28,7 +28,6 @@ use std::borrow::Cow;
 use pyo3::IntoPyObjectExt;
 use pyo3::PyClassInitializer;
 use pyo3::class::basic::CompareOp;
-use std::sync::Mutex;
 
 use arrow_schema::ffi::FFI_ArrowSchema;
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
@@ -43,7 +42,7 @@ use yggdryl::expression::{IntoOrderings, Ordering as CoreOrdering};
 use yggdryl::media::RecordOptions;
 use yggdryl::{
     ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, MimeType, Scalar, Serie,
-    SerieReader, SerieReaderWindows, SerieSource, SortOptions,
+    SortOptions, StreamChunkedSerie,
 };
 
 use crate::chunked_serie::{PyChunkedSerie, chunked_from_arrays};
@@ -51,7 +50,7 @@ use crate::datatype::{
     ArrayIntake, BatchIntake, PyDataType, array_capsule, arrow_array_to_pyarrow, pyarrow,
     schema_capsule,
 };
-use crate::expression::{PySelector, selector_from_value};
+use crate::expression::PySelector;
 use crate::field::{PyField, core_field_from_value};
 use crate::graph::ellipsis;
 use crate::iomedia::{
@@ -60,13 +59,15 @@ use crate::iomedia::{
     record_batch_intake, rooted_batch_to_pyarrow, rooted_reader_to_pyarrow, type_name,
 };
 use crate::join::{JoinKeywords, PyJoinOptions, join_keys_of, join_kind_of};
+use crate::key_serie::{PyKeySerie, PyKeySeries, PyStreamKeySerie, key_by};
 use crate::scalar::{
     PyScalar, PyScalarIterator, as_py, as_py_with_field, from_py, from_py_under,
     pyarrow_scalar_as_array,
 };
 use crate::spill::{PySpillOptions, spill_options_of};
-use crate::text::line::{PyFieldPath, core_path_from_value};
-use crate::window_serie::{LentWindows, PyWindowSerie};
+use crate::stream_chunked_serie::PyStreamChunkedSerie;
+use crate::stream_serie::PyStreamSerie;
+use crate::window_serie::PyWindowSerie;
 use crate::{cast_options, compare, normalize_index, value_error};
 
 /// Many values: a schema-free run, or the Arrow buffers of one field.
@@ -87,8 +88,9 @@ impl PySerie {
     }
 
     /// Resolve a Python index against the serie, negative from the end.
-    fn index(&self, index: isize) -> PyResult<usize> {
-        normalize_index(index, self.inner.len()).ok_or_else(|| PyIndexError::new_err(index))
+    fn index(&self, py: Python<'_>, index: isize) -> PyResult<usize> {
+        normalize_index(index, py.detach(|| self.inner.len()))
+            .ok_or_else(|| PyIndexError::new_err(index))
     }
 
     /// Answer `read` over this serie off the GIL, over a clone taken and
@@ -101,6 +103,29 @@ impl PySerie {
     {
         let serie = slf.try_borrow()?.inner.clone();
         slf.py().detach(move || read(serie)).map_err(value_error)
+    }
+
+    /// Held edits finish under the GIL so another reader can take its
+    /// snapshot. A lazy edit detaches because landing may call Python.
+    fn mutated<T, F>(&mut self, py: Python<'_>, write: F) -> yggdryl::Result<T>
+    where
+        T: Send,
+        F: FnOnce(&mut Serie) -> yggdryl::Result<T> + Send,
+    {
+        if self.inner.is_held() {
+            write(&mut self.inner)
+        } else {
+            py.detach(|| write(&mut self.inner))
+        }
+    }
+}
+
+impl Drop for PySerie {
+    fn drop(&mut self) {
+        if !self.inner.is_held() {
+            let inner = std::mem::replace(&mut self.inner, Serie::new(Vec::new()));
+            Python::attach(|py| py.detach(move || drop(inner)));
+        }
     }
 }
 
@@ -238,48 +263,6 @@ pub(crate) fn serie_argument(value: &Bound<'_, PyAny>, name: &str) -> PyResult<S
     rows_from_py(None, value).map(Serie::new)
 }
 
-/// Hand groups to Python as `(key, rows)` pairs, each serie its leaf class.
-pub(crate) fn groups_to_py(
-    py: Python<'_>,
-    groups: Vec<(Scalar, Serie)>,
-) -> PyResult<Vec<(PyScalar, Py<PyAny>)>> {
-    groups
-        .into_iter()
-        .map(|(key, rows)| Ok((PyScalar::from_inner(key), described(py, rows)?)))
-        .collect()
-}
-
-/// A window's record of static values as the struct value Python reads by
-/// name: each cell of `row` filed under its child of `field`, so `get`,
-/// `[]`, `keys` and `as_py` reach it. The field states the order, which a
-/// struct value - sorted by name - does not keep.
-pub(crate) fn static_struct(field: &CoreField, row: &Scalar) -> PyResult<Scalar> {
-    let cells = row.sequence_rows().unwrap_or_default();
-    Scalar::from_struct(
-        field
-            .fields()
-            .iter()
-            .map(CoreField::name)
-            .zip(cells.iter().cloned()),
-    )
-    .map_err(value_error)
-}
-
-/// Resolve the paths a record partitions by, once: one path - a
-/// `FieldPath` or its text - or an iterable of them.
-fn paths_of(paths: &Bound<'_, PyAny>) -> PyResult<Vec<FieldPath>> {
-    if paths.is_instance_of::<PyString>() || paths.is_instance_of::<PyFieldPath>() {
-        return Ok(vec![core_path_from_value(paths)?]);
-    }
-    let items = paths.try_iter().map_err(|_| {
-        PyTypeError::new_err(format!(
-            "expected a FieldPath, a path string or an iterable of them, got {}",
-            type_name(paths)
-        ))
-    })?;
-    items.map(|path| core_path_from_value(&path?)).collect()
-}
-
 /// Resolve an optional Python field argument once.
 pub(crate) fn field_of(field: Option<&Bound<'_, PyAny>>) -> PyResult<Option<CoreField>> {
     field.map(core_field_from_value).transpose()
@@ -314,7 +297,7 @@ pub(crate) enum Columnar {
     Chunked(ChunkedSerie),
     /// A native reader, taken: record columns already landed under its
     /// root, never re-landed.
-    Reader(Box<SerieReader>),
+    Reader(Box<StreamChunkedSerie>),
     /// A batch stream, not yet pulled.
     Stream(BatchReader),
 }
@@ -364,7 +347,7 @@ impl Columnar {
             },
             Self::Chunked(chunked) => Self::Held(chunked.into_serie()?).joined(root, options),
             Self::Reader(reader) => {
-                Self::Chunked(ChunkedSerie::from_serie_reader(*reader)?).joined(root, options)
+                Self::Chunked(ChunkedSerie::from_chunked_stream(*reader)?).joined(root, options)
             }
             Self::Stream(reader) => Serie::from_arrow_reader(root, reader, options),
         }
@@ -381,14 +364,14 @@ impl Columnar {
         py: Python<'_>,
         root: Option<&CoreField>,
         options: ArrowCastOptions,
-    ) -> PyResult<SerieReader> {
+    ) -> PyResult<StreamChunkedSerie> {
         py.detach(move || {
             let held = match self {
-                Self::Held(serie) | Self::Pinned(serie) => SerieReader::from_serie(serie),
-                Self::Chunked(chunked) => SerieReader::from_chunked(chunked),
+                Self::Held(serie) | Self::Pinned(serie) => StreamChunkedSerie::from_serie(serie),
+                Self::Chunked(chunked) => StreamChunkedSerie::from_chunked(chunked),
                 Self::Reader(reader) => Ok(*reader),
                 Self::Stream(reader) => {
-                    return SerieReader::from_arrow_reader(root, reader, options);
+                    return StreamChunkedSerie::from_arrow_reader(root, reader, options);
                 }
             }?;
             match root {
@@ -433,7 +416,7 @@ impl Columnar {
                 None => Ok(chunked),
             },
             Self::Reader(reader) => {
-                ChunkedSerie::from_serie_reader(*reader).and_then(|chunked| match root {
+                ChunkedSerie::from_chunked_stream(*reader).and_then(|chunked| match root {
                     Some(root) => chunked.cast(root, options),
                     None => Ok(chunked),
                 })
@@ -443,14 +426,18 @@ impl Columnar {
     }
 }
 
-/// Whether `value` is a native `Serie`, `ChunkedSerie` or `SerieReader`.
+/// Whether `value` is a native `Serie`, `ChunkedSerie` or `StreamChunkedSerie`.
 ///
 /// Each exports the Arrow `PyCapsule` Interface for foreign consumers, which
 /// no door inside the binding reads them through.
 pub(crate) fn is_native_columnar(value: &Bound<'_, PyAny>) -> bool {
     value.is_instance_of::<PySerie>()
         || value.is_instance_of::<PyChunkedSerie>()
-        || value.is_instance_of::<PySerieReader>()
+        || value.is_instance_of::<PyStreamChunkedSerie>()
+        || value.is_instance_of::<PyStreamSerie>()
+        || value.is_instance_of::<PyKeySerie>()
+        || value.is_instance_of::<PyKeySeries>()
+        || value.is_instance_of::<PyStreamKeySerie>()
 }
 
 /// Read a columnar Python object, or answer `None` for a value that is not
@@ -459,7 +446,7 @@ pub(crate) fn is_native_columnar(value: &Bound<'_, PyAny>) -> bool {
 /// The order is deterministic and each step is one library's own conversion:
 ///
 /// 1. a native `Serie` or `ChunkedSerie`, shared, or a native
-///    `SerieReader`, taken;
+///    `StreamChunkedSerie`, taken;
 /// 2. a pandas or polars series, converted by that library;
 /// 3. a `NumPy` array;
 /// 4. a `PyArrow` container, whose exact class decides held or streamed;
@@ -473,7 +460,7 @@ pub(crate) fn is_native_columnar(value: &Bound<'_, PyAny>) -> bool {
 /// # Errors
 ///
 /// Returns whatever a library conversion or an Arrow C crossing raised, and a
-/// `ValueError` for a `SerieReader` already handed over.
+/// `ValueError` for a `StreamChunkedSerie` already consumed.
 pub(crate) fn columnar(value: &Bound<'_, PyAny>) -> PyResult<Option<Columnar>> {
     if let Ok(serie) = value.extract::<PyRef<'_, PySerie>>() {
         return Ok(Some(Columnar::Held(serie.inner.clone())));
@@ -481,8 +468,20 @@ pub(crate) fn columnar(value: &Bound<'_, PyAny>) -> PyResult<Option<Columnar>> {
     if let Ok(chunked) = value.extract::<PyRef<'_, PyChunkedSerie>>() {
         return Ok(Some(Columnar::Chunked(chunked.inner.clone())));
     }
-    if let Ok(mut reader) = value.extract::<PyRefMut<'_, PySerieReader>>() {
-        return Ok(Some(Columnar::Reader(Box::new(reader.take()?))));
+    if let Ok(reader) = value.extract::<PyRef<'_, PyStreamChunkedSerie>>() {
+        return Ok(Some(Columnar::Reader(Box::new(reader.take(value.py())?))));
+    }
+    if let Ok(rows) = value.extract::<PyRef<'_, PyStreamSerie>>() {
+        return Ok(Some(Columnar::Held(Serie::from(rows.take(value.py())?))));
+    }
+    if let Ok(key) = value.extract::<PyRef<'_, PyKeySerie>>() {
+        return Ok(Some(Columnar::Held(Serie::from(key.core().clone()))));
+    }
+    if let Ok(keys) = value.extract::<PyRef<'_, PyKeySeries>>() {
+        return Ok(Some(Columnar::Held(Serie::from(keys.core().clone()))));
+    }
+    if let Ok(keys) = value.extract::<PyRef<'_, PyStreamKeySerie>>() {
+        return Ok(Some(Columnar::Held(Serie::from(keys.take(value.py())?))));
     }
     // A held container is recognized by its exact class before the stream
     // ladder, because a `RecordBatch` also exports a stream and reading it as
@@ -601,11 +600,11 @@ pub(crate) fn serie_from_py(
 /// mappings or batch sources keep the record reader's interpretation. Other
 /// concrete containers, a native [`PyScalar`], and a non-iterable cross through
 /// [`serie_from_value`], then become the one held item of their stream.
-pub(crate) fn serie_reader_from_py(
+pub(crate) fn chunked_stream_from_py(
     value: &Bound<'_, PyAny>,
     root: Option<&Bound<'_, PyAny>>,
     options: ArrowCastOptions,
-) -> PyResult<SerieReader> {
+) -> PyResult<StreamChunkedSerie> {
     let root = root
         .map(|root| core_root_field_from_value(root, DEFAULT_ROOT))
         .transpose()?;
@@ -618,7 +617,8 @@ pub(crate) fn serie_reader_from_py(
             &RecordOptions::for_mime_type(&MimeType::ARROW_STREAM).map_err(value_error)?,
         )?
     {
-        return SerieReader::from_arrow_reader(root.as_ref(), reader, options).map_err(value_error);
+        return StreamChunkedSerie::from_arrow_reader(root.as_ref(), reader, options)
+            .map_err(value_error);
     }
     let streams = value.cast::<PyIterator>().is_ok()
         || (value.cast::<PySequence>().is_err()
@@ -628,7 +628,7 @@ pub(crate) fn serie_reader_from_py(
             && value.extract::<PyRef<'_, PyScalar>>().is_err()
             && value.hasattr("__iter__")?);
     if streams {
-        return SerieReader::from_arrow_reader(root.as_ref(), stream_of(value)?, options)
+        return StreamChunkedSerie::from_arrow_reader(root.as_ref(), stream_of(value)?, options)
             .map_err(value_error);
     }
     let serie = serie_from_value(value, None, ArrowCastOptions::new())?;
@@ -640,9 +640,9 @@ pub(crate) fn serie_reader_from_py(
 const DEFAULT_ROOT: &str = "row";
 
 /// The record root a column crosses into a batch or a stream under - the
-/// one rule the core names, [`SerieReader::root_of`].
+/// one rule the core names, [`StreamChunkedSerie::root_of`].
 fn batch_root(serie: &Serie) -> PyResult<CoreField> {
-    SerieReader::root_of(serie.require_field().map_err(value_error)?).map_err(value_error)
+    StreamChunkedSerie::root_of(serie.require_field().map_err(value_error)?).map_err(value_error)
 }
 
 /// The C schema a column crosses the Arrow `PyCapsule` Interface under: a
@@ -679,7 +679,7 @@ pub(crate) fn requested_field(requested: &Bound<'_, PyAny>, name: &str) -> PyRes
 /// nested flag the root states.
 pub(crate) fn reader_capsule<'py>(
     py: Python<'py>,
-    reader: SerieReader,
+    reader: StreamChunkedSerie,
     requested_schema: Option<&Bound<'py, PyAny>>,
 ) -> PyResult<Bound<'py, PyAny>> {
     let reader = match requested_schema {
@@ -1032,101 +1032,107 @@ impl PySerie {
         self.inner.as_lit().is_some()
     }
 
-    fn null_count(&self) -> usize {
-        self.inner.null_count()
+    fn null_count(&self, py: Python<'_>) -> usize {
+        py.detach(|| self.inner.null_count())
     }
 
-    fn is_empty(&self) -> bool {
-        self.inner.is_empty()
+    fn is_empty(&self, py: Python<'_>) -> bool {
+        py.detach(|| self.inner.is_empty())
     }
 
-    fn is_null(&self, index: usize) -> PyResult<bool> {
-        self.inner.is_null(index).map_err(value_error)
+    fn is_null(&self, py: Python<'_>, index: usize) -> PyResult<bool> {
+        py.detach(|| self.inner.is_null(index).map_err(value_error))
     }
 
     /// Row `index`, built as one value.
-    fn scalar(&self, index: usize) -> PyResult<PyScalar> {
-        self.inner
-            .scalar(index)
-            .map(PyScalar::from_inner)
-            .map_err(value_error)
+    fn scalar(&self, py: Python<'_>, index: usize) -> PyResult<PyScalar> {
+        py.detach(|| {
+            self.inner
+                .scalar(index)
+                .map(PyScalar::from_inner)
+                .map_err(value_error)
+        })
     }
 
     /// Row `index`, or `None` past the end.
-    fn get(&self, index: usize) -> Option<PyScalar> {
-        self.inner
-            .get(index)
-            .map(|row| PyScalar::from_inner(row.into_owned()))
+    fn get(&self, py: Python<'_>, index: usize) -> Option<PyScalar> {
+        py.detach(|| {
+            self.inner
+                .get(index)
+                .map(|row| PyScalar::from_inner(row.into_owned()))
+        })
     }
 
     /// Every row, each built once and kept by the list alone.
-    fn rows(&self) -> Vec<PyScalar> {
-        self.inner
-            .rows()
-            .into_owned()
-            .into_iter()
-            .map(PyScalar::from_inner)
-            .collect()
+    fn rows(&self, py: Python<'_>) -> Vec<PyScalar> {
+        py.detach(|| {
+            self.inner
+                .rows()
+                .into_owned()
+                .into_iter()
+                .map(PyScalar::from_inner)
+                .collect()
+        })
     }
 
-    /// Every row as the Python value it is, a record as a `dict`.
     pub(crate) fn as_py(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let field = self.inner.field().cloned();
+        let rows = if self.inner.is_held() {
+            self.inner.rows().into_owned()
+        } else {
+            py.detach(|| self.inner.rows().into_owned())
+        };
         let list = PyList::empty(py);
-        match self.inner.field() {
-            Some(field) => {
-                for row in &self.inner {
-                    list.append(as_py_with_field(py, &row, field)?)?;
-                }
-            }
-            None => {
-                for row in &self.inner {
-                    list.append(as_py(py, &row)?)?;
-                }
-            }
+        for row in rows {
+            list.append(match &field {
+                Some(field) => as_py_with_field(py, &row, field)?,
+                None => as_py(py, &row)?,
+            })?;
         }
         Ok(list.into_any().unbind())
     }
 
     /// This serie as the one value a `Scalar` sequence holds.
-    fn into_scalar(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.clone()))
+    fn into_scalar(&self, py: Python<'_>) -> PyScalar {
+        py.detach(|| PyScalar::from_inner(Scalar::from(self.inner.clone())))
     }
 
     /// The run of this serie's rows, dropping the field.
-    fn into_run(&self) -> Self {
-        Self::from_inner(Serie::from(self.inner.clone().into_run()))
+    fn into_run(&self, py: Python<'_>) -> Self {
+        py.detach(|| Self::from_inner(Serie::from(self.inner.clone().into_run())))
     }
 
     /// `length` rows from `offset`, sharing a column's buffers.
     fn slice(&self, py: Python<'_>, offset: usize, length: usize) -> PyResult<Py<PyAny>> {
-        described(py, self.inner.slice(offset, length).map_err(value_error)?)
+        described(
+            py,
+            py.detach(|| self.inner.slice(offset, length))
+                .map_err(value_error)?,
+        )
     }
 
     /// A record column's child named `name`, or `None`.
     fn child(&self, py: Python<'_>, name: &str) -> PyResult<Option<Py<PyAny>>> {
-        self.inner
-            .child(name)
+        py.detach(|| self.inner.child(name).cloned())
             .map(|child| described(py, child.clone()))
             .transpose()
     }
 
     /// A record column's child, or a union's member, at `index`.
     fn child_at(&self, py: Python<'_>, index: usize) -> PyResult<Option<Py<PyAny>>> {
-        self.inner
-            .child_at(index)
+        py.detach(|| self.inner.child_at(index).cloned())
             .map(|child| described(py, child.clone()))
             .transpose()
     }
 
     /// Every child of a record column, or member of a union.
     fn children(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
-        described_all(py, self.inner.children())
+        described_all(py, py.detach(|| self.inner.children()))
     }
 
     /// A sequence column's items, a mapping's entries, an encoding's values.
     fn items(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
-        self.inner
-            .items()
+        py.detach(|| self.inner.items().cloned())
             .map(|items| described(py, items.clone()))
             .transpose()
     }
@@ -1134,91 +1140,107 @@ impl PySerie {
     /// The column `path` reaches, spelled as a field path.
     fn get_child_by_path(&self, py: Python<'_>, path: &str) -> PyResult<Option<Py<PyAny>>> {
         let path = FieldPath::from_str(path).map_err(value_error)?;
-        self.inner
-            .get_child_by_path(&path)
+        py.detach(|| self.inner.get_child_by_path(&path).cloned())
             .map(|child| described(py, child.clone()))
             .transpose()
     }
 
     /// Replace rows `start..end` by `rows`: the one mutation.
-    fn splice(&mut self, start: usize, end: usize, rows: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.inner
-            .splice(start..end, rows_from_py(self.inner.field(), rows)?)
+    fn splice(
+        &mut self,
+        py: Python<'_>,
+        start: usize,
+        end: usize,
+        rows: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let rows = rows_from_py(self.inner.field(), rows)?;
+        self.mutated(py, |inner| inner.splice(start..end, rows))
             .map_err(value_error)
     }
 
-    fn set(&mut self, index: usize, value: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn set(&mut self, py: Python<'_>, index: usize, value: &Bound<'_, PyAny>) -> PyResult<()> {
         let value = match self.inner.field() {
             Some(field) => from_py_under(field, value)?,
             None => from_py(value)?,
         };
-        self.inner.set(index, value).map_err(value_error)
+        self.mutated(py, |inner| inner.set(index, value))
+            .map_err(value_error)
     }
 
-    fn push(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.inner.push(from_py(value)?).map_err(value_error)
+    fn push(&mut self, py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let value = from_py(value)?;
+        self.mutated(py, |inner| inner.push(value))
+            .map_err(value_error)
     }
 
-    fn insert(&mut self, index: usize, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.inner
-            .insert(index, from_py(value)?)
+    fn insert(&mut self, py: Python<'_>, index: usize, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let value = from_py(value)?;
+        self.mutated(py, |inner| inner.insert(index, value))
             .map_err(value_error)
     }
 
     /// Remove row `index` and answer it.
-    fn remove(&mut self, index: usize) -> PyResult<PyScalar> {
-        self.inner
-            .remove(index)
+    fn remove(&mut self, py: Python<'_>, index: usize) -> PyResult<PyScalar> {
+        self.mutated(py, |inner| inner.remove(index))
             .map(PyScalar::from_inner)
             .map_err(value_error)
     }
 
     /// Remove the last row and answer it, or `None` when empty.
-    fn pop(&mut self) -> PyResult<Option<PyScalar>> {
-        self.inner
-            .pop()
+    fn pop(&mut self, py: Python<'_>) -> PyResult<Option<PyScalar>> {
+        self.mutated(py, Serie::pop)
             .map(|row| row.map(PyScalar::from_inner))
             .map_err(value_error)
     }
 
-    fn truncate(&mut self, len: usize) -> PyResult<()> {
-        self.inner.truncate(len).map_err(value_error)
+    fn truncate(&mut self, py: Python<'_>, len: usize) -> PyResult<()> {
+        self.mutated(py, |inner| inner.truncate(len))
+            .map_err(value_error)
     }
 
-    fn clear(&mut self) -> PyResult<()> {
-        self.inner.clear().map_err(value_error)
+    fn clear(&mut self, py: Python<'_>) -> PyResult<()> {
+        self.mutated(py, Serie::clear).map_err(value_error)
     }
 
-    fn extend(&mut self, rows: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn extend(&mut self, py: Python<'_>, rows: &Bound<'_, PyAny>) -> PyResult<()> {
         let rows = rows_from_py(self.inner.field(), rows)?;
-        self.inner.extend(rows).map_err(value_error)
+        self.mutated(py, |inner| inner.extend(rows))
+            .map_err(value_error)
     }
 
     /// Append every row of `other`, buffer to buffer where the fields agree.
     #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `PyRef`.
-    fn extend_from_serie(&mut self, other: PyRef<'_, Self>) -> PyResult<()> {
-        self.inner
-            .extend_from_serie(&other.inner)
+    fn extend_from_serie(&mut self, py: Python<'_>, other: PyRef<'_, Self>) -> PyResult<()> {
+        let other = other.inner.clone();
+        self.mutated(py, |inner| inner.extend_from_serie(&other))
             .map_err(value_error)
     }
 
-    fn resize(&mut self, len: usize, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.inner.resize(len, from_py(value)?).map_err(value_error)
+    fn resize(&mut self, py: Python<'_>, len: usize, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let value = from_py(value)?;
+        self.mutated(py, |inner| inner.resize(len, value))
+            .map_err(value_error)
     }
 
     /// Replace a record column's child of `child`'s name, or add it.
     #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `PyRef`.
-    fn set_child(&mut self, child: PyRef<'_, Self>) -> PyResult<()> {
-        self.inner
-            .set_child(child.inner.clone())
+    fn set_child(&mut self, py: Python<'_>, child: PyRef<'_, Self>) -> PyResult<()> {
+        let child = child.inner.clone();
+        self.mutated(py, |inner| inner.set_child(child))
             .map_err(value_error)
     }
 
     /// Write one cell of row `index`, `path` deep, in place.
-    fn set_cell(&mut self, path: &str, index: usize, value: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn set_cell(
+        &mut self,
+        py: Python<'_>,
+        path: &str,
+        index: usize,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
         let path = FieldPath::from_str(path).map_err(value_error)?;
-        self.inner
-            .set_cell(&path, index, from_py(value)?)
+        let value = from_py(value)?;
+        self.mutated(py, |inner| inner.set_cell(&path, index, value))
             .map_err(value_error)
     }
 
@@ -1323,26 +1345,10 @@ impl PySerie {
         described(slf.py(), kept)
     }
 
-    /// The rows grouped by `keys`, as long as this serie: one `(key, rows)`
-    /// per distinct key in order of first occurrence.
-    fn partition_by(
-        slf: &Bound<'_, Self>,
-        keys: &Bound<'_, PyAny>,
-    ) -> PyResult<Vec<(PyScalar, Py<PyAny>)>> {
-        let keys = serie_argument(keys, "keys")?;
-        let groups = Self::detached(slf, move |serie| serie.partition_by(&keys))?;
-        groups_to_py(slf.py(), groups)
-    }
-
-    /// A record column's rows grouped by the cells `paths` reach, keyed by
-    /// the run of those cells.
-    fn partition_by_paths(
-        slf: &Bound<'_, Self>,
-        paths: &Bound<'_, PyAny>,
-    ) -> PyResult<Vec<(PyScalar, Py<PyAny>)>> {
-        let paths = paths_of(paths)?;
-        let groups = Self::detached(slf, move |serie| serie.partition_by_paths(&paths))?;
-        groups_to_py(slf.py(), groups)
+    /// Group native rows by one resolved key intake.
+    fn partition_by(slf: &Bound<'_, Self>, by: &Bound<'_, PyAny>) -> PyResult<PyKeySeries> {
+        let by = key_by(by)?;
+        Self::detached(slf, move |serie| serie.partition_by(by)).map(PyKeySeries::from_inner)
     }
 
     /// The bytes the rows occupy: a column's buffers as its own slice
@@ -1380,9 +1386,10 @@ impl PySerie {
     ) -> PyResult<()> {
         let py = slf.py();
         let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
-        slf.try_borrow_mut()?
-            .inner
-            .spill(&options)
+        let mut held = slf.try_borrow_mut()?;
+        let inner = &mut held.inner;
+        slf.py()
+            .detach(|| inner.spill(&options))
             .map_err(value_error)
     }
 
@@ -1398,9 +1405,10 @@ impl PySerie {
     ) -> PyResult<Bound<'py, Self>> {
         let py = slf.py();
         let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
-        slf.try_borrow_mut()?
-            .inner
-            .as_spilled(&options)
+        let mut held = slf.try_borrow_mut()?;
+        let inner = &mut held.inner;
+        slf.py()
+            .detach(|| inner.as_spilled(&options))
             .map_err(value_error)?;
         Ok(slf.clone())
     }
@@ -1507,27 +1515,28 @@ impl PySerie {
         nulls_first: bool,
     ) -> PyResult<Bound<'py, Self>> {
         let options = sort_options(descending, nulls_first);
-        slf.try_borrow_mut()?
-            .inner
-            .as_sorted(options)
+        let mut held = slf.try_borrow_mut()?;
+        let inner = &mut held.inner;
+        slf.py()
+            .detach(|| inner.as_sorted(options))
             .map_err(value_error)?;
         Ok(slf.clone())
     }
 
     /// Keep the first occurrence of every value, in place.
     fn as_unique<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Self>> {
-        slf.try_borrow_mut()?
-            .inner
-            .as_unique()
-            .map_err(value_error)?;
+        let mut held = slf.try_borrow_mut()?;
+        let inner = &mut held.inner;
+        slf.py().detach(|| inner.as_unique()).map_err(value_error)?;
         Ok(slf.clone())
     }
 
     /// Reverse the rows in place.
     fn as_reversed<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Self>> {
-        slf.try_borrow_mut()?
-            .inner
-            .as_reversed()
+        let mut held = slf.try_borrow_mut()?;
+        let inner = &mut held.inner;
+        slf.py()
+            .detach(|| inner.as_reversed())
             .map_err(value_error)?;
         Ok(slf.clone())
     }
@@ -1538,9 +1547,10 @@ impl PySerie {
         indices: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, Self>> {
         let indices = serie_argument(indices, "indices")?;
-        slf.try_borrow_mut()?
-            .inner
-            .as_taken(&indices)
+        let mut held = slf.try_borrow_mut()?;
+        let inner = &mut held.inner;
+        slf.py()
+            .detach(|| inner.as_taken(&indices))
             .map_err(value_error)?;
         Ok(slf.clone())
     }
@@ -1551,9 +1561,10 @@ impl PySerie {
         mask: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, Self>> {
         let mask = serie_argument(mask, "mask")?;
-        slf.try_borrow_mut()?
-            .inner
-            .as_filtered(&mask)
+        let mut held = slf.try_borrow_mut()?;
+        let inner = &mut held.inner;
+        slf.py()
+            .detach(|| inner.as_filtered(&mask))
             .map_err(value_error)?;
         Ok(slf.clone())
     }
@@ -1565,9 +1576,10 @@ impl PySerie {
         by: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, Self>> {
         let by = orderings_of(by)?;
-        slf.try_borrow_mut()?
-            .inner
-            .as_sort_by(by)
+        let mut held = slf.try_borrow_mut()?;
+        let inner = &mut held.inner;
+        slf.py()
+            .detach(|| inner.as_sort_by(by))
             .map_err(value_error)?;
         Ok(slf.clone())
     }
@@ -1583,50 +1595,67 @@ impl PySerie {
         Ok(PyWindowSerie::new(slf.clone().unbind(), offset, length))
     }
 
-    /// The windows of equal adjacent keys, each `(key, window)`: over this
-    /// serie object at its offsets, unless `sorted` gathered the rows into
-    /// key order - then over one new `Serie` of them, which every window
-    /// shares. Every window states its record as `static_values`.
-    /// `sorted=None` is `False`.
-    #[pyo3(
-        signature = (by, sorted = Some(false)),
-        text_signature = "($self, by, sorted=False)"
-    )]
+    /// Own the adjacent equal-key windows, sharing the native payload buffers.
+    #[pyo3(signature = (by, sorted = Some(false)))]
     fn window_by(
         slf: &Bound<'_, Self>,
         by: &Bound<'_, PyAny>,
         sorted: Option<bool>,
-    ) -> PyResult<Vec<(PyScalar, PyWindowSerie)>> {
-        let selector = selector_from_value(by)?;
-        let sorted = sorted.unwrap_or(false);
-        let lent = Self::detached(slf, move |serie| {
-            Ok(LentWindows::of(&serie, serie.window_by(selector, sorted)?))
-        })?;
-        lent.into_py(slf.py(), slf.clone().unbind())
+    ) -> PyResult<PyKeySeries> {
+        let by = key_by(by)?;
+        Self::detached(slf, move |serie| {
+            serie.window_by(by, sorted.unwrap_or(false))
+        })
+        .map(PyKeySeries::from_inner)
+    }
+
+    fn into_stream(slf: &Bound<'_, Self>) -> PyResult<PyStreamSerie> {
+        Self::detached(slf, yggdryl::Serie::into_stream).map(PyStreamSerie::from_core)
+    }
+
+    #[pyo3(signature = (row_size = None, byte_size = None))]
+    fn into_chunked_stream(
+        slf: &Bound<'_, Self>,
+        row_size: Option<usize>,
+        byte_size: Option<u64>,
+    ) -> PyResult<PyStreamChunkedSerie> {
+        let serie = slf.try_borrow()?.inner.clone();
+        slf.py()
+            .detach(move || serie.into_chunked_stream(row_size, byte_size))
+            .map(PyStreamChunkedSerie::from)
+            .map_err(value_error)
     }
 
     /// This column's one row as a `pyarrow.Scalar`, sharing its buffers.
     fn into_arrow_scalar<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let scalar = self.inner.into_arrow_scalar().map_err(value_error)?;
+        let scalar = py
+            .detach(|| self.inner.into_arrow_scalar())
+            .map_err(value_error)?;
         arrow_array_to_pyarrow(py, &scalar.into_inner(), self.inner.field())?.get_item(0)
     }
 
     /// The column's buffers as a `pyarrow.Array`, shared; a run has none.
     fn into_arrow_array<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let array = self.inner.require_arrow_array().map_err(value_error)?;
+        let array = py
+            .detach(|| self.inner.require_arrow_array())
+            .map_err(value_error)?;
         arrow_array_to_pyarrow(py, &array, self.inner.field())
     }
 
     /// A record column as one `pyarrow.RecordBatch` of its children, under
     /// the root the core names it by, buffers shared.
     fn into_arrow_batch<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let batch = self.inner.into_arrow_batch().map_err(value_error)?;
+        let batch = py
+            .detach(|| self.inner.into_arrow_batch())
+            .map_err(value_error)?;
         rooted_batch_to_pyarrow(py, &batch_root(&self.inner)?, batch)
     }
 
     /// A record column as a `pyarrow.RecordBatchReader` of one batch.
     fn into_arrow_reader<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.inner.into_arrow_reader().map_err(value_error)?;
+        let reader = py
+            .detach(|| self.inner.into_arrow_reader())
+            .map_err(value_error)?;
         rooted_reader_to_pyarrow(py, &batch_root(&self.inner)?, reader)
     }
 
@@ -1659,7 +1688,9 @@ impl PySerie {
             }
             None => serie,
         };
-        let array = serie.require_arrow_array().map_err(value_error)?;
+        let array = py
+            .detach(|| serie.require_arrow_array())
+            .map_err(value_error)?;
         Ok((
             schema_capsule(py, capsule_schema(&serie)?)?,
             array_capsule(py, &array)?,
@@ -1673,13 +1704,17 @@ impl PySerie {
 
     /// This column's rows as one pandas frame.
     fn into_pandas<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.inner.into_arrow_reader().map_err(value_error)?;
+        let reader = py
+            .detach(|| self.inner.into_arrow_reader())
+            .map_err(value_error)?;
         frame_from_reader(py, reader, Frames::Pandas)
     }
 
     /// This column's rows as one polars frame.
     fn into_polars<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.inner.into_arrow_reader().map_err(value_error)?;
+        let reader = py
+            .detach(|| self.inner.into_arrow_reader())
+            .map_err(value_error)?;
         frame_from_reader(py, reader, Frames::Polars)
     }
 
@@ -1697,14 +1732,15 @@ impl PySerie {
         )
     }
 
-    fn __len__(&self) -> usize {
-        self.inner.len()
+    fn __len__(&self, py: Python<'_>) -> usize {
+        py.detach(|| self.inner.len())
     }
 
     /// Row `key`, negative from the end, or the window a step-1 slice names.
     fn __getitem__(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         if let Ok(slice) = key.cast::<PySlice>() {
-            let window = slice.indices(isize::try_from(self.inner.len()).unwrap_or(isize::MAX))?;
+            let window = slice
+                .indices(isize::try_from(py.detach(|| self.inner.len())).unwrap_or(isize::MAX))?;
             if window.step != 1 {
                 return Err(PyValueError::new_err(
                     "a Serie slices with a step of 1 only",
@@ -1720,26 +1756,33 @@ impl PySerie {
         let index = key
             .extract::<isize>()
             .map_err(|_| PyTypeError::new_err("Serie indexes must be int or slice"))?;
-        self.scalar(self.index(index)?)?.into_py_any(py)
+        self.scalar(py, self.index(py, index)?)?.into_py_any(py)
     }
 
-    fn __setitem__(&mut self, index: isize, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        let index = self.index(index)?;
-        self.set(index, value)
+    fn __setitem__(
+        &mut self,
+        py: Python<'_>,
+        index: isize,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let index = self.index(py, index)?;
+        self.set(py, index, value)
     }
 
-    fn __delitem__(&mut self, index: isize) -> PyResult<()> {
-        let index = self.index(index)?;
-        self.remove(index).map(|_| ())
+    fn __delitem__(&mut self, py: Python<'_>, index: isize) -> PyResult<()> {
+        let index = self.index(py, index)?;
+        self.remove(py, index).map(|_| ())
     }
 
-    fn __iter__(&self) -> PyScalarIterator {
-        PyScalarIterator::new(self.inner.iter().map(Cow::into_owned))
+    fn __iter__(&self, py: Python<'_>) -> PyScalarIterator {
+        py.detach(|| PyScalarIterator::new(self.inner.iter().map(Cow::into_owned)))
     }
 
     fn __contains__(&self, value: &Bound<'_, PyAny>) -> PyResult<bool> {
         let value = from_py(value)?;
-        Ok(self.inner.iter().any(|row| *row == value))
+        Ok(Python::attach(|py| {
+            py.detach(|| self.inner.iter().any(|row| *row == value))
+        }))
     }
 
     /// The call that rebuilds this serie, its rows spelled as Python values.
@@ -1760,7 +1803,8 @@ impl PySerie {
         let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
             return Ok(other.py().NotImplemented());
         };
-        compare(self.inner.cmp(&other.inner), operation).into_py_any(other.py())
+        let right = other.inner.clone();
+        compare(other.py().detach(|| self.inner.cmp(&right)), operation).into_py_any(other.py())
     }
 
     // A serie is mutable, so it cannot promise a stable hash.
@@ -1771,7 +1815,7 @@ impl PySerie {
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, PickleArguments)> {
         Ok((
             py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
-            (self.rows(), self.field()),
+            (self.rows(py), self.field()),
         ))
     }
 
@@ -1785,480 +1829,23 @@ impl PySerie {
     }
 }
 
-/// One record [`Serie`] per batch of an Arrow stream, each cast by one plan.
-///
-/// The core [`SerieReader`] compiles its plan before a batch is pulled, so
-/// a planning failure is raised by the constructor. The reader is `Send` but
-/// not `Sync`, and Python may pull from any thread, so it sits behind a lock;
-/// `into_arrow_reader` takes it, after which nothing is left to pull.
-#[pyclass(name = "SerieReader", module = "yggdryl._native")]
-pub(crate) struct PySerieReader {
-    reader: Mutex<Option<SerieReader>>,
-    field: CoreField,
-    /// The reader's static values - the record field and its row - read
-    /// once beside the field, so they stay readable once the reader is
-    /// handed over.
-    statics: Option<(CoreField, Scalar)>,
+pub(crate) fn serie_source_of(value: &Bound<'_, PyAny>) -> PyResult<Serie> {
+    match columnar(value)? {
+        Some(value) => native_columnar(value),
+        None => chunked_stream_from_py(value, None, ArrowCastOptions::new()).map(Serie::from),
+    }
 }
 
-impl PySerieReader {
-    fn from_inner(reader: SerieReader) -> Self {
-        Self {
-            field: reader.field().clone(),
-            statics: reader.static_values().map(|statics| {
-                let (field, row) = statics.into_parts();
-                (field.clone(), row)
-            }),
-            reader: Mutex::new(Some(reader)),
+pub(crate) fn native_columnar(value: Columnar) -> PyResult<Serie> {
+    match value {
+        Columnar::Held(serie) | Columnar::Pinned(serie) => Ok(serie),
+        Columnar::Chunked(chunked) => Ok(Serie::from(chunked)),
+        Columnar::Reader(reader) => Ok(Serie::from(*reader)),
+        Columnar::Stream(reader) => {
+            StreamChunkedSerie::from_arrow_reader(None, reader, ArrowCastOptions::new())
+                .map(Serie::from)
+                .map_err(value_error)
         }
-    }
-
-    /// The reader, or `None` once `into_arrow_reader` took it.
-    fn held(&mut self) -> &mut Option<SerieReader> {
-        self.reader
-            .get_mut()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    /// Take the reader, which is what handing a stream over means.
-    pub(crate) fn take(&mut self) -> PyResult<SerieReader> {
-        self.held().take().ok_or_else(handed_over)
-    }
-
-    /// Refuse a reader already handed over, before a consuming verb resolves
-    /// an argument it cannot give back.
-    fn require_held(&mut self) -> PyResult<()> {
-        if self.held().is_some() {
-            Ok(())
-        } else {
-            Err(handed_over())
-        }
-    }
-
-    /// The reader's answer about the records it holds; a reader handed
-    /// over holds none.
-    fn holding<T: Default>(&self, read: impl FnOnce(&SerieReader) -> T) -> T {
-        self.reader
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-            .map_or_else(T::default, read)
-    }
-}
-
-/// The refusal of a reader whose records were already handed over.
-fn handed_over() -> PyErr {
-    PyValueError::new_err("SerieReader was already handed over by into_arrow_reader")
-}
-
-/// Read rows in any shape the crate holds them, once: a held column, held
-/// chunks and a stream keep their shape - a held side of a join is the one
-/// built and hashed, a held write is its batches as they stand - and any
-/// other value is what `SerieReader.from_` reads it as.
-pub(crate) fn serie_source_of(value: &Bound<'_, PyAny>) -> PyResult<SerieSource> {
-    let Some(columnar) = columnar(value)? else {
-        return serie_reader_from_py(value, None, ArrowCastOptions::new()).map(SerieSource::from);
-    };
-    Ok(match columnar {
-        Columnar::Held(serie) | Columnar::Pinned(serie) => SerieSource::from(serie),
-        Columnar::Chunked(chunked) => SerieSource::from(chunked),
-        Columnar::Reader(reader) => SerieSource::from(*reader),
-        Columnar::Stream(stream) => SerieSource::from(
-            SerieReader::from_arrow_reader(None, stream, ArrowCastOptions::new())
-                .map_err(value_error)?,
-        ),
-    })
-}
-
-impl From<SerieReader> for PySerieReader {
-    fn from(reader: SerieReader) -> Self {
-        Self::from_inner(reader)
-    }
-}
-
-#[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.
-#[pymethods]
-impl PySerieReader {
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
-    /// Read `reader`'s batches as record columns: of its own schema, under
-    /// the root `row`, or cast into `root` by one plan compiled here.
-    #[staticmethod]
-    #[pyo3(signature = (reader, root = None, *, safe = true, representation = "value"))]
-    fn from_arrow_reader(
-        reader: &Bound<'_, PyAny>,
-        root: Option<&Bound<'_, PyAny>>,
-        safe: bool,
-        representation: &str,
-    ) -> PyResult<Self> {
-        let options = cast_options(safe, representation)?;
-        let root = field_of(root)?;
-        let reader = SerieReader::from_arrow_reader(root.as_ref(), stream_of(reader)?, options)
-            .map_err(value_error)?;
-        Ok(Self::from_inner(reader))
-    }
-
-    /// Read any columnar object, or any rows, as a stream of record
-    /// columns: of its own schema, or cast into `root` by one plan.
-    ///
-    /// A stream - a reader, a table, a frame, a dataset, an iterator or
-    /// generic iterable - stays a stream. A held column - a `Serie`, an array,
-    /// a batch - is the one item of its stream, and held chunks - a
-    /// `ChunkedSerie`, a chunked array - one item per chunk. Sequences of
-    /// mappings or batch sources remain record streams. Other concrete
-    /// containers and scalar values cross as `Serie.from_` reads them, then
-    /// become one held item.
-    #[staticmethod]
-    #[pyo3(name = "from_")]
-    #[pyo3(signature = (value, root = None, *, safe = true, representation = "value"))]
-    fn from_(
-        value: &Bound<'_, PyAny>,
-        root: Option<&Bound<'_, PyAny>>,
-        safe: bool,
-        representation: &str,
-    ) -> PyResult<Self> {
-        let options = cast_options(safe, representation)?;
-        serie_reader_from_py(value, root, options).map(Self::from_inner)
-    }
-
-    /// Read one held column as a stream of one record column: a record
-    /// column as the batch it is, any other as the one child of a `row`.
-    #[staticmethod]
-    #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `PyRef`.
-    fn from_serie(serie: PyRef<'_, PySerie>) -> PyResult<Self> {
-        SerieReader::from_serie(serie.inner.clone())
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Read held chunks as the stream of one record column per chunk: a
-    /// record's chunks as the batches they are, any other's each the one
-    /// child of a `row`; nothing is cast, copied or read.
-    #[staticmethod]
-    #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `PyRef`.
-    fn from_chunked(chunked: PyRef<'_, PyChunkedSerie>) -> PyResult<Self> {
-        SerieReader::from_chunked(chunked.inner.clone())
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// The records not yet pulled, each cast into `field` by one plan
-    /// compiled here - a `Field`, or a `DataType` as its required column
-    /// named `value` - as a new reader; this one is spent afterwards. The
-    /// options and the target are resolved before the reader is taken, so a
-    /// refused one leaves it usable.
-    #[pyo3(signature = (field, *, safe = true, representation = "value"))]
-    fn cast(
-        &mut self,
-        field: &Bound<'_, PyAny>,
-        safe: bool,
-        representation: &str,
-    ) -> PyResult<Self> {
-        let options = cast_options(safe, representation)?;
-        let target = target_of(field)?;
-        let reader = self.take()?;
-        reader
-            .cast(&target, options)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// The bytes the records this reader holds occupy in memory: the held
-    /// records still to yield; a stream holds no batch between pulls, and a
-    /// reader handed over none, so both answer zero.
-    fn resident_size(&self) -> usize {
-        self.holding(SerieReader::resident_size)
-    }
-
-    /// Whether every record this reader holds lies in a spill file: held
-    /// records only, never a stream.
-    fn is_spilled(&self) -> bool {
-        self.holding(SerieReader::is_spilled)
-    }
-
-    /// Move the records this reader holds to disk under the bound, as
-    /// `Serie.spill` moves each: `options` - the process default for `None`
-    /// - with `byte_size` and `folder` set on a copy where given. A stream
-    /// holds none and is untouched; a reader handed over is refused, as
-    /// every verb that writes it is.
-    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
-    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
-    fn spill(
-        &mut self,
-        py: Python<'_>,
-        options: Option<PyRef<'_, PySpillOptions>>,
-        byte_size: Py<PyAny>,
-        folder: Py<PyAny>,
-    ) -> PyResult<()> {
-        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
-        match self.held() {
-            Some(reader) => reader.spill(&options).map_err(value_error),
-            None => Err(handed_over()),
-        }
-    }
-
-    /// `spill`, answering this reader so calls chain; a reader handed over
-    /// is refused.
-    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
-    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
-    fn as_spilled<'py>(
-        slf: &Bound<'py, Self>,
-        options: Option<PyRef<'_, PySpillOptions>>,
-        byte_size: Py<PyAny>,
-        folder: Py<PyAny>,
-    ) -> PyResult<Bound<'py, Self>> {
-        let py = slf.py();
-        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
-        match slf.try_borrow_mut()?.held() {
-            Some(reader) => reader.as_spilled(&options).map_err(value_error)?,
-            None => return Err(handed_over()),
-        };
-        Ok(slf.clone())
-    }
-
-    /// This reader's records spilled under the bound, as a new reader; this
-    /// one is spent, as every consuming verb spends it. The options are
-    /// resolved before the reader is taken, so a refused one leaves it
-    /// usable.
-    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
-    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
-    fn into_spilled(
-        &mut self,
-        py: Python<'_>,
-        options: Option<PyRef<'_, PySpillOptions>>,
-        byte_size: Py<PyAny>,
-        folder: Py<PyAny>,
-    ) -> PyResult<Self> {
-        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
-        let reader = self.take()?;
-        py.detach(move || reader.into_spilled(&options))
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Every record not yet pulled, in sorted order, as a new reader; this
-    /// one is spent. The stream is drained before the first sorted batch,
-    /// because the last row pulled may be the first in order; the root and
-    /// the static values are kept.
-    #[pyo3(signature = (*, descending = false, nulls_first = false))]
-    fn into_sorted(
-        &mut self,
-        py: Python<'_>,
-        descending: bool,
-        nulls_first: bool,
-    ) -> PyResult<Self> {
-        let options = sort_options(descending, nulls_first);
-        let reader = self.take()?;
-        py.detach(move || reader.into_sorted(options))
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Every record not yet pulled, in the order the `order by` keys of
-    /// `by` state, as a new reader; this one is spent. The keys are parsed
-    /// before the reader is taken, so a text that does not parse leaves it
-    /// usable; a key the root refuses spends it with no batch pulled.
-    fn into_sort_by(&mut self, py: Python<'_>, by: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let by = orderings_of(by)?;
-        let reader = self.take()?;
-        py.detach(move || reader.into_sort_by(by))
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// This stream joined with `other` on `by`, under `how`, as a stream of
-    /// the output, one probe batch joined at a time; this reader is spent.
-    /// `other` is a `Serie`, a `ChunkedSerie` or a `SerieReader` - a held
-    /// side is the one built and hashed, so the stream probes and nothing of
-    /// it is collected - or anything `SerieReader.from_` reads. The keys,
-    /// `how` and the options are resolved before either side is taken, so a
-    /// refused one leaves both usable; the join's own refusals are raised
-    /// before the first batch is pulled.
-    #[pyo3(signature = (
-        other,
-        by,
-        how = "inner",
-        options = None,
-        *,
-        coalesce = ellipsis(),
-        suffix = ellipsis(),
-        build = ellipsis(),
-        prune = ellipsis(),
-        spill = ellipsis(),
-        pushdown_keys = ellipsis(),
-    ))]
-    #[allow(clippy::too_many_arguments)]
-    #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `PyRef`.
-    fn join_with(
-        &mut self,
-        py: Python<'_>,
-        other: &Bound<'_, PyAny>,
-        by: &Bound<'_, PyAny>,
-        how: &str,
-        options: Option<PyRef<'_, PyJoinOptions>>,
-        coalesce: Py<PyAny>,
-        suffix: Py<PyAny>,
-        build: Py<PyAny>,
-        prune: Py<PyAny>,
-        spill: Py<PyAny>,
-        pushdown_keys: Py<PyAny>,
-    ) -> PyResult<Self> {
-        let keys = join_keys_of(by)?;
-        let how = join_kind_of(how)?;
-        let options = JoinKeywords {
-            coalesce,
-            suffix,
-            build,
-            prune,
-            spill,
-            pushdown_keys,
-        }
-        .resolve(py, options.as_deref())?;
-        self.require_held()?;
-        let other = serie_source_of(other)?;
-        let reader = self.take()?;
-        py.detach(move || reader.join_with(other, keys, how, &options))
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// The record every yielded column is typed by.
-    #[getter]
-    fn field(&self) -> PyField {
-        PyField::from_inner(self.field.clone())
-    }
-
-    /// The values constant over every row this reader yields, where it is a
-    /// window `window_by` cut: one struct value named as the root, its cells
-    /// the windowed reader's own but `windownum` and `rownum`, the key
-    /// cells, `windownum` and `rownum`, read by name through `Scalar`'s own
-    /// accessors. `None` for every other reader. Kept by `cast`, readable
-    /// after `into_arrow_reader`, and never part of a batch.
-    #[getter]
-    fn static_values(&self) -> PyResult<Option<PyScalar>> {
-        self.statics
-            .as_ref()
-            .map(|(field, row)| static_struct(field, row).map(PyScalar::from_inner))
-            .transpose()
-    }
-
-    /// Cut the stream into windows of equal adjacent keys, one lazy
-    /// `SerieReader` each, in the order they arrive; this reader is spent.
-    /// The key is parsed before the reader is taken, so a text that does not
-    /// parse leaves it usable; a key the root refuses spends it, as a
-    /// refused cast does. `sorted=True` verifies the keys arrive in order
-    /// and refuses the first that does not; `sorted=None` is `False`.
-    #[pyo3(
-        signature = (by, sorted = Some(false)),
-        text_signature = "($self, by, sorted=False)"
-    )]
-    fn window_by(
-        &mut self,
-        by: &Bound<'_, PyAny>,
-        sorted: Option<bool>,
-    ) -> PyResult<PySerieReaderWindows> {
-        let selector = selector_from_value(by)?;
-        let reader = self.take()?;
-        reader
-            .window_by(selector, sorted.unwrap_or(false))
-            .map(|inner| PySerieReaderWindows { inner })
-            .map_err(value_error)
-    }
-
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-
-    /// The next batch as one record column, or the end of the stream.
-    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
-        let reader = self.held();
-        let next = py.detach(|| reader.as_mut().and_then(Iterator::next));
-        match next {
-            Some(Ok(serie)) => described(py, serie).map(Some),
-            Some(Err(error)) => Err(value_error(error)),
-            None => Ok(None),
-        }
-    }
-
-    /// The batches not yet pulled, cast to the root, as a
-    /// `pyarrow.RecordBatchReader` pulled C to C; this reader is spent
-    /// afterwards.
-    fn into_arrow_reader<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.take()?;
-        rooted_reader_to_pyarrow(py, &self.field, reader.into_arrow_reader())
-    }
-
-    /// The batches not yet pulled as the Arrow `PyCapsule` Interface's
-    /// stream capsule, cast into `requested_schema` by the one cast when a
-    /// consumer asks; this reader is spent afterwards, as
-    /// `into_arrow_reader` spends it.
-    #[pyo3(signature = (requested_schema = None))]
-    fn __arrow_c_stream__<'py>(
-        &mut self,
-        py: Python<'py>,
-        requested_schema: Option<&Bound<'py, PyAny>>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.take()?;
-        reader_capsule(py, reader, requested_schema)
-    }
-
-    fn __repr__(&self) -> String {
-        format!("SerieReader(field={})", self.field)
-    }
-}
-
-/// The windows of a stream: one lazy `SerieReader` per run of equal
-/// adjacent keys, in the order they arrive - what `SerieReader.window_by`
-/// answers.
-///
-/// The core value is `Send + Sync`, so it is held as it is; every pull runs
-/// off the GIL. Windows are read in order: taking the next window pulls and
-/// drops the open one's unread rows, and a window read after its walk passed
-/// rows of it raises once, naming it, then ends.
-#[pyclass(name = "SerieReaderWindows", module = "yggdryl._native")]
-pub(crate) struct PySerieReaderWindows {
-    inner: SerieReaderWindows,
-}
-
-#[pymethods]
-impl PySerieReaderWindows {
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
-    /// The record root every window yields: the windowed reader's own.
-    #[getter]
-    fn field(&self) -> PyField {
-        PyField::from_inner(self.inner.field().clone())
-    }
-
-    /// The record every window's `static_values` are typed by, known before
-    /// the first pull.
-    #[getter]
-    fn static_field(&self) -> PyField {
-        PyField::from_inner(self.inner.static_field().clone())
-    }
-
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-
-    /// The next window as its own `SerieReader`, or the end of the stream.
-    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PySerieReader>> {
-        let windows = &mut self.inner;
-        match py.detach(|| windows.next()) {
-            Some(Ok(window)) => Ok(Some(PySerieReader::from_inner(window))),
-            Some(Err(error)) => Err(value_error(error)),
-            None => Ok(None),
-        }
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "SerieReaderWindows(field={}, static_field={})",
-            self.inner.field(),
-            self.inner.static_field()
-        )
     }
 }
 
@@ -2522,7 +2109,7 @@ impl PyStructSerie {
     }
 
     /// This record column as the Arrow `PyCapsule` Interface's stream
-    /// capsule of its one batch - the stream `SerieReader.from_serie` reads
+    /// capsule of its one batch - the stream `StreamChunkedSerie.from_serie` reads
     /// - cast into `requested_schema` by the one cast when a consumer asks.
     ///
     /// A record column is what a table's batch is, so it streams as one; a
@@ -2533,7 +2120,7 @@ impl PyStructSerie {
         requested_schema: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let serie = slf.as_super().try_borrow()?.inner.clone();
-        let reader = SerieReader::from_serie(serie).map_err(value_error)?;
+        let reader = StreamChunkedSerie::from_serie(serie).map_err(value_error)?;
         reader_capsule(slf.py(), reader, requested_schema)
     }
 }

@@ -1770,7 +1770,7 @@ fn an_iceberg_table_at_the_root_is_a_table_rather_than_a_schema() {
     assign_field_ids(&mut schema, 1).expect("field ids");
     let mut table = yggdryl::iceberg::IcebergTable::create(
         LocalFolder::new(root.join("ledger")).expect("a folder"),
-        FormatVersion::V2,
+        FormatVersion::V3,
         schema,
         PartitionSpec::unpartitioned(),
     )

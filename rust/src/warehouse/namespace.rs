@@ -455,34 +455,30 @@ macro_rules! container_object_io {
                 Err(super::namespace::no_table(self))
             }
 
-            fn read_arrow_reader(&self, _options: &RecordOptions) -> Result<BatchReader> {
+            fn read_serie(&self, _options: Option<&RecordOptions>) -> Result<crate::Serie> {
                 Err(super::namespace::no_table(self))
             }
 
-            fn read_serie(&self, _options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
-                Err(super::namespace::no_table(self))
-            }
-
-            fn overwrite_arrow_reader(
+            fn overwrite_serie(
                 &mut self,
-                _batches: BatchReader,
-                _options: &RecordOptions,
+                _value: crate::Serie,
+                _options: Option<&RecordOptions>,
             ) -> Result<crate::IOResult> {
                 Err(super::namespace::no_table(self))
             }
 
-            fn append_arrow_reader(
+            fn append_serie(
                 &mut self,
-                _batches: BatchReader,
-                _options: &RecordOptions,
+                _value: crate::Serie,
+                _options: Option<&RecordOptions>,
             ) -> Result<crate::IOResult> {
                 Err(super::namespace::no_table(self))
             }
 
-            fn merge_arrow_reader(
+            fn merge_serie(
                 &mut self,
-                _batches: BatchReader,
-                _options: &RecordOptions,
+                _value: crate::Serie,
+                _options: Option<&RecordOptions>,
             ) -> Result<crate::IOResult> {
                 Err(super::namespace::no_table(self))
             }

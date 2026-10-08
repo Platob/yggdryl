@@ -1321,3 +1321,34 @@ fn a_write_onto_a_stored_not_null_column_refuses_and_leaves_the_resource() {
         .collect();
     assert_eq!(kept, [7]);
 }
+
+#[test]
+fn a_batch_and_a_stream_split_source_predicates_from_selected_aliases() {
+    let source = RecordBatch::try_from_iter([
+        (
+            "id",
+            std::sync::Arc::new(arrow_array::Int64Array::from(vec![1, 2, 3]))
+                as arrow_array::ArrayRef,
+        ),
+        (
+            "value",
+            std::sync::Arc::new(arrow_array::Int64Array::from(vec![2, 4, 6]))
+                as arrow_array::ArrayRef,
+        ),
+    ])
+    .unwrap();
+    let options = RecordOptions::Ipc(IpcOptions::new())
+        .with_select("id as key, value")
+        .unwrap()
+        .with_filter("key > 1 and id = 2")
+        .unwrap();
+    let shaped = options.apply_arrow_batch(source.clone(), None).unwrap();
+    assert_eq!(shaped.num_rows(), 1);
+    let stream = options
+        .apply_arrow_reader(
+            yggdryl::arrow::batch_reader(source.schema(), [source]),
+            None,
+        )
+        .unwrap();
+    assert_eq!(stream.map(Result::unwrap).collect::<Vec<_>>(), [shaped]);
+}

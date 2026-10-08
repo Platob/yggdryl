@@ -1,4 +1,4 @@
-//! `rust/src/graph/market_column.rs`: the twenty-eight columns every market
+//! `rust/src/graph/market_column.rs`: the thirty-six columns every market
 //! element is stated in, each stating back exactly the fact it read.
 
 use std::collections::BTreeMap;
@@ -34,6 +34,7 @@ fn market_columns_round_trip_every_optional_band() {
     source.set_hiddenqty(Some(Decimal::from_int(5)), true);
     source.set_cxlqty(Some(Decimal::from_int(1)), true);
     source.set_currency(Ccy::new("USD").unwrap(), true);
+    source.set_origccy(Ccy::new("CHF").unwrap(), true);
     source.set_quantity(Some(Decimal::from_int(7)), true);
     source.set_unit(Unit::new("share").unwrap(), true);
     source.set_side(Side::read("Buy").unwrap(), true);
@@ -98,6 +99,7 @@ fn market_columns_round_trip_every_optional_band() {
     assert_eq!(restored.get_price(), source.get_price());
     assert_eq!(restored.get_stoppx(), source.get_stoppx());
     assert_eq!(restored.get_currency(), source.get_currency());
+    assert_eq!(restored.get_origccy().as_str(), "CHF");
     assert_eq!(restored.get_quantity(), source.get_quantity());
     assert_eq!(restored.get_displayqty(), source.get_displayqty());
     assert_eq!(restored.get_hiddenqty(), source.get_hiddenqty());
@@ -139,6 +141,7 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
     let mut element = OrderEvent::default();
     element.set_price(Some(decimal("1")), true);
     element.set_currency(Ccy::new("EUR").unwrap(), true);
+    element.set_origccy(Ccy::new("USD").unwrap(), true);
     element.set_quantity(Some(Decimal::from_int(2)), true);
     element.set_unit(Unit::new("bbl").unwrap(), true);
     element.set_side(Side::read("Sell").unwrap(), true);
@@ -158,6 +161,10 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
     // element no longer states, never a zero.
     assert_eq!(element.get_price(), None);
     assert_eq!(element.get_currency().as_str(), "EUR");
+    // The origin is optional: a null clears it, and the origin read is the
+    // currency again.
+    assert!(element.get_origccy().is_none());
+    assert_eq!(element.origin_currency().as_str(), "EUR");
     assert_eq!(element.get_quantity(), None);
     assert_eq!(element.get_unit(), &Unit::none());
     assert_eq!(element.get_side(), Side::Sell);
@@ -212,7 +219,7 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
 #[test]
 fn market_column_schema_has_one_owner_and_order() {
     let fields = MarketColumn::fields().unwrap();
-    assert_eq!(fields.len(), 35);
+    assert_eq!(fields.len(), 36);
     assert_eq!(
         fields.iter().map(|field| field.name()).collect::<Vec<_>>(),
         [
@@ -221,6 +228,7 @@ fn market_column_schema_has_one_owner_and_order() {
             "price",
             "stoppx",
             "currency",
+            "origccy",
             "quantity",
             "displayqty",
             "hiddenqty",
@@ -269,7 +277,11 @@ fn market_column_schema_has_one_owner_and_order() {
         assert_eq!(column.datatype(), DataType::Decimal);
         assert!(column.nullable());
     }
-    for column in [MarketColumn::BidCcy, MarketColumn::AskCcy] {
+    for column in [
+        MarketColumn::OrigCcy,
+        MarketColumn::BidCcy,
+        MarketColumn::AskCcy,
+    ] {
         assert_eq!(column.datatype(), DataType::Ccy);
         assert!(column.nullable());
     }

@@ -151,7 +151,7 @@ pub const FIXENTRIES_COLUMN: &str = "fixentries";
 /// Opened by the columns every generated schema of the crate opens with, in
 /// the order of the traits that answer them - the six
 /// [`ElementColumn`](crate::graph::ElementColumn)s, the nine
-/// [`EventColumn`](crate::graph::EventColumn)s, the thirty-five
+/// [`EventColumn`](crate::graph::EventColumn)s, the thirty-six
 /// [`MarketColumn`](crate::graph::MarketColumn)s and the five
 /// [`OperationColumn`](crate::graph::OperationColumn)s - under the names
 /// those columns have, so a FIX row, a text line's batch and a `marketdata`
@@ -1896,7 +1896,9 @@ fn covers_entry(
             let Some(occurrences) = value.as_serie() else {
                 return false;
             };
-            if entry.value().and_then(|count| count.parse::<usize>().ok())
+            if entry
+                .value()
+                .and_then(crate::integer::integer_from_text_as::<usize>)
                 != Some(occurrences.len())
                 || entry.entries().len() != occurrences.len()
             {

@@ -26,7 +26,14 @@ Each medium has a page of its own - what declares it, how it reads, how it write
 
 ## Read
 
-A read returns an [`arrow::BatchReader`](../arrow/readers.md); only the current batch is alive. Rows come back as native values through Python `read_records` and JavaScript `readRecords`; Rust has no `read_records` and reads rows through `read_serie`, a `SerieReader` of one record `Serie` per batch - the [write example](#write) reads its rows back each way. `read_serie` with no options reads under the handle's own, in every language: `read_serie()` in Python, `readSerie()` in JavaScript.
+A read's primitive is `read_serie` / `readSerie`, returning the generic
+`Serie`: a held value, native row or chunk stream, key kind, or a lazy media
+variant. Specialized Rust variants such as `Serie::Parquet(ParquetSerie)` and
+`Serie::IcebergTable(IcebergTableSerie)` keep native scan clauses and prune source
+keys before decoding payloads. `MediaSerieValue<T: IOMedia>` implements their
+shared accessors and snapshot mutations. Explicit writes publish changes.
+`read_arrow_reader` is an adapter over that same primitive. Native record mapping
+adapters are Python `read_records` and JavaScript `readRecords`.
 
 === "Rust"
 
@@ -118,7 +125,7 @@ A folder, a location ending in `/` and a glob read as the one table their leaves
 
 ## Write
 
-Every write states its intent: `overwrite_*` replaces the stored rows, `append_*` keeps them and adds its own after them - into an Iceberg table stating its own key, only the rows whose key it lacks ([Appending to a keyed table](iceberg.md#appending-to-a-keyed-table)) - and `merge_*` updates the rows whose key matches - the options' `merge_by`, else the destination's own ([an Iceberg table's](iceberg.md#the-merge-key)) - and appends the rest, rewriting nothing where no row changes ([Append and merge](../holder/index.md#append-and-merge)). `overwrite_records`, `append_records` and `merge_records` write native rows; the `*_arrow_reader` and `*_arrow_batch` twins - and `*_arrow_table` in the bindings - write Arrow batches, streamed and never collected; and `overwrite_serie`, `append_serie` and `merge_serie` - `write_serie` with the mode named - write a held `Serie`, a `ChunkedSerie` or a `SerieReader` as the batches it already is ([Writing a serie to a handle](../types/serie.md#writing-a-serie-to-a-handle)), absent options being the handle's own. Every one of them answers an `IOResult` - the rows it read, wrote and skipped ([Write results](../holder/index.md#write-results)).
+Every write states its intent: `overwrite_*` replaces the stored rows, `append_*` keeps them and adds its own after them - into an Iceberg table stating its own key, only the rows whose key it lacks ([Appending to a keyed table](iceberg.md#appending-to-a-keyed-table)) - and `merge_*` updates the rows whose key matches - the options' `merge_by`, else the destination's own ([an Iceberg table's](iceberg.md#the-merge-key)) - and appends the rest, rewriting nothing where no row changes ([Append and merge](../holder/index.md#append-and-merge)). `overwrite_records`, `append_records` and `merge_records` write native rows; the `*_arrow_reader` and `*_arrow_batch` twins - and `*_arrow_table` in the bindings - write Arrow batches, streamed and never collected; and `overwrite_serie`, `append_serie` and `merge_serie` - `write_serie` with the mode named - write a held `Serie`, a `ChunkedSerie` or a `StreamChunkedSerie` as the batches it already is ([Writing a serie to a handle](../types/serie.md#writing-a-serie-to-a-handle)), absent options being the handle's own. Every one of them answers an `IOResult` - the rows it read, wrote and skipped ([Write results](../holder/index.md#write-results)).
 
 === "Rust"
 
@@ -150,7 +157,7 @@ Every write states its intent: `overwrite_*` replaces the stored rows, `append_*
     // Rust reads Arrow as a stream of record columns, one per batch, and a
     // record column lends each child column by name.
     let mut venues = Vec::new();
-    for records in handle.read_serie(Some(&options.clone().with_field(field.clone())))? {
+    for records in handle.read_serie(Some(&options.clone().with_field(field.clone())))?.into_chunked_stream(None, None)?.into_chunks() {
         let venue = records?.child("venue").cloned().expect("a venue column");
         for row in 0..venue.len() {
             venues.push(venue.scalar(row)?);

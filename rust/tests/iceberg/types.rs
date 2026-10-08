@@ -76,6 +76,7 @@ mod iceberg {
         let v2 = root("v3-types-v2");
         let message = IcebergTable::create(
             LocalFolder::new(&v2).unwrap(),
+            // v2 refuses the v3 types: the contract pinned here.
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),

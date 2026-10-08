@@ -400,11 +400,11 @@ impl FixCodec {
     /// [`MarketData::field`] rows, each a `book_event`.
     ///
     /// A book folds orders, quotes and `W`/`X` book messages into its sides
-    /// and records every execution among its deltas - the kinds
+    /// and records every execution among its events - the kinds
     /// [`MarketDataKind::is_recorded`] admits - and every other record is
     /// ignored before it is expanded: a fill moves a book through its
     /// order's or quote's report, which the parse splits off the execution,
-    /// so the execution stands among the deltas of its instant and moves
+    /// so the execution stands among the events of its instant and moves
     /// nothing, and a trade, whose fills are the executions the parse split
     /// off, never reaches one. A quote is one entry resting on each leg it
     /// states, its bid and its offer alike. A book message's leaves are
@@ -542,7 +542,7 @@ impl FixCodec {
         )
     }
 
-    /// [`Self::book_arrow_reader`] answered as a [`SerieReader`](crate::SerieReader)
+    /// [`Self::book_arrow_reader`] answered as a [`StreamChunkedSerie`](crate::StreamChunkedSerie)
     /// of [`MarketData::field`] rows, under the one identity plan the
     /// [serie faces](Self::parse_text_serie) share: handed on as a source it
     /// is the door's own reader again.
@@ -555,7 +555,7 @@ impl FixCodec {
         messages: I,
         snapshot_millis: u64,
         filter: Option<&Filter>,
-    ) -> Result<crate::SerieReader>
+    ) -> Result<crate::StreamChunkedSerie>
     where
         I: IntoIterator,
         I::Item: Into<Result<FixMsg>>,
@@ -566,13 +566,13 @@ impl FixCodec {
     }
 
     /// [`Self::market_arrow_reader`] answered as a
-    /// [`SerieReader`](crate::SerieReader) of [`MarketData::field`] rows, as
+    /// [`StreamChunkedSerie`](crate::StreamChunkedSerie) of [`MarketData::field`] rows, as
     /// [`Self::book_serie`] answers.
     ///
     /// # Errors
     ///
     /// Returns [`Self::market_arrow_reader`]'s refusal.
-    pub fn market_serie<I>(&self, messages: I) -> Result<crate::SerieReader>
+    pub fn market_serie<I>(&self, messages: I) -> Result<crate::StreamChunkedSerie>
     where
         I: IntoIterator,
         I::Item: Into<Result<FixMsg>>,
@@ -1385,12 +1385,12 @@ fn excluded_side(trade: &mut FixMsg, group: &str, index: usize, error: &Error) {
 }
 
 /// A side member's text as the root tag it is written under reads it: a
-/// quantity or a price as its decimal, anything else as the text.
+/// quantity or a price as its decimal, through the decimal's one text
+/// reader, anything else as the text.
 fn side_value(root: i32, value: &str) -> Scalar {
     match root {
-        32 | 6 => value
-            .parse::<Decimal>()
-            .map_or_else(|_| Scalar::from(value), Scalar::from),
+        32 | 6 => Scalar::from_decimal_text(&DataType::Decimal, value)
+            .unwrap_or_else(|_| Scalar::from(value)),
         _ => Scalar::from(value),
     }
 }
@@ -2060,14 +2060,19 @@ fn build_book_operation(
 }
 
 /// An entry's decimal: the typed value where the row holds one, else the
-/// text the entry states.
+/// text the entry states, read through the decimal's one text reader.
 fn decimal(typed: Option<&Scalar>, rendered: Option<&str>) -> Reading<Decimal> {
     match typed.filter(|value| !value.is_null()) {
         Some(value) => Decimal::from_scalar(value)
             .map(Some)
             .ok_or_else(|| format!("{value:?}")),
         None => rendered.map_or(Ok(None), |text| {
-            text.parse().map(Some).map_err(|_| format!("{text:?}"))
+            Scalar::from_decimal_text(&DataType::Decimal, text)
+                .ok()
+                .as_ref()
+                .and_then(Decimal::from_scalar)
+                .map(Some)
+                .ok_or_else(|| format!("{text:?}"))
         }),
     }
 }

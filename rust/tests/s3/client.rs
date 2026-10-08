@@ -17,7 +17,7 @@ use yggdryl::internals::s3_client::{
     Client, DEFAULT_REGION, Endpoint, RETRY_BACKOFF, backoff, bucket_region_of,
     total_of_content_range,
 };
-use yggdryl::s3::S3Options;
+use yggdryl::s3::{Credentials, S3Options};
 
 fn url(text: &str) -> Url {
     Url::from_str(text).expect("a valid location")
@@ -793,21 +793,29 @@ fn a_redirect_moves_a_published_host_to_the_region_and_leaves_a_stated_endpoint_
     );
     // A store answering a region that is no host label moves nothing: the
     // region would be spliced into the host the next request is sent to.
-    assert!(published.adopt_region("eu-west-3.example.org#").is_err());
+    assert!(
+        published
+            .adopt_region("lake", "eu-west-3.example.org#")
+            .is_err()
+    );
     assert_eq!(published.region(), "us-east-1");
     assert_eq!(
         published.host_header("lake"),
         "lake.s3.us-east-1.amazonaws.com"
     );
 
-    published.adopt_region("eu-west-3").expect("a region");
+    published
+        .adopt_region("lake", "eu-west-3")
+        .expect("a region");
     assert_eq!(published.region(), "eu-west-3");
     assert_eq!(
         published.host_header("lake"),
         "lake.s3.eu-west-3.amazonaws.com",
         "the regional host answers the bucket's region with another redirect"
     );
-    published.adopt_region("cn-north-1").expect("a region");
+    published
+        .adopt_region("lake", "cn-north-1")
+        .expect("a region");
     assert_eq!(
         published.host_header("lake"),
         "lake.s3.cn-north-1.amazonaws.com.cn",
@@ -819,7 +827,7 @@ fn a_redirect_moves_a_published_host_to_the_region_and_leaves_a_stated_endpoint_
         "s3://lake/part.parquet",
         sealed().with_session(signing("us-east-1").with_use_fips_endpoint(true)),
     );
-    fips.adopt_region("eu-west-3").expect("a region");
+    fips.adopt_region("lake", "eu-west-3").expect("a region");
     assert_eq!(
         fips.host_header("lake"),
         "lake.s3-fips.eu-west-3.amazonaws.com"
@@ -832,9 +840,80 @@ fn a_redirect_moves_a_published_host_to_the_region_and_leaves_a_stated_endpoint_
             .with_endpoint("http://localhost:9000")
             .with_region("us-east-1"),
     );
-    stated.adopt_region("eu-west-3").expect("a region");
+    stated.adopt_region("lake", "eu-west-3").expect("a region");
     assert_eq!(stated.region(), "eu-west-3");
     assert_eq!(stated.host_header("lake"), "localhost:9000");
+}
+
+#[test]
+fn a_bucket_found_in_another_region_is_where_every_client_on_its_session_starts() {
+    let options = sealed().with_session(
+        Session::new()
+            .with_environment(false)
+            .with_region("us-east-1"),
+    );
+    let first = client("s3://lake/part.parquet", options.clone());
+    assert_eq!(first.region(), "us-east-1");
+    // What a redirect for the bucket does: the client moves, and the
+    // session keeps where the bucket is.
+    first.adopt_region("lake", "eu-west-3").expect("a region");
+
+    // A second client for the bucket - another of a table's data files -
+    // starts at the bucket's own host signed for its region, so its first
+    // request is answered: no redirect, no `HeadBucket`, nothing sent to find
+    // it again.
+    let second = client("s3://lake/other.parquet", options.clone());
+    assert_eq!(second.region(), "eu-west-3");
+    assert_eq!(
+        second.host_header("lake"),
+        "lake.s3.eu-west-3.amazonaws.com"
+    );
+    // A session narrowed for a client - a pair the options state - is the
+    // same session for where its buckets are.
+    let keyed = client(
+        "s3://lake/keyed.parquet",
+        options
+            .clone()
+            .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI")),
+    );
+    assert_eq!(keyed.region(), "eu-west-3");
+
+    // Another bucket on the session is where the session's region says.
+    assert_eq!(
+        client("s3://ledger/part.parquet", options.clone()).region(),
+        "us-east-1"
+    );
+    // A session built afresh has found nothing.
+    let fresh = sealed().with_session(
+        Session::new()
+            .with_environment(false)
+            .with_region("us-east-1"),
+    );
+    assert_eq!(
+        client("s3://lake/part.parquet", fresh).region(),
+        "us-east-1"
+    );
+    // A bucket of that name on another partition is another bucket.
+    let china = sealed().with_session(options.session().with_region("cn-north-1"));
+    let china = client("s3://lake/part.parquet", china);
+    assert_eq!(china.region(), "cn-north-1");
+    assert_eq!(
+        china.host_header("lake"),
+        "lake.s3.cn-north-1.amazonaws.com.cn"
+    );
+
+    // A stated endpoint is where the store is: what it is redirected to is
+    // its own, never the published hosts', and it starts nowhere else.
+    let stated = options.clone().with_endpoint("http://localhost:9000");
+    let gateway = client("s3://lake/part.parquet", stated.clone());
+    assert_eq!(gateway.region(), "us-east-1");
+    client("s3://ledger/part.parquet", stated)
+        .adopt_region("ledger", "ap-south-1")
+        .expect("a region");
+    assert_eq!(
+        client("s3://ledger/part.parquet", options).region(),
+        "us-east-1"
+    );
 }
 
 #[test]
@@ -1248,5 +1327,78 @@ mod wire {
             matches!(&aborted, Error::Remote { status: 409, code, .. } if code == "OperationAborted"),
             "{aborted:?}"
         );
+    }
+}
+
+/// What a Google client's bearer token costs when several clients are built
+/// on one options value: the token is the credential's, so it is asked for
+/// once between them.
+mod google_tokens {
+    use yggdryl::IOBase;
+    use yggdryl::http::{Method, Response, Server, Status};
+    use yggdryl::s3::{self, GoogleOptions, S3Options};
+
+    use crate::mod_::{BUCKET, store};
+
+    /// A metadata server answering every token request with a token of an
+    /// hour, and the `host:port` it answers at.
+    fn metadata_server() -> (Server, String) {
+        let server = Server::bind("127.0.0.1:0").expect("bind");
+        server.respond(
+            Some(Method::Get),
+            "/computeMetadata/v1/instance/service-accounts/default/token",
+            Response::new(Status::OK)
+                .with_header("content-type", "application/json")
+                .expect("a header")
+                .with_body(r#"{"access_token":"ya29.instance","expires_in":3599}"#),
+        );
+        let host = server.url().authority().host_port().to_owned();
+        (server, host)
+    }
+
+    /// The object `key` of the fixture bucket, read over Google's dialect.
+    fn read(options: &S3Options, key: &str) -> Vec<u8> {
+        s3::file_with(&format!("gs://{BUCKET}/{key}"), options.clone())
+            .expect("a handle")
+            .read_all_bytes()
+            .expect("the object")
+    }
+
+    #[test]
+    fn clients_built_on_one_options_share_the_token_their_credential_obtains() {
+        let store = store();
+        store.put(BUCKET, "lake/a.bin", b"a");
+        store.put(BUCKET, "lake/b.bin", b"b");
+        let (metadata, host) = metadata_server();
+        let options = S3Options::default()
+            .with_environment(false)
+            .with_endpoint(store.endpoint())
+            .with_path_style(true)
+            .with_google(GoogleOptions::default().with_metadata_host(&host));
+
+        // Two clients - two objects, as a table's data files are - and one
+        // token between them.
+        assert_eq!(read(&options, "lake/a.bin"), b"a");
+        assert_eq!(read(&options, "lake/b.bin"), b"b");
+        assert_eq!(metadata.request_count(), 1, "one token for both clients");
+
+        // Another credential under the same leases obtains its own, and the
+        // first one's token is handed to nobody else.
+        let (other, other_host) = metadata_server();
+        let elsewhere = options
+            .clone()
+            .with_google(options.google().clone().with_metadata_host(&other_host));
+        assert_eq!(read(&elsewhere, "lake/a.bin"), b"a");
+        assert_eq!(other.request_count(), 1, "a token of its own");
+        assert_eq!(metadata.request_count(), 1);
+
+        // Options built afresh hold no token yet.
+        let afresh = S3Options::default()
+            .with_environment(false)
+            .with_endpoint(store.endpoint())
+            .with_path_style(true)
+            .with_google(GoogleOptions::default().with_metadata_host(&host));
+        assert_eq!(read(&afresh, "lake/b.bin"), b"b");
+        assert_eq!(metadata.request_count(), 2, "nothing shared by the process");
     }
 }

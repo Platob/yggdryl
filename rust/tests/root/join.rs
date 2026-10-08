@@ -11,7 +11,7 @@ use arrow_array::cast::AsArray;
 use yggdryl::expression::{IntoJoinKeys, JoinKey, JoinKeys, Term};
 use yggdryl::{
     ArrowCastOptions, ChunkedSerie, DataType, Field, JoinKind, JoinOptions, JoinSide, Scalar,
-    Serie, SerieReader, SpillOptions, StructType,
+    Serie, SpillOptions, StreamChunkedSerie, StructType,
 };
 
 fn record(name: &str, fields: Vec<Field>) -> Field {
@@ -1004,7 +1004,7 @@ fn a_declaring_stream_probes_a_sorted_build_by_merging_and_a_cast_or_descending_
     let left = trades().into_sort_by("id").expect("sorted");
     let right = values().into_sort_by("id").expect("sorted");
     let root = left.field().expect("a record").clone();
-    let stream = SerieReader::from_arrow_reader(
+    let stream = StreamChunkedSerie::from_arrow_reader(
         Some(&root),
         left.into_arrow_reader().expect("a reader"),
         ArrowCastOptions::new(),
@@ -1013,6 +1013,7 @@ fn a_declaring_stream_probes_a_sorted_build_by_merging_and_a_cast_or_descending_
     let merged: Vec<Scalar> = stream
         .join_with(right.clone(), "id", JoinKind::Left, &right_built())
         .expect("a merge over a stream")
+        .into_chunks()
         .flat_map(|batch| batch.expect("rows").rows().into_owned())
         .collect();
     let hashed = trades()

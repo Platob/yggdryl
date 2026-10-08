@@ -2157,6 +2157,7 @@ fn the_rows_an_execution_streams_are_the_rows_its_answer_carries() {
         panic!("the statement is answered with a rowset");
     };
     let streamed: Vec<Scalar> = rows
+        .into_chunks()
         .flat_map(|batch| {
             let batch = batch.expect("a batch");
             (0..batch.len())

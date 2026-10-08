@@ -77,6 +77,8 @@ from ._native import (
     __version__,
     combined,
 )
+from .stream_serie import StreamSerie
+from .key_serie import KeySerie, KeySeries, StreamKeySerie
 from .expression import (
     Bound,
     Bounds,
@@ -84,7 +86,6 @@ from .expression import (
     Expression,
     Filter,
     Plan,
-    Records,
     Selector,
     Term,
 )
@@ -242,8 +243,7 @@ from .serie import (
     MapSerie,
     Serie,
     SerieField,
-    SerieReader,
-    SerieReaderWindows,
+    StreamChunkedSerie,
     SerieSerie,
     WindowSerie,
     SerieViewField,
@@ -304,7 +304,7 @@ from .urn import UrnField, urn
 from .url import UrlField, url
 from .version import Version, VersionField, version
 from .identifier import Identifier, Identifiers
-from .isin_registry import IsinRegistry
+from .isin_registry import IsinRegistry, Resolution
 from .eusipa import Eusipa
 
 __all__ = [
@@ -409,7 +409,7 @@ __all__ = [
     "ProtocolField",
     "PythonMetadata",
     "RecordOptions",
-    "Records",
+    "Resolution",
     "RicField",
     "RunEndEncodedField",
     "Scalar",
@@ -423,8 +423,11 @@ __all__ = [
     "Selector",
     "Serie",
     "SerieField",
-    "SerieReader",
-    "SerieReaderWindows",
+    "StreamChunkedSerie",
+    "StreamSerie",
+    "KeySerie",
+    "KeySeries",
+    "StreamKeySerie",
     "SerieSerie",
     "WindowSerie",
     "SerieViewField",

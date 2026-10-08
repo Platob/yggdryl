@@ -13,8 +13,8 @@ use arrow_data::ArrayData;
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Selector, Serie, SerieReader,
-    SerieReaderWindows, StructType, TimeUnit, Timezone,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Selector, Serie, StreamChunkedSerie,
+    StreamKeySerie, StructType, TimeUnit, Timezone,
 };
 
 /// The options a refusal is pinned under: a present value is never nulled.
@@ -893,9 +893,11 @@ fn a_stream_is_one_record_column_per_batch_under_one_plan() {
     let narrow = narrow_quote_batch();
     let stream = || batch_reader(narrow.schema(), [narrow.clone(), narrow.slice(1, 1)]);
 
-    let series = SerieReader::from_arrow_reader(Some(&root), stream(), strict()).expect("one plan");
+    let series =
+        StreamChunkedSerie::from_arrow_reader(Some(&root), stream(), strict()).expect("one plan");
     assert_eq!(series.field(), &root);
     let landed = series
+        .into_chunks()
         .collect::<Result<Vec<Serie>, _>>()
         .expect("two batches");
     assert_eq!(landed.iter().map(Serie::len).collect::<Vec<_>>(), [2, 1]);
@@ -910,7 +912,7 @@ fn a_stream_is_one_record_column_per_batch_under_one_plan() {
     assert_eq!(drained.field(), Some(&root));
 
     // The transport face reconciles each batch to the root, landing none.
-    let mut transport = SerieReader::from_arrow_reader(Some(&root), stream(), strict())
+    let mut transport = StreamChunkedSerie::from_arrow_reader(Some(&root), stream(), strict())
         .expect("one plan")
         .into_arrow_reader();
     assert_eq!(
@@ -927,7 +929,7 @@ fn a_stream_is_one_record_column_per_batch_under_one_plan() {
     // A stream no plan reaches the root from is refused by the constructor,
     // before a batch is pulled: no source column carries `id`.
     let symbols = quote_batch().project(&[1]).expect("the symbol column");
-    let refusal = SerieReader::from_arrow_reader(
+    let refusal = StreamChunkedSerie::from_arrow_reader(
         Some(&root),
         batch_reader(symbols.schema(), [symbols]),
         strict(),
@@ -1010,7 +1012,7 @@ fn a_kernel_into_a_rule_governed_leaf_lands_no_row_its_field_refuses() {
 }
 
 #[test]
-fn a_serie_reader_casts_each_batch_by_one_plan_and_fuses_after_a_failure() {
+fn a_chunked_stream_casts_each_batch_by_one_plan_and_fuses_after_a_failure() {
     let schema = Arc::new(Schema::new(vec![ArrowField::new(
         "id",
         ArrowDataType::Int32,
@@ -1034,30 +1036,91 @@ fn a_serie_reader_casts_each_batch_by_one_plan_and_fuses_after_a_failure() {
         false,
     );
     let reader = yggdryl::arrow::batch_reader(Arc::clone(&schema), [good.clone(), absent, good]);
-    let mut series =
-        yggdryl::SerieReader::from_arrow_reader(Some(&root), reader, strict()).expect("one plan");
+    let mut series = yggdryl::StreamChunkedSerie::from_arrow_reader(Some(&root), reader, strict())
+        .expect("one plan");
     assert_eq!(series.field(), &root);
     let first = series
-        .next()
+        .next_chunk()
         .expect("a batch")
         .expect("the first batch casts");
     assert_eq!(first.len(), 1);
-    assert!(series.next().expect("a batch").is_err());
-    assert!(series.next().is_none(), "fused after the failure");
+    assert!(series.next_chunk().expect("a batch").is_err());
+    assert!(series.next_chunk().is_none(), "fused after the failure");
 }
 
 #[test]
-fn an_identity_serie_reader_hands_its_inner_reader_back() {
+fn an_identity_chunked_stream_hands_its_inner_reader_back() {
     let batch = quote_batch();
     let root = Field::from_arrow_schema("row", batch.schema().as_ref()).expect("the root");
     let reader = yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]);
-    let transport =
-        yggdryl::SerieReader::from_arrow_reader(Some(&root), reader, ArrowCastOptions::new())
-            .expect("an identity plan")
-            .into_arrow_reader();
+    let transport = yggdryl::StreamChunkedSerie::from_arrow_reader(
+        Some(&root),
+        reader,
+        ArrowCastOptions::new(),
+    )
+    .expect("an identity plan")
+    .into_arrow_reader();
     let back: Vec<RecordBatch> = transport.map(Result::unwrap).collect();
     assert_eq!(back.len(), 1);
     assert!(Arc::ptr_eq(back[0].column(0), batch.column(0)));
+}
+
+#[test]
+fn a_stream_is_a_record_batch_reader_whose_batches_are_its_chunks() {
+    // Transport: an identity stream's batch face is the source batch itself,
+    // and its chunk face pulls the same stream.
+    let batch = quote_batch();
+    let root = Field::from_arrow_schema("row", batch.schema().as_ref()).expect("the root");
+    let mut stream = StreamChunkedSerie::from_arrow_reader(
+        Some(&root),
+        yggdryl::arrow::batch_reader(batch.schema(), [batch.clone(), batch.clone()]),
+        ArrowCastOptions::new(),
+    )
+    .expect("an identity plan");
+    assert_eq!(
+        RecordBatchReader::schema(&stream).fields(),
+        batch.schema().fields()
+    );
+    let first = stream.next().expect("a batch").expect("transport");
+    assert!(Arc::ptr_eq(first.column(0), batch.column(0)));
+    let second = stream.next_chunk().expect("a chunk").expect("lands");
+    assert_eq!(second.len(), batch.num_rows());
+    assert!(stream.next().is_none() && stream.next_chunk().is_none());
+
+    // A held column crosses as the batch it exports as.
+    let held =
+        Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new()).expect("a column");
+    let mut stream = StreamChunkedSerie::from_serie(held.clone()).expect("a stream");
+    assert_eq!(
+        stream.next().expect("a batch").expect("exports"),
+        held.into_arrow_batch().expect("a batch")
+    );
+    assert!(stream.next().is_none());
+
+    // A root declaring an order is verified through the batch face too.
+    let root = book_root(&["price"]);
+    let mut stream = StreamChunkedSerie::from_arrow_reader(
+        Some(&root),
+        book_stream(&root, &[&[("A", 1), ("A", 5)], &[("B", 4)]]),
+        ArrowCastOptions::new(),
+    )
+    .expect("a stream");
+    assert_eq!(
+        stream
+            .next()
+            .expect("a batch")
+            .expect("in order")
+            .num_rows(),
+        2
+    );
+    let refused = stream.next().expect("the refusal").unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("opens out of the order its root declares"),
+        "{refused}"
+    );
+    assert!(stream.next().is_none(), "fused");
 }
 
 #[test]
@@ -1138,7 +1201,7 @@ fn a_stream_states_its_root_before_a_batch_is_pulled_and_drains_every_batch() {
         }),
         schema,
     ));
-    let series = SerieReader::from_arrow_reader(None, reader, ArrowCastOptions::new())
+    let series = StreamChunkedSerie::from_arrow_reader(None, reader, ArrowCastOptions::new())
         .expect("the reader names its root");
     assert_eq!(series.field(), &quotes_root());
     assert_eq!(pulls.load(Ordering::Relaxed), 0, "nothing was read");
@@ -1146,6 +1209,7 @@ fn a_stream_states_its_root_before_a_batch_is_pulled_and_drains_every_batch() {
     // A stream has no length until it is drained, and draining it pulls
     // every batch it holds.
     let rows: usize = series
+        .into_chunks()
         .map(|column| column.expect("a batch lands").len())
         .sum();
     assert_eq!(rows, 4);
@@ -1267,7 +1331,8 @@ fn every_held_column_widens_to_the_one_reader_a_record_write_takes() {
                 .sum::<usize>(),
             rows
         );
-        let series = SerieReader::from_serie(column).expect("a held column is one record column");
+        let series =
+            StreamChunkedSerie::from_serie(column).expect("a held column is one record column");
         assert_eq!(
             series
                 .into_arrow_reader()
@@ -1313,12 +1378,15 @@ fn one_plan_casts_every_batch_a_stream_yields() {
         .clone()
         .into_arrow_schema()
         .expect("the root projects to Arrow");
-    let batches: Vec<RecordBatch> =
-        SerieReader::from_arrow_reader(Some(&target), quote_stream(3), ArrowCastOptions::new())
-            .expect("int64 widens to float64")
-            .into_arrow_reader()
-            .map(|batch| batch.expect("a batch reads"))
-            .collect();
+    let batches: Vec<RecordBatch> = StreamChunkedSerie::from_arrow_reader(
+        Some(&target),
+        quote_stream(3),
+        ArrowCastOptions::new(),
+    )
+    .expect("int64 widens to float64")
+    .into_arrow_reader()
+    .map(|batch| batch.expect("a batch reads"))
+    .collect();
 
     // The plan is compiled once from the reader schema, so every batch - not
     // only the first - arrives under the declared root.
@@ -1341,15 +1409,16 @@ fn one_plan_casts_every_batch_a_stream_yields() {
 fn a_held_record_column_reads_as_a_stream_of_itself() {
     let records = Serie::from_arrow_batch(None, &quote_batch(), ArrowCastOptions::new())
         .expect("a record column");
-    let series = SerieReader::from_serie(records.clone()).expect("a record column");
+    let series = StreamChunkedSerie::from_serie(records.clone()).expect("a record column");
     assert_eq!(series.field(), &quotes_root());
     let yielded = series
+        .into_chunks()
         .collect::<Result<Vec<Serie>, _>>()
         .expect("one column");
     assert_eq!(yielded, std::slice::from_ref(&records));
 
     // Its transport face is the one batch the column is.
-    let mut transport = SerieReader::from_serie(records)
+    let mut transport = StreamChunkedSerie::from_serie(records)
         .expect("a record column")
         .into_arrow_reader();
     let batch = transport.next().expect("a batch").expect("a table");
@@ -1363,7 +1432,7 @@ fn a_held_column_that_is_not_a_record_is_the_one_child_of_a_record() {
     let price = Field::new("price", DataType::Int64, false);
     let prices =
         Serie::from_arrow_array(Some(&price), prices(), ArrowCastOptions::new()).expect("a column");
-    let series = SerieReader::from_serie(prices.clone()).expect("a leaf is one column");
+    let series = StreamChunkedSerie::from_serie(prices.clone()).expect("a leaf is one column");
     assert_eq!(series.field().name(), yggdryl::media::DEFAULT_ROOT_NAME);
     assert!(!series.field().is_nullable());
     assert_eq!(
@@ -1371,6 +1440,7 @@ fn a_held_column_that_is_not_a_record_is_the_one_child_of_a_record() {
         Some(vec![price])
     );
     let yielded = series
+        .into_chunks()
         .collect::<Result<Vec<Serie>, _>>()
         .expect("one column");
     assert_eq!(yielded.len(), 1);
@@ -1380,7 +1450,7 @@ fn a_held_column_that_is_not_a_record_is_the_one_child_of_a_record() {
 
 #[test]
 fn a_run_and_a_record_column_holding_an_absent_row_are_no_stream() {
-    assert!(SerieReader::from_serie(Serie::new(vec![Scalar::from(1_i64)])).is_err());
+    assert!(StreamChunkedSerie::from_serie(Serie::new(vec![Scalar::from(1_i64)])).is_err());
 
     let root = quotes_root().with_nullable(true);
     let records = StructArray::new(
@@ -1397,7 +1467,8 @@ fn a_run_and_a_record_column_holding_an_absent_row_are_no_stream() {
     );
     let serie = Serie::from_arrow_array(Some(&root), Arc::new(records), ArrowCastOptions::new())
         .expect("a nullable record column");
-    let refusal = SerieReader::from_serie(serie).expect_err("a table states no row validity");
+    let refusal =
+        StreamChunkedSerie::from_serie(serie).expect_err("a table states no row validity");
     assert!(refusal.to_string().contains("1 absent rows"), "{refusal}");
 }
 
@@ -1416,9 +1487,10 @@ fn chunked_quotes() -> ChunkedSerie {
 #[test]
 fn a_held_chunked_record_column_reads_as_the_stream_of_its_chunks() {
     let chunked = chunked_quotes();
-    let series = SerieReader::from_chunked(chunked.clone()).expect("a record column");
+    let series = StreamChunkedSerie::from_chunked(chunked.clone()).expect("a record column");
     assert_eq!(series.field(), &quotes_root());
     let yielded = series
+        .into_chunks()
         .collect::<Result<Vec<Serie>, _>>()
         .expect("every chunk");
     assert_eq!(yielded, chunked.chunks());
@@ -1444,7 +1516,7 @@ fn a_held_chunked_record_column_reads_as_the_stream_of_its_chunks() {
     }
 
     // Its transport face is one batch per chunk, in order.
-    let batches = SerieReader::from_chunked(chunked)
+    let batches = StreamChunkedSerie::from_chunked(chunked)
         .expect("a record column")
         .into_arrow_reader()
         .collect::<Result<Vec<RecordBatch>, _>>()
@@ -1476,7 +1548,7 @@ fn a_held_chunked_leaf_column_is_the_one_child_of_a_record_per_chunk() {
         ArrowCastOptions::new(),
     )
     .expect("two chunks");
-    let series = SerieReader::from_chunked(chunked.clone()).expect("a leaf is one column");
+    let series = StreamChunkedSerie::from_chunked(chunked.clone()).expect("a leaf is one column");
     assert_eq!(series.field().name(), yggdryl::media::DEFAULT_ROOT_NAME);
     assert!(!series.field().is_nullable());
     assert_eq!(
@@ -1484,6 +1556,7 @@ fn a_held_chunked_leaf_column_is_the_one_child_of_a_record_per_chunk() {
         Some(vec![price])
     );
     let yielded = series
+        .into_chunks()
         .collect::<Result<Vec<Serie>, _>>()
         .expect("every chunk");
     assert_eq!(yielded.len(), 2);
@@ -1492,7 +1565,7 @@ fn a_held_chunked_leaf_column_is_the_one_child_of_a_record_per_chunk() {
         assert_eq!(record.child("price"), Some(chunk));
     }
 
-    let rows = SerieReader::from_chunked(chunked)
+    let rows = StreamChunkedSerie::from_chunked(chunked)
         .expect("a leaf is one column")
         .into_arrow_reader()
         .map(|batch| batch.expect("a batch reads").num_rows())
@@ -1522,7 +1595,8 @@ fn a_chunked_record_column_holding_an_absent_row_is_no_stream() {
         ArrowCastOptions::new(),
     )
     .expect("a nullable record column");
-    let refusal = SerieReader::from_chunked(chunked).expect_err("a table states no row validity");
+    let refusal =
+        StreamChunkedSerie::from_chunked(chunked).expect_err("a table states no row validity");
     assert!(refusal.to_string().contains("1 absent rows"), "{refusal}");
 
     // Every row present, a nullable root streams as the required record
@@ -1530,18 +1604,18 @@ fn a_chunked_record_column_holding_an_absent_row_is_no_stream() {
     let present = ChunkedSerie::from_arrow_arrays(Some(&root), [present], ArrowCastOptions::new())
         .expect("one chunk");
     assert_eq!(present.field(), &root);
-    let series = SerieReader::from_chunked(present).expect("every row present");
+    let series = StreamChunkedSerie::from_chunked(present).expect("every row present");
     assert_eq!(series.field(), &quotes_root());
-    assert_eq!(series.count(), 1);
+    assert_eq!(series.into_chunks().count(), 1);
 }
 
 #[test]
 fn an_empty_chunked_column_is_the_empty_stream_of_its_root() {
     let empty = ChunkedSerie::empty(quotes_root()).expect("a record field");
-    let series = SerieReader::from_chunked(empty.clone()).expect("no chunk");
+    let series = StreamChunkedSerie::from_chunked(empty.clone()).expect("no chunk");
     assert_eq!(series.field(), &quotes_root());
-    assert_eq!(series.count(), 0);
-    let transport = SerieReader::from_chunked(empty)
+    assert_eq!(series.into_chunks().count(), 0);
+    let transport = StreamChunkedSerie::from_chunked(empty)
         .expect("no chunk")
         .into_arrow_reader();
     assert_eq!(transport.schema(), quote_batch().schema());
@@ -1549,14 +1623,14 @@ fn an_empty_chunked_column_is_the_empty_stream_of_its_root() {
 
     let price = Field::new("price", DataType::Int64, false);
     let series =
-        SerieReader::from_chunked(ChunkedSerie::empty(price.clone()).expect("a leaf field"))
+        StreamChunkedSerie::from_chunked(ChunkedSerie::empty(price.clone()).expect("a leaf field"))
             .expect("no chunk");
     assert_eq!(series.field().name(), yggdryl::media::DEFAULT_ROOT_NAME);
     assert_eq!(
         series.field().dtype().as_fields().map(<[Field]>::to_vec),
         Some(vec![price])
     );
-    assert_eq!(series.count(), 0);
+    assert_eq!(series.into_chunks().count(), 0);
 }
 
 #[test]
@@ -1595,10 +1669,10 @@ fn the_held_root_is_one_rule_every_held_door_names_its_field_by() {
     // child of the `row` record, named as it is.
     let root = quotes_root();
     let optional = root.clone().with_nullable(true);
-    assert_eq!(SerieReader::root_of(&root).unwrap(), root);
-    assert_eq!(SerieReader::root_of(&optional).unwrap(), root);
+    assert_eq!(StreamChunkedSerie::root_of(&root).unwrap(), root);
+    assert_eq!(StreamChunkedSerie::root_of(&optional).unwrap(), root);
     let price = Field::new("price", DataType::Int64, false);
-    let wrapped = SerieReader::root_of(&price).unwrap();
+    let wrapped = StreamChunkedSerie::root_of(&price).unwrap();
     assert_eq!(wrapped.name(), "row");
     assert!(!wrapped.is_nullable());
     assert_eq!(wrapped.fields().len(), 1);
@@ -1606,12 +1680,14 @@ fn the_held_root_is_one_rule_every_held_door_names_its_field_by() {
 
     let column = Serie::from_scalars(price.clone(), [Scalar::from(1_i64)]).unwrap();
     assert_eq!(
-        SerieReader::from_serie(column.clone()).unwrap().field(),
+        StreamChunkedSerie::from_serie(column.clone())
+            .unwrap()
+            .field(),
         &wrapped
     );
     let chunked = ChunkedSerie::from_serie(column).unwrap();
     assert_eq!(
-        SerieReader::from_chunked(chunked).unwrap().field(),
+        StreamChunkedSerie::from_chunked(chunked).unwrap().field(),
         &wrapped
     );
 }
@@ -1638,22 +1714,22 @@ fn a_held_reader_cast_under_its_own_root_is_itself_and_under_another_casts_each_
     let held =
         Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new()).expect("lands");
     // Its own root: the reader as it stands, its records untouched.
-    let same = SerieReader::from_serie(held.clone())
+    let same = StreamChunkedSerie::from_serie(held.clone())
         .expect("a held stream")
         .cast(&root, ArrowCastOptions::new())
         .expect("its own root");
     assert_eq!(same.field(), &root);
-    let records: Vec<Serie> = same.map(Result::unwrap).collect();
+    let records: Vec<Serie> = same.into_chunks().map(Result::unwrap).collect();
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].rows(), held.rows());
     // A wider root: every record cast once, by one plan.
     let wide = quotes_root_with_id(DataType::Float64);
-    let widened = SerieReader::from_serie(held.clone())
+    let widened = StreamChunkedSerie::from_serie(held.clone())
         .expect("a held stream")
         .cast(&wide, ArrowCastOptions::new())
         .expect("int64 widens");
     assert_eq!(widened.field(), &wide);
-    let records: Vec<Serie> = widened.map(Result::unwrap).collect();
+    let records: Vec<Serie> = widened.into_chunks().map(Result::unwrap).collect();
     assert_eq!(
         records[0].children()[0].field().map(Field::dtype),
         Some(&DataType::Float64)
@@ -1675,7 +1751,7 @@ fn a_held_reader_cast_under_its_own_root_is_itself_and_under_another_casts_each_
         ),
         false,
     );
-    let refused = SerieReader::from_serie(held)
+    let refused = StreamChunkedSerie::from_serie(held)
         .expect("a held stream")
         .cast(&numeric_symbol, strict())
         .expect_err("text is not a number");
@@ -1692,13 +1768,16 @@ fn a_stream_cast_again_lands_what_its_first_plan_cast() {
     let wide = quotes_root_with_id(DataType::Float64);
     let batch = quote_batch();
     let root = Field::from_arrow_schema("row", batch.schema().as_ref()).expect("the root");
-    let direct =
-        SerieReader::from_arrow_reader(Some(&root), quote_stream(2), ArrowCastOptions::new())
-            .expect("an identity plan")
-            .cast(&wide, ArrowCastOptions::new())
-            .expect("int64 widens");
+    let direct = StreamChunkedSerie::from_arrow_reader(
+        Some(&root),
+        quote_stream(2),
+        ArrowCastOptions::new(),
+    )
+    .expect("an identity plan")
+    .cast(&wide, ArrowCastOptions::new())
+    .expect("int64 widens");
     assert_eq!(direct.field(), &wide);
-    let records: Vec<Serie> = direct.map(Result::unwrap).collect();
+    let records: Vec<Serie> = direct.into_chunks().map(Result::unwrap).collect();
     assert_eq!(records.len(), 2);
     assert_eq!(
         records[1].scalar(0).expect("a row"),
@@ -1707,7 +1786,7 @@ fn a_stream_cast_again_lands_what_its_first_plan_cast() {
 
     let narrow = narrow_quote_batch();
     let middle = quotes_root_with_id(DataType::Int64);
-    let composed = SerieReader::from_arrow_reader(
+    let composed = StreamChunkedSerie::from_arrow_reader(
         Some(&middle),
         batch_reader(narrow.schema(), vec![narrow.clone(); 2]),
         ArrowCastOptions::new(),
@@ -1716,14 +1795,14 @@ fn a_stream_cast_again_lands_what_its_first_plan_cast() {
     .cast(&wide, ArrowCastOptions::new())
     .expect("int64 widens to float64");
     assert_eq!(composed.field(), &wide);
-    let records: Vec<Serie> = composed.map(Result::unwrap).collect();
+    let records: Vec<Serie> = composed.into_chunks().map(Result::unwrap).collect();
     assert_eq!(records.len(), 2);
     assert_eq!(
         records[0].scalar(1).expect("a row"),
         Scalar::from_sequence([Scalar::from(2.0_f64), Scalar::from("MSFT")])
     );
     // The transport face applies both, in the same order.
-    let transport = SerieReader::from_arrow_reader(
+    let transport = StreamChunkedSerie::from_arrow_reader(
         Some(&middle),
         batch_reader(narrow.schema(), vec![narrow; 1]),
         ArrowCastOptions::new(),
@@ -1888,39 +1967,44 @@ impl Probe {
 
     /// The quotes of `batches`, one Arrow batch each, read under
     /// [`window_root`] through this probe.
-    fn reader(&self, batches: &[&[(&str, i64, i64)]]) -> SerieReader {
+    fn reader(&self, batches: &[&[(&str, i64, i64)]]) -> StreamChunkedSerie {
         self.stream(batches.iter().map(|rows| Ok(window_batch(rows))).collect())
     }
 
     /// `batches` - failures included - read under [`window_root`].
-    fn stream(&self, batches: Vec<Result<RecordBatch, ArrowError>>) -> SerieReader {
+    fn stream(&self, batches: Vec<Result<RecordBatch, ArrowError>>) -> StreamChunkedSerie {
         let stream = Probed {
             batches: batches.into_iter(),
             schema: window_batch(&[]).schema(),
             pulls: Arc::clone(&self.pulls),
             dropped: Arc::clone(&self.dropped),
         };
-        SerieReader::from_arrow_reader(Some(&window_root()), Box::new(stream), strict())
+        StreamChunkedSerie::from_arrow_reader(Some(&window_root()), Box::new(stream), strict())
             .expect("an identity plan")
     }
 }
 
-/// A window's static values, as the cells of their row.
-fn static_cells(window: &SerieReader) -> Vec<Scalar> {
+/// The explicit key record, without synthetic cells.
+fn key_cells(window: &yggdryl::KeySerie) -> Vec<Scalar> {
     window
-        .static_values()
-        .expect("a window states its static values")
-        .value()
+        .key()
         .sequence_rows()
-        .expect("a record row")
+        .expect("a record key")
         .into_owned()
 }
 
-/// Every row a window serves, each piece read as it comes.
-fn window_rows(window: SerieReader) -> Vec<Scalar> {
+/// The natural chunk transport of a keyed item, without rechunking.
+fn key_stream(window: yggdryl::KeySerie) -> StreamChunkedSerie {
+    StreamChunkedSerie::from_serie(Serie::from(window)).expect("global keyed rows")
+}
+
+/// Every global row of a keyed item, pulled in order.
+fn window_rows(window: yggdryl::KeySerie) -> Vec<Scalar> {
     window
-        .flat_map(|piece| piece.expect("a piece").rows().into_owned())
-        .collect()
+        .into_stream()
+        .expect("a row stream")
+        .collect_rows()
+        .expect("window rows")
 }
 
 /// A one-cell key, as a window's key cells read.
@@ -1944,104 +2028,78 @@ fn window_by_on_a_reader_refuses_before_any_pull() {
     let rows: &[&[(&str, i64, i64)]] = &[&[("XNAS", 1, 0)]];
     let root = window_root();
     for sorted in [false, true] {
-        // The text's own parse error, before anything else.
         let parsed = "venue,".parse::<Selector>().unwrap_err().to_string();
-        let refused = probe.reader(rows).window_by("venue,", sorted).unwrap_err();
-        assert_eq!(refused.to_string(), parsed);
-        // A key stating no column, named by the reader's root.
-        for refused in [
-            probe.reader(rows).window_by("*", sorted),
+        assert_eq!(
             probe
                 .reader(rows)
-                .window_by(Selector::new(Vec::new()), sorted),
-        ] {
-            assert_eq!(
-                refusal(refused.unwrap_err()),
-                (
-                    "quote".to_owned(),
-                    "expected at least one column to window by, got an empty match key".to_owned()
-                )
-            );
-        }
-        let refused = probe
-            .reader(rows)
-            .window_by("unnest(items)", sorted)
-            .unwrap_err()
-            .to_string();
-        assert!(refused.contains("in a key"), "{refused}");
-        // The binder's own refusals, word for word.
-        for text in ["tier", "minutes(ts, 0)"] {
-            let selector = text.parse::<Selector>().expect("a selector");
-            let refused = probe
-                .reader(rows)
-                .window_by(&selector, sorted)
+                .window_by("venue,", sorted)
                 .unwrap_err()
-                .to_string();
-            assert_eq!(refused, selector.bind(&root).unwrap_err().to_string());
+                .to_string(),
+            parsed
+        );
+        for by in [
+            "*",
+            "unnest(items)",
+            "tier",
+            "minutes(ts, 0)",
+            "price + 1 as venue",
+        ] {
+            assert!(probe.reader(rows).window_by(by, sorted).is_err(), "{by}");
         }
-        // A key cell named as a reserved static value, or folding onto one
-        // the reader states, is refused naming both.
-        let (path, reason) = refusal(
+        assert!(
+            probe
+                .reader(rows)
+                .window_by(Selector::new(Vec::new()), sorted)
+                .is_err()
+        );
+        // These are ordinary aliases; positions are a separate accessor.
+        assert!(
             probe
                 .reader(rows)
                 .window_by("venue as RowNum", sorted)
-                .unwrap_err(),
-        );
-        assert_eq!(path, "quote");
-        assert!(
-            reason.contains("\"RowNum\"")
-                && reason.contains("\"rownum\"")
-                && reason.contains("alias"),
-            "{reason}"
+                .is_ok()
         );
     }
-    assert_eq!(probe.pulls(), 0, "no refusal pulled a batch");
-
-    // A window's record keeps its venue: windowing the window by the venue
-    // again would name it twice, so it is refused naming both, and pulls
-    // nothing past what opened the window.
-    let walked = Probe::default();
-    let mut windows = walked
-        .reader(&[&[("XNAS", 1, 0), ("XNYS", 2, 0)]])
-        .window_by("venue", false)
-        .expect("a key");
-    let first = windows.next().expect("a window").expect("XNAS");
-    assert_eq!(walked.pulls(), 1);
-    let (path, reason) = refusal(first.window_by("Venue", false).unwrap_err());
-    assert_eq!(path, "quote");
-    assert!(
-        reason.contains("\"Venue\"") && reason.contains("\"venue\""),
-        "{reason}"
-    );
-    let second = windows.next().expect("a window").expect("XNYS");
-    assert!(second.window_by("venue as desk", true).is_ok());
-    assert_eq!(walked.pulls(), 1, "the refusal pulled nothing");
-
-    // A refused key spends nothing but the reader; an accepted one names
-    // what every window yields and states before the first pull.
     let windows = probe
         .reader(rows)
         .window_by("venue, days(ts) as day", true)
-        .expect("a key");
-    assert_eq!(windows.field(), &root);
-    let names: Vec<&str> = windows
-        .static_field()
-        .fields()
-        .iter()
-        .map(Field::name)
-        .collect();
-    assert_eq!(names, ["venue", "day", "windownum", "rownum"]);
-    assert_eq!(windows.static_field().name(), "quote");
-    assert!(!windows.static_field().is_nullable());
+        .unwrap();
+    assert_eq!(
+        windows
+            .key_field()
+            .fields()
+            .iter()
+            .map(Field::name)
+            .collect::<Vec<_>>(),
+        ["venue", "day"]
+    );
+    assert_eq!(
+        windows
+            .serie_field()
+            .fields()
+            .iter()
+            .map(Field::name)
+            .collect::<Vec<_>>(),
+        ["price", "ts"]
+    );
+    assert_eq!(windows.field().field_len(), root.field_len() + 1);
     assert_eq!(probe.pulls(), 0);
+    assert!(
+        windows
+            .window_by("venue", false)
+            .unwrap_err()
+            .to_string()
+            .contains("alias the key cell")
+    );
+    assert_eq!(probe.pulls(), 0, "composition binds before a pull");
 }
 
 #[test]
 fn a_reader_windows_lazily_holding_one_batch() {
     fn assert_send_sync<T: Send + Sync>() {}
     fn assert_send<T: Send>() {}
-    assert_send_sync::<SerieReaderWindows>();
-    assert_send::<SerieReader>();
+    assert_send_sync::<StreamKeySerie>();
+    assert_send::<StreamChunkedSerie>();
 
     let probe = Probe::default();
     let batches: &[&[(&str, i64, i64)]] = &[
@@ -2065,14 +2123,17 @@ fn a_reader_windows_lazily_holding_one_batch() {
         0,
         "nothing is pulled before the first window"
     );
-    assert!(format!("{windows:?}").contains("SerieReaderWindows"));
+    assert!(format!("{windows:?}").contains("StreamKeySerie"));
 
     // XNAS spans the first batch whole and the second's first row.
-    let mut xnas = windows.next().expect("a window").expect("XNAS");
+    let mut xnas = key_stream(windows.next().expect("a window").expect("XNAS"));
     assert_eq!(probe.pulls(), 1);
     assert_eq!(xnas.field(), &window_root());
-    assert!(format!("{xnas:?}").contains("static_values"));
-    let whole = xnas.next().expect("a piece").expect("the first batch");
+    assert!(format!("{xnas:?}").contains("StreamChunkedSerie"));
+    let whole = xnas
+        .next_chunk()
+        .expect("a piece")
+        .expect("the first batch");
     assert_eq!(whole.len(), 2);
     // A batch a window spans whole is the landed batch itself: its buffers
     // are the stream's own.
@@ -2087,26 +2148,19 @@ fn a_reader_windows_lazily_holding_one_batch() {
     );
     assert_eq!(probe.pulls(), 1, "a whole batch is served as it is held");
     let edge = xnas
-        .next()
+        .next_chunk()
         .expect("a piece")
         .expect("the second batch's first row");
     assert_eq!(edge.rows().into_owned(), [window_quote("XNAS", 3, 0)]);
     assert_eq!(probe.pulls(), 2);
-    assert!(xnas.next().is_none());
-    assert!(xnas.next().is_none(), "fused");
+    assert!(xnas.next_chunk().is_none());
+    assert!(xnas.next_chunk().is_none(), "fused");
     assert_eq!(probe.pulls(), 2, "the window ended inside the held batch");
 
     // XNYS opens in the held batch and reaches across the empty one.
     let xnys = windows.next().expect("a window").expect("XNYS");
     assert_eq!(probe.pulls(), 2, "the next window opens in the held batch");
-    assert_eq!(
-        static_cells(&xnys),
-        [
-            Scalar::from("XNYS"),
-            Scalar::from(1_u64),
-            Scalar::from(3_u64)
-        ]
-    );
+    assert_eq!(key_cells(&xnys), [Scalar::from("XNYS")]);
     assert_eq!(
         window_rows(xnys),
         [window_quote("XNYS", 4, 0), window_quote("XNYS", 5, 0)]
@@ -2114,14 +2168,7 @@ fn a_reader_windows_lazily_holding_one_batch() {
     assert_eq!(probe.pulls(), 4, "the empty batch was pulled and skipped");
 
     let xlon = windows.next().expect("a window").expect("XLON");
-    assert_eq!(
-        static_cells(&xlon),
-        [
-            Scalar::from("XLON"),
-            Scalar::from(2_u64),
-            Scalar::from(5_u64)
-        ]
-    );
+    assert_eq!(key_cells(&xlon), [Scalar::from("XLON")]);
     assert_eq!(window_rows(xlon), [window_quote("XLON", 6, 0)]);
     assert!(windows.next().is_none());
     assert!(windows.next().is_none(), "fused");
@@ -2129,94 +2176,61 @@ fn a_reader_windows_lazily_holding_one_batch() {
 }
 
 #[test]
-fn a_window_states_its_key_windownum_and_rownum() {
-    // The flat static record: the key cells, then the window's place and
-    // its first row's number.
+fn a_keyed_window_states_its_key_and_absolute_position() {
     let probe = Probe::default();
     let mut windows = probe
         .reader(&[&[("XNAS", 1, 0), ("XNYS", 2, 0)]])
         .window_by("venue", false)
-        .expect("a key");
-    let expected = DataType::from(
-        StructType::from_fields([
-            DataType::utf8().required_field("venue"),
-            DataType::UInt64.required_field("windownum"),
-            DataType::UInt64.nullable_field("rownum"),
-        ])
-        .expect("three children"),
-    )
-    .required_field("quote");
-    assert_eq!(windows.static_field(), &expected);
-    let xnas = windows.next().expect("a window").expect("XNAS");
-    let statics = xnas.static_values().expect("stated");
-    assert_eq!(statics.field(), &expected);
+        .unwrap();
+    let xnas = windows.next().unwrap().unwrap();
     assert_eq!(
-        statics.value(),
-        &Scalar::from_sequence([
-            Scalar::from("XNAS"),
-            Scalar::from(0_u64),
-            Scalar::from(0_u64)
-        ])
+        xnas.key_field()
+            .fields()
+            .iter()
+            .map(Field::name)
+            .collect::<Vec<_>>(),
+        ["venue"]
     );
+    assert_eq!(key_cells(&xnas), [Scalar::from("XNAS")]);
+    assert_eq!(xnas.rownum(), Some(0));
+    assert_eq!(window_rows(xnas).len(), 1);
+    let xnys = windows.next().unwrap().unwrap();
+    assert_eq!(xnys.rownum(), Some(1));
 
-    // A window of a window keeps the outer key cells, states its own place,
-    // and numbers its first row in the stream the outer windows were cut
-    // from.
     let probe = Probe::default();
-    let days = probe
+    let venues = probe
         .reader(&[
             &[("XNAS", 1, 0), ("XNYS", 2, 0)],
             &[("XNYS", 3, 0), ("XNAS", 4, 1)],
             &[("XNAS", 5, 1)],
         ])
         .window_by("days(ts) as day", false)
-        .expect("a key");
-    let mut seen = Vec::new();
-    for day in days {
-        let day = day.expect("a day");
-        let date = static_cells(&day)[0].clone();
-        let venues = day.window_by("venue", false).expect("an inner key");
-        let names: Vec<&str> = venues
-            .static_field()
+        .unwrap()
+        .window_by("venue", false)
+        .unwrap();
+    assert_eq!(
+        venues
+            .key_field()
             .fields()
             .iter()
             .map(Field::name)
-            .collect();
-        assert_eq!(names, ["day", "venue", "windownum", "rownum"]);
-        for venue in venues {
-            let venue = venue.expect("a venue");
-            let cells = static_cells(&venue);
-            assert_eq!(cells[0], date);
-            let rows = window_rows(venue);
-            seen.push((
-                cells[1].clone(),
-                cells[2].clone(),
-                cells[3].clone(),
-                rows.len(),
-            ));
-        }
-    }
+            .collect::<Vec<_>>(),
+        ["day", "venue"]
+    );
+    let seen = venues
+        .map(|item| {
+            let item = item.unwrap();
+            let cells = key_cells(&item);
+            let position = item.rownum();
+            (cells[1].clone(), position, window_rows(item).len())
+        })
+        .collect::<Vec<_>>();
     assert_eq!(
         seen,
         [
-            (
-                Scalar::from("XNAS"),
-                Scalar::from(0_u64),
-                Scalar::from(0_u64),
-                1
-            ),
-            (
-                Scalar::from("XNYS"),
-                Scalar::from(1_u64),
-                Scalar::from(1_u64),
-                2
-            ),
-            (
-                Scalar::from("XNAS"),
-                Scalar::from(0_u64),
-                Scalar::from(3_u64),
-                2
-            ),
+            (Scalar::from("XNAS"), Some(0), 1),
+            (Scalar::from("XNYS"), Some(1), 2),
+            (Scalar::from("XNAS"), Some(3), 2)
         ]
     );
 }
@@ -2228,7 +2242,7 @@ fn a_sorted_reader_refuses_a_key_going_backwards_naming_batch_and_row() {
         format!(
             "window by expects keys in order, ascending with absent keys last: batch {batch} row \
              {row} keys {} after {}; window it unsorted, or hold it \
-             (ChunkedSerie::from_serie_reader) and window it sorted",
+             (ChunkedSerie::from_chunked_stream) and window it sorted",
             text(key),
             text(previous)
         )
@@ -2284,7 +2298,7 @@ fn a_sorted_reader_refuses_a_key_going_backwards_naming_batch_and_row() {
         .reader(&[&[("XLON", 1, 0), ("XNYS", 2, 0)], &[], &[("XNAS", 3, 0)]])
         .window_by("venue", false)
         .expect("a key")
-        .map(|window| static_cells(&window.expect("a window"))[0].clone())
+        .map(|window| key_cells(&window.expect("a window"))[0].clone())
         .collect();
     assert_eq!(
         venues,
@@ -2311,13 +2325,13 @@ fn a_window_passed_by_the_walk_refuses_to_be_read() {
         .reader(batches)
         .window_by("venue", false)
         .expect("a key");
-    let mut xnas = windows.next().expect("a window").expect("XNAS");
+    let mut xnas = key_stream(windows.next().expect("a window").expect("XNAS"));
     let xnys = windows.next().expect("a window").expect("XNYS");
     assert_eq!(
-        refusal(xnas.next().expect("the refusal").unwrap_err()),
+        refusal(xnas.next_chunk().expect("the refusal").unwrap_err()),
         ("quote".to_owned(), passed.to_owned())
     );
-    assert!(xnas.next().is_none(), "fused after the refusal");
+    assert!(xnas.next_chunk().is_none(), "fused after the refusal");
     assert_eq!(window_rows(xnys), [window_quote("XNYS", 3, 0)]);
 
     // Every row served, though the walk moved on before it said so: it ends.
@@ -2326,16 +2340,16 @@ fn a_window_passed_by_the_walk_refuses_to_be_read() {
         .reader(batches)
         .window_by("venue", false)
         .expect("a key");
-    let mut xnas = windows.next().expect("a window").expect("XNAS");
+    let mut xnas = key_stream(windows.next().expect("a window").expect("XNAS"));
     assert_eq!(
-        xnas.next()
+        xnas.next_chunk()
             .expect("a piece")
             .expect("the first batch")
             .len(),
         2
     );
     let xnys = windows.next().expect("a window").expect("XNYS");
-    assert!(xnas.next().is_none());
+    assert!(xnas.next_chunk().is_none());
     assert_eq!(window_rows(xnys).len(), 1);
 
     // Dropped unread: it costs only the pull of its rows.
@@ -2351,20 +2365,21 @@ fn a_window_passed_by_the_walk_refuses_to_be_read() {
     // Collected before any is read, every window was passed - loud, never
     // a silent loss.
     let probe = Probe::default();
-    let collected: Vec<SerieReader> = probe
+    let collected: Vec<yggdryl::KeySerie> = probe
         .reader(batches)
         .window_by("venue", false)
         .expect("a key")
         .collect::<Result<_, _>>()
         .expect("three windows");
     assert_eq!(collected.len(), 3);
-    for (place, mut window) in collected.into_iter().enumerate() {
-        let (_, reason) = refusal(window.next().expect("the refusal").unwrap_err());
+    for (place, window) in collected.into_iter().enumerate() {
+        let mut window = key_stream(window);
+        let (_, reason) = refusal(window.next_chunk().expect("the refusal").unwrap_err());
         assert!(
             reason.starts_with(&format!("window {place} was passed")),
             "{reason}"
         );
-        assert!(window.next().is_none());
+        assert!(window.next_chunk().is_none());
     }
 
     // A window outliving its walk reads to its end.
@@ -2394,17 +2409,21 @@ fn a_reader_error_mid_window_is_the_pullers_item_and_fuses() {
     // The window pulls the failure: it is the window's item, once.
     let probe = Probe::default();
     let mut windows = failing(&probe).window_by("venue", false).expect("a key");
-    let mut xnas = windows.next().expect("a window").expect("XNAS");
+    let mut xnas = key_stream(windows.next().expect("a window").expect("XNAS"));
     assert_eq!(
-        xnas.next()
+        xnas.next_chunk()
             .expect("a piece")
             .expect("the first batch")
             .len(),
         2
     );
-    let failure = xnas.next().expect("the failure").unwrap_err().to_string();
+    let failure = xnas
+        .next_chunk()
+        .expect("the failure")
+        .unwrap_err()
+        .to_string();
     assert!(failure.contains("the wire was cut"), "{failure}");
-    assert!(xnas.next().is_none(), "the window fused");
+    assert!(xnas.next_chunk().is_none(), "the window fused");
     assert!(windows.next().is_none(), "the walk fused");
     assert!(
         probe.dropped(),
@@ -2416,7 +2435,7 @@ fn a_reader_error_mid_window_is_the_pullers_item_and_fuses() {
     // and the window it was skipping is never presented as complete.
     let probe = Probe::default();
     let mut windows = failing(&probe).window_by("venue", false).expect("a key");
-    let mut xnas = windows.next().expect("a window").expect("XNAS");
+    let mut xnas = key_stream(windows.next().expect("a window").expect("XNAS"));
     let failure = windows
         .next()
         .expect("the failure")
@@ -2424,9 +2443,9 @@ fn a_reader_error_mid_window_is_the_pullers_item_and_fuses() {
         .to_string();
     assert!(failure.contains("the wire was cut"), "{failure}");
     assert!(windows.next().is_none(), "the walk fused");
-    let (_, reason) = refusal(xnas.next().expect("the refusal").unwrap_err());
+    let (_, reason) = refusal(xnas.next_chunk().expect("the refusal").unwrap_err());
     assert!(reason.starts_with("window 0 was passed"), "{reason}");
-    assert!(xnas.next().is_none());
+    assert!(xnas.next_chunk().is_none());
     assert!(probe.dropped());
 
     // A batch the stream's plan refuses is a failure like any other.
@@ -2457,7 +2476,7 @@ fn a_reader_error_mid_window_is_the_pullers_item_and_fuses() {
         dropped: Arc::clone(&probe.dropped),
     };
     let mut windows =
-        SerieReader::from_arrow_reader(Some(&window_root()), Box::new(stream), strict())
+        StreamChunkedSerie::from_arrow_reader(Some(&window_root()), Box::new(stream), strict())
             .expect("a plan")
             .window_by("venue", false)
             .expect("a key");
@@ -2496,194 +2515,153 @@ fn a_foreign_nan_at_a_batch_edge_moves_no_window_boundary() {
             [batch(vec![1.0, f64::NAN]), batch(vec![foreign, f64::NAN])],
         );
         let windows: Vec<(Vec<Scalar>, usize)> =
-            SerieReader::from_arrow_reader(Some(&root), reader, strict())
+            StreamChunkedSerie::from_arrow_reader(Some(&root), reader, strict())
                 .expect("an identity plan")
                 .window_by("px", sorted)
                 .expect("a key")
                 .map(|window| {
                     let window = window.expect("a window");
-                    let cells = static_cells(&window);
+                    let cells = key_cells(&window);
                     (cells, window_rows(window).len())
                 })
                 .collect();
         assert_eq!(windows.len(), 2, "sorted {sorted}: {windows:?}");
         assert_eq!(windows[0].1, 1);
         assert_eq!(windows[1].1, 3, "every NaN is one key, across the edge");
-        assert_eq!(
-            windows[1].0[1..],
-            [Scalar::from(1_u64), Scalar::from(1_u64)]
-        );
+        assert_eq!(windows[1].0, [Scalar::from(f64::NAN)]);
     }
 }
 
 #[test]
-fn held_and_stream_windows_state_the_same_record() {
-    // Unsorted, and sorted over keys in order, a held serie's windows and
-    // its stream's windows state one record field and one record, window by
-    // window - and so do the windows of their first windows.
-    let mixed = [
-        ("XNAS", 1, 0),
-        ("XNAS", 2, 0),
-        ("XNYS", 3, 1),
-        ("XNAS", 4, 1),
-    ];
-    let ordered = [
-        ("XLON", 1, 0),
-        ("XNAS", 2, 0),
-        ("XNAS", 3, 1),
-        ("XNYS", 4, 1),
-    ];
-    for (sorted, rows) in [(false, mixed), (true, ordered)] {
+fn held_and_stream_windows_state_the_same_keys_and_positions() {
+    for (sorted, rows) in [
+        (
+            false,
+            [
+                ("XNAS", 1, 0),
+                ("XNAS", 2, 0),
+                ("XNYS", 3, 1),
+                ("XNAS", 4, 1),
+            ],
+        ),
+        (
+            true,
+            [
+                ("XLON", 1, 0),
+                ("XNAS", 2, 0),
+                ("XNAS", 3, 1),
+                ("XNYS", 4, 1),
+            ],
+        ),
+    ] {
         let rows = Serie::from_scalars(
             window_root(),
             rows.iter()
                 .map(|(venue, price, day)| window_quote(venue, *price, *day)),
         )
-        .expect("quotes");
-        let held = rows.window_by("venue", sorted).expect("held windows");
-        let held_records: Vec<Scalar> = held
-            .iter()
-            .map(|(_, window)| {
-                let statics = window.static_values().expect("a held record");
-                assert!(std::ptr::eq(statics.field(), held.static_field()));
-                statics.into_value()
-            })
-            .collect();
-        let streamed = SerieReader::from_serie(rows.clone())
-            .expect("a held stream")
+        .unwrap();
+        let held = rows.window_by("venue", sorted).unwrap();
+        let streamed = StreamChunkedSerie::from_serie(rows.clone())
+            .unwrap()
             .window_by("venue", sorted)
-            .expect("stream windows");
-        assert_eq!(
-            streamed.static_field(),
-            held.static_field(),
-            "sorted {sorted}"
-        );
-        let stream_records: Vec<Scalar> = streamed
-            .map(|window| {
-                let window = window.expect("a window");
-                let statics = window.static_values().expect("a stream record");
-                assert_eq!(statics.field(), held.static_field());
-                statics.into_value()
-            })
-            .collect();
-        assert_eq!(stream_records, held_records, "sorted {sorted}");
-
-        // The first window windowed again: the outer key cell kept, the
-        // rownum absolute.
-        let (_, first) = held.iter().next().expect("a first held window");
-        let inner = first.window_by("days(ts) as day", sorted).expect("held");
-        let held_inner: Vec<Scalar> = inner
+            .unwrap();
+        assert_eq!(streamed.key_field(), held.key_field());
+        assert_eq!(streamed.serie_field(), held.serie_field());
+        let expected = held
             .iter()
-            .map(|(_, window)| window.static_values().expect("a record").into_value())
-            .collect();
-        let mut windows = SerieReader::from_serie(rows.clone())
-            .expect("a held stream")
+            .map(|item| (item.key().clone(), item.rownum(), item.rows().len()))
+            .collect::<Vec<_>>();
+        let actual = streamed
+            .map(|item| {
+                let item = item.unwrap();
+                (item.key().clone(), item.rownum(), window_rows(item).len())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
+        let nested = held.window_by("days(ts) as day", sorted).unwrap();
+        let streamed = StreamChunkedSerie::from_serie(rows)
+            .unwrap()
             .window_by("venue", sorted)
-            .expect("stream windows");
-        let first = windows.next().expect("a window").expect("the first");
-        let streamed = first.window_by("days(ts) as day", sorted).expect("stream");
-        assert_eq!(
-            streamed.static_field(),
-            inner.static_field(),
-            "sorted {sorted}"
-        );
-        let stream_inner: Vec<Scalar> = streamed
-            .map(|window| Scalar::from_sequence(static_cells(&window.expect("a window"))))
-            .collect();
-        assert_eq!(stream_inner, held_inner, "sorted {sorted}");
-        assert!(!stream_inner.is_empty());
+            .unwrap()
+            .window_by("days(ts) as day", sorted)
+            .unwrap();
+        assert_eq!(streamed.key_field(), nested.key_field());
+        let expected = nested
+            .iter()
+            .map(|item| (item.key().clone(), item.rownum(), item.rows().len()))
+            .collect::<Vec<_>>();
+        let actual = streamed
+            .map(|item| {
+                let item = item.unwrap();
+                (item.key().clone(), item.rownum(), window_rows(item).len())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
     }
-
-    // A nullable record column holding no absent row streams under its
-    // required root, and its held windows state that root's record: every
-    // key cell as the key declares it.
     let rows = Serie::from_scalars(
         window_root().with_nullable(true),
-        [("XNAS", 1, 0), ("XNYS", 2, 0)]
-            .iter()
-            .map(|(venue, price, day)| window_quote(venue, *price, *day)),
+        [window_quote("XNAS", 1, 0), window_quote("XNYS", 2, 0)],
     )
-    .expect("quotes under a nullable root");
-    let held = rows.window_by("venue", false).expect("held windows");
-    let streamed = SerieReader::from_serie(rows.clone())
-        .expect("a held stream")
+    .unwrap();
+    let held = rows.window_by("venue", false).unwrap();
+    let streamed = StreamChunkedSerie::from_serie(rows)
+        .unwrap()
         .window_by("venue", false)
-        .expect("stream windows");
-    assert_eq!(streamed.static_field(), held.static_field());
-    assert!(!held.static_field().fields()[0].is_nullable());
-    let held_records: Vec<Scalar> = held
-        .iter()
-        .map(|(_, window)| window.static_values().expect("a record").into_value())
-        .collect();
-    let stream_records: Vec<Scalar> = streamed
-        .map(|window| Scalar::from_sequence(static_cells(&window.expect("a window"))))
-        .collect();
-    assert_eq!(stream_records, held_records);
-
-    // Sorted over keys out of order, the held windows are gathered and have
-    // no number; a stream refuses rather than reorder.
-    let rows = Serie::from_scalars(
-        window_root(),
-        [("XNYS", 1, 0), ("XNAS", 2, 0)]
-            .iter()
-            .map(|(venue, price, day)| window_quote(venue, *price, *day)),
-    )
-    .expect("quotes");
-    let held = rows.window_by("venue", true).expect("held windows");
-    let rownums: Vec<Scalar> = held
-        .iter()
-        .map(|(_, window)| {
-            let statics = window.static_values().expect("a record");
-            let index = statics.field().index_of("rownum").expect("a rownum");
-            statics.get(index).expect("a cell").into_owned()
+        .unwrap();
+    assert_eq!(streamed.key_field(), held.key_field());
+    assert!(!held.key_field().fields()[0].is_nullable());
+    let actual = streamed
+        .map(|item| {
+            let item = item.unwrap();
+            let key = item.key().clone();
+            window_rows(item);
+            key
         })
-        .collect();
-    assert_eq!(rownums, [Scalar::Null, Scalar::Null]);
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual,
+        held.iter()
+            .map(|item| item.key().clone())
+            .collect::<Vec<_>>()
+    );
+    let gathered = Serie::from_scalars(
+        window_root(),
+        [window_quote("XNYS", 1, 0), window_quote("XNAS", 2, 0)],
+    )
+    .unwrap()
+    .window_by("venue", true)
+    .unwrap();
+    assert!(gathered.iter().all(|item| item.rownum().is_none()));
 }
 
 #[test]
-fn static_values_are_carried_by_cast_and_dropped_at_the_transport_face() {
-    // A reader that is no window states none.
+fn key_cells_are_global_columns_at_the_transport_face() {
     let probe = Probe::default();
-    let reader = probe.reader(&[&[("XNAS", 1, 0)]]);
-    assert!(reader.static_values().is_none());
-    let windows = probe
+    let mut windows = probe
         .reader(&[&[("XNAS", 1, 0), ("XNYS", 2, 0)]])
         .window_by("venue", false)
-        .expect("a key");
-    let record = windows.static_field().clone();
-    let mut windows = windows.map(|window| window.expect("a window"));
-    let xnas = windows.next().expect("XNAS");
-    assert_eq!(xnas.field(), &window_root(), "never a column");
-    let statics = xnas.static_values().expect("stated");
-    assert_eq!(statics.field(), &record);
-    let stated = statics.value().clone();
-    assert_eq!(
-        stated,
-        Scalar::from_sequence([
-            Scalar::from("XNAS"),
-            Scalar::from(0_u64),
-            Scalar::from(0_u64)
-        ])
-    );
-
-    // A cast keeps them: they say where the rows come from.
+        .unwrap();
+    let xnas = windows.next().unwrap().unwrap();
+    assert_eq!(key_cells(&xnas), [Scalar::from("XNAS")]);
     let wider = window_root_priced(DataType::Float64);
-    let cast = xnas
+    let cast = key_stream(xnas)
         .cast(&wider, ArrowCastOptions::new())
-        .expect("int64 widens");
-    let kept = cast.static_values().expect("kept");
-    assert_eq!((kept.field(), kept.value()), (&record, &stated));
-
-    // A held table keeps rows only, and the transport face is a schema.
-    let held = ChunkedSerie::from_serie_reader(cast).expect("a held table");
+        .unwrap();
+    let held = ChunkedSerie::from_chunked_stream(cast).unwrap();
     assert_eq!(held.len(), 1);
-    let xnys = windows.next().expect("XNYS");
-    assert!(xnys.static_values().is_some());
-    let transport =
-        SerieReader::from_arrow_reader(None, xnys.into_arrow_reader(), ArrowCastOptions::new())
-            .expect("an identity plan");
-    assert!(transport.static_values().is_none());
+    assert_eq!(
+        held.scalar(0).unwrap().get(0).unwrap().into_owned(),
+        Scalar::from("XNAS")
+    );
+    let xnys = windows.next().unwrap().unwrap();
+    assert_eq!(key_cells(&xnys), [Scalar::from("XNYS")]);
+    let transport = key_stream(xnys).into_arrow_reader();
+    let transported =
+        StreamChunkedSerie::from_arrow_reader(None, transport, ArrowCastOptions::new()).unwrap();
+    assert_eq!(
+        reader_rows(transported)[0].get(0).unwrap().into_owned(),
+        Scalar::from("XNYS")
+    );
     assert!(windows.next().is_none());
 }
 
@@ -2713,14 +2691,14 @@ fn a_window_sub_reader_casts_and_crosses_as_batches_lazily() {
 
     // Cast: each piece is cast as it is served, the static values kept.
     let xnas = windows.next().expect("a window").expect("XNAS");
-    let stated = static_cells(&xnas);
-    let mut cast = xnas
+    let stated = key_cells(&xnas);
+    let mut cast = key_stream(xnas)
         .cast(&wider, ArrowCastOptions::new())
         .expect("int64 widens");
     assert_eq!(cast.field(), &wider);
-    assert_eq!(static_cells(&cast), stated);
+    assert_eq!(stated, [Scalar::from("XNAS")]);
     assert_eq!(probe.pulls(), 1, "a cast pulls nothing");
-    let piece = cast.next().expect("a piece").expect("cast");
+    let piece = cast.next_chunk().expect("a piece").expect("cast");
     assert_eq!(piece.field(), Some(&wider));
     assert_eq!(
         piece.rows()[1],
@@ -2732,14 +2710,17 @@ fn a_window_sub_reader_casts_and_crosses_as_batches_lazily() {
             ]))
             .expect("a wider quote")
     );
-    let rest: Vec<Serie> = cast.map(|piece| piece.expect("cast")).collect();
+    let rest: Vec<Serie> = cast
+        .into_chunks()
+        .map(|piece| piece.expect("cast"))
+        .collect();
     assert_eq!(rest.len(), 1);
     assert_eq!(rest[0].field(), Some(&wider));
 
     // Transport: one batch per piece, pulled as the batches are.
     let xnys = windows.next().expect("a window").expect("XNYS");
     let pulls = probe.pulls();
-    let mut batches = xnys.into_arrow_reader();
+    let mut batches = key_stream(xnys).into_arrow_reader();
     assert_eq!(batches.schema(), window_batch(&[]).schema());
     assert_eq!(
         probe.pulls(),
@@ -2770,8 +2751,9 @@ fn window_root_priced(dtype: DataType) -> Field {
 }
 
 /// Every row `reader` yields, piece after piece.
-fn reader_rows(reader: SerieReader) -> Vec<Scalar> {
+fn reader_rows(reader: StreamChunkedSerie) -> Vec<Scalar> {
     reader
+        .into_chunks()
         .flat_map(|piece| piece.expect("a piece").rows().into_owned())
         .collect()
 }
@@ -2785,7 +2767,7 @@ fn a_reader_cast_twice_lands_every_cast_in_order() {
     // transport face too.
     let float = window_root_priced(DataType::Float64);
     let text = window_root_priced(DataType::utf8());
-    let twice = |reader: SerieReader| {
+    let twice = |reader: StreamChunkedSerie| {
         reader
             .cast(&float, ArrowCastOptions::new())
             .expect("int64 widens")
@@ -2793,7 +2775,7 @@ fn a_reader_cast_twice_lands_every_cast_in_order() {
             .expect("float64 renders")
     };
     let held = |quotes: &[(&str, i64, i64)]| {
-        SerieReader::from_serie(
+        StreamChunkedSerie::from_serie(
             Serie::from_scalars(
                 window_root(),
                 quotes
@@ -2822,10 +2804,10 @@ fn a_reader_cast_twice_lands_every_cast_in_order() {
         ])
         .window_by("venue", false)
         .expect("a key");
-    let xnas = twice(windows.next().expect("a window").expect("XNAS"));
+    let xnas = twice(key_stream(windows.next().expect("a window").expect("XNAS")));
     assert_eq!(xnas.field(), &text);
     assert_eq!(reader_rows(xnas), expected);
-    let xnys = twice(windows.next().expect("a window").expect("XNYS"));
+    let xnys = twice(key_stream(windows.next().expect("a window").expect("XNYS")));
     let batches: Vec<RecordBatch> = xnys.into_arrow_reader().map(Result::unwrap).collect();
     assert_eq!(batches.len(), 1);
     assert_eq!(batches[0].column(1).data_type(), &ArrowDataType::Utf8);
@@ -2836,7 +2818,7 @@ fn a_reader_cast_twice_lands_every_cast_in_order() {
     let middle = quotes_root_with_id(DataType::Int64);
     let float = quotes_root_with_id(DataType::Float64);
     let text = quotes_root_with_id(DataType::utf8());
-    let twice = |reader: SerieReader| {
+    let twice = |reader: StreamChunkedSerie| {
         reader
             .cast(&float, ArrowCastOptions::new())
             .expect("int64 widens")
@@ -2845,7 +2827,7 @@ fn a_reader_cast_twice_lands_every_cast_in_order() {
     };
     let stream = || {
         twice(
-            SerieReader::from_arrow_reader(
+            StreamChunkedSerie::from_arrow_reader(
                 Some(&middle),
                 batch_reader(narrow.schema(), vec![narrow.clone(); 2]),
                 ArrowCastOptions::new(),
@@ -2856,7 +2838,7 @@ fn a_reader_cast_twice_lands_every_cast_in_order() {
     let landed = Serie::from_arrow_batch(Some(&middle), &narrow, ArrowCastOptions::new())
         .expect("int32 widens to int64");
     let once = reader_rows(twice(
-        SerieReader::from_serie(landed).expect("a held stream"),
+        StreamChunkedSerie::from_serie(landed).expect("a held stream"),
     ));
     assert_eq!(
         once[0].sequence_rows().expect("a row")[0],
@@ -2879,14 +2861,20 @@ fn a_pull_that_panics_poisons_the_walk_into_one_internal_error() {
         batches,
         window_batch(&[]).schema(),
     ));
-    let mut windows = SerieReader::from_arrow_reader(Some(&window_root()), reader, strict())
+    let mut windows = StreamChunkedSerie::from_arrow_reader(Some(&window_root()), reader, strict())
         .expect("an identity plan")
         .window_by("venue", false)
         .expect("a key");
-    let mut xnas = windows.next().expect("a window").expect("XNAS");
-    assert_eq!(xnas.next().expect("a piece").expect("the batch").len(), 1);
+    let mut xnas = key_stream(windows.next().expect("a window").expect("XNAS"));
+    assert_eq!(
+        xnas.next_chunk()
+            .expect("a piece")
+            .expect("the batch")
+            .len(),
+        1
+    );
     // The window's next pull panics while it holds the walk.
-    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| xnas.next()));
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| xnas.next_chunk()));
     assert!(panicked.is_err());
     let failure = windows
         .next()
@@ -2894,14 +2882,14 @@ fn a_pull_that_panics_poisons_the_walk_into_one_internal_error() {
         .unwrap_err()
         .to_string();
     assert!(
-        failure.contains("SerieReaderWindows: a pull panicked while holding its walk"),
+        failure.contains("StreamKeySerie: a pull panicked while holding its walk"),
         "{failure}"
     );
     assert!(windows.next().is_none(), "fused");
     // The window open when it panicked is never presented as complete.
-    let (_, reason) = refusal(xnas.next().expect("the refusal").unwrap_err());
+    let (_, reason) = refusal(xnas.next_chunk().expect("the refusal").unwrap_err());
     assert!(reason.starts_with("window 0 was passed"), "{reason}");
-    assert!(xnas.next().is_none());
+    assert!(xnas.next_chunk().is_none());
 }
 
 /// Every buffer `data` reaches, as `(address, length)`: its validity words
@@ -3262,61 +3250,6 @@ fn an_exact_column_is_resident_whole_and_never_spilled() {
     }
 }
 
-#[cfg(feature = "internals")]
-mod internal {
-    //! The walk's checked `rownum` arithmetic, which no caller reaches: a
-    //! window's record is the crate's alone, so a `rownum` near the largest
-    //! `uint64` is stated through `yggdryl::internals`.
-
-    use yggdryl::internals::serie_arrow::with_static_values;
-    use yggdryl::{DataType, FieldRecord, Scalar, StructType};
-
-    use super::{Probe, refusal, static_cells, window_rows};
-
-    #[test]
-    fn a_rownum_stated_too_near_its_largest_is_refused_naming_the_root() {
-        // The first window numbers its first row at the stated rownum
-        // itself; the next would number its own past the largest uint64, so
-        // it is refused - sorted or not - and the walk ends, its stream
-        // dropped.
-        let part = DataType::from(
-            StructType::from_fields([DataType::UInt64.required_field("rownum")])
-                .expect("one child"),
-        )
-        .required_field("part");
-        for sorted in [false, true] {
-            let probe = Probe::default();
-            let mut windows = with_static_values(
-                probe.reader(&[&[("XNAS", 1, 0), ("XNAS", 2, 0), ("XNYS", 3, 0)]]),
-                FieldRecord::new(&part, Scalar::from_sequence([Scalar::from(u64::MAX)]))
-                    .expect("a row"),
-            )
-            .window_by("venue", sorted)
-            .expect("a key");
-            let xnas = windows.next().expect("a window").expect("XNAS");
-            assert_eq!(
-                static_cells(&xnas),
-                [
-                    Scalar::from("XNAS"),
-                    Scalar::from(0_u64),
-                    Scalar::from(u64::MAX)
-                ]
-            );
-            assert_eq!(window_rows(xnas).len(), 2);
-            let (path, reason) = refusal(windows.next().expect("the refusal").unwrap_err());
-            assert_eq!(path, "quote");
-            assert!(
-                reason.contains("window 1")
-                    && reason.contains("2 rows")
-                    && reason.contains(&u64::MAX.to_string()),
-                "{reason}"
-            );
-            assert!(windows.next().is_none());
-            assert!(probe.dropped(), "the walk dropped its stream");
-        }
-    }
-}
-
 /// The `l` root a counted stream lays out: an `id` cycling 0, 1, 2 and a
 /// `left_value` every row holds once.
 fn counted_root() -> Field {
@@ -3361,8 +3294,9 @@ fn counted_stream(
 }
 
 /// Every row a reader yields, batch after batch.
-fn drained(reader: SerieReader) -> Vec<Scalar> {
+fn drained(reader: StreamChunkedSerie) -> Vec<Scalar> {
     reader
+        .into_chunks()
         .flat_map(|batch| batch.expect("a batch").rows().into_owned())
         .collect()
 }
@@ -3381,7 +3315,7 @@ fn a_sorted_stream_pulls_every_batch_before_its_first_and_answers_the_chunked_me
         yggdryl::SortOptions::descending(),
     ] {
         let pulls = Arc::new(AtomicUsize::new(0));
-        let stream = SerieReader::from_arrow_reader(
+        let stream = StreamChunkedSerie::from_arrow_reader(
             Some(&root),
             counted_stream(&root, 4, 3, Arc::clone(&pulls)),
             ArrowCastOptions::new(),
@@ -3392,7 +3326,7 @@ fn a_sorted_stream_pulls_every_batch_before_its_first_and_answers_the_chunked_me
         // Every batch was pulled before the first sorted one is asked for.
         assert_eq!(pulls.load(Ordering::SeqCst), 4);
         assert_eq!(without_order(sorted.field()), root);
-        let first = sorted.next().expect("a batch").expect("sorted rows");
+        let first = sorted.next_chunk().expect("a batch").expect("sorted rows");
         assert_eq!(pulls.load(Ordering::SeqCst), 4);
         let mut rows = first.rows().into_owned();
         rows.extend(drained(sorted));
@@ -3404,7 +3338,7 @@ fn a_sorted_stream_pulls_every_batch_before_its_first_and_answers_the_chunked_me
     }
     for by in ["id, left_value desc", "left_value desc", "id * -1"] {
         let pulls = Arc::new(AtomicUsize::new(0));
-        let sorted = SerieReader::from_arrow_reader(
+        let sorted = StreamChunkedSerie::from_arrow_reader(
             Some(&root),
             counted_stream(&root, 4, 3, Arc::clone(&pulls)),
             ArrowCastOptions::new(),
@@ -3426,7 +3360,7 @@ fn a_sorted_stream_refuses_its_keys_before_a_batch_is_pulled() {
     let root = counted_root();
     for refused in ["tier", "id,", "id, id desc", "unnest(id)"] {
         let pulls = Arc::new(AtomicUsize::new(0));
-        let stream = SerieReader::from_arrow_reader(
+        let stream = StreamChunkedSerie::from_arrow_reader(
             Some(&root),
             counted_stream(&root, 4, 3, Arc::clone(&pulls)),
             ArrowCastOptions::new(),
@@ -3438,9 +3372,9 @@ fn a_sorted_stream_refuses_its_keys_before_a_batch_is_pulled() {
 }
 
 #[test]
-fn a_sorted_window_keeps_its_root_and_its_static_values() {
+fn a_sorted_key_stream_keeps_its_global_columns() {
     let root = counted_root();
-    let mut windows = SerieReader::from_arrow_reader(
+    let mut windows = StreamChunkedSerie::from_arrow_reader(
         Some(&root),
         counted_stream(&root, 2, 3, Arc::new(AtomicUsize::new(0))),
         ArrowCastOptions::new(),
@@ -3450,14 +3384,17 @@ fn a_sorted_window_keeps_its_root_and_its_static_values() {
     .expect("windows");
     // The first window is the rows valued 0 to 3, across both batches.
     let window = windows.next().expect("a window").expect("the first window");
-    let cells = static_cells(&window);
-    let sorted = window.into_sort_by("left_value desc").expect("sorted");
-    assert_eq!(without_order(sorted.field()), root);
-    assert_eq!(static_cells(&sorted), cells);
+    let cells = key_cells(&window);
+    let field = window.field().clone();
+    let sorted = key_stream(window)
+        .into_sort_by("left_value desc")
+        .expect("sorted");
+    assert_eq!(without_order(sorted.field()), field);
+    assert_eq!(cells, [Scalar::from(true)]);
     let rows = drained(sorted);
     let values: Vec<Scalar> = rows
         .iter()
-        .map(|row| row.get(1).expect("a value").into_owned())
+        .map(|row| row.get(2).expect("a value").into_owned())
         .collect();
     assert_eq!(values, [3_i64, 2, 1, 0].map(Scalar::from).to_vec());
 }
@@ -3725,13 +3662,13 @@ fn the_doors_holding_proven_rows_read_no_order() {
         book_rows(&[("XNAS", 3), ("XNAS", 1), ("XNYS", 2)]),
     )
     .expect("in order");
-    let mut reader = SerieReader::from_serie(sorted.clone()).expect("a reader");
-    let yielded = reader.next().expect("one item").expect("the serie");
+    let mut reader = StreamChunkedSerie::from_serie(sorted.clone()).expect("a reader");
+    let yielded = reader.next_chunk().expect("one item").expect("the serie");
     assert_eq!(yielded.field(), Some(&root));
     let pointers =
         |serie: &Serie| buffer_pointers(&serie.into_arrow_array().expect("a column").to_data());
     assert_eq!(pointers(&yielded), pointers(&sorted));
-    assert!(reader.next().is_none());
+    assert!(reader.next_chunk().is_none());
     let chunked = ChunkedSerie::from_series(
         Some(&root),
         [
@@ -3741,8 +3678,9 @@ fn the_doors_holding_proven_rows_read_no_order() {
         ArrowCastOptions::new(),
     )
     .expect("in order");
-    let yielded = SerieReader::from_chunked(chunked.clone())
+    let yielded = StreamChunkedSerie::from_chunked(chunked.clone())
         .expect("a reader")
+        .into_chunks()
         .map(|chunk| chunk.expect("a chunk"))
         .collect::<Vec<_>>();
     assert_eq!(yielded.len(), 2);
@@ -3803,14 +3741,14 @@ fn a_stream_proves_each_batch_and_each_batch_edge_and_fuses_after_a_refusal() {
         ),
     ];
     for (what, batches, at, refused) in cases {
-        let mut reader = SerieReader::from_arrow_reader(
+        let mut reader = StreamChunkedSerie::from_arrow_reader(
             Some(&root),
             book_stream(&root, batches),
             ArrowCastOptions::new(),
         )
         .expect("a stream");
         for index in 0..at {
-            let batch = reader.next().expect("a batch").expect("in order");
+            let batch = reader.next_chunk().expect("a batch").expect("in order");
             assert_eq!(
                 declared(&batch),
                 Some(r#"["price"]"#),
@@ -3818,11 +3756,11 @@ fn a_stream_proves_each_batch_and_each_batch_edge_and_fuses_after_a_refusal() {
             );
         }
         assert_eq!(
-            refusal(reader.next().expect("the refusal").unwrap_err()),
+            refusal(reader.next_chunk().expect("the refusal").unwrap_err()),
             refused,
             "{what}"
         );
-        assert!(reader.next().is_none(), "{what}: fused");
+        assert!(reader.next_chunk().is_none(), "{what}: fused");
         // The same refusal through the doors that drain a stream, and
         // with the root read off the stream's own schema.
         let drained = ChunkedSerie::from_arrow_reader(
@@ -3839,14 +3777,17 @@ fn a_stream_proves_each_batch_and_each_batch_edge_and_fuses_after_a_refusal() {
         )
         .unwrap_err();
         assert_eq!(refusal(joined), refused, "{what}: joined");
-        let mut own = SerieReader::from_arrow_reader(
+        let own = StreamChunkedSerie::from_arrow_reader(
             None,
             book_stream(&root, batches),
             ArrowCastOptions::new(),
         )
         .expect("a stream");
         assert_eq!(own.field().get_metadata("SORT:by"), Some(r#"["price"]"#));
-        let failed = own.find_map(Result::err).expect("the refusal");
+        let failed = own
+            .into_chunks()
+            .find_map(Result::err)
+            .expect("the refusal");
         let (_, reason) = refusal(failed);
         assert!(
             reason.contains("its root declares, `price`"),
@@ -3861,12 +3802,13 @@ fn a_stream_proves_each_batch_and_each_batch_edge_and_fuses_after_a_refusal() {
         &[("B", 2), ("B", 3)],
         &[("C", 9)],
     ];
-    let yielded: Vec<Serie> = SerieReader::from_arrow_reader(
+    let yielded: Vec<Serie> = StreamChunkedSerie::from_arrow_reader(
         Some(&root),
         book_stream(&root, batches),
         ArrowCastOptions::new(),
     )
     .expect("a stream")
+    .into_chunks()
     .collect::<Result<_, _>>()
     .expect("in order");
     assert_eq!(yielded.len(), 4);
@@ -3889,7 +3831,7 @@ fn a_stream_cast_onto_a_declaring_root_proves_its_batches_against_it() {
     let plain = book_root(&[]);
     let root = book_root(&["price desc"]);
     let batches: &[&[(&str, i64)]] = &[&[("A", 9), ("A", 7)], &[("B", 8)]];
-    let mut reader = SerieReader::from_arrow_reader(
+    let mut reader = StreamChunkedSerie::from_arrow_reader(
         Some(&plain),
         book_stream(&plain, batches),
         ArrowCastOptions::new(),
@@ -3899,14 +3841,14 @@ fn a_stream_cast_onto_a_declaring_root_proves_its_batches_against_it() {
     .expect("cast");
     assert_eq!(reader.field(), &root);
     assert_eq!(
-        declared(&reader.next().expect("a batch").expect("in order")),
+        declared(&reader.next_chunk().expect("a batch").expect("in order")),
         Some(r#"["price desc"]"#)
     );
     assert_eq!(
-        refusal(reader.next().expect("the refusal").unwrap_err()),
+        refusal(reader.next_chunk().expect("the refusal").unwrap_err()),
         opens_out_of_order("price desc")
     );
-    assert!(reader.next().is_none());
+    assert!(reader.next_chunk().is_none());
 }
 
 #[test]
@@ -3914,7 +3856,7 @@ fn a_sorted_stream_yields_a_root_declaring_its_order() {
     let root = book_root(&[]);
     let batches: &[&[(&str, i64)]] = &[&[("B", 2), ("A", 9)], &[("A", 1)]];
     let stream = || {
-        SerieReader::from_arrow_reader(
+        StreamChunkedSerie::from_arrow_reader(
             Some(&root),
             book_stream(&root, batches),
             ArrowCastOptions::new(),
@@ -3934,7 +3876,10 @@ fn a_sorted_stream_yields_a_root_declaring_its_order() {
         ),
     ] {
         assert_eq!(sorted.field().get_metadata("SORT:by"), Some(text));
-        let yielded: Vec<Serie> = sorted.collect::<Result<_, _>>().expect("sorted rows");
+        let yielded: Vec<Serie> = sorted
+            .into_chunks()
+            .collect::<Result<_, _>>()
+            .expect("sorted rows");
         assert!(
             yielded.iter().all(|batch| declared(batch) == Some(text)),
             "{text}"
@@ -3954,13 +3899,13 @@ fn a_sorted_stream_yields_a_root_declaring_its_order() {
 
 #[test]
 fn a_held_reader_spills_its_records_through_as_spilled_and_into_spilled() {
-    use yggdryl::{ChunkedSerie, DataType, Scalar, Serie, SerieReader, SpillOptions};
+    use yggdryl::{ChunkedSerie, DataType, Scalar, Serie, SpillOptions, StreamChunkedSerie};
 
     let field = DataType::Int64.required_field("price");
     let chunk = || Serie::from_scalars(field.clone(), (0..1_024_i64).map(Scalar::from)).unwrap();
     let everything = SpillOptions::new().with_byte_size(0);
     let held = || {
-        SerieReader::from_chunked(
+        StreamChunkedSerie::from_chunked(
             ChunkedSerie::from_series(Some(&field), [chunk(), chunk()], Default::default())
                 .unwrap(),
         )
@@ -3968,14 +3913,102 @@ fn a_held_reader_spills_its_records_through_as_spilled_and_into_spilled() {
     };
     let mut reader = held();
     assert!(reader.as_spilled(&everything).unwrap().is_spilled());
-    let records: Vec<Serie> = reader.collect::<Result<_, _>>().unwrap();
+    let records: Vec<Serie> = reader.into_chunks().collect::<Result<_, _>>().unwrap();
     assert!(records.iter().all(Serie::is_spilled));
     assert_eq!(records.iter().map(Serie::len).sum::<usize>(), 2_048);
 
     let reader = held().into_spilled(&everything).unwrap();
     assert!(reader.is_spilled());
     assert_eq!(
-        reader.map(|record| record.unwrap().len()).sum::<usize>(),
+        reader
+            .into_chunks()
+            .map(|record| record.unwrap().len())
+            .sum::<usize>(),
         2_048
+    );
+}
+
+fn kinds_trade_root() -> Field {
+    StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Int64.required_field("size"),
+    ])
+    .map(DataType::from)
+    .expect("a record datatype")
+    .required_field("kinds_trade")
+}
+
+fn kinds_trade(id: i64, size: i64) -> Scalar {
+    Scalar::from_sequence([Scalar::from(id), Scalar::from(size)])
+}
+
+fn kinds_trades() -> Serie {
+    Serie::from_scalars(
+        kinds_trade_root(),
+        [kinds_trade(1, 10), kinds_trade(2, 20), kinds_trade(3, 30)],
+    )
+    .expect("three kinds_trades")
+}
+
+fn kinds_names(root: &Field) -> Vec<&str> {
+    root.fields().iter().map(Field::name).collect()
+}
+
+#[test]
+fn into_reader_yields_a_held_column_as_one_batch_and_chunks_one_each() {
+    let held: Vec<Serie> = StreamChunkedSerie::from_serie(kinds_trades())
+        .expect("a reader")
+        .into_chunks()
+        .collect::<Result<_, _>>()
+        .expect("one batch");
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0], kinds_trades());
+
+    let chunked = ChunkedSerie::from_series(
+        Some(&kinds_trade_root()),
+        [kinds_trades(), kinds_trades().slice(0, 1).expect("one row")],
+        Default::default(),
+    )
+    .expect("two chunks");
+    let chunks: Vec<Serie> = StreamChunkedSerie::from_serie(Serie::from(chunked))
+        .expect("a reader")
+        .into_chunks()
+        .collect::<Result<_, _>>()
+        .expect("two batches");
+    assert_eq!(
+        chunks.iter().map(Serie::len).collect::<Vec<_>>(),
+        [3, 1],
+        "a chunk is one batch, none joined"
+    );
+
+    // A plain column is read as the one child of a `row` record.
+    let plain = Serie::from_scalars(
+        DataType::Int64.required_field("id"),
+        [Scalar::from(1_i64), Scalar::from(2_i64)],
+    )
+    .expect("a column");
+    let reader = StreamChunkedSerie::from_serie(plain).expect("a reader");
+    assert_eq!(reader.field().name(), "row");
+    assert_eq!(kinds_names(reader.field()), ["id"]);
+    let records: Vec<Serie> = reader
+        .into_chunks()
+        .collect::<Result<_, _>>()
+        .expect("one batch");
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].len(), 2);
+}
+
+#[test]
+fn into_reader_hands_a_stream_back_as_itself_and_refuses_a_run() {
+    let stream = StreamChunkedSerie::from_serie(kinds_trades()).expect("a stream");
+    let reader = StreamChunkedSerie::from_serie(Serie::from(stream)).expect("the same stream");
+    assert_eq!(reader.field().name(), "kinds_trade");
+    assert_eq!(reader.into_chunks().count(), 1);
+
+    let error = StreamChunkedSerie::from_serie(Serie::new(vec![Scalar::from(1_i64)]))
+        .expect_err("a run kinds_names no layout");
+    assert!(
+        error.to_string().contains("run") || error.to_string().contains("field"),
+        "{error}"
     );
 }

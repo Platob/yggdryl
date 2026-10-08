@@ -165,8 +165,9 @@ assert [source.as_py() for source in merged.srcuuids] == [LINE_1, LINE_2]
 
 ## Walk a stream into chains
 
-`graph.EventIterator` chains a stream by cross identity (and by a live
-element's `identifiers`), yields a twin as a restatement rather than a successor,
+`graph.EventIterator` chains a stream by cross identity (and by the chain identities a live
+element's `identifiers` hold, never an `execid`), re-keys each element onto its
+chain's side and first cross code, yields a twin as a restatement rather than a successor,
 retires a chain at a terminal state and emits one `EXPIRED` at a deadline.
 An order's or an execution's chain is keyed by side - a quote's is one chain
 whatever side it tags - a chain lives within one `marketdatakind` (an order and
@@ -291,10 +292,10 @@ from yggdryl import MarketDataKind, graph
 order = graph.OrderEvent(1_700_000_000_000_000_000, crosscode="O-1001")
 values = [graph.Order(), order, graph.BookEvent(1_700_000_001_000_000_000, "AAPL")]
 
-# 63 columns: 6 element, 9 event, 35 market (marketdatakind first), 5 operation,
-# the book controls bookscope, bookaction and bookposition, 5 nested.
+# 65 columns: 6 element, 9 event, 36 market (marketdatakind first), 5 operation,
+# the book controls bookscope, bookaction and bookposition, 6 nested.
 field = graph.MarketData.field()
-assert len(list(field)) == 63
+assert len(list(field)) == 65
 assert [child.name for child in field][15] == "marketdatakind"
 reader = graph.MarketData.arrow_reader(values, batch_row_size=1_000)
 assert isinstance(reader, pa.RecordBatchReader)
@@ -346,11 +347,11 @@ with tempfile.TemporaryDirectory() as directory:
 
 `graph.BookIterator(items, snapshot_millis=0, filter=None)` folds sorted
 orders and quotes into one `BookEvent` per instant and book key that moved it -
-the instrument's ISIN, else its ticker, else `XX0000000000` - pruning every
-execution and trade. A book is complete (`is_complete`) only at a snapshot
-tick; every other book states its deltas alone beside the top of book they
-settled on, and `with_previous` over the complete book before it rebuilds it
-whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
+the instrument's ISIN, else its ticker, else `XX0000000000` - recording
+every execution among its `events` and pruning every trade. A book is
+complete (`is_complete`) only at a snapshot tick; every other book is a delta
+book - its `delta` and `events` beside the top of book they settled on - and
+`with_previous` over the complete book before it rebuilds it whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
 
 ```python
 from decimal import Decimal
@@ -368,10 +369,12 @@ stream = [bid(T, "B-1", "189.48", 300), bid(T + SECOND, "B-2", "189.49", 200), f
 
 books = list(graph.BookIterator(stream))
 assert len(books) == 2, "one book per instant that moved it; the execution is recorded beside the better bid"
-# No grid and no snapshot input: each book states its deltas alone and its top of book.
+# No grid and no snapshot input: each book is a delta book - the bid in its
+# delta, the execution in its events - and its top of book.
 last = books[1]
 assert not last.is_complete
-assert (last.currunix, len(last.deltas), last.alive) == (T + SECOND, 2, [])
+assert (last.currunix, len(last.delta), len(last.events), last.alive) == (T + SECOND, 1, 1, [])
+assert [execution.crosscode for execution in last.executions] == ["8:1:E-1"]
 best = last.best_price(Side.BUYS)
 assert best is not None and best.as_py() == Decimal("189.49")
 # Rebuilt whole: the first over the empty book its key starts from, the next over it.
@@ -404,10 +407,9 @@ A complete book answers each side as its `limits` (one per price, best
 first, the unpriced market level last) and its entries as `alive_on(side)`,
 the orders resting as `ordlive`; every book answers the readings of the first
 level that can trade: `best_price`, `best_quantity`, the `bidpx`/`askpx` it
-states, `spread`; a complete one `depth` and `imbalance` too. Its deltas read
-by kind as `orddelta`, `quotes`, `executions` and `events` - every delta that
-is none of the three, empty because a book records nothing else - which
-partition them. A book built by hand is complete. A side is a `Side` member,
+states, `spread`; a complete one `depth` and `imbalance` too. Its `delta`
+reads by kind as `orddelta` and `quotes`, which partition it, and its
+`events` as `executions` and `controls`. A book built by hand is complete. A side is a `Side` member,
 its code or any spelling `Side` reads.
 
 ```python
@@ -456,14 +458,14 @@ assert not book.is_locked and not book.is_crossed
 assert value(book.depth("BUYS", 2)) == 310
 assert book.is_complete
 assert (len(book.alive), len(book.alive_on(Side.BUYS)), len(book.alive_on("SELL"))) == (5, 4, 1)
-# The deltas are the five orders, in the order applied.
-assert [delta.crosscode for delta in book.deltas] == ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:2:A-1", "10:1:MKT"]
+# The delta is the five orders, in the order applied.
+assert [entry.crosscode for entry in book.delta] == ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:2:A-1", "10:1:MKT"]
 # By kind: the orders resting in book order - the bids best first and the
-# market order last, then the offer - and every delta an order.
+# market order last, then the offer - and every delta entry an order.
 assert [order.crosscode for order in book.ordlive] == ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:1:MKT", "10:2:A-1"]
-assert (len(book.orddelta), len(book.quotes), len(book.executions)) == (len(book.deltas), 0, 0)
-# The four kinds partition the deltas; a book records no other kind.
-assert book.events == []
+assert (len(book.orddelta), len(book.quotes)) == (len(book.delta), 0)
+# No execution and no snapshot control: the events are empty.
+assert (book.events, book.executions, book.controls) == ([], [], [])
 ```
 
 ## Replace a scope with a snapshot
@@ -488,6 +490,8 @@ control = graph.SnapshotEvent.snapshot(graph.OrderEvent(T + 1_000_000_000, ticke
 assert control.book.action == "snapshot"
 after = book.with_operations([control])
 assert after.alive == []
+# The control is recorded among the book's events.
+assert len(after.controls) == 1
 assert (after.price, after.bidpx, after.askpx) == (None, None, None)
 ```
 
@@ -565,8 +569,10 @@ assert first is not None and first.is_complete
 assert last is not None
 best = last.best_price(Side.BUYS)
 assert best is not None and best.as_py() == Decimal(101)
-# The bid's change and the trade entry (`269=2`), recorded as the execution it is, are the deltas.
-assert not last.is_complete and len(last.deltas) == 2
+# The bid's change is the delta; the trade entry (`269=2`), recorded as the
+# execution it is, is among the events.
+assert not last.is_complete
+assert (len(last.delta), len(last.executions)) == (1, 1)
 ```
 
 ## Fold books into candles
@@ -655,7 +661,7 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
   `marketdata` row, refused where it names a column the row does not carry;
   `EventIterator(items, sorted=True, snapshot_ns=None)` defaults to trusting
   the order - an unsorted list is not refused, it yields broken chains (a step
-  before its live element yielded as it came, `prevuuid` None); pass
+  before its live element yielded following nothing, `prevuuid` None); pass
   `sorted=False` for one you have not sorted.
 - Prices and quantities take `Decimal("189.5")` (or an `int`): a float
   `price=189.5` is refused at `$.price` (`got f64`). `fxrates` takes
@@ -669,10 +675,10 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
   `book`; only `with_previous` / `merge_with` answer `None` when nothing moved.
 - A book refuses an undated `Order`: `BookIterator` at `$.operation.kind`,
   `with_operations` at `$.operations[i].kind`; an execution is recorded among
-  the book's deltas, resting on no side, and a trade is pruned, no error and
+  the book's events, resting on no side, and a trade is pruned, no error and
   no book. What `BookIterator` finds wrong in the data -
   an operation dated before its book - it leaves out, and an order or a quote
-  stating neither side it places nowhere (still the book's delta), each with a
+  stating neither side it places nowhere (still in the book's delta), each with a
   `logging` warning under `yggdryl.graph.book`, and no error.
 - A book from a walk is complete only at a snapshot tick: test
   `book.is_complete` before reading `alive`, `alive_on`, `limits`, `depth` or
@@ -684,7 +690,7 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
   `value.as_order_event()` with a leaf, `MarketData` with `MarketData`.
 - `book.limits(side)` answers struct `Scalar`s: `limit.as_py()` is a dict of
   `price`, `quantity`, `uuids`, `tradable`. `is_complete`, `alive`,
-  `deltas`, `spread`, `is_crossed` and `is_locked` are properties;
+  `delta`, `events`, `spread`, `is_crossed` and `is_locked` are properties;
   `alive_on`, `limits`, `best_price`, `best_quantity`, `depth` and
   `imbalance` take arguments.
 - Identifier verbs (`insert_securityid`, `insert_identifier`, `insert_partyid`, ...)

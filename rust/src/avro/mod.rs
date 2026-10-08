@@ -45,3 +45,5 @@ pub use schema::{MAX_SCHEMA_DEPTH, Schema};
 pub use single::{
     from_single_object_slice, from_single_object_slice_with_limits, into_single_object_vec,
 };
+
+pub use batch::{AvroSerie, read_stream};

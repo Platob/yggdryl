@@ -9,6 +9,7 @@ use std::vec;
 use super::element::InstantSequence;
 use super::market::base_crosscode;
 use super::{Element, Market};
+use crate::logging::warning::warned;
 use crate::{IdType, Identifiers};
 use crate::{MarketDataKind, Side, State, Uuid};
 
@@ -29,6 +30,14 @@ mod sealed {
     use super::clear_fill;
     use crate::{IdType, Identifiers};
     use crate::{MarketDataKind, Side, State};
+
+    /// [`Walked::walked_origin_of`] over one holder's own parentage: the
+    /// base `kind` is a parent of, where that base is a chain identity and
+    /// `kind` stands last among its parents - the chain's first value.
+    fn origin_of<O: Operation + ?Sized>(operation: &O, kind: &IdType) -> Option<IdType> {
+        let (base, at) = operation.parent_of(kind)?;
+        (base.is_chain_identity() && at + 1 == operation.parents_of(&base).len()).then_some(base)
+    }
 
     /// [`Walked::walked_made`] over an event's own facts.
     fn made<E: Event + ?Sized>(event: &E) -> bool {
@@ -80,8 +89,22 @@ mod sealed {
         /// [`Operation::get_identifiers`]; `None` for an element the walk does
         /// not chain.
         fn walked_identifiers(&self) -> Option<&Identifiers>;
-        /// [`Operation::parent_of`]: the base a parent type names.
-        fn walked_parent_of(&self, kind: &IdType) -> Option<IdType>;
+        /// The chain identity ([`IdType::is_chain_identity`]) whose first
+        /// value an identifier of `kind` names: the base of a parent standing
+        /// last among that base's [`Operation::parents_of`] - FIX's own
+        /// lineage fields, `OrigClOrdID(41)`, `OrigTradeID(1126)`,
+        /// `TradeReportRefID(572)`, and `origorderid` - as the holder reads
+        /// its parentage ([`Operation::parent_of`]); none for any other
+        /// type, the previous-value slot `parent{type}` included, which the
+        /// walk itself writes from a value the chain holds and a bridge
+        /// spells a hierarchy parent by.
+        fn walked_origin_of(&self, kind: &IdType) -> Option<IdType>;
+        /// [`Operation::follow_identity`]: the live statement's side where
+        /// this one states none and its stored cross code, the cross codes
+        /// brought in step; whether anything moved.
+        fn walked_follow_identity(&mut self, live: &Self) -> bool;
+        /// [`Operation::note_conflict`].
+        fn walked_note_conflict(&mut self, cited: &str);
         /// [`Event::restating`].
         fn walked_restating(self, live: &Self) -> Self;
         /// [`Event::finalized`] over the code the element already holds:
@@ -172,8 +195,14 @@ mod sealed {
         fn walked_identifiers(&self) -> Option<&Identifiers> {
             Some(self.get_identifiers())
         }
-        fn walked_parent_of(&self, kind: &IdType) -> Option<IdType> {
-            self.parent_of(kind).map(|(base, _)| base)
+        fn walked_origin_of(&self, kind: &IdType) -> Option<IdType> {
+            origin_of(self, kind)
+        }
+        fn walked_follow_identity(&mut self, live: &Self) -> bool {
+            self.follow_identity(live)
+        }
+        fn walked_note_conflict(&mut self, cited: &str) {
+            self.note_conflict(cited);
         }
         fn walked_restating(self, live: &Self) -> Self {
             self.restating(live)
@@ -276,10 +305,19 @@ mod sealed {
                 None => None,
             }
         }
-        fn walked_parent_of(&self, kind: &IdType) -> Option<IdType> {
-            self.as_event_operation()?
-                .parent_of(kind)
-                .map(|(base, _)| base)
+        fn walked_origin_of(&self, kind: &IdType) -> Option<IdType> {
+            origin_of(self.as_event_operation()?, kind)
+        }
+        /// Through the market doors both statements hold, whichever leaf
+        /// each is: a typed follower of a FIX message takes the side and the
+        /// stored cross code as a follower of its own leaf does.
+        fn walked_follow_identity(&mut self, live: &Self) -> bool {
+            super::super::market::follow_identity(self, live)
+        }
+        fn walked_note_conflict(&mut self, cited: &str) {
+            if let Some(operation) = self.as_event_operation_mut() {
+                operation.note_conflict(cited);
+            }
         }
         /// Restates through the leaf's own [`Event::restating`] - a FIX
         /// message through its own, as it follows through its own
@@ -370,24 +408,47 @@ enum Source<E, I> {
 /// where it states no cross code, within the element's
 /// [`MarketDataKind`] - a chain holds one category,
 /// so an order and an execution under one cross code are two chains and a
-/// fill never follows the order it filled. An element arriving under an
-/// identity a live element of its category holds - or, where its own is
-/// alive under nothing, under a name a live element of its category goes
-/// by, so a report that spells only the `ClOrdID` a live order was placed
-/// under still finds the order - is stated as the
-/// one after it by its own [`Element::with_previous`], so it records its
-/// predecessor, stands after it where they share an instant and carries the
-/// lifecycle forward; what that answers is what the walk yields. The
+/// fill never follows the order it filled. A chain goes by names beside
+/// its cross element: every value of a chain identity type
+/// ([`IdType::is_chain_identity`]) - an `OrderID`, a `ClOrdID`, a `QuoteID`,
+/// a `TradeID`, never an `ExecID` or a `QuoteReqID`, which name a report or
+/// a request many chains answer - that its statements stated, the old value
+/// beside the new after a replace, and the chain's first value a lineage
+/// field names (`OrigClOrdID(41)`, `OrigTradeID(1126)`,
+/// `TradeReportRefID(572)`) under the base it names, each held by the
+/// first live chain of its category and side that stated it until that
+/// chain ends. An element arriving under an identity a live element of its
+/// category holds, or citing a chain by such a name - so a report that
+/// spells only the `ClOrdID` a live order was placed under still finds the
+/// order - is stated as the one after it by its own
+/// [`Element::with_previous`], so it records its predecessor, stands after
+/// it where they share an instant and carries the lifecycle forward; what
+/// that answers is what the walk yields. An element citing two live chains
+/// at once is a conflict, never a pick: it stands under its own identity -
+/// its own live chain where that is one of the two, a chain of its own
+/// otherwise - and the conflict is told on it
+/// ([`Operation::note_conflict`](super::Operation::note_conflict): a FIX
+/// message records it as an anomaly) and warned once per kind. The
 /// yielded element then stands as the live one under that identity where
 /// it is still alive, and retires it where it is not: a filled order, an
 /// expired quote, ends its chain, and a later element under the same
 /// identity starts one afresh.
 ///
+/// Every element the walk states as a chain's - a follower, another
+/// statement of the live one, a late one, an expiration - is re-keyed onto
+/// the chain: it takes the live element's side where it is sided and states
+/// none, then the live element's stored cross code where that states one,
+/// so an identifier change moves no element onto another cross code and
+/// splits no book; its cross hash and cross element derive from that code,
+/// and its identity is settled once under them
+/// ([`Operation::follow_identity`](super::Operation::follow_identity)).
+///
 /// Two elements never chain against their order. One that is
 /// [`Element::is_before`] the live element - out of order on a walk the
-/// caller called sorted - is yielded as it came and changes nothing; one the
-/// element's own reading refuses, or that following changes nothing on, is
-/// yielded as it came and still stands as the live one. An element under
+/// caller called sorted - follows nothing and changes nothing, but is
+/// yielded under the chain's side and cross code; one the element's own
+/// reading refuses, or that following changes nothing on, is yielded under
+/// the chain's identity and still stands as the live one. An element under
 /// no live identity is yielded as it came, and stands. What the walk yields
 /// is always the caller's own copy: the live element is a clone the walk
 /// keeps, never a reference into it.
@@ -513,15 +574,17 @@ pub struct EventIterator<E, I> {
     lookahead: Option<E>,
     source_started: bool,
     alive: HashMap<Chain, Live<E>>,
-    /// Every name a live element goes by, by scheme then name, under the
-    /// identity it is alive under and the side the name is alive on
-    /// ([`Walked::walked_slot`]) - a sided chain's side, a quote's tag - one
-    /// per side and category: where an element arrives under no live
-    /// identity, a name it shares with a live element of its own side is
-    /// the chain it belongs to, and an element stating no side joins the one
-    /// side a name is alive on. Two levels, so a name is looked up by the
-    /// borrowed scheme and name an element states and never by a copy of
-    /// them.
+    /// Every name a live chain goes by ([`chain_names`]: its chain
+    /// identities under their types, its first value a lineage field names
+    /// under the base), by scheme then name, under the identity that holds
+    /// it and the side the name is alive on ([`Walked::walked_slot`]) - a
+    /// sided chain's side, a quote's tag - one holder per side and category,
+    /// the first chain that stated it, until that chain ends: a name an
+    /// element states is a chain it cites, and an element stating no side
+    /// cites every side a name is alive on. Two levels, so a name is looked
+    /// up by the borrowed scheme and name an element states and never by a
+    /// copy of them. Bounded by the identifier changes of the live chains -
+    /// one entry per distinct name a chain stated - never by their reports.
     named: HashMap<IdType, HashMap<String, Vec<(Side, Chain)>>>,
     /// The live identities of each base cross code - the code without the
     /// prefix [`Market::stored_crosscode`](super::Market::stored_crosscode)
@@ -682,15 +745,10 @@ where
         }
         if is_alive(element) {
             let side = element.walked_slot();
-            for (scheme, name) in element
-                .walked_identifiers()
-                .into_iter()
-                .flat_map(Identifiers::iter)
-                .map(|id| (id.kind(), id.value()))
-            {
+            for (scheme, name) in chain_names(element) {
                 // Looked up borrowed first, as the bases are: a chain settled
                 // again under the names it already goes by allocates nothing.
-                let names = match self.named.get_mut(scheme) {
+                let names = match self.named.get_mut(&scheme) {
                     Some(names) => names,
                     None => self.named.entry(scheme.clone()).or_default(),
                 };
@@ -698,37 +756,34 @@ where
                     Some(slots) => slots,
                     None => names.entry(name.to_owned()).or_default(),
                 };
-                // One identity per side and category a name is alive on,
-                // and one side per identity: the one its latest statement
-                // tags.
+                // One side per identity: the one its latest statement tags.
+                let held = slots.len();
                 slots.retain(|(held, chain)| *chain != identity || *held == side);
-                let held = match slots
-                    .iter_mut()
-                    .find(|(held, chain)| *held == side && chain.1 == identity.1)
+                let moved_off = slots.len() != held;
+                // One live holder per side and category: the first chain
+                // that stated the name holds it until it ends, so a second
+                // chain stating it files nothing for it.
+                if slots
+                    .iter()
+                    .any(|(held, chain)| *held == side && chain.1 == identity.1)
                 {
-                    Some(slot) => Some(std::mem::replace(&mut slot.1, identity)),
-                    None => {
-                        slots.push((side, identity));
-                        None
-                    }
-                };
-                if held == Some(identity) {
-                    continue;
-                }
-                if let Some(held) = held {
-                    let still = slots.iter().any(|(_, other)| *other == held);
-                    if !still && let Some(known) = self.names_of.get_mut(&held) {
+                    if moved_off
+                        && !slots.iter().any(|(_, chain)| *chain == identity)
+                        && let Some(known) = self.names_of.get_mut(&identity)
+                    {
                         known.retain(|(held_scheme, held_name)| {
-                            held_scheme != scheme || held_name.as_str() != name
+                            *held_scheme != scheme || held_name.as_str() != name
                         });
                     }
+                    continue;
                 }
+                slots.push((side, identity));
                 let known = self.names_of.entry(identity).or_default();
                 if !known
                     .iter()
-                    .any(|(held_scheme, held_name)| held_scheme == scheme && held_name == name)
+                    .any(|(held_scheme, held_name)| *held_scheme == scheme && held_name == name)
                 {
-                    known.push((scheme.clone(), name.to_owned()));
+                    known.push((scheme, name.to_owned()));
                 }
             }
             let base = base_crosscode(element.get_crosscode());
@@ -917,7 +972,7 @@ where
         self.place(&mut expired);
         let fallback = expired.clone();
         let mut expired = expired.with_previous(&previous).unwrap_or(fallback);
-        joined(&mut expired, identity);
+        rekeyed(&mut expired, &previous, identity);
         Some(expired)
     }
 
@@ -933,8 +988,19 @@ where
         if !element.is_walked() {
             return element;
         }
-        let identity = self.identity_of(&element);
         let arrived = element.get_curruuid();
+        let (identity, conflict) = self.identity_of(&element);
+        if let Some(cited) = conflict {
+            // Told on the element before anything restates or finalizes it,
+            // so another statement of it, told the same, digests alike - and
+            // once per kind in the log, counted after.
+            element.walked_note_conflict(&cited);
+            warned!(
+                "lifecycle element cites two live chains: it stands under its own identity",
+                element.walked_kind().as_str(),
+                "{cited}"
+            );
+        }
         // A chain that ended at this instant goes by no name and no live
         // identity, so its statements are found by the identity they
         // arrived under alone.
@@ -957,13 +1023,17 @@ where
             // step that ended it - logged again: another statement of that
             // one, and the chain stays where it moved.
             let mut element = element.walked_restating(statement);
-            joined(&mut element, chain);
+            rekeyed(&mut element, statement, chain);
             return element;
         }
         let mut element = match self.alive.get(&identity) {
             Some(live) if live.arrived == arrived => element.walked_restating(&live.element),
             Some(live) if element.is_before(&live.element) => {
+                // Out of order: it follows nothing and moves the live element
+                // not at all, but it is one of the chain's statements, so it
+                // stands under the chain's side and cross code.
                 element.walked_fill_execution();
+                rekeyed(&mut element, &live.element, identity);
                 created(&mut element, None);
                 return element;
             }
@@ -994,8 +1064,10 @@ where
                 element
             }
         };
-        if self.alive.contains_key(&identity) {
-            joined(&mut element, identity);
+        // Whatever following answered - a fold, nothing, a statement over
+        // another leaf - the element stands under its chain's identity.
+        if let Some(live) = self.alive.get(&identity) {
+            rekeyed(&mut element, &live.element, identity);
         }
         created(
             &mut element,
@@ -1012,12 +1084,17 @@ where
         element
     }
 
-    /// The live identity `element` belongs to: its own cross element where
-    /// that is alive, else the identity of a live element of its side it
-    /// shares a name with - an element that spells no chain identifier of
-    /// its own but carries the `ClOrdID` a live order was placed under
-    /// belongs to that order - else its own cross element, under which it
-    /// starts a chain.
+    /// The live identity `element` belongs to, beside what it cited where it
+    /// cited two live chains: every chain it names is gathered - its own
+    /// cross element where that is alive, the one live side of its base code
+    /// where it states no side, and the chain each name it goes by is held
+    /// by ([`chain_names`]) - so a report that spells only the `ClOrdID` a
+    /// live order was placed under belongs to that order. Naming no live
+    /// chain, it starts one under its own cross element; naming one, it is
+    /// that chain's; naming two or more, it is a conflict - never a pick -
+    /// and it stands under its own identity: its own live chain where that
+    /// is one of those cited, a chain of its own otherwise, with the detail
+    /// naming its stored cross code and each cited chain's by what cited it.
     ///
     /// A sided kind's chains are keyed by side: an order's or an
     /// execution's cross code carries the side, so a buy and a sell under
@@ -1026,21 +1103,25 @@ where
     /// one chain whatever side it tags - but a name a quote goes by is alive
     /// on the side it tags, as FIX scopes an `MDEntryID(278)` by its entry
     /// type, so a bid and an offer going by one name are two chains, and a
-    /// tagged statement joins the quote of its side, else the untagged quote
-    /// holding both legs. An element stating no side joins the one side
-    /// alive under its base cross code, else under the first name it shares
-    /// with a live element, where exactly one side is; where both are, it
-    /// starts a chain of its own. An execution joins nothing by a name or a
+    /// tagged statement names the quote of its side, else the untagged quote
+    /// holding both legs. An element stating no side names the one side
+    /// alive under its base cross code - where both are, the base names
+    /// neither and its names decide - and every live chain its names are
+    /// alive under on any side. An execution names nothing by a name or a
     /// base: it is a chain of its own, followed only under its own cross
-    /// code. No element joins by a name a chain one of its siblings stands
+    /// code. No element names by a name a chain one of its siblings stands
     /// in - an element split off the same message, such as two entries of
     /// one batch going by the batch's own identifier, are two entries. Every
-    /// chain an element joins is one of its own category.
-    fn identity_of(&self, element: &E) -> Chain {
+    /// chain an element names is one of its own category.
+    fn identity_of(&self, element: &E) -> (Chain, Option<String>) {
         let kind = element.walked_kind();
         let own = (element.get_crossuuid(), kind);
-        if self.alive.contains_key(&own) || !element.walked_joins() {
-            return own;
+        if !element.walked_joins() {
+            return (own, None);
+        }
+        let mut cited = Cited::default();
+        if self.alive.contains_key(&own) {
+            cited.add(own, Cite::Own);
         }
         let side = element.walked_side();
         let alive = |identity: &Chain| identity.1 == kind && self.alive.contains_key(identity);
@@ -1061,40 +1142,22 @@ where
             if let Some(held) = (!base.is_empty()).then(|| self.bases.get(base)).flatten() {
                 let mut live = held.iter().filter(|identity| alive(identity));
                 if let (Some(identity), None) = (live.next(), live.next()) {
-                    return *identity;
+                    cited.add(*identity, Cite::Base);
                 }
             }
         }
-        // An element names a live chain by any of its identifiers' values,
-        // and a parent identifier - a value its base held before - by its
-        // value under that base too.
-        // Read as they are walked: an element names any number of them.
-        let names = element
-            .walked_identifiers()
-            .into_iter()
-            .flat_map(Identifiers::iter)
-            .flat_map(|id| {
-                std::iter::once((id.kind().clone(), id.value())).chain(
-                    element
-                        .walked_parent_of(id.kind())
-                        .map(|base| (base, id.value())),
-                )
-            });
         let slot = element.walked_slot();
         let joined = |identity: &Chain| alive(identity) && !sibling(identity);
-        for (scheme, name) in names {
+        for (scheme, name) in chain_names(element) {
+            if cited.is_conflict() {
+                break;
+            }
             let Some(slots) = self.named.get(&scheme).and_then(|names| names.get(name)) else {
                 continue;
             };
             if slot == Side::Unknown {
-                let mut live = slots
-                    .iter()
-                    .map(|(_, identity)| identity)
-                    .filter(|identity| joined(identity));
-                match (live.next(), live.next()) {
-                    (Some(identity), None) => return *identity,
-                    (Some(_), Some(_)) => return own,
-                    _ => {}
+                for (_, identity) in slots.iter().filter(|(_, identity)| joined(identity)) {
+                    cited.add(*identity, Cite::Name(scheme.clone(), name));
                 }
                 continue;
             }
@@ -1104,16 +1167,41 @@ where
                     .find(|(held, identity)| *held == wanted && joined(identity))
                     .map(|(_, identity)| *identity)
             };
-            // A tagged statement of an unsided kind continues the quote
-            // holding both legs - untagged, or `BOTH` - where none of its
-            // side goes by it.
+            // A tagged statement of an unsided kind names the quote holding
+            // both legs - untagged, or `BOTH` - where none of its side goes
+            // by it: a fallback, never a second candidate.
             if let Some(identity) =
                 on(slot).or_else(|| (side == Side::Unknown).then(|| on(Side::Unknown)).flatten())
             {
-                return identity;
+                cited.add(identity, Cite::Name(scheme, name));
             }
         }
-        own
+        match cited {
+            Cited {
+                first: Some((first, first_cite)),
+                second: Some((second, second_cite)),
+            } => {
+                let chain = |identity: &Chain| {
+                    let code = self
+                        .alive
+                        .get(identity)
+                        .map_or("", |live| live.element.get_crosscode());
+                    Spelled(code, identity.0)
+                };
+                let detail = format!(
+                    "{} cites {} by {first_cite} and {} by {second_cite}",
+                    Spelled(element.get_crosscode(), element.get_crossuuid()),
+                    chain(&first),
+                    chain(&second),
+                );
+                (own, Some(detail))
+            }
+            Cited {
+                first: Some((first, _)),
+                ..
+            } => (first, None),
+            Cited { first: None, .. } => (own, None),
+        }
     }
 }
 
@@ -1222,16 +1310,111 @@ where
 {
 }
 
-/// Stands `element` under the cross element of the chain it stands in, after
-/// its last finalize: a chain whose first element states no cross code is
-/// that element's identity, which no finalize of another element derives -
-/// each derives its own - so every element after it, a follower stating a
-/// code of its own included, is stated under it here. A coded chain's cross
-/// element is the one its forced code derives, so this moves nothing there.
-fn joined<E: Walked>(element: &mut E, identity: Chain) {
-    if element.get_crossuuid() != identity.0 {
-        element.set_crossuuid(identity.0);
+/// The names a chain goes by in the walk's index, read off one element as
+/// [`EventIterator::settle`] files them and [`EventIterator::identity_of`]
+/// looks them up: each identifier of a chain identity type
+/// ([`IdType::is_chain_identity`]) under that type, and each a lineage field
+/// states - the chain's first value - under the base it names
+/// ([`Walked::walked_origin_of`]). A per-report reference, a security, a
+/// party, the previous-value slot the walk writes and every other word name
+/// no chain. Borrowed: a chain identity is a member, cloned for nothing.
+fn chain_names<E: Walked>(element: &E) -> impl Iterator<Item = (IdType, &str)> {
+    element
+        .walked_identifiers()
+        .into_iter()
+        .flat_map(Identifiers::iter)
+        .flat_map(move |id| {
+            let kind = id.kind();
+            kind.is_chain_identity()
+                .then(|| kind.clone())
+                .into_iter()
+                .chain(element.walked_origin_of(kind))
+                .map(move |scheme| (scheme, id.value()))
+        })
+}
+
+/// What named a chain an element may stand in.
+enum Cite<'element> {
+    /// The element's own cross element, alive.
+    Own,
+    /// The one live side of the element's base cross code.
+    Base,
+    /// A name the element goes by, under the type the index files it by.
+    Name(IdType, &'element str),
+}
+
+impl std::fmt::Display for Cite<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Own => formatter.write_str("its cross code"),
+            Self::Base => formatter.write_str("its base code"),
+            Self::Name(scheme, name) => write!(formatter, "{scheme}={name}"),
+        }
     }
+}
+
+/// The distinct live chains an element names, the first two kept with what
+/// named each: a third is still two or more.
+#[derive(Default)]
+struct Cited<'element> {
+    first: Option<(Chain, Cite<'element>)>,
+    second: Option<(Chain, Cite<'element>)>,
+}
+
+impl<'element> Cited<'element> {
+    /// Notes `chain` named by `cite`, where it is not one already named.
+    fn add(&mut self, chain: Chain, cite: Cite<'element>) {
+        match &self.first {
+            None => self.first = Some((chain, cite)),
+            Some((first, _)) if *first != chain && self.second.is_none() => {
+                self.second = Some((chain, cite));
+            }
+            Some(_) => {}
+        }
+    }
+
+    /// Whether two distinct chains were named.
+    const fn is_conflict(&self) -> bool {
+        self.second.is_some()
+    }
+}
+
+/// A chain or an element as a conflict's detail names it: its stored cross
+/// code, else - stating none - its cross element.
+struct Spelled<'code>(&'code str, Uuid);
+
+impl std::fmt::Display for Spelled<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0.is_empty() {
+            write!(formatter, "cross element {}", self.1)
+        } else {
+            formatter.write_str(self.0)
+        }
+    }
+}
+
+/// Stands `element` under the chain it stands in, `live` its live
+/// statement: the live element's side where this one states none and the
+/// chain is sided, the live element's stored cross code where it states one
+/// and this one's differs, its cross hash and cross element derived from the
+/// code and its identity settled once under them
+/// ([`Walked::walked_follow_identity`], then one finalize where that moved
+/// anything) - then the chain's cross element, which a chain whose first
+/// element states no code is that element's identity, which no finalize of
+/// another element derives, so every element after it - a follower stating
+/// a code of its own included - is stated under it here. Where following
+/// already forced the side and the code, it compares them and moves
+/// nothing. Whether anything moved.
+fn rekeyed<E: Walked>(element: &mut E, live: &E, identity: Chain) -> bool {
+    let moved = element.walked_follow_identity(live);
+    if moved {
+        element.finalize();
+    }
+    if element.get_crossuuid() == identity.0 {
+        return moved;
+    }
+    element.set_crossuuid(identity.0);
+    true
 }
 
 /// States when `element`'s lifecycle was created where it states none: the
@@ -1325,18 +1508,27 @@ pub mod internals {
         walk.named.len()
     }
 
-    /// The identity `scheme`/`name` currently looks up to, on the first
-    /// side it is alive on.
-    pub fn named_identity<E, I>(
+    /// Every chain `scheme`/`name` is alive under, on any side and of any
+    /// category, in the order they came to hold it: empty for a name the
+    /// index files under none.
+    pub fn named_chains<E, I>(
         walk: &EventIterator<E, I>,
         scheme: &crate::IdType,
         name: &str,
-    ) -> Option<Uuid> {
+    ) -> Vec<Uuid> {
         walk.named
-            .get(scheme)?
-            .get(name)?
-            .first()
-            .map(|(_, (identity, _))| *identity)
+            .get(scheme)
+            .and_then(|names| names.get(name))
+            .map_or_else(Vec::new, |slots| {
+                slots.iter().map(|(_, (identity, _))| *identity).collect()
+            })
+    }
+
+    /// Stand `element` under the chain whose cross element is `identity`,
+    /// of `live`'s category, `live` its live statement, as the walk does
+    /// every element it states as a chain's; whether anything moved.
+    pub fn rekeyed<E: Walked>(element: &mut E, live: &E, identity: Uuid) -> bool {
+        super::rekeyed(element, live, (identity, live.walked_kind()))
     }
 
     /// How many identities hold a reverse record of the names they go by.

@@ -202,11 +202,13 @@ mod accounting {
         let logs = path(&store, "logs/*.log");
         let options = RecordOptions::from(TextOptions::new());
         store.clear_requests();
-        let rows: usize = logs
-            .read_serie(Some(&options))
-            .expect("the lines")
-            .map(|record| record.expect("a record").len())
-            .sum();
+        let rows: usize = yggdryl::StreamChunkedSerie::from_serie(
+            logs.read_serie(Some(&options)).expect("the lines"),
+        )
+        .expect("native record stream")
+        .into_chunks()
+        .map(|record| record.expect("a record").len())
+        .sum();
         assert_eq!(rows, 3);
         let shapes: Vec<String> = store
             .requests()
@@ -269,7 +271,7 @@ mod accounting {
         use crate::mod_::BUCKET;
         use crate::server::FakeS3;
         use yggdryl::iceberg::{
-            FormatVersion, IcebergOptions, IcebergTable, PartitionSpec, WriteStaging,
+            FormatVersion, IcebergOptions, IcebergTable, PartitionSpec, SchemaUpdate, WriteStaging,
             assign_field_ids, read_manifest, write_manifest,
         };
         use yggdryl::s3::S3Folder;
@@ -368,7 +370,11 @@ mod accounting {
         /// written whole in one `PUT`, each commit cost a `DELETE` more, the
         /// hint removed before it was created again; before a claim read its
         /// version's other spelling, and an open read the current document's
-        /// other spelling, each cost one `GET` fewer.
+        /// other spelling, each cost one `GET` fewer. Before a handle carried
+        /// the manifest list its own last commit wrote, the second append and
+        /// the upsert each read that list back, one `GET` more each; before a
+        /// projection read a renamed table's file once, a projected scan
+        /// after a rename read every data file twice, four `GET`s more.
         #[test]
         fn what_a_table_costs_over_the_store() {
             let store = crate::mod_::store();
@@ -381,6 +387,7 @@ mod accounting {
             // then the document's `PUT` under `If-None-Match: *`, the claim of
             // version 1, one `GET` of its other spelling, `v1.gz`, which finds
             // no claim beside it, and the hint's `PUT`, written whole.
+            // v2: the sequence pins what a keyed merge costs, which v3 refuses.
             let (mut table, create) = cost(&store, || {
                 IcebergTable::create(root.clone(), FormatVersion::V2, schema.clone(), spec)
                     .expect("creates")
@@ -421,8 +428,9 @@ mod accounting {
                 },
             );
 
-            // Three data files, and the manifest list of the snapshot before
-            // is read once to carry its manifests forward.
+            // Three data files; the manifests of the snapshot before are
+            // carried from the list this handle's last commit wrote, read back
+            // from nothing.
             let ((), append_three) = cost(&store, || {
                 table
                     .commit_append(rows(&[2, 3, 4], &["XNAS", "XNYS", "XLON"]))
@@ -432,16 +440,17 @@ mod accounting {
                 "append three partitions",
                 &append_three,
                 Tally {
-                    total: 10,
+                    total: 9,
                     put: 7,
-                    get: 3,
+                    get: 2,
                     ..Tally::default()
                 },
             );
 
-            // The plan reads the list and both manifests, the join reads the one
-            // file the key bounds keep, and the commit writes one data file, its
-            // manifest, the carried manifest, the list and the document.
+            // The plan reads both manifests of the list this handle wrote, the
+            // join reads the one file the key bounds keep, and the commit
+            // writes one data file, its manifest, the carried manifest, the
+            // list and the document.
             let merge_by = yggdryl::Selector::from_columns(["id"]);
             let ((), upsert) = cost(&store, || {
                 table
@@ -452,9 +461,9 @@ mod accounting {
                 "upsert one partition of three",
                 &upsert,
                 Tally {
-                    total: 12,
+                    total: 11,
                     put: 6,
-                    get: 6,
+                    get: 5,
                     ..Tally::default()
                 },
             );
@@ -527,6 +536,34 @@ mod accounting {
                     ..Tally::default()
                 },
             );
+
+            // A renamed column costs a projection nothing more: the names a
+            // file stores come off the footer read in the one read that takes
+            // a file this short whole, and the record read decodes from those
+            // bytes and that footer.
+            table
+                .commit_metadata_changes(|metadata| {
+                    let mut update = SchemaUpdate::from_metadata(metadata)?;
+                    update.rename_column("symbol", "ticker");
+                    let evolved = update.into_field()?;
+                    let schema_id = metadata.add_schema(evolved)?;
+                    metadata.set_current_schema(schema_id)
+                })
+                .expect("renames a column");
+            let renamed = IcebergTable::open(root.clone()).expect("opens");
+            let (read, projected) = cost(&store, || {
+                drain(renamed.scan(Some(&target)).expect("a projected scan"))
+            });
+            assert_eq!(read, 5);
+            pin(
+                "projected scan after a column rename",
+                &projected,
+                Tally {
+                    total: 7,
+                    get: 7,
+                    ..Tally::default()
+                },
+            );
             assert_eq!(
                 root.stats().lists,
                 1,
@@ -567,7 +604,7 @@ mod accounting {
             let root: S3Folder = crate::mod_::folder(&store, "lake/racing/");
             IcebergTable::create(
                 root.clone(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema(),
                 PartitionSpec::unpartitioned(),
             )
@@ -626,8 +663,8 @@ mod accounting {
                     .expect("appends")
             });
             // One `PUT` each for the data file, the manifest and the manifest
-            // list; one `GET` of the manifest list of the snapshot before,
-            // whose manifests the new list carries, and one of the hint, which
+            // list, the manifests of the snapshot before carried from the list
+            // this handle's last commit wrote; one `GET` of the hint, which
             // names the version this handle holds; one `PUT` of the document
             // under `If-None-Match: *`, the claim of the version and the one
             // request that decides it under its spelling, and one `GET` of
@@ -637,9 +674,9 @@ mod accounting {
                 "one uncontended append after the race",
                 &append,
                 Tally {
-                    total: 8,
+                    total: 7,
                     put: 5,
-                    get: 3,
+                    get: 2,
                     ..Tally::default()
                 },
             );
@@ -674,7 +711,7 @@ mod accounting {
             let root: S3Folder = crate::mod_::folder(&store, "lake/trades/");
             let schema = schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
-            let mut table = IcebergTable::create(root.clone(), FormatVersion::V2, schema, spec)
+            let mut table = IcebergTable::create(root.clone(), FormatVersion::V3, schema, spec)
                 .expect("creates");
             let version = table.metadata_version().unwrap();
             let stage = yggdryl::local::LocalFolder::temporary()
@@ -795,8 +832,8 @@ mod accounting {
 
         /// A manifest that records a data file's length as zero is not believed:
         /// the handle is not told the size, so the file answers for its own
-        /// length - one request more - and its rows are read rather than taken
-        /// for an empty file's none.
+        /// length - in the read of its end, which states it - and its rows are
+        /// read rather than taken for an empty file's none.
         #[test]
         fn a_manifest_recording_no_length_is_not_believed() {
             let store = crate::mod_::store();
@@ -805,7 +842,7 @@ mod accounting {
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
             let mut table = IcebergTable::create(
                 root.clone(),
-                FormatVersion::V2,
+                FormatVersion::V3,
                 schema.clone(),
                 spec.clone(),
             )
@@ -830,7 +867,7 @@ mod accounting {
             assert_eq!(entries.len(), 1);
             assert!(entries[0].data_file.file_size_in_bytes > 0);
             entries[0].data_file.file_size_in_bytes = 0;
-            write_manifest(&mut manifest, FormatVersion::V2, &schema, &spec, &entries)
+            write_manifest(&mut manifest, FormatVersion::V3, &schema, &spec, &entries)
                 .expect("the manifest rewrites");
 
             let opened = IcebergTable::open(root.clone()).expect("opens");
@@ -845,15 +882,54 @@ mod accounting {
                 read, 1,
                 "the file's own row is read, not an empty file's none"
             );
-            // The list, the manifest, and the file asked its length before it is
-            // read: the one request the recorded length would have saved.
+            // The list, the manifest, and the file's end, which states its
+            // length: the `HEAD` the recorded length would have saved is gone.
             pin(
                 "scan of a file recorded as empty",
                 &scan,
                 Tally {
-                    total: 4,
+                    total: 3,
                     get: 3,
-                    head: 1,
+                    ..Tally::default()
+                },
+            );
+        }
+
+        /// A commit that stages nothing costs what a staged one costs: every
+        /// file goes straight to the store in one `PUT`, and nothing is asked
+        /// back - a data file's statistics and length are what its encoder
+        /// closed it with, a manifest's and a list's length what they were
+        /// laid out as - so no `HEAD` sizes or probes a file. Before, each
+        /// data file cost a `HEAD` probing its fresh name, a `HEAD` and a tail
+        /// and a footer `GET` reading its statistics back and a `HEAD` for its
+        /// size, and the manifest and the list a `HEAD` each.
+        #[test]
+        fn an_unstaged_commit_costs_what_a_staged_one_costs() {
+            let store = crate::mod_::store();
+            let root: S3Folder = crate::mod_::folder(&store, "lake/unstaged/");
+            let schema = schema();
+            let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
+            let mut table = IcebergTable::create(root.clone(), FormatVersion::V3, schema, spec)
+                .expect("creates");
+            table.set_options(
+                IcebergOptions::new()
+                    .try_with_write_staging(WriteStaging::Off)
+                    .expect("off is accepted"),
+            );
+
+            // The data file, the manifest and the list, then the chain: the
+            // hint read that re-checks the version, the document's claim, its
+            // other spelling's `GET`, and the hint.
+            let ((), append) = cost(&store, || {
+                table.commit_append(rows(&[1], &["XNAS"])).expect("appends")
+            });
+            pin(
+                "an unstaged append of one partition",
+                &append,
+                Tally {
+                    total: 7,
+                    put: 5,
+                    get: 2,
                     ..Tally::default()
                 },
             );

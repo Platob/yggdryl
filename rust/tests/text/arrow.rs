@@ -18,6 +18,56 @@ mod text {
     }
 
     #[test]
+    fn a_declared_field_selects_and_casts_the_rows_a_line_read_lays_out() {
+        // The row a line lays out is the event columns, the body and every
+        // capture; a declared field names two of them and casts the body to
+        // bytes, and the read answers exactly that shape - the schema and the
+        // rows alike - as every other encoding's read does with its
+        // declaration.
+        use arrow_array::{Array as _, BinaryArray, Int64Array};
+
+        let source = named("app.log", b"[INFO] id=7 body\n");
+        let mut text = TextOptions::new();
+        text.set_rowheader(Some(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"))
+            .unwrap();
+        text.set_lstrip([r"^\s+"]).unwrap();
+        let declared = DataType::from_str("struct<body: binary not null, id: int64>")
+            .unwrap()
+            .required_field("row");
+        let options: RecordOptions = text.with_field(declared.clone()).into();
+        assert_eq!(source.read_arrow_field(&options).unwrap(), declared);
+        let batches: Vec<arrow_array::RecordBatch> = source
+            .read_arrow_reader(&options)
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
+            1
+        );
+        let batch = &batches[0];
+        let schema = batch.schema();
+        let names: Vec<&str> = schema
+            .fields()
+            .iter()
+            .map(|field| field.name().as_str())
+            .collect();
+        assert_eq!(names, ["body", "id"]);
+        let body = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<BinaryArray>()
+            .expect("the body cast to bytes");
+        assert_eq!(body.value(0), b" body");
+        let id = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .expect("the capture as a count");
+        assert_eq!(id.value(0), 7);
+    }
+
+    #[test]
     fn a_member_of_a_located_archive_reads_its_own_lines_not_the_archive_s() {
         // A member is addressed in the archive's URL fragment, so the file name
         // of its location is the archive's: reopening the member by that name

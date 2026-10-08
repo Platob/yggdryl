@@ -4,7 +4,7 @@ Pins ``python/yggdryl/serie.py`` and the ``python/src/serie.rs`` redirects
 under it: every verb answers what the core ``Serie`` answers, and Arrow
 crosses in and out by sharing buffers. It is also the one boundary a foreign
 columnar object crosses: a held column is a ``Serie``, a stream is a
-``SerieReader``, and nothing else.
+``StreamChunkedSerie``, and nothing else.
 """
 
 from __future__ import annotations
@@ -38,8 +38,10 @@ from yggdryl import (
     Scalar,
     Selector,
     Serie,
-    SerieReader,
-    SerieReaderWindows,
+    StreamChunkedSerie,
+    KeySerie,
+    KeySeries,
+    StreamKeySerie,
     SerieSerie,
     SerieViewSerie,
     SpillOptions,
@@ -194,13 +196,13 @@ class TestArrow:
             Serie([1, 2]).into_arrow_array()
 
 
-class TestSerieReader:
+class TestStreamChunkedSerie:
     @staticmethod
     def stream() -> pa.RecordBatchReader:
         return pa.RecordBatchReader.from_batches(quotes().schema, [quotes(), quotes()])
 
     def test_one_serie_per_batch(self) -> None:
-        series = SerieReader.from_arrow_reader(self.stream())
+        series = StreamChunkedSerie.from_arrow_reader(self.stream())
         assert series.field.name == "row"
         pulled = list(series)
         assert len(pulled) == 2
@@ -210,7 +212,7 @@ class TestSerieReader:
 
     def test_a_root_casts_every_batch_by_one_plan(self) -> None:
         root = Field("row", "struct<id:int32,symbol:utf8>", nullable=False)
-        series = SerieReader.from_arrow_reader(self.stream(), root)
+        series = StreamChunkedSerie.from_arrow_reader(self.stream(), root)
         assert series.field == root
         for serie in series:
             assert serie.field == root
@@ -219,18 +221,18 @@ class TestSerieReader:
     def test_a_plan_the_stream_cannot_meet_is_refused_before_a_batch(self) -> None:
         strict = Field("row", "struct<id:int64,venue:utf8 not null>", nullable=False)
         with pytest.raises(ValueError, match="venue"):
-            SerieReader.from_arrow_reader(self.stream(), strict)
+            StreamChunkedSerie.from_arrow_reader(self.stream(), strict)
 
     def test_into_arrow_reader_hands_over_the_batches_not_yet_pulled(self) -> None:
         root = Field("row", "struct<id:int32,symbol:utf8>", nullable=False)
-        series = SerieReader.from_arrow_reader(self.stream(), root)
+        series = StreamChunkedSerie.from_arrow_reader(self.stream(), root)
         next(series)
         rest = series.into_arrow_reader()
         assert isinstance(rest, pa.RecordBatchReader)
         assert rest.schema.field("id").type == pa.int32()
         assert rest.read_all().num_rows == 2
         assert list(series) == []
-        with pytest.raises(ValueError, match="into_arrow_reader"):
+        with pytest.raises(ValueError, match="already consumed"):
             series.into_arrow_reader()
 
     def test_building_the_reader_pulls_nothing_and_each_pull_costs_one_batch(self) -> None:
@@ -246,7 +248,7 @@ class TestSerieReader:
                 )
 
         root = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
-        series = SerieReader.from_arrow_reader(
+        series = StreamChunkedSerie.from_arrow_reader(
             pa.RecordBatchReader.from_batches(stored, batches()), root
         )
         assert pulled == []
@@ -281,7 +283,7 @@ class TestSerieReader:
         # A sequence of tables is one stream, each item read into the first
         # item's shape even when its columns are ordered differently.
         swapped = table.select(["symbol", "id"])
-        chained = SerieReader.from_arrow_reader(iter([table, swapped]), root)
+        chained = StreamChunkedSerie.from_arrow_reader(iter([table, swapped]), root)
         assert [serie.child("symbol").as_py() for serie in chained] == [
             ["AAPL", "MSFT"],
             ["AAPL", "MSFT"],
@@ -292,7 +294,7 @@ class TestSerieReader:
 
         frame = pl.LazyFrame({"id": [1, 2, 3], "symbol": ["AAPL", "MSFT", "AMD"]})
         root = Field("row", "struct<id:int32,symbol:utf8>", nullable=False)
-        series = SerieReader.from_arrow_reader(frame.collect_batches(chunk_size=1), root)
+        series = StreamChunkedSerie.from_arrow_reader(frame.collect_batches(chunk_size=1), root)
         pulled = [serie.as_py() for serie in series]
         assert [len(rows) for rows in pulled] == [1, 1, 1]
         assert [rows[0]["id"] for rows in pulled] == [1, 2, 3]
@@ -627,7 +629,7 @@ class TestFrom:
         assert column.field == Field("item", "int64", nullable=False)
 
     def test_a_reader_crosses_without_being_pulled(self) -> None:
-        reader = SerieReader.from_(quote_table().to_reader())
+        reader = StreamChunkedSerie.from_(quote_table().to_reader())
         assert reader.field == Field.from_arrow_schema(quote_table().schema)
         assert reader.into_arrow_reader().read_all().num_rows == 2
         assert len(Serie.from_(quote_table().to_reader())) == 2
@@ -701,7 +703,7 @@ class TestDeclaredField:
         )
         column = Serie.from_(quote_table(), declared)
         assert column.into_arrow_table().column_names == ["size", "symbol"]
-        reader = SerieReader.from_(quote_table(), declared)
+        reader = StreamChunkedSerie.from_(quote_table(), declared)
         assert reader.field == declared
 
     def test_safe_decides_whether_a_failed_conversion_is_null_or_an_error(self) -> None:
@@ -725,11 +727,11 @@ class TestCrossings:
         assert held.into_polars().height == 2
 
     def test_a_stream_crosses_once_and_says_so(self) -> None:
-        streamed = SerieReader.from_(quote_table())
+        streamed = StreamChunkedSerie.from_(quote_table())
         assert streamed.into_arrow_reader().read_all().num_rows == 2
-        with pytest.raises(ValueError, match="already handed over"):
+        with pytest.raises(ValueError, match="already consumed"):
             streamed.into_arrow_reader()
-        with pytest.raises(ValueError, match="already handed over"):
+        with pytest.raises(ValueError, match="already consumed"):
             Serie.from_(streamed)
 
     def test_every_arrow_export_answers_its_own_pyarrow_class(self) -> None:
@@ -793,13 +795,13 @@ class TestCrossings:
 class TestReaderFrom:
     def test_a_held_column_is_the_one_item_of_its_stream(self) -> None:
         records = Serie.from_arrow_batch(quotes())
-        reader = SerieReader.from_serie(records)
+        reader = StreamChunkedSerie.from_serie(records)
         assert reader.field == records.field
         assert list(reader) == [records]
 
     def test_any_other_column_is_the_one_child_of_a_row(self) -> None:
         column = Serie.from_scalars(price(), [1, 2])
-        reader = SerieReader.from_serie(column)
+        reader = StreamChunkedSerie.from_serie(column)
         assert reader.field == Field("row", DataType.from_fields([price()]), nullable=False)
         (only,) = list(reader)
         assert only.child("price") == column
@@ -811,7 +813,7 @@ class TestReaderFrom:
             "struct<price: float64 not null>",
             nullable=False,
         )
-        reader = SerieReader.from_(column, root)
+        reader = StreamChunkedSerie.from_(column, root)
         assert reader.field == root
         (only,) = list(reader)
         assert only.field == root
@@ -819,8 +821,8 @@ class TestReaderFrom:
 
     @pytest.mark.parametrize("value", [7, [1, 2], (1, 2)])
     def test_from_reads_every_serie_value_as_one_stream_item(self, value: object) -> None:
-        expected = SerieReader.from_serie(Serie.from_(value))
-        reader = SerieReader.from_(value)
+        expected = StreamChunkedSerie.from_serie(Serie.from_(value))
+        reader = StreamChunkedSerie.from_(value)
         assert reader.field == expected.field
         assert list(reader) == list(expected)
 
@@ -830,7 +832,7 @@ class TestReaderFrom:
         with pytest.raises(TypeError, match="cyclic Python values") as expected:
             Serie.from_(cyclic)
         with pytest.raises(TypeError, match="cyclic Python values") as actual:
-            SerieReader.from_(cyclic)
+            StreamChunkedSerie.from_(cyclic)
         assert str(actual.value) == str(expected.value)
 
     def test_from_keeps_an_iterator_of_tables_streaming(self) -> None:
@@ -841,7 +843,7 @@ class TestReaderFrom:
                 pulled.append(identifier)
                 yield pa.table({"id": [identifier]})
 
-        reader = SerieReader.from_(tables())
+        reader = StreamChunkedSerie.from_(tables())
         assert pulled == [1]
         assert next(reader).child("id").as_py() == [1]
         assert pulled == [1]
@@ -852,11 +854,11 @@ class TestReaderFrom:
         records = Serie.from_(pa.array([{"id": 1}, None]))
         assert type(records) is StructSerie
         with pytest.raises(ValueError, match="absent rows"):
-            SerieReader.from_serie(records)
+            StreamChunkedSerie.from_serie(records)
 
     def test_from_reads_held_and_streamed_values_alike(self) -> None:
         for value in (quotes(), pa.Table.from_batches([quotes()]), Serie.from_(quotes())):
-            reader = SerieReader.from_(value)
+            reader = StreamChunkedSerie.from_(value)
             assert Serie.from_(reader) == Serie.from_arrow_batch(quotes())
 
     @pytest.mark.parametrize(
@@ -869,7 +871,7 @@ class TestReaderFrom:
     def test_from_reads_concrete_mapping_sequences_as_record_rows(
         self, records: object
     ) -> None:
-        reader = SerieReader.from_(records)
+        reader = StreamChunkedSerie.from_(records)
         assert reader.field == Field(
             "row", "struct<id: int64, symbol: utf8>", nullable=False
         )
@@ -889,7 +891,7 @@ class TestReaderFrom:
                 return self.reader.__arrow_c_stream__(requested_schema)
 
         sources = [OneShotReader(1), OneShotReader(2)]
-        reader = SerieReader.from_(sources)
+        reader = StreamChunkedSerie.from_(sources)
         assert [source.exports for source in sources] == [1, 0]
         assert [batch.child("id").as_py() for batch in reader] == [[1], [2]]
         assert [source.exports for source in sources] == [1, 1]
@@ -920,8 +922,8 @@ class TestChunked:
     def test_a_stream_of_chunks_is_one_record_column_per_chunk(self) -> None:
         root = Field("row", DataType.from_fields([price()]), nullable=False)
         for reader in (
-            SerieReader.from_chunked(self.chunked()),
-            SerieReader.from_(self.chunked()),
+            StreamChunkedSerie.from_chunked(self.chunked()),
+            StreamChunkedSerie.from_(self.chunked()),
         ):
             assert reader.field == root
             pulled = list(reader)
@@ -930,20 +932,20 @@ class TestChunked:
             assert [serie.child("price").as_py() for serie in pulled] == [[1, 2], [3]]
 
         # A chunked array streams one item per chunk, its column named `item`.
-        streamed = SerieReader.from_(pa.chunked_array([[1, 2], [3]]))
+        streamed = StreamChunkedSerie.from_(pa.chunked_array([[1, 2], [3]]))
         assert [serie.child("item").as_py() for serie in streamed] == [[1, 2], [3]]
 
     def test_a_record_chunk_is_the_batch_it_is(self) -> None:
         records = ChunkedSerie.from_arrow_reader(pa.Table.from_batches([quotes(), quotes()]))
-        reader = SerieReader.from_chunked(records)
+        reader = StreamChunkedSerie.from_chunked(records)
         assert reader.field == records.field
         assert list(reader) == records.chunks
-        batches = SerieReader.from_chunked(records).into_arrow_reader()
+        batches = StreamChunkedSerie.from_chunked(records).into_arrow_reader()
         assert [batch.num_rows for batch in batches] == [2, 2]
 
     def test_a_root_is_applied_to_every_chunk(self) -> None:
         root = Field("row", "struct<price: float64 not null>", nullable=False)
-        reader = SerieReader.from_(self.chunked(), root)
+        reader = StreamChunkedSerie.from_(self.chunked(), root)
         assert reader.field == root
         pulled = list(reader)
         assert len(pulled) == 2
@@ -951,16 +953,16 @@ class TestChunked:
         assert [serie.child("price").as_py() for serie in pulled] == [[1.0, 2.0], [3.0]]
 
     def test_no_chunk_is_the_empty_stream_of_its_root(self) -> None:
-        reader = SerieReader.from_chunked(ChunkedSerie.empty(price()))
+        reader = StreamChunkedSerie.from_chunked(ChunkedSerie.empty(price()))
         assert reader.field == Field("row", DataType.from_fields([price()]), nullable=False)
         assert list(reader) == []
 
     def test_a_record_chunk_holding_an_absent_row_is_refused(self) -> None:
         records = ChunkedSerie.from_arrow_chunked_array(pa.chunked_array([[{"id": 1}, None]]))
         with pytest.raises(ValueError, match="absent rows"):
-            SerieReader.from_chunked(records)
+            StreamChunkedSerie.from_chunked(records)
         with pytest.raises(ValueError, match="absent rows"):
-            SerieReader.from_(records)
+            StreamChunkedSerie.from_(records)
 
     def test_a_scalar_holds_the_joined_column(self) -> None:
         value = Scalar.from_(self.chunked())
@@ -974,8 +976,8 @@ class TestChunked:
         records = ChunkedSerie.from_arrow_reader(pa.Table.from_batches([quotes(), quotes()]))
         handle = IOBase(tmp_path / "quotes.arrows")
         handle.write_serie(records)
-        assert [len(serie) for serie in handle.read_serie()] == [2, 2]
-        assert Serie.from_(handle.read_serie()) == records
+        assert [len(serie) for serie in StreamChunkedSerie.from_serie(handle.read_serie())] == [2, 2]
+        assert Serie.from_(StreamChunkedSerie.from_serie(handle.read_serie())) == records
 
 
 def declared_batch(keys_sorted: bool) -> tuple[Field, pa.RecordBatch]:
@@ -1044,7 +1046,7 @@ def test_batch_exports_preserve_nested_map_flags_metadata_and_shared_buffers(
     root, source = declared_batch(keys_sorted)
     held = Serie.from_(source)
     if streamed:
-        reader = SerieReader.from_serie(held).into_arrow_reader()
+        reader = StreamChunkedSerie.from_serie(held).into_arrow_reader()
         assert reader.schema.equals(source.schema, check_metadata=True)
         result = reader.read_next_batch()
         with pytest.raises(StopIteration):
@@ -1103,7 +1105,7 @@ def test_reader_export_pulls_one_batch_at_a_time_and_fuses_after_a_source_error(
         raise ValueError("batch source refused")
 
     incoming = pa.RecordBatchReader.from_batches(source.schema, batches())
-    reader = SerieReader.from_(incoming).into_arrow_reader()
+    reader = StreamChunkedSerie.from_(incoming).into_arrow_reader()
     assert pulled == []
     assert reader.schema.equals(source.schema, check_metadata=True)
     assert pulled == []
@@ -1131,7 +1133,7 @@ def test_reader_export_can_be_consumed_by_a_python_worker_thread() -> None:
             yield source
 
     incoming = pa.RecordBatchReader.from_batches(source.schema, batches())
-    reader = SerieReader.from_(incoming).into_arrow_reader()
+    reader = StreamChunkedSerie.from_(incoming).into_arrow_reader()
     assert pulled_on == []
     with ThreadPoolExecutor(max_workers=1) as pool:
         exported = pool.submit(lambda: list(reader)).result(timeout=10)
@@ -1281,11 +1283,11 @@ class TestPyCapsule:
     def test_a_stream_crosses_to_pyarrow_and_polars_sharing_its_buffers(self) -> None:
         column = pa.array(range(1_024), pa.int64())
         table = pa.table({"value": column})
-        exported = pa.RecordBatchReader.from_stream(SerieReader.from_(table)).read_all()
+        exported = pa.RecordBatchReader.from_stream(StreamChunkedSerie.from_(table)).read_all()
         assert exported.equals(table)
         assert buffer_locations(exported.column(0).chunk(0)) == buffer_locations(column)
         polars = pytest.importorskip("polars")
-        frame = polars.DataFrame(SerieReader.from_(table))
+        frame = polars.DataFrame(StreamChunkedSerie.from_(table))
         assert frame["value"].to_list() == column.to_pylist()
         assert frame["value"].n_chunks() == 1
         polars_array = frame["value"].to_arrow()
@@ -1301,7 +1303,7 @@ class TestPyCapsule:
         wide = pa.schema([pa.field("id", pa.float64(), nullable=False), ("symbol", pa.utf8())])
         records = Serie.from_(quotes())
         assert pa.record_batch(records, schema=wide).schema.field("id").type == pa.float64()
-        streamed = pa.RecordBatchReader.from_stream(SerieReader.from_(quotes()), schema=wide)
+        streamed = pa.RecordBatchReader.from_stream(StreamChunkedSerie.from_(quotes()), schema=wide)
         assert streamed.read_all().column("id").to_pylist() == [1.0, 2.0]
 
     def test_a_run_has_no_layout_to_hand_over(self) -> None:
@@ -1320,13 +1322,13 @@ class TestPyCapsule:
             column.__arrow_c_schema__()
             records.__arrow_c_stream__()
             # The capsule is all that holds this table's buffers.
-            SerieReader.from_(pa.table({"value": list(range(4_096))})).__arrow_c_stream__()
+            StreamChunkedSerie.from_(pa.table({"value": list(range(4_096))})).__arrow_c_stream__()
         gc.collect()
         assert pa.total_allocated_bytes() == allocated
 
     def test_a_stream_capsule_is_consumed_by_a_worker_thread(self) -> None:
         table = pa.table({"value": list(range(16))})
-        reader = pa.RecordBatchReader.from_stream(SerieReader.from_(table))
+        reader = pa.RecordBatchReader.from_stream(StreamChunkedSerie.from_(table))
         with ThreadPoolExecutor(max_workers=1) as pool:
             assert pool.submit(reader.read_all).result(timeout=10).equals(table)
 
@@ -1335,7 +1337,7 @@ class TestPyCapsule:
         _, source = declared_batch(True)
         held = Serie.from_(source)
         value: object = {
-            "reader": SerieReader.from_serie(held),
+            "reader": StreamChunkedSerie.from_serie(held),
             "serie": held,
             "chunked": ChunkedSerie.from_serie(held),
         }[native]
@@ -1350,7 +1352,7 @@ class TestPyCapsule:
 class TestReaderRoot:
     def test_a_held_columns_own_root_hands_back_the_same_records(self) -> None:
         held = Serie.from_(quotes())
-        (record,) = list(SerieReader.from_(held, held.field))
+        (record,) = list(StreamChunkedSerie.from_(held, held.field))
         assert record == held
         assert record.field == held.field
         for name in ("id", "symbol"):
@@ -1365,8 +1367,8 @@ class TestReaderRoot:
         held = Serie.from_(pa.record_batch({"quantity": pa.array([1, 300], pa.int64())}))
         root = Field("row", "struct<quantity: int8>", nullable=False)
         with pytest.raises(ValueError, match="quantity"):
-            list(SerieReader.from_(held, root, safe=False))
-        (safe,) = list(SerieReader.from_(held, root))
+            list(StreamChunkedSerie.from_(held, root, safe=False))
+        (safe,) = list(StreamChunkedSerie.from_(held, root))
         assert safe.as_py() == [{"quantity": 1}, {"quantity": None}]
 
 
@@ -1378,7 +1380,7 @@ class TestReaderCast:
             "struct<id: float64 not null, symbol: utf8 not null, price: float64>",
             nullable=False,
         )
-        reader = SerieReader.from_serie(held)
+        reader = StreamChunkedSerie.from_serie(held)
         cast = reader.cast(wide)
         assert cast.field == wide
         (record,) = list(cast)
@@ -1390,7 +1392,7 @@ class TestReaderCast:
 
     def test_a_refused_option_or_target_leaves_the_reader_usable(self) -> None:
         held = Serie.from_(quotes())
-        reader = SerieReader.from_serie(held)
+        reader = StreamChunkedSerie.from_serie(held)
         with pytest.raises(ValueError):
             reader.cast(held.field, representation="whenever")
         with pytest.raises(TypeError):
@@ -1405,13 +1407,13 @@ class TestReaderCast:
         ]
         source = pa.RecordBatchReader.from_batches(batches[0].schema, batches)
         narrow = Field("row", "struct<quantity: int8>", nullable=False)
-        cast = SerieReader.from_arrow_reader(source).cast(narrow, safe=False)
+        cast = StreamChunkedSerie.from_arrow_reader(source).cast(narrow, safe=False)
         assert next(cast).as_py() == [{"quantity": 1}, {"quantity": 2}]
         with pytest.raises(ValueError, match="quantity"):
             next(cast)
         wide = Field("row", "struct<quantity: float64>", nullable=False)
         source = pa.RecordBatchReader.from_batches(batches[0].schema, batches)
-        table = SerieReader.from_arrow_reader(source).cast(wide).into_arrow_reader().read_all()
+        table = StreamChunkedSerie.from_arrow_reader(source).cast(wide).into_arrow_reader().read_all()
         assert table.schema.field("quantity").type == pa.float64()
         assert table.column("quantity").to_pylist() == [1.0, 2.0, 3.0, 300.0]
 
@@ -1421,7 +1423,7 @@ def test_a_source_error_holding_a_nul_surfaces_as_arrow_invalid() -> None:
         yield pa.table({"value": [1]})
         raise ValueError("refused \x00 here")
 
-    reader = SerieReader.from_(tables()).into_arrow_reader()
+    reader = StreamChunkedSerie.from_(tables()).into_arrow_reader()
     assert reader.read_next_batch().num_rows == 1
     # The C stream's error text is a C string: the NUL is restated, so the
     # message crosses whole instead of aborting the process.
@@ -1767,67 +1769,50 @@ class TestOrder:
             with pytest.raises(ValueError, match="neither a boolean nor absent"):
                 serie.into_filtered([1, 1, 1])
 
-    def test_partition_by_groups_in_first_occurrence_order_and_slices_sorted_keys_zero_copy(
-        self,
-    ) -> None:
+    def test_partition_by_groups_in_first_occurrence_order_and_slices_sorted_keys_zero_copy(self) -> None:
         prices = int64_column([1, 2, 3, 4])
         groups = prices.partition_by(utf8_column(["a", "a", "b", None]))
-        assert [(key.as_py(), rows.as_py()) for key, rows in groups] == [
-            ("a", [1, 2]),
-            ("b", [3]),
-            (None, [4]),
+        assert isinstance(groups, KeySeries)
+        assert [(item.key.as_py(), item.rows.child("price").as_py()) for item in groups] == [
+            (["a"], [1, 2]), (["b"], [3]), ([None], [4]),
         ]
-        # Sorted keys: every group is a slice sharing the column's buffer.
         held = prices.into_arrow_array().buffers()[1]
-        for _, rows in groups:
-            values = rows.into_arrow_array().buffers()[1]
+        for item in groups:
+            values = item.rows.child("price").into_arrow_array().buffers()[1]
             assert held.address <= values.address < held.address + held.size
-
-        groups = prices.partition_by(["b", "a", "b", "a"])
-        assert [(key.as_py(), rows.as_py()) for key, rows in groups] == [
-            ("b", [1, 3]),
-            ("a", [2, 4]),
+        groups = prices.partition_by(utf8_column(["b", "a", "b", "a"]))
+        assert [(item.key.as_py(), item.rows.child("price").as_py()) for item in groups] == [
+            (["b"], [1, 3]), (["a"], [2, 4]),
         ]
+        with pytest.raises(TypeError, match="Serie.from_"):
+            prices.partition_by(["b", "a", "b", "a"])
+        with pytest.raises(ValueError, match="declares no field"):
+            Serie([1, 2]).partition_by(utf8_column(["a", "b"]))
+        with pytest.raises(ValueError, match="1 keys cannot partition by the 4 rows"):
+            prices.partition_by(utf8_column(["a"]))
 
-        # A run partitions the same way, by a run of keys.
-        groups = Serie([1, 2, 3, 4]).partition_by(Serie(["b", "a", "b", None]))
-        assert len(groups) == 3
-        assert groups[2][0].as_py() is None
-        assert groups[2][1].as_py() == [4]
-
-        with pytest.raises(ValueError, match="1 keys cannot partition the 4 rows"):
-            prices.partition_by([1])
-        assert Serie([]).partition_by([]) == []
 
     def test_partition_by_paths_keys_a_record_by_the_run_of_its_cells(self) -> None:
         quotes = quote_rows([("XNAS", 1), ("XNYS", 2), ("XNAS", 1), ("XNAS", 3)])
-        groups = quotes.partition_by_paths(["venue", FieldPath("price")])
+        groups = quotes.partition_by([FieldPath("venue"), FieldPath("price")])
         assert len(groups) == 3
-        assert groups[0][0].as_py() == ["XNAS", 1]
-        assert len(groups[0][1]) == 2
-        assert groups[0][1].field == quotes.field
-        assert type(groups[0][1]) is StructSerie
-        assert groups[1][0].as_py() == ["XNYS", 2]
-        # One path alone is a path, never the characters of its text.
-        by_venue = quotes.partition_by_paths("venue")
-        assert len(by_venue) == 2
-        assert by_venue[0][0].as_py() == ["XNAS"]
-        assert len(by_venue[0][1]) == 3
-        # One child is the same ask through `child`.
-        venue = quotes.child("venue")
-        assert venue is not None
-        by_child = quotes.partition_by(venue)
-        assert by_child[0][0].as_py() == "XNAS"
-        assert by_child[0][1] == by_venue[0][1]
+        assert groups[0].key.as_py() == ["XNAS", 1]
+        assert len(groups[0].rows) == 2
+        assert [child.name for child in groups.serie_field] == []
+        by_venue = quotes.partition_by("venue")
+        assert by_venue[0].key.as_py() == ["XNAS"]
+        assert len(by_venue[0].rows) == 3
+        with pytest.raises(ValueError, match="alias the key cell"):
+            quotes.partition_by(quotes.child("venue"))
+        with pytest.raises(ValueError, match="at least one column"):
+            quotes.partition_by([])
+        with pytest.raises(ValueError, match="tier"):
+            quotes.partition_by([FieldPath("tier")])
+        with pytest.raises(ValueError, match="declares no field"):
+            Serie([1]).partition_by([FieldPath("price")])
+        with pytest.raises(TypeError, match="Serie.from_"):
+            quotes.partition_by(3)
 
-        with pytest.raises(ValueError, match="partitions by no path"):
-            quotes.partition_by_paths([])
-        with pytest.raises(ValueError, match="tier reaches no column of quote"):
-            quotes.partition_by_paths(["tier"])
-        with pytest.raises(ValueError, match="a schema-free run partitions by no path"):
-            Serie([1]).partition_by_paths(["price"])
-        with pytest.raises(TypeError, match="expected a FieldPath, a path string"):
-            quotes.partition_by_paths(3)  # type: ignore[arg-type]
 
     def test_memory_size_counts_a_column_as_its_slice_and_a_run_as_its_values(self) -> None:
         column = int64_column(list(range(1_000)))
@@ -1938,9 +1923,10 @@ class TestOrder:
         assert unique.is_unique()
         assert unique.scalar(0) == column.scalar(0)
         assert column.into_reversed().scalar(0) == column.scalar(3)
-        groups = column.partition_by(column)
+        by = [FieldPath(child.name) for child in column.field] if type(column) is StructSerie else column.field.name
+        groups = column.partition_by(by)
         assert len(groups) == 3
-        assert len(groups[0][1]) == 2
+        assert len(groups[0].rows) == 2
         written = copy.copy(column)
         written.as_sorted().as_unique().as_reversed()
         assert len(written) == 3
@@ -1985,243 +1971,335 @@ def venue_runs() -> Serie:
     return quote_column([("XNAS", 1, 0), ("XNAS", 2, 14), ("XNYS", 3, 15), ("XNAS", 4, 31)])
 
 
-def window_cuts(windows: list[tuple[Scalar, WindowSerie]]) -> list[tuple[object, int, int]]:
-    return [(key.as_py(), window.offset, len(window)) for key, window in windows]
+def window_cuts(windows: KeySeries) -> list[tuple[object, int, int]]:
+    position = 0
+    cuts = []
+    for item in windows:
+        cuts.append((item.key.as_py(), item.rownum if item.rownum is not None else position, len(item.rows)))
+        position += len(item.rows)
+    return cuts
 
 
-def reader_rows(window: SerieReader) -> list[object]:
-    return [row for piece in window for row in piece.as_py()]
+
+def reader_rows(window: StreamChunkedSerie | KeySerie) -> list[object]:
+    reader = window.into_chunked_stream() if isinstance(window, KeySerie) else window
+    return [row for piece in reader for row in piece.as_py()]
+
 
 
 class TestWindowBy:
     @pytest.mark.parametrize("sorted_", [False, True])
-    def test_window_by_refuses_a_run_an_empty_key_an_unnest_and_a_term_naming_no_column(
-        self, sorted_: bool
-    ) -> None:
-        for serie in (venue_runs(), quote_column([])):
-            with pytest.raises(ValueError, match="expected a value or a name"):
-                serie.window_by("venue,", sorted_)
-            for empty in ("*", []):
-                with pytest.raises(
-                    ValueError,
-                    match="expected at least one column to window by, got an empty match key",
-                ):
-                    serie.window_by(empty, sorted_)
-            with pytest.raises(ValueError, match="in a key"):
-                serie.window_by("unnest(items)", sorted_)
-            with pytest.raises(ValueError, match="tier"):
-                serie.window_by("tier", sorted_)
-            for text in ("minutes(ts, 0)", "minutes(ts, count)"):
-                with pytest.raises(ValueError):
-                    serie.window_by(text, sorted_)
-            # A key cell named as a static value is refused before any row.
-            with pytest.raises(ValueError, match='collides with the static value "rownum"'):
-                serie.window_by("count as ROWNUM", sorted_)
-        with pytest.raises(ValueError, match="a schema-free run windows by no term"):
-            Serie([1, 2]).window_by("price", sorted_)
-        with pytest.raises(TypeError):
-            venue_runs().window_by("venue", 1)  # type: ignore[arg-type]
+    def test_keys_refuse_runs_empty_keys_unnest_and_unknown_columns(self, sorted_: bool) -> None:
+        with pytest.raises(ValueError, match="declares no field"):
+            Serie([1]).window_by("value", sorted_)
+        for by, reason in (("*", "empty match key"), ("tier", "tier"), ("unnest(items)", "in a key")):
+            with pytest.raises(ValueError, match=reason):
+                venue_runs().window_by(by, sorted_)
 
-    def test_window_by_cuts_runs_of_equal_adjacent_keys_in_row_order(self) -> None:
-        quotes = venue_runs()
-        windows = quotes.window_by("venue")
-        assert window_cuts(windows) == [(["XNAS"], 0, 2), (["XNYS"], 2, 1), (["XNAS"], 3, 1)]
-        for key, window in windows:
-            assert isinstance(window, WindowSerie)
-            # Every window is over the serie object itself.
-            assert window.serie is quotes
-            assert key.as_py() == [window[0].as_py()[0]]
-        # `sorted` is positional or keyword, and `None` is its default.
-        for spelled in (
-            quotes.window_by("venue", False),
-            quotes.window_by("venue", None),
-            quotes.window_by(by="venue", sorted=None),
-        ):
-            assert window_cuts(spelled) == window_cuts(windows)
-        # Two terms key a two-cell run in selector order; a list is
-        # projection texts; a period keys its number since the epoch.
-        expected = [(["XNAS", 0], 0, 2), (["XNYS", 1], 2, 1), (["XNAS", 2], 3, 1)]
-        assert window_cuts(quotes.window_by("venue, minutes(ts, 15) as bucket")) == expected
-        assert window_cuts(quotes.window_by(["venue", "minutes(ts, 15) as bucket"])) == expected
-        assert window_cuts(quotes.window_by("VENUE")) == window_cuts(windows)
-        assert len(quotes.window_by("count")) == 4
-        assert quote_column([]).window_by("venue") == []
+    def test_adjacent_windows_keep_positions_fields_and_payload_buffers(self) -> None:
+        rows = venue_runs()
+        groups = rows.window_by("venue as desk")
+        assert window_cuts(groups) == [(["XNAS"], 0, 2), (["XNYS"], 2, 1), (["XNAS"], 3, 1)]
+        assert [field.name for field in groups.field] == ["desk", "count", "ts"]
+        assert [field.name for field in groups.serie_field] == ["count", "ts"]
+        held = rows.child("count").into_arrow_array().buffers()[1]
+        for item in groups:
+            buffer = item.rows.child("count").into_arrow_array().buffers()[1]
+            assert held.address <= buffer.address < held.address + held.size
+        assert groups[0].key_paths[0] == FieldPath("venue")
 
-    def test_window_by_keys_consecutive_absent_rows_as_one_null_window(self) -> None:
-        quotes = quote_column([("XNAS", 1, 0), None, None, (None, 4, 0), (None, 5, 0)])
-        assert window_cuts(quotes.window_by("venue")) == [
-            (["XNAS"], 0, 1),
-            (None, 1, 2),
-            ([None], 3, 2),
-        ]
+    def test_sorted_gathers_are_stable_and_have_no_source_position(self) -> None:
+        rows = venue_runs()
+        groups = rows.window_by("venue", True)
+        assert [item.key.as_py() for item in groups] == [["XNAS"], ["XNYS"]]
+        assert all(item.rownum is None for item in groups)
+        assert groups[0].rows.child("count").as_py() == [1, 2, 4]
+        assert rows.child("count").as_py() == [1, 2, 3, 4]
 
-    def test_window_by_sorted_gathers_the_rows_once_in_stable_key_order(self) -> None:
-        quotes = quote_column(
-            [("XNYS", 1, 0), ("XNAS", 2, 0), ("XNYS", 3, 0), None, ("XNAS", 5, 0)]
-        )
-        windows = quotes.window_by("venue", True)
-        assert window_cuts(windows) == [(["XNAS"], 0, 2), (["XNYS"], 2, 2), (None, 4, 1)]
-        gathered = windows[0][1].serie
-        assert gathered is not quotes
-        assert isinstance(gathered, StructSerie)
-        assert all(window.serie is gathered for _, window in windows)
-        assert gathered == quotes.into_taken([1, 4, 0, 2, 3])
-        # Over keys already in order, nothing is gathered.
-        ordered = venue_runs().window_by("minutes(ts, 15)", sorted=True)
-        assert all(window.serie is not gathered for _, window in ordered)
-        assert window_cuts(ordered) == [([0], 0, 2), ([1], 2, 1), ([2], 3, 1)]
+    def test_nullable_and_primitive_keys_have_record_context(self) -> None:
+        rows = quote_column([None, None, (None, 3, 0), ("XNAS", 4, 1)])
+        groups = rows.window_by("venue")
+        assert [item.key.as_py() for item in groups] == [[None], [None], ["XNAS"]]
+        assert groups[0].rows.as_py()[:2] == [None, None]
+        with pytest.raises(ValueError):
+            groups.into_stream()
+        primitive = int64_column([1, 1, 2]).window_by("price")
+        assert [item.key.as_py() for item in primitive] == [[1], [2]]
+        assert [len(item.rows) for item in primitive] == [2, 1]
+        assert [field.name for field in primitive.serie_field] == []
 
-    def test_a_non_record_column_windows_by_its_own_name(self) -> None:
-        venues = Serie.from_arrow_array(
-            pa.array(["XNAS", "XNAS", "XNYS"]), Field("venue", "utf8", nullable=False)
-        )
-        windows = venues.window_by("venue")
-        assert window_cuts(windows) == [(["XNAS"], 0, 2), (["XNYS"], 2, 1)]
-        assert [window.static_values.as_py() for _, window in windows if window.static_values] == [
-            {"venue": "XNAS", "windownum": 0, "rownum": 0},
-            {"venue": "XNYS", "windownum": 1, "rownum": 2},
-        ]
+    def test_key_names_have_no_synthetic_reserved_cells(self) -> None:
+        groups = venue_runs().window_by("venue as windownum, count as rownum")
+        assert [field.name for field in groups.key_field] == ["windownum", "rownum"]
+        assert [item.rownum for item in groups] == [0, 1, 2, 3]
+
 
 
 class TestReaderWindowBy:
-    def test_reader_window_by_refuses_before_any_pull(self) -> None:
-        # A text that does not parse leaves the reader usable.
-        reader = SerieReader.from_serie(venue_runs())
-        with pytest.raises(ValueError, match="expected a value or a name"):
+    def test_binding_refusals_happen_before_any_pull(self) -> None:
+        pulled = []
+        def batches():
+            pulled.append(True)
+            yield venue_runs().into_arrow_batch()
+        root = venue_runs().into_arrow_batch().schema
+        reader = StreamChunkedSerie.from_arrow_reader(pa.RecordBatchReader.from_batches(root, batches()))
+        with pytest.raises(ValueError):
             reader.window_by("venue,")
-        with pytest.raises(TypeError):
-            reader.window_by("venue", 1)  # type: ignore[arg-type]
-        assert len(list(reader)) == 1
-        # A key the root refuses spends it, as a refused cast does.
-        for refused, reason in (
-            ("*", "empty match key"),
-            ("tier", "tier"),
-            ("unnest(items)", "in a key"),
-            ("count as windownum", 'collides with the static value "windownum"'),
-        ):
-            reader = SerieReader.from_serie(venue_runs())
-            with pytest.raises(ValueError, match=reason):
-                reader.window_by(refused)
-            assert list(reader) == []
-            with pytest.raises(ValueError, match="already handed over"):
-                reader.window_by("venue")
+        assert pulled == []
+        with pytest.raises(ValueError, match="tier"):
+            reader.window_by("tier")
+        assert pulled == []
+        assert list(reader) == []
 
-    def test_reader_window_by_yields_one_lazy_reader_per_window(self) -> None:
-        quotes = venue_runs()
-        stream = SerieReader.from_chunked(
-            ChunkedSerie.from_series([quotes.slice(0, 1), quotes.slice(1, 3)], quotes.field)
-        )
-        walk = stream.window_by("venue")
-        assert isinstance(walk, SerieReaderWindows)
-        assert iter(walk) is walk
-        # Both records are known before a batch is pulled; the root a held
-        # column streams under is required.
-        assert walk.field == SerieReader.from_serie(quotes).field
-        assert not walk.field.nullable
-        assert [child.name for child in walk.static_field] == ["venue", "windownum", "rownum"]
-        assert repr(walk).startswith("SerieReaderWindows(field=")
-        with pytest.raises(TypeError):
-            hash(walk)
-        xnas = next(walk)
-        assert isinstance(xnas, SerieReader)
-        assert xnas.field == walk.field
-        assert xnas.static_values is not None
-        assert xnas.static_values.as_py() == {"venue": "XNAS", "windownum": 0, "rownum": 0}
-        # The run crossing the batch edge is one window, one piece per batch.
-        assert [len(piece) for piece in xnas] == [1, 1]
-        xnys = next(walk)
-        assert reader_rows(xnys) == quotes.slice(2, 1).as_py()
-        tail = next(walk)
-        assert tail.static_values is not None
-        assert tail.static_values.as_py() == {"venue": "XNAS", "windownum": 2, "rownum": 3}
-        with pytest.raises(StopIteration):
-            next(walk)
-        # Walking without reading raises nothing.
-        for _ in SerieReader.from_serie(quotes).window_by("venue", sorted=None):
-            pass
+    def test_key_context_is_available_before_lazy_windows_are_pulled(self) -> None:
+        rows = venue_runs()
+        reader = StreamChunkedSerie.from_chunked(ChunkedSerie.from_series([rows.slice(0, 1), rows.slice(1, 3)], rows.field))
+        walk = reader.window_by("venue")
+        assert isinstance(walk, StreamKeySerie)
+        assert [field.name for field in walk.key_field] == ["venue"]
+        first = next(walk)
+        assert isinstance(first, KeySerie)
+        assert first.key.as_py() == ["XNAS"]
+        assert first.rownum == 0
+        assert [len(piece) for piece in first.into_chunked_stream(row_size=1)] == [1, 1]
+        assert len(reader_rows(next(walk))) == 1
+        last = next(walk)
+        assert last.rownum == 3
+        assert len(reader_rows(last)) == 1
+        assert list(walk) == []
 
-    def test_reader_window_by_refuses_a_window_the_walk_passed(self) -> None:
-        windows = list(SerieReader.from_serie(venue_runs()).window_by("venue"))
-        assert len(windows) == 3
-        with pytest.raises(
-            ValueError,
-            match="window 0 was passed by its walk with rows unread; read each window before "
-            "taking the next",
-        ):
-            next(windows[0])
-        # Fused after the refusal.
-        assert list(windows[0]) == []
+    def test_passed_payload_refuses_once_then_fuses(self) -> None:
+        windows = list(StreamChunkedSerie.from_serie(venue_runs()).window_by("venue"))
+        rows = windows[0].rows.into_chunked_stream()
+        with pytest.raises(ValueError, match="was passed"):
+            next(rows)
+        assert list(rows) == []
 
-    def test_reader_window_by_sorted_refuses_a_key_going_backwards_naming_batch_and_row(
-        self,
-    ) -> None:
-        quotes = quote_column([("XLON", 1, 0), ("XNYS", 2, 0), ("XNAS", 3, 0)])
-        walk = SerieReader.from_serie(quotes).window_by("venue", True)
+    def test_sorted_windows_refuse_a_descending_key_and_fuse(self) -> None:
+        rows = quote_column([("XLON", 1, 0), ("XNYS", 2, 0), ("XNAS", 3, 0)])
+        walk = StreamChunkedSerie.from_serie(rows).window_by("venue", True)
         assert len(reader_rows(next(walk))) == 1
         assert len(reader_rows(next(walk))) == 1
-        with pytest.raises(
-            ValueError,
-            match=r"window by expects keys in order, ascending with absent keys last: batch 0 "
-            r"row 2",
-        ):
+        with pytest.raises(ValueError, match="expects keys in order"):
             next(walk)
         assert list(walk) == []
-        # Unsorted, every key is windowed where it arrives.
-        unsorted = SerieReader.from_serie(quotes).window_by("venue")
-        venues = [window.static_values.as_py()["venue"] for window in unsorted if window.static_values]
-        assert venues == ["XLON", "XNYS", "XNAS"]
 
-    def test_a_reader_window_states_the_record_a_held_window_states(self) -> None:
-        quotes = venue_runs()
-        for by in ("venue", "minutes(ts, 15) as bucket, venue"):
-            for sorted_ in (False, True):
-                held = [
-                    window.static_values.as_py()
-                    for _, window in quotes.window_by(by, sorted_)
-                    if window.static_values
-                ]
-                walk = SerieReader.from_serie(quotes).window_by(by, sorted_)
-                if by == "venue" and sorted_:
-                    # Out of order, the held rows gather and state no rownum,
-                    # where the stream refuses the key going back.
-                    assert [record["rownum"] for record in held] == [None, None]
-                    with pytest.raises(ValueError, match="expects keys in order"):
-                        list(walk)
-                    continue
-                streamed = [
-                    window.static_values.as_py() for window in walk if window.static_values
-                ]
-                assert streamed == held
-        # A window of a stream window keeps the outer cells and an absolute
-        # rownum.
-        outer = next(SerieReader.from_serie(quotes).window_by("minutes(ts, 30) as half"))
-        inner = [
-            window.static_values.as_py() for window in outer.window_by("venue") if window.static_values
+    def test_stream_composition_keeps_paths_and_absolute_positions(self) -> None:
+        walk = venue_runs().into_stream().window_by("venue as desk").window_by("count as amount")
+        positions = []
+        for item in walk:
+            assert [field.name for field in item.key_field] == ["desk", "amount"]
+            assert str(item.key_paths[0]) == "venue"
+            positions.append(item.rownum)
+            assert len(list(item.into_stream())) == 1
+        assert positions == [0, 1, 2, 3]
+
+
+
+# ---------------------------------------------------------------------------
+# partition_by: a stream cut by a key into partitions, each yielded as it
+# closes - mirrors rust/tests/serie/partition.rs
+# ---------------------------------------------------------------------------
+
+
+def order_root() -> Field:
+    """The record `row{venue, qty}`, every row and cell stated."""
+    return Field("row", "struct<venue: utf8 not null, qty: int64 not null>", nullable=False)
+
+
+def order_batch(rows: list[tuple[str, int]], root: Field | None = None) -> Serie:
+    return Serie.from_scalars(order_root() if root is None else root, [list(row) for row in rows])
+
+
+def order_stream(batches: list[Serie]) -> StreamChunkedSerie:
+    """One stream of `batches` under the first one's root, a chunk per batch."""
+    return StreamChunkedSerie.from_chunked(ChunkedSerie.from_series(batches, batches[0].field))
+
+
+def closed(partitions: StreamKeySerie) -> list[tuple[object, list[int]]]:
+    answered = []
+    for item in partitions:
+        assert isinstance(item, KeySerie)
+        rows = item.into_chunked_stream().into_arrow_reader().read_all()
+        answered.append((item.key.as_py(), rows.column("qty").to_pylist()))
+    return answered
+
+
+
+class TestReaderPartitionBy:
+    def test_partition_by_refuses_before_any_pull(self) -> None:
+        # A text that does not parse, or an argument of the wrong type,
+        # leaves the reader usable.
+        reader = order_stream([order_batch([("XNAS", 1)])])
+        with pytest.raises(ValueError, match="expected a value or a name"):
+            reader.partition_by("venue,")
+        with pytest.raises(TypeError):
+            reader.partition_by("venue", "two")  # type: ignore[arg-type]
+        with pytest.raises(TypeError):
+            reader.partition_by("venue", clustered=1)  # type: ignore[arg-type]
+        with pytest.raises(OverflowError):
+            reader.partition_by("venue", max_open=-1)
+        assert [batch.as_py() for batch in reader] == [[{"venue": "XNAS", "qty": 1}]]
+        # A key the root refuses spends it, as a refused cast does.
+        reader = order_stream([order_batch([("XNAS", 1)])])
+        with pytest.raises(ValueError, match="missing"):
+            reader.partition_by("missing")
+        assert list(reader) == []
+        with pytest.raises(ValueError, match="already consumed"):
+            reader.partition_by("venue")
+
+    def test_partition_by_answers_a_lazy_walk_under_the_reader_root(self) -> None:
+        reader = order_stream([order_batch([("XNAS", 1)])])
+        root = reader.field
+        walk = reader.partition_by("venue")
+        assert isinstance(walk, StreamKeySerie)
+        assert iter(walk) is walk
+        assert walk.field == root
+        assert StreamKeySerie.__hash__ is None
+        with pytest.raises(TypeError):
+            hash(walk)
+        assert repr(walk).startswith("StreamKeySerie(field=")
+        assert closed(walk) == [(["XNAS"], [1])]
+        with pytest.raises(StopIteration):
+            next(walk)
+        assert walk.field == root
+
+    def test_an_unbounded_stream_closes_every_partition_in_key_order_at_its_end(self) -> None:
+        batches = [
+            order_batch([("XPAR", 1), ("XNAS", 2)]),
+            order_batch([("XLON", 3), ("XNAS", 4)]),
         ]
-        assert inner == [
-            {"half": 0, "venue": "XNAS", "windownum": 0, "rownum": 0},
-            {"half": 0, "venue": "XNYS", "windownum": 1, "rownum": 2},
+        assert closed(order_stream(batches).partition_by("venue")) == [
+            (["XLON"], [3]),
+            (["XNAS"], [2, 4]),
+            (["XPAR"], [1]),
         ]
 
-    def test_reader_static_values_survive_cast_and_hand_over_and_never_reach_a_batch(
+    def test_past_max_open_the_lowest_keys_close_and_a_returning_key_is_a_new_piece(
         self,
     ) -> None:
-        quotes = venue_runs()
-        assert SerieReader.from_serie(quotes).static_values is None
-        window = next(SerieReader.from_serie(quotes).window_by("venue"))
-        record = window.static_values
-        assert record is not None
-        wider = Field(
-            "quote",
-            "struct<venue: utf8, count: float64 not null, ts: timestamp(ns, UTC)>",
-            nullable=True,
+        batches = [
+            order_batch([("XNAS", 1), ("XLON", 2)]),
+            order_batch([("XPAR", 3)]),
+            order_batch([("XLON", 4)]),
+        ]
+        # The third venue closes the lowest open, XLON; XLON returning is the
+        # lowest open again and closes at once; the rest close at the end.
+        expected = [(["XLON"], [2]), (["XLON"], [4]), (["XNAS"], [1]), (["XPAR"], [3])]
+        assert closed(order_stream(batches).partition_by("venue", 2)) == expected
+        assert closed(order_stream(batches).partition_by("venue", max_open=2)) == expected
+        # The rows cross as Arrow and as Python values alike.
+        item = next(order_stream(batches).partition_by("venue", max_open=2))
+        assert item.key.as_py() == ["XLON"]
+        assert item.rows.as_py() == [{"qty": 2}]
+        assert item.into_chunked_stream().read_all().to_pylist() == [{"venue": "XLON", "qty": 2}]
+        # A bound of none is a bound of one: each batch keeps only its
+        # highest key open.
+        assert closed(order_stream(batches).partition_by("venue", max_open=0)) == closed(
+            order_stream(batches).partition_by("venue", max_open=1)
         )
-        cast = window.cast(wider)
-        assert cast.static_values == record
-        batches = cast.into_arrow_reader()
-        assert cast.static_values == record
-        assert batches.schema.names == ["venue", "count", "ts"]
-        assert batches.read_all().num_rows == 2
+        assert closed(order_stream(batches).partition_by("venue", max_open=1)) == [
+            (["XLON"], [2]),
+            (["XNAS"], [1]),
+            (["XLON"], [4]),
+            (["XPAR"], [3]),
+        ]
+
+    def test_a_clustered_stream_closes_each_partition_once_another_key_arrives(self) -> None:
+        batches = [
+            order_batch([("XNAS", 1), ("XNAS", 2), ("XLON", 3)]),
+            order_batch([("XLON", 4), ("XPAR", 5)]),
+            order_batch([("XNAS", 6)]),
+        ]
+        # In arrival order, a run across a batch edge one partition, and a key
+        # the stream returns to a second piece of it: pieces, never rows.
+        assert closed(order_stream(batches).partition_by("venue", clustered=True)) == [
+            (["XNAS"], [1, 2]),
+            (["XLON"], [3, 4]),
+            (["XPAR"], [5]),
+            (["XNAS"], [6]),
+        ]
+
+    def test_a_root_declaring_an_order_that_leads_with_the_key_is_clustered_untold(
+        self,
+    ) -> None:
+        rows = order_batch([("XLON", 4), ("XNAS", 3), ("XPAR", 1), ("XNAS", 2)])
+        # Venue descending, then quantity: the declaration the sort writes,
+        # proven where the rows land.
+        ordered = rows.into_sort_by("venue desc, qty")
+        assert ordered.declared_order() is not None
+        chunks = [ordered.slice(0, 2), ordered.slice(2, 2)]
+        assert closed(order_stream(chunks).partition_by("venue")) == [
+            (["XPAR"], [1]),
+            (["XNAS"], [2, 3]),
+            (["XLON"], [4]),
+        ]
+        # Undeclared, the same rows close in key order.
+        plain = [chunk.cast(order_root()) for chunk in chunks]
+        assert plain[0].declared_order() is None
+        assert closed(order_stream(plain).partition_by("venue")) == [
+            (["XLON"], [4]),
+            (["XNAS"], [2, 3]),
+            (["XPAR"], [1]),
+        ]
+        # A key the order does not lead with is not clustered by it.
+        keys = [key for key, _ in closed(order_stream(chunks).partition_by("qty"))]
+        assert keys == [[1], [2], [3], [4]]
+
+    def test_partitions_cut_on_many_threads_are_the_ones_cut_on_one(self) -> None:
+        venues = ["XNAS", "XLON", "XPAR", "XAMS", "XETR"]
+
+        def batches() -> list[Serie]:
+            return [
+                order_batch(
+                    [(venues[(index * 25 + row) % 5], index * 25 + row) for row in range(25)]
+                )
+                for index in range(40)
+            ]
+
+        for max_open, clustered in ((None, False), (2, False), (None, True)):
+            one, many = (
+                closed(
+                    order_stream(batches()).partition_by(
+                        "venue", max_open=max_open, threads=threads, clustered=clustered
+                    )
+                )
+                for threads in (1, 4)
+            )
+            assert one == many, (max_open, clustered)
+            assert sum(len(quantities) for _, quantities in one) == 1_000
+        # Zero threads is one.
+        assert closed(order_stream(batches()).partition_by("venue", threads=0)) == closed(
+            order_stream(batches()).partition_by("venue", threads=1)
+        )
+
+    def test_a_python_source_is_pulled_off_the_gil_and_a_dropped_walk_joins_its_workers(
+        self,
+    ) -> None:
+        pulled: list[int] = []
+
+        def tables() -> Iterator[pa.Table]:
+            for index in range(8):
+                pulled.append(index)
+                yield pa.table(
+                    {
+                        "venue": pa.array(["XNAS", "XLON", "XNAS"], pa.utf8()),
+                        "qty": pa.array([index] * 3, pa.int64()),
+                    }
+                )
+
+        root = Field("row", "struct<venue: utf8, qty: int64>", nullable=False)
+        walk = StreamChunkedSerie.from_(tables(), root).partition_by("venue", max_open=1, threads=4)
+        item = next(walk)
+        key, rows = item.key, item.rows
+        assert key.as_py() in (["XLON"], ["XNAS"])
+        assert len(rows) > 0
+        # Dropped mid-stream, the walk lets go of its workers and its source.
+        del walk
+        gc.collect()
+        streamed = StreamChunkedSerie.from_(tables(), root).partition_by("venue", threads=4)
+        assert [item.key.as_py() for item in streamed] == [["XLON"], ["XNAS"]]
+        assert pulled[-8:] == list(range(8))
 
 
 # ---------------------------------------------------------------------------
@@ -2452,7 +2530,7 @@ def pairs(name: str, rows: int, keys: int) -> Serie:
     )
 
 
-def counted_pairs(name: str, batches: int, rows: int, pulled: list[int]) -> SerieReader:
+def counted_pairs(name: str, batches: int, rows: int, pulled: list[int]) -> StreamChunkedSerie:
     """A stream of `batches` batches of `pairs` rows, counting its pulls."""
     value = "left_value" if name == "l" else "right_value"
     schema = pa.schema(
@@ -2472,7 +2550,7 @@ def counted_pairs(name: str, batches: int, rows: int, pulled: list[int]) -> Seri
             )
 
     root = Field(name, f"struct<id: int64 not null, {value}: int64 not null>", nullable=False)
-    return SerieReader.from_arrow_reader(pa.RecordBatchReader.from_batches(schema, produce()), root)
+    return StreamChunkedSerie.from_arrow_reader(pa.RecordBatchReader.from_batches(schema, produce()), root)
 
 
 class TestJoin:
@@ -2554,8 +2632,8 @@ class TestJoin:
         chunked = ChunkedSerie.from_serie(left).join_with(
             ChunkedSerie.from_serie(right), "id", "full"
         )
-        streamed = SerieReader.from_serie(left).join_with(right, "id", "full")
-        assert type(streamed) is SerieReader
+        streamed = StreamChunkedSerie.from_serie(left).join_with(right, "id", "full")
+        assert type(streamed) is StreamChunkedSerie
         assert held.rows() == chunked.rows()
         assert held.rows() == [row for batch in streamed for row in batch.rows()]
 
@@ -2563,7 +2641,7 @@ class TestJoin:
 class TestReaderOrderSpillAndJoin:
     def test_into_sorted_drains_the_stream_and_keeps_its_root(self) -> None:
         quotes = quote_rows([("XNYS", 2), ("XNAS", 1), ("XNYS", 1)])
-        sorted_ = SerieReader.from_serie(quotes).into_sorted(descending=True)
+        sorted_ = StreamChunkedSerie.from_serie(quotes).into_sorted(descending=True)
         assert sorted_.field.name == "quote"
         assert [row for batch in sorted_ for row in batch.as_py()] == [
             {"venue": "XNYS", "price": 2},
@@ -2573,7 +2651,7 @@ class TestReaderOrderSpillAndJoin:
 
     def test_into_sort_by_reads_the_keys_before_the_stream(self) -> None:
         quotes = quote_rows([("XNYS", 2), ("XNAS", 1), ("XNYS", 1)])
-        sorted_ = SerieReader.from_serie(quotes).into_sort_by("venue, price desc")
+        sorted_ = StreamChunkedSerie.from_serie(quotes).into_sort_by("venue, price desc")
         assert [row for batch in sorted_ for row in batch.as_py()] == [
             {"venue": "XNAS", "price": 1},
             {"venue": "XNYS", "price": 2},
@@ -2588,7 +2666,7 @@ class TestReaderOrderSpillAndJoin:
         with pytest.raises(ValueError, match="tier"):
             stream.into_sort_by("tier")
         assert pulled == []
-        with pytest.raises(ValueError, match="handed over"):
+        with pytest.raises(ValueError, match="already consumed"):
             stream.into_sort_by("id")
         # Every batch is pulled before the first sorted one is answered.
         pulled.clear()
@@ -2605,7 +2683,7 @@ class TestReaderOrderSpillAndJoin:
 
     def test_a_held_reader_spills_the_records_it_holds_and_a_stream_holds_none(self) -> None:
         column = quote_rows([("XNYS", index) for index in range(512)])
-        reader = SerieReader.from_serie(column)
+        reader = StreamChunkedSerie.from_serie(column)
         assert reader.resident_size() == column.resident_size()
         assert not reader.is_spilled()
         reader.spill(byte_size=0)
@@ -2628,16 +2706,16 @@ class TestReaderOrderSpillAndJoin:
         stream.into_arrow_reader()
         assert stream.resident_size() == 0
         assert not stream.is_spilled()
-        with pytest.raises(ValueError, match="handed over"):
+        with pytest.raises(ValueError, match="already consumed"):
             stream.spill(byte_size=0)
 
     def test_a_reader_spills_in_a_chain_and_into_a_reader_that_takes_its_records(self) -> None:
         column = quote_rows([("XNYS", index) for index in range(512)])
-        reader = SerieReader.from_serie(column)
+        reader = StreamChunkedSerie.from_serie(column)
         assert reader.as_spilled(byte_size=0) is reader
         assert reader.is_spilled()
         assert next(reader) == column
-        moved = SerieReader.from_serie(column)
+        moved = StreamChunkedSerie.from_serie(column)
         # A refused keyword is read before the reader is taken.
         with pytest.raises(TypeError):
             moved.into_spilled(byte_size="0")  # type: ignore[arg-type]
@@ -2646,9 +2724,9 @@ class TestReaderOrderSpillAndJoin:
         assert [record.is_spilled() for record in spilled] == [True]
         # The reader it was taken from is handed over, and refuses both.
         assert moved.resident_size() == 0
-        with pytest.raises(ValueError, match="handed over"):
+        with pytest.raises(ValueError, match="already consumed"):
             moved.into_spilled(byte_size=0)
-        with pytest.raises(ValueError, match="handed over"):
+        with pytest.raises(ValueError, match="already consumed"):
             moved.as_spilled(byte_size=0)
         # A stream holds no record between pulls, so it spills none.
         pulled: list[int] = []
@@ -2684,18 +2762,18 @@ class TestReaderOrderSpillAndJoin:
     def test_a_refused_argument_leaves_both_sides_and_a_spent_reader_takes_neither(
         self,
     ) -> None:
-        stream = SerieReader.from_serie(pairs("l", 4, 2))
-        other = SerieReader.from_serie(pairs("r", 4, 2))
+        stream = StreamChunkedSerie.from_serie(pairs("l", 4, 2))
+        other = StreamChunkedSerie.from_serie(pairs("r", 4, 2))
         with pytest.raises(ValueError, match="cross"):
             stream.join_with(other, "id", "cross")
         with pytest.raises(ValueError, match="build"):
             stream.join_with(other, "id", build="middle")
         joined = stream.join_with(other, "id")
         assert sum(len(batch) for batch in joined) == 8
-        with pytest.raises(ValueError, match="handed over"):
-            stream.join_with(SerieReader.from_serie(pairs("r", 4, 2)), "id")
-        spare = SerieReader.from_serie(pairs("r", 4, 2))
-        with pytest.raises(ValueError, match="handed over"):
+        with pytest.raises(ValueError, match="already consumed"):
+            stream.join_with(StreamChunkedSerie.from_serie(pairs("r", 4, 2)), "id")
+        spare = StreamChunkedSerie.from_serie(pairs("r", 4, 2))
+        with pytest.raises(ValueError, match="already consumed"):
             stream.join_with(spare, "id")
         # The other reader was not taken by the refused join.
         assert sum(len(batch) for batch in spare) == 4

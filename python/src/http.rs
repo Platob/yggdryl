@@ -534,6 +534,28 @@ fn sent(py: Python<'_>, request: &Request, stream: bool) -> PyResult<Py<PyAny>> 
     describe(py, Holder::HttpResponse(response))
 }
 
+/// Every request this process sent, by host and port, as of now: a mapping
+/// of `host[:port]` to its counts - `requests`, `gets`, `heads`, `puts`,
+/// `posts`, `deletes`, `others` - whatever client sent them, the object
+/// stores' and a catalog service's included. The one ledger a pipeline's
+/// cost is read off: read it before and after a stage and subtract.
+#[pyfunction]
+pub(crate) fn http_process_stats(py: Python<'_>) -> PyResult<Py<PyDict>> {
+    let hosts = PyDict::new(py);
+    for (host, stats) in yggdryl::http::process_stats().hosts() {
+        let counts = PyDict::new(py);
+        counts.set_item("requests", stats.requests)?;
+        counts.set_item("gets", stats.gets)?;
+        counts.set_item("heads", stats.heads)?;
+        counts.set_item("puts", stats.puts)?;
+        counts.set_item("posts", stats.posts)?;
+        counts.set_item("deletes", stats.deletes)?;
+        counts.set_item("others", stats.others)?;
+        hosts.set_item(host, counts)?;
+    }
+    Ok(hosts.unbind())
+}
+
 /// The counters of a client as a mapping of name to count.
 fn stats_dict(py: Python<'_>, stats: StatsSnapshot) -> PyResult<Py<PyDict>> {
     let counts = PyDict::new(py);
@@ -1774,17 +1796,17 @@ impl PyPages {
     }
 
     /// Every page as one record column per page, under `field` or the root
-    /// the first page's rows infer, as a `SerieReader`.
+    /// the first page's rows infer, as a `StreamChunkedSerie`.
     #[pyo3(signature = (field = None))]
-    fn read_serie(
+    fn chunked_stream(
         &self,
         py: Python<'_>,
         field: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<crate::serie::PySerieReader> {
+    ) -> PyResult<crate::stream_chunked_serie::PyStreamChunkedSerie> {
         let field = field.map(crate::field::core_field_from_value).transpose()?;
         let pages = self.take(py)?;
-        py.detach(|| pages.into_serie_reader(field.as_ref()))
-            .map(crate::serie::PySerieReader::from)
+        py.detach(|| pages.chunked_stream(field.as_ref()))
+            .map(crate::stream_chunked_serie::PyStreamChunkedSerie::from)
             .map_err(storage_error)
     }
 
@@ -2599,5 +2621,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyLineIterator>()?;
     module.add_class::<PyResponses>()?;
     module.add_function(wrap_pyfunction!(http_session, module)?)?;
+    module.add_function(wrap_pyfunction!(http_process_stats, module)?)?;
     Ok(())
 }

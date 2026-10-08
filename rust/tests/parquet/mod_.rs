@@ -782,6 +782,45 @@ mod internal {
         assert_eq!(footer, scanned);
     }
 
+    /// The scan reads as a record read does: of a file past a megabyte, its
+    /// end once - which holds the footer - and the scanned column's chunk,
+    /// never the whole file and never the other columns.
+    #[test]
+    fn the_scan_of_a_large_file_reads_its_end_and_the_one_column() {
+        let rows = 200_000_i32;
+        let points: Vec<Vec<u8>> = (0..rows)
+            .map(|row| wkb_point(f64::from(row) * 0.37, f64::from(row).sqrt()))
+            .collect();
+        let media = written(
+            "large-scan.parquet",
+            vec![
+                ArrowField::new("id", ArrowDataType::Int64, false),
+                extension_field(
+                    "shape",
+                    ArrowDataType::Binary,
+                    "geoarrow.wkb",
+                    Some(r#"{"crs": "OGC:CRS84"}"#),
+                ),
+            ],
+            vec![
+                Arc::new(Int64Array::from_iter_values((0..rows).map(i64::from))),
+                Arc::new(BinaryArray::from_iter_values(points.iter())),
+            ],
+        );
+        let file = media.into_handle();
+        assert!(file.size() > 1024 * 1024, "{} bytes", file.size());
+        let counted = yggdryl::holder::counted::Counted::new(file);
+        let calls = Arc::clone(counted.calls());
+        calls.reset();
+
+        let scanned = yggdryl::parquet::read_geospatial_statistics(&counted, "shape").unwrap();
+        assert_eq!(scanned.geometry_types, vec![1]);
+        assert_eq!(
+            calls.snapshot().to_string(),
+            "read_range_bytes=1 read_tail_bytes=1 media_type=1"
+        );
+    }
+
     #[test]
     fn the_scan_refuses_a_column_that_is_not_wkb_by_name() {
         let media = written(
@@ -906,6 +945,7 @@ mod records {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use yggdryl::holder::Buffer;
+    use yggdryl::holder::counted::{Calls, Counted};
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::parquet::{Parquet, ParquetOptions};
     use yggdryl::{DataType, Field, MediaType, StructType, Url};
@@ -1212,6 +1252,325 @@ mod records {
         media.close().unwrap();
         assert!(!media.opened());
         assert_eq!(media.row_size().unwrap(), 4, "closed reads are fresh");
+    }
+
+    /// A file past a megabyte: `rows` uncompressed rows written in row
+    /// groups of `group_rows`, so its column chunks lie far before the end
+    /// its footer is read out of.
+    fn large(rows: usize, group_rows: usize) -> Buffer {
+        let field = root();
+        let mut media = Parquet::new(handle("large.parquet")).with_options(
+            ParquetOptions::new()
+                .with_compression(Compression::UNCOMPRESSED)
+                .with_max_row_group_size(group_rows),
+        );
+        let options = media.record_options().unwrap();
+        let symbols: Vec<String> = (0..rows).map(|row| format!("SYM{row:06}")).collect();
+        let ids = (0..rows).map(|row| row as i64).collect();
+        let symbols = symbols.iter().map(|symbol| Some(symbol.as_str())).collect();
+        media
+            .overwrite_arrow_reader(reader(&field, [batch(&field, ids, symbols)]), &options)
+            .unwrap();
+        let file = media.into_handle();
+        assert!(file.size() > 2 * 1024 * 1024, "{} bytes", file.size());
+        file
+    }
+
+    /// A handle that records the range of every ranged read asked of it, and
+    /// answers everything else as the buffer beneath it.
+    struct Ranges {
+        handle: Buffer,
+        asked: Mutex<Vec<(u64, usize)>>,
+    }
+
+    impl yggdryl::IOMedia for Ranges {
+        yggdryl::impl_default_iomedia!();
+    }
+
+    impl IOBase for Ranges {
+        yggdryl::delegate_iobase!(handle: pread, read_all_bytes, read_tail_bytes, pstream_bytes,
+            create_bytes, pwrite, size, capacity, reserve, truncate, uri, url, media_type,
+            set_media_type, flush, parent, child_by_path, ls, kind, clear, remove, is_atomic,
+            is_tabular);
+
+        fn read_range_bytes(&self, offset: u64, length: usize) -> yggdryl::Result<Vec<u8>> {
+            self.asked
+                .lock()
+                .expect("the ranges asked")
+                .push((offset, length));
+            self.handle.read_range_bytes(offset, length)
+        }
+    }
+
+    /// A column chunk running into the end the footer was read out of is
+    /// fetched only up to where that end begins, and read whole out of the
+    /// fetch and the end joined: no byte the end holds is fetched again.
+    #[test]
+    fn a_chunk_reaching_into_the_held_end_is_fetched_only_up_to_it() {
+        use arrow_array::Array as _;
+
+        let ranges = Ranges {
+            handle: large(200_000, 1_000_000),
+            asked: Mutex::new(Vec::new()),
+        };
+        let size = ranges.size();
+        let options = ranges.record_options().unwrap();
+        let mut sum = 0_i64;
+        let mut last = None;
+        for batch in ranges.read_arrow_reader(&options).unwrap() {
+            let batch = batch.unwrap();
+            let ids = batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap();
+            sum += ids.values().iter().sum::<i64>();
+            let symbols = batch
+                .column(1)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            last = Some(symbols.value(symbols.len() - 1).to_owned());
+        }
+        assert_eq!(sum, (0..200_000_i64).sum::<i64>());
+        assert_eq!(last.as_deref(), Some("SYM199999"), "the rows the end holds");
+        // A read of every row takes the file's last MiB first - its footer
+        // and the end of the one row group's last chunk - then everything
+        // from the first chunk, right after the leading magic, to that end.
+        let held_from = size - 1024 * 1024;
+        assert_eq!(
+            *ranges.asked.lock().unwrap(),
+            [(4, usize::try_from(held_from - 4).unwrap())],
+            "one fetch, up to the end in hand"
+        );
+    }
+
+    /// The calls `operation` makes of a counted handle.
+    fn cost(calls: &Arc<Calls>, operation: impl FnOnce()) -> String {
+        calls.reset();
+        operation();
+        calls.snapshot().to_string()
+    }
+
+    /// An opened file reads its footer once: the open is one read of the
+    /// file's end, which answers its length too, and every ask after it - the
+    /// schema, both counts, a record read - asks the handle nothing of its
+    /// end and nothing of its size, the record read only the column chunks.
+    #[test]
+    fn an_opened_file_reads_its_footer_once() {
+        let counted = Counted::new(large(200_000, 1_000_000));
+        let calls = Arc::clone(counted.calls());
+        let mut media = Parquet::new(counted);
+        let options = media.record_options().unwrap();
+        let rows = |media: &Parquet<Counted<Buffer>>| -> usize {
+            media
+                .read_arrow_reader(&options)
+                .unwrap()
+                .map(|batch| batch.unwrap().num_rows())
+                .sum()
+        };
+
+        // Closed, a record read reads the end and then the chunks.
+        assert_eq!(
+            cost(&calls, || assert_eq!(rows(&media), 200_000)),
+            "read_range_bytes=1 read_tail_bytes=1 media_type=2 is_container=1"
+        );
+
+        assert_eq!(
+            cost(&calls, || media.open().unwrap()),
+            "read_tail_bytes=1 media_type=1 is_container=1 open=1"
+        );
+        assert_eq!(
+            cost(&calls, || {
+                media.read_arrow_field(&options).unwrap();
+                assert_eq!(media.row_size().unwrap(), 200_000);
+                assert_eq!(media.column_size().unwrap(), 2);
+                assert_eq!(media.size(), media.handle().size());
+            }),
+            "size=1",
+            "the dimensions answer from the footer the open read"
+        );
+        assert_eq!(
+            cost(&calls, || assert_eq!(rows(&media), 200_000)),
+            "read_range_bytes=1 media_type=2 is_container=1",
+            "the opened read fetches the column chunks alone"
+        );
+
+        // Closing lets go of the footer: the next read reads the end again.
+        media.close().unwrap();
+        assert_eq!(
+            cost(&calls, || assert_eq!(rows(&media), 200_000)),
+            "read_range_bytes=1 read_tail_bytes=1 media_type=2 is_container=1"
+        );
+    }
+
+    /// A footer is read with the one read of the file's end that also
+    /// answers its length; a footer longer than that end is read from its own
+    /// range after it, and nothing asks the size.
+    #[test]
+    fn a_footer_read_is_one_read_of_the_end_unless_the_footer_outgrows_it() {
+        let options = ParquetOptions::new();
+        let short = Counted::new(large(200_000, 1_000_000));
+        let calls = Arc::clone(short.calls());
+        assert_eq!(
+            cost(&calls, || {
+                yggdryl::parquet::read_field(&short, &options).unwrap();
+            }),
+            "read_tail_bytes=1 media_type=1"
+        );
+        assert_eq!(
+            cost(&calls, || {
+                assert_eq!(
+                    yggdryl::parquet::read_statistics(&short)
+                        .unwrap()
+                        .row_groups
+                        .len(),
+                    1
+                );
+            }),
+            "read_tail_bytes=1 media_type=1"
+        );
+
+        // Two thousand row groups write a footer far past the end's window.
+        let long = Counted::new(large(200_000, 100));
+        let calls = Arc::clone(long.calls());
+        assert_eq!(
+            cost(&calls, || {
+                assert_eq!(
+                    yggdryl::parquet::read_statistics(&long)
+                        .unwrap()
+                        .row_groups
+                        .len(),
+                    2_000
+                );
+            }),
+            "read_range_bytes=1 read_tail_bytes=1 media_type=1"
+        );
+    }
+
+    /// What does not end in a footer is refused by what it ends in: too few
+    /// bytes for the footer length and the magic, another magic, a footer
+    /// length reaching before the file's start. An empty file holds no
+    /// footer to read, and its schema read refuses it the same way, while
+    /// its root and its count are the empty ones its read streams.
+    #[test]
+    fn a_file_not_ending_in_a_footer_is_refused_by_what_it_ends_in() {
+        let refusal = |bytes: &[u8]| {
+            yggdryl::parquet::read_arrow_schema(&Buffer::from_bytes(bytes.to_vec()))
+                .unwrap_err()
+                .to_string()
+        };
+        assert!(
+            refusal(b"PAR1").contains("expected an eight-byte Parquet footer tail, got 4 bytes"),
+            "{}",
+            refusal(b"PAR1")
+        );
+        assert!(
+            refusal(b"\x00\x00\x00\x00PAR0")
+                .contains("expected Parquet magic at the end of the file"),
+            "{}",
+            refusal(b"\x00\x00\x00\x00PAR0")
+        );
+        assert!(
+            refusal(b"\xff\x00\x00\x00PAR1")
+                .contains("footer declares 255 metadata bytes in a 8-byte file"),
+            "{}",
+            refusal(b"\xff\x00\x00\x00PAR1")
+        );
+        assert!(
+            refusal(b"").contains("expected an eight-byte Parquet footer tail, got 0 bytes"),
+            "{}",
+            refusal(b"")
+        );
+        let empty = Buffer::new();
+        let root = yggdryl::parquet::read_field(&empty, &ParquetOptions::new()).unwrap();
+        assert!(root.fields().is_empty(), "{root}");
+        assert_eq!(handle("empty.parquet").row_size().unwrap(), 0);
+    }
+
+    /// The writer answers the footer it closed the file with and the bytes
+    /// it wrote: the file's size, and every fact a manifest states of the
+    /// file - its counts, sizes, offsets, null counts and bounds - as a read
+    /// of the file decodes them. The two footers differ only in how they
+    /// record page encodings, which no statistic reads.
+    #[cfg(feature = "internals")]
+    #[test]
+    fn the_writer_answers_the_footer_it_closed_the_file_with() {
+        use parquet::file::metadata::ParquetMetaData;
+
+        /// A column's path, sizes, null count and bounds.
+        type Column = (
+            String,
+            i64,
+            i64,
+            Option<u64>,
+            Option<Vec<u8>>,
+            Option<Vec<u8>>,
+        );
+        /// A row group's rows, size and offset, and its columns.
+        type Group = (i64, i64, Option<i64>, Vec<Column>);
+        fn stated(metadata: &ParquetMetaData) -> (i64, Option<String>, Vec<Group>) {
+            let groups = metadata
+                .row_groups()
+                .iter()
+                .map(|group| {
+                    let columns = group
+                        .columns()
+                        .iter()
+                        .map(|column| {
+                            let statistics = column.statistics();
+                            (
+                                column.column_path().string(),
+                                column.compressed_size(),
+                                column.uncompressed_size(),
+                                statistics.and_then(|bounds| bounds.null_count_opt()),
+                                statistics
+                                    .and_then(|bounds| bounds.min_bytes_opt().map(<[u8]>::to_vec)),
+                                statistics
+                                    .and_then(|bounds| bounds.max_bytes_opt().map(<[u8]>::to_vec)),
+                            )
+                        })
+                        .collect();
+                    (
+                        group.num_rows(),
+                        group.compressed_size(),
+                        group.file_offset(),
+                        columns,
+                    )
+                })
+                .collect();
+            let file = metadata.file_metadata();
+            (
+                file.num_rows(),
+                file.created_by().map(ToOwned::to_owned),
+                groups,
+            )
+        }
+
+        let field = root();
+        let mut file = handle("written.parquet");
+        let (footer, size) = yggdryl::internals::parquet::overwrite_with_write_buffer(
+            &mut file,
+            reader(
+                &field,
+                [batch(
+                    &field,
+                    vec![1, 2, 3],
+                    vec![Some("AAPL"), None, Some("MSFT")],
+                )],
+            ),
+            &ParquetOptions::new(),
+            1024,
+        )
+        .unwrap();
+        assert_eq!(size, file.size());
+        let read = yggdryl::internals::parquet::open_builder(&file).unwrap();
+        assert_eq!(stated(&footer), stated(read.metadata()));
+        assert_eq!(stated(&footer).0, 3);
+        assert_eq!(
+            footer.file_metadata().key_value_metadata(),
+            read.metadata().file_metadata().key_value_metadata()
+        );
     }
 
     #[test]
@@ -1952,12 +2311,12 @@ mod records {
             let counting = Counting::new(media.into_handle());
             let options = counting.record_options().unwrap();
 
-            // The logical dimension is a two-range footer read: neither column
-            // pages nor row arrays are fetched.
+            // The logical dimension is one read of the file's end, which holds
+            // the footer: neither column pages nor row arrays are fetched.
             let (dimension_reads, dimension_bytes) = counting.cost(|| {
                 assert_eq!(counting.row_size().unwrap(), total as u64);
             });
-            assert_eq!(dimension_reads, 2, "tail and footer metadata");
+            assert_eq!(dimension_reads, 1, "the end holding the footer");
             assert!(
                 dimension_bytes < counting.size() as usize,
                 "{dimension_bytes} footer bytes vs {} file bytes",
@@ -1971,15 +2330,17 @@ mod records {
             assert_eq!(full_reads, 1, "one whole-value read");
             assert_eq!(full_bytes as u64, counting.size());
 
-            // Five rows out of 16,384: the tail, the footer, and one leading
-            // row-group prefix - the other thirty-one groups are never read.
+            // Five rows out of 16,384: the end holding the footer - the bytes
+            // the count read - and one leading row-group prefix: the other
+            // thirty-one groups are never read.
             let (limited_reads, limited_bytes) = counting.cost(|| {
                 assert_eq!(rows(&counting, &options.clone().with_max_row_size(5)), 5);
             });
-            assert_eq!(limited_reads, 3, "tail, footer, one-group prefix");
+            assert_eq!(limited_reads, 2, "the end, one-group prefix");
             assert!(
-                limited_bytes * 4 < full_bytes,
-                "{limited_bytes} bytes under the bound vs {full_bytes} for the drain"
+                (limited_bytes - dimension_bytes) * 16 < full_bytes,
+                "{limited_bytes} bytes under the bound, {dimension_bytes} of them the end, vs \
+                 {full_bytes} for the drain"
             );
         }
     }
@@ -2650,6 +3011,22 @@ mod pruning {
         assert_eq!(
             rows(&media, "id between 100 and 199 and note is not null").unwrap(),
             100
+        );
+        let options = media
+            .record_options()
+            .unwrap()
+            .with_select("id as key, note")
+            .unwrap()
+            .with_filter("key >= 0 and id < 10")
+            .unwrap();
+        let kept = media
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum::<usize>();
+        assert_eq!(
+            kept, 10,
+            "a source conjunct still prunes beside a selected alias"
         );
         assert!(
             rows(&media, "id >= 0").is_err(),

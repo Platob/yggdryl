@@ -1,7 +1,7 @@
 //! `BookService`: the HTTP face of a market-data table - the tickers a table
 //! holds, the candles a ticker's books fold into, the book standing at an
-//! instant and the audit of every entry and delta of the books in a range -
-//! as JSON for a display and as CSV for a download.
+//! instant and the audit of every entry, delta and event of the books in a
+//! range - as JSON for a display and as CSV for a download.
 //!
 //! A table is any record location a [`Holder`] reads books from: an Iceberg
 //! folder, an Arrow, Parquet or CSV leaf, a partitioned folder. Every reading
@@ -47,7 +47,7 @@ use arrow_array::{RecordBatch, RecordBatchReader};
 use arrow_schema::{ArrowError, SchemaRef};
 use smol_str::{SmolStr, format_smolstr};
 
-use super::arrow::{ALIVE, ASKLIMITS, BIDLIMITS, DELTAS, EXECUTIONS};
+use super::arrow::{ALIVE, ASKLIMITS, BIDLIMITS, DELTA, EVENTS, EXECUTIONS};
 use super::market::{base_crosscode, stored_crosscode};
 use super::{
     BookEvent, Candle, CandleIterator, CandleOptions, Element, ElementColumn, Event, EventColumn,
@@ -61,14 +61,15 @@ use crate::media::{IORecordOptions, RecordOptions};
 use crate::text::expected_got;
 use crate::{
     ArrowCastOptions, DataType, Decimal, Error, Field, IOBase, IOMedia, MarketDataKind, MimeType,
-    Parameters, Result, Scalar, Serie, SerieReader, Side, StructType, TimeUnit, Timezone, Url,
+    Parameters, Result, Scalar, Serie, Side, StreamChunkedSerie, StructType, TimeUnit, Timezone,
+    Url,
 };
 
 /// The segment every route stands under: `{prefix}/api/<leaf>`.
 const API: &str = "api";
 
 /// Every nested column of the `marketdata` row: what an audit row drops.
-const NESTED: [&str; 5] = [ALIVE, DELTAS, EXECUTIONS, BIDLIMITS, ASKLIMITS];
+const NESTED: [&str; 6] = [ALIVE, DELTA, EVENTS, EXECUTIONS, BIDLIMITS, ASKLIMITS];
 
 /// The interval candles are bucketed by when the query states none.
 const DEFAULT_INTERVAL: &str = "1m";
@@ -87,9 +88,12 @@ const PARAMETERS: [&str; 9] = [
 const BOOKUNIX: &str = "bookunix";
 const ROLE: &str = "role";
 
-/// The two roles an audit row plays in its book.
+/// The three roles an audit row plays in its book: an entry alive on a
+/// complete book's side, a membership operation of its delta, and every
+/// other event it recorded.
 const ROLE_ALIVE: &str = "alive";
 const ROLE_DELTA: &str = "delta";
+const ROLE_EVENT: &str = "event";
 
 /// The three codings an audit downloads under, by the suffix that names each.
 const AUDIT_SUFFIXES: [&str; 3] = ["csv", "csv.gz", "csv.zst"];
@@ -156,8 +160,8 @@ impl BookServiceOptions {
     /// [`BookIterator::new`](super::BookIterator::new); zero is no grid. The
     /// grid bounds how far back [`BookService::book`] reads: a walk emits a
     /// book whole at every grid tick holding an entry and at a full
-    /// refresh, and states its deltas alone at every other instant - a
-    /// book's first appearance included, which follows the empty book - so
+    /// refresh, and a delta book at every other instant - a book's first
+    /// appearance included, which follows the empty book - so
     /// with no grid the book at an instant is rebuilt from its first
     /// appearance or last full refresh, however far back. The service reads
     /// books already folded and re-folds nothing.
@@ -256,8 +260,8 @@ pub struct BookQuery {
     pub timezone: Timezone,
     /// How candles are bucketed; `None` is a minute in `timezone`.
     pub interval: Option<CandleOptions>,
-    /// The side the audit keeps - the entries alive on it and the deltas
-    /// standing on it; `None` keeps both.
+    /// The side the audit keeps - the entries alive on it and the delta and
+    /// the events standing on it; `None` keeps both.
     pub side: Option<Side>,
 }
 
@@ -368,8 +372,8 @@ impl BookQuery {
 /// | `timezones` | | `["UTC", ..]`: `UTC`, then every zone this build has rules for ([`Timezone::registered`]), by name - the zones `tz` reads |
 /// | `tickers` | `table` | `[{"key","ticker","crosscode","from","to","books"}]`, one per book key ([`Market::book_crosscode`]: the instrument's ISIN, else the ticker, else `XX0000000000`), ordered by key, `ticker` the first the key's books state or null, `from` the first book's second and `to` the second after the last, so `[from, to)` holds every book |
 /// | `candles` | `table`, `ticker`, `from`, `to`, `tz`, `interval` | `{"table","ticker","timezone","interval","from","to","candles":[..]}`, each candle `{start,end,bid,ask,mid,spread,bidqty,askqty,books}` with each reading `{open,high,low,close}` or null |
-/// | `book` | `table`, `ticker`, `at`, `tz` | the book at `at`, rebuilt from the last complete book, or the first book following none, at or before it ([`Self::book`]): `{currunix,ticker,isincode,crosscode,bestbid,bestask,bidqty,askqty,spread,midpoint,imbalance,islocked,iscrossed,complete,alive,deltas,bidlimits,asklimits}`, whether it is whole, the counts of its entries and each side's `[{price,quantity,uuids,tradable}]` - none where `complete` is false |
-/// | `events` | `table`, `ticker`, `from`, `to`, `tz`, `side`, `limit` | `{"rows":[..],"truncated":bool}`, one row per alive entry and delta of every book in range, at most `limit` (default and cap [`BookServiceOptions::max_event_rows`]) |
+/// | `book` | `table`, `ticker`, `at`, `tz` | the book at `at`, rebuilt from the last complete book, or the first book following none, at or before it ([`Self::book`]): `{currunix,ticker,isincode,crosscode,bestbid,bestask,bidqty,askqty,spread,midpoint,imbalance,islocked,iscrossed,complete,alive,delta,events,bidlimits,asklimits}`, whether it is whole, the counts of its alive entries, its delta and its events, and each side's `[{price,quantity,uuids,tradable}]` - none where `complete` is false |
+/// | `events` | `table`, `ticker`, `from`, `to`, `tz`, `side`, `limit` | `{"rows":[..],"truncated":bool}`, one row per alive entry, delta and event of every book in range, at most `limit` (default and cap [`BookServiceOptions::max_event_rows`]) |
 /// | `audit.csv`, `audit.csv.gz`, `audit.csv.zst` | `table`, `ticker`, `from`, `to`, `tz`, `side` | the same rows unbounded, written by the CSV medium under the suffix's coding, `Content-Disposition: attachment` named after the book key and the range |
 ///
 /// The `ticker` parameter names a book key, else the ticker of one key's
@@ -382,7 +386,7 @@ impl BookQuery {
 /// the user information before its host, the query after its path, where a
 /// password or a signature travels - which every table's listing and every
 /// refusal's text are stated without. An audit row is [`Self::events_field`]: the book's
-/// instant, the row's role (`alive`, `delta`) and every flat
+/// instant, the row's role (`alive`, `delta`, `event`) and every flat
 /// column of [`MarketData::field`]. The readings behind the routes are
 /// public, so what a route answers is exactly what [`Self::tickers`],
 /// [`Self::candles`], [`Self::book`] and [`Self::events`] answer.
@@ -483,7 +487,8 @@ impl BookService {
     }
 
     /// The row an audit states: the required struct `event` of `bookunix:
-    /// datetime64(ns, UTC) not null`, `role: utf8 not null`, then every flat
+    /// datetime64(ns, UTC) not null`, `role: utf8 not null` - `alive`,
+    /// `delta` or `event`, what the row is to its book - then every flat
     /// column of [`MarketData::field`] - the element, event, market and
     /// operation columns and the book controls `bookscope`, `bookaction` and
     /// `bookposition` - each as that field declares it.
@@ -609,16 +614,16 @@ impl BookService {
 
     /// The book of `ticker` - a book key, or the ticker of one key's books
     /// (`resolve_key`) - at `at` (nanoseconds UTC), whole: the last
-    /// origin stored at or before it - a complete book, or a book stating
-    /// its deltas alone and no `prevuuid`, which follows the empty book a
-    /// walk starts from - and each book after it stating its deltas alone
-    /// folded over it in instant order, as [`Element::with_previous`]
-    /// rebuilds one; `None` when none stands there yet. Best effort: a book
-    /// stating its deltas alone that the book before it does not rebuild -
-    /// its `prevuuid` names a book the rows read do not hold, or the chain
-    /// does not follow - is answered as it stands, holding no entry, and
-    /// [`BookEvent::is_complete`] says so. One read of the rows at or before
-    /// `at`, holding the last origin and the deltas after it.
+    /// origin stored at or before it - a complete book, or a delta book
+    /// stating no `prevuuid`, which follows the empty book a walk starts
+    /// from - and each delta book after it folded over it in instant order,
+    /// as [`Element::with_previous`] rebuilds one; `None` when none stands
+    /// there yet. Best effort: a delta book the book before it does not
+    /// rebuild - its `prevuuid` names a book the rows read do not hold, or
+    /// the chain does not follow - is answered as it stands, holding no
+    /// entry, and [`BookEvent::is_complete`] says so. One read of the rows
+    /// at or before `at`, holding the last origin and the delta books after
+    /// it.
     ///
     /// # Errors
     ///
@@ -680,8 +685,8 @@ impl BookService {
     /// The book of `key` standing at `at` over its rows at or before `at` -
     /// and at or after `lower`, where one is stated - as [`Self::latest`]
     /// answers it, and whether an origin was read: without one, the books
-    /// read state their deltas alone, which the rows before `lower` would
-    /// rebuild. One read.
+    /// read are delta books, which the rows before `lower` would rebuild.
+    /// One read.
     fn latest_in(
         table: &BookTable,
         key: &str,
@@ -695,8 +700,7 @@ impl BookService {
         }
         let filter = Filter::all(terms.into_iter().map(Filter::from));
         // The last origin - a complete book, or one following no book - and
-        // the books after it stating their deltas alone, in whatever order
-        // the table holds them.
+        // the delta books after it, in whatever order the table holds them.
         let origin = |book: &BookEvent| book.is_complete() || book.get_prevuuid().is_none();
         let mut base: Option<BookEvent> = None;
         let mut tail: Vec<BookEvent> = Vec::new();
@@ -705,7 +709,7 @@ impl BookService {
             let unix = book.get_currunix();
             if origin(&book) {
                 if base.as_ref().is_none_or(|held| held.get_currunix() <= unix) {
-                    tail.retain(|delta| delta.get_currunix() > unix);
+                    tail.retain(|follower| follower.get_currunix() > unix);
                     base = Some(book);
                 }
             } else if base.as_ref().is_none_or(|held| held.get_currunix() < unix) {
@@ -721,16 +725,16 @@ impl BookService {
             }
             base => base,
         };
-        for delta in tail {
+        for follower in tail {
             latest = Some(match latest {
                 Some(previous)
                     if previous.is_complete()
-                        && delta.get_prevuuid() == Some(previous.get_curruuid()) =>
+                        && follower.get_prevuuid() == Some(previous.get_curruuid()) =>
                 {
-                    let stated = delta.clone();
-                    delta.rebuilt(previous).unwrap_or(stated)
+                    let stated = follower.clone();
+                    follower.rebuilt(previous).unwrap_or(stated)
                 }
-                _ => delta,
+                _ => follower,
             });
         }
         Ok((latest, found))
@@ -739,10 +743,11 @@ impl BookService {
     /// The audit rows of `query`: for every book of `query.ticker` - a book
     /// key, or the ticker of one key's books (`resolve_key`) - in
     /// `[query.from, query.to)`, in instant order, its alive entries (role
-    /// `alive`) where the table holds it whole - at a snapshot tick - and
-    /// the deltas applied since the book before it, in the order applied
-    /// (`delta`), each kept where it stands on `query.side`,
-    /// as batches of [`Self::events_field`]. Unbounded: the CSV audit is
+    /// `alive`) where the table holds it whole - at a snapshot tick - then
+    /// the membership operations its instant applied, in the order applied
+    /// (`delta`), then every other event it recorded, in the order applied
+    /// (`event`), each kept where it stands on `query.side`, as batches of
+    /// [`Self::events_field`]. Unbounded: the CSV audit is
     /// this reader written whole. The books of the range are held, sorted,
     /// while the reader lays their rows out a batch at a time.
     ///
@@ -841,7 +846,11 @@ impl BookService {
     /// `marketdata` row - one projected read, which a store keeping its
     /// columns apart answers without reading the rest - as record columns
     /// of the struct `book` of them; none where the table holds no leaf.
-    fn projected(table: &BookTable, filter: &Filter, columns: Vec<Field>) -> Result<SerieReader> {
+    fn projected(
+        table: &BookTable,
+        filter: &Filter,
+        columns: Vec<Field>,
+    ) -> Result<StreamChunkedSerie> {
         let select = Selector::new(
             columns
                 .iter()
@@ -854,7 +863,7 @@ impl BookService {
                 .read_arrow_reader(&options.with_filter(filter)?.with_select(select)?)?,
             None => nothing(root.clone())?,
         };
-        Ok(SerieReader::from_arrow_reader(
+        Ok(StreamChunkedSerie::from_arrow_reader(
             Some(&root),
             reader,
             ArrowCastOptions::new(),
@@ -879,7 +888,7 @@ impl BookService {
         )?;
         let shape = || unshaped("the ticker, crosscode and currunix columns of a marketdata row");
         let mut spans = BTreeMap::new();
-        for rows in reader {
+        for rows in reader.into_chunks() {
             let rows = rows?;
             let tickers = rows
                 .child(ticker)
@@ -980,7 +989,7 @@ impl BookService {
             vec![DataType::utf8().nullable_field(crosscode)],
         )?;
         let mut keys: BTreeSet<SmolStr> = BTreeSet::new();
-        for rows in reader {
+        for rows in reader.into_chunks() {
             let rows = rows?;
             let codes = rows
                 .child(crosscode)
@@ -1027,7 +1036,7 @@ impl BookService {
         )?;
         let mut earliest = BinaryHeap::new();
         let mut total = 0_usize;
-        for rows in reader {
+        for rows in reader.into_chunks() {
             let rows = rows?;
             let instants = rows
                 .child(currunix)
@@ -1269,7 +1278,9 @@ impl BookService {
             .map(|field| SmolStr::new(field.name()))
             .collect();
         let mut rows = Vec::new();
-        for batch in SerieReader::from_arrow_reader(None, reader, ArrowCastOptions::new())? {
+        for batch in StreamChunkedSerie::from_arrow_reader(None, reader, ArrowCastOptions::new())?
+            .into_chunks()
+        {
             let batch = batch?;
             for index in 0..batch.len() {
                 let row = batch.scalar(index)?;
@@ -1350,22 +1361,28 @@ struct Span {
 /// The audit rows of `book` kept to `side`, in audit order, each its role
 /// and its entry: the entries alive on the side - every entry once, the
 /// bid's first, where none is asked - (`alive`), which only a complete book
-/// holds, then the deltas resting on it, in the order applied (`delta`). A
-/// two-sided quote rests on both.
+/// holds, then the operations of its delta standing on the side, in the
+/// order applied (`delta`), then its events standing there, in the order
+/// applied (`event`). A two-sided quote rests on both.
 fn audit_rows(
     book: &BookEvent,
     side: Option<Side>,
 ) -> impl Iterator<Item = (&'static str, &MarketData)> {
     let every = side.is_none().then(|| book.alive()).into_iter().flatten();
     let on = side.map(|side| book.alive_on(side)).into_iter().flatten();
-    let deltas = book
-        .deltas()
+    let delta = book
+        .delta()
         .filter(move |entry| keeps(side, entry))
         .map(|entry| (ROLE_DELTA, entry));
+    let events = book
+        .events()
+        .filter(move |entry| keeps(side, entry))
+        .map(|entry| (ROLE_EVENT, entry));
     every
         .chain(on)
         .map(|entry| (ROLE_ALIVE, entry))
-        .chain(deltas)
+        .chain(delta)
+        .chain(events)
 }
 
 /// The first `limit` audit rows of `books` on `side`, laid out a batch at a
@@ -1561,10 +1578,11 @@ pub mod internals {
     }
 }
 
-/// Whether the delta `entry` is about the side `asked` keeps: anywhere when
-/// no side was asked, else that side by the leg it states there or the
-/// side it takes or tags, resting there or not - a delta taking an entry
-/// off a side, sized zero, is that side's ([`book::states_on`]).
+/// Whether the recorded `entry` - of a book's delta or its events - is
+/// about the side `asked` keeps: anywhere when no side was asked, else that
+/// side by the leg it states there or the side it takes or tags, resting
+/// there or not - an operation taking an entry off a side, sized zero, is
+/// that side's ([`book::states_on`]).
 fn keeps(asked: Option<Side>, entry: &MarketData) -> bool {
     asked.is_none_or(|side| book::states_on(entry, side))
 }
@@ -1776,8 +1794,8 @@ fn candle_json(candle: &Candle, zone: Timezone) -> Result<Scalar> {
 }
 
 /// One book as `/api/book` spells it: its instant in `zone`, the readings of
-/// its touch, whether it is complete, the counts of its entries and each
-/// side's limits - none where it holds only its deltas.
+/// its touch, whether it is complete, the counts of its alive entries, its
+/// delta and its events, and each side's limits - none on a delta book.
 fn book_json(book: &BookEvent, zone: Timezone) -> Result<Scalar> {
     let limits =
         |side: Side| Scalar::from_sequence(book.limits(side).map(|limit| limit.into_scalar()));
@@ -1804,7 +1822,8 @@ fn book_json(book: &BookEvent, zone: Timezone) -> Result<Scalar> {
         ("iscrossed", Scalar::from(book.is_crossed())),
         ("complete", Scalar::from(book.is_complete())),
         ("alive", count(book.alive_len())),
-        ("deltas", count(book.deltas().len())),
+        ("delta", count(book.delta().len())),
+        ("events", count(book.events().len())),
         ("bidlimits", limits(Side::Buy)),
         ("asklimits", limits(Side::Sell)),
     ]))

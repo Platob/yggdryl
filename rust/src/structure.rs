@@ -805,12 +805,12 @@ impl Field {
     /// else the required [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME)
     /// struct whose one child is this field unchanged. The record root a
     /// column crosses into a table under is
-    /// [`SerieReader::root_of`](crate::SerieReader::root_of)'s, the door that
+    /// [`StreamChunkedSerie::root_of`](crate::StreamChunkedSerie::root_of)'s, the door that
     /// forces a struct required.
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::SerieReader;
+    /// use yggdryl::StreamChunkedSerie;
     /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -824,7 +824,7 @@ impl Field {
     /// let line = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
     ///     .nullable_field("line");
     /// assert_eq!(line.into_struct_field()?, line);
-    /// assert!(!SerieReader::root_of(&line)?.is_nullable());
+    /// assert!(!StreamChunkedSerie::root_of(&line)?.is_nullable());
     /// # Ok(())
     /// # }
     /// ```

@@ -79,7 +79,13 @@ fn a_table_delegates_every_verb_to_its_implementation() {
     assert!(!IOBase::is_container(&table));
     assert_eq!(IOBase::ls(&table, false, false).count(), 0);
     assert!(IOBase::parent(&table).is_some());
-    assert_eq!(table.read_serie(None).expect("series").count(), 1);
+    assert_eq!(
+        yggdryl::StreamChunkedSerie::from_serie(table.read_serie(None).expect("series"))
+            .expect("native record stream")
+            .into_chunks()
+            .count(),
+        1
+    );
     let held = Holder::from(table.clone());
     assert!(matches!(held, Holder::Table(_)));
     assert_eq!(held.row_size().expect("rows"), 3);
@@ -153,7 +159,7 @@ fn a_table_forwards_its_implementations_merge_key() {
             IcebergTable::create_from_url(
                 Url::from_path(root.join("ticks")).expect("a URL"),
                 &Properties::new(),
-                Some(FormatVersion::V2),
+                Some(FormatVersion::V3),
                 schema,
                 Some(PartitionSpec::unpartitioned()),
             )

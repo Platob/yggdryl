@@ -204,7 +204,7 @@ fn inference_reads_a_temporal_style_as_the_temporal_its_format_names() {
     );
     assert_eq!(
         records(&handle, &options),
-        ["[\"2024-01-01\",\"2024-01-01T12:00:00.000\",\"18:00:00.000\",\"PT129600.000S\"]"]
+        ["[\"2024-01-01\",\"2024-01-01T12:00:00\",\"18:00:00\",\"PT129600S\"]"]
     );
 }
 
@@ -630,7 +630,7 @@ fn a_serial_reads_into_the_declared_temporal_at_its_unit_whatever_the_cells_styl
     ]));
     assert_eq!(
         records(&handle, &options),
-        ["[\"2024-01-01\",\"2024-01-01T12:00:00.000000\",\"12:00:00.000000\"]"]
+        ["[\"2024-01-01\",\"2024-01-01T12:00:00\",\"12:00:00\"]"]
     );
 }
 
@@ -654,7 +654,7 @@ fn a_d_cell_reads_its_iso_8601_text_into_a_declared_datetime_or_date() {
     ]));
     assert_eq!(
         records(&handle, &options),
-        ["[\"2024-01-02T03:04:05.000\",\"2024-01-02\"]"]
+        ["[\"2024-01-02T03:04:05\",\"2024-01-02\"]"]
     );
 }
 

@@ -13,7 +13,7 @@ use pyo3::exceptions::{PyIsADirectoryError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::sync::MutexExt;
 use pyo3::types::{
-    PyBool, PyBytes, PyDict, PyDictMethods, PyFloat, PyInt, PyIterator, PyString, PyTuple, PyType,
+    PyBool, PyBytes, PyDict, PyDictMethods, PyFloat, PyInt, PyString, PyTuple, PyType,
 };
 
 use yggdryl::IOMode::{Append, Merge, Overwrite};
@@ -104,6 +104,7 @@ fn cloned(holder: &Holder) -> PyResult<Holder> {
         return Ok(bound);
     }
     let mut clone = match holder {
+        Holder::Table(table) => Holder::Table(table.clone()),
         Holder::LocalFolder(folder) => Holder::LocalFolder(folder.clone()),
         Holder::LocalPath(path) => Holder::LocalPath(
             yggdryl::local::LocalPath::from_url(path.url().clone()).map_err(value_error)?,
@@ -736,36 +737,23 @@ impl PyIOBase {
         batch_reader_to_pyarrow(py, reader)
     }
 
-    /// Write one core reader with resolved options and explicit intent.
+    /// Write one core reader with resolved options and explicit intent, the
+    /// GIL released.
+    ///
+    /// A write may run on core threads - an Iceberg commit cuts and encodes
+    /// its partitions on the write's threads - and a core thread that logs,
+    /// or lets go of a batch whose buffers a Python object owns, takes the
+    /// GIL: held by the thread waiting on it, the two wait on each other for
+    /// good. A source this binding pulls through Python, and a C stream's
+    /// producer, take the interpreter back for each pull themselves.
     fn write_reader(
         &mut self,
         batches: yggdryl::arrow::BatchReader,
         mode: IOMode,
         options: &RecordOptions,
     ) -> PyResult<PyIOResult> {
-        self.inner_mut()?
-            .write_arrow_reader(batches, mode, options)
-            .map(PyIOResult::from_core)
-            .map_err(crate::holder::fs::storage_error)
-    }
-
-    /// Write one Arrow C stream with resolved options and explicit intent,
-    /// the GIL released.
-    ///
-    /// A C stream's producer takes the interpreter for itself where it needs
-    /// it, and it may be a core reader come back through `pyarrow` - a parse
-    /// spread over worker threads, whose warnings reach Python's `logging`.
-    /// A worker that logs takes the GIL, so the thread waiting on it must
-    /// not hold it: held, the two wait on each other for good.
-    fn write_stream(
-        &mut self,
-        py: Python<'_>,
-        batches: yggdryl::arrow::BatchReader,
-        mode: IOMode,
-        options: &RecordOptions,
-    ) -> PyResult<PyIOResult> {
         let inner = self.inner_mut()?;
-        py.detach(|| inner.write_arrow_reader(batches, mode, options))
+        Python::attach(|py| py.detach(|| inner.write_arrow_reader(batches, mode, options)))
             .map(PyIOResult::from_core)
             .map_err(crate::holder::fs::storage_error)
     }
@@ -773,10 +761,8 @@ impl PyIOBase {
     /// The one write every `*_serie` method is: the options resolved and
     /// their zero counts refused before `value` is read, so no refusal pulls
     /// a one-shot source; then `value` read once as the shape it holds and
-    /// written by the core - off the GIL when the rows are native or cross
-    /// the Arrow C stream, whose producer takes the interpreter for itself,
-    /// under it when they are a Python stream this binding pulls, whose
-    /// every pull would take it back.
+    /// written by the core off the GIL - a Python stream this binding pulls
+    /// taking it back for each pull, as `write_reader` says why.
     fn write_source(
         &mut self,
         value: &Bound<'_, PyAny>,
@@ -811,15 +797,8 @@ impl PyIOBase {
             yggdryl::IOMedia::write_options(inner, mode, &stated).map_err(value_error)?;
         }
         let source = crate::serie::serie_source_of(value)?;
-        let native = matches!(
-            source,
-            yggdryl::SerieSource::Serie(_) | yggdryl::SerieSource::Chunked(_)
-        ) || value.is_instance_of::<crate::serie::PySerieReader>()
-            || value.hasattr(pyo3::intern!(py, "__arrow_c_stream__"))?;
         let inner = self.inner_mut()?;
-        let write = move || inner.write_serie(source, mode, options.as_ref());
-        let written = if native { py.detach(write) } else { write() };
-        written
+        py.detach(move || inner.write_serie(source, mode, options.as_ref()))
             .map(PyIOResult::from_core)
             .map_err(crate::holder::fs::storage_error)
     }
@@ -844,13 +823,14 @@ impl PyIOBase {
         let batches = match shape {
             Shape::ArrowReader => {
                 let batches = batch_reader_from_arrow_reader(value)?;
-                return self.write_stream(value.py(), batches, mode, &options);
+                return self.write_reader(batches, mode, &options);
             }
             Shape::ArrowBatch => {
                 let batch = record_batch_from_value(value)?;
-                return self
-                    .inner_mut()?
-                    .write_arrow_batch(batch, mode, &options)
+                let inner = self.inner_mut()?;
+                return value
+                    .py()
+                    .detach(|| inner.write_arrow_batch(batch, mode, &options))
                     .map(PyIOResult::from_core)
                     .map_err(value_error);
             }
@@ -1897,7 +1877,7 @@ impl PyIOBase {
         decoded_into_py(py, value, field.as_ref(), native_scalar)
     }
 
-    /// Read this resource's rows as a `SerieReader`, whatever it holds.
+    /// Read this resource's rows as a `StreamChunkedSerie`, whatever it holds.
     ///
     /// The column-shaped sibling of `read_scalar`, and the one read that does
     /// not need the caller to know first what the resource is: a record
@@ -1914,19 +1894,20 @@ impl PyIOBase {
         py: Python<'_>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
-    ) -> PyResult<crate::serie::PySerieReader> {
+    ) -> PyResult<Py<PyAny>> {
         let options = self.arrow_options(options, properties)?;
         let inner = self.inner()?;
-        py.detach(|| inner.read_serie(options.as_ref()))
-            .map(crate::serie::PySerieReader::from)
-            .map_err(crate::holder::fs::storage_error)
+        let serie = py
+            .detach(|| inner.read_serie(options.as_ref()))
+            .map_err(crate::holder::fs::storage_error)?;
+        crate::serie::described(py, serie)
     }
 
     /// Write rows in any shape as this resource's rows, under one `mode`.
     ///
-    /// `value` is a `Serie`, a `ChunkedSerie` or a `SerieReader` - written
+    /// `value` is a `Serie`, a `ChunkedSerie` or a `StreamChunkedSerie` - written
     /// as the batches it already holds, nothing re-landed - or anything
-    /// `SerieReader.from_` reads: a `pyarrow` container, a pandas or polars
+    /// `StreamChunkedSerie.from_` reads: a `pyarrow` container, a pandas or polars
     /// frame, a `NumPy` array, an Arrow C stream exporter. A structured text
     /// document is one frame around its rows, so only `overwrite` applies to
     /// one, and of the options only the declared `field`.
@@ -3034,32 +3015,26 @@ impl PyIOBase {
                 options.set_field(field);
             }
         }
-        let reader = self
-            .inner()?
-            .read_arrow_reader(&options)
+        let source = self.inner()?;
+        let rows = py
+            .detach(|| source.read_serie(Some(&options))?.into_stream())
             .map_err(value_error)?;
-        let field =
-            yggdryl::Field::from_arrow_schema("row", &reader.schema()).map_err(value_error)?;
+        let field = rows.field().clone();
         let class = cls
             .map(|cls| {
                 let classes = py.import("yggdryl._classes")?;
                 Ok::<_, PyErr>(RecordClass {
                     cls: cls.clone().unbind(),
                     from_dict: classes.getattr("from_dict")?.unbind(),
-                    read_rows: classes.getattr("_read_rows")?.unbind(),
                 })
             })
             .transpose()?;
         Py::new(
             py,
             PyRecordIterator {
-                reader,
+                rows: std::sync::Mutex::new(Some(rows)),
                 field,
                 class,
-                rows: yggdryl::Serie::default(),
-                next: 0,
-                instances: None,
-                taken: 0,
             },
         )
         .map(|iterator| iterator.into_bound(py).into_any())
@@ -3520,103 +3495,59 @@ impl PyIOBaseIterator {
     }
 }
 
-/// Lazy native iterator over a resource's rows as mappings or dataclasses.
-///
-/// One batch lands at a time as one record column, and each row is read off
-/// it under its datatype - an ASCII width reads back trimmed, a nested struct
-/// crosses as a mapping - so nothing binding-side reinterprets storage. A
-/// requested dataclass is built from that mapping by
-/// `yggdryl._classes.from_dict`, one row at a time.
-#[pyclass(name = "RecordIterator", module = "yggdryl._native", unsendable)]
+/// Mapping or dataclass view of the native scalar row stream.
+#[pyclass(name = "RecordIterator", module = "yggdryl._native", frozen)]
 pub(crate) struct PyRecordIterator {
-    reader: yggdryl::arrow::BatchReader,
+    rows: std::sync::Mutex<Option<yggdryl::StreamSerie>>,
     field: yggdryl::Field,
     class: Option<RecordClass>,
-    // The current batch's rows and the next one to hand out row by row.
-    rows: yggdryl::Serie,
-    next: usize,
-    // The instances the class machinery reads the current batch as, a
-    // window of columns at a time, when the batch is the class's layout,
-    // and how many of them were handed out: a refusal ends that read, and
-    // the rows after the refused one are read row by row, as they would
-    // have been.
-    instances: Option<Py<PyAny>>,
-    taken: usize,
 }
 
-/// The class a record read builds, and the two doors that build it: the
-/// columnar read of a batch of the class's own layout, and the mapping read
-/// of one row.
 struct RecordClass {
     cls: Py<PyAny>,
     from_dict: Py<PyAny>,
-    read_rows: Py<PyAny>,
+}
+
+impl Drop for PyRecordIterator {
+    fn drop(&mut self) {
+        let rows = self
+            .rows
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if rows.is_some() {
+            Python::attach(|py| py.detach(move || drop(rows)));
+        }
+    }
 }
 
 #[pymethods]
 impl PyRecordIterator {
-    // Consumption changes reader state.
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
-
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
-
-    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
-        loop {
-            if let Some(instances) = &self.instances {
-                match instances.bind(py).cast::<PyIterator>()?.clone().next() {
-                    Some(Ok(instance)) => {
-                        self.taken += 1;
-                        return Ok(Some(instance.unbind()));
-                    }
-                    Some(Err(error)) => {
-                        self.instances = None;
-                        self.next = self.taken + 1;
-                        return Err(error);
-                    }
-                    None => self.instances = None,
-                }
-            }
-            if self.next < self.rows.len() {
-                let row = self.rows.scalar(self.next).map_err(value_error)?;
-                self.next += 1;
-                let record = crate::scalar::as_py_with_field(py, &row, &self.field)?;
-                return match &self.class {
-                    Some(class) => class
-                        .from_dict
-                        .call1(py, (class.cls.clone_ref(py), record))
-                        .map(Some),
-                    None => Ok(Some(record)),
-                };
-            }
-            // The read and the lowering run without the GIL.
-            let Some(rows) = py.detach(|| {
-                self.reader.next().map(|batch| {
-                    yggdryl::Serie::from_arrow_batch(
-                        None,
-                        &batch.map_err(value_error)?,
-                        yggdryl::ArrowCastOptions::new(),
-                    )
-                    .map_err(value_error)
-                })
-            }) else {
-                return Ok(None);
-            };
-            self.rows = rows?;
-            self.next = 0;
-            if let Some(class) = &self.class {
-                // A batch of the class's own layout is read a window of
-                // columns at a time; any other is read row by row above.
-                let rows = crate::serie::described(py, self.rows.clone())?;
-                let instances = class.read_rows.call1(py, (class.cls.clone_ref(py), rows))?;
-                if !instances.is_none(py) {
-                    self.instances = Some(instances);
-                    self.taken = 0;
-                    self.next = self.rows.len();
-                }
-            }
+    fn __next__(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let row = py.detach(|| {
+            self.rows
+                .lock()
+                .map_err(|_| value_error("RecordIterator was poisoned"))?
+                .as_mut()
+                .and_then(Iterator::next)
+                .transpose()
+                .map_err(value_error)
+        })?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let record = crate::scalar::as_py_with_field(py, &row, &self.field)?;
+        match &self.class {
+            Some(class) => class
+                .from_dict
+                .call1(py, (class.cls.clone_ref(py), record))
+                .map(Some),
+            None => Ok(Some(record)),
         }
     }
 }

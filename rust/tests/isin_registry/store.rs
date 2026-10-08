@@ -4,12 +4,74 @@
 //! an Iceberg table alike.
 
 use yggdryl::media::IORecordOptions;
-use yggdryl::{IOBase, IOMedia, IOMode, IOResult, IdType, Isin, IsinEntry, IsinRegistry, Url};
+use yggdryl::{
+    Ccy, IOBase, IOMedia, IOMode, IOResult, IdType, Isin, IsinEntry, IsinRegistry, Mic, Url,
+};
 
 use crate::counting_filesystem::counted_folder;
 
 const HOLCIM: &str = "CH0012214059";
 const APPLE: &str = "US0378331005";
+const MICROSOFT: &str = "US5949181045";
+/// A real ISIN the seed holds no row of.
+const BAE: &str = "GB0002634946";
+
+/// A catalog handle retains its table identity through loading, committing and
+/// clearing. Its warehouse never needs to be discovered again.
+#[cfg(feature = "iceberg")]
+#[test]
+fn a_native_table_store_keeps_its_metadata_and_never_rediscovers_its_warehouse() {
+    use yggdryl::holder::Holder;
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec};
+    use yggdryl::warehouse::Handle;
+    let (filesystem, _) = counted_folder("native-registry");
+    let schema = IsinEntry::field()
+        .into_scheme_compat(&yggdryl::Scheme::ICEBERG)
+        .unwrap();
+    let table = IcebergTable::create(
+        Handle::from(folder_on(&filesystem, "instruments")),
+        FormatVersion::V3,
+        schema,
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    let holder = Holder::from(yggdryl::Table::from(table));
+    let mut registry = None;
+    assert_eq!(
+        filesystem.costs(|| registry = Some(IsinRegistry::from_holder(holder).unwrap())),
+        "none",
+        "the table already holds its schema and empty snapshot"
+    );
+    let mut registry = registry.unwrap();
+    registry
+        .merge(entry(HOLCIM, &[(IdType::Ric, "HOLN.S")]))
+        .unwrap();
+    registry.merge(entry(APPLE, &[])).unwrap();
+    assert_eq!(registry.commit().unwrap().written_rows, 2);
+    assert_eq!(
+        filesystem.costs(|| assert_eq!(registry.commit().unwrap(), IOResult::default())),
+        "none"
+    );
+    assert_eq!(
+        IsinRegistry::from_holder(match registry.holder().unwrap() {
+            Holder::Table(table) => Holder::Table(table.clone()),
+            _ => unreachable!("the registry retains its native table"),
+        })
+        .unwrap()
+        .len(),
+        2
+    );
+    registry.clear();
+    assert_eq!(registry.commit().unwrap().written_rows, 0);
+    assert!(
+        IsinRegistry::from_holder(match registry.holder().unwrap() {
+            Holder::Table(table) => Holder::Table(table.clone()),
+            _ => unreachable!("the registry retains its native table"),
+        })
+        .unwrap()
+        .is_empty()
+    );
+}
 
 /// The row of `text` stating each of `codes`.
 fn entry(text: &str, codes: &[(IdType, &str)]) -> IsinEntry {
@@ -274,7 +336,7 @@ fn a_partitioned_folder_store_holds_exactly_the_snapshot_after_every_commit() {
     let back = IsinRegistry::from_url(&url, none).unwrap();
     assert!(back.iter().eq(registry.iter()));
     // A removal reaches the partition the row was stored in.
-    registry.remove(HOLCIM).unwrap();
+    assert_eq!(registry.remove(HOLCIM).len(), 1);
     assert_eq!(registry.commit().unwrap().written_rows, 1);
     assert!(!root.join("miccode=XSWX/part-0.arrows").exists());
     let back = IsinRegistry::from_url(&url, none).unwrap();
@@ -374,7 +436,7 @@ fn an_iceberg_table_store_is_replaced_in_one_snapshot_and_emptied_as_one() {
         .unwrap();
     assert_eq!(registry.commit().unwrap().written_rows, 2);
     assert_eq!(IsinRegistry::from_holder(partitioned()).unwrap().len(), 2);
-    registry.remove(HOLCIM).unwrap();
+    assert_eq!(registry.remove(HOLCIM).len(), 1);
     assert_eq!(registry.commit().unwrap().written_rows, 1);
     let back = IsinRegistry::from_holder(partitioned()).unwrap();
     assert_eq!(back.len(), 1);
@@ -407,14 +469,135 @@ fn an_iceberg_table_store_is_replaced_in_one_snapshot_and_emptied_as_one() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// The registry's own row partitions an Iceberg table by the ISIN's country
+/// prefix: a table created from `IsinEntry::field()` holds a one-field spec,
+/// Iceberg's truncation of `isin` to two characters, over the forty-five
+/// columns and no other; every commit replaces every partition in one
+/// snapshot - every listing row of it, the listings of one ISIN in one -
+/// the live data files' partition values exactly the distinct prefixes of
+/// the rows and the table read back the snapshot.
+#[cfg(feature = "iceberg")]
+#[test]
+fn an_iceberg_table_created_from_the_registrys_row_is_partitioned_by_the_country_prefix() {
+    use std::collections::BTreeSet;
+    use yggdryl::iceberg::{
+        FIRST_PARTITION_ID, FormatVersion, IcebergTable, PartitionSpec, Transform,
+    };
+
+    let (filesystem, _) = counted_folder("by-country");
+    let table = || folder_on(&filesystem, "instruments");
+    let mut schema = IsinEntry::field()
+        .into_scheme_compat(&yggdryl::Scheme::ICEBERG)
+        .unwrap();
+    yggdryl::iceberg::assign_field_ids(&mut schema, 1).unwrap();
+    assert_eq!(schema.field_len(), 46, "no partition column");
+    let spec = PartitionSpec::from_schema(FIRST_PARTITION_ID, &schema).unwrap();
+    assert_eq!(spec.fields.len(), 1);
+    assert_eq!(spec.fields[0].transform, Transform::Truncate(2));
+    assert_eq!(
+        Some(spec.fields[0].source_id),
+        schema
+            .get_field_by_path("isin")
+            .unwrap()
+            .parquet_field_id()
+            .unwrap()
+    );
+    IcebergTable::create(table(), FormatVersion::V3, schema, spec).unwrap();
+
+    // The live files of the table, one per partition: their partition
+    // values, and how many snapshots the table holds.
+    let stored = || {
+        let opened = IcebergTable::open(table()).unwrap();
+        let files = opened.data_files().unwrap();
+        for (_, spec) in &files {
+            assert_eq!(spec.fields[0].transform, Transform::Truncate(2));
+        }
+        let prefixes: Vec<String> = files
+            .iter()
+            .map(|(file, _)| file.partition[0].as_str().unwrap().to_owned())
+            .collect();
+        (prefixes, opened.metadata().unwrap().snapshots().len())
+    };
+    // The distinct country prefixes of the rows `registry` holds.
+    let prefixes = |registry: &IsinRegistry| {
+        registry
+            .iter()
+            .map(|row| row.isin().as_str()[..2].to_owned())
+            .collect::<BTreeSet<_>>()
+    };
+
+    let mut registry = IsinRegistry::seeded_from_holder(table()).unwrap();
+    assert!(
+        registry
+            .merge(entry(BAE, &[]).with_miccode(Some(Mic::new("XLON").unwrap())))
+            .unwrap()
+    );
+    let expected = prefixes(&registry);
+    assert!(expected.len() > 1, "the seed spans countries");
+    assert!(
+        registry.rows() > registry.len(),
+        "a seed ISIN on two markets"
+    );
+    assert_eq!(
+        registry.commit().unwrap().written_rows,
+        registry.rows() as u64
+    );
+    let (files, snapshots) = stored();
+    assert_eq!(snapshots, 1, "one snapshot");
+    assert_eq!(files.len(), expected.len(), "one file per prefix");
+    assert_eq!(files.into_iter().collect::<BTreeSet<_>>(), expected);
+    let back = IsinRegistry::from_holder(table()).unwrap();
+    assert!(back.iter().eq(registry.iter()), "the snapshot read back");
+
+    // A row whose prefix no other row has, removed: the next commit is one
+    // snapshot more, its partition gone with it.
+    let alone = registry
+        .iter()
+        .find(|row| {
+            let prefix = &row.isin().as_str()[..2];
+            registry
+                .iter()
+                .filter(|other| other.isin().as_str().starts_with(prefix))
+                .count()
+                == 1
+        })
+        .map(|row| row.isin().as_str().to_owned())
+        .expect("a country with one instrument");
+    assert!(!registry.remove(&alone).is_empty());
+    registry.commit().unwrap();
+    let expected = prefixes(&registry);
+    assert!(!expected.contains(&alone[..2]));
+    let (files, snapshots) = stored();
+    assert_eq!(snapshots, 2);
+    assert_eq!(files.into_iter().collect::<BTreeSet<_>>(), expected);
+    assert!(
+        IsinRegistry::from_holder(table())
+            .unwrap()
+            .iter()
+            .eq(registry.iter())
+    );
+
+    // Emptied: one snapshot holding no file, still a table.
+    registry.clear();
+    registry.commit().unwrap();
+    let (files, snapshots) = stored();
+    assert_eq!((files.len(), snapshots), (0, 3));
+}
+
 /// The rows `registry` holds as a store written before the product
-/// category was a column: its snapshot less `eusipacode`, forty-one
+/// category was a column: its snapshot less `eusipacode`, forty-four
 /// columns.
 fn without_category(registry: &IsinRegistry) -> yggdryl::arrow::BatchReader {
+    without(registry, "eusipacode")
+}
+
+/// The rows `registry` holds as a store written before `column` was one:
+/// its snapshot less that column.
+fn without(registry: &IsinRegistry, column: &str) -> yggdryl::arrow::BatchReader {
     let reader = registry.into_arrow_reader().unwrap();
     let schema = reader.schema();
     let kept: Vec<usize> = (0..schema.fields().len())
-        .filter(|at| schema.field(*at).name() != "eusipacode")
+        .filter(|at| schema.field(*at).name() != column)
         .collect();
     let projected = std::sync::Arc::new(schema.project(&kept).unwrap());
     let batches: Vec<_> = reader.map(|batch| batch.unwrap().project(&kept)).collect();
@@ -426,7 +609,7 @@ fn without_category(registry: &IsinRegistry) -> yggdryl::arrow::BatchReader {
 /// every overwrite of a leaf does, so the category is kept by the registry
 /// and not by such a store until the store is laid out afresh - an emptied
 /// leaf, or a new one - when a commit writes the row as it is now,
-/// forty-two columns.
+/// forty-five columns.
 #[test]
 fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row() {
     let (_, folder) = counted_folder("isin");
@@ -440,14 +623,7 @@ fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row
     handle
         .write_arrow_reader(without_category(&older), IOMode::Overwrite, &options)
         .unwrap();
-    let columns = |handle: &dyn IOBase| {
-        handle
-            .read_arrow_field(&handle.record_options().unwrap())
-            .unwrap()
-            .fields()
-            .len()
-    };
-    assert_eq!(columns(&leaf()), 41);
+    assert_eq!(columns(&leaf()), 45);
 
     let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
     let row = registry.get(HOLCIM).unwrap();
@@ -459,7 +635,7 @@ fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row
         .merge(entry(HOLCIM, &[]).with_eusipacode(category))
         .unwrap();
     assert_eq!(registry.commit().unwrap().written_rows, 1);
-    assert_eq!(columns(&leaf()), 41, "the leaf's own row");
+    assert_eq!(columns(&leaf()), 45, "the leaf's own row");
     let back = IsinRegistry::from_holder(leaf()).unwrap();
     let row = back.get(HOLCIM).unwrap();
     assert_eq!(row.get(&IdType::Ric), Some("HOLN.S"));
@@ -471,9 +647,264 @@ fn a_leaf_store_without_the_product_category_loads_it_null_and_keeps_its_own_row
     let mut moved = IsinRegistry::from_holder(fresh()).unwrap();
     moved.merge(registry.get(HOLCIM).unwrap().clone()).unwrap();
     moved.commit().unwrap();
-    assert_eq!(columns(&fresh()), 42);
+    assert_eq!(columns(&fresh()), 46);
     let back = IsinRegistry::from_holder(fresh()).unwrap();
     assert_eq!(back.get(HOLCIM).unwrap().eusipacode(), category);
+}
+
+/// The number of columns the record stream `handle` holds declares.
+fn columns(handle: &dyn IOBase) -> usize {
+    handle
+        .read_arrow_field(&handle.record_options().unwrap())
+        .unwrap()
+        .fields()
+        .len()
+}
+
+/// A leaf written before the short name was a column loads it null and
+/// keeps its own row through a commit, the name kept by the registry alone;
+/// a store laid out afresh stores it.
+#[test]
+fn a_leaf_store_without_the_short_name_loads_it_null_and_keeps_its_own_row() {
+    let (_, folder) = counted_folder("isin-fisn");
+    let leaf = || folder.child_by_path("instruments.arrows").unwrap();
+    let mut older = IsinRegistry::new();
+    older
+        .merge(entry(APPLE, &[(IdType::Common, "C-1")]))
+        .unwrap();
+    let mut handle = leaf();
+    let options = handle.record_options().unwrap();
+    handle
+        .write_arrow_reader(without(&older, "fisn"), IOMode::Overwrite, &options)
+        .unwrap();
+    assert_eq!(columns(&leaf()), 45);
+
+    let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
+    let row = registry.get(APPLE).unwrap();
+    assert_eq!(row.get(&IdType::Common), Some("C-1"));
+    assert_eq!(row.fisn(), None);
+    assert!(!registry.is_dirty());
+    let name = Some(yggdryl::Fisn::new("APPLE INC/SH SH").unwrap());
+    registry
+        .merge(entry(APPLE, &[]).with_fisn(name.clone()))
+        .unwrap();
+    assert_eq!(registry.commit().unwrap().written_rows, 1);
+    assert_eq!(columns(&leaf()), 45, "the leaf's own row");
+    let back = IsinRegistry::from_holder(leaf()).unwrap();
+    assert_eq!(back.get(APPLE).unwrap().get(&IdType::Common), Some("C-1"));
+    assert_eq!(back.get(APPLE).unwrap().fisn(), None);
+    assert_eq!(registry.get(APPLE).unwrap().fisn(), name.as_ref());
+
+    let fresh = || folder.child_by_path("fresh.arrows").unwrap();
+    let mut moved = IsinRegistry::from_holder(fresh()).unwrap();
+    moved.merge(registry.get(APPLE).unwrap().clone()).unwrap();
+    moved.commit().unwrap();
+    assert_eq!(columns(&fresh()), 46);
+    let back = IsinRegistry::from_holder(fresh()).unwrap();
+    assert_eq!(back.get(APPLE).unwrap().fisn(), name.as_ref());
+}
+
+/// A leaf written before `lastunix` was a column loads it null and keeps
+/// its own row through a commit - a learn that moves only `lastunix` still
+/// dirties the registry, which commits the rows under the leaf's row - the
+/// instant kept by the registry alone; a store laid out afresh stores it.
+#[test]
+fn a_leaf_store_without_lastunix_loads_it_null_and_keeps_its_own_row() {
+    use yggdryl::graph::OrderEvent;
+    use yggdryl::{IdKey, Identifier};
+
+    let (_, folder) = counted_folder("isin-lastunix");
+    let leaf = || folder.child_by_path("instruments.arrows").unwrap();
+    let mut older = IsinRegistry::new();
+    older
+        .merge(entry(APPLE, &[(IdType::Common, "C-1")]).with_lastunix(Some(5)))
+        .unwrap();
+    let mut handle = leaf();
+    let options = handle.record_options().unwrap();
+    handle
+        .write_arrow_reader(without(&older, "lastunix"), IOMode::Overwrite, &options)
+        .unwrap();
+    assert_eq!(columns(&leaf()), 45);
+
+    let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
+    let row = registry.get(APPLE).unwrap();
+    assert_eq!(row.get(&IdType::Common), Some("C-1"));
+    assert_eq!(row.lastunix(), None);
+    assert!(!registry.is_dirty());
+    let mut met = OrderEvent::at(20);
+    yggdryl::graph::Market::insert_securityid(
+        &mut met,
+        Identifier::new(IdKey::base(IdType::Isin), APPLE).unwrap(),
+    )
+    .unwrap();
+    assert!(registry.learn(&met), "met: the instant alone moves");
+    assert!(registry.is_dirty());
+    assert_eq!(registry.commit().unwrap().written_rows, 1);
+    assert_eq!(columns(&leaf()), 45, "the leaf's own row");
+    let back = IsinRegistry::from_holder(leaf()).unwrap();
+    assert_eq!(back.get(APPLE).unwrap().get(&IdType::Common), Some("C-1"));
+    assert_eq!(back.get(APPLE).unwrap().lastunix(), None);
+    assert_eq!(registry.get(APPLE).unwrap().lastunix(), Some(20));
+
+    let fresh = || folder.child_by_path("fresh.arrows").unwrap();
+    let mut moved = IsinRegistry::from_holder(fresh()).unwrap();
+    moved.merge(registry.get(APPLE).unwrap().clone()).unwrap();
+    moved.commit().unwrap();
+    assert_eq!(columns(&fresh()), 46);
+    let back = IsinRegistry::from_holder(fresh()).unwrap();
+    assert_eq!(back.get(APPLE).unwrap().lastunix(), Some(20));
+}
+
+/// A leaf written before `firstunix` was a column loads it null and keeps
+/// its own row through a commit - a learn earlier than any the registry
+/// met moves `firstunix` alone and still dirties the registry - the instant
+/// kept by the registry alone; a store laid out afresh stores it, and it
+/// reads back.
+#[test]
+fn a_leaf_store_without_firstunix_loads_it_null_and_keeps_its_own_row() {
+    use yggdryl::graph::OrderEvent;
+    use yggdryl::{IdKey, Identifier};
+
+    let (_, folder) = counted_folder("isin-firstunix");
+    let leaf = || folder.child_by_path("instruments.arrows").unwrap();
+    let mut older = IsinRegistry::new();
+    older
+        .merge(
+            entry(APPLE, &[(IdType::Common, "C-1")])
+                .with_firstunix(Some(30))
+                .with_lastunix(Some(30)),
+        )
+        .unwrap();
+    let mut handle = leaf();
+    let options = handle.record_options().unwrap();
+    handle
+        .write_arrow_reader(without(&older, "firstunix"), IOMode::Overwrite, &options)
+        .unwrap();
+    assert_eq!(columns(&leaf()), 45);
+
+    let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
+    let row = registry.get(APPLE).unwrap();
+    assert_eq!((row.firstunix(), row.lastunix()), (None, Some(30)));
+    let mut met = OrderEvent::at(10);
+    yggdryl::graph::Market::insert_securityid(
+        &mut met,
+        Identifier::new(IdKey::base(IdType::Isin), APPLE).unwrap(),
+    )
+    .unwrap();
+    assert!(registry.learn(&met), "met earlier: firstunix alone moves");
+    assert!(registry.is_dirty());
+    assert_eq!(registry.commit().unwrap().written_rows, 1);
+    assert_eq!(columns(&leaf()), 45, "the leaf's own row");
+    let back = IsinRegistry::from_holder(leaf()).unwrap();
+    assert_eq!(back.get(APPLE).unwrap().firstunix(), None);
+    assert_eq!(registry.get(APPLE).unwrap().firstunix(), Some(10));
+
+    let fresh = || folder.child_by_path("fresh.arrows").unwrap();
+    let mut moved = IsinRegistry::from_holder(fresh()).unwrap();
+    moved.merge(registry.get(APPLE).unwrap().clone()).unwrap();
+    moved.commit().unwrap();
+    assert_eq!(columns(&fresh()), 46);
+    let back = IsinRegistry::from_holder(fresh()).unwrap();
+    let row = back.get(APPLE).unwrap();
+    assert_eq!((row.firstunix(), row.lastunix()), (Some(10), Some(30)));
+}
+
+/// Holcim listed on XSWX and on XLON, and Apple on XNAS: three listing rows
+/// of two instruments.
+fn listed(registry: &mut IsinRegistry) {
+    for (market, ticker, ric) in [("XSWX", "HOLN", "HOLN.S"), ("XLON", "0QKY", "HOLN.L")] {
+        registry
+            .merge(
+                entry(HOLCIM, &[(IdType::Ric, ric), (IdType::Common, "C-1")])
+                    .with_miccode(Some(Mic::new(market).unwrap()))
+                    .with_ticker(Some(ticker.into()))
+                    .with_lastunix(Some(7)),
+            )
+            .unwrap();
+    }
+    registry
+        .merge(entry(APPLE, &[]).with_miccode(Some(Mic::new("XNAS").unwrap())))
+        .unwrap();
+}
+
+/// What `back`, read from a store `registry` was committed to, holds: every
+/// listing row as committed, in ISIN then MIC order.
+fn assert_listings_round_trip(back: &IsinRegistry, registry: &IsinRegistry) {
+    assert_eq!((back.len(), back.rows()), (2, 3));
+    assert!(back.iter().eq(registry.iter()), "every listing row");
+    let markets: Vec<_> = back
+        .listings(HOLCIM)
+        .iter()
+        .map(|row| (row.miccode().map(Mic::as_str), row.get(&IdType::Ric)))
+        .collect();
+    assert_eq!(
+        markets,
+        [
+            (Some("XLON"), Some("HOLN.L")),
+            (Some("XSWX"), Some("HOLN.S"))
+        ]
+    );
+    assert!(
+        back.listings(HOLCIM)
+            .iter()
+            .all(|row| row.lastunix() == Some(7) && row.get(&IdType::Common) == Some("C-1"))
+    );
+}
+
+/// An Arrow IPC leaf, a Parquet leaf and a plain folder carry an
+/// instrument's listings as one row each, read back as the same listings.
+#[test]
+fn a_leaf_and_a_folder_store_carry_two_listings_of_one_isin() {
+    let (_, folder) = counted_folder("isin-listings");
+    #[cfg_attr(not(feature = "parquet"), allow(unused_mut))]
+    let mut leaves = vec!["instruments.arrows"];
+    #[cfg(feature = "parquet")]
+    leaves.push("instruments.parquet");
+    for name in leaves {
+        let leaf = || folder.child_by_path(name).unwrap();
+        let mut registry = IsinRegistry::from_holder(leaf()).unwrap();
+        listed(&mut registry);
+        assert_eq!(registry.commit().unwrap().written_rows, 3, "{name}");
+        assert_listings_round_trip(&IsinRegistry::from_holder(leaf()).unwrap(), &registry);
+    }
+    let root = crate::scratch("listings-folder").join("isin");
+    let url = Url::from_location(&format!("{}/", root.display())).unwrap();
+    let none: [(&str, &str); 0] = [];
+    let mut registry = IsinRegistry::from_url(&url, none).unwrap();
+    listed(&mut registry);
+    assert_eq!(registry.commit().unwrap().written_rows, 3);
+    assert_listings_round_trip(&IsinRegistry::from_url(&url, none).unwrap(), &registry);
+    let _ = std::fs::remove_dir_all(root.parent().unwrap());
+}
+
+/// An Iceberg table partitioned by the ISIN's country holds an
+/// instrument's listings in its one partition: two files for two
+/// countries, every listing row read back.
+#[cfg(feature = "iceberg")]
+#[test]
+fn an_iceberg_store_holds_the_listings_of_one_isin_in_its_countrys_partition() {
+    use std::collections::BTreeSet;
+    use yggdryl::iceberg::{FIRST_PARTITION_ID, FormatVersion, IcebergTable, PartitionSpec};
+
+    let (filesystem, _) = counted_folder("listings-table");
+    let table = || folder_on(&filesystem, "instruments");
+    let mut schema = IsinEntry::field()
+        .into_scheme_compat(&yggdryl::Scheme::ICEBERG)
+        .unwrap();
+    yggdryl::iceberg::assign_field_ids(&mut schema, 1).unwrap();
+    let spec = PartitionSpec::from_schema(FIRST_PARTITION_ID, &schema).unwrap();
+    IcebergTable::create(table(), FormatVersion::V3, schema, spec).unwrap();
+    let mut registry = IsinRegistry::from_holder(table()).unwrap();
+    listed(&mut registry);
+    assert_eq!(registry.commit().unwrap().written_rows, 3);
+    let files = IcebergTable::open(table()).unwrap().data_files().unwrap();
+    let prefixes: BTreeSet<String> = files
+        .iter()
+        .map(|(file, _)| file.partition[0].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(files.len(), 2, "one file per country");
+    assert_eq!(prefixes, BTreeSet::from(["CH".to_owned(), "US".to_owned()]));
+    assert_listings_round_trip(&IsinRegistry::from_holder(table()).unwrap(), &registry);
 }
 
 /// An Iceberg table created before the product category was a column loads
@@ -515,7 +946,7 @@ fn an_iceberg_store_without_the_product_category_loads_it_null_and_keeps_its_sch
             .unwrap()
             .fields()
             .len(),
-        41
+        45
     );
 }
 
@@ -551,6 +982,190 @@ fn a_folder_store_without_the_product_category_is_laid_out_afresh_with_it() {
     assert_eq!(back.get(HOLCIM).unwrap().eusipacode(), category);
     assert_eq!(back.get(HOLCIM).unwrap().get(&IdType::Ric), Some("HOLN.S"));
     let _ = std::fs::remove_dir_all(root.parent().unwrap());
+}
+
+/// The rows a store states over the seed: Apple, a seed instrument, on its
+/// own listing under another currency, and BAE, which the seed lacks.
+fn store_rows(registry: &mut IsinRegistry) {
+    registry
+        .merge(
+            IsinEntry::new(Isin::new(APPLE).unwrap())
+                .with_miccode(Some(Mic::new("XNAS").unwrap()))
+                .with_ticker(Some("AAPL".into()))
+                .with_currency(Some(Ccy::new("CHF").unwrap())),
+        )
+        .unwrap();
+    registry
+        .merge(entry(BAE, &[(IdType::Ric, "BAES.L")]).with_miccode(Some(Mic::new("XLON").unwrap())))
+        .unwrap();
+}
+
+/// What `registry`, `store`'s rows laid over the seed, holds: the store's
+/// value where it states one and the seed's fact beside it where it states
+/// none, a seed row the store has none of as the seed holds it, the
+/// store's own row as the store holds it; bound, and clean.
+fn assert_laid_over_the_seed(registry: &IsinRegistry, store: &IsinRegistry) {
+    let seed = IsinRegistry::seeded();
+    assert!(!registry.is_dirty(), "clean after the load");
+    assert!(registry.holder().is_some());
+    assert_eq!(
+        registry.len(),
+        seed.len() + 1,
+        "the seed, and the store's other row"
+    );
+    let apple = registry.get(APPLE).expect("the seed's and the store's");
+    let seeded = seed.get(APPLE).expect("a seed instrument");
+    assert_eq!(seeded.currency().map(Ccy::as_str), Some("USD"));
+    assert_eq!(
+        apple.currency().map(Ccy::as_str),
+        Some("CHF"),
+        "the store's value wins"
+    );
+    assert!(seeded.fisn().is_some());
+    assert_eq!(
+        apple.fisn(),
+        seeded.fisn(),
+        "a fact only the seed states stands"
+    );
+    assert_eq!(apple.cficode(), seeded.cficode());
+    assert_eq!(
+        registry.get(MICROSOFT),
+        seed.get(MICROSOFT),
+        "a seed row the store has none of"
+    );
+    assert!(seed.get(BAE).is_none());
+    assert_eq!(
+        registry.get(BAE),
+        store.get(BAE),
+        "a row only the store holds"
+    );
+}
+
+/// `seeded_from_url` lays a leaf store's rows over the seed, clean after
+/// the load: a clean commit writes nothing, and the first commit after a
+/// merge writes the seed's rows with the store's, the store then holding
+/// exactly the snapshot.
+#[test]
+fn seeded_from_url_lays_a_leaf_store_over_the_seed_and_commits_both() {
+    let root = crate::scratch("seeded-url");
+    let url = Url::from_path(root.join("instruments.arrows")).unwrap();
+    let none: [(&str, &str); 0] = [];
+    let mut store = IsinRegistry::from_url(&url, none).unwrap();
+    store_rows(&mut store);
+    assert_eq!(store.commit().unwrap().written_rows, 2);
+
+    let mut registry = IsinRegistry::seeded_from_url(&url, none).unwrap();
+    assert_laid_over_the_seed(&registry, &store);
+    assert_eq!(
+        registry.holder().unwrap().url().unwrap().to_string(),
+        url.to_string()
+    );
+    assert_eq!(
+        registry.commit().unwrap(),
+        IOResult::default(),
+        "a clean registry writes nothing"
+    );
+    assert_eq!(
+        IsinRegistry::from_url(&url, none).unwrap().len(),
+        2,
+        "the store as it was"
+    );
+
+    assert!(
+        registry
+            .merge(entry(HOLCIM, &[(IdType::Common, "C-1")]))
+            .unwrap()
+    );
+    let written = registry.commit().unwrap();
+    assert_eq!(written.written_rows, registry.rows() as u64);
+    assert_eq!(
+        written.written_rows,
+        IsinRegistry::seeded().rows() as u64 + 1,
+        "the seed's rows with the store's"
+    );
+    assert!(!registry.is_dirty());
+    let back = IsinRegistry::from_url(&url, none).unwrap();
+    assert!(
+        back.iter().eq(registry.iter()),
+        "the store holds exactly the snapshot"
+    );
+
+    // A leaf this build has no record encoding for is refused at the
+    // binding, as `from_url` refuses it.
+    let unknown = Url::from_path(root.join("instruments.xyz")).unwrap();
+    assert!(IsinRegistry::seeded_from_url(&unknown, none).is_err());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// `seeded_from_holder` is the same layering over a holder in hand, the
+/// store read once as `from_holder` reads it - the seed costs it no call -
+/// and a store holding nothing yet loads as the seed bound to it, clean,
+/// so a commit writes nothing.
+#[test]
+fn seeded_from_holder_lays_the_holders_rows_over_the_seed_at_the_cost_of_one_load() {
+    let (filesystem, folder) = counted_folder("isin-seeded");
+    let leaf = || folder.child_by_path("instruments.arrows").unwrap();
+    let mut store = IsinRegistry::from_holder(leaf()).unwrap();
+    store_rows(&mut store);
+    store.commit().unwrap();
+
+    let load = filesystem.costs(|| assert_eq!(IsinRegistry::from_holder(leaf()).unwrap().len(), 2));
+    let mut registry = None;
+    assert_eq!(
+        filesystem.costs(|| registry = Some(IsinRegistry::seeded_from_holder(leaf()).unwrap())),
+        load,
+        "the seed costs the store no call"
+    );
+    let mut registry = registry.unwrap();
+    assert_laid_over_the_seed(&registry, &store);
+    assert!(
+        registry
+            .merge(entry(HOLCIM, &[(IdType::Common, "C-1")]))
+            .unwrap()
+    );
+    assert_eq!(
+        registry.commit().unwrap().written_rows,
+        registry.rows() as u64
+    );
+    assert!(
+        IsinRegistry::from_holder(leaf())
+            .unwrap()
+            .iter()
+            .eq(registry.iter())
+    );
+
+    let fresh = || folder.child_by_path("fresh.arrows").unwrap();
+    let mut first = IsinRegistry::seeded_from_holder(fresh()).unwrap();
+    assert!(first.iter().eq(IsinRegistry::seeded().iter()));
+    assert!(!first.is_dirty() && first.holder().is_some());
+    assert_eq!(
+        filesystem.costs(|| assert_eq!(first.commit().unwrap(), IOResult::default())),
+        "none",
+        "a first run's clean commit"
+    );
+    assert!(IsinRegistry::from_holder(fresh()).unwrap().is_empty());
+}
+
+/// `from_url` and `from_holder` bind a store unseeded: the store's rows and
+/// nothing else, the seed being `seeded_from_url`'s.
+#[test]
+fn from_url_and_from_holder_bind_a_store_unseeded() {
+    let root = crate::scratch("unseeded");
+    let url = Url::from_path(root.join("instruments.arrows")).unwrap();
+    let none: [(&str, &str); 0] = [];
+    let mut store = IsinRegistry::from_url(&url, none).unwrap();
+    assert!(store.is_empty(), "a first run holds nothing");
+    store_rows(&mut store);
+    store.commit().unwrap();
+    for loaded in [
+        IsinRegistry::from_url(&url, none).unwrap(),
+        IsinRegistry::from_holder(yggdryl::holder::Holder::from_url(&url, none).unwrap()).unwrap(),
+    ] {
+        assert!(loaded.iter().eq(store.iter()));
+        assert!(loaded.get(MICROSOFT).is_none(), "no seed row");
+        assert_eq!(loaded.get(APPLE).unwrap().fisn(), None, "no seed fact");
+    }
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[cfg(feature = "internals")]

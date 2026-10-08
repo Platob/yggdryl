@@ -71,8 +71,8 @@ fn execution(unix: i64, ticker: &str, code: &str, side: Side, quantity: i64) -> 
 /// Two tickers across three minutes: `ACME` quoted on both sides in the
 /// first minute, requoted and executed in the second and requoted in the
 /// third; `BETA` quoted once in each of the first two minutes. Six books:
-/// the execution is recorded at its instant, a book of `ACME` stating it
-/// alone among its deltas and holding it alive nowhere.
+/// the execution is recorded at its instant, a delta book of `ACME` whose
+/// delta is empty and whose one event it is, holding it alive nowhere.
 fn operations() -> Vec<MarketData> {
     vec![
         quote(T0 + 5 * SECOND, "ACME", "AB1", Side::Buy, "100", 10),
@@ -356,15 +356,21 @@ fn the_events_field_is_the_flat_marketdata_row_behind_its_stamp() {
     assert!(!field.is_nullable());
     let names: Vec<&str> = field.fields().iter().map(|child| child.name()).collect();
     assert_eq!(&names[..3], ["bookunix", "role", "curruuid"]);
-    // The stamp, the six element, nine event, thirty-five market and five
+    // The stamp, the six element, nine event, thirty-six market and five
     // operation columns, then the book controls `bookscope`, `bookaction`
     // and `bookposition`.
-    assert_eq!(names.len(), 2 + 6 + 9 + 35 + 5 + 3);
-    assert!(
-        !names
-            .iter()
-            .any(|name| ["alive", "deltas", "executions", "bidlimits", "asklimits"].contains(name))
-    );
+    assert_eq!(names.len(), 2 + 6 + 9 + 36 + 5 + 3);
+    assert!(!names.iter().any(|name| {
+        [
+            "alive",
+            "delta",
+            "events",
+            "executions",
+            "bidlimits",
+            "asklimits",
+        ]
+        .contains(name)
+    }));
     assert_eq!(
         field.fields()[0].dtype().to_string(),
         "datetime64(ns,\"UTC\")"
@@ -421,7 +427,7 @@ fn a_query_reads_its_parameters_and_refuses_each_by_name() {
     );
     assert_eq!(
         refusal("table=books&ticker=ACME&from=2026-01-05T11:00:00Z&to=2026-01-05T11:00:00Z"),
-        "invalid record value at $.to: expected an instant after `from` (2026-01-05T11:00:00.000000000Z), got 2026-01-05T11:00:00.000000000Z"
+        "invalid record value at $.to: expected an instant after `from` (2026-01-05T11:00:00Z), got 2026-01-05T11:00:00Z"
     );
     assert!(refusal("table=books&ticker=ACME&from=2026-01-05T10:00:00Z&to=2026-01-05T11:00:00Z&tz=Mars/Olympus").starts_with("invalid record value at $.tz:"));
     assert!(
@@ -516,7 +522,7 @@ fn the_readings_answer_without_http() {
     let total: usize = rows.iter().map(|batch| batch.num_rows()).sum();
     assert_eq!(
         total, 5,
-        "every book's deltas, the execution among them: {total}"
+        "every book's delta and events, the execution among its book's events: {total}"
     );
     assert_eq!(
         rows[0].schema(),
@@ -609,7 +615,7 @@ fn an_iceberg_table_a_capture_landed_in_answers_every_route() {
     let _ = std::fs::remove_dir_all(&path);
     IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
-        FormatVersion::V2,
+        FormatVersion::V3,
         MarketData::field()
             .unwrap()
             .into_scheme_compat(&Scheme::ICEBERG)
@@ -976,9 +982,9 @@ fn tickers_state_the_span_of_a_book_at_either_end_of_the_instants() {
     assert_eq!(tickers.len(), 2);
     assert_eq!(text(&tickers[0], "ticker"), "EARLY");
     assert_eq!(text(&tickers[0], "from"), "1677-09-21T00:12:43.145224192Z");
-    assert_eq!(text(&tickers[0], "to"), "1677-09-21T00:12:44.000000000Z");
+    assert_eq!(text(&tickers[0], "to"), "1677-09-21T00:12:44Z");
     assert_eq!(text(&tickers[1], "ticker"), "LATE");
-    assert_eq!(text(&tickers[1], "from"), "2262-04-11T23:47:16.000000000Z");
+    assert_eq!(text(&tickers[1], "from"), "2262-04-11T23:47:16Z");
     assert_eq!(text(&tickers[1], "to"), "2262-04-11T23:47:16.854775807Z");
 }
 
@@ -1060,7 +1066,7 @@ fn events_answer_the_earliest_rows_of_a_store_holding_them_out_of_order() {
     ));
     assert_eq!(member(&first, "truncated"), &Scalar::from(true));
     let rows = items(member(&first, "rows"));
-    assert_eq!(text(&rows[0], "bookunix"), "2026-01-05T10:00:05.000000000Z");
+    assert_eq!(text(&rows[0], "bookunix"), "2026-01-05T10:00:05Z");
 }
 
 #[test]
@@ -1088,17 +1094,17 @@ fn tickers_span_the_books_of_each_ticker() {
         "3:0:ACME",
         "the book's stored code"
     );
-    assert_eq!(text(acme, "from"), "2026-01-05T10:00:05.000000000Z");
+    assert_eq!(text(acme, "from"), "2026-01-05T10:00:05Z");
     assert_eq!(
         text(acme, "to"),
-        "2026-01-05T10:02:06.000000000Z",
+        "2026-01-05T10:02:06Z",
         "the second after the last book"
     );
     assert_eq!(member(acme, "books"), &Scalar::from(4_u64));
     let beta = &tickers[1];
     assert_eq!(text(beta, "ticker"), "BETA");
-    assert_eq!(text(beta, "from"), "2026-01-05T10:00:30.000000000Z");
-    assert_eq!(text(beta, "to"), "2026-01-05T10:01:31.000000000Z");
+    assert_eq!(text(beta, "from"), "2026-01-05T10:00:30Z");
+    assert_eq!(text(beta, "to"), "2026-01-05T10:01:31Z");
     assert_eq!(member(beta, "books"), &Scalar::from(2_u64));
 
     assert_eq!(
@@ -1122,14 +1128,14 @@ fn candles_fold_the_books_of_the_range_by_the_minute() {
     assert_eq!(text(&answer, "ticker"), "ACME");
     assert_eq!(text(&answer, "timezone"), "UTC");
     assert_eq!(text(&answer, "interval"), "1m");
-    assert_eq!(text(&answer, "from"), "2026-01-05T10:00:00.000000000Z");
-    assert_eq!(text(&answer, "to"), "2026-01-05T10:03:00.000000000Z");
+    assert_eq!(text(&answer, "from"), "2026-01-05T10:00:00Z");
+    assert_eq!(text(&answer, "to"), "2026-01-05T10:03:00Z");
     let candles = items(member(&answer, "candles"));
     assert_eq!(candles.len(), 3);
 
     let first = &candles[0];
-    assert_eq!(text(first, "start"), "2026-01-05T10:00:00.000000000Z");
-    assert_eq!(text(first, "end"), "2026-01-05T10:01:00.000000000Z");
+    assert_eq!(text(first, "start"), "2026-01-05T10:00:00Z");
+    assert_eq!(text(first, "end"), "2026-01-05T10:01:00Z");
     let bid = member(first, "bid");
     assert_eq!(text(bid, "open"), "100");
     assert_eq!(text(bid, "close"), "100");
@@ -1153,14 +1159,14 @@ fn candles_fold_the_books_of_the_range_by_the_minute() {
     );
 
     let second = &candles[1];
-    assert_eq!(text(second, "start"), "2026-01-05T10:01:00.000000000Z");
+    assert_eq!(text(second, "start"), "2026-01-05T10:01:00Z");
     assert_eq!(text(member(second, "bid"), "open"), "100.5");
     assert_eq!(text(member(second, "bid"), "high"), "100.5");
     assert_eq!(text(member(second, "spread"), "close"), "0.5");
     assert_eq!(member(second, "books"), &Scalar::from(2_u64));
 
     let third = &candles[2];
-    assert_eq!(text(third, "start"), "2026-01-05T10:02:00.000000000Z");
+    assert_eq!(text(third, "start"), "2026-01-05T10:02:00Z");
     assert_eq!(
         text(member(third, "ask"), "close"),
         "101",
@@ -1186,7 +1192,7 @@ fn a_one_sided_range_states_no_mid_and_the_to_is_exclusive() {
     let candles = items(member(&beta, "candles"));
     // `to` is exclusive: the 10:01:30 book is not in [10:00, 10:01:30).
     assert_eq!(candles.len(), 1);
-    assert_eq!(text(&candles[0], "start"), "2026-01-05T10:00:30.000000000Z");
+    assert_eq!(text(&candles[0], "start"), "2026-01-05T10:00:30Z");
     assert_eq!(text(member(&candles[0], "bid"), "open"), "50");
     assert_eq!(member(&candles[0], "ask"), &Scalar::Null);
     assert_eq!(member(&candles[0], "mid"), &Scalar::Null);
@@ -1229,17 +1235,17 @@ fn candles_align_to_the_zone_asked_and_render_in_it() {
     // A naive `from` is a Zurich wall clock: 11:00 there is 10:00Z.
     assert_eq!(
         text(&answer, "from"),
-        "2026-01-05T11:00:00.000000000+01:00[Europe/Zurich]"
+        "2026-01-05T11:00:00+01:00[Europe/Zurich]"
     );
     let candles = items(member(&answer, "candles"));
     assert_eq!(candles.len(), 1);
     assert_eq!(
         text(&candles[0], "start"),
-        "2026-01-05T11:00:00.000000000+01:00[Europe/Zurich]"
+        "2026-01-05T11:00:00+01:00[Europe/Zurich]"
     );
     assert_eq!(
         text(&candles[0], "end"),
-        "2026-01-05T12:00:00.000000000+01:00[Europe/Zurich]"
+        "2026-01-05T12:00:00+01:00[Europe/Zurich]"
     );
     assert_eq!(member(&candles[0], "books"), &Scalar::from(4_u64));
 }
@@ -1274,7 +1280,7 @@ fn candles_refuse_what_they_cannot_read() {
             &send(with("to", "2026-01-05T10:00:00Z")),
             Status::BAD_REQUEST
         ),
-        "invalid record value at $.to: expected an instant after `from` (2026-01-05T10:00:00.000000000Z), got 2026-01-05T10:00:00.000000000Z"
+        "invalid record value at $.to: expected an instant after `from` (2026-01-05T10:00:00Z), got 2026-01-05T10:00:00Z"
     );
     assert!(
         refused(&send(with("from", "10 o'clock")), Status::BAD_REQUEST)
@@ -1326,7 +1332,7 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
     ));
     assert_eq!(
         text(&book, "currunix"),
-        "2026-01-05T10:01:10.000000000Z",
+        "2026-01-05T10:01:10Z",
         "the execution at 10:01:10 folded a book of its own, the last at or before"
     );
     assert_eq!(text(&book, "ticker"), "ACME");
@@ -1344,13 +1350,16 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
     assert_eq!(text(&book, "imbalance"), "-0.111111111111111111");
     assert_eq!(member(&book, "islocked"), &Scalar::from(false));
     assert_eq!(member(&book, "iscrossed"), &Scalar::from(false));
-    // The table states the book at 10:01:05 as its delta: it is answered
-    // whole, rebuilt over the book before it.
+    // The table states the book at 10:01:10 as a delta book recording the
+    // execution alone: it is answered whole, rebuilt over the book before
+    // it with nothing replayed, its delta empty and its one event the
+    // execution.
     assert_eq!(member(&book, "complete"), &Scalar::from(true));
     assert_eq!(member(&book, "alive"), &Scalar::from(3_u64));
-    assert_eq!(member(&book, "deltas"), &Scalar::from(1_u64));
-    // Every member the route table names, and no other: a book holds no
-    // execution.
+    assert_eq!(member(&book, "delta"), &Scalar::from(0_u64));
+    assert_eq!(member(&book, "events"), &Scalar::from(1_u64));
+    // Every member the route table names, and no other: a book rests no
+    // execution on a side.
     let keys: BTreeSet<&str> = book
         .as_struct()
         .unwrap()
@@ -1375,7 +1384,8 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
             "iscrossed",
             "complete",
             "alive",
-            "deltas",
+            "delta",
+            "events",
             "bidlimits",
             "asklimits",
         ])
@@ -1404,7 +1414,7 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
     ));
     assert_eq!(
         text(&zoned, "currunix"),
-        "2026-01-05T11:00:05.000000000+01:00[Europe/Zurich]"
+        "2026-01-05T11:00:05+01:00[Europe/Zurich]"
     );
     assert_eq!(member(&zoned, "alive"), &Scalar::from(2_u64));
 
@@ -1421,7 +1431,7 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
             ),
             Status::NOT_FOUND
         ),
-        "expected a book at \"books/ACME at or before 2026-01-05T10:00:01.000000000Z\", got nothing"
+        "expected a book at \"books/ACME at or before 2026-01-05T10:00:01Z\", got nothing"
     );
     assert!(
         refused(
@@ -1433,23 +1443,31 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
 }
 
 #[test]
-fn events_list_every_entry_and_delta_of_the_books_in_range() {
+fn events_list_every_entry_delta_and_event_of_the_books_in_range() {
     let (_server, endpoint, _) = running("/", BookServiceOptions::new());
     let answer = ok_json(&get(&endpoint, "events", &range()));
     assert_eq!(member(&answer, "truncated"), &Scalar::from(false));
     let rows = items(member(&answer, "rows"));
-    // With no grid no book is whole: each states its deltas alone.
+    // With no grid no book is whole: each is a delta book, its quotes
+    // `delta` rows and its execution an `event` row.
     let roles: BTreeSet<String> = rows.iter().map(|row| text(row, "role")).collect();
-    assert_eq!(roles, BTreeSet::from(["delta".to_owned()]));
+    assert_eq!(
+        roles,
+        BTreeSet::from(["delta".to_owned(), "event".to_owned()])
+    );
+    assert!(
+        rows.iter()
+            .all(|row| (text(row, "role") == "event") == (text(row, "marketdatakind") == "EXEC"))
+    );
     assert!(rows.iter().all(|row| text(row, "ticker") == "ACME"));
     let instants: BTreeSet<String> = rows.iter().map(|row| text(row, "bookunix")).collect();
     assert_eq!(
         instants,
         BTreeSet::from([
-            "2026-01-05T10:00:05.000000000Z".to_owned(),
-            "2026-01-05T10:01:05.000000000Z".to_owned(),
-            "2026-01-05T10:01:10.000000000Z".to_owned(),
-            "2026-01-05T10:02:05.000000000Z".to_owned(),
+            "2026-01-05T10:00:05Z".to_owned(),
+            "2026-01-05T10:01:05Z".to_owned(),
+            "2026-01-05T10:01:10Z".to_owned(),
+            "2026-01-05T10:02:05Z".to_owned(),
         ]),
         "the execution's instant folds a book of its own"
     );
@@ -1465,13 +1483,13 @@ fn events_list_every_entry_and_delta_of_the_books_in_range() {
             ("EXEC".to_owned(), 1),
             ("QUOT".to_owned(), rows.len() - 1)
         ]),
-        "the execution is the one delta of its instant"
+        "the execution is the one event of its instant"
     );
     let first_book: Vec<&Scalar> = rows
         .iter()
-        .filter(|row| text(row, "bookunix") == "2026-01-05T10:00:05.000000000Z")
+        .filter(|row| text(row, "bookunix") == "2026-01-05T10:00:05Z")
         .collect();
-    // The two deltas that placed the first book's two entries.
+    // The two quotes of the first book's delta that placed its two entries.
     assert_eq!(first_book.len(), 2);
     let names: BTreeSet<&str> = rows[0]
         .as_struct()
@@ -1481,8 +1499,9 @@ fn events_list_every_entry_and_delta_of_the_books_in_range() {
         .collect();
     assert!(names.contains("curruuid") && names.contains("prevuuid") && names.contains("state"));
     assert!(!names.contains("alive") && !names.contains("bidlimits"));
-    // StrikePx adds one market fact to the previous 59-column event schema.
-    assert_eq!(names.len(), 60);
+    // The origin currency, `origccy`, adds one market fact to the previous
+    // 60-column event schema, as StrikePx added one to the 59 before it.
+    assert_eq!(names.len(), 61);
     // A UUID is its canonical text.
     assert_eq!(text(&rows[0], "curruuid").len(), 36);
 
@@ -1503,19 +1522,20 @@ fn events_list_every_entry_and_delta_of_the_books_in_range() {
     let zoned = items(member(&ok_json(&get(&endpoint, "events", &zoned)), "rows"));
     assert_eq!(
         text(&zoned[0], "bookunix"),
-        "2026-01-05T11:00:05.000000000+01:00[Europe/Zurich]"
+        "2026-01-05T11:00:05+01:00[Europe/Zurich]"
     );
     assert_eq!(
         text(&zoned[0], "currunix"),
-        "2026-01-05T11:00:05.000000000+01:00[Europe/Zurich]"
+        "2026-01-05T11:00:05+01:00[Europe/Zurich]"
     );
 }
 
 #[test]
 fn events_are_bounded_by_the_limit_and_the_options() {
-    // The range's ACME audit is four rows: the first book's two deltas
-    // placing its entries, then the one delta of each book after it - with
-    // no grid each states its deltas alone; the options bound it at three.
+    // The range's ACME audit is five rows: the first book's two quotes
+    // placing its entries, then the one quote or execution each book after
+    // it recorded - with no grid each is a delta book; the options bound it
+    // at three.
     let (_server, endpoint, _) = running("/", BookServiceOptions::new().with_max_event_rows(3));
     let mut two = range().to_vec();
     two.push(("limit", "2"));
@@ -1633,8 +1653,10 @@ fn the_audit_downloads_as_csv_in_each_coding_and_reads_back() {
         let field = readback.read_arrow_field(&options).unwrap();
         let names: Vec<&str> = field.fields().iter().map(|child| child.name()).collect();
         assert_eq!(&names[..3], ["bookunix", "role", "curruuid"]);
-        // StrikePx adds one market fact to the previous 59-column audit schema.
-        assert_eq!(names.len(), 60);
+        // The origin currency, `origccy`, adds one market fact to the
+        // previous 60-column audit schema, as StrikePx added one to the 59
+        // before it.
+        assert_eq!(names.len(), 61);
     }
 
     let mut bids = range().to_vec();
@@ -1822,6 +1844,64 @@ fn a_delta_taking_an_entry_off_a_side_is_kept_by_that_side() {
     );
 }
 
+/// An execution rests on no side: the audit lists it among its book's
+/// events under the role `event`, after the `delta` rows of its instant,
+/// and a side asked keeps it by the side it takes.
+#[test]
+fn an_execution_is_an_event_row_after_the_delta_rows_of_its_book() {
+    let books = BookIterator::new(
+        [
+            quote(T0 + 5 * SECOND, "ACME", "B-1", Side::Buy, "100", 2),
+            execution(T0 + 6 * SECOND, "ACME", "E-1", Side::Sell, 1),
+            quote(T0 + 6 * SECOND, "ACME", "A-1", Side::Sell, "101", 3),
+        ]
+        .into_iter(),
+        0,
+    )
+    .unwrap()
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
+    assert_eq!(books.len(), 2);
+    assert_eq!((books[1].delta().len(), books[1].events().len()), (1, 1));
+    let (_server, endpoint, _) = running_over(holder_of(books));
+    let audit = |query: &[(&str, &str)]| -> Vec<(String, String, String)> {
+        items(member(&ok_json(&get(&endpoint, "events", query)), "rows"))
+            .iter()
+            .map(|row| {
+                (
+                    text(row, "bookunix"),
+                    text(row, "role"),
+                    text(row, "marketdatakind"),
+                )
+            })
+            .collect()
+    };
+    let row = |seconds: u8, role: &str, kind: &str| {
+        (
+            format!("2026-01-05T10:00:{seconds:02}Z"),
+            role.to_owned(),
+            kind.to_owned(),
+        )
+    };
+    assert_eq!(
+        audit(&range()),
+        [
+            row(5, "delta", "QUOT"),
+            row(6, "delta", "QUOT"),
+            row(6, "event", "EXEC"),
+        ]
+    );
+    let mut asks = range().to_vec();
+    asks.push(("side", "ask"));
+    assert_eq!(
+        audit(&asks),
+        [row(6, "delta", "QUOT"), row(6, "event", "EXEC")]
+    );
+    let mut bids = range().to_vec();
+    bids.push(("side", "bid"));
+    assert_eq!(audit(&bids), [row(5, "delta", "QUOT")]);
+}
+
 /// `books` written as `marketdata` rows into a buffer named
 /// `books.arrows`.
 fn holder_of(books: Vec<BookEvent>) -> Holder {
@@ -1839,7 +1919,7 @@ fn holder_of(books: Vec<BookEvent>) -> Holder {
 }
 
 /// The fixture's books of ACME, as the walk emits them with no grid: each
-/// stating its deltas alone, the first following no book.
+/// a delta book, the first following no book.
 fn acme_books() -> Vec<BookEvent> {
     BookIterator::new(operations().into_iter(), 0)
         .unwrap()
@@ -1850,7 +1930,7 @@ fn acme_books() -> Vec<BookEvent> {
         .collect()
 }
 
-/// A table a walk landed with no grid holds every book as its deltas, the
+/// A table a walk landed with no grid holds every book as a delta book, the
 /// first following no book: the book at an instant is the last origin at or
 /// before it - a whole book, or the first, rebuilt over the empty book a
 /// walk starts from - with every book after it folded over it in instant
@@ -1899,7 +1979,7 @@ fn the_book_at_an_instant_is_rebuilt_from_the_origin_before_it() {
     }
     assert_eq!(book.alive().count(), 4);
 
-    // The rows hold no order: the deltas fold in instant order still.
+    // The rows hold no order: the delta books fold in instant order still.
     let mut shuffled = acme.clone();
     shuffled.reverse();
     let service =
@@ -1912,7 +1992,7 @@ fn the_book_at_an_instant_is_rebuilt_from_the_origin_before_it() {
     assert_eq!(book.alive().count(), 4);
 }
 
-/// A table holding a book's first appearance alone - its deltas, following
+/// A table holding a book's first appearance alone - its delta, following
 /// no book - answers it whole, rebuilt over the empty book a walk starts
 /// from, and says it is complete.
 #[test]
@@ -1931,7 +2011,7 @@ fn a_book_following_no_book_is_rebuilt_over_the_empty_book_and_complete() {
 }
 
 /// Best effort: a book naming as its `prevuuid` a book the rows read do not
-/// hold is answered as it stands - its deltas, its top of book - and says
+/// hold is answered as it stands - its delta, its top of book - and says
 /// it is not complete.
 #[test]
 fn a_book_naming_a_book_the_rows_do_not_hold_answers_incomplete() {

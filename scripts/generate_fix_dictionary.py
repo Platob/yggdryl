@@ -16,7 +16,12 @@ is written into ``components/`` beside the others. Only wire
 fields have tags. A group states its ordinary int32 counter as its own
 ``FIX:counter`` - the tag that frames it on the wire - and contains a non-null
 component; no member lists the counter beside the group, whose length is its
-count. Datatypes resolve through the crate's logical-name table.
+count. Datatypes resolve through the crate's logical-name table, and every
+field also states the FIX datatype it was declared under as ``FIX:datatype``,
+spelled as the specification spells it - a field typed by a code set states
+the set's base type - because the crate datatype does not recover it: four
+FIX datatypes are one ``datetime64``, and only ``TZTimeOnly`` is a clock with
+no date.
 
 ``codesets/`` is the fourth directory, and it holds vocabularies rather than
 fields. A code set is named by the specification - ``SideCodeSet``,
@@ -506,6 +511,19 @@ def quickfix_type(name: str) -> str:
     return replacements.get(folded_name, "String")
 
 
+def fix_datatype(fix_type: str, code_sets: dict[str, Any]) -> str:
+    """The FIX datatype name a field states, as the specification spells it.
+
+    A field typed by a code set takes that set's own base type: the set is a
+    vocabulary over a datatype, never a datatype of its own. Written on every
+    field as ``FIX:datatype``, because it is the fact the crate datatype
+    cannot recover - `UTCTimestamp`, `TZTimestamp`, `UTCDateOnly` and
+    `TZTimeOnly` are one `datetime64`, and only the last is a time of day.
+    """
+    held = code_sets.get(fix_type)
+    return held["type"] if held is not None else fix_type
+
+
 def dtype_of(fix_type: str, tag: int, code_sets: dict[str, Any]) -> str:
     """The crate datatype spelling one FIX datatype name resolves through.
 
@@ -515,11 +533,7 @@ def dtype_of(fix_type: str, tag: int, code_sets: dict[str, Any]) -> str:
     """
     if tag in CODED_TAGS:
         return CODED_TAGS[tag]
-    # A field typed by a code set takes that set's own base type: the set is
-    # a vocabulary over a datatype, never a datatype of its own.
-    held = code_sets.get(fix_type)
-    if held is not None:
-        fix_type = held["type"]
+    fix_type = fix_datatype(fix_type, code_sets)
     if folded(fix_type) not in LOGICAL_NAMES:
         raise SystemExit(f"unmapped FIX datatype {fix_type!r} on tag {tag}")
     return fix_type
@@ -568,20 +582,40 @@ def camel_case(description: str) -> str:
 # knows `PartiallyFilled` and `Filled`; it does not know `PartialFill`.
 LEGACY_NAMES = {(150, "1"): "PartiallyFilled", (150, "2"): "Filled"}
 
+# The bridge spellings a vocabulary takes beside the specification's own,
+# keyed by the family the set is read by - the folded field name's tail, or
+# the set's folded name less `codeset` - then by the code's value and name.
+# A word is listed only where it has exactly one meaning in its set: a
+# bridge's `Aggressor` can mean one member of a two-member indicator, and a
+# word two codes could claim is left to a CBlock map, which states which.
 # PartyIDSource is copied into every Party family member but reads one shared
-# vocabulary. The bridge spelling belongs to that family alone; another
+# vocabulary, so its spelling belongs to that family alone; another
 # Proprietary code keeps the standard spelling it declares.
-PARTY_ID_SOURCE_ALIASES = {("D", "Proprietary"): ("proprietary/customcode",)}
+BRIDGE_ALIASES: dict[str, dict[tuple[str, str], tuple[str, ...]]] = {
+    "partyidsource": {("D", "Proprietary"): ("proprietary/customcode",)},
+    "aggressorindicator": {
+        ("Y", "OrderInitiatorIsAggressor"): ("Aggressor",),
+        ("N", "OrderInitiatorIsPassive"): ("Passive",),
+    },
+}
 
 
-def party_id_source_aliases(
+def bridge_aliases(
     name: str, declared: str | None, codes: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """Add the bridge spelling to the shared PartyIDSource vocabulary."""
-    if not name.endswith("partyidsource") and folded(declared or "") != "partyidsourcecodeset":
+    """Add the bridge spellings the vocabulary `name` reads by takes."""
+    family = next(
+        (
+            family
+            for family in BRIDGE_ALIASES
+            if name.endswith(family) or folded(declared or "") == f"{family}codeset"
+        ),
+        None,
+    )
+    if family is None:
         return codes
     for code in codes:
-        aliases = PARTY_ID_SOURCE_ALIASES.get((code["value"], code["name"]))
+        aliases = BRIDGE_ALIASES[family].get((code["value"], code["name"]))
         if aliases is None:
             continue
         current = code.setdefault("aliases", [])
@@ -676,6 +710,11 @@ def fold_legacy_codes(
 # carry theirs in the crate dump. ``follow`` marks an identifier an
 # operation that follows another carries forward, and ``role`` the
 # PartyRole(452) of the Parties occurrence whose PartyID(448) states the key.
+# A trade's lineage is read as an order's is: OrigTradeID(1126) and
+# OrigSecondaryTradeID(1127) are the first values of TradeID(1003) and
+# SecondaryTradeID(1040), and TradeReportRefID(572) - the report a cancel or
+# a replace refers to - is TradeReportID(571)'s one parent, which the crate's
+# vocabulary owns, so no field states it as ``FIX:parents``.
 # A key is the folded word of its identifier type - lower-case letters and
 # digits. A message's parties are its ``partyids`` and its regulatory trade
 # identifiers are ``identifiers``, both read by the crate natively rather
@@ -703,12 +742,16 @@ IDMAP_SOURCES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
     (262, [idmap("identifiers", "mdreqid")]),
     (526, [idmap("identifiers", "secondaryclordid")]),
     (527, [idmap("identifiers", "secondaryexecid")]),
+    (571, [idmap("identifiers", "tradereportid")]),
+    (572, [idmap("identifiers", "tradereportrefid")]),
     (793, [idmap("identifiers", "secondaryallocid")]),
     (880, [idmap("identifiers", "trdmatchid")]),
     (989, [idmap("identifiers", "secondaryindividualallocid")]),
     (1003, [idmap("identifiers", "tradeid")]),
     (1040, [idmap("identifiers", "secondarytradeid")]),
     (1042, [idmap("identifiers", "secondaryfirmtradeid")]),
+    (1126, [idmap("identifiers", "origtradeid")]),
+    (1127, [idmap("identifiers", "origsecondarytradeid")]),
     (1751, [idmap("identifiers", "secondaryquoteid")]),
 )
 
@@ -744,12 +787,10 @@ def parent_of(name: str, names: set[str]) -> tuple[str, int] | None:
 
 def attach_parents(catalog: dict[str, list[dict[str, Any]]]) -> None:
     """Write onto every identifier field the parents the dictionary's own
-    field names say it has, as ``FIX:parents``, each type once; and where a
-    field is its base's one parent, name it by the other prefix too - an
-    ``orig`` field also ``parent``, a ``parent`` field also ``orig`` - since
-    with one parent the two spellings are one field: OrigClOrdID(41) is also
-    ``parentclordid``, ParentAllocID(1593) also ``origallocid``. A spelling
-    another field holds, as its name or an alias, is never taken."""
+    field names say it has, as ``FIX:parents``, each type once. A parent is
+    named by its own field's names alone: OrigClOrdID(41) is
+    ``origclordid`` and never ``parentclordid``, the word a bridge spells
+    for a hierarchy parent rather than for a previous value."""
     by_name = {field["name"]: field for field in catalog["fields"]}
     names = set(by_name)
     parents: dict[str, list[tuple[int, str]]] = {}
@@ -758,27 +799,10 @@ def attach_parents(catalog: dict[str, list[dict[str, Any]]]) -> None:
         if found is not None:
             base, rank = found
             parents.setdefault(base, []).append((rank, name))
-    # ClOrdID's one parent is OrigClOrdID by FIX's own rule, never read off a
-    # ``parent`` name, so the swap reads the parent fields themselves.
-    held_names = names | {
-        alias for field in catalog["fields"] for alias in field["metadata"].get("FIX:names", [])
-    }
     for base, held in parents.items():
         metadata = by_name[base]["metadata"]
         metadata["FIX:parents"] = [name for _, name in sorted(held)]
         by_name[base]["metadata"] = dict(sorted(metadata.items()))
-        if len(held) != 1:
-            continue
-        parent = held[0][1]
-        prefix = next(prefix for prefix in PARENT_PREFIXES if parent.startswith(prefix))
-        other = next(other for other in PARENT_PREFIXES if other != prefix)
-        swapped = other + parent[len(prefix):]
-        if swapped in held_names:
-            continue
-        aliases = by_name[parent]["metadata"]
-        aliases["FIX:names"] = aliases.get("FIX:names", []) + [swapped]
-        by_name[parent]["metadata"] = dict(sorted(aliases.items()))
-        held_names.add(swapped)
 
 # Spellings a bridge writes for a field that no FIX version ever wrote, each
 # an alias ranked after every spelling a version did: OrderID(37) arrives as a
@@ -1058,7 +1082,7 @@ def build(
         and what the field carries is the name alone.
         """
         folded_codes = fold_legacy_codes(tag, codes, listings.get(tag, []), latest["version"])
-        folded_codes = party_id_source_aliases(name, declared, folded_codes)
+        folded_codes = bridge_aliases(name, declared, folded_codes)
         if not folded_codes:
             return None
         code_values[tag] = {code["value"] for code in folded_codes}
@@ -1077,7 +1101,11 @@ def build(
             for source in reversed(SOURCES)
             if source.format == "quickfix" and tag in parsed[source.source_id]["fields"]
         )
-        metadata = {"FIX:tag": str(tag), "display": display}
+        metadata = {
+            "FIX:datatype": fix_datatype(fix_type, latest["code_sets"]),
+            "FIX:tag": str(tag),
+            "display": display,
+        }
         names = [entry["name"] for entry in entries if entry.get("name") not in (None, name)]
         if names:
             metadata["FIX:names"] = list(dict.fromkeys(names))
@@ -1121,7 +1149,10 @@ def build(
                 entries[-1] = current
             else:
                 entries.append(current)
-        metadata: dict[str, str] = {"FIX:tag": str(tag)}
+        metadata: dict[str, str] = {
+            "FIX:datatype": fix_datatype(field["type"], latest["code_sets"]),
+            "FIX:tag": str(tag),
+        }
         if field["name"] != name:
             metadata["display"] = field["name"]
         if field["doc"]:

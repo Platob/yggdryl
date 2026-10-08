@@ -7,6 +7,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "timeunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1000",
       "description": "See TimeUnit(997) for complete definition.",
       "display": "UnderlyingTimeUnit"
@@ -20,6 +21,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "timeunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1001",
       "description": "See TimeUnit(997) for complete definition.",
       "display": "LegTimeUnit"
@@ -33,6 +35,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "allocmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1002",
       "description": "Specifies the method under which a trade quantity was allocated.",
       "display": "AllocMethod"
@@ -45,6 +48,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:idmap": [
         {
           "map": "identifiers",
@@ -66,6 +70,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1005",
       "description": "Used on a multi-sided trade to designate the ReportID",
       "display": "SideTradeReportID"
@@ -78,6 +83,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1006",
       "description": "Used on a multi-sided trade to convey order routing information",
       "display": "SideFillStationCd"
@@ -90,6 +96,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1007",
       "description": "Used on a multi-sided trade to convey reason for execution",
       "display": "SideReasonCd"
@@ -103,6 +110,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "trdsubtypecodeset",
+      "FIX:datatype": "int",
       "FIX:names": [
         "sidetrdsubtyp"
       ],
@@ -120,6 +128,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:names": [
         "sideqty"
       ],
@@ -135,6 +144,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1011",
       "description": "Used to identify the event or source which gave rise to a message.",
       "display": "MessageEventSource"
@@ -149,6 +159,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "1012",
       "description": "Same as TrdRegTimestamp(769). Used in a multi-sided message to indicate relevant trade-side timestamp.",
       "display": "SideTrdRegTimestamp"
@@ -162,6 +173,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "sidetrdregtimestamptypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1013",
       "description": "Same as TrdRegTimeStampType(770). Used in a multi-sided message to indicate relevant trade-side timestamp type.",
       "display": "SideTrdRegTimestampType"
@@ -174,6 +186,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1014",
       "description": "Same as TrdRegTimestampOrigin(771). Used in a multi-sided message to indicate relevant trade-side origin or source of timestamp.",
       "display": "SideTrdRegTimestampSrc"
@@ -187,6 +200,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "asofindicatorcodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1015",
       "description": "A trade that is being submitted for a trade date prior to the current trade or clearing date, e.g. in an open outcry market an out trade being submitted for the previous trading session or trading day.",
       "display": "AsOfIndicator"
@@ -199,6 +213,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1016",
       "description": "Number of timestamp entries.",
       "display": "NoSideTrdRegTS"
@@ -211,6 +226,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1017",
       "description": "Expresses the risk of an option leg",
       "display": "LegOptionRatio"
@@ -223,6 +239,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1018",
       "description": "Identifies the number of parties identified with an instrument",
       "display": "NoInstrumentParties"
@@ -235,6 +252,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1019",
       "description": "PartyID value within an instrument party repeating group. Same values as PartyID (448)",
       "display": "InstrumentPartyID"
@@ -249,6 +267,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1020",
       "description": "Used to report volume with a trade",
       "display": "TradeVolume"
@@ -262,6 +281,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdbooktypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1021",
       "description": "Describes the type of book for which the feed is intended. Used when multiple feeds are provided over the same connection",
       "display": "MDBookType"
@@ -274,6 +294,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1022",
       "description": "Describes a class of service for a given data feed, ie Regular and Market Maker, Bandwidth Intensive or Bandwidth Conservative",
       "display": "MDFeedType"
@@ -286,6 +307,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1023",
       "description": "Integer to convey the level of a bid or offer at a given price level. This is in contrast to MDEntryPositionNo(290) which is used to convey the position of an order within a price level.",
       "display": "MDPriceLevel"
@@ -299,6 +321,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdorigintypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1024",
       "description": "Used to describe the origin of the market data entry.",
       "display": "MDOriginType"
@@ -313,6 +336,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1025",
       "description": "Indicates the first trade price of the day/session",
       "display": "FirstPx"
@@ -325,6 +349,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1026",
       "description": "The spot rate for an FX entry",
       "display": "MDEntrySpotRate"
@@ -339,6 +364,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "1027",
       "description": "Used for an F/X entry. The forward points to be added to or subtracted from the spot rate to get the \"all-in\" rate in MDEntryPx. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "MDEntryForwardPoints"
@@ -351,6 +377,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1028",
       "description": "Indicates if an order, quote or trade was initially received manually (as opposed to electronically) or if it was entered manually (as opposed to entered by automated trading software).",
       "display": "ManualOrderIndicator"
@@ -363,6 +390,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1029",
       "description": "Indicates if the customer directed this order to a specific execution venue \"Y\" or not \"N\".",
       "display": "CustDirectedOrder"
@@ -375,6 +403,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1030",
       "description": "Identifies the broker-dealer department that first took the order.",
@@ -389,6 +418,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "custorderhandlinginstcodeset",
+      "FIX:datatype": "MultipleStringValue",
       "FIX:tag": "1031",
       "description": "Codes that apply special information that the Broker / Dealer needs to report, as specified by the customer.",
       "display": "CustOrderHandlingInst"
@@ -402,6 +432,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderhandlinginstsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1032",
       "description": "Identifies the class or source of the order handling instruction values. Scope of this will apply to both CustOrderHandlingInst(1031) and DeskOrderHandlingInst(1035).",
       "display": "OrderHandlingInstSource"
@@ -415,6 +446,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "desktypecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1033",
       "description": "Identifies the type of Trading Desk.",
       "display": "DeskType"
@@ -428,6 +460,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "desktypesourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1034",
       "description": "Identifies the class or source of DeskType(1033) values. Conditionally required when DeskType(1033) is specified.",
       "display": "DeskTypeSource"
@@ -441,6 +474,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "custorderhandlinginstcodeset",
+      "FIX:datatype": "MultipleStringValue",
       "FIX:tag": "1035",
       "description": "Codes that apply special information that the broker-dealer needs to report.",
       "display": "DeskOrderHandlingInst"
@@ -454,6 +488,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "execackstatuscodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1036",
       "description": "The status of this execution acknowledgement message.",
       "display": "ExecAckStatus"
@@ -468,6 +503,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "1037",
       "description": "Indicates the underlying position amount to be delivered",
       "display": "UnderlyingDeliveryAmount"
@@ -482,6 +518,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "1038",
       "description": "Maximum notional value for a capped financial instrument",
       "display": "UnderlyingCapValue"
@@ -495,6 +532,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "settlmethodcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1039",
       "description": "Settlement method for a contract or instrument. Additional values may be used with bilateral agreement.",
       "display": "UnderlyingSettlMethod"
@@ -507,6 +545,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:idmap": [
         {
           "map": "identifiers",
@@ -528,6 +567,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1041",
       "description": "The ID assigned to a trade by the Firm to track a trade within the Firm system. This ID can be assigned either before or after submission to the exchange or central counterpary",
       "display": "FirmTradeID"
@@ -540,6 +580,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:idmap": [
         {
           "map": "identifiers",
@@ -559,6 +600,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collappltypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1043",
       "description": "conveys how the collateral should be/has been applied",
       "display": "CollApplType"
@@ -573,6 +615,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1044",
       "description": "Unit amount of the underlying security (shares) adjusted for pending corporate action not yet allocated.",
       "display": "UnderlyingAdjustedQuantity"
@@ -585,6 +628,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1045",
       "description": "Foreign exchange rate used to compute UnderlyingCurrentValue(885) (or market value) from UnderlyingCurrency(318) to Currency(15).",
       "display": "UnderlyingFXRate"
@@ -598,6 +642,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "underlyingfxratecalccodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1046",
       "description": "Specifies whether the UnderlyingFxRate(1045) should be multiplied or divided.",
       "display": "UnderlyingFXRateCalc"
@@ -611,6 +656,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "allocpositioneffectcodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1047",
       "description": "Indicates whether the resulting position after a trade should be an opening position or closing position. Used for omnibus accounting - where accounts are held on a gross basis instead of being netted together.",
       "display": "AllocPositionEffect"
@@ -624,6 +670,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "dealingcapacitycodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1048",
       "description": "Identifies role of dealer in the trade.",
       "display": "DealingCapacity"
@@ -637,6 +684,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "instrmtassignmentmethodcodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1049",
       "description": "Method under which assignment was conducted",
       "display": "InstrmtAssignmentMethod"
@@ -650,6 +698,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyidsourcecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1050",
       "description": "PartyIDSource value within an instrument partyrepeating group.",
       "display": "InstrumentPartyIDSource"
@@ -663,6 +712,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrolecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1051",
       "description": "PartyRole value within an instrument partyepeating group.",
       "display": "InstrumentPartyRole"
@@ -675,6 +725,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1052",
       "description": "Number of InstrumentPartySubID (1053) and InstrumentPartySubIDType (1054) entries",
       "display": "NoInstrumentPartySubIDs"
@@ -687,6 +738,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1053",
       "description": "PartySubID value within an instrument party repeating group.",
       "display": "InstrumentPartySubID"
@@ -700,6 +752,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partysubidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1054",
       "description": "Type of InstrumentPartySubID (1053) value.",
       "display": "InstrumentPartySubIDType"
@@ -712,6 +765,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1055",
       "description": "The Currency in which the position Amount is denominated",
       "display": "PositionCurrency"
@@ -726,6 +780,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1056",
       "description": "Used for the calculated quantity of the other side of the currency trade. Can be derived from LastQty and LastPx.",
       "display": "CalculatedCcyLastQty"
@@ -739,6 +794,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "aggressorindicatorcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1057",
       "description": "Used to identify whether the order initiator is an aggressor or not in the trade.",
       "display": "AggressorIndicator"
@@ -751,6 +807,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1058",
       "description": "Identifies the number of parties identified with an underlying instrument",
       "display": "NoUndlyInstrumentParties"
@@ -763,6 +820,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:names": [
         "undlyinstrumentpartyid"
       ],
@@ -779,6 +837,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyidsourcecodeset",
+      "FIX:datatype": "char",
       "FIX:names": [
         "undlyinstrumentpartyidsource"
       ],
@@ -795,6 +854,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrolecodeset",
+      "FIX:datatype": "int",
       "FIX:names": [
         "undlyinstrumentpartyrole"
       ],
@@ -810,6 +870,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1062",
       "description": "Number of Underlying InstrumentPartySubID (1053) and InstrumentPartySubIDType (1054) entries",
       "display": "NoUndlyInstrumentPartySubIDs"
@@ -822,6 +883,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:names": [
         "undlyinstrumentpartysubid"
       ],
@@ -838,6 +900,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partysubidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:names": [
         "undlyinstrumentpartysubidtype"
       ],
@@ -855,6 +918,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "1065",
       "description": "The bid FX Swap points for an FX Swap. It is the \"far bid forward points - near offer forward point\". Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "BidSwapPoints"
@@ -869,6 +933,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "1066",
       "description": "The offer FX Swap points for an FX Swap. It is the \"far offer forward points - near bid forward points\". Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "OfferSwapPoints"
@@ -883,6 +948,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "1067",
       "description": "The bid FX forward points for the leg of an FX Swap. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "LegBidForwardPoints"
@@ -897,6 +963,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "1068",
       "description": "The offer FX forward points for the leg of an FX Swap. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "LegOfferForwardPoints"
@@ -911,6 +978,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "1069",
       "description": "For FX Swap, this is used to express the differential between the far leg's bid/offer and the near leg's bid/offer. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "SwapPoints"
@@ -924,6 +992,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdquotetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1070",
       "description": "Identifies market data quote type.",
       "display": "MDQuoteType"
@@ -938,6 +1007,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "1071",
       "description": "For FX Swap, this is used to express the last market event for the differential between the far leg's bid/offer and the near leg's bid/offer in a fill or partial fill. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "LastSwapPoints"
@@ -952,6 +1022,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "1072",
       "description": "The gross trade amount for this side of the trade. See also GrossTradeAmt (381) for additional definition.",
       "display": "SideGrossTradeAmt"
@@ -966,6 +1037,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "1073",
       "description": "The forward points for this leg's fill event. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "LegLastForwardPoints"
@@ -980,6 +1052,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1074",
       "description": "Used for the calculated quantity of the other side of the currency for this leg. Can be derived from LegQty and LegLastPx.",
       "display": "LegCalculatedCcyLastQty"
@@ -994,6 +1067,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "1075",
       "description": "The gross trade amount of the leg. For FX Futures this is used to express the notional value of a fill when LegLastQty and other quantity fields are express in terms of contract size.",
       "display": "LegGrossTradeAmt"
@@ -1008,6 +1082,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "TZTimeOnly",
       "FIX:tag": "1079",
       "description": "Time of security's maturity expressed in local time with offset to UTC specified",
       "display": "MaturityTime"
@@ -1020,6 +1095,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1080",
       "description": "The ID reference to the order being hit or taken.",
       "display": "RefOrderID"
@@ -1033,6 +1109,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "reforderidsourcecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1081",
       "description": "Used to specify the source for the identifier in RefOrderID(1080). This can be an identifier provided in order depth market data when hitting (taking) a specific order or to identify what type of order or quote reference is being provided when seeking credit limit check. In the context of US CAT this can be used to identify related orders and quotes which are parent, previous, or manual orders or quotes. Previous relates to orders changing their unique system assigned order identifier.",
       "display": "RefOrderIDSource"
@@ -1047,6 +1124,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1082",
       "description": "Used for reserve orders when DisplayQty applies to the primary execution market (e.g.an ECN) and another quantity is to be shown at other markets (e.g. the exchange). On orders specifies the qty to be displayed, on execution reports the currently displayed quantity.",
       "display": "SecondaryDisplayQty"
@@ -1060,6 +1138,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "displaywhencodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1083",
       "description": "Instructs when to refresh DisplayQty (1138).",
       "display": "DisplayWhen"
@@ -1073,6 +1152,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "displaymethodcodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1084",
       "description": "Defines what value to use in DisplayQty (1138). If not specified the default DisplayMethod is \"1\"",
       "display": "DisplayMethod"
@@ -1087,6 +1167,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1085",
       "description": "Defines the lower quantity limit to a randomized refresh of DisplayQty.",
       "display": "DisplayLowQty"
@@ -1101,6 +1182,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1086",
       "description": "Defines the upper quantity limit to a randomized refresh of DisplayQty.",
       "display": "DisplayHighQty"
@@ -1115,6 +1197,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1087",
       "description": "Defines the minimum increment to be used when calculating a random refresh of DisplayQty. A user specifies this when he wants a larger increment than the standard provided by the market (e.g. the round lot size).",
       "display": "DisplayMinIncr"
@@ -1129,6 +1212,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1088",
       "description": "Defines the quantity used to refresh DisplayQty.",
       "display": "RefreshQty"
@@ -1143,6 +1227,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1089",
       "description": "Allows orders to specify a minimum quantity that applies to every execution (one execution could be for multiple counter-orders). The order may still fill against smaller orders, but the cumulative quantity of the execution must be in multiples of the MatchIncrement.",
       "display": "MatchIncrement"
@@ -1155,6 +1240,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1090",
       "description": "Allows an order to specify a maximum number of price levels to trade through. Only valid for aggressive orders and during continuous (autoexecution) trading sessions. Property lost when order is put on book. A partially filled order is assigned last trade price as limit price. Non-filled order behaves as ordinary Market or Limit.",
       "display": "MaxPriceLevels"
@@ -1167,6 +1253,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1091",
       "description": "Allows trader to explicitly request anonymity or disclosure in pre-trade market data feeds. Anonymity is relevant in markets where counterparties are regularly disclosed in order depth feeds. Disclosure is relevant when counterparties are not normally visible.",
       "display": "PreTradeAnonymity"
@@ -1180,6 +1267,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "priceprotectionscopecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1092",
       "description": "Defines the type of price protection the customer requires on their order.",
       "display": "PriceProtectionScope"
@@ -1193,6 +1281,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "lottypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1093",
       "description": "Defines the lot type assigned to the order.",
       "display": "LotType"
@@ -1206,6 +1295,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "pegpricetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1094",
       "description": "Defines the type of peg.",
       "display": "PegPriceType"
@@ -1220,6 +1310,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1095",
       "description": "The value of the reference price that the order is pegged to. PeggedRefPrice + PegOffsetValue (211) = PeggedPrice (839) unless the limit price (44, Price) is breached. The values may not be exact due to rounding.",
       "display": "PeggedRefPrice"
@@ -1233,6 +1324,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1096",
       "description": "Defines the identity of the security off whose prices the order will peg. Same values as SecurityIDSource (22)",
       "display": "PegSecurityIDSource"
@@ -1245,6 +1337,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1097",
       "description": "Defines the identity of the security off whose prices the order will peg.",
       "display": "PegSecurityID"
@@ -1257,6 +1350,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1098",
       "description": "Defines the common, 'human understood' representation of the security off whose prices the order will Peg.",
       "display": "PegSymbol"
@@ -1269,6 +1363,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1099",
       "description": "Security description of the security off whose prices the order will Peg.",
       "display": "PegSecurityDesc"

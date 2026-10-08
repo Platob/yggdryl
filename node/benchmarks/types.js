@@ -357,7 +357,14 @@ function drained(windows) {
   }
   return rows
 }
+// The rows of every partition a stream is cut into, drained pair by pair.
+function partitionRows(partitions) {
+  let rows = 0
+  for (const [, chunked] of partitions) rows += chunked.length
+  return rows
+}
 if (
+  partitionRows(SerieReader.fromChunked(tickedChunked).partitionBy('venue')) !== orderRows ||
   ticked.windowBy('venue').length !== 4 ||
   tickedChunked.windowBy('venue').length !== 4 ||
   drained(SerieReader.fromSerie(ticked).windowBy('venue', true)) !== orderRows ||
@@ -379,6 +386,17 @@ benchmark('serie_reader/window_by_drained', () =>
 )
 benchmark('serie_reader/window_by_sorted_drained', () =>
   drained(SerieReader.fromSerie(ticked).windowBy('venue', true)),
+)
+// A stream of two chunks cut by venue: every partition held to the end and
+// closed in key order, then one open at a time on one thread, each closed as
+// the next venue arrives.
+benchmark('serie_reader/partition_by_drained', () =>
+  partitionRows(SerieReader.fromChunked(tickedChunked).partitionBy('venue')),
+)
+benchmark('serie_reader/partition_by_bounded_drained', () =>
+  partitionRows(
+    SerieReader.fromChunked(tickedChunked).partitionBy('venue', { maxOpen: 1, threads: 1 }),
+  ),
 )
 benchmark('schema/map_of', () => fields.mapOf('labels', 'utf8', 'int32'))
 benchmark('schema/time_infer_time32', () => DataType.time('ms'))

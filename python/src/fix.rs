@@ -41,7 +41,8 @@ use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
 use crate::isin_registry::PyIsinRegistry;
 use crate::scalar::{PyScalar, from_py};
-use crate::serie::{PySerieReader, serie_source_of};
+use crate::serie::serie_source_of;
+use crate::stream_chunked_serie::PyStreamChunkedSerie;
 use crate::text::codec::{PythonWriter, with_python_bytes};
 use crate::text::line::{PyTextLine, core_path_from_value};
 use crate::uri::core_url_from_value;
@@ -784,7 +785,8 @@ impl PyFixRegistry {
     /// The parent types of the identifier type `base`, nearest first: the
     /// list a field stating it names under `FIX:parents`, else the ones its
     /// name has (`orderid` is `["parentorderid", "origorderid"]`, `clordid`
-    /// `["origclordid"]`; a parent type has none).
+    /// `["origclordid"]`, `tradereportid` `["tradereportrefid"]`; only a
+    /// chain identity has any, so `execid` and a parent type have none).
     fn parents_of(&self, base: &str) -> PyResult<Vec<String>> {
         let base: IdType = base.parse().map_err(value_error)?;
         Ok(self
@@ -1978,7 +1980,7 @@ impl PyFixMsg {
     /// the dictionary. A key reaching a typed fact - a header or trailer
     /// tag, a crate column, one of the FIX fields a message lifts - records
     /// it on the holder that owns it, and `None` clears it. A key reaching the capture's
-    /// own column - `sourceurl` (65051), by tag or by name - is a located
+    /// own column - `sourceurl` (65052), by tag or by name - is a located
     /// `ValueError`: a message holds no fact for it, and a row child would
     /// put it on the wire. Any other key lands in the row: a
     /// known field types the value through the core's value contract, `None`
@@ -2339,6 +2341,23 @@ impl PyFixMsg {
     #[getter]
     fn currency(&self) -> PyScalar {
         code_scalar(self.inner.get_currency())
+    }
+
+    /// The currency the instrument originates in - the one it was issued
+    /// in - as the `ccy` code it is, where the message states it (the crate
+    /// field `origccy`) or a registry filled it; `None` where neither did,
+    /// never the currency.
+    #[getter]
+    fn origccy(&self) -> Option<PyScalar> {
+        let held = self.inner.get_origccy();
+        (!held.is_none()).then(|| code_scalar(held))
+    }
+
+    /// The currency an amount converts from: `origccy` where held, else
+    /// `currency` - never `XXX` where a currency is stated.
+    #[getter]
+    fn origin_currency(&self) -> PyScalar {
+        code_scalar(self.inner.origin_currency())
     }
 
     /// The quantity the message states, as a decimal; `None` where it
@@ -2742,7 +2761,7 @@ impl PyFixMsg {
 /// the C stream interface, one batch at a time. Each Arrow method has a serie
 /// face - `parse_text_serie`, `lifecycle_serie`, `market_data_serie`,
 /// `messages_serie`, `serie_reader`, `book_serie`, `market_serie` - answering
-/// a native `SerieReader` that a write takes off the GIL.
+/// a native `StreamChunkedSerie` that a write takes off the GIL.
 #[pyclass(
     name = "FixCodec",
     module = "yggdryl._native",
@@ -3417,16 +3436,19 @@ impl PyFixCodec {
     /// stateful book iterator into a `pyarrow.RecordBatchReader` of lifted
     /// `marketdata` rows, one `book_event` row per book.
     ///
-    /// A book folds orders, quotes and `W`/`X` book messages; every other
-    /// record is ignored before it is expanded - a fill moves a book through
-    /// its order's or quote's report, so an execution, and a trade whose
-    /// fills are executions, never reach one. A quote is one entry resting
-    /// on each leg it states, its bid and its offer alike. What an admitted
-    /// message states that cannot stand is passed over with a warning;
-    /// the iterable's own failure follows the completed book prefix.
+    /// A book folds orders, quotes and `W`/`X` book messages into its sides
+    /// and records every execution among its events; every other record is
+    /// ignored before it is expanded - a fill moves a book through its
+    /// order's or quote's report, so the execution moves nothing, and a
+    /// trade, whose fills are executions, never reaches one. A quote is one
+    /// entry resting on each leg it states, its bid and its offer alike.
+    /// What an admitted message states that cannot stand is passed over
+    /// with a warning; the iterable's own failure follows the completed book
+    /// prefix.
     ///
     /// `snapshot_millis` enables epoch-aligned book snapshots, at which a
-    /// book is emitted whole; every other book states its deltas. One book
+    /// complete book is emitted; every other book is a delta book, stating
+    /// its delta and its events alone. One book
     /// is kept per book key - the instrument's ISIN, else its ticker, else
     /// `XX0000000000`. `filter` - a `Filter`, a `Term`, an `Expression` or
     /// the text of a predicate over the `marketdata` row - narrows what the
@@ -3523,10 +3545,10 @@ impl PyFixCodec {
         Self::reader_to_pyarrow(py, lifted)
     }
 
-    /// `parse_text_arrow_reader` answered as a native `SerieReader`.
+    /// `parse_text_arrow_reader` answered as a native `StreamChunkedSerie`.
     ///
-    /// `source` is a `Serie`, a `ChunkedSerie`, a `SerieReader` - such as
-    /// `IOBase.read_serie` answers - or anything `SerieReader.from_` reads.
+    /// `source` is a `Serie`, a `ChunkedSerie`, a `StreamChunkedSerie` - such as
+    /// `IOBase.read_serie` answers - or anything `StreamChunkedSerie.from_` reads.
     /// A native source crosses as the batches it already is, and the answer
     /// stays native: handed to `append_serie` or `overwrite_serie`, or to
     /// another serie face, it is written or read off the GIL with no
@@ -3535,40 +3557,40 @@ impl PyFixCodec {
         &self,
         py: Python<'_>,
         source: &Bound<'_, PyAny>,
-    ) -> PyResult<PySerieReader> {
+    ) -> PyResult<PyStreamChunkedSerie> {
         let source = serie_source_of(source)?;
         let inner = &self.inner;
         Self::released(py, || inner.parse_text_serie(source))
-            .map(PySerieReader::from)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 
-    /// `lifecycle_arrow_reader` answered as a native `SerieReader`, over the
+    /// `lifecycle_arrow_reader` answered as a native `StreamChunkedSerie`, over the
     /// sources `parse_text_serie` takes; the root is the source's, without
     /// the `SORT:by` the walk no longer keeps.
     fn lifecycle_serie(
         &self,
         py: Python<'_>,
         source: &Bound<'_, PyAny>,
-    ) -> PyResult<PySerieReader> {
+    ) -> PyResult<PyStreamChunkedSerie> {
         let source = serie_source_of(source)?;
         let inner = &self.inner;
         Self::released(py, || inner.lifecycle_serie(source))
-            .map(PySerieReader::from)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 
-    /// `market_data_arrow_reader` answered as a native `SerieReader` of
+    /// `market_data_arrow_reader` answered as a native `StreamChunkedSerie` of
     /// lifted `marketdata` rows, over the sources `parse_text_serie` takes.
     fn market_data_serie(
         &self,
         py: Python<'_>,
         source: &Bound<'_, PyAny>,
-    ) -> PyResult<PySerieReader> {
+    ) -> PyResult<PyStreamChunkedSerie> {
         let source = serie_source_of(source)?;
         let inner = &self.inner;
         Self::released(py, || inner.market_data_serie(source))
-            .map(PySerieReader::from)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 
@@ -3583,13 +3605,13 @@ impl PyFixCodec {
             .map_err(value_error)
     }
 
-    /// `arrow_reader` answered as a native `SerieReader` under `schema` as a
+    /// `arrow_reader` answered as a native `StreamChunkedSerie` under `schema` as a
     /// record root; a `SORT:by` it declares is verified as records land.
-    fn serie_reader(
+    fn chunked_stream(
         &self,
         schema: &Bound<'_, PyAny>,
         messages: &Bound<'_, PyAny>,
-    ) -> PyResult<PySerieReader> {
+    ) -> PyResult<PyStreamChunkedSerie> {
         let schema = core_field_from_value(schema)?;
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
@@ -3597,12 +3619,12 @@ impl PyFixCodec {
             failed.take().map(|error| Err(python_failure(error)))
         }));
         self.inner
-            .serie_reader(schema, messages)
-            .map(PySerieReader::from)
+            .chunked_stream(schema, messages)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 
-    /// `book_arrow_reader` answered as a native `SerieReader` of lifted
+    /// `book_arrow_reader` answered as a native `StreamChunkedSerie` of lifted
     /// `marketdata` rows.
     #[pyo3(signature = (messages, snapshot_millis=0, filter=None))]
     fn book_serie(
@@ -3610,7 +3632,7 @@ impl PyFixCodec {
         messages: &Bound<'_, PyAny>,
         snapshot_millis: u64,
         filter: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<PySerieReader> {
+    ) -> PyResult<PyStreamChunkedSerie> {
         let filter = filter
             .map(crate::expression::filter_from_value)
             .transpose()?;
@@ -3621,13 +3643,13 @@ impl PyFixCodec {
         }));
         self.inner
             .book_serie(messages, snapshot_millis, filter.as_ref())
-            .map(PySerieReader::from)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 
-    /// `market_arrow_reader` answered as a native `SerieReader` of lifted
+    /// `market_arrow_reader` answered as a native `StreamChunkedSerie` of lifted
     /// `marketdata` rows.
-    fn market_serie(&self, messages: &Bound<'_, PyAny>) -> PyResult<PySerieReader> {
+    fn market_serie(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyStreamChunkedSerie> {
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
         let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
@@ -3635,7 +3657,7 @@ impl PyFixCodec {
         }));
         self.inner
             .market_serie(messages)
-            .map(PySerieReader::from)
+            .map(PyStreamChunkedSerie::from)
             .map_err(value_error)
     }
 

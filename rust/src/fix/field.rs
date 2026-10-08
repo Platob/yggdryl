@@ -57,6 +57,10 @@ const NULLS: &str = "nulls";
 /// The name of the FIX code set this field's values are drawn from; the
 /// dictionary holds its members.
 const CODESET: &str = "codeset";
+/// The FIX datatype the field was declared under, as the specification
+/// spells it - `TZTimeOnly`, `UTCTimestamp`, `Qty` - which the crate
+/// datatype does not recover.
+const DATATYPE: &str = "datatype";
 /// The rules naming a code of this field's set from the prose in front of a
 /// payload; tag 385's.
 const DIRECTIONS: &str = "directions";
@@ -458,6 +462,30 @@ impl<'field> FixField<'field> {
     /// answers the members. A field drawing on no set answers nothing.
     pub fn codeset(&self) -> Option<&'field str> {
         self.get(CODESET)
+    }
+
+    /// Returns the FIX datatype this field was declared under, as the
+    /// specification spells it: `UTCTimestamp`, `TZTimeOnly`, `Qty`,
+    /// `MonthYear`; a field typed by a code set states the set's base type.
+    ///
+    /// The one fact the crate datatype does not recover: `UTCTimestamp`,
+    /// `TZTimestamp`, `UTCDateOnly` and `TZTimeOnly` are one
+    /// `datetime64(ns,"UTC")`, and only the last is a clock with no date,
+    /// which the FIX codec reads through
+    /// [`DateTime64::from_fix_clock`](crate::DateTime64) rather than
+    /// through the datetime's own FIX door. The generator writes it on every
+    /// field; a field stating none reads as its crate datatype's reader
+    /// reads it.
+    pub fn datatype(&self) -> Option<&'field str> {
+        self.get(DATATYPE)
+    }
+
+    /// The shape the declared FIX datatype gives this field's wire text,
+    /// beyond what its crate datatype says - read off the metadata here,
+    /// once per field, and cached by the codec's memo so a value branches
+    /// on the enum and never on the metadata.
+    pub(super) fn shape(&self) -> FixShape {
+        FixShape::of(self.datatype())
     }
 
     /// Walks the rules naming a code of this field's set from the prose in
@@ -1051,6 +1079,34 @@ impl FixFieldMut<'_> {
         self.remove(CODESET)
     }
 
+    /// Records the FIX datatype this field was declared under, as the
+    /// specification spells it. An empty name removes the property.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidMetadataValue`] when the name is not one
+    /// word of ASCII letters and digits, leaving the field unchanged.
+    pub fn set_datatype(&mut self, name: &str) -> Result<()> {
+        if name.is_empty() {
+            self.remove(DATATYPE);
+            return Ok(());
+        }
+        if !name.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+            return Err(self.rejected(
+                DATATYPE,
+                format_smolstr!(
+                    "expected a FIX datatype name of ASCII letters and digits, got {name:?}"
+                ),
+            ));
+        }
+        self.store(DATATYPE, name.to_owned())
+    }
+
+    /// Removes the declared FIX datatype, answering the name it held.
+    pub fn remove_datatype(&mut self) -> Option<String> {
+        self.remove(DATATYPE)
+    }
+
     /// Records the rules naming a code of this field's set from the prose in
     /// front of a payload.
     ///
@@ -1429,6 +1485,38 @@ impl FixFieldMut<'_> {
         Error::InvalidMetadataValue {
             key: SmolStr::new(self.key(name)),
             reason,
+        }
+    }
+}
+
+/// How a field's wire text is shaped, beyond what its crate datatype says.
+///
+/// The crate datatype names the reader a value takes - a datetime's FIX
+/// door, a clock's, a number's - and every FIX datatype but one spells its
+/// values as that reader reads them. `TZTimeOnly` is the one: a clock with
+/// no date on a `datetime64` column, which the datetime's door refuses
+/// where it states no zone and which
+/// [`DateTime64::from_fix_clock`](crate::DateTime64) reads on the epoch
+/// day. Read off `FIX:datatype` once per field ([`FixField::shape`]) and
+/// held beside the field's other facts, so the per-value path branches on
+/// this and never on metadata.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum FixShape {
+    /// The shape the crate datatype's own reader takes: every FIX datatype
+    /// but `TZTimeOnly`, and a field declaring none.
+    #[default]
+    Typed,
+    /// `TZTimeOnly`: a clock and no date, closed by a zone or by nothing.
+    TzTimeOnly,
+}
+
+impl FixShape {
+    /// The shape one declared FIX datatype name gives, under the crate's
+    /// one fold; none declared is [`Self::Typed`].
+    pub(super) fn of(datatype: Option<&str>) -> Self {
+        match datatype {
+            Some(name) if folds_equal(name, "TZTimeOnly") => Self::TzTimeOnly,
+            _ => Self::Typed,
         }
     }
 }

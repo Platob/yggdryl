@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1300",
       "description": "Identifies the market segment",
       "display": "MarketSegmentID"
@@ -18,6 +19,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Exchange",
       "FIX:tag": "1301",
       "description": "Identifies the market",
       "display": "MarketID"
@@ -31,6 +33,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "maturitymonthyearincrementunitscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1302",
       "description": "Unit of measure for the Maturity Month Year Increment",
       "display": "MaturityMonthYearIncrementUnits"
@@ -44,6 +47,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "maturitymonthyearformatcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1303",
       "description": "Format used to generate the MaturityMonthYear for each option",
       "display": "MaturityMonthYearFormat"
@@ -57,6 +61,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "exercisestylecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1304",
       "description": "Expiration Style for an option class:",
       "display": "StrikeExerciseStyle"
@@ -70,6 +75,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "pricelimittypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1305",
       "description": "Describes the how the price limits are expressed",
       "display": "SecondaryPriceLimitType"
@@ -83,6 +89,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "pricelimittypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1306",
       "description": "Describes the how the price limits are expressed.",
       "display": "PriceLimitType"
@@ -96,6 +103,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "execinstvaluecodeset",
+      "FIX:datatype": "MultipleCharValue",
       "FIX:tag": "1308",
       "description": "Indicates execution instructions that are valid for the specified market segment",
       "display": "ExecInstValue"
@@ -108,6 +116,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1309",
       "description": "Allows trading rules to be expressed by trading session",
       "display": "NoTradingSessionRules"
@@ -120,6 +129,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1310",
       "description": "Number of Market Segments on which a security may trade.",
       "display": "NoMarketSegments"
@@ -132,6 +142,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1311",
       "description": "Number of instrument attributes.",
       "display": "NoDerivativeInstrAttrib"
@@ -144,6 +155,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1312",
       "display": "NoNestedInstrAttrib"
     }
@@ -156,6 +168,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "instrattribtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1313",
       "description": "Type of instrument attribute.",
       "display": "DerivativeInstrAttribType"
@@ -168,6 +181,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1314",
       "description": "Attribute value appropriate to the DerivativeInstrAttribValue(1313) field.",
       "display": "DerivativeInstrAttribValue"
@@ -181,6 +195,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1315",
       "description": "Used to express the UOM of the price if different from the contract.",
       "display": "DerivativePriceUnitOfMeasure"
@@ -195,6 +210,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1316",
       "description": "Used to express the UOM Quantity of the price if different from the contract.",
       "display": "DerivativePriceUnitOfMeasureQty"
@@ -208,6 +224,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "settlmethodcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1317",
       "description": "Settlement method for a contract or instrument.",
       "display": "DerivativeSettlMethod"
@@ -221,6 +238,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "pricequotemethodcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "1318",
       "description": "Specifies the method for price quotation.",
       "display": "DerivativePriceQuoteMethod"
@@ -234,6 +252,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "valuationmethodcodeset",
+      "FIX:datatype": "String",
       "FIX:names": [
         "derivativefuturesvaluationmethod"
       ],
@@ -250,6 +269,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "listmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1320",
       "description": "Indicates whether instruments are pre-listed only or can also be defined via user request.",
       "display": "DerivativeListMethod"
@@ -264,6 +284,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1321",
       "description": "Used to express the ceiling price of a capped call.",
       "display": "DerivativeCapPrice"
@@ -278,6 +299,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1322",
       "description": "Used to express the floor price of a capped put.",
       "display": "DerivativeFloorPrice"
@@ -291,6 +313,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "putorcallcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1323",
       "description": "Indicates whether an option contract is a put, call, chooser or undetermined.",
       "display": "DerivativePutOrCall"
@@ -304,6 +327,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "listupdateactioncodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1324",
       "description": "If provided, then Instrument occurrence has explicitly changed",
       "display": "ListUpdateAction"
@@ -316,6 +340,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1325",
       "description": "Reference to a parent Market Segment. See MarketSegmentID(1300)",
       "display": "ParentMktSegmID"
@@ -328,6 +353,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1326",
       "description": "Trading Session description",
       "display": "TradingSessionDesc"
@@ -341,6 +367,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityupdateactioncodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1327",
       "description": "Specifies the action taken for the specified trading sessions.",
       "display": "TradSesUpdateAction"
@@ -353,6 +380,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1328",
       "description": "Identifies the reason for rejection.",
       "display": "RejectText"
@@ -365,6 +393,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1329",
       "description": "This is a multiplier that Clearing (Fee system) will use to calculate fees and will be sent to the firms on their confirms.",
       "display": "FeeMultiplier"
@@ -377,6 +406,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1330",
       "description": "Refer to definition for Symbol(55)",
@@ -390,6 +420,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1331",
       "description": "Refer to definition for SymbolSfx(65)",
@@ -403,6 +434,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1332",
       "description": "Refer to definition for SecurityID(48)",
@@ -416,6 +448,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1333",
       "description": "Refer to definition for SecurityIDSource(22)",
@@ -429,6 +462,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1334",
       "description": "Refer to definition for NoSecurityAltID(454)",
@@ -442,6 +476,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1335",
       "description": "Refer to definition for SecurityAltID(455)",
@@ -455,6 +490,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1336",
       "description": "Refer to definition for SecurityAltIDSource(456)",
@@ -468,6 +504,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1337",
       "description": "Refer to definition for SecurityType(167)",
@@ -481,6 +518,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1338",
       "description": "Refer to definition for SecuritySubType(762)",
@@ -496,6 +534,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "MonthYear",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1339",
       "description": "Refer to definition for MaturityMonthYear(200)",
@@ -511,6 +550,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1340",
       "description": "Refer to definition for StrikePrice(202)",
@@ -524,6 +564,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1341",
       "description": "Refer to definition for SecurityExchange(207)",
@@ -537,6 +578,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1342",
       "description": "Number of Underlyings, Identifies the Underlying of the Leg",
@@ -550,6 +592,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1343",
       "description": "Refer to definition for PutOrCall(201)",
@@ -563,6 +606,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1344",
       "description": "Refer to definition for CFICode(461)",
@@ -577,6 +621,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1345",
       "description": "Date of maturity.",
@@ -590,6 +635,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1346",
       "description": "Unique identifier for request",
       "display": "ApplReqID"
@@ -603,6 +649,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "applreqtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1347",
       "description": "Type of Application Message Request being made.",
       "display": "ApplReqType"
@@ -616,6 +663,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "applresponsetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1348",
       "description": "Used to indicate the type of acknowledgement being sent.",
       "display": "ApplResponseType"
@@ -628,6 +676,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1349",
       "description": "Total number of messages included in transmission.",
       "display": "ApplTotalMessageCount"
@@ -640,6 +689,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "SeqNum",
       "FIX:tag": "1350",
       "description": "Application sequence number of last message in transmission",
       "display": "ApplLastSeqNum"
@@ -652,6 +702,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1351",
       "description": "Specifies number of application id occurrences",
       "display": "NoApplIDs"
@@ -664,6 +715,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1352",
       "description": "Used to indicate that a message is being sent in response to an Application Message Request. It is possible for both ApplResendFlag and PossDupFlag to be set on the same message if the Sender's cache size is greater than zero and the message is being resent due to a session level resend request",
       "display": "ApplResendFlag"
@@ -676,6 +728,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1353",
       "description": "Identifier for the Applicaton Message Request Ack",
       "display": "ApplResponseID"
@@ -689,6 +742,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "applresponseerrorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1354",
       "description": "Used to return an error code or text associated with a response to an Application Request.",
       "display": "ApplResponseError"
@@ -701,6 +755,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1355",
       "description": "Reference to the unique application identifier which corresponds to ApplID(1180) from the Application Sequence Group component",
       "display": "RefApplID"
@@ -713,6 +768,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1356",
       "description": "Identifier for the Application Sequence Reset",
       "display": "ApplReportID"
@@ -725,6 +781,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "SeqNum",
       "FIX:tag": "1357",
       "description": "Application sequence number of last message in transmission.",
       "display": "RefApplLastSeqNum"
@@ -738,6 +795,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "putorcallcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1358",
       "description": "Indicates whether a leg option contract is a put, call, chooser or undetermined.",
       "display": "LegPutOrCall"
@@ -750,6 +808,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "1361",
       "description": "Total number of fill entries across all messages. Should be the sum of all NoFills(1362) in each message that has repeating list of fill entries related to the same ExecID(17). Used to support fragmentation.",
       "display": "TotNoFills"
@@ -762,6 +821,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1362",
       "display": "NoFills"
     }
@@ -773,6 +833,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1363",
       "description": "Refer to ExecID(17). Used when multiple partial fills are reported in single Execution Report. ExecID and FillExecID should not overlap,",
       "display": "FillExecID"
@@ -787,6 +848,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "1364",
       "description": "Price of Fill. Refer to LastPx(31).",
       "display": "FillPx"
@@ -801,6 +863,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "1365",
       "description": "Quantity of Fill. Refer to LastQty(32).",
       "display": "FillQty"
@@ -813,6 +876,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1366",
       "description": "The AllocID(70) of an individual leg of a multileg order.",
       "display": "LegAllocID"
@@ -825,6 +889,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "1367",
       "description": "Identifies settlement currency for the leg level allocation.",
       "display": "LegAllocSettlCurrency"
@@ -838,6 +903,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradseseventcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1368",
       "description": "Identifies an event related to a TradSesStatus(340). An event occurs and is gone, it is not a state that applies for a period of time.",
       "display": "TradSesEvent"
@@ -850,6 +916,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1369",
       "description": "Unique identifier of Order Mass Cancel Report or Order Mass Action Report message as assigned by sell-side (broker, exchange, ECN)",
       "display": "MassActionReportID"
@@ -862,6 +929,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1370",
       "description": "Number of not affected orders in the repeating group of order ids.",
       "display": "NoNotAffectedOrders"
@@ -874,6 +942,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1371",
       "description": "OrderID(37) of an order not affected by a mass cancel or mass action request.",
       "display": "NotAffectedOrderID"
@@ -886,6 +955,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1372",
       "description": "ClOrdID(11) of an order not affected by a mass cancel or mass action request.",
       "display": "NotAffOrigClOrdID"
@@ -899,6 +969,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "massactiontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1373",
       "description": "Specifies the type of action requested",
       "display": "MassActionType"
@@ -912,6 +983,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "massactionscopecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1374",
       "description": "Specifies scope of Order Mass Action Request.",
       "display": "MassActionScope"
@@ -925,6 +997,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "massactionresponsecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1375",
       "description": "Specifies the action taken by counterparty order handling system as a result of the action type indicated in MassActionType of the Order Mass Action Request.",
       "display": "MassActionResponse"
@@ -938,6 +1011,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "massactionrejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1376",
       "description": "Reason Order Mass Action Request was rejected",
       "display": "MassActionRejectReason"
@@ -951,6 +1025,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "multilegmodelcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1377",
       "description": "Specifies the type of multileg order. Defines whether the security is pre-defined or user-defined. Note that MultilegModel(1377)=2(User-defined, Non-Securitized, Multileg) does not apply for Securities.",
       "display": "MultilegModel"
@@ -964,6 +1039,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "multilegpricemethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1378",
       "description": "Code to represent how the multileg price is to be interpreted when applied to the legs.",
       "display": "MultilegPriceMethod"
@@ -976,6 +1052,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1379",
       "description": "Specifies the volatility of an instrument leg.",
       "display": "LegVolatility"
@@ -988,6 +1065,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1380",
       "description": "The continuously-compounded annualized dividend yield of the underlying(s) of an option. Used as a parameter to theoretical option pricing models.",
       "display": "DividendYield"
@@ -1000,6 +1078,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "1381",
       "description": "Refer to definition for DividendYield(1380).",
       "display": "LegDividendYield"
@@ -1012,6 +1091,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1382",
       "description": "Specifies the currency ratio between the currency used for a multileg price and the currency used by the outright book defined by the leg. Example: Multileg quoted in EUR, outright leg in USD and 1 EUR = 0,7 USD then CurrencyRatio = 0.7",
       "display": "CurrencyRatio"
@@ -1024,6 +1104,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "1383",
       "description": "Specifies the currency ratio between the currency used for a multileg price and the currency used by the outright book defined by the leg. Example: Multileg quoted in EUR, outright leg in USD and 1 EUR = 0,7 USD then LegCurrencyRatio = 0.7",
       "display": "LegCurrencyRatio"
@@ -1037,6 +1118,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "legexecinstcodeset",
+      "FIX:datatype": "MultipleCharValue",
       "FIX:tag": "1384",
       "description": "Refer to ExecInst(18)",
       "display": "LegExecInst"
@@ -1050,6 +1132,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "contingencytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1385",
       "description": "Defines the type of contingency.",
       "display": "ContingencyType"
@@ -1063,6 +1146,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "listrejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1386",
       "description": "Identifies the reason for rejection of a New Order List message. Note that OrdRejReason(103) is used if the rejection is based on properties of an individual order part of the List.",
       "display": "ListRejectReason"
@@ -1075,6 +1159,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "1387",
       "description": "Number of trade reporting indicators",
       "display": "NoTrdRepIndicators"
@@ -1088,6 +1173,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrolecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1388",
       "description": "Identifies the type of party for trade reporting. Same values as PartyRole(452).",
       "display": "TrdRepPartyRole"
@@ -1100,6 +1186,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "1389",
       "description": "Specifies whether the trade should be reported (or not) to parties of the provided TrdRepPartyRole(1388). Used to override standard reporting behavior by the receiver of the trade report and thereby complements the PublTrdIndicator( tag1390).",
       "display": "TrdRepIndicator"
@@ -1113,6 +1200,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradepublishindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "1390",
       "description": "Indicates if a trade should be or has been published via a market publication service. The indicator governs all publication services of the recipient. Replaces PublishTrdIndicator(852).",
       "display": "TradePublishIndicator"
@@ -1125,6 +1213,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "char",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1391",
       "description": "Refer to definition of OptAttribute(206)",
@@ -1138,6 +1227,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "1392",
       "description": "Refer to definition of SecurityDesc(107)",
@@ -1151,6 +1241,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1393",
       "description": "Unique ID of a Market Definition Request message.",
       "display": "MarketReqID"
@@ -1163,6 +1254,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1394",
       "description": "Market Definition message identifier.",
       "display": "MarketReportID"
@@ -1176,6 +1268,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityupdateactioncodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "1395",
       "description": "Specifies the action taken for the specified MarketID(1301) + MarketSegmentID(1300).",
       "display": "MarketUpdateAction"
@@ -1188,6 +1281,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "1396",
       "description": "Description or name of Market Segment",
       "display": "MarketSegmentDesc"
@@ -1200,6 +1294,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "1397",
       "description": "Byte length of encoded (non-ASCII characters) EncodedMktSegmDesc(1324) field.",
       "display": "EncodedMktSegmDescLen"
@@ -1212,6 +1307,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "1398",
       "description": "Encoded (non-ASCII characters) representation of the MarketSegmDesc(1396) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the MarketSegmDesc field.",
       "display": "EncodedMktSegmDesc"
@@ -1224,6 +1320,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "SeqNum",
       "FIX:tag": "1399",
       "description": "Used to specify a new application sequence number.",
       "display": "ApplNewSeqNum"

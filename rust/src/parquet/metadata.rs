@@ -70,8 +70,9 @@ pub struct FileStatistics {
 }
 
 impl FileStatistics {
-    /// Project Parquet footer metadata into the shared statistics value.
-    pub(super) fn from_metadata(metadata: &ParquetMetaData) -> Self {
+    /// Project Parquet footer metadata into the shared statistics value:
+    /// a footer read, or the one a write closed its file with.
+    pub(crate) fn from_metadata(metadata: &ParquetMetaData) -> Self {
         let file = metadata.file_metadata();
         let key_value_metadata = file
             .key_value_metadata()

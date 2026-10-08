@@ -25,7 +25,9 @@ use crate::{Error, IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result,
 /// object or the only thing sharing its name is under it - and a second one
 /// otherwise, because `.` sorts below `/`, so `lake/part.parquet` stands
 /// between `lake/part` and the keys under `lake/part/` and hides them from the
-/// first answer.
+/// first answer. The listing that finds an object states its size beside its
+/// key, and the object the location resolves to keeps it: its
+/// [`IOBase::size`] asks nothing more, no `HEAD` after the listing.
 ///
 /// That is what its kind costs. Whether anything is there ([`Self::exists`])
 /// is asked even of a location spelled as a container, because the spelling
@@ -51,9 +53,26 @@ pub struct S3Path {
     /// The implementation this location resolved to, kept so a staged write
     /// survives between calls.
     resolved: Mutex<Option<Resolved>>,
-    /// What the store last said is at this location, kept for the same reason
-    /// and dropped by the same operations.
-    probed: Mutex<Option<IOKind>>,
+    /// What the store last said is at this location - its role and, for an
+    /// object, the size the listing stated - kept for the same reason and
+    /// dropped by the same operations.
+    probed: Mutex<Option<Probed>>,
+}
+
+/// What one probe of a location found: its role, and the size the listing
+/// stated beside an object's key, which the object handle it resolves to is
+/// built knowing - so asking it for its size costs nothing more.
+#[derive(Clone, Copy, Debug)]
+struct Probed {
+    kind: IOKind,
+    size: Option<u64>,
+}
+
+impl Probed {
+    /// A role that states no size: a container, or nothing at all.
+    const fn role(kind: IOKind) -> Self {
+        Self { kind, size: None }
+    }
 }
 
 /// The specialized implementations an S3 location can resolve to.
@@ -146,6 +165,18 @@ impl S3Path {
         Ok(file)
     }
 
+    /// The object handle a probe resolved this location to, knowing the size
+    /// the listing stated beside its key - as a listed child of an
+    /// [`S3Folder`] is - so the resolved object answers its size without a
+    /// `HEAD`.
+    fn resolved_file(&self, probed: Probed) -> Result<S3File> {
+        let file = self.as_file()?;
+        Ok(match probed.size {
+            Some(size) => file.with_known_size(size),
+            None => file,
+        })
+    }
+
     /// Ask the store what is at this location.
     ///
     /// One listing bounded to a single key answers most of it: the key itself
@@ -160,18 +191,28 @@ impl S3Path {
     /// first, and it says nothing about whether the prefix exists, so the
     /// prefix is asked for by name.
     ///
+    /// An object found this way comes back with the size its listing entry
+    /// states, which the object handle is then built knowing.
+    ///
     /// A refusal is not an answer: it propagates rather than reading as
     /// absence, because a caller who cannot see a location must hear so.
-    fn probe(&self) -> Result<IOKind> {
+    fn probe(&self) -> Result<Probed> {
         let page = self
             .client
             .list_objects(&self.bucket, &self.key, None, None, 1)?;
         let under = format!("{}/", self.key);
         match page.objects.first() {
-            Some(first) if first.key == self.key => return Ok(IOKind::File),
-            Some(first) if first.key.starts_with(&under) => return Ok(IOKind::Directory),
+            Some(first) if first.key == self.key => {
+                return Ok(Probed {
+                    kind: IOKind::File,
+                    size: Some(first.size),
+                });
+            }
+            Some(first) if first.key.starts_with(&under) => {
+                return Ok(Probed::role(IOKind::Directory));
+            }
             // Nothing shares the name at all, so nothing is under it either.
-            None => return Ok(IOKind::Unknown),
+            None => return Ok(Probed::role(IOKind::Unknown)),
             Some(_) => {}
         }
         let page = self
@@ -180,9 +221,9 @@ impl S3Path {
         if page.objects.is_empty() {
             // A sibling merely shares a textual prefix, like `lake/partial`
             // for `lake/part`: nothing is at this location.
-            Ok(IOKind::Unknown)
+            Ok(Probed::role(IOKind::Unknown))
         } else {
-            Ok(IOKind::Directory)
+            Ok(Probed::role(IOKind::Directory))
         }
     }
 
@@ -208,17 +249,22 @@ impl S3Path {
     /// container, what encoding does it hold, how many columns - would
     /// otherwise pay for three listings to hear one answer three times. It is
     /// dropped by the operations that can change the answer.
-    fn unresolved_kind(&self) -> Result<IOKind> {
+    fn unresolved(&self) -> Result<Probed> {
         // A glob or a trailing slash says what this is, so nothing is asked.
         if self.url.is_glob() || self.url.has_trailing_slash() || self.key.is_empty() {
-            return Ok(IOKind::Directory);
+            return Ok(Probed::role(IOKind::Directory));
         }
         if let Some(known) = *self.probed.lock().map_err(|_| poisoned())? {
             return Ok(known);
         }
-        let kind = self.probe()?;
-        *self.probed.lock().map_err(|_| poisoned())? = Some(kind);
-        Ok(kind)
+        let probed = self.probe()?;
+        *self.probed.lock().map_err(|_| poisoned())? = Some(probed);
+        Ok(probed)
+    }
+
+    /// The role [`Self::unresolved`] settles.
+    fn unresolved_kind(&self) -> Result<IOKind> {
+        Ok(self.unresolved()?.kind)
     }
 
     /// What an infallible verb answers when asking the store failed: `absent`,
@@ -249,9 +295,10 @@ impl S3Path {
     fn with_resolved<T>(&self, absent: T, read: impl FnOnce(&dyn IOBase) -> T) -> Result<T> {
         let mut slot = self.resolved.lock().map_err(|_| poisoned())?;
         if slot.is_none() {
-            *slot = match self.unresolved_kind()? {
+            let probed = self.unresolved()?;
+            *slot = match probed.kind {
                 IOKind::Directory => Some(Resolved::Directory(self.as_directory()?)),
-                IOKind::File => Some(Resolved::File(self.as_file()?)),
+                IOKind::File => Some(Resolved::File(self.resolved_file(probed)?)),
                 _ => None,
             };
         }
@@ -268,9 +315,10 @@ impl S3Path {
     fn with_resolved_mut<T>(&self, write: impl FnOnce(&mut dyn IOBase) -> T) -> Result<T> {
         let mut slot = self.resolved.lock().map_err(|_| poisoned())?;
         if slot.is_none() {
-            *slot = Some(match self.unresolved_kind()? {
+            let probed = self.unresolved()?;
+            *slot = Some(match probed.kind {
                 IOKind::Directory => Resolved::Directory(self.as_directory()?),
-                _ => Resolved::File(self.as_file()?),
+                _ => Resolved::File(self.resolved_file(probed)?),
             });
         }
         let resolved = slot.as_mut().ok_or_else(|| {
@@ -366,6 +414,13 @@ impl IOBase for S3Path {
         self.with_resolved(Ok(Vec::new()), |handle| {
             handle.read_range_bytes(offset, length)
         })?
+    }
+
+    /// The resolved handle's tail read: the one listing that settles the
+    /// role, then an object's one suffix-ranged `GET`; nothing at the
+    /// location is no bytes and a total of `0`.
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        self.with_resolved(Ok((Vec::new(), 0)), |handle| handle.read_tail_bytes(length))?
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {

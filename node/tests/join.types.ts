@@ -2,7 +2,7 @@ import {
   ChunkedSerie,
   Field,
   Serie,
-  SerieReader,
+  StreamChunkedSerie,
   SpillOptions,
   type JoinHow,
   type JoinKeys,
@@ -38,7 +38,7 @@ const chunked: ChunkedSerie = ChunkedSerie.fromSerie(trades).joinWith(
   'id',
   spelled,
 )
-const streamed: SerieReader = SerieReader.fromSerie(trades).joinWith(trades, 'id', undefined, {
+const streamed: StreamChunkedSerie = StreamChunkedSerie.fromSerie(trades).joinWith(trades, 'id', undefined, {
   build: 'left',
 })
 

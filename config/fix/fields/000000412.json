@@ -8,6 +8,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "41200",
       "description": "This is the weather Cooling Degree Days (CDD), Heating Degree Days (HDD) or HDD reference level specified as the number of (amount of) weather index units specified by the parties in the related confirmation.",
       "display": "PaymentStreamReferenceLevel"
@@ -21,6 +22,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41201",
       "description": "The unit of measure (UOM) of the rate reference level.",
       "display": "PaymentStreamReferenceLevelUnitOfMeasure"
@@ -33,6 +35,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "41202",
       "description": "When set to 'Y', it indicates the weather reference level equals zero.",
       "display": "PaymentStreamReferenceLevelEqualsZeroIndicator"
@@ -45,6 +48,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41203",
       "description": "Specifies the currency of the floating rate spread. Uses ISO 4217 currency codes.",
       "display": "PaymentStreamRateSpreadCurrency"
@@ -58,6 +62,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41204",
       "description": "Species the unit of measure (UOM) of the floating rate spread.",
       "display": "PaymentStreamRateSpreadUnitOfMeasure"
@@ -70,6 +75,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "41205",
       "description": "The number to be multiplied by the derived floating rate of the payment stream in order to arrive at the payment rate. If omitted, the floating rate conversion factor is 1.",
       "display": "PaymentStreamRateConversionFactor"
@@ -83,6 +89,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamratespreadtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41206",
       "description": "Identifies whether the rate spread is an absolute value to be added to the index rate or a percentage of the index rate.",
       "display": "PaymentStreamRateSpreadType"
@@ -95,6 +102,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "41207",
       "description": "The floating rate determined at the most recent reset. The rate is expressed in decimal form, e.g. 5% is represented as 0.05.",
       "display": "PaymentStreamLastResetRate"
@@ -107,6 +115,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "41208",
       "description": "The floating rate determined at the final reset. The rate is expressed in decimal form, e.g. 5% is represented as 0.05.",
       "display": "PaymentStreamFinalRate"
@@ -119,6 +128,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41209",
       "description": "Time unit multiplier for the calculation lag duration.",
       "display": "PaymentStreamCalculationLagPeriod"
@@ -132,6 +142,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreaminflationlagunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41210",
       "description": "Time unit associated with the calculation lag duration.",
       "display": "PaymentStreamCalculationLagUnit"
@@ -144,6 +155,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41211",
       "description": "Time unit multiplier for the relative first observation date offset.",
       "display": "PaymentStreamFirstObservationDateOffsetPeriod"
@@ -157,6 +169,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41212",
       "description": "Time unit associated with the relative first observation date offset.",
       "display": "PaymentStreamFirstObservationDateOffsetUnit"
@@ -170,6 +183,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41213",
       "description": "Specifies the commodity pricing day type.",
       "display": "PaymentStreamPricingDayType"
@@ -183,6 +197,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampricingdaydistributioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41214",
       "description": "The distribution of pricing days.",
       "display": "PaymentStreamPricingDayDistribution"
@@ -195,6 +210,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41215",
       "description": "The number of days over which pricing should take place.",
       "display": "PaymentStreamPricingDayCount"
@@ -207,6 +223,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41216",
       "description": "Specifies the business calendar to use for pricing. See https://fpml.org/coding-scheme/commodity-business-calendar for values.",
       "display": "PaymentStreamPricingBusinessCalendar"
@@ -220,6 +237,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41217",
       "description": "The business day convention used to adjust the payent stream's pricing dates. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "PaymentStreamPricingBusinessDayConvention"
@@ -232,6 +250,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41218",
       "description": "Specifies the source or legal framework for the risk apportionment. See https://fixtrading.org/packages/risk-apportionment-source for the details of the external code list.",
       "display": "DeliveryStreamRiskApportionmentSource"
@@ -244,6 +263,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41219",
       "description": "Specifies the source or legal framework for the risk apportionment. See https://fixtrading.org/packages/risk-apportionment-source for the details of the external code list.",
       "display": "LegDeliveryStreamRiskApportionmentSource"
@@ -256,6 +276,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41220",
       "description": "Number of payment dates in the repeating group.",
       "display": "NoPaymentStreamPaymentDates"
@@ -269,6 +290,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41221",
       "description": "The adjusted or unadjusted fixed stream payment date.",
       "display": "PaymentStreamPaymentDate"
@@ -282,6 +304,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "optionexercisedatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41222",
       "description": "Specifies the type of payment date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
       "display": "PaymentStreamPaymentDateType"
@@ -294,6 +317,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "41223",
       "description": "When set to 'Y', it indicates that payment dates are specified in the relevant master agreement.",
       "display": "PaymentStreamMasterAgreementPaymentDatesIndicator"
@@ -306,6 +330,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41224",
       "description": "Number of pricing dates in the repeating group.",
       "display": "NoPaymentStreamPricingDates"
@@ -319,6 +344,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41225",
       "description": "The adjusted or unadjusted fixed stream pricing date.",
       "display": "PaymentStreamPricingDate"
@@ -332,6 +358,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "optionexercisedatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41226",
       "description": "Specifies the type of pricing date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
       "display": "PaymentStreamPricingDateType"
@@ -344,6 +371,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41227",
       "description": "Number of pricing days in the repeating group.",
       "display": "NoPaymentStreamPricingDays"
@@ -357,6 +385,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampricingdayofweekcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41228",
       "description": "The day of the week on which pricing takes place.",
       "display": "PaymentStreamPricingDayOfWeek"
@@ -369,6 +398,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41229",
       "description": "The occurrence of the day of week on which pricing takes place.",
       "display": "PaymentStreamPricingDayNumber"
@@ -381,6 +411,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41230",
       "description": "Number of business centers in the repeating group.",
       "display": "NoPricingDateBusinessCenters"
@@ -393,6 +424,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41231",
       "description": "The business center calendar used to adjust pricing or fixing dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "PricingDateBusinessCenter"
@@ -406,6 +438,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41232",
       "description": "The unadjusted pricing or fixing date.",
       "display": "PricingDateUnadjusted"
@@ -419,6 +452,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41233",
       "description": "The business day convention used to adjust pricing or fixing dates. Used only to override the business day convention defined in the DateAdjustment component within the Instrument component.",
       "display": "PricingDateBusinessDayConvention"
@@ -432,6 +466,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41234",
       "description": "The adjusted pricing or fixing date.",
       "display": "PricingDateAdjusted"
@@ -445,6 +480,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "41235",
       "description": "Specifies the local market time of the pricing or fixing.",
       "display": "PricingTime"
@@ -457,6 +493,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41236",
       "description": "Specifies the business center for determining the pricing or fixing time. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "PricingTimeBusinessCenter"
@@ -469,6 +506,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41237",
       "description": "Number of asset attribute entries in the group.",
       "display": "NoStreamAssetAttributes"
@@ -481,6 +519,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41238",
       "description": "Specifies the name of the attribute. See https://fixtrading.org/packages/asset-attribute-type for code list of applicable asset attribute types.",
       "display": "StreamAssetAttributeType"
@@ -493,6 +532,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41239",
       "description": "Specifies the value of the attribute.",
       "display": "StreamAssetAttributeValue"
@@ -505,6 +545,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41240",
       "description": "Limit or lower acceptable value of the attribute.",
       "display": "StreamAssetAttributeLimit"
@@ -517,6 +558,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41241",
       "description": "Number of calculation period dates in the repeating group.",
       "display": "NoStreamCalculationPeriodDates"
@@ -530,6 +572,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41242",
       "description": "The adjusted or unadjusted fixed calculation period date.",
       "display": "StreamCalculationPeriodDate"
@@ -543,6 +586,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "optionexercisedatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41243",
       "description": "Specifies the type of fixed calculation period date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
       "display": "StreamCalculationPeriodDateType"
@@ -555,6 +599,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XID",
       "FIX:tag": "41244",
       "description": "Identifier of this calculation period for cross referencing elsewhere in the message.",
       "display": "StreamCalculationPeriodDatesXID"
@@ -567,6 +612,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "41245",
       "description": "Cross reference to another calculation period for duplicating its properties.",
       "display": "StreamCalculationPeriodDatesXIDRef"
@@ -579,6 +625,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "41246",
       "description": "When specified and set to 'Y', it indicates that the first calculation period should run from the effective date to the end of the calendar period in which the effective date falls (e.g. Jan 15 - Jan 31 if the calculation periods are one month long and effective date is Jan 15.). If 'N' or not specified, it indicates that the first calculation period should run from the effective date for one whole period (e.g. Jan 15 to Feb 14 if the calculation periods are one month long and the effective date is Jan 15.).",
       "display": "StreamCalculationBalanceOfFirstPeriod"
@@ -591,6 +638,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41247",
       "description": "Time unit multiplier for the length of time after the publication of the data when corrections can be made.",
       "display": "StreamCalculationCorrectionPeriod"
@@ -604,6 +652,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "protectiontermeventunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41248",
       "description": "Time unit associated with the length of time after the publication of the data when corrections can be made.",
       "display": "StreamCalculationCorrectionUnit"
@@ -616,6 +665,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41249",
       "description": "Number of business centers in the repeating group.",
       "display": "NoStreamCommoditySettlBusinessCenters"
@@ -628,6 +678,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41250",
       "description": "The business center calendar used to adjust the commodity delivery date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "StreamCommoditySettlBusinessCenter"
@@ -640,6 +691,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41251",
       "description": "Specifies the general base type of the commodity traded. Where possible, this should follow the naming convention used in the 2005 ISDA Commodity Definitions.",
       "display": "StreamCommodityBase"
@@ -652,6 +704,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41252",
       "description": "Specifies the type of commodity product. For coal see https://fpml.org/coding-scheme/commodity-coal-product-type for values. For metals see https://fpml.org/coding-scheme/commodity-metal-product-type for values. For bullion see https://fixtrading.org/packages/bullion-type for the external code list of bullion types.",
       "display": "StreamCommodityType"
@@ -664,6 +717,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41253",
       "description": "Specifies the market identifier for the commodity.",
       "display": "StreamCommoditySecurityID"
@@ -677,6 +731,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41254",
       "description": "Identifies the class or source of the StreamCommoditySecurityIDSource(41253) value.",
       "display": "StreamCommoditySecurityIDSource"
@@ -689,6 +744,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41255",
       "description": "Description of the commodity asset.",
       "display": "StreamCommodityDesc"
@@ -701,6 +757,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "41256",
       "description": "Byte length of encoded (non-ASCII characters) EncodedStreamCommodityDesc(41257) field.",
       "display": "EncodedStreamCommodityDescLen"
@@ -713,6 +770,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "41257",
       "description": "Encoded (non-ASCII characters) representation of the StreamCommodityDesc(41255) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the StreamCommodityDesc(41255) field.",
       "display": "EncodedStreamCommodityDesc"
@@ -726,6 +784,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41258",
       "description": "The unit of measure (UOM) of the commodity asset.",
       "display": "StreamCommodityUnitOfMeasure"
@@ -738,6 +797,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41259",
       "description": "Identifies the currency of the commodity asset. Uses ISO 4217 currency codes.",
       "display": "StreamCommodityCurrency"
@@ -750,6 +810,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Exchange",
       "FIX:tag": "41260",
       "description": "Identifies the exchange where the commodity is traded.",
       "display": "StreamCommodityExchange"
@@ -762,6 +823,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41261",
       "description": "Identifies the source of rate information used for commodities. See https://fixtrading.org/packages/commodity-rate-source for code list of applicable sources.",
       "display": "StreamCommodityRateSource"
@@ -774,6 +836,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41262",
       "description": "Identifies the reference \"page\" from the rate source.",
       "display": "StreamCommodityRateReferencePage"
@@ -786,6 +849,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41263",
       "description": "Identifies the page heading from the rate source.",
       "display": "StreamCommodityRateReferencePageHeading"
@@ -798,6 +862,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41264",
       "description": "Specifies the commodity data or information provider. See https://fpml.org/coding-scheme/commodity-information-provider for values.",
       "display": "StreamDataProvider"
@@ -810,6 +875,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41265",
       "description": "Specifies how the pricing or rate setting of the trade is to be determined or based upon. See https://fixtrading.org/packages/commodity-rate-pricing-type for code list of applicable commodity pricing types.",
       "display": "StreamCommodityPricingType"
@@ -822,6 +888,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41266",
       "description": "Time unit multiplier for the nearby settlement day.",
       "display": "StreamCommodityNearbySettlDayPeriod"
@@ -835,6 +902,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "streamcommoditynearbysettldayunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41267",
       "description": "Time unit associated with the nearby settlement day.",
       "display": "StreamCommodityNearbySettlDayUnit"
@@ -848,6 +916,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41268",
       "description": "The unadjusted commodity delivery date.",
       "display": "StreamCommoditySettlDateUnadjusted"
@@ -861,6 +930,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41269",
       "description": "The business day convention used to adjust the commodity delivery date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "StreamCommoditySettlDateBusinessDayConvention"
@@ -874,6 +944,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "41270",
       "description": "The adjusted commodity delivery date.",
       "display": "StreamCommoditySettlDateAdjusted"
@@ -886,6 +957,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41271",
       "description": "Specifies a fixed single month for commodity delivery.",
       "display": "StreamCommoditySettlMonth"
@@ -898,6 +970,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41272",
       "description": "Time unit multiplier for the commodity delivery date roll.",
       "display": "StreamCommoditySettlDateRollPeriod"
@@ -911,6 +984,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "streamcommoditysettldaterollunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41273",
       "description": "Time unit associated with the commodity delivery date roll.",
       "display": "StreamCommoditySettlDateRollUnit"
@@ -924,6 +998,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41274",
       "description": "Specifies the commodity delivery roll day type.",
       "display": "StreamCommoditySettlDayType"
@@ -936,6 +1011,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XID",
       "FIX:tag": "41275",
       "description": "Identifier of this stream commodity for cross referencing elsewhere in the message.",
       "display": "StreamCommodityXID"
@@ -948,6 +1024,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "41276",
       "description": "Reference to a stream commodity elsewhere in the message.",
       "display": "StreamCommodityXIDRef"
@@ -960,6 +1037,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41277",
       "description": "Number of alternate security identifers.",
       "display": "NoStreamCommodityAltIDs"
@@ -972,6 +1050,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41278",
       "description": "Alternate security identifier value for the commodity.",
       "display": "StreamCommodityAltID"
@@ -984,6 +1063,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41279",
       "description": "Identifies the class or source of the alternate commodity security identifier.",
       "display": "StreamCommodityAltIDSource"
@@ -996,6 +1076,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41280",
       "description": "Number of data sources in the repeating group. The order of entry determines priority – first is the main source, second is fallback, third is second fallback.",
       "display": "NoStreamCommodityDataSources"
@@ -1008,6 +1089,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41281",
       "description": "Data source identifier.",
       "display": "StreamCommodityDataSourceID"
@@ -1021,6 +1103,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "streamcommoditydatasourceidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41282",
       "description": "Type of data source identifier.",
       "display": "StreamCommodityDataSourceIDType"
@@ -1033,6 +1116,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41283",
       "description": "Number of days in the repeating group.",
       "display": "NoStreamCommoditySettlDays"
@@ -1046,6 +1130,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliveryschedulesettldaycodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41284",
       "description": "Specifies the day or group of days for delivery.",
       "display": "StreamCommoditySettlDay"
@@ -1058,6 +1143,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41285",
       "description": "Sum of the hours specified in StreamCommoditySettlTimeGrp.",
       "display": "StreamCommoditySettlTotalHours"
@@ -1070,6 +1156,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41286",
       "description": "Number of hour ranges in the repeating group.",
       "display": "NoStreamCommoditySettlTimes"
@@ -1082,6 +1169,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41287",
       "description": "The start time for commodities settlement where delivery occurs over time. The time format is specified by the settlement time type.",
       "display": "StreamCommoditySettlStart"
@@ -1094,6 +1182,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41288",
       "description": "The end time for commodities settlement where delivery occurs over time. The time format is specified by the settlement time type.",
       "display": "StreamCommoditySettlEnd"
@@ -1106,6 +1195,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "41289",
       "description": "Number of commodity settlement periods in the repeating group.",
       "display": "NoStreamCommoditySettlPeriods"
@@ -1118,6 +1208,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Country",
       "FIX:tag": "41290",
       "description": "Specifies the country where delivery takes place. Uses ISO 3166 2-character country code.",
       "display": "StreamCommoditySettlCountry"
@@ -1130,6 +1221,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "41291",
       "description": "Commodity delivery timezone specified as \"prevailing\" rather than \"standard\" or \"daylight\". See https://fixtrading.org/packages/prevailing-timezones for code list of applicable prevailing timezones.",
       "display": "StreamCommoditySettlTimeZone"
@@ -1143,6 +1235,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliveryschedulesettlflowtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "41292",
       "description": "Specifies the commodity delivery flow type.",
       "display": "StreamCommoditySettlFlowType"
@@ -1157,6 +1250,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "41293",
       "description": "Specifies the delivery quantity associated with this settlement period.",
       "display": "StreamCommoditySettlPeriodNotional"
@@ -1170,6 +1264,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41294",
       "description": "Specifies the unit of measure (UOM) of the delivery quantity associated with this settlement period.",
       "display": "StreamCommoditySettlPeriodNotionalUnitOfMeasure"
@@ -1182,6 +1277,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "41295",
       "description": "Time unit multiplier for the settlement period frequency.",
       "display": "StreamCommoditySettlPeriodFrequencyPeriod"
@@ -1195,6 +1291,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "protectiontermeventunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41296",
       "description": "Time unit associated with the settlement period frequency.",
       "display": "StreamCommoditySettlPeriodFrequencyUnit"
@@ -1209,6 +1306,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "41297",
       "description": "The settlement period price.",
       "display": "StreamCommoditySettlPeriodPrice"
@@ -1222,6 +1320,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "41298",
       "description": "Specifies the settlement period price unit of measure (UOM).",
       "display": "StreamCommoditySettlPeriodPriceUnitOfMeasure"
@@ -1234,6 +1333,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "41299",
       "description": "The currency of the settlement period price. Uses ISO 4217 currency codes.",
       "display": "StreamCommoditySettlPeriodPriceCurrency"

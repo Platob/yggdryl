@@ -15,7 +15,7 @@ from yggdryl import (
     DataType,
     Field,
     Serie,
-    SerieReader,
+    StreamChunkedSerie,
     StructSerie,
 )
 from yggdryl.enums import REPRESENTATIONS
@@ -426,7 +426,7 @@ class TestRequiredFieldRefusals:
 
         # A null is a property of rows, so the reader is built and answers its
         # schema before anything refuses it.
-        reader = SerieReader.from_arrow_reader(
+        reader = StreamChunkedSerie.from_arrow_reader(
             pa.RecordBatchReader.from_batches(stored, [batch]), root
         ).into_arrow_reader()
         assert reader.schema.names == ["id", "symbol"]
@@ -443,7 +443,7 @@ class TestRequiredFieldRefusals:
             ValueError,
             match=r"required Arrow field \$\.symbol is missing from the source",
         ):
-            SerieReader.from_arrow_reader(
+            StreamChunkedSerie.from_arrow_reader(
                 pa.RecordBatchReader.from_batches(absent, []), root
             ).into_arrow_reader()
 

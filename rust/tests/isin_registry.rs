@@ -10,6 +10,8 @@ mod counting_filesystem;
 
 #[path = "isin_registry/env.rs"]
 mod env;
+#[path = "isin_registry/seed.rs"]
+mod seed;
 #[path = "isin_registry/store.rs"]
 mod store;
 

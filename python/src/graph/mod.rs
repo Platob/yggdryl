@@ -194,6 +194,23 @@ macro_rules! market_getters {
                 $crate::graph::code_scalar(::yggdryl::graph::Market::get_currency(&self.inner))
             }
 
+            /// The currency the instrument originates in - the one it was
+            /// issued in - as the `ccy` code it is, where the element states
+            /// it or a registry filled it; `None` where neither did, never
+            /// the currency.
+            #[getter]
+            fn origccy(&self) -> Option<$crate::scalar::PyScalar> {
+                let held = ::yggdryl::graph::Market::get_origccy(&self.inner);
+                (!held.is_none()).then(|| $crate::graph::code_scalar(held))
+            }
+
+            /// The currency an amount converts from: `origccy` where held,
+            /// else `currency` - never `XXX` where a currency is stated.
+            #[getter]
+            fn origin_currency(&self) -> $crate::scalar::PyScalar {
+                $crate::graph::code_scalar(::yggdryl::graph::Market::origin_currency(&self.inner))
+            }
+
             /// The quantity stated, as a decimal; `None` where none.
             #[getter]
             fn quantity(&self) -> Option<$crate::scalar::PyScalar> {

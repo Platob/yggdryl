@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2600",
       "description": "The point on the floating rate index curve. Sample values:",
       "display": "StrikeIndexCurvePoint"
@@ -19,6 +20,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "strikeindexquotecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2601",
       "description": "The quote side from which the index price is to be determined.",
       "display": "StrikeIndexQuote"
@@ -32,6 +34,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "extraordinaryeventadjustmentmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2602",
       "description": "Defines how adjustments will be made to the contract should one or more of the extraordinary events occur.",
       "display": "ExtraordinaryEventAdjustmentMethod"
@@ -44,6 +47,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2603",
       "description": "For a share option trade, indicates whether the instrument is to be treated as an 'exchange look-alike'.",
       "display": "ExchangeLookAlike"
@@ -56,6 +60,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2604",
       "description": "The point on the floating rate index curve. Sample values:",
       "display": "LegStrikeIndexCurvePoint"
@@ -69,6 +74,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "strikeindexquotecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2605",
       "description": "The quote side from which the index price is to be determined.",
       "display": "LegStrikeIndexQuote"
@@ -82,6 +88,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "extraordinaryeventadjustmentmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2606",
       "description": "Defines how adjustments will be made to the contract should one or more of the extraordinary events occur.",
       "display": "LegExtraordinaryEventAdjustmentMethod"
@@ -94,6 +101,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2607",
       "description": "For a share option trade, indicates whether the instrument is to be treated as an 'exchange look-alike'.",
       "display": "LegExchangeLookAlike"
@@ -106,6 +114,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2608",
       "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to futures contracts.",
       "display": "LegComplexEventFuturesPriceValuation"
@@ -118,6 +127,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2609",
       "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to options contracts.",
       "display": "LegComplexEventOptionsPriceValuation"
@@ -131,6 +141,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventpvfinalpriceelectionfallbackcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2610",
       "description": "Specifies the fallback provisions for the hedging party in the determination of the final settlement price",
       "display": "LegComplexEventPVFinalPriceElectionFallback"
@@ -143,6 +154,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2611",
       "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to futures contracts.",
       "display": "UnderlyingComplexEventFuturesPriceValuation"
@@ -155,6 +167,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2612",
       "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to options contracts.",
       "display": "UnderlyingComplexEventOptionsPriceValuation"
@@ -168,6 +181,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "complexeventpvfinalpriceelectionfallbackcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2613",
       "description": "Specifies the fallback provisions for the hedging party in the determination of the final settlement price",
       "display": "UnderlyingComplexEventPVFinalPriceElectionFallback"
@@ -182,6 +196,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2614",
       "description": "Notional value for the equity or bond underlier.",
       "display": "UnderlyingNotional"
@@ -194,6 +209,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2615",
       "description": "Specifies the currency denomination of the notional value.",
       "display": "UnderlyingNotionalCurrency"
@@ -206,6 +222,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2616",
       "description": "Specifies the method of determining the notional amount. See: https://fpml.org/coding-scheme/determination-method for values.",
       "display": "UnderlyingNotionalDeterminationMethod"
@@ -219,6 +236,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "underlyingnotionaladjustmentscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2617",
       "description": "Specifies the conditions that govern the adjustment to the number of units of the return swap.",
       "display": "UnderlyingNotionalAdjustments"
@@ -231,6 +249,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2618",
       "description": "Unique identifier for a position entity. Refer to PosMaintRptID(721) for a unique identifier of a position report message.",
       "display": "PositionID"
@@ -243,6 +262,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XIDREF",
       "FIX:tag": "2619",
       "description": "Cross reference to another notional amount for duplicating its properties.",
       "display": "UnderlyingNotionalXIDRef"
@@ -255,6 +275,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2620",
       "description": "In the case of an index underlier specifies the unique identifier for the referenced futures contract.",
       "display": "UnderlyingFutureID"
@@ -268,6 +289,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2621",
       "description": "Identifies the source of the UnderlyingFutureID(2620).",
       "display": "UnderlyingFutureIDSource"
@@ -280,6 +302,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2622",
       "description": "The point on the floating rate index curve. Sample values:",
       "display": "UnderlyingStrikeIndexCurvePoint"
@@ -293,6 +316,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "strikeindexquotecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2623",
       "description": "The quote side from which the index price is to be determined.",
       "display": "UnderlyingStrikeIndexQuote"
@@ -306,6 +330,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "extraordinaryeventadjustmentmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2624",
       "description": "Defines how adjustments will be made to the contract should one or more of the extraordinary events occur.",
       "display": "UnderlyingExtraordinaryEventAdjustmentMethod"
@@ -318,6 +343,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2625",
       "description": "For a share option trade, indicates whether the instrument is to be treated as an 'exchange look-alike'.",
       "display": "UnderlyingExchangeLookAlike"
@@ -332,6 +358,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2626",
       "description": "The limit of average percentage of individual securities traded in a day or a number of days.",
       "display": "UnderlyingAverageVolumeLimitationPercentage"
@@ -344,6 +371,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2627",
       "description": "Specifies the limitation period for average daily trading volume in number of days.",
       "display": "UnderlyingAverageVolumeLimitationPeriodDays"
@@ -356,6 +384,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2628",
       "description": "Indicates whether the underlier is a depository receipt.",
       "display": "UnderlyingDepositoryReceiptIndicator"
@@ -370,6 +399,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2629",
       "description": "The number of units (units of the index or number of securities, par amount of a bond) that constitute the underlier. In the case of a basket swap, this is used to reference both the number of basket units, and the number of each asset components of the basket when these are expressed in absolute terms.",
       "display": "UnderlyingOpenUnits"
@@ -382,6 +412,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2630",
       "description": "Specifies the basket divisor amount. This value is normally used to adjust the constituent weight for pricing or to adjust for dividends, or other corporate actions.",
       "display": "UnderlyingBasketDivisor"
@@ -394,6 +425,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "XID",
       "FIX:tag": "2631",
       "description": "Identifier for referencing this UnderlyingInstrument from a parent instrument or a convertible instrument.",
       "display": "UnderlyingInstrumentXID"
@@ -407,6 +439,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collateralamounttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2632",
       "description": "The type of value in CurrentCollateralAmount(1704).",
       "display": "CollateralAmountType"
@@ -419,6 +452,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2633",
       "description": "Specifies the number of miscellaneous fee sub-types.",
       "display": "NoMiscFeeSubTypes"
@@ -431,6 +465,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2634",
       "description": "Used to provide more granular fee types related to a value of MiscFeeType(139). See https://fixtrading.org/packages/misc-fee-sub-types for code list of applicable fees. Other fee sub-types may be used by mutual agreement of the counterparties.",
       "display": "MiscFeeSubType"
@@ -445,6 +480,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2635",
       "description": "The amount of the specified MiscFeeSubType(2634).",
       "display": "MiscFeeSubTypeAmt"
@@ -457,6 +493,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2636",
       "description": "Can be used to provide an optional textual description of the fee sub-type.",
       "display": "MiscFeeSubTypeDesc"
@@ -469,6 +506,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2637",
       "description": "Byte length of encoded (non-ASCII characters) EncodedMiscFeeSubTypeDesc(2638) field.",
       "display": "EncodedMiscFeeSubTypeDescLen"
@@ -481,6 +519,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2638",
       "description": "Encoded (non-ASCII characters) representation of the MiscFeeSubTypeDesc(2636) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the MiscFeeSubTypeDesc(2636) field.",
       "display": "EncodedMiscFeeSubTypeDesc"
@@ -493,6 +532,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2639",
       "description": "Number of commissions in the repeating group.",
       "display": "NoCommissions"
@@ -507,6 +547,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2640",
       "description": "The commission amount.",
       "display": "CommissionAmount"
@@ -520,6 +561,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "commissionamounttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2641",
       "description": "Indicates what type of commission is being expressed in CommissionAmount(2640).",
       "display": "CommissionAmountType"
@@ -533,6 +575,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "commtypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "2642",
       "description": "Specifies the basis or unit used to calculate the commission.",
       "display": "CommissionBasis"
@@ -545,6 +588,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2643",
       "description": "Specifies the currency denomination of the commission amount if different from the trade's currency.",
       "display": "CommissionCurrency"
@@ -558,6 +602,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2644",
       "description": "The commission rate unit of measure.",
       "display": "CommissionUnitOfMeasure"
@@ -570,6 +615,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2645",
       "description": "Indicates the currency of the unit of measure. Conditionally required when CommissionUnitOfMeasure(2644) = Ccy (Amount of currency).",
       "display": "CommissionUnitOfMeasureCurrency"
@@ -582,6 +628,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2646",
       "description": "The commission rate when CommissionAmount(2640) is based on a percentage of quantity, amount per unit or a factor of \"unit of measure\". If the rate is a percentage or expressed in basis points, use the decimalized form, e.g. \"0.05\" for a 5% commission or \"0.005\" for 50 basis points.",
       "display": "CommissionRate"
@@ -594,6 +641,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2647",
       "description": "Indicates whether the amount in CommissionAmount(2640) is to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement.",
       "display": "CommissionSharedIndicator"
@@ -608,6 +656,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2648",
       "description": "Commission amount to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement. If specified, this amount should not exceed the amount in CommissionAmount(2640).",
       "display": "CommissionAmountShared"
@@ -620,6 +669,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2649",
       "description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
       "display": "CommissionLegRefID"
@@ -632,6 +682,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2650",
       "description": "Description of the commission.",
       "display": "CommissionDesc"
@@ -644,6 +695,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2651",
       "description": "Byte length of the encoded (non-ASCII characters) EncodedCommissionDesc(2652) field.",
       "display": "EncodedCommissionDescLen"
@@ -656,6 +708,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2652",
       "description": "Encoded (non-ASCII characters) representation of the CommissionDesc(2650) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the CommissionDesc(2650) field.",
       "display": "EncodedCommissionDesc"
@@ -668,6 +721,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2653",
       "description": "Number of commissions in the repeating group.",
       "display": "NoAllocCommissions"
@@ -682,6 +736,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2654",
       "description": "The commission amount.",
       "display": "AllocCommissionAmount"
@@ -695,6 +750,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "commissionamounttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2655",
       "description": "Indicates what type of commission is being expressed in AllocCommissionAmount(2654).",
       "display": "AllocCommissionAmountType"
@@ -708,6 +764,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "commtypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "2656",
       "description": "Specifies the basis or unit used to calculate the commission.",
       "display": "AllocCommissionBasis"
@@ -720,6 +777,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2657",
       "description": "Specifies the currency denomination of the commission amount if different from the trade's currency.",
       "display": "AllocCommissionCurrency"
@@ -733,6 +791,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2658",
       "description": "The commission rate unit of measure.",
       "display": "AllocCommissionUnitOfMeasure"
@@ -745,6 +804,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2659",
       "description": "Indicates the currency of the unit of measure. Conditionally required when AllocCommissionUnitOfMeasure(2658) = Ccy (Currency).",
       "display": "AllocCommissionUnitOfMeasureCurrency"
@@ -757,6 +817,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2660",
       "description": "The commission rate when AllocCommissionAmount(2654) is based on a percentage of quantity, amount per unit or a factor of \"unit of measure\". If the rate is a percentage or expressed in basis points, use the decimalized form, e.g. \"0.05\" for a 5% commission or \"0.005\" for 50 basis points.",
       "display": "AllocCommissionRate"
@@ -769,6 +830,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2661",
       "description": "Indicates whether the amount in AllocCommissionAmount(2654) is to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement.",
       "display": "AllocCommissionSharedIndicator"
@@ -783,6 +845,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2662",
       "description": "Commission amount to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement. If specified, this amount should not exceed the amount in AllocCommissionAmount(2654).",
       "display": "AllocCommissionAmountShared"
@@ -795,6 +858,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2663",
       "description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
       "display": "AllocCommissionLegRefID"
@@ -807,6 +871,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2664",
       "description": "Description of the commission.",
       "display": "AllocCommissionDesc"
@@ -819,6 +884,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2665",
       "description": "Byte length of the encoded (non-ASCII characters) EncodedAllocCommissionDesc(2666) field.",
       "display": "EncodedAllocCommissionDescLen"
@@ -831,6 +897,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2666",
       "description": "Encoded (non-ASCII characters) representation of the AllocCommissionDesc(2664) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the AllocCommissionDesc(2664) field.",
       "display": "EncodedAllocCommissionDesc"
@@ -844,6 +911,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "algorithmictradeindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2667",
       "description": "Indicates that the order or trade originates from a computer program or algorithm requiring little-to-no human intervention.",
       "display": "AlgorithmicTradeIndicator"
@@ -856,6 +924,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2668",
       "description": "Number of regulatory publication rules in repeating group.",
       "display": "NoTrdRegPublications"
@@ -869,6 +938,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "trdregpublicationtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2669",
       "description": "Specifies the type of regulatory trade publication.",
       "display": "TrdRegPublicationType"
@@ -882,6 +952,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "trdregpublicationreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2670",
       "description": "Additional reason for trade publication type specified in TrdRegPublicationType(2669).",
       "display": "TrdRegPublicationReason"
@@ -895,6 +966,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradereportingindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2671",
       "description": "Used between parties to convey trade reporting status.",
       "display": "SideTradeReportingIndicator"
@@ -907,6 +979,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2672",
       "description": "Unique message identifier for a cross request as assigned by the submitter of the request.",
       "display": "CrossRequestID"
@@ -919,6 +992,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2673",
       "description": "Identifier assigned by a matching system to a match event containing multiple executions.",
       "display": "FillMatchID"
@@ -931,6 +1005,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2674",
       "description": "Identifier assigned by a matching system to a price level (e.g. match step, clip) within a match event containing multiple executions.",
       "display": "FillMatchSubID"
@@ -944,6 +1019,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "massactionreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2675",
       "description": "Reason for submission of mass action.",
       "display": "MassActionReason"
@@ -956,6 +1032,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2676",
       "description": "Maximum deviation, in percentage terms, of an execution price from a reference price, e.g. the initial price of a match event.",
       "display": "MaximumPriceDeviation"
@@ -969,6 +1046,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "notaffectedreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2677",
       "description": "Reason for order being unaffected by mass action even though it belongs to the orders covered by MassActionScope(1374).",
       "display": "NotAffectedReason"
@@ -981,6 +1059,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2678",
       "description": "Total number of orders unaffected by either the OrderMassActionRequest(35=CA) or OrderMassCancelRequest(35=Q).",
       "display": "TotalNotAffectedOrders"
@@ -994,6 +1073,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "orderownershipindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2679",
       "description": "Change of ownership of an order to a specific party.",
       "display": "OrderOwnershipIndicator"
@@ -1006,6 +1086,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2680",
       "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
       "display": "LegAccount"
@@ -1019,6 +1100,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "inthemoneyconditioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2681",
       "description": "Specifies an option instrument's \"in the money\" condition.",
       "display": "InTheMoneyCondition"
@@ -1032,6 +1114,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "inthemoneyconditioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2682",
       "description": "Specifies an option instrument's \"in the money\" condition in general terms.",
       "display": "LegInTheMoneyCondition"
@@ -1045,6 +1128,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "inthemoneyconditioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2683",
       "description": "Specifies an option instrument's \"in the money\" condition in general terms.",
       "display": "UnderlyingInTheMoneyCondition"
@@ -1058,6 +1142,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "inthemoneyconditioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2684",
       "description": "Specifies an option instrument's \"in the money\" condition in general terms.",
       "display": "DerivativeInTheMoneyCondition"
@@ -1070,6 +1155,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2685",
       "description": "Identifies whether the option instrument is eligible for contrary instructions at the time of exercise. The contrariness of an instruction will be determined in the context of InTheMoneyCondition(2681). When not specified, the eligibility is undefined or not applicable.",
       "display": "ContraryInstructionEligibilityIndicator"
@@ -1082,6 +1168,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2686",
       "description": "Identifies whether the option instrument is eligible for contrary instructions at the time of exercise. The contrariness of an instruction will be determined in the context of LegInTheMoneyCondition(2682). When not specified, the eligibility is undefined or not applicable.",
       "display": "LegContraryInstructionEligibilityIndicator"
@@ -1094,6 +1181,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2687",
       "description": "Identifies whether the option instrument is eligible for contrary instructions at the time of exercise. The contrariness of an instruction will be determined in the context of UnderlyingInTheMoneyCondition(2683). When not specified, the eligibility is undefined or not applicable.",
       "display": "UnderlyingContraryInstructionEligibilityIndicator"
@@ -1106,6 +1194,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2688",
       "description": "Identifies whether the option instrument is eligible for contrary instructions at the time of exercise. The contrariness of an instruction will be determined in the context of DerivativeInTheMoneyCondition(2684). When not specified, the eligibility is undefined or not applicable.",
       "display": "DerivativeContraryInstructionEligibilityIndicator"
@@ -1120,6 +1209,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2689",
       "description": "Market price of the collateral, either from market sources or pre-agreed by the counterparties.",
       "display": "CollateralMarketPrice"
@@ -1132,6 +1222,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2690",
       "description": "Percentage of over-collateralization particularly when CollateralAmountType(2632) = 4 (Additional collateral value)",
       "display": "CollateralPercentOverage"
@@ -1144,6 +1235,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2691",
       "description": "Number of side collateral amount entries.",
       "display": "NoSideCollateralAmounts"
@@ -1156,6 +1248,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2692",
       "description": "Market associated with the collateral amount.",
       "display": "SideCollateralAmountMarketID"
@@ -1168,6 +1261,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2693",
       "description": "Market segment associated with the collateral amount.",
       "display": "SideCollateralAmountMarketSegmentID"
@@ -1181,6 +1275,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collateralamounttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2694",
       "description": "The type of value in CurrentCollateralAmount(1704).",
       "display": "SideCollateralAmountType"
@@ -1193,6 +1288,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "2695",
       "description": "Specifies the currency of the collateral; optional, defaults to settlement currency if not specified.",
       "display": "SideCollateralCurrency"
@@ -1205,6 +1301,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2696",
       "description": "Foreign exchange rate used to compute the SideCurrentCollateralAmount(2702) from the SideCollateralCurrency(2695) and the Currency(15).",
       "display": "SideCollateralFXRate"
@@ -1218,6 +1315,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "underlyingfxratecalccodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "2697",
       "description": "Specifies whether or not SideCollateralFXRate(2696) should be multiplied or divided.",
       "display": "SideCollateralFXRateCalc"
@@ -1232,6 +1330,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2698",
       "description": "Market price of the collateral, either from market sources or pre-agreed by the counterparties.",
       "display": "SideCollateralMarketPrice"
@@ -1244,6 +1343,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2699",
       "description": "Percentage of over-collateralization particularly when SideCollateralAmountType(2694) = 4 (Additional collateral value).",
       "display": "SideCollateralPercentOverage"

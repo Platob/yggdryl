@@ -1437,6 +1437,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal('px' in message, false)
     assert.equal('qty' in message, false)
     assert.equal(message.currency, 'XXX')
+    // No origin currency stated: none held, and the reading falls back to
+    // the currency.
+    assert.equal(message.origccy, null)
+    assert.equal(message.originCurrency, 'XXX')
     assert.equal(message.text, null)
     assert.deepEqual(message.metadata, {})
     // Nothing was captured: no plugin, no context, no session, so no session
@@ -1474,7 +1478,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // A fact the message states nothing for is absent, not null.
     assert.equal(message.getByTag(44), null, 'no price')
     assert.equal(message.getByTag(58), null, 'no text')
-    assert.equal(message.getByTag(65036), null, 'no metadata')
+    assert.equal(message.getByTag(65037), null, 'no metadata')
     // An identifier is exact: one the dictionary holds no field under misses,
     // and so does one whose field the root does not declare.
     const stray = fixField('TradeID', 'utf8', 5001)
@@ -1727,7 +1731,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // goes by.
     assert.equal(message.crosscode, '10:0:ORDER-1')
     assert.equal(message.capture().msgsesseventid, '8:SESSION-1:CONTEXT-1:7')
-    assert.equal(message.byTag(65046).asJs(), '8:SESSION-1:CONTEXT-1:7')
+    assert.equal(message.byTag(65047).asJs(), '8:SESSION-1:CONTEXT-1:7')
     assert.deepEqual(kinds(message.identifiers), { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
     assert.equal(message.getByTag(55), null)
     assert.equal(message.getByName('venueownthing'), null)
@@ -1746,7 +1750,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     message.set('msgctxid', null)
     assert.equal(message.capture().msgctxid, null)
     assert.equal(message.capture().msgsesseventid, null)
-    assert.equal(message.getByTag(65046), null)
+    assert.equal(message.getByTag(65047), null)
     assert.equal(message.currhashcode, contentHash)
 
     message.set('msgctxid', 'CONTEXT-2')
@@ -1759,7 +1763,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const schema = fix.schema(registry)
     const at = schema.indexOf('msgsesseventid')
     assert.equal(at, schema.indexOf('msgsessionid') + 1)
-    assert.equal(schema.fieldAt(at).fix.tag, 65046)
+    assert.equal(schema.fieldAt(at).fix.tag, 65047)
     assert.equal(schema.indexOf('refrecdunix'), null)
     const row = message.intoRow(schema)
     assert.equal(row.asJs()[at], '8:SESSION-2:CONTEXT-2:7')
@@ -1781,11 +1785,11 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       .next().value
     assert.equal(named.capture().msgoriginator, 'PLUGIN_A')
     assert.equal(named.capture().conversationid, 'c-1')
-    assert.equal(named.byTag(65043).asJs(), 'PLUGIN_A')
-    assert.equal(named.byTag(65047).asJs(), 'c-1')
+    assert.equal(named.byTag(65044).asJs(), 'PLUGIN_A')
+    assert.equal(named.byTag(65048).asJs(), 'c-1')
     // The plugin's role is no line's word: a codec told no source states
     // the neutral member under its own tag.
-    assert.equal(named.byTag(65042).asJs(), 'UKNW')
+    assert.equal(named.byTag(65043).asJs(), 'UKNW')
     assert.equal(bare.capture().msgoriginator, null)
     assert.equal(bare.capture().conversationid, null)
     assert.equal(named.intoText('|'), bare.intoText('|'))
@@ -1951,7 +1955,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(stated.strikepx, null)
     // The fixed row carries the derived crate column and, beside it, the dictionary's own.
     const schema = fix.schema(registry)
-    assert.equal(schema.fieldAt(schema.indexOf('strikepx')).fix.tag, 65035)
+    assert.equal(schema.fieldAt(schema.indexOf('strikepx')).fix.tag, 65036)
     const column = schema.fieldAt(schema.indexOf('strikeprice'))
     assert.equal(column.fix.tag, 202)
     assert.equal(column.dtype.toString(), 'decimal128(38,18)')
@@ -2017,7 +2021,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // Joined by `:` with nothing in front of a part, and held by the capture
     // rather than among the names the message goes by.
     assert.equal(capture.msgsesseventid, '8:e7256476:9effef3e6a:1094')
-    assert.equal(message.byTag(65046).asJs(), '8:e7256476:9effef3e6a:1094')
+    assert.equal(message.byTag(65047).asJs(), '8:e7256476:9effef3e6a:1094')
     assert.equal(message.identifiers.containsKind('msgsesseventid'), false)
 
     // A part missing is no session event at all.
@@ -2696,20 +2700,21 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // bridge columns (`omsdealeraccount`, `omsuserid`, `parentorderid`,
     // `parentclordid`, `omsdealerparentorderid`, `exchangeclientorderid`,
     // `transversalkey`, `ultraderclordid`, `omsinstrumentid`,
-    // `ullinkinstrumentid`) are no crate field - the 51 definitions
-    // `rust/tests/fix/crated.rs` pins, tags 65001 to 65051.
-    assert.equal(CRATE.length, 51)
-    assert.equal(CRATE_REGISTERED.length, 32)
-    assert.equal(CRATE_SCALARS.length, 31)
-    assert.equal(new fix.FixRegistry().size, 34)
-    assert.equal(scalars(new fix.FixRegistry()).length, 33)
+    // `ullinkinstrumentid`) are no crate field - the 52 definitions
+    // `rust/tests/fix/crated.rs` pins, tags 65001 to 65052.
+    assert.equal(CRATE.length, 52)
+    assert.equal(CRATE_REGISTERED.length, 33)
+    assert.equal(CRATE_SCALARS.length, 32)
+    assert.equal(new fix.FixRegistry().size, 35)
+    assert.equal(scalars(new fix.FixRegistry()).length, 34)
     // `SecurityID(48)`, `SecurityIDSource(22)` and the `Parties(453)` and
     // `SecAltIDGrp(454)` groups left the row for `fixentries`: the prefix's
     // `partyids` and `securityids` state them. A group kept whole is its list
     // alone, one column under the counter tag naming it.
-    // The merged plugin-side column adds one tag and one field to the fixed row.
-    assert.equal(schema.fieldLen, 152)
-    assert.equal(fix.schemaTags().length, 151)
+    // The merged plugin-side column adds one tag and one field to the fixed
+    // row, and the origin currency one more of each.
+    assert.equal(schema.fieldLen, 153)
+    assert.equal(fix.schemaTags().length, 152)
     const at = schema.indexOf('msgtype')
     assert.deepEqual(
       [schema.fieldAt(at - 1).name, schema.fieldAt(at).name, schema.fieldAt(at + 1).name, schema.fieldAt(at + 2).name],
@@ -2717,14 +2722,14 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     )
     // The crate views of the security identifiers, at their A11 tags; the
     // retired identifiers, cusipcode and sedolcode columns are gone.
-    for (const [name, tag] of [['isincode', 65021], ['bloombergcode', 65049], ['miccode', 65022], ['figicode', 65050]]) {
+    for (const [name, tag] of [['isincode', 65022], ['bloombergcode', 65050], ['miccode', 65023], ['figicode', 65051]]) {
       assert.equal(schema.fieldAt(schema.indexOf(name)).fix.tag, tag, name)
     }
     assert.equal(schema.fieldAt(schema.indexOf('cficode')).fix.tag, 461)
     // A11: the crate's own tags are numbered contiguously from 65001.
     const crateTags = fix.crateFields().map((field) => field.fix.tag).sort((left, right) => left - right)
     assert.deepEqual(crateTags, crateTags.map((_, at) => 65001 + at))
-    assert.equal(crateTags.at(-1), 65051, 'sourceurl closes the block')
+    assert.equal(crateTags.at(-1), 65052, 'sourceurl closes the block')
     const crateNames = fix.crateFields().map((field) => field.name)
     for (const retired of ['omsdealeraccount', 'omsuserid', 'parentorderid', 'parentclordid',
       'omsdealerparentorderid', 'exchangeclientorderid', 'transversalkey', 'ultraderclordid', 'omsinstrumentid',
@@ -2791,7 +2796,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(bloomberg.securityids.containsKind('figi'), false)
 
     const stated = figi.clone()
-    stated.set(65050, 'BBG000BLNQ16')
+    stated.set(65051, 'BBG000BLNQ16')
     assert.equal(stated.securityids.get('figi'), 'BBG000BLNQ16')
   })
 
@@ -2873,7 +2878,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(message.header().msgdirection, 'R')
     assert.equal(message.byTag(385).asJs(), 'R')
     assert.equal(message.capture().msgpluginid, 'Router_OrderRouting')
-    assert.equal(message.byTag(65041).asJs(), 'Router_OrderRouting')
+    assert.equal(message.byTag(65042).asJs(), 'Router_OrderRouting')
   })
 
   test('a row reads back into a message stating the same facts', () => {
@@ -3469,7 +3474,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     registry.addSource('bare')
     const schema = fix.schema(registry)
     const at = schema.indexOf('msgpluginside')
-    assert.equal(schema.fieldAt(at).fix.tag, 65042)
+    assert.equal(schema.fieldAt(at).fix.tag, 65043)
     assert.equal(schema.fieldAt(at).dtype.id, 'pluginside')
     const line = Buffer.from('8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|10=0|')
 
@@ -3481,10 +3486,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       assert.equal(codec.source, id.toLowerCase())
       const message = codec.parseFixLine(line)
       assert.equal(message.capture().msgpluginside, side, id)
-      assert.equal(message.byTag(65042).asJs(), side, id)
+      assert.equal(message.byTag(65043).asJs(), side, id)
       assert.equal(message.byName('msgpluginside').asJs(), side, id)
       assert.equal(message.side, 'BUYS')
-      assert.ok(!message.intoText('|').includes('65042='))
+      assert.ok(!message.intoText('|').includes('65043='))
       const row = message.intoRow(schema)
       assert.equal(row.asJs()[at], side, id)
       const again = fix.FixMsg.fromRow(schema, row, registry)
@@ -3511,7 +3516,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // leaves it.
     const seller = reading(registry, { source: 'ms', captureNames: ['msgpluginside'] })
     const spelled = seller.parseFixLine(
-      Buffer.from('8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|65042=BUYS|10=0|'),
+      Buffer.from('8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|65043=BUYS|10=0|'),
     )
     assert.equal(spelled.capture().msgpluginside, 'BUYS')
     const captured = (capture) => {
@@ -3524,12 +3529,12 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // A cell written over a message is the writer's word, in any spelling
     // the enum reads; one naming no member is refused, the message unchanged.
     const message = seller.parseFixLine(line)
-    message.set(65042, 'buy-side')
+    message.set(65043, 'buy-side')
     assert.equal(message.capture().msgpluginside, 'BUYS')
     message.set('msgpluginside', PluginSide.SELL)
     assert.equal(message.capture().msgpluginside, 'SELL')
     // A `Side` member is no plugin side, however alike the two enums spell.
-    assert.throws(() => message.set(65042, 'SSHT'))
+    assert.throws(() => message.set(65043, 'SSHT'))
     assert.equal(message.capture().msgpluginside, 'SELL')
 
     // An id the catalog does not hold is refused by name, and no codec is
@@ -3788,7 +3793,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const names = Array.from({ length: reader.field.fieldLen }, (_, at) => reader.field.fieldAt(at).name)
     assert.equal(names[0], 'curruuid')
     assert.ok(names.includes('marketdatakind'))
-    for (const name of ['alive', 'deltas', 'executions', 'bidlimits', 'asklimits', 'price', 'quantity']) {
+    for (const name of ['alive', 'delta', 'events', 'executions', 'bidlimits', 'asklimits', 'price', 'quantity']) {
       assert.ok(names.includes(name), name)
     }
     assert.ok(!names.includes('px') && !names.includes('qty'))
@@ -3798,7 +3803,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.deepEqual(exactColumn(books, 'price'), [101n * 10n ** 18n, 1015n * 10n ** 17n])
 
     // The rows read back as the typed books they were written from: the
-    // full refresh a keyframe holding its sides, the update its deltas alone.
+    // full refresh a complete book holding its sides, the update a delta book.
     const [first, second] = [
       ...graph.MarketData.fromArrowReader(codec.bookArrowReader([snapshot, update])),
     ].map((data) => data.asBookEvent())
@@ -3809,9 +3814,11 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // The best tradable levels are the book's own bid and ask (A20, A22).
     assert.deepEqual([first.bidpx, first.askpx, second.bidpx], ['100', '102', '101'])
     // The update's trade entry (`269=2`) is an execution, recorded among
-    // the deltas beside the bid's change and moving no side.
-    assert.deepEqual(second.deltas().map((delta) => delta.marketdatakind).sort(), ['EXEC', 'QUOT'])
-    assert.equal(second.deltas().find((delta) => delta.marketdatakind === 'QUOT').price, '101')
+    // the events beside the bid's change in the delta and moving no side.
+    assert.deepEqual(second.delta().map((delta) => delta.marketdatakind), ['QUOT'])
+    assert.equal(second.delta()[0].price, '101')
+    assert.deepEqual(second.events().map((event) => event.marketdatakind), ['EXEC'])
+    assert.equal(second.executions().length, 1)
     assert.deepEqual(second.alive(), [])
     // Over the book before it, the update is whole again.
     const whole = second.withPrevious(first)
@@ -3838,9 +3845,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     for (const filter of ["side = 'BUYS'", new Filter("side = 'BUYS'"), Term.parse("side = 'BUYS'")]) {
       const bids = books(filter)
       assert.equal(bids.length, 2, String(filter))
-      assert.ok(bids.every((book) => book.deltas().every((delta) => ['ORDR', 'EXEC'].includes(delta.marketdatakind))))
-      assert.ok(bids[1].deltas().some((delta) => delta.marketdatakind === 'EXEC'))
-      assert.ok(bids.every((book) => book.deltas().every((delta) => delta.side === 'BUYS')))
+      assert.ok(bids.every((book) => book.delta().every((delta) => delta.marketdatakind === 'ORDR')))
+      assert.ok(bids.every((book) => book.events().every((event) => event.marketdatakind === 'EXEC')))
+      assert.ok(bids[1].events().some((event) => event.marketdatakind === 'EXEC'))
+      assert.ok(bids.every((book) => [...book.delta(), ...book.events()].every((held) => held.side === 'BUYS')))
     }
     const asks = books("side = 'SELL'")
     assert.equal(asks.length, 1)
@@ -4176,14 +4184,14 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // The scalar answers the folded name a lookup asks for; the group is
     // reached by its counter and by the path grammar.
     assert.equal(registry.fieldByName('metadata').name, 'venueid')
-    assert.equal(registry.fieldByCounter(65036).name, 'metadata')
+    assert.equal(registry.fieldByCounter(65037).name, 'metadata')
     assert.equal(registry.fieldByPath('metadata').name, 'metadata')
     // A message carries the scalar in its row and the map as its own fact.
     const schema = fields.struct('row', [scalar, registry.fieldByTag(52)], { nullable: false })
     const value = new fix.FixMsg(schema, { venueid: 'scalar', sendingtime: SENDING }, registry)
     assert.equal(value.byTag(9001).asJs(), 'scalar')
     assert.deepEqual(value.metadata, {})
-    value.set(65036, new Map([['tech.clientid', 'X1']]))
+    value.set(65037, new Map([['tech.clientid', 'X1']]))
     assert.deepEqual(value.metadata, { 'tech.clientid': 'X1' })
     assert.equal(value.byTag(9001).asJs(), 'scalar')
     assert.equal(value.size, 1, 'the map is a fact, never a row child')
@@ -4541,7 +4549,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       assert.equal(written[schema.indexOf(carrier)], null, carrier)
     }
     assert.equal(written[schema.indexOf('symbol')], 'AAPL')
-    assert.ok(!again.intoText('|').includes('65051='))
+    assert.ok(!again.intoText('|').includes('65052='))
   })
 
   test('a row without the entries column keeps projected content', () => {
@@ -5024,13 +5032,13 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const once = every.filter((operation) => !seen.has(operation.curruuid) && seen.add(operation.curruuid))
     assert.deepEqual(once.map((operation) => operation.curruuid), operations.map((operation) => operation.curruuid))
 
-    // Every order folds into a book and every execution is pruned - a fill
-    // moved its book through its order's report already - so a book stands
-    // at every instant an order states, and one where only an execution
-    // does, recording it: eleven books, the NOVN order's three steps each
-    // its book's instant, each stating its deltas alone - with no grid and
-    // no snapshot input no book is whole. The last holds nothing, its
-    // unpriced order having rested and left at one instant.
+    // Every order folds into a book and every execution is recorded among
+    // its book's events - a fill moved its book through its order's report
+    // already - so a book stands at every instant an order states, and one
+    // where only an execution does, an event-only book: eleven books, the
+    // NOVN order's three steps each its book's instant, each a delta book -
+    // with no grid and no snapshot input no book is complete. The last holds
+    // nothing, its unpriced order having rested and left at one instant.
     const books = [...new graph.BookIterator(operations, 0)]
     assert.equal(books.length, 11)
     assert.ok(books.every((book) => !book.isComplete))
@@ -5051,10 +5059,11 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       '3:0:XX0000000001',
     ])
     assert.deepEqual([last.limits('BUYS'), last.limits('SELL'), last.alive()], [[], [], []])
-    assert.deepEqual(last.deltas().map((delta) => delta.price), [null, null])
+    assert.deepEqual(last.delta().map((delta) => delta.price), [null, null])
+    assert.deepEqual(last.events(), [])
     // Re-pinned from the run, as `rust/tests/fix/ulbridge.rs` pins it: the
-    // book digests its entries and deltas rather than side summaries (A2),
-    // no book control but its scope (A1), no lanes (A10), and the deltas'
+    // book digests its entries and delta rather than side summaries (A2),
+    // no book control but its scope (A1), no lanes (A10), and the delta's
     // side-prefixed cross codes (A17), each event's place out of its
     // content code, a delta's place its instant's, the metadata a
     // follower takes from its chain, the four-letter side code the
@@ -5068,14 +5077,19 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // wire's identifiers digest under `base`, beside the base key a named
     // source fills - and when the bridge's `DETAILEDCFICODE` became a name
     // of `CFICode(461)`, folded into it. It moved again when a book stopped
-    // holding executions and digested its deltas once, in the order applied;
-    // when a code's first book stopped being whole, stating its deltas alone
-    // and following no book; and when a book came to be keyed by its
+    // holding executions and digested its delta once, in the order applied;
+    // when a code's first book stopped being complete, a delta book
+    // following no book; and when a book came to be keyed by its
     // instrument's ISIN and to hold it as its `isin` security identifier:
     // the one value `rust/tests/fix/ulbridge.rs` and the Python binding pin
     // for this log. It moved again when a book came to state `BOTH` as its
     // side, which its own market event feeds where a side nobody stated fed.
-    assert.equal(last.currhashcode, 1_914_142_786_384_712_743n)
+    // It moved again when a book split what its instant recorded into its
+    // `delta` - the orders and quotes - and its `events` - the executions
+    // and the snapshot controls - and came to digest the events after the
+    // delta: this book holds no event, so it feeds the empty list's count
+    // beside its two delta entries.
+    assert.equal(last.currhashcode, 10_745_751_629_392_559_435n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {
@@ -5163,5 +5177,18 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       // The place orders the identities of one millisecond.
       assert.ok(parsed[1].curruuid > parsed[0].curruuid)
     }
+  })
+
+  test('a message states its origin currency by the crate field and reads the currency where it states none', () => {
+    const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(SEED))
+    const parse = (text) => codec.parseFixLine(Buffer.from(text))
+    const listed = parse('8=FIX.4.4|35=D|11=A|55=SXR8|15=EUR|10=0|')
+    assert.equal(listed.origccy, null)
+    assert.equal(listed.originCurrency, 'EUR')
+    // `origccy` is the crate field after the market band's currency.
+    const issued = parse('8=FIX.4.4|35=D|11=A|55=SXR8|15=EUR|65018=USD|10=0|')
+    assert.equal(issued.origccy, 'USD')
+    assert.equal(issued.originCurrency, 'USD')
+    assert.equal(issued.currency, 'EUR', 'the currency is never filled from it')
   })
 }

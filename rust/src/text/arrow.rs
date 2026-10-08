@@ -61,32 +61,6 @@ fn handle_mtime(handle: &(impl IOBase + ?Sized), options: &TextOptions) -> Optio
     handle.mtime()
 }
 
-/// Decode an owned leaf without retaining decoded pages in its caller.
-pub(crate) fn read_owned_arrow_reader<H: IOBase + 'static>(
-    handle: H,
-    options: &TextOptions,
-) -> Result<BatchReader> {
-    // One ask for one fact: the handle owes its identifier, and the location
-    // is that identifier narrowed - asking it for both would be two calls
-    // over one answer, and the narrowing is the read's, once, not each row's.
-    let source = handle.uri().map(LineSource::narrowed);
-    let mtime = handle_mtime(&handle, options);
-    read_owned_arrow_reader_at(handle, source, mtime, options)
-}
-
-fn read_owned_arrow_reader_at<H: IOBase + 'static>(
-    handle: H,
-    source: Option<LineSource>,
-    mtime: Option<i64>,
-    options: &TextOptions,
-) -> Result<BatchReader> {
-    options.require_framing_rowheader()?;
-    options.line_plan()?;
-    let bytes = owned_decoded(handle)?;
-    let lines = text_lines(bytes, source, mtime, options);
-    super::batch::into_arrow_reader(lines, options)
-}
-
 /// Build the one decode iterator over an already-opened stream, under
 /// options the caller has already asked the plan's refusals of.
 ///
@@ -174,8 +148,16 @@ pub fn read_text_lines(
     handle: &(impl IOBase + ?Sized),
     options: &TextOptions,
 ) -> Result<TextLines> {
+    read_text_lines_known(handle, options, handle.is_container())
+}
+
+fn read_text_lines_known(
+    handle: &(impl IOBase + ?Sized),
+    options: &TextOptions,
+    container: bool,
+) -> Result<TextLines> {
     options.require_framing_rowheader()?;
-    if handle.is_container() {
+    if container {
         // The refusals every leaf would raise, raised once before a listing.
         options.line_plan()?;
         let leaves = crate::media::partition::record_parts(handle, crate::MimeType::PLAIN_TEXT)?;
@@ -1437,4 +1419,51 @@ impl<'a> Bodies<'a> {
                 .and_then(|key| values.value_bytes(key)),
         })
     }
+}
+
+/// Decode framed lines into native row values before any batch is requested.
+///
+/// # Errors
+/// Framing, column-plan, transport and row failures.
+pub fn read_stream(
+    handle: &(impl IOBase + ?Sized),
+    options: &TextOptions,
+) -> Result<crate::StreamSerie> {
+    read_stream_known(handle, options, handle.is_container())
+}
+
+pub(crate) fn read_leaf_stream(
+    handle: &(impl IOBase + ?Sized),
+    options: &TextOptions,
+) -> Result<crate::StreamSerie> {
+    read_stream_known(handle, options, false)
+}
+
+fn read_stream_known(
+    handle: &(impl IOBase + ?Sized),
+    options: &TextOptions,
+    container: bool,
+) -> Result<crate::StreamSerie> {
+    let plan = options.line_plan()?.projected(options);
+    let field = plan.field(smol_str::SmolStr::new(options.name()))?;
+    let declared = options.field();
+    let safe = options.safe();
+    let options = options.clone();
+    let lines = read_text_lines_known(handle, &options, container)?;
+    let rows = crate::StreamSerie::from_rows(
+        field,
+        lines.map(move |line| line.and_then(|line| super::batch::row_of(&plan, &line, &options))),
+    );
+    // A declared field selects and casts during the read, as every other
+    // encoding's does: the columns it names out of the line's row, each cast
+    // to the declared shape through the one engine, planned once.
+    let Some(declared) = declared else {
+        return Ok(rows);
+    };
+    crate::StreamChunkedSerie::from_arrow_reader(
+        Some(&declared),
+        rows.into_arrow_reader()?,
+        crate::ArrowCastOptions::new().with_safe(safe),
+    )?
+    .into_stream()
 }

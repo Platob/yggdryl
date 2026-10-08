@@ -2257,7 +2257,7 @@ mod arrow {
             options: crate::ArrowCastOptions,
         ) -> Result<crate::arrow::BatchReader> {
             Ok(
-                crate::SerieReader::from_arrow_reader(Some(self), inner, options)?
+                crate::StreamChunkedSerie::from_arrow_reader(Some(self), inner, options)?
                     .into_arrow_reader(),
             )
         }

@@ -1345,3 +1345,51 @@ mod securities {
         }
     }
 }
+
+/// Every registered code reads through `str::parse` as its `new` reads -
+/// the same value, the same refusal - and lends its text wherever an
+/// `AsRef<str>` is asked for, as its `as_str` does.
+#[test]
+fn every_code_parses_as_its_new_and_lends_its_text_as_its_as_str() {
+    use yggdryl::{
+        Bbg, Bic, Ccy, Cfi, Country, Cusip, Dti, Elf, Figi, Fisn, Forex, Isin, Lei, Mic, Ric,
+        Sedol, Unit,
+    };
+
+    fn lent(code: &impl AsRef<str>) -> &str {
+        code.as_ref()
+    }
+
+    macro_rules! pinned {
+        ($($code:ty: $text:literal, $refused:literal;)*) => {$(
+            let parsed: $code = $text.parse().unwrap();
+            assert_eq!(parsed, <$code>::new($text).unwrap(), "{}", $text);
+            assert_eq!(lent(&parsed), parsed.as_str(), "{}", $text);
+            assert_eq!(
+                $refused.parse::<$code>().unwrap_err().to_string(),
+                <$code>::new($refused).unwrap_err().to_string(),
+                "{}",
+                $refused
+            );
+        )*};
+    }
+    pinned! {
+        Country: "US", "USA";
+        Ccy: "USDT", "TOOLONGCCY";
+        Mic: "XPAR", "XPARIS";
+        Cfi: "ESVUFR", "ESVUFRX";
+        Isin: "US0378331005", "US03783310051";
+        Cusip: "037833100", "0378331000";
+        Sedol: "B0YBKJ7", "B0YBKJ77";
+        Figi: "BBG000BLNQ16", "BBG000BLNQ167";
+        Bbg: "AAPL US Equity", "AAPL US Equity AAPL US Equity AAPL";
+        Ric: "AAPL.OQ", "AAPL.OQ AAPL.OQ AAPL.OQ AAPL.OQ AAPL";
+        Forex: "EUR/USD", "EUR/USD/CHF";
+        Lei: "HWUPKR0MPOU8FGXBT394", "HWUPKR0MPOU8FGXBT3945";
+        Bic: "DEUTDEFFXXX", "DEUTDEFFXXXX";
+        Elf: "2HBR", "2HBRX";
+        Dti: "X9J9K872S", "X9J9K872SX";
+        Fisn: "APPLE INC/SH", "APPLE INC/SH APPLE INC/SH APPLE INC/SH";
+        Unit: "Shares", "Shares Shares Shares Shares Shares Shares";
+    }
+}

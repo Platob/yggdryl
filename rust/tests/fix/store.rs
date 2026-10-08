@@ -170,7 +170,7 @@ fn catalog() -> FixRegistry {
 #[test]
 fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     let registry = FixRegistry::new();
-    let map = registry.get_field_by_counter(65_036).unwrap();
+    let map = registry.get_field_by_counter(65_037).unwrap();
     let mut stated = map.clone();
     stated.set_comment("not the crate's declaration").unwrap();
     let snapshot = registry.into_json().unwrap();
@@ -189,7 +189,7 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     ])
     .unwrap();
     let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_036), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_037), Some(map));
 
     let root = scratch("crate-map");
     let mut folder = LocalFolder::new(&root).unwrap();
@@ -201,14 +201,14 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
         .write_all_bytes(&stated.into_json_bytes().unwrap())
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_036), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_037), Some(map));
     std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips() {
     let mut registry = FixRegistry::new();
-    let mut map = registry.get_field_by_counter(65_036).unwrap().clone();
+    let mut map = registry.get_field_by_counter(65_037).unwrap().clone();
     map.as_fix_mut().set_group("metadata").unwrap();
     let component = StructType::from_fields([map])
         .map(DataType::from)
@@ -481,7 +481,7 @@ fn ordinary_stored_component_references_still_require_null_placeholders() {
 #[test]
 fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     let registry = FixRegistry::new();
-    let map = registry.get_field_by_counter(65_036).unwrap();
+    let map = registry.get_field_by_counter(65_037).unwrap();
     let mut substituted = map.clone();
     substituted.as_fix_mut().set_tag(9001).unwrap();
     substituted.as_fix_mut().set_counter(9001).unwrap();
@@ -495,7 +495,7 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     ])
     .unwrap();
     let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_036), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_037), Some(map));
     assert!(loaded.get_field_by_counter(9001).is_none());
 
     let root = scratch("crate-map-substitution");
@@ -506,7 +506,7 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
         .write_all_bytes(&substituted.into_json_bytes().unwrap())
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_036), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_037), Some(map));
     assert!(loaded.get_field_by_counter(9001).is_none());
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -3396,10 +3396,48 @@ mod committed {
     /// code set, field shard and fixed row changed, and the following
     /// crate tags moved up once more, ending at `sourceurl` 65051 and
     /// `fixmsg` 65052. Those regenerated documents pin the combined hash.
+    /// It last moved when the origin currency became a market fact: the
+    /// crate field `origccy` (65018), a held `ccy` column, took the place
+    /// after the market band's `currency`, and every crate tag from
+    /// `hiddenqty` on moved up by one - `metadata` 65037, `sourceurl` 65052,
+    /// `fixmsg` 65053 - so the crate's field shard, its `metadata` group and
+    /// the fixed row component were written again. No count of the census
+    /// below moved.
+    /// It last moved when the description of `origccy` (65018) became one
+    /// clean sentence: its source text had lost its line continuations, so
+    /// the published description carried a run of spaces at each of its five
+    /// line breaks - `issued          in` - and the crate's field shard was
+    /// written again over that one text. No count of the census below moved.
+    /// It last moved when every field took its declared FIX datatype as
+    /// `FIX:datatype` - the specification's own spelling, `TZTimeOnly`,
+    /// `UTCTimestamp`, `Qty`, a code-set field its set's base type - the one
+    /// fact the crate datatype does not recover, which the parse reads a
+    /// `TZTimeOnly`'s dateless clock by: the generator wrote it on all 6,241
+    /// fields and `aggressorindicatorcodeset` gained the bridge's `Aggressor`
+    /// and `Passive` as aliases of its two members, and the crate's own
+    /// registered fields state their family's (`UTCTimestamp` for a clock,
+    /// `int` for a count, `Exchange` for the MIC), so the crate's field
+    /// shard, its `metadata` group and the fixed row component were written
+    /// again. No count of the census below moved.
+    /// It last moved when the dictionary came to read FIX's trade lineage as
+    /// identifiers and to name a parent by its own field alone:
+    /// `TradeReportID(571)`, `TradeReportRefID(572)`, `OrigTradeID(1126)`
+    /// and `OrigSecondaryTradeID(1127)` state a `FIX:idmap` into
+    /// `identifiers` - `tradereportid`; `tradereportrefid`, `tradereportid`'s
+    /// one parent in the crate's vocabulary, which no field restates as
+    /// `FIX:parents`; `origtradeid`; and `origsecondarytradeid` - so the
+    /// identifier-map census goes from 17 to 21; and the other prefix's
+    /// spelling a base's one parent took among its `FIX:names` is retired:
+    /// `OrigClOrdID(41)` no longer answers to `parentclordid`,
+    /// `OrigCrossID(551)` to `parentcrossid`, `OrigTradeID(1126)` to
+    /// `parenttradeid`, `OrigSecondaryTradeID(1127)` to
+    /// `parentsecondarytradeid`, and `ParentAllocID(1593)` to `origallocid`.
+    /// Four field shards were written again; the crate's dump and
+    /// `constants.rs` did not change. No count of the census below moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 14_590_816_604_712_223_535);
+        assert_eq!(registry.stable_hash(), 17_114_512_833_162_386_024);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

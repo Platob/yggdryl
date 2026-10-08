@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2700",
       "description": "Identifier of the collateral portfolio when reporting on a portfolio basis.",
       "display": "SideCollateralPortfolioID"
@@ -18,6 +19,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2701",
       "description": "Type of collateral on deposit being reported.",
       "display": "SideCollateralType"
@@ -32,6 +34,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2702",
       "description": "Currency value currently attributed to the collateral.",
       "display": "SideCurrentCollateralAmount"
@@ -44,6 +47,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2703",
       "description": "Indicates, if \"Y\", that a stated valuation includes a haircut, e.g. that the stated value reflects the subtraction of the haircut. Note that a value of \"N\" does not imply a haircut is not applicable, only that the haircut (if any) is not reflected in the stated valuation.",
       "display": "SideHaircutIndicator"
@@ -57,6 +61,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "exdestinationtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2704",
       "description": "Identifies the type of execution destination for the order.",
       "display": "ExDestinationType"
@@ -70,6 +75,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "marketconditioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2705",
       "description": "Market condition. In the context of ESMA RTS 8 it is important that trading venues communicate the condition of the market, particularly \"stressed\" and \"exceptional\", in order to provide incentives for firms contributing to liquidity.",
       "display": "MarketCondition"
@@ -82,6 +88,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2706",
       "description": "Number of quote attributes entries.",
       "display": "NoQuoteAttributes"
@@ -95,6 +102,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "quoteattributetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2707",
       "description": "The type of attribute for the quote.",
       "display": "QuoteAttributeType"
@@ -107,6 +115,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2708",
       "description": "The value associated with the quote attribute type specified in QuoteAttributeType(2707).",
       "display": "QuoteAttributeValue"
@@ -119,6 +128,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2709",
       "description": "Number of price qualifiers in the repeating group.",
       "display": "NoPriceQualifiers"
@@ -132,6 +142,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "pricequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2710",
       "description": "Qualifier for price. May be used when the price needs to be explicitly qualified.",
       "display": "PriceQualifier"
@@ -145,6 +156,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "mdvaluetiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2711",
       "description": "Describes the reporting ranges for executed transactions.",
       "display": "MDValueTier"
@@ -158,6 +170,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "miscfeequalifiercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2712",
       "description": "Identifies whether the current entry contributes to the trade or transaction economics, i.e. affects NetMoney(118).",
       "display": "MiscFeeQualifier"
@@ -170,6 +183,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2713",
       "description": "Can be used to provide a textual description of the fee type.",
       "display": "MiscFeeDesc"
@@ -182,6 +196,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2714",
       "description": "The full normative name of the financial instrument.",
       "display": "FinancialInstrumentFullName"
@@ -194,6 +209,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2715",
       "description": "Byte length of encoded (non-ASCII characters) EncodedFinancialInstrumentFullName(2716) field.",
       "display": "EncodedFinancialInstrumentFullNameLen"
@@ -206,6 +222,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2716",
       "description": "Encoded (non-ASCII characters) representation of the FinancialInstrumentFullName(2714) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the FinancialInstrumentFullName(2714) field.",
       "display": "EncodedFinancialInstrumentFullName"
@@ -218,6 +235,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2717",
       "description": "The full normative name of the multileg's financial instrument.",
       "display": "LegFinancialInstrumentFullName"
@@ -230,6 +248,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2718",
       "description": "Byte length of encoded (non-ASCII characters) individual multileg instrument's EncodedLegFinancialInstrumentFullName(2719).",
       "display": "EncodedLegFinancialInstrumentFullNameLen"
@@ -242,6 +261,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2719",
       "description": "Encoded (non-ASCII characters) representation of the LegFinancialInstrumentFullName(2717) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the LegFinancialInstrumentFullName(2717) field.",
       "display": "EncodedLegFinancialInstrumentFullName"
@@ -254,6 +274,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2720",
       "description": "The full normative name of the underlying financial instrument.",
       "display": "UnderlyingFinancialInstrumentFullName"
@@ -266,6 +287,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2721",
       "description": "Byte length of encoded (non-ASCII characters) underlying instrument's EncodedUnderlyingFinancialInstrumentFullName(2722).",
       "display": "EncodedUnderlyingFinancialInstrumentFullNameLen"
@@ -278,6 +300,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2722",
       "description": "Encoded (non-ASCII characters) representation of the UnderlyingFinancialInstrumentFullName(2720) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingFinancialInstrumentFullName(2720) field.",
       "display": "EncodedUnderlyingFinancialInstrumentFullName"
@@ -291,6 +314,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamrateindexcurveunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2723",
       "description": "Curve time unit associated with the underlying index.",
       "display": "UnderlyingIndexCurveUnit"
@@ -303,6 +327,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2724",
       "description": "Curve time multiplier for the underlying index.",
       "display": "UnderlyingIndexCurvePeriod"
@@ -316,6 +341,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "commissionamountsubtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2725",
       "description": "Further sub classification of the CommissionAmountType(2641).",
       "display": "CommissionAmountSubType"
@@ -329,6 +355,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "commissionamountsubtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2726",
       "description": "Further sub classification of the AllocCommissionAmountType(2655).",
       "display": "AllocCommissionAmountSubType"
@@ -341,6 +368,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2727",
       "description": "Unique identifier for a specific leg (uniqueness not defined as part of the FIX specification). AllocLegRefID(2727) references the value from LegID(1788) in the current multileg order or trade message specifying to which leg the allocation instance applies.",
       "display": "AllocLegRefID"
@@ -353,6 +381,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2728",
       "description": "Time unit multiplier for the floating rate index identified in FloatingRateIndexID(2731).",
       "display": "FloatingRateIndexCurvePeriod"
@@ -367,6 +396,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "2729",
       "description": "Spread from the floating rate index.",
       "display": "FloatingRateIndexCurveSpread"
@@ -380,6 +410,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamrateindexcurveunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2730",
       "description": "Time unit associated with the floating rate index identified in FloatingRateIndexID(2731).",
       "display": "FloatingRateIndexCurveUnit"
@@ -392,6 +423,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2731",
       "description": "Security identifier of the floating rate index.",
       "display": "FloatingRateIndexID"
@@ -405,6 +437,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2732",
       "description": "Source for the floating rate index identified in FloatingRateIndexID(2731).",
       "display": "FloatingRateIndexIDSource"
@@ -417,6 +450,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2733",
       "description": "Month identified in the index roll.",
       "display": "IndexRollMonth"
@@ -429,6 +463,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2734",
       "description": "Number of instances of the index roll month.",
       "display": "NoIndexRollMonths"
@@ -441,6 +476,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2735",
       "description": "Used to provide a more specific description of the asset specified in AssetType(1940). See https://fixtrading.org/packages/assetsubtype for code list of applicable values.",
       "display": "AssetSubType"
@@ -454,6 +490,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "commodityfinalpricetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2736",
       "description": "Final price type of the commodity as specified by the trading venue.",
       "display": "CommodityFinalPriceType"
@@ -466,6 +503,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2737",
       "description": "Short name of the financial instrument. Uses ISO 18774 (FINS) values.",
       "display": "FinancialInstrumentShortName"
@@ -479,6 +517,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "2738",
       "description": "Next index roll date.",
       "display": "NextIndexRollDate"
@@ -491,6 +530,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2739",
       "description": "Used to provide a more specific description of the asset specified in LegAssetType(2069). See https://fixtrading.org/packages/assetsubtype for code list of applicable values.",
       "display": "LegAssetSubType"
@@ -503,6 +543,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2740",
       "description": "Short name of the financial instrument. Uses ISO 18774 (FISN) values.",
       "display": "LegFinancialInstrumentShortName"
@@ -515,6 +556,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2741",
       "description": "Used to provide a more specific description of the asset specified in SecondaryAssetType(1979). See https://fixtrading.org/packages/assetsubtype for code list of applicable values.",
       "display": "SecondaryAssetSubType"
@@ -527,6 +569,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2742",
       "description": "Short name of the financial instrument. Uses ISO 18774 (FINS) values.",
       "display": "UnderlyingFinancialInstrumentShortName"
@@ -539,6 +582,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2743",
       "description": "Used to provide a more specific description of the asset specified in LegSecondaryAssetType(2079). See https://fixtrading.org/packages/assetsubtype for code list of applicable values.",
       "display": "LegSecondaryAssetSubType"
@@ -551,6 +595,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2744",
       "description": "Used to provide a more specific description of the asset specified in UnderlyingAssetType(2015). See https://fixtrading.org/packages/assetsubtype for code list of applicable values.",
       "display": "UnderlyingAssetSubType"
@@ -563,6 +608,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2745",
       "description": "May be used to provide a more specific description of the asset specified in UnderlyingSecondaryAssetType(2083). See https://fixtrading.org/packages/assetsubtype for code list of applicable values.",
       "display": "UnderlyingSecondaryAssetSubType"
@@ -575,6 +621,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2746",
       "description": "Number of instances of reference data dates.",
       "display": "NoReferenceDataDates"
@@ -589,6 +636,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "2747",
       "description": "Reference data entry's date-time of the type specified in ReferenceDataDateType(2748).",
       "display": "ReferenceDataDate"
@@ -602,6 +650,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "referencedatadatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2748",
       "description": "Reference data entry's date-time type.",
       "display": "ReferenceDataDateType"
@@ -616,6 +665,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "2749",
       "description": "Time of the individual execution.",
       "display": "ExecutionTimestamp"
@@ -630,6 +680,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2750",
       "description": "Represents the reportable price on fill when an instance of the Parties component with PartyRole(452) = 73 (Execution Venue) is present to prevent having to compute running totals.",
       "display": "ReportingPx"
@@ -644,6 +695,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2751",
       "description": "Represents the reportable quantity on fill when an instance of the Parties component with PartyRole(452) = 73 (Execution Venue) is present to prevent having to compute running totals.",
       "display": "ReportingQty"
@@ -656,6 +708,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2752",
       "description": "Specific delivery route or time charter average. Applicable to commodity freight contracts.",
       "display": "DeliveryRouteOrCharter"
@@ -669,6 +722,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "returntriggercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2753",
       "description": "Indicates the type of return or payout trigger for the swap or forward.",
       "display": "ReturnTrigger"
@@ -681,6 +735,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2754",
       "description": "Specific delivery route or time charter average. Applicable to commodity freight contracts.",
       "display": "LegDeliveryRouteOrCharter"
@@ -694,6 +749,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "returntriggercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2755",
       "description": "Indicates the type of return or payout trigger for the swap or forward.",
       "display": "LegReturnTrigger"
@@ -706,6 +762,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2756",
       "description": "Specific delivery route or time charter average. Applicable to commodity freight contracts.",
       "display": "UnderlyingDeliveryRouteOrCharter"
@@ -719,6 +776,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "returntriggercodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2757",
       "description": "Indicates the type of return or payout trigger for the swap or forward.",
       "display": "UnderlyingReturnTrigger"
@@ -731,6 +789,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2758",
       "description": "Unique identifier for the request message.",
       "display": "AllocRequestID"
@@ -745,6 +804,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2759",
       "description": "Indicates the total notional units or amount of an allocation group. Includes any allocated units or amount.",
       "display": "GroupAmount"
@@ -759,6 +819,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2760",
       "description": "Indicates the remaining notional units or amount of an allocation group that has not yet been allocated.",
       "display": "GroupRemainingAmount"
@@ -773,6 +834,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "2761",
       "description": "Indicates the notional units or amount being allocated.",
       "display": "AllocGroupAmount"
@@ -787,6 +849,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "2762",
       "description": "Price offset of the markup denominated in the price type of the trade.",
       "display": "PriceMarkup"
@@ -800,6 +863,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "averagepricetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2763",
       "description": "The average pricing model used for block trades.",
       "display": "AveragePriceType"
@@ -814,6 +878,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "2764",
       "description": "Start of the time period during which price averaging occurred.",
       "display": "AveragePriceStartTime"
@@ -828,6 +893,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "2765",
       "description": "End of the time period during which price averaging occurred.",
       "display": "AveragePriceEndTime"
@@ -840,6 +906,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "2766",
       "description": "For Percent-of-volume (POV) average pricing this is the target percentage this order quantity represents of the total trading volume of an instrument during the specified time period. This provides the data needed to ensure that the average price is fair based on the total sum of grouped POV trades.",
       "display": "OrderPercentOfTotalVolume"
@@ -853,6 +920,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "allocgroupstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2767",
       "description": "Status of the trade give-up relative to the group identified in AllocGroupID(1730).",
       "display": "AllocGroupStatus"
@@ -866,6 +934,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "allocrequeststatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2768",
       "description": "Status of the AllocationInstructionAlertRequest(35=DU).",
       "display": "AllocRequestStatus"
@@ -879,6 +948,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "avgpxindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2769",
       "description": "Average pricing indicator at the allocation level.",
       "display": "AllocAvgPxIndicator"
@@ -891,6 +961,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2770",
       "description": "Used by submitting firm to group trades being sub-allocated into an average price group. The trades in the average price group will be used to calculate an average price for the group.",
       "display": "AllocAvgPxGroupID"
@@ -903,6 +974,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2771",
       "description": "When reporting a group change by the central counterparty to allocations of trades for the same instrument traded at the same price this identifies the previous group identifier.",
       "display": "PreviousAllocGroupID"
@@ -915,6 +987,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2772",
       "description": "Number of match exceptions in the repeating group.",
       "display": "NoMatchExceptions"
@@ -928,6 +1001,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "matchexceptiontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2773",
       "description": "Type of matching exception.",
       "display": "MatchExceptionType"
@@ -941,6 +1015,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "matchexceptionelementtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2774",
       "description": "Identifies the data point used in the matching operation which resulted in an exception.",
       "display": "MatchExceptionElementType"
@@ -953,6 +1028,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2775",
       "description": "The matching exception data point name, for example: \"Trade currency\". This may be used for display purposes, providing a corresponding description for the value in MatchExceptionElementType(2774).",
       "display": "MatchExceptionElementName"
@@ -965,6 +1041,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2776",
       "description": "The allocating party's data value used in the match operation.",
       "display": "MatchExceptionAllocValue"
@@ -977,6 +1054,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2777",
       "description": "The confirming party's data value used in the match operation.",
       "display": "MatchExceptionConfirmValue"
@@ -989,6 +1067,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2778",
       "description": "The data element's tolerance value. Omitted if no tolerance is allowed or not applicable.",
       "display": "MatchExceptionToleranceValue"
@@ -1002,6 +1081,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "matchexceptiontolerancevaluetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2779",
       "description": "The type of value in MatchExceptionToleranceValue(2778). Omitted if no tolerance is allowed or not applicable.",
       "display": "MatchExceptionToleranceValueType"
@@ -1014,6 +1094,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2780",
       "description": "Description of the exception.",
       "display": "MatchExceptionText"
@@ -1026,6 +1107,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2781",
       "description": "Number of matching data points in the repeating group.",
       "display": "NoMatchingDataPoints"
@@ -1039,6 +1121,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "matchingdatapointindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2782",
       "description": "Data point's matching type.",
       "display": "MatchingDataPointIndicator"
@@ -1051,6 +1134,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2783",
       "description": "Value of the matching data point.",
       "display": "MatchingDataPointValue"
@@ -1064,6 +1148,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "matchexceptionelementtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2784",
       "description": "Identifies the data point used in the matching operation.",
       "display": "MatchingDataPointType"
@@ -1076,6 +1161,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2785",
       "description": "The matching data point name, for example: \"Trade currency\". This may be used for display purposes, providing a corresponding description for the value in MatchingDataPointType(2784).",
       "display": "MatchingDataPointName"
@@ -1088,6 +1174,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2786",
       "description": "The message identifier for the trade aggregation request.",
       "display": "TradeAggregationRequestID"
@@ -1100,6 +1187,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2787",
       "description": "Reference identifier to a previously sent trade aggregation message being cancelled or replaced.",
       "display": "TradeAggregationRequestRefID"
@@ -1113,6 +1201,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradeaggregationtranstypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2788",
       "description": "Identifies the trade aggregation transaction type.",
       "display": "TradeAggregationTransType"
@@ -1127,6 +1216,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2789",
       "description": "Total quantity of orders or fills quantity aggregated.",
       "display": "AggregatedQty"
@@ -1140,6 +1230,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradeaggregationrequeststatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2790",
       "description": "Status of the trade aggregation request.",
       "display": "TradeAggregationRequestStatus"
@@ -1153,6 +1244,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradeaggregationrejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2791",
       "description": "Reason for trade aggregation request being rejected.",
       "display": "TradeAggregationRejectReason"
@@ -1165,6 +1257,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2792",
       "description": "Unique identifier for the TradeAggregationReport(35=DX).",
       "display": "TradeAggregationReportID"
@@ -1179,6 +1272,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2793",
       "description": "The average FX spot rate.",
       "display": "AvgSpotRate"
@@ -1193,6 +1287,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "2794",
       "description": "The average forward points. May be a negative value.",
       "display": "AvgForwardPoints"
@@ -1206,6 +1301,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "offshoreindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2795",
       "description": "Indicates the type of the currency rate being used. This is relevant for currencies that have offshore rate that different from onshore rate.",
       "display": "OffshoreIndicator"
@@ -1218,6 +1314,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:deprecated": "5.0.2",
       "FIX:tag": "2796",
       "description": "Specifies the foreign exchange benchmark rate fixing to be used in valuing the transaction. For example \"London 4 p.m.\" or \"Tokyo 3 p.m.\"",
@@ -1231,6 +1328,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2797",
       "description": "Byte length of encoded (non-ASCII characters) EncodedMatchExceptionText(2798) field.",
       "display": "EncodedMatchExceptionTextLen"
@@ -1243,6 +1341,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2798",
       "description": "Encoded (non-ASCII characters) representation of the MatchExceptionText(2780) field in the encoded format specified via the MessageEncoding(347) field.",
       "display": "EncodedMatchExceptionText"
@@ -1255,6 +1354,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2799",
       "description": "Unique ID of the PayManagementReport(35=EA) message.",
       "display": "PayReportID"

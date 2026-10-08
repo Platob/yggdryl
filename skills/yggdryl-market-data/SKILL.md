@@ -8,8 +8,8 @@ description: Models and streams market data with yggdryl's graph layer in Rust, 
 The graph layer is market data as **elements that name each other by
 identity**, never by reference. Four Rust traits say what an element answers -
 `Element` (identity, cross code, digest, sources), `Event` (instant, state,
-place at its instant, clocks), `Market` (thirty-five facts: the `marketdatatype` of its kind, price, stop price, the `strikepx` of the option it is about,
-quantity and its shown and hidden parts, currency, unit, side, the security's identifiers `securityids` and the `isincode` they hold, classification, market,
+place at its instant, clocks), `Market` (thirty-six facts: the `marketdatatype` of its kind, price, stop price, the `strikepx` of the option it is about,
+quantity and its shown and hidden parts, currency, the `origccy` the instrument was issued in (`origin_currency()` reads `currency` where none is held), unit, side, the security's identifiers `securityids` and the `isincode` they hold, classification, market,
 the `execunix` it last executed at, last-trade, progress, FX parts, the stated bid and ask - `bidpx`, `bidqty`,
 `bidccy`, `askpx`, `askqty`, `askccy` - the `fxrates`, ticker, metadata) and
 `Operation` (five more: the `ordqty` it asked for, the `TimeInForce` member it stands for, whether it trades, the `identifiers`, the
@@ -17,10 +17,10 @@ the `execunix` it last executed at, last-trade, progress, FX parts, the stated b
 typed leaves answer them: `Order`/`OrderEvent`, `Quote`/`QuoteEvent`,
 `Execution`/`ExecutionEvent`, the composite `TradeEvent`, and the book types
 `BookEvent` and `SnapshotEvent`. `MarketData` is the one value over every
-leaf, and the lifted **`marketdata` Arrow row** (63 columns: the element,
+leaf, and the lifted **`marketdata` Arrow row** (65 columns: the element,
 event, market and operation columns every generated row opens with, the book
 controls `bookscope`, `bookaction` and `bookposition`, then the nested
-`alive`, `deltas`, `executions`, `bidlimits` and `asklimits` -
+`alive`, `delta`, `events`, `executions`, `bidlimits` and `asklimits` -
 [Row schemas](https://platob.github.io/yggdryl/graph/schemas/)) is how any of
 them crosses a boundary.
 
@@ -64,8 +64,15 @@ Hold these facts:
   chain's first as `origorderid`, a changed `clordid` leaves `origclordid`
   (`FIX:parents` states the list a FIX field has). A FIX lifecycle message takes the `metadata` keys and
   only the ids its dictionary follows, each with its parents. `EventIterator` joins a stream by cross
-  identity and by the type and value of an `identifiers` identifier a live element
-  went by (or the parent identifier it replaced, joined under the parent's own type),
+  identity and by the type and value of a chain identity a live element went by
+  (`orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid` and their
+  secondary ones - never `execid`, `trdmatchid` or `quotereqid`) or the chain's
+  first value a lineage identifier names (`origclordid`, `origorderid`), filed
+  under its base, each name held by the first live chain that stated it; an
+  element citing two live chains joins neither - it stands under its own
+  identity, `Operation::note_conflict` tells it (a FIX message's `FixAnomaly`)
+  and the walk warns once per kind - and every element of a chain is re-keyed
+  onto the chain's side and first cross code,
   within one `marketdatakind` (an order and an execution under one cross code
   are two chains, so a fill never restates, follows or ends its order),
   folds twins, emits expiries, and leaves every element stating `creaunix`. A grid view is the live element
@@ -132,17 +139,19 @@ Hold these facts:
   - CumQty` while it works, `0` once done, the rest `cxlqty` when canceled) -
   and the binding constructors run the same fills. Every fill is a column, so
   a row read back answers it unchanged; never recompute one by hand.
-- **Books are folded, and stated as deltas.** `BookIterator` folds a sorted
+- **Books are folded, complete or delta.** `BookIterator` folds a sorted
   stream into one `BookEvent` per book and instant that moved it. A book
   folds orders and quotes into its sides (`MarketDataKind::is_booked`,
-  Rust-only) and records every execution among its `deltas` at its instant
+  Rust-only) and records every execution among its `events` at its instant
   (`is_recorded`), moving no side - a fill moved the book through its
   order's or quote's own report; a trade or a batch is pruned before the
   walk. A book is **complete** (`is_complete`: its `alive` entries and
   `limits`) only at a snapshot tick - every grid tick a positive
   `snapshot_millis` crosses, and a snapshot input (a FIX `W` full refresh, an
-  empty `W`, inputs stating `snapunix`); every other book states its
-  `deltas` alone beside the top of book they settled on (`bidpx`, `askpx`,
+  empty `W`, inputs stating `snapunix`); every other book is a **delta
+  book**, holding no sides: its `delta` (the orders and quotes its instant
+  applied) and its `events` (the executions and snapshot controls it
+  recorded) beside the top of book they settled on (`bidpx`, `askpx`,
   `best_price`, `spread`). With `snapshot_millis = 0` and no snapshot input
   every book is a delta book. `with_previous` over the complete book before it
   rebuilds a delta book whole under its own identity; a code's first book
@@ -162,10 +171,17 @@ Hold these facts:
 | a market-data entry's book control | `event.with_book(BookRef { .. })` | `event.with_book(graph.BookRef(action="new", position=1))` | `event.withBook(new graph.BookRef({ action: 'new', position: 1 }))` |
 | an identifier | `Identifier::new(IdKey::base(IdType::Isin), value)?`, `"ullink:isin".parse::<IdKey>()?`, `Identifiers` | `Identifier(key, value)` - `"isin"`, `"ullink:isin"` - `Identifiers([...])`, `Identifiers.from_dict({...})`, `into_dict()` | `new Identifier(key, value)`, `new Identifiers([...])`, `Identifiers.fromObject({...})`, `intoObject()` |
 | what instruments are known by | `IsinRegistry::from_url(&url, props)?`, `registry.enrich(&mut event)`, `get("CH0012214059")`, `get_by_ticker("HOLN", Some(&mic))`, `commit()?` | `IsinRegistry.from_url(path)`, `registry.get("CH0012214059")` (a `dict`), `get_by_ticker("HOLN", "XSWX")`, `enrich(fix_msg)`, `commit()` | `IsinRegistry.fromUrl(path)`, `registry.get('CH0012214059')` (a plain object), `getByTicker('HOLN', 'XSWX')`, `enrich(fixMsg)`, `commit()` |
+| an instrument's listings, one row per market | `registry.listings(isin)` (MIC order; `get` the first), `get_listing(isin, &mic)`, `rows()` (`len()` counts ISINs), `remove_listing(isin, &mic)`, `remove(isin)` -> every listing | `listings(isin)`, `get_listing(isin, "XSWX")`, `rows` (a property), `remove_listing(isin, "XSWX")`, `remove(isin)` -> `list[dict]` | `listings(isin)`, `getListing(isin, 'XSWX')`, `rows` (a getter), `removeListing(isin, 'XSWX')`, `remove(isin)` -> objects |
+| when an instrument was first and last met, and last changed | `entry.firstunix()` (an earlier `learn` moves it back), `entry.lastunix()` (a later one moves it), `entry.updunix()` (only a moved fact does) | `row["firstunix"]`, `row["lastunix"]`, `row["updunix"]` (a `datetime`) | `row.firstunix`, `row.lastunix`, `row.updunix` (a `Date`, or a datetime `Scalar` past millisecond precision) |
+| which instrument an element means, and how | `registry.resolve(&element)` -> `Resolution::Matched { entry, tier, derived, listing }` or `Resolution::Unmatched(Unmatched::..)`; `get_by_code(&IdType::Cusip, "037833100", None)`; `IsinRegistry::LOOKUP_CODES` | `registry.resolve(element)` -> `Resolution` (`.matched`, `.entry`, `.tier`, `.kind`, `.unmatched`, ...); `get_by_code("cusip", "037833100")`; `IsinRegistry.LOOKUP_CODES` | `registry.resolve(element)` -> a plain object (`.matched`, `.entry`, `.tier`, `.kind`, `.unmatched`, ...); `getByCode('cusip', '037833100')`; `IsinRegistry.lookupCodes()` |
+| match by short name, scored | `set_economic_match(true)` (a fill takes it), `set_economic_threshold(0.9)?` (default `0.85`) | `set_economic_match(True)`, `set_economic_threshold(0.9)`, `economic_threshold` | `setEconomicMatch(true)`, `setEconomicThreshold(0.9)`, `economicThreshold` |
+| the currency an instrument was issued in | `get_origccy()` (stated or filled; `Ccy::none()` otherwise), `origin_currency()` (else the currency), `set_origccy(ccy, overwrite)`; a registry row's `entry.origccy()` | `.origccy` (`Scalar` or `None`), `.origin_currency`; `origccy="USD"` at build; `row["origccy"]` | `.origccy` (or `null`), `.originCurrency`; `origccy: 'USD'` at build; `row.origccy` |
 | security, own and party identifiers | `insert_securityid(id)?`, `insert_identifier(id)?`, `insert_partyid(id)?` (Rust-only verbs) | `securityids=[Identifier("isin", ...)]`, `identifiers=[...]`, `partyids=[...]` at build | `securityids: [new Identifier('isin', ...)]`, `identifiers: [...]`, `partyids: [...]` at build |
 | read an identifier map | `get_securityids().get(&IdType::Isin)`, `get_from(&src, &kind)` | `order.securityids.get("isin")`, `get_from(src, type)`, iterate `Identifier`s | `order.securityids.get('isin')`, `getFrom(src, type)`, `toArray()` |
 | FX rates (nothing fills them) | `insert_fxrate(ccy, rate)`, `set_fxrates(map)` | `fxrates={"EUR": Decimal("1.1")}` at build | `fxrates: { EUR: '1.1' }` at build |
 | an option's strike price (a follower of the same instrument carries it) | `set_strikepx(Some(px), overwrite)`, `get_strikepx()` (`Market`) | `strikepx=Decimal("190")` at build, `.strikepx` | `strikepx: '190'` at build, `.strikepx` |
+| the common instruments, and what a row derives | `IsinRegistry::seeded()`, `IsinRegistry::seeded_from_url(&url, props)?` (a store laid over them), `entry.fisn()`; a folded row's embedded CUSIP, SEDOL, WKN or Valor and its market's currency where it states none | `IsinRegistry.seeded()`, `IsinRegistry.seeded_from_url(path)`, `row["fisn"]`, `row["sedol"]`, `row["currency"]` | `IsinRegistry.seeded()`, `IsinRegistry.seededFromUrl(path)`, `row.fisn`, `row.sedol`, `row.currency` |
+| a venue's facts, a country's currency | `Mic::operating()`, `is_segment()`, `country()`; `Country::currency()` | `Mic.from_str("XNGS").operating`, `.is_segment`, `.country`; `Country.from_str("GB").currency` (`yggdryl.enums`) | `new Mic('XNGS').operating`, `.isSegment`, `.country`; `new Country('GB').currency` |
 | a structured product's category, as a registry row holds it | `registry.get(isin).and_then(IsinEntry::eusipacode)` -> `Eusipa`, `entry.with_eusipacode(Some(code))`; `name()`, `sspa_name()` | `registry.get(isin)["eusipacode"]` (an `int`), `Eusipa(code).name`, `.sspa_name`; `merge({..., "eusipacode": 2300})` | `registry.get(isin).eusipacode` (a number); no `Eusipa` |
 | a composite trade | `TradeEvent::from_parts(&root, executions)?` | `graph.TradeEvent.from_parts(root, executions)` | `graph.TradeEvent.fromParts(root, executions)` |
 | follow a predecessor | `event.with_previous(&prev)` | `event.with_previous(prev)` | `event.withPrevious(prev)` |
@@ -181,8 +197,9 @@ Hold these facts:
 | the empty book a code starts from | `BookEvent::keyed(unix, key)` | `graph.BookEvent.keyed(unix, key)` | `graph.BookEvent.keyed(unix, key)` |
 | whether a book holds its sides | `is_complete()` | `book.is_complete` | `book.isComplete` |
 | rebuild a delta book whole | `book.with_previous(&previous)` | `book.with_previous(previous)` | `book.withPrevious(previous)` |
-| a book's entries | `alive()`, `alive_on(Side::Buy)`, `deltas()` | `book.alive`, `book.alive_on(Side.BUYS)`, `book.deltas` | `book.alive()`, `book.aliveOn('BUYS')`, `book.deltas()` |
-| a book's entries by kind | `ordlive()`, `orddelta()`, `quotes()`, `executions()`, `events()` (every other delta) | `book.ordlive`, `book.orddelta`, `book.quotes`, `book.executions`, `book.events` | `book.ordlive()`, `book.orddelta()`, `book.quotes()`, `book.executions()`; no `events` |
+| a book's entries | `alive()`, `alive_on(Side::Buy)`, `delta()`, `events()` | `book.alive`, `book.alive_on(Side.BUYS)`, `book.delta`, `book.events` | `book.alive()`, `book.aliveOn('BUYS')`, `book.delta()`, `book.events()` |
+| a book's entries by kind | `ordlive()`; `orddelta()` and `quotes()` partition `delta`, `executions()` and `controls()` partition `events` | `book.ordlive`, `book.orddelta`, `book.quotes`, `book.executions`, `book.controls` | `book.ordlive()`, `book.orddelta()`, `book.quotes()`, `book.executions()`, `book.controls()` |
+| a table of books' delta or events as rows | `MarketData::delta_serie(books, None)?`, `MarketData::events_serie(books, Some(MarketDataKind::Execution))?` | `graph.MarketData.delta_serie(books)`, `graph.MarketData.events_serie(books, "EXEC")` | `graph.MarketData.deltaSerie(books)`, `graph.MarketData.eventsSerie(books, 'EXEC')` |
 | read a side | `limits(Side::Buy)`, `best_price(Side::Buy)`, `best_quantity(..)`, `depth(Side::Buy, n)` | `book.limits(Side.BUYS)`, `book.best_price(Side.BUYS)`, `book.depth(Side.BUYS, n)` | `book.limits('BUYS')`, `book.bestPrice('BUYS')`, `book.depth('BUYS', n)` |
 | read both sides | `get_bidpx()`, `get_askpx()`, `spread()`, `is_crossed()`, `imbalance(n)` | `book.bidpx`, `book.askpx`, `book.spread`, `book.is_crossed`, `book.imbalance(n)` | `book.bidpx`, `book.askpx`, `book.spread`, `book.isCrossed`, `book.imbalance(n)` |
 | clear a scope with a snapshot | `SnapshotEvent::snapshot(&event, scope)` | `graph.SnapshotEvent.snapshot(event, scope=None)` | `graph.SnapshotEvent.snapshot(event, scope)` |
@@ -208,7 +225,12 @@ Hold these facts:
    order, a quote or an execution, a dated one the event; `TRAD` and `BOOK`
    must be dated, and a `BOOK` row is a complete book where its `alive` cell
    is a list (even an empty one), a delta book where `alive` is null and
-   `deltas` a list, and a snapshot control where both are null. A `BOOK` row
+   `delta` or `events` a list, and a snapshot control where all three are
+   null; a table storing a null list as an empty one reads an empty `alive`
+   beside a non-empty `delta` or `events` and no `snapunix` as a delta book,
+   so a row recording only an execution is a delta book, never a control. An
+   `EXEC` item in `delta`, or an `ORDR` or `QUOT` one in `events`, is refused
+   by path. A `BOOK` row
    holding an `executions` entry is refused there: that column is a trade's.
 3. Views are `Plan`s run by the expression engine: `apply_view` binds once
    against the reader's schema and streams; `plan()` shows the text. Add a
@@ -228,20 +250,20 @@ Hold these facts:
    An entry restated under another key - stated by its ticker, then under its
    ISIN - leaves the book it stood in by a `REMOVED` delta and opens in its
    new one at the same instant, so an entry rests in one book at a time. A
-   book is yielded where it holds a delta, or at a snapshot tick where it
-   holds an entry (a snapshot emptying a book is yielded too, empty and
-   complete); an instant that only repeats what the book holds yields none.
-   Depth persists; `deltas` carry only that instant's orders, quotes and
-   executions, in the order applied - `orddelta`, `quotes`, `executions` and
-   `events` (Rust and Python) read them by kind and partition them, and
-   `ordlive` the orders resting on a complete book. `events` - every delta
-   no order, quote or execution event - is empty: a book records nothing
-   else, a trade or a batch pruned and an undated leaf or a book refused
-   before the fold; it is where a kind the fold comes to record would land.
+   book is yielded where its instant recorded a `delta` or an `events` entry,
+   or at a snapshot tick where it holds an entry (a snapshot emptying a book
+   is yielded too, empty and complete, its control in `events`); an instant that only repeats what the book holds yields none.
+   Depth persists; `delta` carries only that instant's orders and quotes
+   (`orddelta` and `quotes` partition it) and `events` its executions and
+   snapshot controls (`executions` and `controls` partition it), each in the
+   order applied; `ordlive` reads the orders resting on a complete book. An
+   instant that recorded only an execution yields a delta book whose `delta`
+   is empty. A trade or a batch is pruned and an undated leaf or a book
+   refused before the fold.
    A positive `snapshot_millis` adds the complete live book
    at every crossed epoch-aligned tick.
-6. A book row nests `deltas` (operation rows, in the order applied) and, on a
-   complete book, `alive` and `bidlimits`, `asklimits` (one `Limit` per price
+6. A book row nests `delta` and `events` (their rows in the order applied)
+   and, on a complete book, `alive` and `bidlimits`, `asklimits` (one `Limit` per price
    level, best first: `price`, `quantity`, `uuids`, `tradable`) - null on a
    delta book; its `executions` cell is null. A book rests an order on the
    side it takes and a quote on every side it states a leg for: a two-sided
@@ -253,11 +275,11 @@ Hold these facts:
    book it settled on.
 7. Join and chain by identity: `crossuuid` is one chain whatever identifier an
    event used; a later event joins a live one of its side and its
-   `marketdatakind` through the type and value of an `identifiers` identifier
-   (`orderid`, `clordid`, `mdentryid`..., whatever its source) - a quote's
-   name alive on the side it tags, so a bid and an offer going by one
-   `mdentryid` are two entries - and one stating no side joins the single
-   side alive under its code. Name identifiers there, as `Identifier`s,
+   `marketdatakind` through the type and value of a chain identity
+   (`orderid`, `clordid`, `quoteid`, `tradeid`..., whatever its source, never
+   an `execid`) - a quote's name alive on the side it tags, so a bid and an
+   offer going by one name are two chains - and one stating no side joins the
+   single side alive under its code; one citing two chains joins neither. Name identifiers there, as `Identifier`s,
    rather than inventing a column.
 8. Leaves are immutable in the bindings: `with_previous`, `merge_with`,
    `restating`, `with_book`, `with_operations` answer a new value; only
@@ -267,7 +289,12 @@ Hold these facts:
    `currhashcode`, `crosshashcode`) is refused.
 9. Sources are provenance: `srcuuids` never changes identity, never travels
    along a chain, and merges as a sorted union - use it to point back at the
-   lines an event was read from.
+   lines an event was read from. A book states none (`srcuuids` empty,
+   setting it keeps nothing): its provenance is the events it holds. Its row
+   writes `srcuuids` null, and null for every entry nested in `alive` - that
+   entry is the one the `delta` of the book that applied it holds, whose row
+   writes its sources - so read the sources off the `delta_serie` and
+   `events_serie` rows, never off a book's `alive`.
 10. Numbers are exact decimals: pass `Decimal('189.5')` in Python and the text
     `'189.5'` in JavaScript - a float price (`189.5`) is refused at `$.price`
     (`got f64`). Python answers `Scalar` (`.as_py()` -> `Decimal`), JavaScript
@@ -291,7 +318,7 @@ Hold these facts:
 - `currhashcode` and `crosshashcode` read back from any layout a table stored
   them in: a whole `decimal(20, 0)` as the number, an `int64` cell as its
   bits - the `long` an Iceberg column stating `FIELD:representation=bits`
-  holds - at the root and in `alive`, `deltas` and `executions`, every
+  holds - at the root and in `alive`, `delta`, `events` and `executions`, every
   identity still verified against the rebuilt leaf. `MarketData::field()`
   states no declaration, so `into_scheme_compat` widens unless the caller
   states it on the digests at every depth (`set_field_by_path`).
@@ -312,14 +339,14 @@ Hold these facts:
   book refuses; only a source's own failure ends it, and so does a value no
   book folds (the next bullet).
 - A book folds dated orders, dated quotes and snapshot controls, and
-  records a dated execution among its deltas, resting on no side. A trade or
+  records a dated execution among its `events`, resting on no side. A trade or
   a batch is pruned - no error, no book, no instant - and a filter
   (`with_filter`, `filter=`) narrows what is left, never admitting them
   back. An undated `Order` or a `BookEvent` is refused - by
   `BookIterator` at `$.operation.kind`, by `with_operations`/`add_operations`
   at `$.operations[i].kind`. An order or a quote resting on neither the bid
   nor the ask (an order of side `UKNW`, a quote stating no leg, a leg sized zero) is
-  placed nowhere, with a warning, and still counts as the book's delta.
+  placed nowhere, with a warning, and still counts among the book's `delta`.
 - A grid multiplies: every tick `snapshot_millis` crosses yields every live
   book complete, each repeating every alive entry it holds, so a fine grid
   over deep books is `alive entries x ticks` nested rows whatever the input's
@@ -335,7 +362,8 @@ Hold these facts:
   not the book its `prevuuid` names.
 - `EventIterator` defaults to `sorted=True` / `true` and trusts the order: an
   unsorted stream is not refused, it silently yields broken chains (an
-  element before the live one is yielded as it came and joins nothing). Pass `sorted=False` / `false` for a stream you have not
+  element before the live one follows nothing, though it carries its chain's
+  side and code). Pass `sorted=False` / `false` for a stream you have not
   sorted (it collects to sort); only `BookIterator` notices a regression, and
   leaves it out with a warning.
 - A trade is built only through `TradeEvent.from_parts`: at least one
@@ -351,15 +379,26 @@ Hold these facts:
   type alone for the base source, and `Identifier("fix:clordid", value)` is the
   base `clordid`.
 - An `IsinRegistry` fills what an element leaves unsaid about its instrument
-  from what earlier elements stated - keyed by the ISIN alone, a ticker
-  leading to it on its market, a RIC or a Bloomberg symbol only an equivalent
-  - as `derived` identifiers, so a filled code reads back `is_derived`, plus
+  from what earlier elements stated - keyed by the ISIN, a code of
+  `LOOKUP_CODES` (a CUSIP, a SEDOL, a FIGI, a RIC, a Bloomberg symbol) or a
+  ticker on its market leading back to it, and a short name in the element's
+  currency only under `set_economic_match(true)`; `resolve(element)` names
+  the row, its tier and whether the ISIN was derived, or why none - an ISIN
+  it lacks (`UnknownIsin`, ending the cascade), a key two instruments hold
+  (`Ambiguous`), a CFI or origin-currency conflict, a score below the
+  threshold - as `derived` identifiers, so a filled code reads back `is_derived`, plus
   the ticker, the CFI code and the listing's currency as market facts; a
   valid stated value fills and replaces whatever the time; a row also holds
   the `underlyingisin` and the `eusipacode` - a structured product's EUSIPA
   category, `int32`, read as an `Eusipa` (`yggdryl-types`) - a FIX lifecycle
-  learned - never the bindings' `learn` - which nothing fills, and which no
-  listing switch clears; `merge` takes either as stated. A store written
+  learned - never the bindings' `learn` - which nothing fills; `merge` takes
+  either as stated. A row is one listing - one per (ISIN, market): the
+  instrument's facts (`cficode`, `fisn`, `underlyingisin`, `eusipacode`,
+  `updunix`, `firstunix`, `lastunix`, `origccy`, the non-listing codes) are every listing's, the
+  ticker, currency and listing codes one market's; a listing fact stated on
+  no market lands on the ISIN's single listing, or with a warning on none of
+  several. Every `learn` states `firstunix` and `lastunix`, so meeting a known
+  instrument earlier or later than before dirties the registry and the next `commit()` writes it. A store written
   before `eusipacode` was a column loads it null and keeps its own row on
   `commit()`, so the category reaches only a store laid out afresh. The bindings'
   `learn`/`fill`/`enrich` take a `FixMsg`, a FIX lifecycle runs them on every
@@ -400,7 +439,7 @@ Hold these facts:
   `at` from the last complete book, or the first following none, and answers
   `"complete": false` - with no entries or levels - where it cannot.
 - The display's routes render instants as RFC 9557 text with a bracketed zone,
-  `2026-08-14T14:00:00.000000000+02:00[Europe/Zurich]`, which `Date.parse`
+  `2026-08-14T14:00:00+02:00[Europe/Zurich]`, which `Date.parse`
   does not read: hand a candle's `start`/`end` back as the next question's
   `from`, `to` or `at` - percent-encoded, as `URLSearchParams` does - rather
   than re-parsing them. A naive `from`/`to` is a wall clock in `tz`, and `to`

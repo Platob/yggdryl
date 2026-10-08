@@ -242,11 +242,11 @@ pub(crate) use lifecycle::{coding_mime, not_atomic, oversized, reject_container}
 pub use lifecycle::{not_empty, skip_absent};
 #[cfg(feature = "iceberg")]
 pub(crate) use transfer::prepare_arrow_write_deriving;
-pub use transfer::{ArrowWriteSession, overwrite_arrow_reader_default};
+pub use transfer::{ArrowWriteSession, overwrite_serie_default};
 pub(crate) use transfer::{
-    append_arrow_reader_default, leaf_field, leaf_reader, leaf_row_size, leaf_writer,
-    merge_arrow_reader_default, non_empty_arrow_reader, overwrite_arrow_reader_default_with_field,
-    stored_field,
+    append_arrow_reader_default, append_serie_default, leaf_field, leaf_reader, leaf_row_size,
+    leaf_writer, merge_arrow_reader_default, merge_serie_default, non_empty_arrow_reader,
+    overwrite_arrow_reader_default_with_field, stored_field,
 };
 /// Random-access byte storage addressed by explicit offsets.
 ///
@@ -716,6 +716,16 @@ pub trait IOBase: Send + IOMedia {
         !media.is_tabular() && !media.base().is_directory() && !self.kind().is_container()
     }
 
+    /// Return whether this handle answers only on the thread that made it,
+    /// as a filesystem a JavaScript handler implements does
+    /// ([`crate::fs::FileSystem::is_thread_bound`]): work over it then stays
+    /// on the calling thread - an Iceberg table on it reads and writes its
+    /// files there alone, whatever parallelism it states. Every native
+    /// backend answers on any thread.
+    fn is_thread_bound(&self) -> bool {
+        false
+    }
+
     /// Return whether this resource holds rows and columns.
     ///
     /// *Tabular* names the record surface: what
@@ -911,6 +921,51 @@ pub trait IOBase: Send + IOMedia {
         let mut bytes = vec![0_u8; length];
         self.pread_exact(offset, &mut bytes)?;
         Ok(bytes)
+    }
+
+    /// Read the last `length` bytes and the value's total length.
+    ///
+    /// The footer-first read a Parquet file asks for needs both at once: the
+    /// footer is found counting back from the end, and the total says where
+    /// the window it lies in began. A backend that addresses a range from the
+    /// end answers in one ask - an object on S3 or Google Cloud Storage sends
+    /// one `GET` with `Range: bytes=-N` and learns the total from
+    /// `Content-Range`, recording it so a later [`size`](Self::size) asks
+    /// nothing; a store that ignores the range answers the whole body, of
+    /// which the tail is kept and whose length is the total. Azure Blob
+    /// Storage reads no suffix range, so its object asks one `HEAD` (none
+    /// while open or once the size is known) and one ranged `GET`. The default
+    /// asks [`size`](Self::size) and then
+    /// [`read_range_bytes`](Self::read_range_bytes), which is right wherever
+    /// the size is already known - an open handle, a listing's entry, a length
+    /// a manifest recorded - and is what a local file and an HTTP resource
+    /// answer.
+    ///
+    /// A `length` over the total answers the whole value and the total. An
+    /// empty or missing value answers no bytes and a total of `0`, because
+    /// absence reads as emptiness everywhere in this trait.
+    ///
+    /// ```
+    /// use yggdryl::{IOBase, holder::Buffer};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let handle = Buffer::from_bytes(b"PAR1....footerPAR1".to_vec());
+    /// assert_eq!(handle.read_tail_bytes(4)?, (b"PAR1".to_vec(), 18));
+    /// // A window wider than the value answers all of it, and the total.
+    /// assert_eq!(handle.read_tail_bytes(64)?, (b"PAR1....footerPAR1".to_vec(), 18));
+    /// // Nothing written is no bytes and nothing in all.
+    /// assert_eq!(Buffer::new().read_tail_bytes(8)?, (Vec::new(), 0));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's read failure.
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        let total = self.size();
+        let start = total.saturating_sub(u64::try_from(length).unwrap_or(u64::MAX));
+        Ok((self.read_range_bytes(start, length)?, total))
     }
 
     /// Digest the complete value without holding it in memory.

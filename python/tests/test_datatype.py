@@ -1998,7 +1998,7 @@ def guarded(real):
 for name in ("Array", "RecordBatch", "RecordBatchReader", "Schema", "Field", "DataType"):
     setattr(pa, name, guarded(getattr(pa.lib, name)))
 
-from yggdryl import ChunkedSerie, DataType, Field, Serie, SerieReader
+from yggdryl import ChunkedSerie, DataType, Field, Serie, StreamChunkedSerie
 
 root = Field("row", "struct<id: int64, lookup: map<utf8, int64>>", nullable=False)
 records = Serie.from_scalars(root, [(1, {"a": 1})])
@@ -2012,7 +2012,7 @@ exports = [
     column.slice(0, 1).into_arrow_scalar(),
     records.into_arrow_batch(),
     records.into_arrow_reader().read_all(),
-    SerieReader.from_serie(records).into_arrow_reader().read_all(),
+    StreamChunkedSerie.from_serie(records).into_arrow_reader().read_all(),
     ChunkedSerie.from_series([column, column]).into_arrow_chunked_array(),
     ChunkedSerie.from_series([records]).into_arrow_table(),
 ]

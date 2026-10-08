@@ -44,6 +44,7 @@ use crate::expression::{Bound, Bounds, Function, Term};
 use crate::holder::Holder;
 use crate::integer::integer_from_text_as;
 use crate::{DataType, Error, Field, Filter, Result, Scalar, StructType};
+use parquet::file::metadata::ParquetMetaData;
 
 /// One data file a scan reads, with everything a rewrite of it would need.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -856,14 +857,18 @@ struct Refine {
 }
 
 impl Refine {
-    /// Resolve the options one data file is read under.
+    /// Resolve the options one data file is read under, and the footer of a
+    /// Parquet file that was read to resolve them.
     ///
     /// The read root is handed down as the file's declared schema, which is what
     /// makes it the encoding's own projection mask. The partition columns are
     /// removed from it first: the file need not store them, so asking for them
     /// here would fill them with nulls and hide the manifest values
     /// [`restore_partitions`] is about to put back.
-    fn file_options(&self, part: &ScanPart) -> Result<crate::media::RecordOptions> {
+    fn file_options(
+        &self,
+        part: &ScanPart,
+    ) -> Result<(crate::media::RecordOptions, Option<Footed>)> {
         use crate::IOMedia;
         use crate::media::IORecordOptions;
 
@@ -872,7 +877,7 @@ impl Refine {
         if self.target.is_none() {
             // Nothing was asked for, so nothing is pushed down and the file's
             // own columns come back as they are.
-            return Ok(options);
+            return Ok((options, None));
         }
         let columns: Vec<&str> = part
             .partition
@@ -884,24 +889,50 @@ impl Refine {
                 // The footer is opened for the names only when a rename ever
                 // happened, or when a column carries an initial default a file
                 // may predate; otherwise the read root's names are the file's,
-                // and the read that follows is the file's one open.
-                let projected = if self.renamed || !self.defaults.is_empty() {
-                    file_projection(&part.handle, &options, &stored, &self.defaults)
+                // and the read that follows is the file's one open. A Parquet
+                // footer read for the names is the one the read opens with.
+                let (projected, footer) = if self.renamed || !self.defaults.is_empty() {
+                    let (file_root, footer) = file_root(&part.handle, &options);
+                    (
+                        file_projection(file_root.as_ref(), &stored, &self.defaults),
+                        footer,
+                    )
                 } else {
-                    stored
+                    (stored, None)
                 };
-                Ok(options.with_field(projected))
+                Ok((options.with_field(projected), footer))
             }
             // A read root that is nothing but partition columns leaves the file
             // read unprojected; there is no column left to ask it for.
-            _ => Ok(options),
+            _ => Ok((options, None)),
         }
     }
 
-    /// Open one planned file with its resolved options.
+    /// Open one planned file with its resolved options: a Parquet file whose
+    /// footer the projection read through that footer, nothing of the file's
+    /// end read again - and one the projection held whole from those bytes.
     fn open(&self, part: &ScanPart) -> Result<BatchReader> {
-        let options = self.file_options(part)?;
-        crate::IOMedia::read_arrow_reader(&part.handle, &options)
+        use crate::media::IORecordOptions;
+
+        let (options, footed) = self.file_options(part)?;
+        let (Some(footed), crate::media::RecordOptions::Parquet(parquet)) = (footed, &options)
+        else {
+            return crate::IOMedia::read_arrow_reader(&part.handle, &options);
+        };
+        // The file options state no clause, so the one shaping the generic
+        // read applies to a leaf here is its declared root's cast.
+        let declared = options.field();
+        let reader = crate::parquet::read_batch_reader_with(
+            footed.held.as_ref().unwrap_or(&part.handle),
+            declared.as_ref(),
+            parquet,
+            Some(footed.footer),
+        )?;
+        match declared {
+            Some(field) => Ok(field
+                .apply_arrow_reader(reader, ArrowCastOptions::new().with_safe(options.safe()))?),
+            None => Ok(reader),
+        }
     }
 
     /// Restore, align, cast, filter, and project one decoded batch.
@@ -1236,25 +1267,76 @@ pub(super) fn scan_error(error: Error) -> arrow_schema::ArrowError {
     arrow_schema::ArrowError::ExternalError(Box::new(error))
 }
 
+/// The root a data file stores, as its own footer or header states it -
+/// `None` where that cannot be read - and, for a Parquet file, the footer it
+/// was read off: one read of the file's end, which the read that follows
+/// opens with rather than reading it again.
+fn file_root(
+    handle: &Holder,
+    options: &crate::media::RecordOptions,
+) -> (Option<Field>, Option<Footed>) {
+    use crate::IOBase;
+    use crate::media::IORecordOptions;
+
+    if !matches!(options, crate::media::RecordOptions::Parquet(_)) {
+        return (crate::IOMedia::read_arrow_field(handle, options).ok(), None);
+    }
+    // A file the Parquet read would take whole - up to its
+    // `WHOLE_READ_BYTES` - is taken whole here and decoded from memory, in
+    // the one read the footer costs, so a renamed projection costs the one
+    // read an unrenamed one does; a longer one has its footer read alone.
+    // The length is the manifest's, so asking it costs nothing.
+    let size = handle.size();
+    let held = if size > 0 && size <= crate::parquet::WHOLE_READ_BYTES as u64 {
+        let Ok(bytes) = handle.read_all_bytes() else {
+            return (None, None);
+        };
+        let mut held = Holder::buffer(crate::holder::Buffer::from_bytes(bytes));
+        held.set_media_type(handle.media_type().clone());
+        Some(held)
+    } else {
+        None
+    };
+    let Ok(footer) = crate::parquet::load_metadata(held.as_ref().unwrap_or(handle)) else {
+        return (None, None);
+    };
+    let root = crate::parquet::schema_from_metadata(Arc::clone(&footer))
+        .ok()
+        .and_then(|schema| {
+            crate::arrow::field_from_arrow_schema(options.name(), schema.as_ref()).ok()
+        });
+    (root, Some(Footed { footer, held }))
+}
+
+/// A Parquet data file's footer, read once for the names its projection
+/// asks for and handed to the read that follows, and the file itself where
+/// it was short enough to be held whole in that one read.
+struct Footed {
+    /// The decoded footer.
+    footer: Arc<ParquetMetaData>,
+    /// The file's bytes, held in memory, when that read took them whole.
+    held: Option<Holder>,
+}
+
 /// Translate a projection into the names one data file spells them with.
 ///
 /// Iceberg resolves a column by field identifier, not by name, so a file
-/// written before a rename stores the column under its pre-rename name. The file's
-/// own root is read - a footer-only read - and every projected column whose
-/// identifier the file spells under a different name is asked for by *that*
-/// name, so the encoding's pushdown still skips what it should. The decoded
+/// written before a rename stores the column under its pre-rename name. The
+/// file's own root - read off its footer once ([`file_root`]) - is matched, and
+/// every projected column whose identifier the file spells under a different
+/// name is asked for by *that* name, so the encoding's pushdown still skips
+/// what it should. The decoded
 /// batch is renamed back by [`align_by_field_id`] before the final cast.
 ///
 /// A file whose schema cannot be read, or that carries no identifiers, keeps
 /// the name-based projection: nothing is worse than before, and the read
 /// itself will say what is wrong with the file.
 fn file_projection(
-    handle: &Holder,
-    options: &crate::media::RecordOptions,
+    file_root: Option<&Field>,
     wanted: &Field,
     defaults: &[(Field, Scalar)],
 ) -> Field {
-    let Ok(file_root) = crate::IOMedia::read_arrow_field(handle, options) else {
+    let Some(file_root) = file_root else {
         return wanted.clone();
     };
     let mut children: Vec<Field> = Vec::with_capacity(wanted.field_len());
@@ -1779,7 +1861,7 @@ pub(super) struct GroupScan {
 /// Every record is relabelled under `root`, which declares what the read
 /// proves.
 ///
-/// Two faces: [`Self::into_serie_reader`], the records, and
+/// Two faces: [`Self::chunked_stream`], the records, and
 /// [`Self::into_arrow_reader`], the transport - which, where no group needs
 /// a sort, is the scan itself and lands nothing.
 pub(super) struct Partitions {
@@ -1798,7 +1880,7 @@ pub(super) struct Partitions {
 /// One opened partition group.
 enum Group {
     /// A group needing no sort: its scan's batches as they land.
-    Streamed(crate::SerieReader),
+    Streamed(crate::StreamChunkedSerie),
     /// A sorted group's chunks.
     Held(std::vec::IntoIter<crate::Serie>),
 }
@@ -1842,7 +1924,7 @@ impl Partitions {
             &scan.parallel,
             scan.renamed,
         )?;
-        let landed = crate::SerieReader::from_arrow_reader(
+        let landed = crate::StreamChunkedSerie::from_arrow_reader(
             Some(&scan.root),
             batches,
             ArrowCastOptions::new(),
@@ -1854,7 +1936,7 @@ impl Partitions {
         // chunks as they landed where they already keep the order, read
         // once chunk by chunk and edge by edge, else each sorted on its
         // own and merged, the output settled.
-        let hold = crate::ChunkedSerie::from_serie_reader(landed)?;
+        let hold = crate::ChunkedSerie::from_chunked_stream(landed)?;
         let hold = if hold.keeps_order(&self.sorting)? {
             hold
         } else {
@@ -1880,8 +1962,16 @@ impl Partitions {
     /// # Errors
     ///
     /// Returns an error when the root does not project into Arrow.
-    pub(super) fn into_serie_reader(self) -> crate::arrow::Result<crate::SerieReader> {
-        crate::SerieReader::from_landed_iter(Arc::clone(&self.root), self)
+    pub(super) fn chunked_stream(self) -> crate::arrow::Result<crate::StreamChunkedSerie> {
+        if self.sorting.is_empty() {
+            let root = Arc::clone(&self.root);
+            return crate::StreamChunkedSerie::from_arrow_reader(
+                Some(&root),
+                self.into_arrow_reader()?,
+                crate::ArrowCastOptions::new(),
+            );
+        }
+        crate::StreamChunkedSerie::from_landed_iter(Arc::clone(&self.root), self)
     }
 
     /// The read as transport, under `root`'s schema.
@@ -1896,7 +1986,7 @@ impl Partitions {
     /// Returns an error when the root does not project into Arrow.
     pub(super) fn into_arrow_reader(self) -> crate::arrow::Result<BatchReader> {
         if !self.sorting.is_empty() {
-            return Ok(self.into_serie_reader()?.into_arrow_reader());
+            return Ok(self.chunked_stream()?.into_arrow_reader());
         }
         let Self {
             groups, scan, root, ..
@@ -1919,7 +2009,7 @@ impl Iterator for Partitions {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let pulled = match self.open.as_mut() {
-                Some(Group::Streamed(records)) => records.next(),
+                Some(Group::Streamed(records)) => records.next_chunk(),
                 // A sorted group's empty chunk - a file the residual
                 // emptied - has nothing to yield.
                 Some(Group::Held(chunks)) => chunks.find(|chunk| !chunk.is_empty()).map(Ok),

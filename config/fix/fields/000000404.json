@@ -6,6 +6,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40400",
       "description": "The business center calendar used to adjust the payment schedule's fixing date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegPaymentScheduleFixingDateBusinessCenter"
@@ -18,6 +19,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40401",
       "description": "Time unit multiplier for the relative fixing date offset.",
       "display": "LegPaymentScheduleFixingDateOffsetPeriod"
@@ -31,6 +33,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40402",
       "description": "Time unit associated with the relative fixing date offset.",
       "display": "LegPaymentScheduleFixingDateOffsetUnit"
@@ -44,6 +47,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40403",
       "description": "Specifies the day type of the relative fixing date offset.",
       "display": "LegPaymentScheduleFixingDateOffsetDayType"
@@ -57,6 +61,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40404",
       "description": "The adjusted fixing date.",
       "display": "LegPaymentScheduleFixingDateAdjusted"
@@ -70,6 +75,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "40405",
       "description": "The fxing time associated with the step schedule.",
       "display": "LegPaymentScheduleFixingTime"
@@ -82,6 +88,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40406",
       "description": "Business center for determining fixing time. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegPaymentScheduleFixingTimeBusinessCenter"
@@ -94,6 +101,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40407",
       "description": "Specifies the anchor date when the interim exchange payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegPaymentScheduleInterimExchangePaymentDateRelativeTo"
@@ -107,6 +115,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40408",
       "description": "The business day convention used to adjust the payment schedule's interim exchange date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegPaymentScheduleInterimExchangeDatesBusinessDayConvention"
@@ -119,6 +128,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40409",
       "description": "The business center calendar used to adjust the payment schedule's interim exchange date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegPaymentScheduleInterimExchangeDatesBusinessCenter"
@@ -131,6 +141,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40410",
       "description": "Time unit multiplier for the relative interim exchange date offset.",
       "display": "LegPaymentScheduleInterimExchangeDatesOffsetPeriod"
@@ -144,6 +155,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40411",
       "description": "Time unit associated with the relative interim exchange date offset.",
       "display": "LegPaymentScheduleInterimExchangeDatesOffsetUnit"
@@ -157,6 +169,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40412",
       "description": "Specifies the day type of the relative interim exchange date offset.",
       "display": "LegPaymentScheduleInterimExchangeDatesOffsetDayType"
@@ -170,6 +183,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40413",
       "description": "The adjusted interim exchange date.",
       "display": "LegPaymentScheduleInterimExchangeDateAdjusted"
@@ -182,6 +196,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "40414",
       "description": "Number of rate sources in the repeating group",
       "display": "NoLegPaymentScheduleRateSources"
@@ -195,6 +210,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ratesourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40415",
       "description": "Identifies the source of rate information.",
       "display": "LegPaymentScheduleRateSource"
@@ -208,6 +224,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "ratesourcetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40416",
       "description": "Rate source type.",
       "display": "LegPaymentScheduleRateSourceType"
@@ -220,6 +237,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40417",
       "description": "Identifies the reference \"page\" from the rate source. For FX, the reference page to the spot rate to be used for the reference FX spot rate. When RateSource(1446) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
       "display": "LegPaymentScheduleReferencePage"
@@ -232,6 +250,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "40418",
       "description": "Number of stubs in the repeating group",
       "display": "NoLegPaymentStubs"
@@ -245,6 +264,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstubtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40419",
       "description": "Stub type.",
       "display": "LegPaymentStubType"
@@ -258,6 +278,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstublengthcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40420",
       "description": "Optional indication whether stub is shorter or longer than the regular swap period.",
       "display": "LegPaymentStubLength"
@@ -270,6 +291,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40421",
       "description": "The agreed upon fixed rate for this stub.",
       "display": "LegPaymentStubRate"
@@ -284,6 +306,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "40422",
       "description": "A fixed payment amount for the stub.",
       "display": "LegPaymentStubFixedAmount"
@@ -296,6 +319,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "40423",
       "description": "The currency of the fixed payment amount. Uses ISO 4217 currency codes.",
       "display": "LegPaymentStubFixedCurrency"
@@ -308,6 +332,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40424",
       "description": "The stub floating rate index.",
       "display": "LegPaymentStubIndex"
@@ -321,6 +346,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamrateindexsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40425",
       "description": "The source for the stub floating rate index.",
       "display": "LegPaymentStubIndexSource"
@@ -333,6 +359,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40426",
       "description": "Time unit multiplier for the floating rate index.",
       "display": "LegPaymentStubIndexCurvePeriod"
@@ -346,6 +373,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamrateindexcurveunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40427",
       "description": "Time unit associated with the floating rate index.",
       "display": "LegPaymentStubIndexCurveUnit"
@@ -358,6 +386,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "40428",
       "description": "A rate multiplier to apply to the floating rate. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
       "display": "LegPaymentStubIndexRateMultiplier"
@@ -372,6 +401,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "40429",
       "description": "Spread from floating rate index.",
       "display": "LegPaymentStubIndexRateSpread"
@@ -385,6 +415,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamratespreadpositiontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40430",
       "description": "Identifies whether the rate spread is applied to a long or a short position.",
       "display": "LegPaymentStubIndexRateSpreadPositionType"
@@ -398,6 +429,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamratetreatmentcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40431",
       "description": "Specifies the yield calculation treatment for the stub index.",
       "display": "LegPaymentStubIndexRateTreatment"
@@ -410,6 +442,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40432",
       "description": "The cap rate, if any, which applies to the floating rate. The cap rate (strike) is only required where the floating rate on a swap stream is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as 0.05.",
       "display": "LegPaymentStubIndexCapRate"
@@ -423,6 +456,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamcapratebuysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40433",
       "description": "Reference to the buyer of the cap rate option through its trade side.",
       "display": "LegPaymentStubIndexCapRateBuySide"
@@ -436,6 +470,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamcapratebuysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40434",
       "description": "Reference to the seller of the cap rate option through its trade side.",
       "display": "LegPaymentStubIndexCapRateSellSide"
@@ -448,6 +483,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40435",
       "description": "The floor rate, if any, which applies to the floating rate. The floor rate (strike) is only required where the floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A floor rate of 5% would be represented as 0.05.",
       "display": "LegPaymentStubIndexFloorRate"
@@ -461,6 +497,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamfloorratebuysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40436",
       "description": "Reference to the buyer of the floor rate option through its trade side.",
       "display": "LegPaymentStubIndexFloorRateBuySide"
@@ -474,6 +511,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamfloorratebuysidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40437",
       "description": "Reference to the seller of the floor rate option through its trade side.",
       "display": "LegPaymentStubIndexFloorRateSellSide"
@@ -486,6 +524,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40438",
       "description": "The second stub floating rate index.",
       "display": "LegPaymentStubIndex2"
@@ -499,6 +538,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamrateindexsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40439",
       "description": "The source for the second stub floating rate index.",
       "display": "LegPaymentStubIndex2Source"
@@ -511,6 +551,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40440",
       "description": "Secondary time unit multiplier for the stub floating rate index curve.",
       "display": "LegPaymentStubIndex2CurvePeriod"
@@ -524,6 +565,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamrateindexcurveunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40441",
       "description": "Secondary time unit associated with the stub floating rate index curve.",
       "display": "LegPaymentStubIndex2CurveUnit"
@@ -536,6 +578,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "40442",
       "description": "A rate multiplier to apply to the second floating rate. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
       "display": "LegPaymentStubIndex2RateMultiplier"
@@ -550,6 +593,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "PriceOffset",
       "FIX:tag": "40443",
       "description": "Spread from the second floating rate index.",
       "display": "LegPaymentStubIndex2RateSpread"
@@ -563,6 +607,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamratespreadpositiontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40444",
       "description": "Identifies whether the rate spread is applied to a long or a short position.",
       "display": "LegPaymentStubIndex2RateSpreadPositionType"
@@ -576,6 +621,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamratetreatmentcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40445",
       "description": "Specifies the yield calculation treatment for the second stub index.",
       "display": "LegPaymentStubIndex2RateTreatment"
@@ -588,6 +634,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40446",
       "description": "The cap rate, if any, which applies to the second floating rate. The cap rate (strike) is only required where the floating rate on a swap stream is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as 0.05.",
       "display": "LegPaymentStubIndex2CapRate"
@@ -600,6 +647,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "40447",
       "description": "The floor rate, if any, which applies to the second floating rate. The floor rate (strike) is only required where the floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A floor rate of 5% would be represented as 0.05.",
       "display": "LegPaymentStubIndex2FloorRate"
@@ -612,6 +660,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "40448",
       "description": "Number of provisions in the repeating group.",
       "display": "NoLegProvisions"
@@ -625,6 +674,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisiontypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40449",
       "description": "Type of provisions.",
       "display": "LegProvisionType"
@@ -638,6 +688,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40450",
       "description": "The unadjusted date of the provision.",
       "display": "LegProvisionDateUnadjusted"
@@ -651,6 +702,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40451",
       "description": "The business day convention used to adjust the instrument leg's provision's date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegProvisionDateBusinessDayConvention"
@@ -663,6 +715,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40452",
       "description": "The business center calendar used to adjust the instrument leg's provision's date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionDateBusinessCenter"
@@ -676,6 +729,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40453",
       "description": "The adjusted date of the provision.",
       "display": "LegProvisionDateAdjusted"
@@ -688,6 +742,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40454",
       "description": "Time unit multiplier for the leg provision's tenor period.",
       "display": "LegProvisionDateTenorPeriod"
@@ -701,6 +756,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisiondatetenorunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40455",
       "description": "Time unit associated with the leg provision's tenor period.",
       "display": "LegProvisionDateTenorUnit"
@@ -714,6 +770,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisioncalculationagentcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40456",
       "description": "Used to identify the calculation agent. The calculation agent may be identified in LegProvisionCalculationAgent(40456) or in the ProvisionParties component.",
       "display": "LegProvisionCalculationAgent"
@@ -727,6 +784,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisionoptionsinglepartybuyersidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40457",
       "description": "If optional early termination is not available to both parties then this component identifies the buyer of the option through its side of the trade.",
       "display": "LegProvisionOptionSinglePartyBuyerSide"
@@ -740,6 +798,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisionoptionsinglepartybuyersidecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40458",
       "description": "If optional early termination is not available to both parties then this component identifies the seller of the option through its side of the trade.",
       "display": "LegProvisionOptionSinglePartySellerSide"
@@ -753,6 +812,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "exercisestylecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40459",
       "description": "The instrument provision option exercise style.",
       "display": "LegProvisionOptionExerciseStyle"
@@ -767,6 +827,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "40460",
       "description": "A notional amount which restricts the amount of notional that can be exercised when partial exercise or multiple exercise is applicable. The integral multiple amount defines a lower limit of notional that can be exercised and also defines a unit multiple of notional that can be exercised, i.e. only integer multiples of this amount can be exercised.",
       "display": "LegProvisionOptionExerciseMultipleNotional"
@@ -781,6 +842,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "40461",
       "description": "The minimum notional amount that can be exercised on a given exercise date.",
       "display": "LegProvisionOptionExerciseMinimumNotional"
@@ -795,6 +857,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "40462",
       "description": "The maximum notional amount that can be exercised on a given exercise date.",
       "display": "LegProvisionOptionExerciseMaximumNotional"
@@ -807,6 +870,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40463",
       "description": "The minimum number of options that can be exercised on a given exercise date.",
       "display": "LegProvisionOptionMinimumNumber"
@@ -819,6 +883,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40464",
       "description": "The maximum number of options that can be exercised on a given exercise date. If the number is not specified, it means that the maximum number of options corresponds to the remaining unexercised options.",
       "display": "LegProvisionOptionMaximumNumber"
@@ -831,6 +896,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "40465",
       "description": "Used to indicate whether follow-up confirmation of exercise (written or electronic) is required following telephonic notice by the buyer to the seller or seller's agent.",
       "display": "LegProvisionOptionExerciseConfirmation"
@@ -844,6 +910,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisioncashsettlmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40466",
       "description": "An ISDA defined cash settlement method used for the determination of the applicable cash settlement amount. The method is defined in the 2006 ISDA Definitions, Section 18.3. Cash Settlement Methods, paragraph (e).",
       "display": "LegProvisionCashSettlMethod"
@@ -856,6 +923,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "40467",
       "description": "Specifies the currency of settlement. Uses ISO 4217 currency codes.",
       "display": "LegProvisionCashSettlCurrency"
@@ -868,6 +936,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "40468",
       "description": "Specifies the currency of settlement for a cross-currency provision. Uses ISO 4217 currency codes.",
       "display": "LegProvisionCashSettlCurrency2"
@@ -881,6 +950,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisioncashsettlquotetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40469",
       "description": "Identifies the type of quote to be used.",
       "display": "LegProvisionCashSettlQuoteType"
@@ -894,6 +964,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreamrateindexsourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40470",
       "description": "Identifies the source of quote information.",
       "display": "LegProvisionCashSettlQuoteSource"
@@ -906,6 +977,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40471",
       "description": "A business center whose calendar is used for date adjustment, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "BusinessCenter"
@@ -918,6 +990,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40472",
       "description": "Free form text to specify additional information or enumeration description when a standard value does not apply.",
       "display": "LegProvisionText"
@@ -930,6 +1003,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "40473",
       "description": "Number of provision cash settlement payment dates in the repeating group.",
       "display": "NoLegProvisionCashSettlPaymentDates"
@@ -943,6 +1017,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40474",
       "description": "The cash settlement payment date, unadjusted or adjusted depending on LegProvisionCashSettlPaymentDateType(40521).",
       "display": "LegProvisionCashSettlPaymentDate"
@@ -956,6 +1031,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisioncashsettlpaymentdatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40475",
       "description": "Specifies the type of date (e.g. adjusted for holidays).",
       "display": "LegProvisionCashSettlPaymentDateType"
@@ -969,6 +1045,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40476",
       "description": "The business day convention used to adjust the instrument leg's provision's option exercise date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegProvisionOptionExerciseBusinessDayConvention"
@@ -981,6 +1058,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40477",
       "description": "The business center calendar used to adjust the instrument leg's provision's option exercise date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionOptionExerciseBusinessCenter"
@@ -993,6 +1071,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40478",
       "description": "Time unit multiplier for the interval to the first (and possibly only) exercise date in the exercise period.",
       "display": "LegProvisionOptionExerciseEarliestDateOffsetPeriod"
@@ -1006,6 +1085,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisionoptionexerciseearliestdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40479",
       "description": "Time unit associated with the interval to the first (and possibly only) exercise date in the exercise period.",
       "display": "LegProvisionOptionExerciseEarliestDateOffsetUnit"
@@ -1018,6 +1098,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40480",
       "description": "Time unit multiplier for subsequent exercise dates in the exercise period following the earliest exercise date. An interval of 1 day should be used to indicate an American style exercise period.",
       "display": "LegProvisionOptionExerciseFrequencyPeriod"
@@ -1031,6 +1112,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "couponfrequencyunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40481",
       "description": "Time unit associated with subsequent exercise dates in the exercise period following the earliest exercise date.",
       "display": "LegProvisionOptionExerciseFrequencyUnit"
@@ -1044,6 +1126,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40482",
       "description": "The unadjusted first day of the exercise period for an American style option.",
       "display": "LegProvisionOptionExerciseStartDateUnadjusted"
@@ -1056,6 +1139,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40483",
       "description": "Specifies the anchor date when the option exercise start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegProvisionOptionExerciseStartDateRelativeTo"
@@ -1068,6 +1152,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40484",
       "description": "Time unit multiplier for the relative option exercise start date offset.",
       "display": "LegProvisionOptionExerciseStartDateOffsetPeriod"
@@ -1081,6 +1166,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "40485",
       "description": "Time unit associated with the relative option exercise start date offset.",
       "display": "LegProvisionOptionExerciseStartDateOffsetUnit"
@@ -1094,6 +1180,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40486",
       "description": "Specifies the day type of the provision's relative option exercise start date offset.",
       "display": "LegProvisionOptionExerciseStartDateOffsetDayType"
@@ -1107,6 +1194,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40487",
       "description": "The adjusted first day of the exercise period for an American style option.",
       "display": "LegProvisionOptionExerciseStartDateAdjusted"
@@ -1119,6 +1207,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "40488",
       "description": "The number of periods in the referenced date schedule that are between each date in the relative date schedule. Thus a skip of 2 would mean that dates are relative to every second date in the referenced schedule. If present this should have a value greater than 1.",
       "display": "LegProvisionOptionExercisePeriodSkip"
@@ -1132,6 +1221,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40489",
       "description": "The unadjusted first date of a schedule. This can be used to restrict the range of exercise dates when they are relative.",
       "display": "LegProvisionOptionExerciseBoundsFirstDateUnadjusted"
@@ -1145,6 +1235,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40490",
       "description": "The unadjusted last date of a schedule. This can be used to restrict the range of exercise dates when they are relative.",
       "display": "LegProvisionOptionExerciseBoundsLastDateUnadjusted"
@@ -1158,6 +1249,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "40491",
       "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each bermuda option exercise date and the expiration date, in the case of a Bermuda style option the commencement date to, and including, the expiration date, in the case of an American option.",
       "display": "LegProvisionOptionExerciseEarliestTime"
@@ -1170,6 +1262,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40492",
       "description": "Identifies the business center calendar used with the provision's earliest time for notice of exercise. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionOptionExerciseEarliestTimeBusinessCenter"
@@ -1183,6 +1276,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktTime",
       "FIX:tag": "40493",
       "description": "For a Bermuda or American style option, the latest time on an exercise business day (excluding the expiration date) within the exercise period that notice can be given by the buyer to the seller or seller's agent. Notice of exercise given after this time will be deemed to have been given on the next exercise business day.",
       "display": "LegProvisionOptionExerciseLatestTime"
@@ -1195,6 +1289,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "40494",
       "description": "Identifies the business center calendar used with the provision's latest time for notice of exercise. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionOptionExerciseLatestTimeBusinessCenter"
@@ -1207,6 +1302,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "40495",
       "description": "Number of provision option exercise fixed dates in the repeating group.",
       "display": "NoLegProvisionOptionExerciseFixedDates"
@@ -1220,6 +1316,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40496",
       "description": "A predetermined option exercise date unadjusted or adjusted depending on LegProvisionOptionExerciseFixedDateType(40497).",
       "display": "LegProvisionOptionExerciseFixedDate"
@@ -1233,6 +1330,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "provisionoptionexercisefixeddatetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40497",
       "description": "Specifies the type of date (e.g. adjusted for holidays).",
       "display": "LegProvisionOptionExerciseFixedDateType"
@@ -1246,6 +1344,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "40498",
       "description": "The unadjusted last day within an exercise period for an American style option. For a European style option it is the only day within the exercise period.",
       "display": "LegProvisionOptionExpirationDateUnadjusted"
@@ -1259,6 +1358,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessdayconventioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "40499",
       "description": "The business day convention used to adjust the instrument leg's provision's option expiration date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegProvisionOptionExpirationDateBusinessDayConvention"

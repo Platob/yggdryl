@@ -273,10 +273,10 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Forty-eight definitions, in the fixed row's order: the element's and
+    // Fifty-two definitions, in the fixed row's order: the element's and
     // the event's facts, the market's and the operation's the crate tags -
-    // the category, the normalized ISIN and MIC, the execution clock, the
-    // metadata and the columns the row derives from FIX fields stated under
+    // the category, the origin currency, the normalized ISIN and MIC, the
+    // execution clock, the metadata and the columns the row derives from FIX fields stated under
     // other names - then the message's own: the session event a bridge
     // delivered it as, where a bridge says it came from, three normalized
     // identifiers - forex, Bloomberg, FIGI - and the capture's source. A
@@ -303,6 +303,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "state",
             "marketdatakind",
             "marketdatatype",
+            "origccy",
             "hiddenqty",
             "unit",
             "securityids",
@@ -360,6 +361,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("State"),
             Some("Market Data Kind"),
             Some("Market Data Type"),
+            Some("Origin Currency"),
             Some("Hidden Quantity"),
             Some("Unit"),
             Some("Security IDs"),
@@ -511,7 +513,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
     assert_eq!(yggdryl::CROSSCODE_TAG_NAME.0, 65_003);
-    assert_eq!(yggdryl::MSGSESSEVENTID_TAG_NAME, (65_046, "msgsesseventid"));
+    assert_eq!(yggdryl::MSGSESSEVENTID_TAG_NAME, (65_047, "msgsesseventid"));
     assert_eq!(
         [
             yggdryl::FIGICODE_TAG_NAME,
@@ -519,9 +521,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::FOREXCODE_TAG_NAME
         ],
         [
-            (65_050, "figicode"),
-            (65_051, "sourceurl"),
-            (65_048, "forexcode")
+            (65_051, "figicode"),
+            (65_052, "sourceurl"),
+            (65_049, "forexcode")
         ]
     );
     assert_eq!(
@@ -529,7 +531,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::MSGORIGINATOR_TAG_NAME,
             yggdryl::CONVERSATIONID_TAG_NAME,
         ],
-        [(65_043, "msgoriginator"), (65_047, "conversationid")]
+        [(65_044, "msgoriginator"), (65_048, "conversationid")]
     );
     assert_eq!(
         [
@@ -553,8 +555,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         ],
         [
             (65_003, "crosscode"),
-            (65_036, "metadata"),
-            (65_052, "fixmsg"),
+            (65_037, "metadata"),
+            (65_053, "fixmsg"),
             (65_006, "srcuuids"),
             (65_015, "state"),
             (65_010, "exprunix")

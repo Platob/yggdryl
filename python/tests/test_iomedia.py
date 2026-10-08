@@ -28,7 +28,7 @@ from yggdryl import (
     MimeType,
     RecordOptions,
     Serie,
-    SerieReader,
+    StreamChunkedSerie,
     TextOptions,
     combined,
     scalar,
@@ -1333,7 +1333,7 @@ class ChunkedStream:
 
 
 class TestCStreamIntake:
-    @pytest.mark.parametrize("door", [Serie.from_, ChunkedSerie.from_, SerieReader.from_])
+    @pytest.mark.parametrize("door", [Serie.from_, ChunkedSerie.from_, StreamChunkedSerie.from_])
     def test_a_non_record_stream_is_refused_naming_the_door_that_reads_it(
         self, door: Any
     ) -> None:
@@ -1358,7 +1358,7 @@ class TestCStreamIntake:
         handle = IOBase(tmp_path / "sorted.arrows")
         # Taken as the stream it is, never through its own C capsule, so the
         # sorted keys the capsule's arrow-rs exporter would drop are kept.
-        handle.overwrite_arrow_reader(SerieReader.from_(source))
+        handle.overwrite_arrow_reader(StreamChunkedSerie.from_(source))
         written = handle.read_arrow_reader().read_all()
         assert written.schema.field("lookup").type.keys_sorted
         assert written.equals(source)

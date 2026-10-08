@@ -157,6 +157,13 @@ impl FakeS3 {
         }
     }
 
+    /// Answer every `GET` of an object whole with `200` whatever `Range` it
+    /// carries (`true`), as an S3-compatible store that reads no range does;
+    /// `false`, the default, honours a single byte range.
+    pub fn ignore_ranges(&self, ignore: bool) {
+        self.inner.store().ignores_ranges = ignore;
+    }
+
     /// Create the bucket a write addresses when it is not there (`true`), as
     /// a store whose buckets something else makes - an S3 Tables table's
     /// warehouse - is seen from a client; `false`, the default, answers
@@ -706,6 +713,8 @@ struct Store {
     staged: HashMap<String, Staged>,
     /// Whether a write to an absent bucket creates it.
     creates_buckets: bool,
+    /// Whether an object's `GET` reads no `Range` and answers it whole.
+    ignores_ranges: bool,
     /// The path a gateway mounts the store below, when one does.
     mount: Option<String>,
 }
@@ -740,6 +749,7 @@ impl Default for Store {
             address: String::new(),
             staged: HashMap::new(),
             creates_buckets: false,
+            ignores_ranges: false,
             mount: None,
         }
     }
@@ -1243,7 +1253,10 @@ impl Store {
             return refusal;
         }
         let size = object.bytes.len();
-        let range = request.header("range").and_then(ByteRange::parse);
+        let range = request
+            .header("range")
+            .filter(|_| !self.ignores_ranges)
+            .and_then(ByteRange::parse);
         let Some(range) = range else {
             return object_response(200, object).with_body(object.bytes.clone());
         };

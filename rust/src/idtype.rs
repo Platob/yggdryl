@@ -135,9 +135,8 @@ id_vocabulary! {
         OrderId => "orderid",
         /// `ClOrdID(11)`.
         ClOrdId => "clordid",
-        /// `OrigClOrdID(41)`, `clordid`'s one parent, which a bridge also
-        /// spells `parentclordid`.
-        OrigClOrdId => "origclordid" | "parentclordid",
+        /// `OrigClOrdID(41)`, `clordid`'s one parent.
+        OrigClOrdId => "origclordid",
         /// `SecondaryOrderID(198)`.
         SecondaryOrderId => "secondaryorderid",
         /// `SecondaryClOrdID(526)`.
@@ -168,6 +167,10 @@ id_vocabulary! {
         TradeId => "tradeid",
         /// `TradeReportID(571)`.
         TradeReportId => "tradereportid",
+        /// `TradeReportRefID(572)`, `tradereportid`'s one parent: the report
+        /// a cancel or a replace (`TradeReportTransType(487)` `1` or `2`)
+        /// refers to.
+        TradeReportRefId => "tradereportrefid",
         /// `MDEntryID(278)`.
         MdEntryId => "mdentryid",
         /// `MDEntryRefID(280)`.
@@ -313,16 +316,18 @@ const PARENTAGE_WORDS: [&str; 4] = ["original", "parent", "origin", "orig"];
 impl IdType {
     /// The types holding this type's parents, nearest first: the value it
     /// held before it last changed, then - where there are two - the value
-    /// its chain first stated. `clordid`'s is `origclordid` alone, FIX's
+    /// its chain first stated. Parents exist for chain identities alone
+    /// ([`Self::is_chain_identity`]): `clordid`'s is `origclordid`, FIX's
     /// `OrigClOrdID(41)`, the client order identifier a cancel/replace
-    /// replaced; any other type the crate names, or a word ending in `id`,
-    /// has `parent{type}` then `orig{type}` - `orderid` has
-    /// `parentorderid` and `origorderid` - and every other type, a parent
-    /// type included, has none, so parentage never nests. A dictionary
-    /// states another list on a field with `FIX:parents`
+    /// replaced, and `tradereportid`'s `tradereportrefid`, FIX's
+    /// `TradeReportRefID(572)`, each alone; any other chain identity has
+    /// `parent{type}` then `orig{type}` - `orderid` has `parentorderid` and
+    /// `origorderid` - and every other type - a per-report reference, a
+    /// security, a party, a parent type, any other word - has none, so
+    /// parentage never nests. A dictionary states another list on a field
+    /// with `FIX:parents`
     /// ([`FixRegistry::parents_of`](crate::FixRegistry::parents_of)).
-    /// Borrowed for a type the crate names, so a lifecycle asking per
-    /// identifier allocates nothing.
+    /// Borrowed, so a lifecycle asking per identifier allocates nothing.
     ///
     /// ```
     /// use yggdryl::IdType;
@@ -330,7 +335,10 @@ impl IdType {
     /// let parents: Vec<String> = IdType::OrderId.parents().iter().map(|kind| kind.to_string()).collect();
     /// assert_eq!(parents, ["parentorderid", "origorderid"]);
     /// assert_eq!(IdType::ClOrdId.parents().as_ref(), [IdType::OrigClOrdId]);
+    /// assert_eq!(IdType::TradeReportId.parents().as_ref(), [IdType::TradeReportRefId]);
     /// assert!(IdType::OrigClOrdId.parents().is_empty());
+    /// assert!(IdType::ExecId.parents().is_empty(), "a per-report reference");
+    /// assert!(IdType::Isin.parents().is_empty(), "a security");
     /// ```
     #[must_use]
     pub fn parents(&self) -> Cow<'static, [Self]> {
@@ -344,69 +352,61 @@ impl IdType {
             });
         match KNOWN_PARENTS.get(self.as_str()) {
             Some(parents) => Cow::Borrowed(parents),
-            None => Cow::Owned(self.spelled_parents().into_vec()),
+            // An `Other` word is no chain identity, so it has none.
+            None => Cow::Borrowed(&[]),
         }
     }
 
     /// The type this type is a parent of, and its place among that type's
     /// [`Self::parents`]: `origclordid` is `clordid`'s first,
-    /// `parentorderid` `orderid`'s first and `origorderid` its second. A
-    /// word spelled `origin` or `original` before an identifier is no
-    /// parent, and nothing allocates.
+    /// `tradereportrefid` `tradereportid`'s, `parentorderid` `orderid`'s
+    /// first and `origorderid` its second. Only a chain identity
+    /// ([`Self::is_chain_identity`]) has a parent, so `parentexecid` and
+    /// `parentisin` are words of their own; so are `parentclordid` and
+    /// `parenttradereportid`, since the one parent of each of those two
+    /// bases is spelled as FIX names it. A word spelled `origin` or
+    /// `original` before an identifier is no parent, and nothing allocates.
     ///
     /// ```
     /// use yggdryl::IdType;
     ///
     /// assert_eq!(IdType::OrigClOrdId.parent_of(), Some((IdType::ClOrdId, 0)));
+    /// assert_eq!(IdType::TradeReportRefId.parent_of(), Some((IdType::TradeReportId, 0)));
     /// let parent: IdType = "ParentOrderID".parse().unwrap();
     /// assert_eq!(parent.parent_of(), Some((IdType::OrderId, 0)));
     /// let origin: IdType = "OrigTradeID".parse().unwrap();
     /// assert_eq!(origin.parent_of(), Some((IdType::TradeId, 1)));
-    /// assert_eq!("ParentClOrdID".parse::<IdType>().unwrap(), IdType::OrigClOrdId, "one parent, two spellings");
+    /// assert_eq!("ParentClOrdID".parse::<IdType>().unwrap().parent_of(), None);
+    /// assert_eq!("ParentExecID".parse::<IdType>().unwrap().parent_of(), None);
     /// assert_eq!("originalorderid".parse::<IdType>().unwrap().parent_of(), None);
     /// ```
     #[must_use]
     pub fn parent_of(&self) -> Option<(Self, usize)> {
+        if matches!(self, Self::TradeReportRefId) {
+            return Some((Self::TradeReportId, 0));
+        }
         PARENT_PREFIXES.iter().enumerate().find_map(|(at, prefix)| {
-            let rest = self.as_str().strip_prefix(prefix)?;
-            // `origin...` and `original...` are words of their own.
-            if *prefix == "orig" && rest.starts_with("in") && !rest.parse::<Self>().ok()?.is_known()
-            {
-                return None;
-            }
-            let base = rest.parse::<Self>().ok()?;
+            // `origin...` and `original...` name no chain identity after
+            // `orig`, so they are words of their own.
+            let base = self.as_str().strip_prefix(prefix)?.parse::<Self>().ok()?;
             let at = match base {
                 Self::ClOrdId => (*prefix == "orig").then_some(0)?,
-                _ if !base.has_parents() => return None,
+                Self::TradeReportId => return None,
+                _ if !base.is_chain_identity() => return None,
                 _ => at,
             };
             Some((base, at))
         })
     }
 
-    /// Whether this type has parents of its own: a type the crate names or
-    /// a word ending in `id`, that is no parent itself and whose every
-    /// parent spelling fits the width a word holds - all its parents or
-    /// none, so a parent's place is its place in the list.
-    fn has_parents(&self) -> bool {
-        let longest = PARENT_PREFIXES
-            .iter()
-            .map(|prefix| prefix.len())
-            .max()
-            .unwrap_or(0);
-        (self.is_known() || self.as_str().ends_with("id"))
-            && self.as_str().len() + longest <= IDENTIFIER_WORD_WIDTH
-            && self.parent_of().is_none()
-    }
-
     /// [`Self::parents`] spelled out, every one a type [`Self::parent_of`]
     /// reads back to this one.
     fn spelled_parents(&self) -> Box<[Self]> {
-        if matches!(self, Self::ClOrdId) {
-            return Box::new([Self::OrigClOrdId]);
-        }
-        if !self.has_parents() {
-            return Box::default();
+        match self {
+            Self::ClOrdId => return Box::new([Self::OrigClOrdId]),
+            Self::TradeReportId => return Box::new([Self::TradeReportRefId]),
+            _ if !self.is_chain_identity() => return Box::default(),
+            _ => {}
         }
         let word = self.as_str();
         PARENT_PREFIXES
@@ -445,6 +445,45 @@ impl IdType {
             self,
             Self::Forex | Self::Cfi | Self::Fisn | Self::InstrumentId
         ) || self.fix_security_source().is_some()
+    }
+
+    /// Whether this type names one lifecycle chain - an order, a quote, a
+    /// trade or a trade report - by a value the chain states as its own:
+    /// `orderid`, `clordid`, `secondaryorderid`, `secondaryclordid`,
+    /// `quoteid`, `secondaryquoteid`, `tradeid`, `secondarytradeid`,
+    /// `secondaryfirmtradeid` and `tradereportid`, and nothing else. A
+    /// reference an event states about itself or about a request many
+    /// chains answer - `execid`, `trdmatchid`, `tvtic`, `quotereqid`,
+    /// `mdreqid`, `mdentryid`, the regulatory trade identifiers - names no
+    /// chain, and neither does a security, a party, the account, a parent
+    /// type or any other word. The types that have parents
+    /// ([`Self::parents`]); what a lifecycle walk names live chains by.
+    ///
+    /// ```
+    /// use yggdryl::IdType;
+    ///
+    /// assert!(IdType::ClOrdId.is_chain_identity());
+    /// assert!(IdType::TradeReportId.is_chain_identity());
+    /// assert!(!IdType::ExecId.is_chain_identity(), "one per report");
+    /// assert!(!IdType::QuoteReqId.is_chain_identity(), "every dealer answers it");
+    /// assert!(!IdType::OrigClOrdId.is_chain_identity(), "a parent");
+    /// assert!(!"venueorderid".parse::<IdType>().unwrap().is_chain_identity());
+    /// ```
+    #[must_use]
+    pub const fn is_chain_identity(&self) -> bool {
+        matches!(
+            self,
+            Self::OrderId
+                | Self::ClOrdId
+                | Self::SecondaryOrderId
+                | Self::SecondaryClOrdId
+                | Self::QuoteId
+                | Self::SecondaryQuoteId
+                | Self::TradeId
+                | Self::SecondaryTradeId
+                | Self::SecondaryFirmTradeId
+                | Self::TradeReportId
+        )
     }
 
     /// Whether this type names a party: the account, a party of no role, a
@@ -607,9 +646,7 @@ impl IdType {
             at -= word.len();
         }
         let kind = folded[at..].parse::<Self>().ok()?;
-        let security =
-            kind.is_security() || kind.parent_of().is_some_and(|(base, _)| base.is_security());
-        (!(security && names_another_instrument(folded, at))).then_some((at, kind))
+        (!(kind.is_security() && names_another_instrument(folded, at))).then_some((at, kind))
     }
 
     /// The security type a folded key names an underlying's code by: the

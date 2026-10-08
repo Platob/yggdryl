@@ -60,3 +60,64 @@ mod temporal {
         assert_eq!(DataType::Int64.date_type(), None);
     }
 }
+
+/// `Date32::from_text`, the ISO door of the date family.
+mod from_text {
+    use yggdryl::{DataType, Date32, Error, Scalar, TimeUnit};
+
+    /// 2026-09-30 as days since the epoch.
+    const DAY: i32 = 20_726;
+
+    #[test]
+    fn a_day_the_calendar_lacks_and_a_clock_after_the_date_are_refused() {
+        for (text, position) in [
+            ("2026-02-30", 8),
+            ("20260230", 6),
+            ("2026-13-01", 5),
+            // A date states the day and stops: a clock is a datetime's.
+            ("20260930T00:00", 8),
+            ("2026-09-30T00:00:00", 10),
+            ("2026-09-30 ", 10),
+            ("", 0),
+        ] {
+            let error = Date32::from_text(text).unwrap_err();
+            assert!(
+                matches!(&error, Error::Parse { target: "date", position: held, .. } if *held == position),
+                "{text:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn both_spellings_read_the_same_day_and_the_day_prints_extended() {
+        for text in ["2026-09-30", "20260930"] {
+            let read = Date32::from_text(text).unwrap_or_else(|error| panic!("{text:?}: {error}"));
+            assert_eq!(
+                (read.count(), read.unit()),
+                (DAY, TimeUnit::Day),
+                "{text:?}"
+            );
+            assert!(read.timezone().is_naive());
+            assert_eq!(read.to_string(), "2026-09-30");
+        }
+        assert_eq!(Date32::from_text("1970-01-01").unwrap().count(), 0);
+        assert_eq!(Date32::from_text("19691231").unwrap().count(), -1);
+        // The value door of both widths reads through it: a `Date64` is the
+        // day's midnight in milliseconds.
+        assert_eq!(
+            DataType::date32().scalar(Scalar::from("20260930")).unwrap(),
+            Scalar::date32(DAY)
+        );
+        assert_eq!(
+            DataType::date64()
+                .scalar(Scalar::from("2026-09-30"))
+                .unwrap(),
+            Scalar::date64(i64::from(DAY) * 86_400_000)
+        );
+        assert!(
+            DataType::date64()
+                .scalar(Scalar::from("20260930T00:00"))
+                .is_err()
+        );
+    }
+}

@@ -25,6 +25,7 @@ import pytest
 
 import yggdryl
 from yggdryl import (
+    StreamChunkedSerie,
     DataType,
     Field,
     Identifiers,
@@ -415,17 +416,18 @@ def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegis
     reader = codec.book_arrow_reader([snapshot, update], snapshot_millis=0)
     assert isinstance(reader, pa.RecordBatchReader)
     # The one lifted `marketdata` schema every leaf is written under: the
-    # kind, then every fact a column of its own, the book's entries, deltas,
-    # a trade's executions and price levels nested - sixty-three columns, an
-    # operation's `bookaction` and `bookposition` among them.
+    # kind, then every fact a column of its own, the book's entries, its
+    # delta and its events, a trade's executions and price levels nested -
+    # sixty-five columns, an operation's `bookaction` and `bookposition`
+    # among them.
     assert reader.schema == MarketData.field().into_arrow_schema()
     names = reader.schema.names
-    assert len(names) == 63
+    assert len(names) == 65
     assert names[0] == "curruuid"
     assert names.index("marketdatakind") == 15
     assert {"bookaction", "bookposition"} <= set(names)
-    assert {"alive", "deltas", "executions", "bidlimits", "asklimits"} <= set(names)
-    assert not {"bidside", "askside", "snapshotpartitions", "kind"} & set(names)
+    assert {"alive", "delta", "events", "executions", "bidlimits", "asklimits"} <= set(names)
+    assert not {"bidside", "askside", "snapshotpartitions", "kind", "deltas"} & set(names)
     assert "price" in names and "quantity" in names
     assert "px" not in names and "qty" not in names
 
@@ -440,10 +442,10 @@ def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegis
     assert [row["askpx"] for row in rows] == [decimal.Decimal("102"), decimal.Decimal("102")]
     # The full refresh is a snapshot input, so its book is whole: every entry
     # alive on it, each a quote filed under QUOT, and its levels best first,
-    # each stating whether it trades. The update's book states its deltas
-    # alone - no grid, no snapshot input - so it states no alive entry and no
-    # level; the trade entry (`269=2`) is an execution the book records
-    # beside the bid's change, moving no side.
+    # each stating whether it trades. The update's book is a delta book - no
+    # grid, no snapshot input - so it states no alive entry and no level;
+    # the bid's change is its delta, and the trade entry (`269=2`) is an
+    # execution the book records among its events, moving no side.
     assert [row["alive"] is None for row in rows] == [False, True]
     assert rows[0]["alive"][0]["price"] == decimal.Decimal("100")
     assert rows[0]["alive"][0]["marketdatakind"] == MarketDataKind.QUOT
@@ -457,11 +459,9 @@ def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegis
     assert [level["price"] for level in rows[0]["asklimits"]] == [decimal.Decimal("102")]
     assert (rows[1]["bidlimits"], rows[1]["asklimits"]) == (None, None)
     assert [row["executions"] for row in rows] == [None, None]
-    deltas = rows[1]["deltas"]
-    assert sorted(delta["marketdatakind"] for delta in deltas) == sorted(
-        [MarketDataKind.EXEC, MarketDataKind.QUOT]
-    )
-    delta = next(delta for delta in deltas if delta["marketdatakind"] == MarketDataKind.QUOT)
+    [delta] = rows[1]["delta"]
+    assert delta["marketdatakind"] == MarketDataKind.QUOT
+    assert [event["marketdatakind"] for event in rows[1]["events"]] == [MarketDataKind.EXEC]
     assert (delta["price"], delta["side"], delta["bookaction"]) == (decimal.Decimal("101"), Side.BUYS, "1")
     # An operation row names its entry under `mdentryid`.
     assert _row_kinds(delta["identifiers"]) == {"mdentryid": "B1"}
@@ -656,10 +656,10 @@ def test_market_metadata_carries_what_no_typed_column_reads(seed_batch: FixRegis
     assert stated.curruuid != bare.curruuid
     assert stated.currhashcode != bare.currhashcode
     # The message door always carries it; the book door honours the switch.
-    # With no grid the book states its deltas alone: the order is its one.
+    # With no grid the book is a delta book: the order is its one entry.
     assert message.market_data() == [stated]
     [book] = MarketData.from_arrow_reader(off.book_arrow_reader([message]))
-    [live] = book.as_book_event().deltas  # type: ignore[union-attr]
+    [live] = book.as_book_event().delta  # type: ignore[union-attr]
     assert live.metadata == {}
 
 
@@ -748,9 +748,10 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     assert len(operations) == 21
     assert sorted(operation.kind for operation in operations) == ["execution_event"] * 8 + ["order_event"] * 13
 
-    # Every order folds and every execution is pruned; the unpriced sell
-    # order of 2454 rests at its side's unpriced level and leaves at the same
-    # instant, so the last book holds nothing and states both as deltas. The
+    # Every order folds and every execution is recorded among its book's
+    # events; the unpriced sell order of 2454 rests at its side's unpriced
+    # level and leaves at the same instant, so the last book holds nothing
+    # and states both in its delta. The
     # hash moved with the split fills, the sided cross codes,
     # the book's own bid and ask facts (A12, A17, A20), the metadata a
     # follower takes from its chain, the four-letter side code the
@@ -765,15 +766,20 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # the wire's identifiers digest under `base`, beside the base key a named
     # source fills - and when the bridge's `DETAILEDCFICODE` became a name of
     # `CFICode(461)`, folded into it: the one value `rust/tests/fix/ulbridge.rs`
-    # pins for the same log. A book holds no execution - a fill moved its
+    # pins for the same log. A book rests no execution - a fill moved its
     # book through its order's report - so a book stands at every instant an
-    # order states, ten of them with the NOVN order's three steps, each its
-    # deltas alone: with no grid and no snapshot input no book is whole. The
+    # order states, ten of them with the NOVN order's three steps, and at the
+    # trade capture's, whose fill alone makes an event-only book; each is a
+    # delta book: with no grid and no snapshot input no book is complete. The
     # hash moved again when a book stopped holding executions, when a code's
-    # first book came to state its deltas alone, and when a book came to be
+    # first book came to be a delta book, and when a book came to be
     # keyed by its instrument's ISIN, holding it as its `isin`. It moved again
     # when a book came to state `BOTH` as its side, which its own market
-    # event feeds where a side nobody stated fed.
+    # event feeds where a side nobody stated fed. It moved again when a book
+    # split what its instant recorded into its `delta` - the orders and
+    # quotes - and its `events` - the executions and the snapshot controls -
+    # and came to digest the events after the delta: this book holds no
+    # event, so it feeds the empty list's count beside its two delta entries.
     books = list(graph.BookIterator(operations))
     assert len(books) == 11
     assert not any(book.is_complete for book in books)
@@ -781,8 +787,13 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     assert last.ticker == "2454"
     assert (last.isincode, last.crosscode) == ("TW0002454006", "3:0:TW0002454006")
     assert last.alive == []
-    assert [delta.price for delta in last.deltas] == [None, None]
-    assert last.currhashcode == 1_914_142_786_384_712_743
+    assert [delta.price for delta in last.delta] == [None, None]
+    assert last.events == [], "no execution touched its instant"
+    # Every execution of the capture is an event of exactly one book, and no
+    # book records an order or a quote among its events.
+    assert sum(len(book.executions) for book in books) == 8
+    assert all(len(book.executions) == len(book.events) for book in books)
+    assert last.currhashcode == 10_745_751_629_392_559_435
     # Every book is keyed by the ISIN its inputs state, else their ticker:
     # the masked line's number keys its own book, and the trade capture's
     # execution, of an instrument no order names, opens that instrument's.
@@ -833,9 +844,9 @@ def test_lifecycled_two_sided_trade_streams_executions_and_no_book(
     ]
     assert all(source.curruuid in fill.srcuuids for fill in fills)
 
-    # A book records the executions of its instant among its deltas - a
+    # A book records the executions of its instant among its events - a
     # fill moves a book through its order's report, and the fills stand
-    # beside it - so the trade's instant emits one book stating them alone.
+    # beside it - so the trade's instant emits one event-only book.
     assert codec.book_arrow_reader(codec.lifecycle(messages), snapshot_millis=0).read_all().num_rows == 1
 
     rows = codec.market_arrow_reader(codec.lifecycle(messages)).read_all().to_pylist()
@@ -900,7 +911,7 @@ def test_a_trade_side_stating_no_side_splits_into_a_fill_of_side_unknown(
     # Side(54) is still a fill, of side UKNW, said as a warning - never a
     # lost fill - and a trade stating no side at all splits into none. The
     # report itself is no leaf of a book; the fill it splits off is recorded
-    # by its book, so the first emits one book stating the fill alone and
+    # among its book's events, so the first emits one event-only book and
     # the second none.
     codec = _fixed_batch(seed_batch)
     trade, *split = codec.parse_line(body)
@@ -1769,24 +1780,25 @@ def test_the_crate_map_group_is_a_group_a_message_may_reference(tmp_path: Any) -
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SEED = REPO / "config" / "fix"
 
-# What the crate itself adds beside the specification: 51 definitions in tag
+# What the crate itself adds beside the specification: 52 definitions in tag
 # order from 65001 - the element's identities, the event's clocks, the market
 # and operation facts in the fixed row's band order, then the message's own
-# and the capture's own - 49 scalar facts and one Map group.
+# and the capture's own - 50 scalar facts and one Map group.
 # ISIN, Forex, Bloomberg, FIGI and MIC are crate columns, views of the
 # message's security identifiers; a bridge's originating plugin and
 # conversation are columns too, while the identifiers it states under its own
 # keys are inferred from them and stay content; the option's strike price is
 # the derived column `strikepx` beside the dictionary's StrikePrice(202); CFI
 # remains FIX's standard tag 461, as do prices and quantities.
-CRATED = 51
+CRATED = 52
 # What ``FixRegistry()`` holds: the crate fields a message states - a derived
 # column is the fixed row's, never filed - SendingTime (52) and TransactTime
-# (60), and the Map group. ``len`` counts groups; iteration walks the 33
+# (60), and the Map group. ``len`` counts groups; iteration walks the 34
 # scalars alone. The plugin-side column adds one registered scalar to the
-# branch registry; the metadata Map remains a group.
-SEEDED = 34
-SEEDED_SCALARS = 33
+# branch registry, and the origin currency one more; the metadata Map
+# remains a group.
+SEEDED = 35
+SEEDED_SCALARS = 34
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -1797,7 +1809,7 @@ CLOCK_INSTANT = dt.datetime(2024, 1, 2, 10, 15, 30, tzinfo=dt.timezone.utc)
 # The crate's own tags the message answers as typed facts, renumbered
 # contiguously from 65001 in the fixed row's band order (A11).
 UNIX_TAG = 65007
-EXECUNIX_TAG = 65023
+EXECUNIX_TAG = 65024
 RECDUNIX_TAG = 65009
 CREAUNIX_TAG = 65008
 PREVUNIX_TAG = 65011
@@ -1812,22 +1824,22 @@ PREVUUID_TAG = 65013
 SEQNUM_TAG = 65014
 SRCUUIDS_TAG = 65006
 MARKETDATAKIND_TAG = 65016
-MSGPLUGINID_TAG = 65041
-MSGPLUGINSIDE_TAG = 65042
-MSGCTXID_TAG = 65044
-MSGSESSIONID_TAG = 65045
-MSGSESSEVENTID_TAG = 65046
-ISINCODE_TAG = 65021
-FOREXCODE_TAG = 65048
-BLOOMBERGCODE_TAG = 65049
-FIGICODE_TAG = 65050
-MICCODE_TAG = 65022
-STRIKEPX_TAG = 65035
+MSGPLUGINID_TAG = 65042
+MSGPLUGINSIDE_TAG = 65043
+MSGCTXID_TAG = 65045
+MSGSESSIONID_TAG = 65046
+MSGSESSEVENTID_TAG = 65047
+ISINCODE_TAG = 65022
+FOREXCODE_TAG = 65049
+BLOOMBERGCODE_TAG = 65050
+FIGICODE_TAG = 65051
+MICCODE_TAG = 65023
+STRIKEPX_TAG = 65036
 STATE_TAG = 65015
-METADATA_TAG = 65036
-SOURCEURL_TAG = 65051
-MSGORIGINATOR_TAG = 65043
-CONVERSATIONID_TAG = 65047
+METADATA_TAG = 65037
+SOURCEURL_TAG = 65052
+MSGORIGINATOR_TAG = 65044
+CONVERSATIONID_TAG = 65048
 
 
 def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
@@ -2315,6 +2327,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "state",
         "marketdatakind",
         "marketdatatype",
+        "origccy",
         "hiddenqty",
         "unit",
         "securityids",
@@ -2353,7 +2366,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
     assert tags[0] == CURRUUID_TAG and tags[-1] == SOURCEURL_TAG
-    assert tags == list(range(65001, 65052))
+    assert tags == list(range(65001, 65053))
     assert all(field.fix.sources == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
@@ -3946,11 +3959,11 @@ def test_a_quote_states_its_bid_and_offer_and_holds_both_legs(seed: FixRegistry)
     assert quote.crosscode == "14:0:Q3"
     assert quote.bidpx is not None and quote.bidpx.as_py() == 101
     assert quote.askpx is not None and quote.askpx.as_py() == 102
-    # Its book rests it on both sides as one entry, one delta; with no grid
-    # that book states its delta alone, whole over the empty book of its key.
+    # Its book rests it on both sides as one entry, one delta entry; with no
+    # grid that book is a delta book, complete over the empty book of its key.
     [book] = [data.as_book_event() for data in MarketData.from_arrow_reader(codec.book_arrow_reader([quote]))]
     assert book is not None and not book.is_complete
-    assert [delta.crosscode for delta in book.deltas] == ["14:0:Q3"]
+    assert [delta.crosscode for delta in book.delta] == ["14:0:Q3"]
     assert (book.bidpx, book.askpx) == (quote.bidpx, quote.askpx)
     whole = book.with_previous(BookEvent.keyed(book.currunix, "AAPL"))
     assert whole is not None
@@ -4254,6 +4267,13 @@ def test_a_field_states_the_parents_of_the_identifier_it_names(seed: FixRegistry
     assert seed.parent_of("origorderid") == ("orderid", 1)
     assert seed.parent_of("origtradeid") == ("tradeid", 0)
     assert seed.parent_of("clordid") is None and seed.parent_of("originalorderid") is None
+    # Only a chain identity has parents: a per-report reference has none, a
+    # trade report's one is its `tradereportrefid`, and `parentclordid` is a
+    # bridge's word of its own rather than a parent of `clordid`.
+    assert seed.parents_of("execid") == [] and seed.parent_of("parentexecid") is None
+    assert seed.parents_of("tradereportid") == ["tradereportrefid"]
+    assert seed.parent_of("tradereportrefid") == ("tradereportid", 0)
+    assert seed.parent_of("parentclordid") is None
     with pytest.raises(ValueError, match="identifier"):
         seed.parents_of("café")
 
@@ -5257,10 +5277,10 @@ def test_the_serie_faces_keep_a_capture_native_from_text_rows_to_walked_rows(
     source.media_type = Url("file:///ulbridge.log").media_type
     codec = _fixed_batch(seed_batch)
 
-    parsed = codec.parse_text_serie(source.read_serie(options=options))
-    assert isinstance(parsed, yggdryl.SerieReader)
+    parsed = codec.parse_text_serie(StreamChunkedSerie.from_serie(source.read_serie(options=options)))
+    assert isinstance(parsed, yggdryl.StreamChunkedSerie)
     walked = codec.lifecycle_serie(parsed)
-    assert isinstance(walked, yggdryl.SerieReader)
+    assert isinstance(walked, yggdryl.StreamChunkedSerie)
     rows = sum(len(record) for record in walked)
 
     arrow = codec.lifecycle_arrow_reader(
@@ -5270,16 +5290,16 @@ def test_the_serie_faces_keep_a_capture_native_from_text_rows_to_walked_rows(
 
     # A table read back feeds the walk and the books as messages.
     messages = list(
-        codec.messages_serie(codec.parse_text_serie(source.read_serie(options=options)))
+        codec.messages_serie(codec.parse_text_serie(StreamChunkedSerie.from_serie(source.read_serie(options=options))))
     )
     assert len(messages) == codec.parse_text_arrow_reader(
         source.read_arrow_reader(options=options)
     ).read_all().num_rows
-    market = codec.market_data_serie(codec.parse_text_serie(source.read_serie(options=options)))
-    assert isinstance(market, yggdryl.SerieReader)
+    market = codec.market_data_serie(codec.parse_text_serie(StreamChunkedSerie.from_serie(source.read_serie(options=options))))
+    assert isinstance(market, yggdryl.StreamChunkedSerie)
     assert sum(len(record) for record in market) > 0
     books = codec.book_serie(codec.lifecycle(messages), 900_000)
-    assert isinstance(books, yggdryl.SerieReader)
+    assert isinstance(books, yggdryl.StreamChunkedSerie)
 
 
 # The key every table of the capture pipeline declares: when a row happened,
@@ -5431,7 +5451,7 @@ DOORS = {
     "messages": lambda tag: count(codec.messages(parsed(tag))),
     "messages_serie": lambda tag: count(codec.messages_serie(codec.parse_text_serie(rows(tag)))),
     "arrow_reader": lambda tag: drain(codec.arrow_reader(schema, messages(tag))),
-    "serie_reader": lambda tag: drain(codec.serie_reader(schema, messages(tag))),
+    "serie_reader": lambda tag: drain(codec.chunked_stream(schema, messages(tag))),
     "lifecycle": lambda tag: count(codec.lifecycle(messages(tag))),
     "lifecycle of messages": lambda tag: count(codec.lifecycle(codec.messages(parsed(tag)))),
     "lifecycle_arrow_reader": lambda tag: drain(codec.lifecycle_arrow_reader(parsed(tag))),
@@ -5458,7 +5478,7 @@ DOORS = {
     )
     .overwrite_serie(parsed(tag))
     .written_rows,
-    "IOBase.overwrite_serie of a SerieReader": lambda tag: IOBase(
+    "IOBase.overwrite_serie of a StreamChunkedSerie": lambda tag: IOBase(
         folder / ("serie-%d.arrows" % tag)
     )
     .overwrite_serie(codec.lifecycle_serie(codec.parse_text_serie(rows(tag))))
@@ -5527,8 +5547,8 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
     options.rowheader = ULBRIDGE_ROWHEADER
     options.timezone = "UTC"
     options.start_rownum = 1
-    lines = IOBase(logs / "*.log").read_serie(options=options)
-    assert isinstance(lines, yggdryl.SerieReader)
+    lines = StreamChunkedSerie.from_serie(IOBase(logs / "*.log").read_serie(options=options))
+    assert isinstance(lines, yggdryl.StreamChunkedSerie)
     text_row = lines.field
 
     text = _capture_table(tmp_path / "text", text_row)
@@ -5573,8 +5593,8 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
     codec = _fixed_batch(seed_batch, threads=None)
     assert codec.threads >= 1
 
-    def walked() -> yggdryl.SerieReader:
-        return codec.lifecycle_serie(codec.parse_text_serie(text.read_serie(field=text_row)))
+    def walked() -> yggdryl.StreamChunkedSerie:
+        return codec.lifecycle_serie(codec.parse_text_serie(StreamChunkedSerie.from_serie(text.read_serie(field=text_row))))
 
     stream = walked()
     fix = _capture_table(tmp_path / "fix", stream.field)
@@ -5603,7 +5623,7 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
 
 
 def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
-    seed_batch: FixRegistry, tmp_path: pathlib.Path
+    seed_batch: FixRegistry, tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     import datetime as dt
 
@@ -5621,10 +5641,12 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     (logs / "bridge-0.log").write_bytes(b"".join(captured[:72]))
     (logs / "bridge-1.log").write_bytes(b"".join(captured[72:]))
     # The instruments the pipeline meets, bound to a table of the silver
-    # catalog: the codec's lifecycle learns into it, and the pipeline commits
-    # it as a stage of its own.
+    # catalog and laid over the seed: the codec's lifecycle learns into it,
+    # and the stage right after the FIX-message parse commits it. A first run
+    # holds the seed, clean.
     registry = medallion.instruments(silver)
-    assert len(registry) == 0 and not registry.is_dirty
+    seed = IsinRegistry.seeded()
+    assert len(registry) == len(seed) and not registry.is_dirty
     codec = _fixed_batch(seed_batch, threads=None, isin_registry=registry)
 
     # The capture's day - lines at 03:xx, 14:xx, 16:xx and 23:xx UTC - as
@@ -5638,7 +5660,29 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         medallion.window_filter(end, start)
 
     lake = medallion.Lake(bronze, silver, codec, IOBase(logs / "*.log"))
+    caplog.set_level(logging.WARNING)
     written = medallion.run(lake, start, end)
+    # Every value the parse defaults to null is said once as a warning naming
+    # its field: the only values the capture states that their fields' types
+    # refuse are the bridge's own words under five code sets, each refusal
+    # naming the set. `legmaturitytime` (a `TZTimeOnly` sent `093000`) and
+    # `aggressorindicator` (`Aggressor`) type and are not among them. The
+    # warnings deduplicate per process on the field, so a run after another
+    # test that met one of these fields says it no second time: the pin is
+    # that nothing outside the five is said, never that all five are.
+    defaulted = {
+        record.getMessage().split("(", 1)[1].split(")", 1)[0]
+        for record in caplog.records
+        if record.name.startswith("yggdryl")
+        and record.levelno == logging.WARNING
+        and record.getMessage().startswith("FIX value defaulted to null")
+    }
+    assert defaulted <= {"partyrole", "partyrolequalifier", "partysubidtype", "pricetype", "trdregtimestamptype"}, defaulted
+    assert all(
+        "no code of " in record.getMessage() and "codeset is spelled " in record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith("FIX value defaulted to null") and "seen " not in record.getMessage()
+    ), [record.getMessage() for record in caplog.records if record.getMessage().startswith("FIX value defaulted to null")]
     assert list(written) == [
         "bronze.log_messages",
         "bronze.fix_messages",
@@ -5649,18 +5693,37 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         "silver.quotes",
         "silver.executions",
     ]
+    assert list(medallion.STAGES_OF) == [
+        "bronze.log_messages",
+        "bronze.fix_messages",
+        "silver.fix_messages",
+        "silver.instruments",
+        "silver.books",
+        "silver.events",
+    ]
     assert written["bronze.log_messages"] == IOResult(144, 144)
     # The lifecycle learned the capture's instruments into the registry, and
-    # the commit wrote them as one snapshot: the table holds the registry.
+    # the first commit wrote them with the seed as one snapshot: the table
+    # holds the registry's listing rows - one per ISIN and market - the
+    # seed's instruments and those the lifecycle learned.
     instruments = written["silver.instruments"].written_rows
-    assert instruments == len(registry) > 0
+    isins = registry.into_arrow_reader().read_all().column("isin").to_pylist()
+    learned = {isin for isin in isins if seed.get(isin) is None}
+    assert learned, "the capture names instruments the seed does not hold"
+    assert instruments == registry.rows == len(isins)
+    assert len(registry) == len(seed) + len(learned) == len(set(isins))
     assert not registry.is_dirty
     stored = silver.table("record_keeping.instruments")
     assert stored.row_size() == instruments
+    # Created from the registry's own row, the table is partitioned by the
+    # ISIN's country prefix - Iceberg's truncation of the key, no column -
+    # one live file per prefix the rows hold.
+    assert [(spec.name, spec.transform) for spec in stored.spec.fields] == [("isin_truncate", "truncate[2]")]
+    assert sorted(file.partition for file, _ in stored.data_files()) == sorted({(isin[:2],) for isin in isins})
     field = stored.field()
     assert field.index_of("underlyingisin") == field.index_of("forexcode") + 1
     reloaded = IsinRegistry.from_url(stored.url)
-    assert len(reloaded) == instruments
+    assert (len(reloaded), reloaded.rows) == (len(registry), instruments)
     assert reloaded.get("CH0012214059") == registry.get("CH0012214059") is not None
     for stage, result in written.items():
         assert result.read_rows == result.written_rows, stage
@@ -5675,22 +5738,31 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     # capture test pins them - and writes each back under the table's
     # schema, where an enum column is the plain integer its codes are.
     assert written["silver.fix_messages"].written_rows == 39
-    refined = silver.table("record_keeping.fix_messages").read_serie().into_arrow_reader().read_all()
+    refined = StreamChunkedSerie.from_serie(silver.table("record_keeping.fix_messages").read_serie()).into_arrow_reader().read_all()
     for column in ("state", "marketdatakind", "marketdatatype"):
         assert refined.column(column).null_count == 0, column
     books = written["silver.books"].written_rows
     assert books > 0
-    # The three event tables are the books' deltas laid out by kind: every
-    # delta of every book lands in exactly one of them.
-    laid_out = sum(written[f"silver.{name}"].written_rows for name in ("orders", "quotes", "executions"))
-    deltas = sum(
-        len(data.as_book_event().deltas)  # type: ignore[union-attr]
+    # The three event tables are the books laid out by kind through two
+    # doors: the orders and the quotes out of the books' delta, every entry
+    # of every delta in exactly one of them, and the executions out of their
+    # events.
+    assert [(name, door, kind) for name, door, kind in medallion.EVENTS] == [
+        ("orders", MarketData.delta_serie, "ORDR"),
+        ("quotes", MarketData.delta_serie, "QUOT"),
+        ("executions", MarketData.events_serie, "EXEC"),
+    ]
+    stored_books = [
+        data.as_book_event()
         for data in MarketData.from_arrow_reader(
-            silver.table("record_keeping.books").read_serie(select="* exclude (partunix)").into_arrow_reader()
+            StreamChunkedSerie.from_serie(silver.table("record_keeping.books").read_serie(select="* exclude (partunix)")).into_arrow_reader()
         )
-    )
-    assert laid_out == deltas > 0
-    assert written["silver.executions"].written_rows > 0, "executions are recorded among the deltas"
+    ]
+    assert all(book is not None for book in stored_books)
+    delta = sum(len(book.delta) for book in stored_books if book is not None)
+    executions = sum(len(book.executions) for book in stored_books if book is not None)
+    assert written["silver.orders"].written_rows + written["silver.quotes"].written_rows == delta > 0
+    assert written["silver.executions"].written_rows == executions > 0, "executions are recorded among the events"
 
     # Every table is laid out as the pipeline declares: the quarter-hour
     # partition the table computes, the key, the sort, the books by their
@@ -5728,15 +5800,23 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         "quotes",
     ]
 
-    # Running every stage again over the window rewrites what it wrote: the
-    # same rows under one more snapshot, never the two runs together.
+    # Running every stage again over the window: the first stage is the
+    # keyed append, so every line it reads again is already stored in its
+    # quarter and is skipped - nothing written, no snapshot - while every
+    # later stage rewrites what it wrote, the same rows under one more
+    # snapshot, never the two runs together.
     again = medallion.run(lake, start, end)
-    # The registry learned no new instrument, so its bound table commits nothing.
+    # The registry learned no new fact and met no instrument later than it
+    # had - the same messages at the same instants leave every `lastunix` -
+    # so its bound table commits nothing.
     assert again.pop("silver.instruments") == IOResult(0, 0)
     assert len(silver.table("record_keeping.instruments").snapshots) == 1
     written.pop("silver.instruments")
-    assert again == written
-    for catalog, name in ((bronze, "log_messages"), (silver, "books"), (silver, "executions")):
+    assert again.pop("bronze.log_messages") == IOResult(144, 0, 144)
+    assert len(bronze.table("record_keeping.log_messages").snapshots) == 1
+    assert bronze.table("record_keeping.log_messages").row_size() == 144
+    assert again == {stage: result for stage, result in written.items() if stage != "bronze.log_messages"}
+    for catalog, name in ((silver, "books"), (silver, "executions")):
         table = catalog.table(f"record_keeping.{name}")
         assert table.row_size() == written[f"{catalog.name}.{name}"].written_rows, name
         assert len(table.snapshots) == 2, name
@@ -5746,7 +5826,11 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     half = dt.datetime(2026, 8, 14, 19, 0, tzinfo=utc)
     partial = medallion.run(lake, start, half)
     assert partial["silver.instruments"] == IOResult(0, 0)
-    assert 0 < partial["bronze.log_messages"].written_rows < 144
+    # The keyed append reads the quarters the window covers and finds every
+    # line stored: nothing written, every read line skipped, the table whole.
+    lines = partial["bronze.log_messages"]
+    assert 0 < lines.read_rows < 144
+    assert (lines.written_rows, lines.skipped_rows) == (0, lines.read_rows)
     assert bronze.table("record_keeping.log_messages").row_size() == 144
     assert partial["silver.books"].written_rows <= books
     assert silver.table("record_keeping.books").row_size() == books

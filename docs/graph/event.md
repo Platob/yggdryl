@@ -300,13 +300,16 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 
 | Key | Rule |
 | --- | --- |
-| Live set, twins | elements still alive (a live state, not past expiration) share the cross identity, and a chain is keyed by that identity and its [`marketdatakind`](../types/enum/marketdatakind.md) - an element joins only a chain of its own kind, by its cross code, a base code or a shared name, so an order and an execution under one cross code are two chains and a fill never restates, follows or ends its order; an arrival under a live identity - or (if dead) under the type and value of one of a live element's `get_identifiers()`, whatever its source, or under the value one of its own identifiers replaced - a parent identifier's value, joined under its base ([Parentage](identifier.md#parentage)) - is yielded as `with_previous` of the live one, live until it isn't, then retiring; one arriving under the identity the live element *arrived* under is yielded [`restating`](#restating) it instead, a twin taking the chain's metadata and identifiers as a follower does; and one arriving under the identity a statement the chain moved past *at the live element's own instant* arrived under is yielded restating that statement - the same identity again - while the chain stays where it moved: the walk keeps those statements until the chain moves to a later instant, the only place a sorted walk reads another statement of them; a chain a step ends keeps that step and the statements it moved past at the step's instant the same way, each restated where it arrives again and the chain staying ended, until the walk reads a later instant |
-| Sides | an order's or an execution's stored cross code states its [side](market.md#sides-and-cross-codes) (`10:1:O-7` to buy, `10:2:O-7` to sell), so a buy and a sell under one identifier are two chains, and a name is alive on each side apart: an arrival joins a live element of its own side it shares a name with. A quote's chain is keyed by no side - its code states `0` - and a name it goes by is alive on the leg its latest statement tags, so a bid and an offer going by one `MDEntryID` are two entries |
-| No side | an element stating `UKNW` joins the one side alive under its base cross code (a live order's or execution's code without its `{kind}:{side}:` prefix), else the one side alive under the first name it shares with a live element - taking that chain's side and code; where both sides of that name are alive, it starts a chain of its own |
+| Live set, twins | elements still alive (a live state, not past expiration) share the cross identity, and a chain is keyed by that identity and its [`marketdatakind`](../types/enum/marketdatakind.md) - an element joins only a chain of its own kind, by its cross code, a base code or a shared name, so an order and an execution under one cross code are two chains and a fill never restates, follows or ends its order; an arrival citing one live chain - under its live identity, by the one side alive under its base code, or by a [name](#names-re-keying-and-conflicts) a live element goes by - is yielded as `with_previous` of the live one, live until it isn't, then retiring; one arriving under the identity the live element *arrived* under is yielded [`restating`](#restating) it instead, a twin taking the chain's metadata and identifiers as a follower does; and one arriving under the identity a statement the chain moved past *at the live element's own instant* arrived under is yielded restating that statement - the same identity again - while the chain stays where it moved: the walk keeps those statements until the chain moves to a later instant, the only place a sorted walk reads another statement of them; a chain a step ends keeps that step and the statements it moved past at the step's instant the same way, each restated where it arrives again and the chain staying ended, until the walk reads a later instant |
+| Sides | an order's or an execution's stored cross code states its [side](market.md#sides-and-cross-codes) (`10:1:O-7` to buy, `10:2:O-7` to sell), so a buy and a sell under one identifier are two chains, and a name is alive on each side apart: an arrival joins a live element of its own side it shares a name with. A quote's chain is keyed by no side - its code states `0` - and a name it goes by is alive on the leg its latest statement tags, so a bid and an offer going by one name are two chains |
+| No side | an element stating `UKNW` cites the one side alive under its base cross code (a live order's or execution's code without its `{kind}:{side}:` prefix) where exactly one is - two cite nothing by the base - and every side a name of it is alive on: citing one chain it joins it, taking that chain's side and code; a name alive on both sides is a [conflict](#names-re-keying-and-conflicts) |
+| Names | a chain goes by every value of a chain identity type ([`IdType::is_chain_identity`](identifier.md#parentage)) its statements stated, whatever its source - the old value beside the new after a change - and by the chain's first value a lineage identifier names (`origclordid`, `origorderid`, `origtradeid`, `tradereportrefid`), filed under its base; each name is held by the first live chain of its kind and side that stated it until that chain ends, when the next to state it takes it. A per-report reference (`execid`, `trdmatchid`, `tvtic`), a request many chains answer (`quotereqid`, `mdreqid`), a security, a party, the previous-value slot `parentorderid` and any other word name no chain, so the index holds one entry per distinct name a live chain stated, never one per report |
+| Conflict | an element citing two live chains - its own and another, or two by its names - is joined to neither: it stands under its own identity, its own live chain where that is one of those cited, else a chain of its own, and the conflict is told twice - on the element by [`Operation::note_conflict(cited)`](operation.md#following-and-merging), before anything restates or finalizes it (a FIX message records a `FixAnomaly` under `crosscode`, a typed leaf nothing), `cited` naming its own stored code and each chain's with the name that cited it, and once per kind as a [warning](../fix/capture.md#warnings) on `yggdryl.graph.iterator`; another statement of it resolves the same way and restates it. Nothing merges two chains |
+| Re-key | every element the walk states as a chain's - a follower, a twin, one before the live element, an expiration - takes the live element's side where it is sided and states none, then the live element's stored cross code where that states one ([`Operation::follow_identity`](operation.md#following-and-merging)), finalized once where that moved anything, so its `crosshashcode` and `crossuuid` derive from the chain's code and its `curruuid`, seeded by that hash, is derived once under them: an identifier change moves no element onto another code and no order onto another [book](book.md#book-fold) entry |
 | `UPDATED` | a `NEW` stated over a live element that is new-like - [`State::is_new_like`](../types/enum/state.md): acknowledged or working (rank 20 or 30), or `UPDATED`, `REPLACED`, `RESTATED`, `AMENDED` - is yielded `UPDATED` (`3004`, rank 30), read before following folds the state, so later progress folds over it; a `PENDING_NEW` followed by `NEW` stays `NEW` |
 | Creation | every element leaves stating `creaunix`: one stating none takes its chain's - the earliest the fold kept - or, starting a chain, its own instant; a stated one is never replaced, and no identity moves, since no instant is digested |
-| One cross element | a chain whose first element states no cross code stands under that element's identity, and every element of it after the first carries that identity as its `crossuuid` - one joining by a name, an `UPDATED`, a twin, the `EXPIRED` the walk emits and a follower stating a code of its own alike - stated after its last finalize, since a finalize derives an element's own |
-| Order | `sorted=true` trusts the caller and streams; else the walk collects and stably sorts by `is_after`/`is_before`. One before the live element, refused by it, or unchanged by following, is yielded as it came |
+| One cross element | a chain whose first element states no cross code stands under that element's identity, and every element of it after the first carries that identity as its `crossuuid` - one joining by a name, an `UPDATED`, a twin, the `EXPIRED` the walk emits and a follower stating a code of its own alike - stated after its last finalize, since a finalize derives an element's own; the first code a follower states is the code the elements after it are re-keyed onto, and since no follower's own content derives the cross element, a consumer finalizing one again derives the follower's own |
+| Order | `sorted=true` trusts the caller and streams; else the walk collects and stably sorts by `is_after`/`is_before`. One before the live element follows nothing and moves the live one not at all, and one refused by it or unchanged by following still stands as the live one: each is yielded [re-keyed](#names-re-keying-and-conflicts) onto its chain |
 | Executions | an execution joins nothing by a name or a base code: it is a chain of its own kind, followed only under its own cross code; a market event stating no `execunix` is dated from `currunix` pre-placement when `Event::is_execution` holds; a market event carries the latest execution clock through non-executions ([`execunix`](market.md#following-and-merging)), and no event carries `recdunix`; a FIX message's fills are split into execution messages at the [parse](../fix/message.md#market-data) |
 | Deadlines, end | a finite `exprunix` emits one owned `EXPIRED` at that instant, following the live generation, then purges it; the expirations of one deadline take its next places in the order of the identities they retire, and a source element keeps its own place; a replaced/terminal generation's stale deadline emits nothing; ties: deadlines, then source events, then grid views; at EOF the walk drains finite deadlines/views to the greatest deadline reached, else the last source instant - a nonexpiring identity never extends a finite source |
 | Grid | `with_snapshot_ns(i64)` (≤0=none): an epoch-aligned grid - one owned view per living identity per crossed tick, never backdating; `snapshot_ns()` reads it back. A view is the live element as of its tick: dated at it (`currunix` = the tick), its `snapunix` the instant the element it copies was stated at - that element's own `snapunix` where it is itself a view - so its `curruuid` is the identity the tick derives - a row of its own wherever rows are keyed by identity within a time - while its content (`currhashcode`), `seqnum`, `prevuuid` and `crossuuid` are the live element's; it does not advance the chain |
@@ -564,6 +567,130 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
     assert.equal(expired.seqnum, 0)
     ```
 
+### Names, re-keying and conflicts
+
+A replace under another cross code and a new `ClOrdID`, naming the one it replaced, then a report citing the new value and one citing the old: one chain under the first statement's code, every hash derived from it. Then a report citing two live orders by the names it shares with each: a conflict, never a pick.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::graph::{Element, Event, EventIterator, Operation, OrderEvent};
+    use yggdryl::{IdKey, IdType, Identifier, Uuid};
+
+    const T: i64 = 1_700_000_000_000_000_000;
+    const MS: i64 = 1_000_000;
+    // An order at `ms` going by `names`, under the cross code `code` where one is given.
+    let order = |ms: i64, code: Option<&str>, names: &[(IdType, &str)]| -> yggdryl::Result<OrderEvent> {
+        let mut order = OrderEvent::at(T + ms * MS);
+        if let Some(code) = code {
+            order.set_crosscode(code.to_owned());
+        }
+        for (kind, value) in names {
+            order.insert_identifier(Identifier::new(IdKey::base(kind.clone()), *value)?)?;
+        }
+        order.finalize();
+        Ok(order)
+    };
+
+    let replace = order(10, Some("O-200"), &[(IdType::ClOrdId, "C2"), (IdType::OrigClOrdId, "C1")])?;
+    assert_eq!(replace.get_crosscode(), "10:0:O-200", "its own spelling");
+    let mut walk = EventIterator::new(
+        vec![
+            order(0, Some("O-100"), &[(IdType::ClOrdId, "C1")])?,
+            replace,
+            order(20, None, &[(IdType::ClOrdId, "C2")])?,
+            order(30, None, &[(IdType::ClOrdId, "C1")])?,
+        ],
+        true,
+    );
+    let walked: Vec<OrderEvent> = walk.by_ref().collect();
+    // One chain under its first statement's code, each statement after the one before.
+    for (at, event) in walked.iter().enumerate() {
+        assert_eq!(event.get_crosscode(), "10:0:O-100");
+        assert_eq!(event.get_crosshashcode(), yggdryl::xxhash::xxh3(event.get_crosscode().as_bytes()));
+        assert_eq!(event.get_crossuuid(), Uuid::from_v8(u128::from(event.get_crosshashcode())));
+        if at > 0 {
+            assert_eq!(event.get_prevuuid(), Some(walked[at - 1].get_curruuid()));
+        }
+    }
+    assert_eq!(walk.alive().count(), 1);
+
+    // Two live orders, and a report citing both: it stands under its own
+    // identity - a chain of its own here - and the walk warns once.
+    let mut walk = EventIterator::new(
+        vec![
+            order(0, Some("O-1"), &[(IdType::ClOrdId, "C1")])?,
+            order(10, Some("O-2"), &[(IdType::SecondaryClOrdId, "S2")])?,
+            order(20, None, &[(IdType::ClOrdId, "C1"), (IdType::SecondaryClOrdId, "S2")])?,
+        ],
+        true,
+    );
+    let conflicted: Vec<OrderEvent> = walk.by_ref().collect();
+    assert_eq!(conflicted[2].get_prevuuid(), None);
+    assert_eq!(walk.alive().count(), 3);
+    ```
+
+=== "Python"
+
+    ```python
+    import logging
+
+    from yggdryl import Identifier, graph
+
+    T = 1_700_000_000_000_000_000
+    MS = 1_000_000
+    said: list[logging.LogRecord] = []
+
+
+    class Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            said.append(record)
+
+
+    logging.getLogger("yggdryl").addHandler(Collect())
+
+
+    def order(ms: int, *names: tuple[str, str], **facts) -> graph.OrderEvent:
+        ids = [Identifier(kind, value) for kind, value in names]
+        return graph.OrderEvent(T + ms * MS, identifiers=ids, **facts)
+
+
+    def walk(items):
+        iterator = graph.EventIterator(items)
+        return [value.as_order_event() for value in iterator], iterator
+
+
+    replace = order(10, ("clordid", "C2"), ("origclordid", "C1"), crosscode="O-200")
+    assert replace.crosscode == "10:0:O-200", "its own spelling"
+    walked, iterator = walk([
+        order(0, ("clordid", "C1"), crosscode="O-100"),
+        replace,
+        order(20, ("clordid", "C2")),
+        order(30, ("clordid", "C1")),
+    ])
+    # One chain under its first statement's code, each statement after the one before.
+    assert all(held.crosscode == "10:0:O-100" for held in walked)
+    assert all(held.crossuuid == walked[0].crossuuid for held in walked)
+    assert [held.prevuuid for held in walked[1:]] == [held.curruuid for held in walked[:-1]]
+    assert len(iterator.alive()) == 1
+
+    # Two live orders, and a report citing both: it stands under its own
+    # identity - a chain of its own here - and the walk warns once.
+    conflicted, iterator = walk([
+        order(0, ("clordid", "C1"), crosscode="O-1"),
+        order(10, ("secondaryclordid", "S2"), crosscode="O-2"),
+        order(20, ("clordid", "C1"), ("secondaryclordid", "S2")),
+    ])
+    assert conflicted[2].prevuuid is None
+    assert len(iterator.alive()) == 3
+    assert any(
+        record.name.startswith("yggdryl.graph") and "cites two live chains" in record.getMessage()
+        for record in said
+    )
+    ```
+
+`IdType` and the walk's index are Rust's; a binding states the identifiers as `Identifier`s and reads what the walk answers.
+
 ## Edges
 
 - A later `following` call replaces a prior predecessor; place saturates past `u64::MAX`. `following_market`/`following_operation` still fill missing facts even when the timed link is unchanged.
@@ -571,4 +698,4 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 - The later `recdunix` picks the merge reference even if its event instant is earlier; the merged `recdunix` - and, for a market event, `execunix` - stay earliest observed, so merge order can change the winner.
 - The walk clones a source at most twice (as the live one, or one its predecessor refuses), plus one clone per expiration/grid view; it holds one live element per identity, emitting views lazily rather than queued.
 - A grid starts at the first epoch-aligned tick at/after the first source instant; output is crossed ticks × identities alive, caller-chosen width, no implicit count/span cap.
-- An element stating no side whose base code and names are alive on both sides is ambiguous: it neither picks one nor is refused - it starts a chain of its own under side `0`.
+- An element stating no side whose base code is alive on both sides cites neither by it, and its names decide; a name alive on both sides is a [conflict](#names-re-keying-and-conflicts) - never refused and never a pick: it stands under its own identity, a chain of its own under side `0` where nothing else holds it.

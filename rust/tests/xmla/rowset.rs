@@ -1109,9 +1109,9 @@ fn leaves() -> (Field, Scalar, &'static str) {
     let text = "<row><flag>true</flag><i8>-8</i8><u8>200</u8><i16>-300</i16><u16>60000</u16>\
          <i32>-70000</i32><u32>4000000000</u32><i64>-9223372036854775808</i64>\
          <u64>18446744073709551615</u64><f32>1.5</f32><f64>0.1</f64><amount>12.5</amount>\
-         <day>2024-01-01</day><clock>09:30:00.500000</clock>\
-         <wall>2024-01-01T09:30:00.000000</wall><instant>2024-01-01T09:30:00.000000Z</instant>\
-         <span>PT90.000000S</span><blob>AP9oaQ==</blob>\
+         <day>2024-01-01</day><clock>09:30:00.500</clock>\
+         <wall>2024-01-01T09:30:00</wall><instant>2024-01-01T09:30:00Z</instant>\
+         <span>PT90S</span><blob>AP9oaQ==</blob>\
          <id>01234567-89ab-cdef-0123-456789abcdef</id>\
          <link>https://example.com/a?b=1&amp;c=2</link><note>a &lt;b&gt; &amp; c</note>\
          <legacy>café</legacy><code>XPAR</code></row>";
@@ -4160,9 +4160,7 @@ fn a_sequence_of_instants_written_by_the_rowset_reads_back_as_instants() {
     );
     let text = root_text(&rowset, vec![batch.clone()], true, true);
     assert!(
-        text.contains(
-            "<ats>2024-01-01T09:30:00.000000Z</ats><ats>2024-01-01T10:00:00.000000Z</ats>"
-        ),
+        text.contains("<ats>2024-01-01T09:30:00Z</ats><ats>2024-01-01T10:00:00Z</ats>"),
         "{text}"
     );
     assert_eq!(
@@ -4181,7 +4179,7 @@ fn a_struct_child_instant_written_by_the_rowset_reads_back_as_an_instant() {
     let batch = rows(&field, [row([("leg", row([("at", utc_at("09:30:00"))]))])]);
     let text = root_text(&rowset, vec![batch.clone()], true, true);
     assert!(
-        text.contains("<leg><at>2024-01-01T09:30:00.000000Z</at></leg>"),
+        text.contains("<leg><at>2024-01-01T09:30:00Z</at></leg>"),
         "{text}"
     );
     assert_eq!(

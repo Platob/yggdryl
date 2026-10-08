@@ -494,18 +494,94 @@ pub trait IORecordOptions: Sized {
     ) -> Result<crate::arrow::BatchReader> {
         use arrow_array::RecordBatchReader as _;
         let schema = reader.schema();
-        let late = crate::expression::filter_after_select(
+        let (early, late) = crate::expression::filter_phases(
             self.filter(),
             self.select(),
             schema.fields().iter().map(|field| field.name().as_str()),
         );
-        if late {
-            return self
-                .filter()
-                .apply_arrow_reader(self.select().apply_arrow_reader(reader)?);
+        late.apply_arrow_reader(
+            self.select()
+                .apply_arrow_reader(early.apply_arrow_reader(reader)?)?,
+        )
+    }
+
+    /// Apply scan clauses and limits to a row stream.
+    ///
+    /// # Errors
+    /// Clause binding, schema and limit failures.
+    fn apply_stream(&self, mut rows: crate::StreamSerie) -> Result<crate::StreamSerie> {
+        rows.require_record_field()?;
+        self.require_write_limits()?;
+        let select = self.select().bind(rows.field())?;
+        // These operations require Arrow storage: a byte limit counts its
+        // buffers, and unnest multiplies one input into multiple output rows.
+        if self.max_byte_size().is_some() || select.unnested().is_some() {
+            let reader =
+                self.limit_arrow_reader(self.apply_arrow_expressions(rows.into_arrow_reader()?)?)?;
+            return crate::StreamChunkedSerie::from_arrow_reader(
+                None,
+                reader,
+                crate::ArrowCastOptions::new(),
+            )?
+            .into_stream();
         }
-        self.select()
-            .apply_arrow_reader(self.filter().apply_arrow_reader(reader)?)
+        let (early, late) = crate::expression::filter_phases(
+            self.filter(),
+            self.select(),
+            rows.field().fields().iter().map(|field| field.name()),
+        );
+        let early = if early.is_always_true() {
+            None
+        } else {
+            Some(early.bind(rows.field())?)
+        };
+        let late = if late.is_always_true() {
+            None
+        } else {
+            Some(late.bind(select.output())?)
+        };
+        let field = select.output().clone();
+        let mut limit =
+            WriteLimitState::new(self.row_offset().unwrap_or(0), self.max_row_size(), None);
+        Ok(crate::StreamSerie::from_rows(
+            field,
+            std::iter::from_fn(move || {
+                loop {
+                    if limit.satisfied() {
+                        return None;
+                    }
+                    let row = match rows.next()? {
+                        Ok(row) => row,
+                        Err(error) => return Some(Err(error)),
+                    };
+                    if let Some(filter) = &early {
+                        match filter.matches(&row) {
+                            Ok(false) => continue,
+                            Ok(true) => {}
+                            Err(error) => return Some(Err(error)),
+                        }
+                    }
+                    let row = if select.is_identity() {
+                        row
+                    } else {
+                        match select.apply_scalar(&row) {
+                            Ok(row) => row,
+                            Err(error) => return Some(Err(error)),
+                        }
+                    };
+                    if let Some(filter) = &late {
+                        match filter.matches(&row) {
+                            Ok(false) => continue,
+                            Ok(true) => {}
+                            Err(error) => return Some(Err(error)),
+                        }
+                    }
+                    if limit.apply_row() {
+                        return Some(Ok(row));
+                    }
+                }
+            }),
+        ))
     }
 
     /// Build the declared field, or say that one is required.
@@ -952,10 +1028,8 @@ pub(crate) struct Shaping {
     /// declared field leaves them and before any clause reads them: a table
     /// that owns its derivations, never a leaf.
     derived: Option<crate::expression::Derivation>,
-    /// Whether the `select` runs first, because the `where` reads a column
-    /// only the selector builds.
-    late: bool,
-    filter: Option<Bound>,
+    before: Option<Bound>,
+    after: Option<Bound>,
     select: Option<BoundSelector>,
     /// The cast completing the rows onto the destination's stored field.
     existing: Option<ArrowCastPlan>,
@@ -998,18 +1072,14 @@ impl Shaping {
         if let Some(derivation) = &derived {
             schema = derivation.schema(&schema)?;
         }
-        let late = crate::expression::filter_after_select(
+        let (early, late) = crate::expression::filter_phases(
             options.filter(),
             options.select(),
             schema.fields().iter().map(|field| field.name().as_str()),
         );
-        let (filter, select) = if late {
-            let select = Self::bind_select(options.select(), &mut schema)?;
-            (Self::bind_filter(options.filter(), &schema)?, select)
-        } else {
-            let filter = Self::bind_filter(options.filter(), &schema)?;
-            (filter, Self::bind_select(options.select(), &mut schema)?)
-        };
+        let before = Self::bind_filter(&early, &schema)?;
+        let select = Self::bind_select(options.select(), &mut schema)?;
+        let after = Self::bind_filter(&late, &schema)?;
         let existing = match existing {
             Some(stored) => Some(ArrowCastPlan::compile_schema(
                 &schema,
@@ -1022,8 +1092,8 @@ impl Shaping {
         Ok(Self {
             declared,
             derived,
-            late,
-            filter,
+            before,
+            after,
             select,
             existing,
         })
@@ -1063,21 +1133,17 @@ impl Shaping {
         if let Some(derivation) = &self.derived {
             batch = derivation.apply(batch)?;
         }
-        if self.late {
-            batch = self.select(batch)?;
-            batch = self.filter(batch)?;
-        } else {
-            batch = self.filter(batch)?;
-            batch = self.select(batch)?;
-        }
+        batch = Self::filter(self.before.as_ref(), batch)?;
+        batch = self.select(batch)?;
+        batch = Self::filter(self.after.as_ref(), batch)?;
         match &self.existing {
             Some(plan) => Ok(plan.reconcile_batch(batch)?),
             None => Ok(batch),
         }
     }
 
-    fn filter(&self, batch: RecordBatch) -> Result<RecordBatch> {
-        match &self.filter {
+    fn filter(bound: Option<&Bound>, batch: RecordBatch) -> Result<RecordBatch> {
+        match bound {
             Some(bound) => Ok(bound.filter(&batch)?),
             None => Ok(batch),
         }

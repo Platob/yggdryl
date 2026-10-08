@@ -173,6 +173,8 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     let options: RecordOptions = options.into();
     let codec = FixCodec::new(Arc::new(FixRegistry::new()));
 
+    // Explicit text options own the encoding, so the generic record read
+    // skips document inference and costs the direct FIX text intake.
     costs("the capture read as text alone", &calls, DECODE, || {
         let read: usize = handle
             .read_arrow_reader(&options)
@@ -289,6 +291,36 @@ fn a_metadata_question_is_one_call_and_names_what_it_asks() {
     });
     costs("a content coding", &calls, "media_type=1", || {
         handle.codec();
+    });
+}
+
+/// A record wrapper reads a tail as the handle it wraps does - one
+/// [`IOBase::read_tail_bytes`], which a store answers with one suffix-ranged
+/// request - and never as the default's `size` then `read_range_bytes`,
+/// which on a store is a `HEAD` before the read.
+#[test]
+fn a_record_wrapper_forwards_the_tail_read() {
+    let url = "file:///lake/part.bin";
+    let bytes = payload(64);
+    let tail = (bytes[60..].to_vec(), 64);
+    let check = |what: &str, wrap: fn(Counted<Buffer>) -> Box<dyn IOBase>| {
+        let handle = source(&bytes, url);
+        let calls = Arc::clone(handle.calls());
+        let wrapper = wrap(handle);
+        costs(what, &calls, "read_tail_bytes=1", || {
+            assert_eq!(wrapper.read_tail_bytes(4).expect("the tail"), tail);
+        });
+    };
+    check("ipc", |handle| Box::new(yggdryl::ipc::Ipc::new(handle)));
+    check("avro", |handle| Box::new(yggdryl::avro::Avro::new(handle)));
+    check("csv", |handle| Box::new(yggdryl::csv::Csv::new(handle)));
+    check("excel", |handle| {
+        Box::new(yggdryl::excel::Excel::new(handle))
+    });
+    check("xmla", |handle| Box::new(yggdryl::xmla::Xmla::new(handle)));
+    check("text", |handle| Box::new(yggdryl::text::Text::new(handle)));
+    check("a running digest", |handle| {
+        Box::new(yggdryl::xxhash::Hashed::new(handle, DigestAlgorithm::Xxh3))
     });
 }
 
@@ -867,6 +899,11 @@ mod records {
 
     /// The counts every record encoding shares, plus the ones that differ.
     ///
+    /// A read now enters the serie primitive, which asks the media type once
+    /// to distinguish a structured document before applying record options.
+    /// The Arrow adapter shares that dispatch; this adds one getter to its
+    /// full-read count and no byte read, reopening, or per-row call.
+    ///
     /// `is_container=2` is the shape of the two questions a dimension asks -
     /// the encoding, then the route - and it is two *calls* rather than two
     /// round trips: a leaf answers it from its own role and an unresolved
@@ -913,8 +950,10 @@ mod records {
         surfaces(
             "ipc",
             "file:///lake/part.arrow",
-            "pstream_bytes=1 url=1 media_type=1 is_container=1 parent=1",
-            "pstream_bytes=1 url=1 media_type=1 is_container=1 parent=1",
+            // The schema is the stream's schema message, read off a borrowed
+            // transport: no reader is built, so no reopen is checked.
+            "pstream_bytes=1 media_type=1 is_container=1",
+            "pstream_bytes=1 url=1 media_type=2 is_container=1 parent=1",
             "pstream_bytes=1 size=1 media_type=2 is_container=2",
             // A row count walks the message headers and skips every body, so
             // it is one read per message rather than one transfer of the file.
@@ -932,24 +971,30 @@ mod records {
         let calls = Arc::clone(handle.calls());
         let read = "pstream_bytes=1 url=1 media_type=3 is_container=2 parent=1";
         costs("ipc: a read drained", &calls, read, || {
-            let rows: usize = handle
-                .read_serie(None)
-                .expect("a reader")
-                .map(|batch| batch.expect("a batch").len())
-                .sum();
+            let rows: usize =
+                yggdryl::StreamChunkedSerie::from_serie(handle.read_serie(None).expect("a reader"))
+                    .expect("native record stream")
+                    .into_chunks()
+                    .map(|batch| batch.expect("a batch").len())
+                    .sum();
             assert_eq!(rows, 64);
         });
         costs("ipc: a read windowed by venue", &calls, read, || {
             let mut windows = 0;
             let mut rows = 0;
-            for window in handle
-                .read_serie(None)
-                .expect("a reader")
-                .window_by("venue", true)
-                .expect("windows")
+            for window in
+                yggdryl::StreamChunkedSerie::from_serie(handle.read_serie(None).expect("a reader"))
+                    .expect("native record stream")
+                    .window_by("venue", true)
+                    .expect("windows")
             {
                 windows += 1;
-                for piece in window.expect("a window") {
+                for piece in yggdryl::StreamChunkedSerie::from_serie(
+                    window.expect("a window").into_parts().1,
+                )
+                .expect("the payload streams")
+                .into_chunks()
+                {
                     rows += piece.expect("a piece").len();
                 }
             }
@@ -985,7 +1030,7 @@ mod records {
         costs(
             "parquet: a full read past a megabyte",
             &calls,
-            "read_range_bytes=2 size=1 media_type=1 is_container=1",
+            "read_range_bytes=1 read_tail_bytes=1 media_type=2 is_container=1",
             || {
                 let read: usize = handle
                     .read_arrow_reader(&options)
@@ -1003,12 +1048,18 @@ mod records {
         surfaces(
             "parquet",
             "file:///lake/part.parquet",
-            "read_all_bytes=1 size=1 media_type=1 is_container=1",
-            "read_all_bytes=1 size=1 media_type=1 is_container=1",
-            // Both dimensions come out of the footer: the eight-byte tail and
-            // the metadata it points at, and no row is decoded.
-            "read_range_bytes=2 size=2 media_type=2 is_container=2",
-            "read_range_bytes=2 size=2 media_type=2 is_container=2",
+            // The schema is the footer alone, and a file of at most a
+            // megabyte arrives whole in the one read of its end, which
+            // answers its length: no size is asked before either.
+            "read_tail_bytes=1 media_type=1 is_container=1",
+            "read_tail_bytes=1 media_type=2 is_container=1",
+            // Both dimensions come out of the footer: one read of the file's
+            // end holds the footer and answers its length, and no row is
+            // decoded. The column count's `size` is the empty check the
+            // column default makes first; the row count reads an empty file
+            // off the tail read's length.
+            "read_tail_bytes=1 size=1 media_type=2 is_container=2",
+            "read_tail_bytes=1 media_type=2 is_container=2",
         );
     }
 
@@ -1017,8 +1068,10 @@ mod records {
         surfaces(
             "avro",
             "file:///lake/part.avro",
-            "read_all_bytes=1 media_type=1 is_container=1",
-            "read_all_bytes=1 media_type=1 is_container=1",
+            // The schema is the container's header, read as the counts read
+            // it, never the whole value.
+            "pread=1 size=1 media_type=1 is_container=1",
+            "read_all_bytes=1 media_type=2 is_container=1",
             // One read for the header, whose fields used to be one read each.
             "pread=1 size=2 media_type=2 is_container=2",
             "pread=1 size=2 media_type=2 is_container=2",
@@ -1039,7 +1092,7 @@ mod records {
             "excel",
             "file:///lake/part.xlsx",
             "pstream_bytes=1 bound_location=3 media_type=1 is_container=1 parent=1",
-            "pstream_bytes=1 bound_location=3 media_type=1 is_container=1 parent=1",
+            "pstream_bytes=1 bound_location=3 media_type=2 is_container=1 parent=1",
             "pstream_bytes=1 size=1 bound_location=3 media_type=2 is_container=2 parent=1",
             "pstream_bytes=1 bound_location=3 media_type=2 is_container=2 parent=1",
         );
@@ -1056,7 +1109,7 @@ mod records {
             "xmla",
             "file:///lake/part.xmla",
             "read_all_bytes=1 media_type=2 is_container=1",
-            "read_all_bytes=1 media_type=2 is_container=1",
+            "read_all_bytes=1 media_type=3 is_container=1",
             "read_all_bytes=1 size=1 media_type=3 is_container=2",
             "read_all_bytes=1 media_type=3 is_container=2",
         );
@@ -1067,20 +1120,21 @@ mod records {
         // A CSV streams, so every surface is one `pstream_bytes` over the
         // handle and never a whole read, and the counts are the plain-text
         // medium's without its `mtime`, because no column dates the rows.
-        // The schema and the rows are the same read: the header and the
-        // sample are cut from the transport the rows then stream from, and
-        // that transport is the owned one - the `url` the rows are located
-        // by, the `bound_location` and `parent` asks `owned_handle` makes
-        // before it copies a buffer, and the one `media_type` the copy
-        // takes over. The column count is the header's width read off a
+        // The schema is the header and the sample cut off a borrowed
+        // transport - the one `url` the read is located by, and no
+        // `bound_location` or `parent` ask. The rows stream from the owned
+        // transport - the `url` the rows are located by, the
+        // `bound_location` and `parent` asks `owned_handle` makes before it
+        // copies a buffer, and the one `media_type` the copy takes over.
+        // The column count is the header's width read off a
         // borrowed transport - the `size` is the empty check the dimension
         // defaults make first - and the row count walks the records on the
         // same borrowed transport, reading no cell and asking for no `url`.
         surfaces(
             "csv",
             "file:///lake/part.csv",
-            "pstream_bytes=1 url=1 bound_location=3 media_type=1 is_container=1 parent=1",
-            "pstream_bytes=1 url=1 bound_location=3 media_type=1 is_container=1 parent=1",
+            "pstream_bytes=1 url=1 media_type=1 is_container=1",
+            "pstream_bytes=1 url=1 bound_location=3 media_type=2 is_container=1 parent=1",
             "pstream_bytes=1 size=1 url=1 media_type=2 is_container=2",
             "pstream_bytes=1 media_type=2 is_container=2",
         );
@@ -1092,7 +1146,8 @@ mod records {
         // one is read rather than written from a batch. The one `mtime` call
         // per read buys no column of its own any more - it is what dates the
         // rows, and it is a fact about the handle, so every row shares the one
-        // answer.
+        // answer. The schema is the source field the options state before a
+        // read, so it reads no byte and asks the handle only its route.
         let media_type = Url::from_str("file:///lake/part.txt")
             .expect("a location")
             .media_type();
@@ -1102,14 +1157,9 @@ mod records {
         let calls = Arc::clone(handle.calls());
         let options = handle.record_options().expect("record options");
 
-        costs(
-            "text: the schema",
-            &calls,
-            "pstream_bytes=1 url=1 bound_location=3 mtime=1 media_type=1 is_container=1 parent=1",
-            || {
-                handle.read_arrow_field(&options).expect("a field");
-            },
-        );
+        costs("text: the schema", &calls, "is_container=1", || {
+            handle.read_arrow_field(&options).expect("a field");
+        });
         costs(
             "text: the column count",
             &calls,

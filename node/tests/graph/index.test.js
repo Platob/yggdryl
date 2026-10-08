@@ -95,7 +95,7 @@ test('the enum listings name the column vocabulary and the market kinds', () => 
   assert.ok(enums.mdUpdateActions.includes('snapshot'))
   assert.equal(enums.elementColumns.length, 6)
   assert.equal(enums.eventColumns.length, 9)
-  assert.equal(enums.marketColumns.length, 35)
+  assert.equal(enums.marketColumns.length, 36)
   assert.equal(enums.operationColumns.length, 5)
   assert.deepEqual(enums.operationColumns, ['ordqty', 'timeinforce', 'tradable', 'identifiers', 'partyids'])
   // When an element last executed is a market fact, never an event's.
@@ -165,6 +165,22 @@ test('the market facts cross as plain values', () => {
   assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).side, 'UKNW')
   assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).crosscode, '10:0:O-1', 'a side nobody stated is 0')
   assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).isincode, null)
+})
+
+test('the origin currency is held only where stated, and reads as the currency where it is not', () => {
+  // `origccy` is stated or filled, never defaulted; `originCurrency` reads
+  // it, else the currency.
+  const listed = new graph.OrderEvent(1, { crosscode: 'O-1', currency: 'EUR' })
+  assert.equal(listed.origccy, null)
+  assert.equal(listed.originCurrency, 'EUR')
+  const issued = new graph.OrderEvent(1, { crosscode: 'O-1', currency: 'EUR', origccy: 'USD' })
+  assert.equal(issued.origccy, 'USD')
+  assert.equal(issued.originCurrency, 'USD')
+  assert.equal(issued.currency, 'EUR', 'the currency is never filled from it')
+  assert.equal(new graph.Order({ origccy: 'USD' }).currency, 'XXX', 'nor it from the currency')
+  assert.equal(new graph.Order({}).originCurrency, 'XXX', 'neither stated')
+  assert.ok(!issued.equals(listed), 'a stated origin is content')
+  assert.equal(new graph.MarketData(issued).origccy, 'USD')
 })
 
 test('every element states its cross code as {kind}:{side}:{base}', () => {

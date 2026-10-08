@@ -7,7 +7,7 @@ Every storage implementation is one positional `IOBase` handle: a caller writes 
 | [Handles](#handles) | the `Holder` enum, what a name composes to, roles, delegation | default |
 | [Bytes](#bytes) | `pread`/`pwrite`, addresses, laziness, kinds, streams, cursors, media type, codings, open/close, clear/remove | default |
 | [Values](#values) | whole bytes, digests, structured JSON/YAML/TOML/XML scalars, `std::io` adapters | default |
-| [Records](#records) | Arrow batch reads, the three write intents, pushdown, limits, native rows | default; `parquet` for Parquet |
+| [StreamSerie](#records) | Arrow batch reads, the three write intents, pushdown, limits, native rows | default; `parquet` for Parquet |
 | [Partitions](#partitions) | listings, globs, Hive pruning, partition columns, derived columns | default |
 | [Call counts](#call-counts) | `Counted`, the `IOBase` call budget every derived operation is held to | default |
 | [Buffer](#buffer) | in-memory bytes | default |
@@ -378,6 +378,8 @@ fn media_type(&self) -> &MediaType                                  // decoded r
 ```
 
 The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwrite`.
+
+`read_tail_bytes(length)` (Rust only) answers the last `length` bytes and the value's total length together - what a footer-first read needs, since a footer is found counting back from the end and the total says where the window it lies in began. An object on Amazon S3 or Google Cloud Storage answers it with one suffix-ranged `GET` and keeps the total its `Content-Range` states ([What each operation costs](#what-each-operation-costs)); every other handle derives it as `size` and then `read_range_bytes`. A window wider than the value answers all of it, and an empty or missing value no bytes and a total of `0`. The bindings reach it through every Parquet read.
 
 === "Rust"
 
@@ -1705,9 +1707,9 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     write_arrow_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
     write_records(&mut self, records, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
 
-    read_serie(&self, options: Option<&RecordOptions>) -> Result<SerieReader>   // None: the handle's own
-    write_serie(&mut self, value: SerieSource, mode: IOMode, options: Option<&RecordOptions>) -> Result<IOResult>
-    overwrite|append|merge_serie(&mut self, value: SerieSource, options: Option<&RecordOptions>) -> Result<IOResult>
+    read_serie(&self, options: Option<&RecordOptions>) -> Result<StreamChunkedSerie>   // None: the handle's own
+    write_serie(&mut self, value: Serie, mode: IOMode, options: Option<&RecordOptions>) -> Result<IOResult>
+    overwrite|append|merge_serie(&mut self, value: Serie, options: Option<&RecordOptions>) -> Result<IOResult>
 
     IOResult { read_rows, written_rows, skipped_rows }   // what the write did, in rows
     ```
@@ -1723,7 +1725,7 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     overwrite|append|merge_records(records, *, options=None) -> IOResult
     write_arrow_reader|table|batch(value, mode, *, options=None) -> IOResult
     write_records(records, mode, *, options=None) -> IOResult
-    read_serie(*, options=None) -> SerieReader
+    read_serie(*, options=None) -> StreamChunkedSerie
     write_serie(value, mode="overwrite", *, options=None) -> IOResult
     overwrite|append|merge_serie(value, *, options=None) -> IOResult
 
@@ -1741,14 +1743,14 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     overwrite|append|mergeRecords(records, options?) -> IOResult | Promise<IOResult>
     writeArrowReader|Table|Batch(value, mode, options?) -> IOResult
     writeRecords(records, mode, options?) -> IOResult | Promise<IOResult>
-    readSerie(options?) -> SerieReader
+    readSerie(options?) -> StreamChunkedSerie
     writeSerie(value, mode?, options?) -> IOResult
     overwrite|append|mergeSerie(value, options?) -> IOResult
 
     IOResult.readRows, .writtenRows, .skippedRows   // what the write did, in rows
     ```
 
-Default append and merge shape once and delegate to `overwrite_arrow_reader` - a merge that changes no row and adds none delegating nothing ([Append and merge](#append-and-merge)) - and every write answers what it did in rows ([Write results](#write-results)). `read_serie` answers a [`SerieReader`](../types/serie.md#writing-a-serie-to-a-handle) whatever the handle holds, and `write_serie` with its three intents takes a `Serie`, a `ChunkedSerie` or a `SerieReader` as one `SerieSource`, written as the batches it already is; absent options are the handle's own for both.
+Default append and merge shape once and delegate to `overwrite_arrow_reader` - a merge that changes no row and adds none delegating nothing ([Append and merge](#append-and-merge)) - and every write answers what it did in rows ([Write results](#write-results)). `read_serie` answers a [`StreamChunkedSerie`](../types/serie.md#writing-a-serie-to-a-handle) whatever the handle holds, and `write_serie` with its three intents takes a `Serie`, a `ChunkedSerie` or a `StreamChunkedSerie` as one `Serie`, written as the batches it already is; absent options are the handle's own for both.
 
 === "Rust"
 
@@ -2239,7 +2241,7 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
 
 ### Append and merge
 
-Overwrite replaces - a leaf whole, a partitioned folder or table only the partitions its rows reach and the ones its `where` pins, every other partition's leaves kept, so an overwrite with no row touches nothing outside that scope - append keeps the stored rows, merge updates matching `merge_by` keys - or, naming none, the destination's own (`merge_by()`: [an Iceberg table's](../media/iceberg.md#the-merge-key) identity partition columns then identifier columns), refused where it states none - and adds the rest. A folder holds each commit's rows split by partition under the process spill bound and writes every leaf it reaches once. Keys use Arrow's row format: null matches null and the last arrival wins. A stored row is replaced only where the last arrival for its key differs from it, every column compared through the same row format - a layout the format does not encode, a float zero of the other sign or a NaN of other bits counting as changed - so a leaf, or a leaf of a partitioned folder, whose merge changes no row and adds no key is not written: its bytes and its modification time stay, and an [Iceberg table](../media/iceberg.md#a-merge-that-changes-nothing) commits no snapshot. Merge holds only the stored side in memory. An append into an Iceberg table stating its own key adds only the rows whose key it lacks ([Appending to a keyed table](../media/iceberg.md#appending-to-a-keyed-table)); every other append adds every row.
+Overwrite replaces - a leaf whole, a partitioned folder or table only the partitions its rows reach and the ones its `where` pins, every other partition's leaves kept, so an overwrite with no row touches nothing outside that scope - append keeps the stored rows, merge updates matching `merge_by` keys - or, naming none, the destination's own (`merge_by()`: [an Iceberg table's](../media/iceberg.md#the-merge-key) identity partition columns then identifier columns), refused where it states none - and adds the rest. A folder holds each commit's rows split by partition under the process spill bound - through the one partitioner [`StreamChunkedSerie::partition_by`](../arrow/readers.md#partitions-of-a-stream) cuts a stream with, each batch cut on the write's threads by the typed values of its partition columns and the directory text rendered once per piece - and writes every leaf it reaches once, in the order the directory texts sort in. Keys use Arrow's row format: null matches null and the last arrival wins. A stored row is replaced only where the last arrival for its key differs from it, every column compared through the same row format - a layout the format does not encode, a float zero of the other sign or a NaN of other bits counting as changed - so a leaf, or a leaf of a partitioned folder, whose merge changes no row and adds no key is not written: its bytes and its modification time stay, and an [Iceberg table](../media/iceberg.md#a-merge-that-changes-nothing) commits no snapshot. Merge holds only the stored side in memory. An append into an Iceberg table stating its own key adds only the rows whose key it lacks ([Appending to a keyed table](../media/iceberg.md#appending-to-a-keyed-table)); every other append adds every row.
 
 === "Rust"
 
@@ -3099,10 +3101,12 @@ counted.calls() -> &Arc<Calls>          // shared tally: get(Call), group(Group)
 counted.counts() -> CallCounts          // a snapshot; Display renders "read_all_bytes=1"
 ```
 
-HTTP request snapshots belong to the client that sent them. `Client::stats()` returns that client's `StatsSnapshot`, including request counts by method, retries, resumes, redirects and retry tokens; a separate client has a separate snapshot.
+What a process sent to each store is one ledger too: `http::process_stats()` - Python `yggdryl.http.process_stats()` - answers every request this process has sent so far, by host and port and by method, whatever client sent it - this crate's HTTP client, the object stores' and a catalog service's alike - so a pipeline reads it before and after a stage and subtracts, and a control plane's requests stand apart from a store's by their host. A reading answers `host(name)`, `total()` and `since(&earlier)`, the requests between two readings; the ledger is bounded by the hosts a process speaks to, and a round trip dwarfs the lock each request takes to be counted.
 
 ```text
-client.stats() -> StatsSnapshot  // requests, gets, heads, posts, puts, patches, deletes, others, retries, resumes, redirects, retry_tokens
+http::process_stats() -> ProcessStats                 // every request so far, by host and port
+stats.host("bucket.s3.eu-central-1.amazonaws.com")    // HostStats: requests, gets, heads, puts, posts, deletes, others
+stats.since(&before) / stats.total()                  // between two readings; every host summed
 ```
 
 ```rust
@@ -3185,17 +3189,31 @@ trips against a store, where each one is a request.
 | cache: warm ranged read | none | 184 ns |
 | listing: recursive over 100 | `ls=1` | 156 µs |
 | listing: glob over 100 | `bound_location=2 ls=1` | 221 µs |
-| IPC: schema | `pstream_bytes=1 url=1 media_type=1 is_container=1 parent=1` | 214 µs |
+| IPC: schema | `pstream_bytes=1 media_type=1 is_container=1` | 214 µs |
 | IPC: row count | `pread=8 size=1 media_type=2 is_container=2` | 800 ns |
-| Avro: schema | `read_all_bytes=1 media_type=1 is_container=1` | 8.8 µs |
-| Avro: row count | `pread=2 size=2 media_type=2 is_container=2` | 5.7 µs |
-| Parquet: schema | `read_all_bytes=1 size=1 media_type=1 is_container=1` | 13.8 µs |
-| Parquet: row count | `read_range_bytes=2 size=2 media_type=2 is_container=2` | 1.2 µs |
-| Parquet: full read | `read_all_bytes=1 size=1 media_type=1 is_container=1` | 1.6 ms |
+| Avro: schema | `pread=1 size=1 media_type=1 is_container=1` | 8.8 µs |
+| Avro: row count | `pread=1 size=2 media_type=2 is_container=2` | 5.7 µs |
+| Parquet: schema | `read_tail_bytes=1 media_type=1 is_container=1` | 13.8 µs |
+| Parquet: row count | `read_tail_bytes=1 media_type=2 is_container=2` | 1.2 µs |
+| Parquet: full read | `read_tail_bytes=1 media_type=2 is_container=1` | 1.6 ms |
 
-The IPC row count is the one row whose count grows with the value: it is one
-`pread` per message, because the walk exists to skip the bodies a read-ahead
-window would transfer. Everything else is flat in the size of the value.
+The calls of the record rows are the ones `rust/tests/iobase_calls.rs` pins
+(`mod records`). A schema reads only what states it - an IPC stream's schema
+message, an Avro header, a Parquet footer - and builds no reader, and a
+Parquet read takes the file's end once, in the one call that also answers its
+length, so no `size` is asked first: a file of at most a megabyte arrives
+whole in it. The IPC row count is the one row whose count grows with the
+value: it is one `pread` per message, because the walk exists to skip the
+bodies a read-ahead window would transfer. Everything else is flat in the size
+of the value, but for a Parquet file past a megabyte, whose full read is its
+end and then its column chunks as one range: `read_range_bytes=1
+read_tail_bytes=1 media_type=2 is_container=1`. The times of the IPC and Avro
+schemas, the Avro row count and the three Parquet rows were measured before
+those rows made the calls they state; the next release run restates them.
+
+```bash
+cargo bench -p yggdryl --features parquet --bench holder -- calls/
+```
 
 ## Buffer
 
@@ -4121,7 +4139,7 @@ Each open on a bridged filesystem retains one of its backend streams; on a store
 
 ### JavaScript handler protocol
 
-A handler is any object answering sixteen synchronous calls - `typeName`, `equals`, `normalizePath`, `fileInfo`, `list`, the five deletes and `createDir`, `copyFile`, `move`, and the four opens. Sizes, offsets and nanosecond mtimes are `bigint`.
+A handler is any object answering sixteen synchronous calls - `typeName`, `equals`, `normalizePath`, `fileInfo`, `list`, the five deletes and `createDir`, `copyFile`, `move`, and the four opens. Sizes, offsets and nanosecond mtimes are `bigint`. A handler runs on its isolate's thread alone, so a handle bound to one answers `is_thread_bound` and work over it stays on the calling thread: an Iceberg table on it reads and writes its files there, whatever `read.parallelism` and `write.parallelism` state.
 
 === "JavaScript"
 
@@ -4255,9 +4273,11 @@ S3File::stats() -> StatsSnapshot                // the requests that actually we
     // own tools resolve them, and nothing is read until the first request.
     let mut part = s3::file("s3://trades/lake/year=2026/part.parquet")?;
 
-    // A footer read transfers the footer, not the file.
-    let footer = part.read_range_bytes(part.size().saturating_sub(8), 8)?;
+    // A footer read is one GET of the object's end, which also states its
+    // size: no HEAD before it, and none after.
+    let (footer, size) = part.read_tail_bytes(8)?;
     assert_eq!(footer.len(), 8);
+    assert_eq!(part.size(), size);
 
     // The same call against the other two stores.
     let google = s3::file("gs://trades/lake/year=2026/part.parquet")?;
@@ -4305,14 +4325,15 @@ The request count is the contract, asserted by tests.
 | --- | --- | --- | --- |
 | building a handle, resolving a child, a media type or a partition | none | none | none |
 | resolving a `lake/` location | none | none | none |
-| resolving any other location | one single-key listing, or two | the same | the same |
+| resolving any other location | one single-key listing, or two; the listing that finds an object states its size, so no `HEAD` follows | the same | the same |
 | `exists` on a `lake/` location | one single-key listing; a bucket root one `HEAD` | the same | the same |
 | `exists` on a glob | its listing up to the first match, one request per 1000 entries | the same | the same |
-| a ranged read | one ranged `GET` | one ranged `GET` with `alt=media` | one `GET` with `x-ms-range` |
+| a ranged read | one ranged `GET` | one ranged `GET` with `alt=media` | one ranged `GET` |
+| a tail read (`read_tail_bytes`): a Parquet schema, count, statistics or scan of a file | one `GET` with `Range: bytes=-N`, the size learned from its `Content-Range`; no `HEAD` | the same, with `alt=media` | one `HEAD` - none while open, or once a listing stated the size - and one ranged `GET`, because Azure reads no suffix range |
 | a whole read, stream drain or digest | one `GET` | one `GET` | one `GET` |
 | a text or CSV read of a leaf, or of the objects under a glob | one `GET` per object - the listed leaf streamed through the resuming reader it owns (`IOBase::owned_stream_bytes`), no probe listing, no read past the end - and a glob's one listing of its prefix | the same | the same |
 | the size of a listed object | none | none | none |
-| `size` on a closed handle | one `HEAD`; none while open | one `objects.get`; none while open | one `HEAD`; none while open |
+| `size` on a closed handle | one `HEAD`; none while open, or once a listing or a tail read stated it | one `objects.get`; none while open, or once a listing or a tail read stated it | one `HEAD`; none while open, or once a listing stated it |
 | a whole write | one `PUT` | one `multipart/related` `POST` | one `PUT` |
 | a large write | `parts + 2` | `chunks + 1` | `blocks + 1` |
 | an exclusive create (`create_bytes`), won or lost | one `PUT` with `If-None-Match: *`; a large one `parts + 2`, the condition on `CompleteMultipartUpload` and a lost upload aborted; one more `PUT` per `409 ConditionalRequestConflict` under the retry budget (a large one abandoned and sent again, `parts + 2` more); `412 PreconditionFailed` the conflict | one `POST` with `ifGenerationMatch=0`; a large one `chunks + 1`, the condition on the initiating `POST`; `412 conditionNotMet` the conflict | one `PUT` with `If-None-Match: *`; a large one `blocks + 1`, the condition on `Put Block List`; `409 BlobAlreadyExists` or `412 ConditionNotMet` the conflict |
@@ -4325,16 +4346,24 @@ The request count is the contract, asserted by tests.
 
 A recursive listing is one flat listing, because keys in byte order already are depth-first pre-order. A ranged read learns the length from `Content-Range`, and `S3File::with_known_size` takes one a manifest already stated, which is how an [Iceberg](../media/iceberg.md) scan reads each data file with one `GET`. A move between two objects is the copy and the removal, the value crossing through the client: a server-side copy (`CopyObject`) is not what a move does yet.
 
+A bucket's region that a redirect corrected is kept on the session every client built from the same options shares - 64 buckets at most, the least recently learned let go first - so the next client on that bucket starts signed for its region and sent to its host: the redirect, and the `HEAD` that found the region, are paid once per session rather than once per client, which on a table is once per data file. A Google bearer token is held by the options value its clients were built on, one per credential source and scope, so two `gs://` clients under one credential ask for one token between them and clients under different credentials never share one.
+
+An [Iceberg](../media/iceberg.md) table over the store costs what `accounting::iceberg` in `rust/tests/s3/mod_.rs` pins against the in-process store: one table of three venue partitions, its commits through one handle.
+
 | Iceberg operation | requests |
 | --- | ---: |
-| create | 5 |
-| append, one partition | 9 |
-| append, three partitions | 12 |
-| upsert into one partition of three | 14 |
-| open | 2 |
+| create | 4 |
+| append, one partition | 7 |
+| append, three partitions | 9 |
+| upsert into one partition of three | 11 |
+| append, one partition, nothing staged (`WriteStaging::Off`) | 7 |
+| open | 5 |
 | full scan, four files in two manifests | 7 |
 | pruned scan, one file | 3 |
 | projected scan | 7 |
+| projected scan after a column rename | 7 |
+
+A commit is its uploads - each data file, the manifest, the manifest list, the document that claims the version and the hint - and two `GET`s, the hint that re-checks the version and the claimed version's other spelling. Nothing it wrote is read back: a data file's statistics and length are the ones its encoder closed it with, so no `HEAD` sizes or probes a file, staged or not, and a handle carries the manifest list its own last commit wrote, so its next commit reads that list from nothing. A scan reads the list, the manifests the summaries keep and each data file with one `GET`, its length the manifest's; a table that renamed a column costs a projection no read more, the names a file stores taken off the footer the read itself decodes, and a file whose recorded length is zero states its own in the read of its end.
 
 ### Naming an object
 
@@ -5216,7 +5245,7 @@ Server::bind("127.0.0.1:0")?.mount(prefix, holder)  // any handle, served with r
 | Role | `Holder` variant | Python | Is |
 | --- | --- | --- | --- |
 | `Session` | `HttpSession` | `http.Session` | a container over its base URL: `child_by_path(path)` is the `Request` for that resource, `ls` is empty because HTTP lists nothing, byte writes are refused as a directory's are |
-| `Request` | `HttpRequest` | `http.Request` | the leaf a URL names: every byte, record and value call of [Bytes](#bytes), [Values](#values) and [Records](#records) |
+| `Request` | `HttpRequest` | `http.Request` | the leaf a URL names: every byte, record and value call of [Bytes](#bytes), [Values](#values) and [StreamSerie](#records) |
 | `Response` | `HttpResponse` | `http.Response` | one answer's body as sent - coded, under a media type that keeps the coding, so `into_declared_media` composes the codec and the record encoding - read-only |
 | `Stream` | `HttpStream` | `http.Stream` | a body left on the wire, read forward and resumed when cut; read-only |
 
@@ -5230,6 +5259,7 @@ The request count is the contract, asserted by `rust/tests/http/request.rs` and 
 | --- | --- |
 | building a session or a request, resolving a child | none |
 | `pread`, `read_range_bytes`, `read_range_digest` | one ranged `GET` |
+| `read_tail_bytes` | `size` and then one ranged `GET`: one `HEAD` and one ranged `GET` while closed, one ranged `GET` while open |
 | `read_all_bytes`, `read_digest`, a `pstream_bytes` drain | one `GET`, plus one per resume |
 | `size`, `mtime`, `kind` while closed | one `HEAD`; none while open |
 | `write_all_bytes`, `clear` | one `PUT` |
@@ -5438,7 +5468,7 @@ assert_eq!(requests[1].headers.get("if-range"), stream.headers().get("etag"));
 
 ### Pages
 
-`request.pages()` walks a paginated resource, one `GET` and one `Response` per page, and `Pages::into_arrow_reader(field, batch_row_size)` lays the rows out as one Arrow batch per page under one root - `field` when given, else the record the first page's rows infer. `read_arrow_reader` and `read_serie` on a structured resource whose first page paginates are that walk, reading the first page once; Python's `Pages.read_serie(field=None)` answers the walk as a `SerieReader`, one record column per page. The rows are at the declared `records` path, else a top-level sequence, else the first of `data`, `items`, `results`, `records`, `value`, `rows`, `entries`, `elements`, `content`, `hits.hits`, else the largest top-level sequence.
+`request.pages()` walks a paginated resource, one `GET` and one `Response` per page, and `Pages::into_arrow_reader(field, batch_row_size)` lays the rows out as one Arrow batch per page under one root - `field` when given, else the record the first page's rows infer. `read_arrow_reader` and `read_serie` on a structured resource whose first page paginates are that walk, reading the first page once; Python's `Pages.read_serie(field=None)` answers the walk as a `StreamChunkedSerie`, one record column per page. The rows are at the declared `records` path, else a top-level sequence, else the first of `data`, `items`, `results`, `records`, `value`, `rows`, `entries`, `elements`, `content`, `hits.hits`, else the largest top-level sequence.
 
 `Pagination` says how the next page is found; `Auto`, the default, tries in order:
 

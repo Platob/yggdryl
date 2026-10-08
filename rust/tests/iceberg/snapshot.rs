@@ -25,10 +25,10 @@ fn schema() -> Field {
     schema
 }
 
-/// A v2 table over [`schema`], unpartitioned and never written to.
+/// A v3 table over [`schema`], unpartitioned and never written to.
 fn table() -> TableMetadata {
     TableMetadata::new(
-        FormatVersion::V2,
+        FormatVersion::V3,
         "file:///tmp/branches",
         schema(),
         PartitionSpec::unpartitioned(),
@@ -36,7 +36,8 @@ fn table() -> TableMetadata {
     .unwrap()
 }
 
-/// One snapshot in a parent chain, committed at `timestamp_ms`.
+/// One snapshot in a parent chain, committed at `timestamp_ms`, adding no
+/// row: the row lineage a v3 table asks of every snapshot.
 fn snapshot(snapshot_id: i64, parent_snapshot_id: Option<i64>, timestamp_ms: i64) -> Snapshot {
     Snapshot {
         snapshot_id,
@@ -51,8 +52,8 @@ fn snapshot(snapshot_id: i64, parent_snapshot_id: Option<i64>, timestamp_ms: i64
         )],
         schema_id: Some(0),
         encryption_key_id: None,
-        first_row_id: None,
-        added_rows: None,
+        first_row_id: Some(0),
+        added_rows: Some(0),
     }
 }
 
@@ -800,6 +801,7 @@ mod strict_json_tests {
         )
         .unwrap();
         let snapshot = Snapshot::from_json(&v1).unwrap();
+        // A v1 snapshot lists its manifests inline: the shape pinned here.
         validate_for_version(&snapshot, FormatVersion::V1).unwrap();
     }
 

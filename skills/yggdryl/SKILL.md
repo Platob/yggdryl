@@ -38,14 +38,14 @@ carry all of them via `http3`.
 | `Scalar` | one value; a row is an ordered `Scalar` sequence, one value per child field; named input (`Scalar.from_struct({...})` in Python, a plain object in JavaScript) is sorted and canonicalized against the Struct field | a Python `dict` at the value door - that is a `map` value |
 | `Serie` | a column: the Arrow buffers of one `Field`, or a schema-free run | a list of scalars |
 | `ChunkedSerie` | columns of one field kept apart: a chunked array, or a table of one batch per chunk | joined behind your back |
-| `SerieReader` | a stream: one record `Serie` per batch, under one cast plan | a `Scalar` |
+| `StreamChunkedSerie` | a stream: one record `Serie` per batch, under one cast plan | a `Scalar` |
 | `IOBase` | a positional byte handle on any backend (`Holder`), and the record surface (`IOMedia`) over it | a second storage API per backend |
 | `Catalog` / `Namespace` / `Table` | the objects a warehouse path (`lake.eu.trades`) reaches, each a description that is also a handle; `Warehouse` and `SystemWarehouse` the registries | a second listing API per store |
 | `Expression` / `Plan` | a grammar over the above: parse once, bind once, evaluate or push down | a second query engine |
 
 The stack a read climbs: **bytes** (`IOBase`: `read_range_bytes`) ->
 **records** (`IOMedia`: `read_arrow_reader`) -> **columns** (`Serie`,
-`SerieReader`) -> **values** (`Scalar`). Enter at the highest level that
+`StreamChunkedSerie`) -> **values** (`Scalar`). Enter at the highest level that
 answers the task.
 
 ## Choose the skill
@@ -53,7 +53,7 @@ answers the task.
 | Task | Skill |
 | --- | --- |
 | declare a schema, parse a type expression, build or check a value, dataclass/record classes, metadata, codes (`ccy`, `forex`) and enums (`side`, `marketdatakind`, `state`) | `yggdryl-types` |
-| Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts, sorting, grouping and windows of equal keys (`window_by`) | `yggdryl-arrow` |
+| Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts, sorting, grouping, windows of equal keys (`window_by`) and the partitions of a stream (`partition_by`) | `yggdryl-arrow` |
 | open a file, bytes, list or glob a folder, local/ZIP/S3/GCS/Azure and their credentials, HTTP(S) resources and requests-style sessions, gzip/zlib/zstd, charsets, digests of a handle | `yggdryl-storage` |
 | a catalog of namespaces of tables - a folder read as one, a table registered at a dotted path, `SystemWarehouse`, `Properties`, the `namespaces`/`tables` views, `Catalog.from_url` | `yggdryl-warehouse` |
 | parse or build a URI, URL, URN, ARN, path; glob pattern text or a hive partition path (listing is `yggdryl-storage`) | `yggdryl-uri` |
@@ -109,9 +109,9 @@ warning no handler takes.
    the object; compile an `ArrowCastPlan` once per stream; bind an expression
    once. Anything parsed or compiled inside a row or batch loop is a defect.
 2. **Stream; never collect.** Record reads answer a batch reader
-   (`read_arrow_reader`; `read_serie` / `readSerie` for a `SerieReader`), and
+   (`read_arrow_reader`; `read_serie` / `readSerie` for a generic `Serie`), and
    `write_serie` with its three intents takes a held `Serie`, a `ChunkedSerie`
-   or a `SerieReader` as the batches it already is; keep it a reader end to
+   or a `StreamChunkedSerie` as the batches it already is; keep it a reader end to
    end. Nothing streamable should become a list of batches or rows
    unless the caller asked for one.
 3. **Values enter through their type.** `DataType.scalar`/`Field.scalar` check

@@ -1,11 +1,13 @@
 import {
   BatchReader,
   ChunkedSerie,
+  KeySerie,
+  KeySeries,
   DataType,
   Field,
   Scalar,
   Serie,
-  SerieReader,
+  StreamChunkedSerie,
   SpillOptions,
   fields,
   type ArrowCastOptions,
@@ -78,7 +80,7 @@ const copy: ChunkedSerie = batches.clone()
 const back: ArrowVector = batches.intoArrowArray()
 const stream: BatchReader = batches.intoArrowReader()
 const out: ArrowTable = batches.intoArrowTable()
-const held: SerieReader = SerieReader.fromChunked(batches)
+const held: StreamChunkedSerie = StreamChunkedSerie.fromChunked(batches)
 
 // Rows compare against a chunked serie's or a serie's.
 const same: boolean = batches.equals(one)
@@ -107,7 +109,7 @@ batches.chunks = []
 // @ts-expect-error equality takes a chunked serie or a serie
 batches.equals([1n])
 // @ts-expect-error a held stream of chunks takes a ChunkedSerie
-SerieReader.fromChunked(serie)
+StreamChunkedSerie.fromChunked(serie)
 // @ts-expect-error the private native bridges are hidden
 ChunkedSerie._fromArrowArrayIpcNative
 // @ts-expect-error the private native bridges are hidden
@@ -129,9 +131,9 @@ const chunkDeduplicated: ChunkedSerie = wide.intoUnique()
 const chunkReversed: ChunkedSerie = wide.intoReversed()
 const chunkTaken: ChunkedSerie = wide.intoTaken([1, 0])
 const chunkFiltered: ChunkedSerie = wide.intoFiltered(new Serie([true]))
-const chunkGroups: Array<[Scalar, ChunkedSerie]> = wide.partitionBy(['a'])
-const chunkKeyGroups: Array<[Scalar, ChunkedSerie]> = wide.partitionBy(batches)
-const vectorKeyGroups: Array<[Scalar, ChunkedSerie]> = wide.partitionBy(vector)
+const chunkGroups: KeySeries = wide.partitionBy(Serie.from(['a']))
+const chunkKeyGroups: KeySeries = wide.partitionBy(batches)
+const vectorKeyGroups: KeySeries = wide.partitionBy(vector)
 // @ts-expect-error one grouping door: keys held in chunks go through partitionBy
 wide.partitionByChunked(batches)
 const chunkChained: ChunkedSerie = wide
@@ -146,13 +148,13 @@ wide.asSorted({ nulls: 'first' })
 wide._partitionByNative
 
 // Windows by key across the chunks: each `[key, rows]`, stating no record.
-const chunkWindows: Array<[Scalar, ChunkedSerie]> = wide.windowBy('id')
-const chunkSortedWindows: Array<[Scalar, ChunkedSerie]> = wide.windowBy(['id'], true)
-const chunkClearedWindows: Array<[Scalar, ChunkedSerie]> = wide.windowBy('id', null)
+const chunkWindows: KeySeries = wide.windowBy('id')
+const chunkSortedWindows: KeySeries = wide.windowBy(['id'], true)
+const chunkClearedWindows: KeySeries = wide.windowBy('id', null)
 // @ts-expect-error `sorted` is a boolean
 wide.windowBy('id', 'yes')
 // @ts-expect-error a chunked window states no record
-chunkWindows[0][1].staticValues
+chunkWindows.get(0)!.staticValues
 // @ts-expect-error the private windowing bridge is hidden
 wide._windowByNative
 void [chunkWindows, chunkSortedWindows, chunkClearedWindows]

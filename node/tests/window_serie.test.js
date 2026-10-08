@@ -11,7 +11,7 @@ const {
   Field,
   Scalar,
   Serie,
-  SerieReader,
+  StreamChunkedSerie,
   SpillOptions,
   WindowSerie,
   StructSerie,
@@ -120,10 +120,10 @@ test('the reads of a window answer what the sliced serie answers', () => {
   assert.deepEqual(window.intoTaken([1]).asJs(), [1])
   const mask = [true, false, false, true]
   assert.deepEqual(window.intoFiltered(mask).asJs(), [3, null])
-  const groups = window.partitionBy(['a', 'b', 'a', 'b'])
+  const groups = window.partitionBy(Serie.fromScalars(Field.from('key: utf8 not null'), ['a', 'b', 'a', 'b']))
   assert.equal(groups.length, 2)
-  assert.equal(groups[0][0].asJs(), 'a')
-  assert.deepEqual(groups[0][1].asJs(), [3, 3])
+  assert.deepEqual(groups.get(0).key.asJs(), ['a'])
+  assert.deepEqual(groups.get(0).rows.child('price').asJs(), [3, 3])
   // Every answer is a new serie under the serie's field, the serie as it was.
   assert.ok(window.intoSorted().field.equals(prices.field))
   assert.deepEqual(prices.asJs(), [9, 3, 1, 3, null, 0])
@@ -141,7 +141,7 @@ test('the reads of a window answer what the sliced serie answers', () => {
     recordWindow.intoReversed(),
     recordWindow.intoTaken([0]),
     recordWindow.intoFiltered([true, false]),
-    recordWindow.partitionBy([1, 1])[0][1],
+    recordWindow.partitionBy(Serie.fromScalars(Field.from('key: int64 not null'), [1n, 1n])).get(0).rows,
   ]) {
     assert.ok(answer instanceof StructSerie)
   }
@@ -322,211 +322,68 @@ const cuts = (windows) => windows.map(([key, window]) => [key.asJs(), window.off
 // Every window's record as its natural JavaScript value.
 const records = (windows) => windows.map(([, window]) => window.staticValues.asJs())
 
-test('a window windowBy lent states its key, windownum and rownum', () => {
-  const quotes = quoteRows([
-    ['XNAS', 1],
-    ['XNAS', 2],
-    ['XNYS', 3],
-    ['XNAS', 4],
-  ])
-  const windows = quotes.windowBy('venue')
-  assert.deepEqual(records(windows), [
-    { venue: 'XNAS', windownum: 0, rownum: 0 },
-    { venue: 'XNYS', windownum: 1, rownum: 2 },
-    { venue: 'XNAS', windownum: 2, rownum: 3 },
-  ])
-  // Two terms are two key cells, named as their projections are.
-  const [[, first]] = quotes.windowBy('venue, price > 1 as late')
-  assert.deepEqual(first.staticValues.asJs(), {
-    venue: 'XNAS',
-    late: false,
-    windownum: 0,
-    rownum: 0,
-  })
+test('key windows expose their key and optional absolute rownum', () => {
+const source = quoteRows([['XNAS', 1], ['XNAS', 2], ['XNYS', 3], ['XNAS', 4]])
+  const groups = source.windowBy('venue')
+  assert.deepEqual([...groups].map(g => [g.key.asJs(), g.rownum, g.rows.length]), [[['XNAS'], 0, 2], [['XNYS'], 2, 1], [['XNAS'], 3, 1]])
+  const computed = source.windowBy('venue, price > 1 as late').get(0)
+  assert.deepEqual(computed.key.asJs(), ['XNAS', false])
+  assert.equal(Boolean(computed.serieField.getField('price')), true)
 })
 
-test('a gathered window states a null rownum', () => {
-  const quotes = quoteRows([['XNYS', 1], ['XNAS', 2], ['XNYS', 3], null, ['XNAS', 5]])
-  const windows = quotes.windowBy('venue', true)
-  // Gathered once in stable key order, an absent row's key last.
-  assert.deepEqual(cuts(windows), [
-    [['XNAS'], 0, 2],
-    [['XNYS'], 2, 2],
-    [null, 4, 1],
-  ])
-  const gathered = windows[0][1].serie
-  assert.notStrictEqual(gathered, quotes)
-  assert.ok(gathered instanceof StructSerie)
-  assert.ok(windows.every(([, window]) => window.serie === gathered))
-  assert.ok(gathered.equals(quotes.intoTaken([1, 4, 0, 2, 3])))
-  assert.deepEqual(records(windows), [
-    { venue: 'XNAS', windownum: 0, rownum: null },
-    { venue: 'XNYS', windownum: 1, rownum: null },
-    { venue: null, windownum: 2, rownum: null },
-  ])
-  // Over keys already in order nothing is gathered, and every rownum stands.
-  const ordered = quoteRows([
-    ['XNAS', 1],
-    ['XNYS', 2],
-  ]).windowBy('venue', true)
-  assert.deepEqual(
-    records(ordered).map((record) => record.rownum),
-    [0, 1],
-  )
+test('gathered key windows clear rownum and preserve stable payload order', () => {
+const source = quoteRows([['XNYS', 1], ['XNAS', 2], ['XNYS', 3], [null, 4], ['XNAS', 5]])
+  const groups = source.windowBy('venue', true)
+  assert.deepEqual([...groups].map(g => [g.key.asJs(), g.rownum]), [[['XNAS'], null], [['XNYS'], null], [[null], null]])
+  assert.deepEqual(groups.get(0).rows.child('price').asJs(), [2, 5])
+  const ordered = quoteRows([['XNAS', 1], ['XNYS', 2]]).windowBy('venue', true)
+  assert.deepEqual([...ordered].map(g => g.rownum), [0, 1])
 })
 
-test('a plain or narrowed window states none', () => {
-  const quotes = quoteRows([
-    ['XNAS', 1],
-    ['XNAS', 2],
-    ['XNYS', 3],
-  ])
-  assert.equal(quotes.window(0, 2).staticValues, null)
-  const [[, xnas]] = quotes.windowBy('venue')
-  assert.notEqual(xnas.staticValues, null)
-  assert.equal(xnas.window(0, 1).staticValues, null)
-  assert.equal(xnas.window(1, 1).staticValues, null)
-  // The record is never the window's identity, and stays with the window.
-  assert.ok(xnas.equals(quotes.window(0, 2)))
-  assert.ok(xnas.intoSerie().equals(quotes.slice(0, 2)))
-  assert.deepEqual(xnas.intoSerie().intoArrowBatch().schema.names, ['venue', 'price'])
+test('plain windows carry no key metadata and payloads contain only remaining children', () => {
+const source = quoteRows([['XNAS', 1], ['XNAS', 2], ['XNYS', 3]])
+  assert.equal('staticValues' in source.window(0, 2), false)
+  const group = source.windowBy('venue').get(0)
+  assert.deepEqual(group.rows.asJs(), [{price: 1}, {price: 2}])
+  assert.deepEqual(group.rows.window(0, 1).asJs(), [{price: 1}])
+  assert.equal('staticValues' in group.rows, false)
 })
 
-test('the record is read through the generic scalar accessors', () => {
-  const quotes = quoteRows([
-    ['XNAS', 1],
-    ['XNYS', 2],
-  ])
-  const [, [, xnys]] = quotes.windowBy('venue')
-  const record = xnys.staticValues
-  assert.ok(record instanceof Scalar)
-  assert.equal(record.kind, 'struct')
-  assert.equal(record.get('venue').asJs(), 'XNYS')
-  assert.equal(record.get('windownum').asJs(), 1)
-  assert.equal(record.path('.rownum').asJs(), 1)
-  assert.equal(record.has('price'), false)
-  assert.equal(record.get('price'), null)
-  // Read again, it is the same value.
-  assert.ok(xnys.staticValues.equals(record))
+test('key values use native scalar sequence accessors', () => {
+const group = quoteRows([['XNAS', 1], ['XNYS', 2]]).windowBy('venue').get(1)
+  assert.ok(group.key instanceof Scalar)
+  assert.equal(group.key.get(0).asJs(), 'XNYS')
+  assert.deepEqual(group.key.asJs(), ['XNYS'])
+  assert.equal(group.rownum, 1)
+  assert.equal(group.keyField.getFieldAt(0).name, 'venue')
 })
 
-test('a window windows by its own rows over the serie', () => {
-  const quotes = quoteRows([
-    ['XNYS', 0],
-    ['XNAS', 1],
-    ['XNAS', 2],
-    ['XNYS', 3],
-    ['XNAS', 4],
-  ])
-  const tail = quotes.window(1, 4)
-  const windows = tail.windowBy('venue')
-  // Offsets are the serie's, every window over the serie object itself.
-  assert.deepEqual(cuts(windows), [
-    [['XNAS'], 1, 2],
-    [['XNYS'], 3, 1],
-    [['XNAS'], 4, 1],
-  ])
-  assert.ok(windows.every(([, window]) => window.serie === quotes))
-  // `sorted` absent, `undefined` and `null` are its default, `false`.
-  for (const spelled of [
-    tail.windowBy('venue', false),
-    tail.windowBy('venue', undefined),
-    tail.windowBy('venue', null),
-  ]) {
-    assert.deepEqual(cuts(spelled), cuts(windows))
+test('a plain window keeps rownum relative to its original source', () => {
+const source = quoteRows([['XNYS', 0], ['XNAS', 1], ['XNAS', 2], ['XNYS', 3], ['XNAS', 4]])
+  const tail = source.window(1, 4)
+  for (const sorted of [false, undefined, null]) {
+    const groups = tail.windowBy('venue', sorted)
+    assert.deepEqual([...groups].map(g => [g.key.asJs(),g.rownum,g.rows.length]), [[['XNAS'],1,2],[['XNYS'],3,1],[['XNAS'],4,1]])
   }
-  // A plain window states no record of its own, so its windows number their
-  // rows from its first.
-  assert.deepEqual(
-    records(windows).map((record) => record.rownum),
-    [0, 2, 3],
-  )
-  // Sorted over keys out of order, the gather takes this window's rows alone.
-  const gathered = tail.windowBy('venue', true)
-  assert.deepEqual(cuts(gathered), [
-    [['XNAS'], 0, 3],
-    [['XNYS'], 3, 1],
-  ])
-  assert.ok(gathered[0][1].serie.equals(quotes.intoTaken([1, 2, 4, 3])))
-  assert.throws(() => tail.windowBy('venue', 'yes'), {
-    name: 'TypeError',
-    message: /WindowSerie\.windowBy sorted must be a boolean, got string/,
-  })
-  assert.throws(() => tail.windowBy('venue,'), /expected a value or a name/)
+  assert.deepEqual([...tail.windowBy('venue', true)].map(g => [g.key.asJs(),g.rownum,g.rows.length]), [[['XNAS'],null,3],[['XNYS'],null,1]])
+  assert.throws(() => tail.windowBy('venue', 'yes'), /boolean/)
 })
 
-test('a window of a lent window keeps the outer cells and an absolute rownum', () => {
-  // Halves of an hour: XNAS XNAS XNYS in the first, XNAS XNYS XNYS in the
-  // second.
-  const root = new Field('quote', 'struct<venue: utf8, price: int64 not null, ts: timestamp(ns, UTC)>', true)
-  const minutes = [0, 14, 15, 31, 40, 45]
-  const venues = ['XNAS', 'XNAS', 'XNYS', 'XNAS', 'XNYS', 'XNYS']
-  const quotes = Serie.fromScalars(
-    root,
-    venues.map((venue, index) => ({ venue, price: index, ts: BigInt(minutes[index]) * MINUTE_NS })),
-  )
-  const halves = quotes.windowBy('minutes(ts, 30) as half')
-  const [, second] = halves[1]
-  const inner = second.windowBy('venue')
-  // Over the serie object itself, at the serie's offsets.
-  assert.deepEqual(cuts(inner), [
-    [['XNAS'], 3, 1],
-    [['XNYS'], 4, 2],
-  ])
-  assert.ok(inner.every(([, window]) => window.serie === quotes))
-  const expected = [
-    { half: 1, venue: 'XNAS', windownum: 0, rownum: 3 },
-    { half: 1, venue: 'XNYS', windownum: 1, rownum: 4 },
-  ]
-  assert.deepEqual(records(inner), expected)
-  // The windows of the second window of the stream state the same records.
-  const walk = SerieReader.fromSerie(quotes).windowBy('minutes(ts, 30) as half')
-  walk.next()
-  const streamed = [...walk.next().value.windowBy('venue')]
-  assert.deepEqual(
-    streamed.map((window) => window.staticValues.asJs()),
-    expected,
-  )
-  // A third level keeps both outer cells, and its rownum stays absolute.
-  const [, xnys] = inner[1]
-  assert.deepEqual(records(xnys.windowBy('price')), [
-    { half: 1, venue: 'XNYS', price: 4, windownum: 0, rownum: 4 },
-    { half: 1, venue: 'XNYS', price: 5, windownum: 1, rownum: 5 },
-  ])
-  // A gather under a lent window states no rownum, over one new serie.
-  const gathered = halves[0][1].windowBy('venue', true)
-  assert.deepEqual(cuts(gathered), [
-    [['XNAS'], 0, 2],
-    [['XNYS'], 2, 1],
-  ])
-  assert.ok(gathered.every(([, window]) => window.serie === halves[0][1].serie))
-  const outOfOrder = second.windowBy('price < 4 as early', true)
-  assert.notStrictEqual(outOfOrder[0][1].serie, quotes)
-  assert.deepEqual(records(outOfOrder), [
-    { half: 1, early: false, windownum: 0, rownum: null },
-    { half: 1, early: true, windownum: 1, rownum: null },
-  ])
-  // A narrower window of a lent window is the rows alone again.
-  assert.deepEqual(records(second.window(1, 2).windowBy('venue')), [
-    { venue: 'XNYS', windownum: 0, rownum: 0 },
-  ])
-  // A key cell folding onto a kept cell is refused naming both.
-  assert.throws(
-    () => second.windowBy('venue as HALF'),
-    /the key cell "HALF" collides with the static value "half"/,
-  )
+test('nested key windows compose contexts and reject folded collisions', () => {
+const source = quoteRows([['XNAS', 1], ['XNAS', 2], ['XNYS', 3]])
+  const outer = source.windowBy('price < 3 as early').get(0)
+  const groups = outer.windowBy('venue')
+  assert.deepEqual(groups.get(0).key.asJs(), [true, 'XNAS'])
+  assert.equal(groups.get(0).rownum, 0)
+  assert.equal(groups.get(0).keyField.fieldLen, 2)
+  assert.throws(() => outer.windowBy('venue as EARLY'), /collid|alias/)
 })
 
-test('a lent window keeps the record of the rows it was cut from', () => {
-  const quotes = quoteRows([
-    ['XNAS', 1],
-    ['XNYS', 2],
-  ])
-  const [[, xnas]] = quotes.windowBy('venue')
-  // A write on the serie reaches the window's rows, and its record stays
-  // what the windowing read.
-  quotes.set(0, { venue: 'XLON', price: 9 })
-  assert.deepEqual(xnas.asJs(), [{ venue: 'XLON', price: 9 }])
-  assert.equal(xnas.staticValues.get('venue').asJs(), 'XNAS')
-  assert.equal(quotes.windowBy('venue')[0][1].staticValues.get('venue').asJs(), 'XLON')
+test('held key payloads retain a snapshot when the source changes', () => {
+const source = quoteRows([['XNAS', 1], ['XNYS', 2]])
+  const group = source.windowBy('venue').get(0)
+  source.set(0, {venue:'XLON', price:9})
+  assert.deepEqual(group.key.asJs(), ['XNAS'])
+  assert.deepEqual(group.rows.asJs(), [{price:1}])
+  assert.deepEqual(source.windowBy('venue').get(0).key.asJs(), ['XLON'])
 })

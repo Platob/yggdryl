@@ -7,6 +7,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "quoterejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "300",
       "description": "Reason quote was rejected.",
       "display": "QuoteRejectReason"
@@ -20,6 +21,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "quoteresponselevelcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "301",
       "description": "Level of Response requested from receiver of quote messages. A default value should be bilaterally agreed.",
       "display": "QuoteResponseLevel"
@@ -32,6 +34,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "302",
       "description": "Unique id for the Quote Set.",
       "display": "QuoteSetID"
@@ -45,6 +48,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "quoterequesttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "303",
       "description": "Indicates the type of Quote Request being generated",
       "display": "QuoteRequestType"
@@ -57,6 +61,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:names": [
         "totquoteentries"
       ],
@@ -73,6 +78,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityidsourcecodeset",
+      "FIX:datatype": "String",
       "FIX:names": [
         "underlyingidsource"
       ],
@@ -88,6 +94,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "306",
       "description": "Underlying security's Issuer.",
       "display": "UnderlyingIssuer"
@@ -100,6 +107,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "307",
       "description": "Description of the underlying security.",
       "display": "UnderlyingSecurityDesc"
@@ -112,6 +120,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Exchange",
       "FIX:tag": "308",
       "description": "Underlying security's SecurityExchange. Can be used to identify the underlying security.",
       "display": "UnderlyingSecurityExchange"
@@ -124,6 +133,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "309",
       "description": "Underlying security's SecurityID.",
       "display": "UnderlyingSecurityID"
@@ -137,6 +147,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "underlyingsecuritytypecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "310",
       "description": "Underlying security's SecurityType.",
       "display": "UnderlyingSecurityType"
@@ -149,6 +160,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "311",
       "description": "Underlying security's Symbol.",
       "display": "UnderlyingSymbol"
@@ -162,6 +174,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "symbolsfxcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "312",
       "description": "Underlying security's SymbolSfx.",
       "display": "UnderlyingSymbolSfx"
@@ -176,6 +189,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "MonthYear",
       "FIX:tag": "313",
       "description": "Underlying security's MaturityMonthYear. Can be used with standardized derivatives vs. the UnderlyingMaturityDate (542) field.",
       "display": "UnderlyingMaturityMonthYear"
@@ -188,6 +202,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "DayOfMonth",
       "FIX:tag": "314",
       "display": "UnderlyingMaturityDay"
     }
@@ -200,6 +215,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "putorcallcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "315",
       "description": "Indicates whether an underlying option contract is a put, call, chooser or undetermined.",
       "display": "UnderlyingPutOrCall"
@@ -214,6 +230,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "316",
       "description": "Underlying security's StrikePrice.",
       "display": "UnderlyingStrikePrice"
@@ -226,6 +243,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "char",
       "FIX:tag": "317",
       "description": "Underlying security's OptAttribute.",
       "display": "UnderlyingOptAttribute"
@@ -238,6 +256,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "318",
       "description": "Underlying security's currency.",
       "display": "UnderlyingCurrency"
@@ -252,6 +271,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "319",
       "display": "RatioQty"
     }
@@ -263,6 +283,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "320",
       "description": "Unique ID of a Security Definition Request.",
       "display": "SecurityReqID"
@@ -276,6 +297,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityrequesttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "321",
       "description": "Type of Security Definition Request.",
       "display": "SecurityRequestType"
@@ -288,6 +310,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "322",
       "description": "Unique ID of a Security Definition message.",
       "display": "SecurityResponseID"
@@ -301,6 +324,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityresponsetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "323",
       "description": "Type of Security Definition message response.",
       "display": "SecurityResponseType"
@@ -313,6 +337,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "324",
       "description": "Unique ID of a Security Status Request or a Security Mass Status Request message.",
       "display": "SecurityStatusReqID"
@@ -326,6 +351,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unsolicitedindicatorcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "325",
       "description": "Indicates whether or not message is being sent as a result of a subscription request or not.",
       "display": "UnsolicitedIndicator"
@@ -339,6 +365,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securitytradingstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "326",
       "description": "Identifies the trading status applicable to the security.",
       "display": "SecurityTradingStatus"
@@ -352,6 +379,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "haltreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:names": [
         "haltreasonchar"
       ],
@@ -368,6 +396,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "inviewofcommoncodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "328",
       "description": "Indicates whether or not the halt was due to Common Stock trading being halted.",
       "display": "InViewOfCommon"
@@ -381,6 +410,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "duetorelatedcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "329",
       "description": "Indicates whether or not the halt was due to the Related Security being halted.",
       "display": "DueToRelated"
@@ -395,6 +425,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "330",
       "description": "Quantity bought.",
       "display": "BuyVolume"
@@ -409,6 +440,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "331",
       "description": "Quantity sold.",
       "display": "SellVolume"
@@ -423,6 +455,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "332",
       "description": "Represents an indication of the high end of the price range for a security prior to the open or reopen",
       "display": "HighPx"
@@ -437,6 +470,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "333",
       "description": "Represents an indication of the low end of the price range for a security prior to the open or reopen",
       "display": "LowPx"
@@ -450,6 +484,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "adjustmentcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "334",
       "description": "Identifies the type of adjustment.",
       "display": "Adjustment"
@@ -462,6 +497,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "335",
       "description": "Unique ID of a Trading Session Status message.",
       "display": "TradSesReqID"
@@ -475,6 +511,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradingsessionidcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "336",
       "description": "Identifier for a trading session.",
       "display": "TradingSessionID"
@@ -487,6 +524,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "337",
       "description": "Identifies the trader (e.g. \"badge number\") of the ContraBroker.",
       "display": "ContraTrader"
@@ -500,6 +538,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradsesmethodcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "338",
       "description": "Method of trading",
       "display": "TradSesMethod"
@@ -513,6 +552,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradsesmodecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "339",
       "description": "Trading Session Mode",
       "display": "TradSesMode"
@@ -526,6 +566,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "tradsesstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "340",
       "description": "State of the trading session.",
       "display": "TradSesStatus"
@@ -540,6 +581,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "341",
       "description": "Starting time of the trading session",
       "display": "TradSesStartTime"
@@ -554,6 +596,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "342",
       "description": "Time of the opening of the trading session",
       "display": "TradSesOpenTime"
@@ -568,6 +611,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "343",
       "description": "Time of the pre-closed of the trading session",
       "display": "TradSesPreCloseTime"
@@ -582,6 +626,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "344",
       "description": "Closing time of the trading session",
       "display": "TradSesCloseTime"
@@ -596,6 +641,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "345",
       "description": "End time of the trading session",
       "display": "TradSesEndTime"
@@ -608,6 +654,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "346",
       "description": "Number of orders in the market.",
       "display": "NumberOfOrders"
@@ -621,6 +668,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "messageencodingcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "347",
       "description": "Type of message encoding (non-ASCII (non-English) characters) used in a message's \"Encoded\" fields.",
       "display": "MessageEncoding"
@@ -633,6 +681,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "348",
       "description": "Byte length of encoded (non-ASCII characters) EncodedIssuer (349) field.",
       "display": "EncodedIssuerLen"
@@ -645,6 +694,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "349",
       "description": "Encoded (non-ASCII characters) representation of the Issuer field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the Issuer field.",
       "display": "EncodedIssuer"
@@ -657,6 +707,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "350",
       "description": "Byte length of encoded (non-ASCII characters) EncodedSecurityDesc (351) field.",
       "display": "EncodedSecurityDescLen"
@@ -669,6 +720,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "351",
       "description": "Encoded (non-ASCII characters) representation of the SecurityDesc (107) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the SecurityDesc field.",
       "display": "EncodedSecurityDesc"
@@ -681,6 +733,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "352",
       "description": "Byte length of encoded (non-ASCII characters) EncodedListExecInst (353) field.",
       "display": "EncodedListExecInstLen"
@@ -693,6 +746,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "353",
       "description": "Encoded (non-ASCII characters) representation of the ListExecInst (69) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the ListExecInst field.",
       "display": "EncodedListExecInst"
@@ -705,6 +759,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "354",
       "description": "Byte length of encoded (non-ASCII characters) EncodedText (355) field.",
       "display": "EncodedTextLen"
@@ -717,6 +772,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "355",
       "description": "Encoded (non-ASCII characters) representation of the Text (58) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the Text(58) field.",
       "display": "EncodedText"
@@ -729,6 +785,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "356",
       "description": "Byte length of encoded (non-ASCII characters) EncodedSubject (357) field.",
       "display": "EncodedSubjectLen"
@@ -741,6 +798,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "357",
       "description": "Encoded (non-ASCII characters) representation of the Subject (147) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the Subject field.",
       "display": "EncodedSubject"
@@ -753,6 +811,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "358",
       "description": "Byte length of encoded (non-ASCII characters) EncodedHeadline (359) field.",
       "display": "EncodedHeadlineLen"
@@ -765,6 +824,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "359",
       "description": "Encoded (non-ASCII characters) representation of the Headline (148) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the Headline field.",
       "display": "EncodedHeadline"
@@ -777,6 +837,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "360",
       "description": "Byte length of encoded (non-ASCII characters) EncodedAllocText (361) field.",
       "display": "EncodedAllocTextLen"
@@ -789,6 +850,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "361",
       "description": "Encoded (non-ASCII characters) representation of the AllocText (161) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the AllocText field.",
       "display": "EncodedAllocText"
@@ -801,6 +863,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "362",
       "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingIssuer (363) field.",
       "display": "EncodedUnderlyingIssuerLen"
@@ -813,6 +876,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "363",
       "description": "Encoded (non-ASCII characters) representation of the UnderlyingIssuer (306) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingIssuer field.",
       "display": "EncodedUnderlyingIssuer"
@@ -825,6 +889,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "364",
       "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingSecurityDesc (365) field.",
       "display": "EncodedUnderlyingSecurityDescLen"
@@ -837,6 +902,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "365",
       "description": "Encoded (non-ASCII characters) representation of the UnderlyingSecurityDesc (307) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingSecurityeDesc field.",
       "display": "EncodedUnderlyingSecurityDesc"
@@ -851,6 +917,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "366",
       "description": "Executed price for an AllocAccount (79) entry used when using \"executed price\" vs. \"average price\" allocations (e.g. Japan).",
       "display": "AllocPrice"
@@ -865,6 +932,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "367",
       "description": "Indicates expiration time of this particular QuoteSet (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
       "display": "QuoteSetValidUntilTime"
@@ -878,6 +946,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "quoteentryrejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "368",
       "description": "Reason Quote Entry was rejected:",
       "display": "QuoteEntryRejectReason"
@@ -890,6 +959,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "SeqNum",
       "FIX:tag": "369",
       "description": "The last MsgSeqNum (34) value received by the FIX engine and processed by downstream application, such as trading engine or order routing system. Can be specified on every message sent. Useful for detecting a backlog with a counterparty.",
       "display": "LastMsgSeqNumProcessed"
@@ -904,6 +974,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "370",
       "display": "OnBehalfOfSendingTime"
     }
@@ -915,6 +986,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "371",
       "description": "The tag number of the FIX field being referenced.",
       "display": "RefTagID"
@@ -928,6 +1000,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "refmsgtypecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "372",
       "description": "The MsgType (35) of the FIX message being referenced.",
       "display": "RefMsgType"
@@ -941,6 +1014,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "sessionrejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "373",
       "description": "Code to identify reason for a session-level Reject message.",
       "display": "SessionRejectReason"
@@ -954,6 +1028,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "bidrequesttranstypecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "374",
       "description": "Identifies the Bid Request message type.",
       "display": "BidRequestTransType"
@@ -966,6 +1041,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "375",
       "description": "Identifies contra broker. Standard NASD market-maker mnemonic is preferred.",
       "display": "ContraBroker"
@@ -978,6 +1054,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "376",
       "description": "ID used to represent this transaction for compliance purposes (e.g. OATS reporting).",
       "display": "ComplianceID"
@@ -991,6 +1068,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "solicitedflagcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "377",
       "description": "Indicates whether or not the order was solicited.",
       "display": "SolicitedFlag"
@@ -1004,6 +1082,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "execrestatementreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "378",
       "description": "The reason for restatement when an ExecutionReport(35=8) or TradeCaptureReport(35=AE) message is sent with ExecType(150) = D (Restated) or used when communicating an unsolicited cancel.",
       "display": "ExecRestatementReason"
@@ -1016,6 +1095,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "379",
       "description": "The value of the business-level \"ID\" field on the message being referenced.",
       "display": "BusinessRejectRefID"
@@ -1029,6 +1109,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "businessrejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "380",
       "description": "Code to identify reason for a Business Message Reject message.",
       "display": "BusinessRejectReason"
@@ -1043,6 +1124,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "381",
       "description": "Total amount traded expressed in units of currency - usually quantity * price. For FX Futures this is used to express the notional value of a fill when quantity fields are expressed in terms of contract size (i.e. quantity * price * contract size).",
       "display": "GrossTradeAmt"
@@ -1055,6 +1137,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "382",
       "description": "The number of ContraBroker (375) entries.",
       "display": "NoContraBrokers"
@@ -1067,6 +1150,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "383",
       "description": "Maximum number of bytes supported for a single message.",
       "display": "MaxMessageSize"
@@ -1079,6 +1163,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "384",
       "description": "Number of MsgTypes (35) in repeating group.",
       "display": "NoMsgTypes"
@@ -1092,6 +1177,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "msgdirectioncodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "385",
       "description": "Specifies the direction of the message.",
       "display": "MsgDirection"
@@ -1104,6 +1190,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "386",
       "description": "Number of TradingSessionIDs (336) in repeating group.",
       "display": "NoTradingSessions"
@@ -1118,6 +1205,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "387",
       "description": "Total volume (quantity) traded.",
       "display": "TotalVolumeTraded"
@@ -1131,6 +1219,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "discretioninstcodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "388",
       "description": "Code to identify the price a DiscretionOffsetValue (389) is related to and should be mathematically added to.",
       "display": "DiscretionInst"
@@ -1143,6 +1232,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:names": [
         "discretionoffset"
       ],
@@ -1158,6 +1248,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "390",
       "description": "For bid lists, unique identifier for BidResponse(35=I) as assigned by sell-side (broker, exchange, ECN). Uniqueness must be guaranteed within a single trading day.",
       "display": "BidID"
@@ -1170,6 +1261,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "391",
       "description": "Unique identifier for a Bid Request as assigned by institution. Uniqueness must be guaranteed within a single trading day.",
       "display": "ClientBidID"
@@ -1182,6 +1274,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "392",
       "description": "Descriptive name for list order.",
       "display": "ListName"
@@ -1194,6 +1287,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:names": [
         "totalnumsecurities"
       ],
@@ -1210,6 +1304,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "bidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "394",
       "description": "Code to identify the type of Bid Request.",
       "display": "BidType"
@@ -1222,6 +1317,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "395",
       "description": "Total number of tickets.",
       "display": "NumTickets"
@@ -1236,6 +1332,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "396",
       "description": "Amounts in currency",
       "display": "SideValue1"
@@ -1250,6 +1347,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "397",
       "description": "Amounts in currency",
       "display": "SideValue2"
@@ -1262,6 +1360,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "398",
       "description": "Number of BidDescriptor (400) entries.",
       "display": "NoBidDescriptors"
@@ -1275,6 +1374,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "biddescriptortypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "399",
       "description": "Code to identify the type of BidDescriptor (400).",
       "display": "BidDescriptorType"

@@ -2,15 +2,18 @@
 //! one stream of text rows, appended into an Iceberg table, read back in
 //! order, parsed as FIX and walked through their lifecycle into a second
 //! table, and that table read back in order into books - a snapshot of every
-//! book each quarter of an hour, and the deltas between them flattened to
-//! `marketdata` rows - each in a table of its own.
+//! book each quarter of an hour, and between them every book's delta (the
+//! orders and quotes it applied) and its events (the executions and snapshot
+//! controls it recorded), each list laid out as `marketdata` rows - each in a
+//! table of its own.
 //!
 //! ```text
 //! logs/ --read_serie--> text rows --append_serie--> text table
 //! text table --read_serie (sorted)--> parse_text_serie --> lifecycle_serie --overwrite_serie--> fix table
 //! fix table --read_serie (sorted)--> messages_serie --> lifecycle --> books every 15 minutes
 //!     complete books --overwrite_serie--> books table
-//!     their deltas   --overwrite_serie--> deltas table
+//!     their delta    --overwrite_serie--> delta table
+//!     their events   --overwrite_serie--> events table
 //! ```
 //!
 //! Every table is created from the schema of the stream written to it, as
@@ -81,6 +84,9 @@
 
 #![cfg(feature = "iceberg")]
 
+#[path = "support/ulbridge.rs"]
+mod ulbridge;
+
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Write as _;
@@ -93,23 +99,17 @@ use arrow_array::{
     Array, Decimal128Array, RecordBatch, RecordBatchReader, TimestampNanosecondArray,
 };
 use arrow_schema::{ArrowError, SchemaRef};
-use regex::bytes::Regex;
+use ulbridge::{LINES_PER_COPY, LOG, Template, identifiers};
 use yggdryl::arrow::BatchReader;
-use yggdryl::graph::{BookIterator, MarketData};
+use yggdryl::graph::{BookEvent, BookIterator, MarketData};
 use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
 use yggdryl::local::LocalFolder;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::{TextOptions, read_text_lines};
 use yggdryl::{
     ArrowCastOptions, DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, IOResult, Level,
-    Scheme, SerieReader, SerieSource, SpillOptions, Timezone,
+    MarketDataKind, Scheme, Serie, SpillOptions, StreamChunkedSerie, Timezone,
 };
-
-/// The capture every copy repeats, exactly as the bridge wrote it.
-const LOG: &[u8] = include_bytes!("fix/ulbridge.log");
-
-/// The lines one copy holds.
-const LINES_PER_COPY: u64 = 144;
 
 /// The messages one copy parses into under the codec's defaults: the 79 the
 /// capture carries past the refused session traffic and the 57 executions
@@ -188,518 +188,15 @@ const COMMITS: usize = 16;
 /// capture a file, so the folder the text stage reads is many leaves.
 const COPIES_PER_FILE: u64 = 512;
 
-/// One hour and one day, in seconds.
-const HOUR: i64 = 3_600;
-const DAY: i64 = 86_400;
-
 /// The quarter of an hour every table partitions by, in nanoseconds, and
 /// the grid the books snapshot on, in milliseconds.
 const QUARTER_NS: i64 = 900 * 1_000_000_000;
 const QUARTER_MS: u64 = 900 * 1_000;
 
-/// The bridge writes Zurich's local clock in front of every line, and the
-/// whole capture falls in Zurich summer time: two hours ahead of UTC.
-const ZURICH_SUMMER: i64 = 2 * HOUR;
-
 /// The tests' one lock: a resident set is the whole process's.
 static PROCESS: Mutex<()> = Mutex::new(());
 
 // --- the generator ----------------------------------------------------------
-
-/// The fields whose values are identifiers, as the capture spells them: FIX
-/// tags, the bridge's own names and the FIXML attributes. Every occurrence
-/// of a value collected here is stepped, wherever it stands - a FIX frame, a
-/// bridge row, the prose in front of one, a document inside another.
-const ID_KEYS: &[&str] = &[
-    "11",
-    "17",
-    "19",
-    "37",
-    "41",
-    "198",
-    "526",
-    "527",
-    "571",
-    "818",
-    "880",
-    "1003",
-    "1903",
-    "9432",
-    "9507",
-    "CLORDID",
-    "ORIGCLORDID",
-    "ORDERID",
-    "EXECID",
-    "EXECREFID",
-    "SECONDARYORDERID",
-    "SECONDARYEXECID",
-    "SECONDARYCLORDID",
-    "TRDMATCHID",
-    "TRADEREPORTID",
-    "TRADEID",
-    "PACKAGEID",
-    "PARENTORDERID",
-    "#PARENTORDERID",
-    "#PARENTCLORDID",
-    "#MARKETORDERID",
-    "#OMSDEALERORDERID",
-    "#OMSDEALERPARENTORDERID",
-    "#ULTRADER_CLORDID",
-    "#TRANSVERSAL_KEY",
-    "#OMSACTIONID",
-    "MESSAGELINKID",
-    "EXCHANGECLIENTORDERID",
-    "CONVERSATIONID",
-    "REGULATORYTRADEID",
-    "TRADINGVENUETRANSACTIONIDENTIFIERCODE",
-    "MAIN.UTI",
-    "HEDGEVENUETRANSID",
-    "TR_LEGVENUETRANSID",
-    "ExecID",
-    "ClOrdID",
-    "OrderID",
-    "OrigClOrdID",
-];
-
-/// One rewrite a copy makes at a fixed place of a line: every one keeps its
-/// width, so a body length, an `XmlData` length and every offset stand.
-#[derive(Clone, Copy, Debug)]
-enum Kind {
-    /// The row header's `YYYY-MM-DD HH:MM:SS`, Zurich's clock, written back
-    /// in UTC; its fraction is left as it is.
-    Header { utc: i64 },
-    /// `YYYYMMDD-HH:MM:SS`; any fraction after it is left as it is.
-    Dashed { utc: i64 },
-    /// `YYYYMMDDHHMMSS`; any fraction digits after it are left as they are.
-    Compact { utc: i64 },
-    /// `YYYYMMDD`, moved by the days the line's own clock moved.
-    Date { days: i64 },
-    /// An identifier: its letters and digits stepped by the copy, the
-    /// lower-case hexadecimal ones within their sixteen.
-    Id { len: usize, hex: bool },
-}
-
-#[derive(Clone, Copy, Debug)]
-struct Patch {
-    at: usize,
-    kind: Kind,
-}
-
-/// One line of the capture and every place a copy rewrites in it.
-struct Line {
-    bytes: Vec<u8>,
-    /// The line's own clock, in UTC seconds.
-    header_utc: i64,
-    /// What copy zero moves the line's clocks by: its hour packed beside
-    /// the capture's other hours.
-    slot_shift: i64,
-    patches: Vec<Patch>,
-}
-
-/// The capture as a template copies are rendered from.
-///
-/// The bridge's capture is four bursts on one day - 01:03, 12:46, 14:52 and
-/// 21:59 UTC - logged out of order. A copy packs each burst into its own
-/// hour, in order, and its lines are emitted in clock order, so a copy spans
-/// [`Self::span`] - four hours. Copy `k` is copy zero moved by `k / density`
-/// spans and `k % density` seconds: `density` copies share each span, a
-/// second apart, and at a density of one a twenty-gibibyte run would be some
-/// forty-five years of nearly empty quarters. Every clock of a line moves with
-/// it, an order's expiry included, so a chain expires in the copy that
-/// placed it; a date moves by the days its line's clock moved.
-///
-/// Every identifier is stepped by the copy number written in mixed radix
-/// from its first character, a digit within the ten digits and a letter
-/// within its case: one value steps alike wherever it stands, a value that
-/// extends another (`00079132557GLXC0.9` after `00079132557GLXC0`) keeps
-/// extending it, and no value comes back in another copy. Instruments -
-/// ISINs, tickers, markets - are left as they are, so the books the copies
-/// build are the same books.
-struct Template {
-    lines: Vec<Line>,
-    span: i64,
-    /// The copies one span holds.
-    density: u64,
-}
-
-impl Template {
-    fn new(density: u64) -> Self {
-        assert!(density > 0, "a span holds at least one copy");
-        let header = Regex::new(r"(?-u)^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})")
-            .expect("the header clock pattern");
-        let context = Regex::new(r"(?-u)^[^\[]*\[\d+-[0-9a-f]{8}:([0-9a-f]{10}):\d+\]")
-            .expect("the capture context pattern");
-        let identifiers = identifiers();
-        let mut lines: Vec<Line> = LOG
-            .split_inclusive(|byte| *byte == b'\n')
-            .map(|line| {
-                let clock = header
-                    .captures(line)
-                    .expect("every line opens with its clock");
-                let field = |index: usize| parse_digits(&clock[index]);
-                let local = epoch(field(1), field(2), field(3), field(4), field(5), field(6))
-                    .expect("a valid header clock");
-                let header_utc = local - ZURICH_SUMMER;
-                let mut patches = vec![Patch {
-                    at: 0,
-                    kind: Kind::Header { utc: header_utc },
-                }];
-                if let Some(found) = context.captures(line) {
-                    let at = found.get(1).expect("the context group").start();
-                    patches.push(Patch {
-                        at,
-                        kind: Kind::Id { len: 10, hex: true },
-                    });
-                }
-                identifier_patches(line, &identifiers, &mut patches);
-                clock_patches(line, &mut patches);
-                patches.sort_by_key(|patch| patch.at);
-                Line {
-                    bytes: line.to_vec(),
-                    header_utc,
-                    slot_shift: 0,
-                    patches,
-                }
-            })
-            .collect();
-        assert_eq!(lines.len() as u64, LINES_PER_COPY, "the capture's lines");
-        let mut hours: Vec<i64> = lines
-            .iter()
-            .map(|line| line.header_utc.div_euclid(HOUR))
-            .collect();
-        hours.sort_unstable();
-        hours.dedup();
-        for line in &mut lines {
-            let hour = line.header_utc.div_euclid(HOUR);
-            let slot = hours.binary_search(&hour).expect("a listed hour") as i64;
-            line.slot_shift = (hours[0] + slot - hour) * HOUR;
-        }
-        lines.sort_by_key(|line| line.header_utc + line.slot_shift);
-        Self {
-            lines,
-            span: hours.len() as i64 * HOUR,
-            density,
-        }
-    }
-
-    /// Copy `copy` appended to `out`.
-    fn render(&self, copy: u64, out: &mut Vec<u8>) {
-        let moved = i64::try_from(copy / self.density).expect("a span count") * self.span
-            + i64::try_from(copy % self.density).expect("a second within the span");
-        for line in &self.lines {
-            let start = out.len();
-            out.extend_from_slice(&line.bytes);
-            let target = &mut out[start..];
-            let shift = moved + line.slot_shift;
-            let days = (line.header_utc + shift).div_euclid(DAY) - line.header_utc.div_euclid(DAY);
-            for patch in &line.patches {
-                let at = &mut target[patch.at..];
-                match patch.kind {
-                    Kind::Header { utc } => write_clock(at, utc + shift, ClockLayout::Header),
-                    Kind::Dashed { utc } => write_clock(at, utc + shift, ClockLayout::Dashed),
-                    Kind::Compact { utc } => write_clock(at, utc + shift, ClockLayout::Compact),
-                    Kind::Date { days: date } => write_date(at, date + days),
-                    Kind::Id { len, hex } => step_identifier(&mut at[..len], copy, hex),
-                }
-            }
-        }
-    }
-}
-
-/// Every identifier value the capture states under one of [`ID_KEYS`],
-/// longest first so a value that extends another is matched whole.
-fn identifiers() -> Vec<Vec<u8>> {
-    // `^A` is how one dump spells the field separator, so a key may follow it.
-    let pair = Regex::new(
-        r#"(?-u)(?:\^A|^|[^A-Za-z0-9_.#])(#?[A-Za-z0-9_.]+)=\[?"?([A-Za-z0-9][A-Za-z0-9._:/@-]*)"#,
-    )
-    .expect("the pair pattern");
-    let mut values: Vec<Vec<u8>> = Vec::new();
-    for line in LOG.split(|byte| *byte == b'\n') {
-        for found in pair.captures_iter(line) {
-            let key = &found[1];
-            let value = &found[2];
-            let named = ID_KEYS.iter().any(|id| id.as_bytes() == key);
-            let all_digits = value.iter().all(u8::is_ascii_digit);
-            if named
-                && value.len() >= 6
-                && value.iter().any(u8::is_ascii_digit)
-                && !(all_digits && value.len() == 8)
-            {
-                values.push(value.to_vec());
-            }
-        }
-    }
-    values.sort_by(|left, right| right.len().cmp(&left.len()).then(left.cmp(right)));
-    values.dedup();
-    values
-}
-
-/// Every whole occurrence of an identifier in `line`: one neither preceded
-/// nor followed by a letter or a digit, the longest one at each place.
-fn identifier_patches(line: &[u8], identifiers: &[Vec<u8>], patches: &mut Vec<Patch>) {
-    let mut at = 0;
-    while at < line.len() {
-        let bounded_before = at == 0 || !line[at - 1].is_ascii_alphanumeric();
-        let found = bounded_before
-            .then(|| {
-                identifiers.iter().find(|value| {
-                    let end = at + value.len();
-                    line[at..].starts_with(value)
-                        && (end == line.len() || !line[end].is_ascii_alphanumeric())
-                })
-            })
-            .flatten();
-        let Some(value) = found else {
-            at += 1;
-            continue;
-        };
-        let taken = patches.iter().any(|patch| overlaps(patch, at, value.len()));
-        if !taken {
-            let hex = is_uuid(value);
-            patches.push(Patch {
-                at,
-                kind: Kind::Id {
-                    len: value.len(),
-                    hex,
-                },
-            });
-        }
-        at += value.len();
-    }
-}
-
-/// Every clock and date in `line` that no identifier and no header holds.
-fn clock_patches(line: &[u8], patches: &mut Vec<Patch>) {
-    let mut at = 0;
-    while at < line.len() {
-        if !line[at].is_ascii_digit() {
-            at += 1;
-            continue;
-        }
-        let start = at;
-        while at < line.len() && line[at].is_ascii_digit() {
-            at += 1;
-        }
-        let run = &line[start..at];
-        if patches
-            .iter()
-            .any(|patch| overlaps(patch, start, run.len()))
-        {
-            continue;
-        }
-        let date = (run.len() >= 8).then(|| date_of(&run[..8])).flatten();
-        let Some(days) = date else {
-            continue;
-        };
-        if run.len() == 8
-            && let Some((hour, minute, second)) = dashed_time(&line[at..])
-        {
-            patches.push(Patch {
-                at: start,
-                kind: Kind::Dashed {
-                    utc: days * DAY + hour * HOUR + minute * 60 + second,
-                },
-            });
-            at = start + 17;
-        } else if run.len() == 8 {
-            patches.push(Patch {
-                at: start,
-                kind: Kind::Date { days },
-            });
-        } else if matches!(run.len(), 14 | 17 | 20)
-            && let Some((hour, minute, second)) = time_of(&run[8..14])
-        {
-            patches.push(Patch {
-                at: start,
-                kind: Kind::Compact {
-                    utc: days * DAY + hour * HOUR + minute * 60 + second,
-                },
-            });
-        }
-    }
-}
-
-fn overlaps(patch: &Patch, at: usize, len: usize) -> bool {
-    let patch_len = match patch.kind {
-        Kind::Header { .. } => 19,
-        Kind::Dashed { .. } => 17,
-        Kind::Compact { .. } => 14,
-        Kind::Date { .. } => 8,
-        Kind::Id { len, .. } => len,
-    };
-    at < patch.at + patch_len && patch.at < at + len
-}
-
-/// Whether `value` is a UUID spelled in lower-case hexadecimal.
-fn is_uuid(value: &[u8]) -> bool {
-    value.len() == 36
-        && value.iter().enumerate().all(|(index, byte)| {
-            if matches!(index, 8 | 13 | 18 | 23) {
-                *byte == b'-'
-            } else {
-                byte.is_ascii_digit() || (b'a'..=b'f').contains(byte)
-            }
-        })
-}
-
-/// `copy` written in mixed radix over the identifier's letters and digits,
-/// from its first, added place by place without a carry.
-fn step_identifier(value: &mut [u8], copy: u64, hex: bool) {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut rest = copy;
-    for byte in value.iter_mut() {
-        if rest == 0 {
-            break;
-        }
-        let (alphabet_start, radix, index): (u8, u64, u64) = match *byte {
-            b'0'..=b'9' if hex => (0, 16, u64::from(*byte - b'0')),
-            b'a'..=b'f' if hex => (0, 16, u64::from(*byte - b'a') + 10),
-            b'0'..=b'9' => (b'0', 10, u64::from(*byte - b'0')),
-            b'a'..=b'z' => (b'a', 26, u64::from(*byte - b'a')),
-            b'A'..=b'Z' => (b'A', 26, u64::from(*byte - b'A')),
-            _ => continue,
-        };
-        let stepped = (index + rest % radix) % radix;
-        rest /= radix;
-        *byte = if hex {
-            HEX[stepped as usize]
-        } else {
-            alphabet_start + stepped as u8
-        };
-    }
-}
-
-#[derive(Clone, Copy)]
-enum ClockLayout {
-    Header,
-    Dashed,
-    Compact,
-}
-
-fn write_clock(target: &mut [u8], utc: i64, layout: ClockLayout) {
-    let (year, month, day) = civil(utc.div_euclid(DAY));
-    let seconds = utc.rem_euclid(DAY);
-    // Where the month, the day, the hour, the minute and the second open;
-    // the year opens every layout.
-    let places: [usize; 5] = match layout {
-        ClockLayout::Header => [5, 8, 11, 14, 17],
-        ClockLayout::Dashed => [4, 6, 9, 12, 15],
-        ClockLayout::Compact => [4, 6, 8, 10, 12],
-    };
-    let fields = [
-        month,
-        day,
-        seconds / HOUR,
-        seconds % HOUR / 60,
-        seconds % 60,
-    ];
-    write_number(&mut target[0..4], year);
-    for (at, value) in places.into_iter().zip(fields) {
-        write_number(&mut target[at..at + 2], value);
-    }
-}
-
-fn write_date(target: &mut [u8], days: i64) {
-    let (year, month, day) = civil(days);
-    write_number(&mut target[0..4], year);
-    write_number(&mut target[4..6], month);
-    write_number(&mut target[6..8], day);
-}
-
-/// `value` in decimal, zero-padded to the width of `target`.
-fn write_number(target: &mut [u8], mut value: i64) {
-    for byte in target.iter_mut().rev() {
-        *byte = b'0' + u8::try_from(value % 10).expect("a digit");
-        value /= 10;
-    }
-    assert_eq!(value, 0, "a clock outgrew its width");
-}
-
-fn parse_digits(digits: &[u8]) -> i64 {
-    digits
-        .iter()
-        .fold(0, |value, digit| value * 10 + i64::from(digit - b'0'))
-}
-
-/// `YYYYMMDD` as days since the epoch, where it is a date of this century.
-fn date_of(digits: &[u8]) -> Option<i64> {
-    let year = parse_digits(&digits[0..4]);
-    if !(2000..2100).contains(&year) {
-        return None;
-    }
-    let days = days_from_civil(
-        year,
-        parse_digits(&digits[4..6]),
-        parse_digits(&digits[6..8]),
-    )?;
-    Some(days)
-}
-
-/// `HHMMSS` as its three fields, where it is a time of day.
-fn time_of(digits: &[u8]) -> Option<(i64, i64, i64)> {
-    let (hour, minute, second) = (
-        parse_digits(&digits[0..2]),
-        parse_digits(&digits[2..4]),
-        parse_digits(&digits[4..6]),
-    );
-    (hour < 24 && minute < 60 && second < 60).then_some((hour, minute, second))
-}
-
-/// `-HH:MM:SS` at the start of `rest`, as its three fields.
-fn dashed_time(rest: &[u8]) -> Option<(i64, i64, i64)> {
-    let shape = rest.len() >= 9
-        && rest[0] == b'-'
-        && rest[3] == b':'
-        && rest[6] == b':'
-        && [1, 2, 4, 5, 7, 8]
-            .iter()
-            .all(|&index| rest[index].is_ascii_digit());
-    if !shape {
-        return None;
-    }
-    let digits = [rest[1], rest[2], rest[4], rest[5], rest[7], rest[8]];
-    time_of(&digits)
-}
-
-fn epoch(year: i64, month: i64, day: i64, hour: i64, minute: i64, second: i64) -> Option<i64> {
-    Some(days_from_civil(year, month, day)? * DAY + hour * HOUR + minute * 60 + second)
-}
-
-/// Days since 1970-01-01 of a proleptic Gregorian date, where it is one.
-fn days_from_civil(year: i64, month: i64, day: i64) -> Option<i64> {
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
-        return None;
-    }
-    let shifted = if month <= 2 { year - 1 } else { year };
-    let era = shifted.div_euclid(400);
-    let year_of_era = shifted - era * 400;
-    let month_index = if month > 2 { month - 3 } else { month + 9 };
-    let day_of_year = (153 * month_index + 2) / 5 + day - 1;
-    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-    let days = era * 146_097 + day_of_era - 719_468;
-    // A day past its month's end lands in the next month: not a date.
-    (civil(days) == (year, month, day)).then_some(days)
-}
-
-/// The proleptic Gregorian date `days` after 1970-01-01.
-fn civil(days: i64) -> (i64, i64, i64) {
-    let shifted = days + 719_468;
-    let era = shifted.div_euclid(146_097);
-    let day_of_era = shifted - era * 146_097;
-    let year_of_era =
-        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
-    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let month_index = (5 * day_of_year + 2) / 153;
-    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
-    let month = if month_index < 10 {
-        month_index + 3
-    } else {
-        month_index - 9
-    };
-    let year = year_of_era + era * 400 + i64::from(month <= 2);
-    (year, month, day)
-}
 
 /// Copies `copies` of the capture, Zstandard-encoded into `path` as they
 /// are rendered: one copy in memory at a time. Answers the uncompressed
@@ -770,10 +267,12 @@ struct Probe {
     messages: AtomicU64,
     /// The FIX rows the lifecycle walked.
     walked: AtomicU64,
-    /// The complete books and the delta-only ones the fold answered.
+    /// The complete books and the delta books the fold answered.
     books: AtomicU64,
-    /// The orders and quotes the books' deltas flatten to.
-    deltas: AtomicU64,
+    /// The orders and quotes the books' delta lays out as.
+    delta: AtomicU64,
+    /// The executions and snapshot controls the books' events lay out as.
+    events: AtomicU64,
     /// Every batch any stage pulled, and what they occupy.
     batches: AtomicU64,
     arrow_bytes: AtomicU64,
@@ -828,17 +327,17 @@ impl RecordBatchReader for Counted {
 /// the batches it already is and comes back under its own root, so nothing
 /// is cast or landed for the count.
 fn counted(
-    reader: SerieReader,
+    reader: StreamChunkedSerie,
     probe: &Arc<Probe>,
     counter: fn(&Probe) -> &AtomicU64,
-) -> SerieReader {
+) -> StreamChunkedSerie {
     let root = reader.field().clone();
     let batches: BatchReader = Box::new(Counted {
         inner: reader.into_arrow_reader(),
         probe: Arc::clone(probe),
         counter,
     });
-    SerieReader::from_arrow_reader(Some(&root), batches, ArrowCastOptions::new())
+    StreamChunkedSerie::from_arrow_reader(Some(&root), batches, ArrowCastOptions::new())
         .expect("a counted stream under its own root")
 }
 
@@ -917,8 +416,8 @@ enum Stage {
     Lifecycle,
     /// The walked rows written over their table.
     Fix,
-    /// The books folded from the stored FIX rows: the snapshots and the
-    /// deltas, each written over its table.
+    /// The books folded from the stored FIX rows: the snapshots, the
+    /// delta and the events, each written over its table.
     Books,
 }
 
@@ -976,13 +475,15 @@ struct Outcome {
     messages: u64,
     walked: u64,
     books: u64,
-    deltas: u64,
+    delta: u64,
+    events: u64,
     batches: u64,
     arrow_bytes: u64,
     text: Option<Stored>,
     fix: Option<Stored>,
     snapshots: Option<Stored>,
-    flattened: Option<Stored>,
+    delta_table: Option<Stored>,
+    events_table: Option<Stored>,
     table_bytes: u64,
     baseline: Option<Resident>,
     finale: Option<Resident>,
@@ -1109,14 +610,21 @@ fn writing(table: &IcebergTable<LocalFolder>, shape: &Run) -> RecordOptions {
 /// The table's rows in the table's own order, as the rows `row` types -
 /// the crate's datatypes again, the partition column dropped - and, where
 /// `window` states one, only those it keeps.
-fn stored(table: &IcebergTable<LocalFolder>, row: &Field, window: Option<&str>) -> SerieReader {
+fn stored(
+    table: &IcebergTable<LocalFolder>,
+    row: &Field,
+    window: Option<&str>,
+) -> StreamChunkedSerie {
     let mut options = table.record_options().expect("the table's options");
     options.set_field(row.clone());
     let options = match window {
         Some(window) => options.with_filter(window).expect("the window"),
         None => options,
     };
-    table.read_serie(Some(&options)).expect("the table reads")
+    yggdryl::StreamChunkedSerie::from_serie(
+        table.read_serie(Some(&options)).expect("the table reads"),
+    )
+    .expect("native record stream")
 }
 
 /// The FIX table's rows as messages again, walked in the table's order.
@@ -1158,10 +666,11 @@ fn keys(table: &IcebergTable<LocalFolder>, window: Option<&str>) -> Vec<(i64, i6
         None => options,
     };
     let mut keys = Vec::new();
-    for batch in table
-        .read_serie(Some(&options))
-        .expect("the table reads")
-        .into_arrow_reader()
+    for batch in yggdryl::StreamChunkedSerie::from_serie(
+        table.read_serie(Some(&options)).expect("the table reads"),
+    )
+    .expect("native record stream")
+    .into_arrow_reader()
     {
         let batch = batch.expect("a stored batch");
         let instants = |name: &str| {
@@ -1339,7 +848,10 @@ fn run(shape: &Run) -> Outcome {
     // Every file the folder holds is one leaf of one table of text rows,
     // read through the native local backend, one leaf open at a time.
     let source = LocalFolder::new(&logs).expect("the input folder");
-    let lines = source.read_serie(Some(&options)).expect("the text rows");
+    let lines = yggdryl::StreamChunkedSerie::from_serie(
+        source.read_serie(Some(&options)).expect("the text rows"),
+    )
+    .expect("native record stream");
     let text_row = lines.field().clone();
     let lines = counted(lines, &probe, |probe| &probe.lines);
 
@@ -1351,13 +863,15 @@ fn run(shape: &Run) -> Outcome {
         messages: 0,
         walked: 0,
         books: 0,
-        deltas: 0,
+        delta: 0,
+        events: 0,
         batches: 0,
         arrow_bytes: 0,
         text: None,
         fix: None,
         snapshots: None,
-        flattened: None,
+        delta_table: None,
+        events_table: None,
         table_bytes: 0,
         baseline,
         finale: None,
@@ -1368,14 +882,14 @@ fn run(shape: &Run) -> Outcome {
     };
 
     if shape.stage == Stage::Lines {
-        for record in lines {
+        for record in lines.into_chunks() {
             record.expect("a batch of text rows");
         }
     } else {
         // The text table: `append_serie` is the whole call.
         let mut text = create(&scratch.0.join("text"), &text_row);
         let appended = text
-            .append_serie(SerieSource::from(lines), Some(&writing(&text, shape)))
+            .append_serie(Serie::from(lines), Some(&writing(&text, shape)))
             .expect("the text rows append");
         let text_held = held(&text);
         // The write says what it did: every line read is a row written.
@@ -1403,7 +917,7 @@ fn run(shape: &Run) -> Outcome {
             let fix_row = parsed.field().clone();
             let parsed = counted(parsed, &probe, |probe| &probe.messages);
             if shape.stage == Stage::Parse {
-                for record in parsed {
+                for record in parsed.into_chunks() {
                     record.expect("a batch of FIX rows");
                 }
             } else {
@@ -1413,7 +927,7 @@ fn run(shape: &Run) -> Outcome {
                     |probe| &probe.walked,
                 );
                 if shape.stage == Stage::Lifecycle {
-                    for record in walked {
+                    for record in walked.into_chunks() {
                         record.expect("a batch of walked rows");
                     }
                 } else {
@@ -1422,7 +936,7 @@ fn run(shape: &Run) -> Outcome {
                     // any window of the text it was made from.
                     let mut fix = create(&scratch.0.join("fix"), &fix_row);
                     let written = fix
-                        .overwrite_serie(SerieSource::from(walked), Some(&writing(&fix, shape)))
+                        .overwrite_serie(Serie::from(walked), Some(&writing(&fix, shape)))
                         .expect("the walked rows write");
                     let fix_held = held(&fix);
                     assert_eq!(
@@ -1457,10 +971,11 @@ fn run(shape: &Run) -> Outcome {
                         reprocess(&codec, &text, &text_row, &mut fix, shape, &fix_held);
                     }
                     if shape.stage == Stage::Books {
-                        let (snapshots, flattened) =
+                        let (snapshots, delta, events) =
                             books(&codec, &fix, &fix_row, &scratch.0, shape, &probe);
                         outcome.snapshots = Some(snapshots);
-                        outcome.flattened = Some(flattened);
+                        outcome.delta_table = Some(delta);
+                        outcome.events_table = Some(events);
                     }
                 }
             }
@@ -1469,7 +984,7 @@ fn run(shape: &Run) -> Outcome {
     outcome.streamed_in = started.elapsed();
     outcome.finale = Resident::now();
     outcome.watched_peak = watchdog.map(Watchdog::finish);
-    outcome.table_bytes = ["text", "fix", "books", "deltas"]
+    outcome.table_bytes = ["text", "fix", "books", "delta", "events"]
         .iter()
         .map(|table| folder_bytes(&scratch.0.join(table)))
         .sum();
@@ -1478,7 +993,8 @@ fn run(shape: &Run) -> Outcome {
     outcome.messages = probe.messages.load(Ordering::Relaxed);
     outcome.walked = probe.walked.load(Ordering::Relaxed);
     outcome.books = probe.books.load(Ordering::Relaxed);
-    outcome.deltas = probe.deltas.load(Ordering::Relaxed);
+    outcome.delta = probe.delta.load(Ordering::Relaxed);
+    outcome.events = probe.events.load(Ordering::Relaxed);
     outcome.batches = probe.batches.load(Ordering::Relaxed);
     outcome.arrow_bytes = probe.arrow_bytes.load(Ordering::Relaxed);
     outcome
@@ -1504,7 +1020,7 @@ fn reprocess(
             )
             .expect("the walked rows");
         let options = writing(fix, shape);
-        fix.overwrite_serie(SerieSource::from(walked), Some(&options))
+        fix.overwrite_serie(Serie::from(walked), Some(&options))
             .expect("the walked rows write again")
     };
     // The data files of every partition, by the quarter of an hour it holds.
@@ -1606,9 +1122,10 @@ fn reprocess(
 }
 
 /// The books the stored FIX rows fold into, a snapshot of every book each
-/// quarter of an hour: the complete books written over one table, and the
-/// deltas of every book flattened to `marketdata` rows over another. The
-/// FIX table is read once for each, in its own order.
+/// quarter of an hour: the complete books written over one table, every
+/// book's delta laid out as `marketdata` rows over a second and every book's
+/// events over a third. The FIX table is read once for each, in its own
+/// order.
 fn books(
     codec: &FixCodec,
     fix: &IcebergTable<LocalFolder>,
@@ -1616,7 +1133,7 @@ fn books(
     scratch: &Path,
     shape: &Run,
     probe: &Arc<Probe>,
-) -> (Stored, Stored) {
+) -> (Stored, Stored, Stored) {
     let row = MarketData::field().expect("the marketdata row");
 
     // Every book the fold answers; the table keeps the complete ones.
@@ -1632,7 +1149,7 @@ fn books(
         .with_filter("snapunix is not null")
         .expect("the complete books");
     let kept = snapshots
-        .overwrite_serie(SerieSource::from(folded), Some(&complete))
+        .overwrite_serie(Serie::from(folded), Some(&complete))
         .expect("the snapshots write");
     let snapshots_held = held(&snapshots);
     // The `where` keeps the incomplete books out, and the result counts them.
@@ -1647,49 +1164,104 @@ fn books(
         "the books no quarter closed are skipped"
     );
 
-    // Every order and quote a book applied, in the order applied.
-    let deltas = BookIterator::new(
-        walked_again(codec, fix, fix_row).map(|message| message.map(MarketData::from)),
-        QUARTER_MS,
-    )
-    .expect("the book fold")
-    .flat_map(|book| match book {
-        Ok(book) => book.deltas().cloned().map(Ok).collect::<Vec<_>>(),
-        Err(error) => vec![Err(error)],
-    });
-    let batches = MarketData::arrow_reader(deltas, Some(shape.batch_rows), Some(shape.batch_bytes))
-        .expect("the delta rows");
-    let flattened = counted(
-        SerieReader::from_arrow_reader(Some(&row), batches, ArrowCastOptions::new())
-            .expect("the delta stream"),
+    // Every order and quote a book applied, in the order applied; then
+    // every execution and snapshot control a book recorded, in the order
+    // recorded.
+    let (delta, delta_held) = laid_out(
+        codec,
+        (fix, fix_row),
+        (&scratch.join("delta"), &row),
+        shape,
         probe,
-        |probe| &probe.deltas,
+        |book| book.delta().cloned().collect(),
+        |probe| &probe.delta,
     );
-    let mut deltas = create(&scratch.join("deltas"), &row);
-    let flat = deltas
-        .overwrite_serie(SerieSource::from(flattened), Some(&writing(&deltas, shape)))
-        .expect("the deltas write");
-    let deltas_held = held(&deltas);
-    assert_eq!(
-        flat,
-        IOResult::new(deltas_held.rows, deltas_held.rows),
-        "the delta overwrite's result"
+    let (events, events_held) = laid_out(
+        codec,
+        (fix, fix_row),
+        (&scratch.join("events"), &row),
+        shape,
+        probe,
+        |book| book.events().cloned().collect(),
+        |probe| &probe.events,
     );
 
     if shape.verified {
         verify("books", &snapshots, &snapshots_held);
-        verify("deltas", &deltas, &deltas_held);
-        // Both tables read back as the market data they were written from:
-        // a snapshot a book, a delta the order or the quote a book applied.
-        for (table, held) in [(&snapshots, &snapshots_held), (&deltas, &deltas_held)] {
+        verify("delta", &delta, &delta_held);
+        verify("events", &events, &events_held);
+        // Every table reads back as the market data it was written from: a
+        // snapshot a book, a delta entry the order or the quote a book
+        // applied, an event the execution or the snapshot control a book
+        // recorded.
+        let kinds = |table: &IcebergTable<LocalFolder>, held: &Stored| -> Vec<MarketDataKind> {
             let read = MarketData::from_arrow_reader(stored(table, &row, None).into_arrow_reader())
                 .expect("the stored rows as market data")
                 .collect::<Result<Vec<MarketData>, _>>()
                 .expect("every stored row reads back");
             assert_eq!(read.len() as u64, held.rows);
-        }
+            read.iter().map(MarketData::marketdatakind).collect()
+        };
+        kinds(&snapshots, &snapshots_held);
+        assert!(
+            kinds(&delta, &delta_held)
+                .into_iter()
+                .all(|kind| matches!(kind, MarketDataKind::Order | MarketDataKind::Quotation)),
+            "the delta table holds orders and quotes alone"
+        );
+        assert!(
+            kinds(&events, &events_held)
+                .into_iter()
+                .all(|kind| matches!(kind, MarketDataKind::Execution | MarketDataKind::Book)),
+            "the events table holds executions and snapshot controls alone"
+        );
     }
-    (snapshots_held, deltas_held)
+    (snapshots_held, delta_held, events_held)
+}
+
+/// One list of every book the stored FIX rows fold into, laid out as
+/// `marketdata` rows and written over a table of its own at `target`: the
+/// FIX table read once more in its own order, folded on the books' grid,
+/// each book's `pick` taken in book order and counted by `counter` as it is
+/// written, so the table holds every item of every book exactly once.
+fn laid_out(
+    codec: &FixCodec,
+    (fix, fix_row): (&IcebergTable<LocalFolder>, &Field),
+    (target, row): (&Path, &Field),
+    shape: &Run,
+    probe: &Arc<Probe>,
+    pick: fn(&BookEvent) -> Vec<MarketData>,
+    counter: fn(&Probe) -> &AtomicU64,
+) -> (IcebergTable<LocalFolder>, Stored) {
+    let items = BookIterator::new(
+        walked_again(codec, fix, fix_row).map(|message| message.map(MarketData::from)),
+        QUARTER_MS,
+    )
+    .expect("the book fold")
+    .flat_map(move |book| match book {
+        Ok(book) => pick(&book).into_iter().map(Ok).collect::<Vec<_>>(),
+        Err(error) => vec![Err(error)],
+    });
+    let batches = MarketData::arrow_reader(items, Some(shape.batch_rows), Some(shape.batch_bytes))
+        .expect("the laid-out rows");
+    let rows = counted(
+        StreamChunkedSerie::from_arrow_reader(Some(row), batches, ArrowCastOptions::new())
+            .expect("the laid-out stream"),
+        probe,
+        counter,
+    );
+    let mut table = create(target, row);
+    let written = table
+        .overwrite_serie(Serie::from(rows), Some(&writing(&table, shape)))
+        .expect("the laid-out write");
+    let table_held = held(&table);
+    assert_eq!(
+        written,
+        IOResult::new(table_held.rows, table_held.rows),
+        "the {} overwrite's result",
+        target.display()
+    );
+    (table, table_held)
 }
 
 /// The bytes every file under `root` holds.
@@ -1730,13 +1302,14 @@ fn report(outcome: &Outcome) {
         outcome.streamed_in,
     );
     println!(
-        "scale_ulbridge: {} lines, {} messages, {} walked, {} books, {} deltas in {} batches ({} \
-         MiB of Arrow); {} MiB of tables on disk",
+        "scale_ulbridge: {} lines, {} messages, {} walked, {} books, {} delta entries, {} events \
+         in {} batches ({} MiB of Arrow); {} MiB of tables on disk",
         outcome.lines,
         outcome.messages,
         outcome.walked,
         outcome.books,
-        outcome.deltas,
+        outcome.delta,
+        outcome.events,
         outcome.batches,
         mib(outcome.arrow_bytes),
         mib(outcome.table_bytes),
@@ -1745,7 +1318,8 @@ fn report(outcome: &Outcome) {
         ("text", outcome.text),
         ("fix", outcome.fix),
         ("books", outcome.snapshots),
-        ("deltas", outcome.flattened),
+        ("delta", outcome.delta_table),
+        ("events", outcome.events_table),
     ] {
         if let Some(table) = table {
             println!(
@@ -1965,7 +1539,8 @@ fn the_capture_pipeline_lands_every_stage_in_order() {
     let text = outcome.text.expect("the text table");
     let fix = outcome.fix.expect("the FIX table");
     let snapshots = outcome.snapshots.expect("the books table");
-    let flattened = outcome.flattened.expect("the deltas table");
+    let delta = outcome.delta_table.expect("the delta table");
+    let events = outcome.events_table.expect("the events table");
 
     assert_eq!(
         text.rows,
@@ -2001,10 +1576,18 @@ fn the_capture_pipeline_lands_every_stage_in_order() {
         outcome.books
     );
     assert_eq!(
-        flattened.rows, outcome.deltas,
-        "the deltas table holds every delta the books applied"
+        delta.rows, outcome.delta,
+        "the delta table holds every order and quote the books applied"
     );
-    assert!(flattened.rows > 0, "{flattened:?}");
+    assert!(delta.rows > 0, "{delta:?}");
+    assert_eq!(
+        events.rows, outcome.events,
+        "the events table holds every execution and control the books recorded"
+    );
+    assert!(
+        events.rows > 0,
+        "the capture's executions are events: {events:?}"
+    );
 }
 
 #[test]
@@ -2043,10 +1626,16 @@ fn a_capture_of_any_size_streams_in_constant_memory() {
             "the FIX table holds every walked row"
         );
     }
-    if let Some(flattened) = outcome.flattened {
+    if let Some(delta) = outcome.delta_table {
         assert_eq!(
-            flattened.rows, outcome.deltas,
-            "the deltas table holds every delta"
+            delta.rows, outcome.delta,
+            "the delta table holds every delta entry"
+        );
+    }
+    if let Some(events) = outcome.events_table {
+        assert_eq!(
+            events.rows, outcome.events,
+            "the events table holds every event"
         );
     }
     let lines = outcome.lines;

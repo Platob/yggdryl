@@ -64,7 +64,7 @@
 //! to right: each [`Join`]'s left side is the plan's rows so far, its right
 //! side the source it names, read whole and held while the left streams
 //! through it - the engine and its semantics are
-//! [`SerieReader::join_with`](crate::SerieReader::join_with)'s. A bare
+//! [`StreamChunkedSerie::join_with`](crate::StreamChunkedSerie::join_with)'s. A bare
 //! `join` is `inner`. `on` is equalities joined by `and`, each a left term
 //! against a right term, the left bound against the rows so far and the
 //! right against the joined source; `using (a, b)` is the same column on
@@ -1598,13 +1598,18 @@ impl Plan {
     fn shaped_datatype(&self, root: &Field) -> Result<crate::DataType> {
         let dtype = root.dtype();
         let input = root.fields().iter().map(Field::name);
-        if super::filter_after_select(&self.filter, &self.selector, input) {
-            return self
-                .filter
-                .apply_datatype(&self.selector.apply_datatype(dtype)?);
+        let (early, late) = super::filter_phases(&self.filter, &self.selector, input);
+        let source = if early.is_always_true() {
+            dtype.clone()
+        } else {
+            early.apply_datatype(dtype)?
+        };
+        let selected = self.selector.apply_datatype(&source)?;
+        if late.is_always_true() {
+            Ok(selected)
+        } else {
+            late.apply_datatype(&selected)
         }
-        self.selector
-            .apply_datatype(&self.filter.apply_datatype(dtype)?)
     }
 
     /// The root the joins leave `root` at, left to right; `root` itself for
@@ -2097,8 +2102,8 @@ mod arrow {
     use crate::warehouse::{no_table, path_text};
     use crate::{
         ArrowCastOptions, ChunkedSerie, Error, Field, IOMedia, JoinOptions, JoinSide,
-        NamespaceValue, Object, ObjectValue, Result, SerieReader, SerieSource, SystemWarehouse,
-        Table, Url, Warehouse,
+        NamespaceValue, Object, ObjectValue, Result, StreamChunkedSerie, SystemWarehouse, Table,
+        Url, Warehouse,
     };
 
     /// Resolve against `warehouse`, else against the process's own, its
@@ -2344,7 +2349,7 @@ mod arrow {
                     let left_root = holder
                         .read_arrow_field(&options)
                         .map_err(|error| super::unreachable(target, error))?;
-                    let right_root = SerieReader::root_of(held.field())?;
+                    let right_root = StreamChunkedSerie::root_of(held.field())?;
                     let mut pushed = Self::new();
                     pushed.filter = self.left_pruning(&left_root);
                     if let Some(term) = crate::join::pushdown_term(
@@ -2501,14 +2506,15 @@ mod arrow {
             if self.joins.is_empty() {
                 return Ok(reader);
             }
-            let mut rows = SerieReader::from_arrow_reader(None, reader, ArrowCastOptions::new())?;
+            let mut rows =
+                StreamChunkedSerie::from_arrow_reader(None, reader, ArrowCastOptions::new())?;
             for join in &self.joins {
                 let held = match first.take() {
                     Some(held) => held,
                     None => join.held(warehouse)?,
                 };
                 rows = rows.join_with(
-                    SerieSource::Chunked(held),
+                    crate::Serie::from(held),
                     &join.keys,
                     join.how,
                     &JoinOptions::new(),
@@ -2542,23 +2548,13 @@ mod arrow {
         /// `order by`, `select`, `offset`, `limit`.
         fn shaped_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
             let reader = self.narrowed_arrow_reader(reader)?;
-            // A `where` over an alias runs after the projection that
-            // publishes it; every other `where` runs first, where it prunes.
-            let late = super::super::filter_after_select(
+            let schema = reader.schema();
+            let (early, late) = super::super::filter_phases(
                 &self.filter,
                 &self.selector,
-                reader
-                    .schema()
-                    .fields()
-                    .iter()
-                    .map(|field| field.name().as_str())
-                    .collect::<Vec<_>>(),
+                schema.fields().iter().map(|field| field.name().as_str()),
             );
-            let mut reader = if late {
-                reader
-            } else {
-                self.filter.apply_arrow_reader(reader)?
-            };
+            let mut reader = early.apply_arrow_reader(reader)?;
             let mut ordered = self.order_by.is_empty();
             if !ordered {
                 let input = reader.schema();
@@ -2570,9 +2566,7 @@ mod arrow {
                 }
             }
             reader = self.selector.apply_arrow_reader(reader)?;
-            if late {
-                reader = self.filter.apply_arrow_reader(reader)?;
-            }
+            reader = late.apply_arrow_reader(reader)?;
             if !ordered {
                 reader = self.sorted_arrow_reader(reader)?;
             }
@@ -2852,13 +2846,13 @@ mod arrow {
             kept.filter = self.filter.clone().not();
             reading.set_plan(kept)?;
             let remaining =
-                ChunkedSerie::from_serie_reader(crate::SerieReader::from_arrow_reader(
+                ChunkedSerie::from_chunked_stream(crate::StreamChunkedSerie::from_arrow_reader(
                     None,
                     holder.read_arrow_reader(&reading)?,
                     ArrowCastOptions::default(),
                 )?)?;
             holder.write_serie(
-                SerieSource::from(remaining),
+                crate::Serie::from(remaining),
                 crate::IOMode::Overwrite,
                 Some(options),
             )

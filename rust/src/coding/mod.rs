@@ -309,28 +309,32 @@ impl<H: IOBase> crate::IOMedia for Coding<H> {
     /// restored in the owned handle's media type, so decoding remains lazy.
     /// Only an opened or dirty view snapshots the decoded value it already
     /// owns.
-    fn read_arrow_reader(
-        &self,
-        options: &crate::media::RecordOptions,
-    ) -> Result<crate::arrow::BatchReader> {
+    fn read_serie(&self, options: Option<&crate::media::RecordOptions>) -> Result<crate::Serie> {
         use crate::media::IORecordOptions;
+
+        if crate::text::Format::from_media_type(&self.media_type).is_ok() {
+            return crate::iomedia::read_document(self, options);
+        }
+        let options = crate::iomedia::own_options(self, options)?;
+        let options = options.as_ref();
 
         // A container's leaves are each read as what their own names say, so
         // a coding over it has no one value to decode.
         if self.handle.is_container() {
-            return crate::IOMedia::read_arrow_reader(&self.handle, options);
+            return crate::IOMedia::read_serie(&self.handle, Some(options));
         }
         let owned = self.owned_presented_handle()?;
         let reader = match options {
             crate::media::RecordOptions::Ipc(ipc) => {
                 crate::ipc::read_owned_batch_reader(owned, options.field().as_ref(), ipc)?
             }
-            crate::media::RecordOptions::Text(text) => {
-                crate::text::arrow::read_owned_arrow_reader(owned, text)?
-            }
-            _ => return crate::IOMedia::read_arrow_reader(&owned, options),
+            _ => return crate::IOMedia::read_serie(&owned, Some(options)),
         };
-        options.limit_arrow_reader(options.apply_arrow_reader(reader, None)?)
+        crate::iomedia::landed_options(
+            options.limit_arrow_reader(options.apply_arrow_reader(reader, None)?)?,
+            options,
+        )
+        .map(crate::Serie::from)
     }
 }
 

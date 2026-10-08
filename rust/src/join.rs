@@ -2,9 +2,9 @@
 //! through the crate's own `Term`, `Filter` and `Selector` vocabulary.
 //!
 //! [`JoinKind`] is DuckDB's six kinds, [`JoinOptions`] the facts beside
-//! them, [`SerieSource`] what either side may be, and the engine here is what
+//! them, a [`Serie`] of any kind what either side may be, and the engine here is what
 //! [`Serie::join_with`], [`ChunkedSerie::join_with`] and
-//! [`SerieReader::join_with`] run: the keys bound once against each side's
+//! [`StreamChunkedSerie::join_with`] run: the keys bound once against each side's
 //! root and cast to their common datatype, the build side held - every chunk
 //! settled under the spill bound - and hashed through Arrow's row format
 //! where the keys ride it and through the values' own equality where they do
@@ -50,8 +50,7 @@ use crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE;
 use crate::serie::{Proof, land};
 use crate::spill::SpillOptions;
 use crate::{
-    ChunkedSerie, DataType, Error, Field, Result, Scalar, Serie, SerieReader, SerieSource,
-    StructType,
+    ChunkedSerie, DataType, Error, Field, Result, Scalar, Serie, StreamChunkedSerie, StructType,
 };
 
 /// The suffix a right column takes when its name collides with a left one.
@@ -551,11 +550,11 @@ impl JoinPlan {
     /// declared order ([`Serie::declared_order`]) opening with the join keys
     /// of its side, every key ascending, no key cast, and the row-format
     /// rung. A declaring stream counts: its batches are verified in order.
-    fn merges(&self, left: &SerieSource, right: &SerieSource) -> Result<bool> {
+    fn merges(&self, left: &Serie, right: &Serie) -> Result<bool> {
         if self.rung != KeyRung::Buffers || self.keys.iter().any(|key| key.cast) {
             return Ok(false);
         }
-        let declares = |source: &SerieSource, side: JoinSide| -> Result<bool> {
+        let declares = |source: &Serie, side: JoinSide| -> Result<bool> {
             let Some(declared) = source.declared_order()? else {
                 return Ok(false);
             };
@@ -611,7 +610,7 @@ impl JoinPlan {
     /// Run the join: the build side held and hashed - partitioned where it
     /// passes the spill bound - the probe side read batch by batch, the
     /// output one record column per batch.
-    pub(crate) fn run(mut self, left: SerieSource, right: SerieSource) -> Result<JoinOutput> {
+    pub(crate) fn run(mut self, left: Serie, right: Serie) -> Result<JoinOutput> {
         self.merge = self.merges(&left, &right)?;
         let (build, probe) = match self.build {
             JoinSide::Left => (left, right),
@@ -619,13 +618,13 @@ impl JoinPlan {
         };
         let plan = Arc::new(self);
         let mut chunks = Vec::new();
-        for chunk in build.into_reader()? {
+        for chunk in StreamChunkedSerie::from_serie(build)?.into_chunks() {
             let chunk = plan.options.settle(chunk?)?;
             if !chunk.is_empty() {
                 chunks.push(chunk);
             }
         }
-        let probe = probe.into_reader()?;
+        let probe = StreamChunkedSerie::from_serie(probe)?;
         let partitions = plan.partitions(&chunks)?;
         let (table, probe, grace) = if partitions == 1 {
             (
@@ -1351,7 +1350,7 @@ struct Grace {
     /// The build rows of every partition, emptied as each is joined.
     build: Vec<Spool>,
     /// The probe, until the first round reads it whole into `probe`.
-    source: Option<SerieReader>,
+    source: Option<StreamChunkedSerie>,
     /// The probe rows of every partition, emptied as each is joined.
     probe: Vec<Spool>,
     /// The next partition to join.
@@ -1407,7 +1406,12 @@ impl Spool {
 impl Grace {
     /// Scatter the build side's `chunks` over `count` partitions, the probe
     /// `source` left unread until the first round.
-    fn new(plan: &JoinPlan, count: usize, chunks: Vec<Serie>, source: SerieReader) -> Result<Self> {
+    fn new(
+        plan: &JoinPlan,
+        count: usize,
+        chunks: Vec<Serie>,
+        source: StreamChunkedSerie,
+    ) -> Result<Self> {
         let bound = plan.options.spill_bound()?;
         let mut grace = Self {
             converter: plan.converter()?,
@@ -1470,7 +1474,7 @@ impl Grace {
     fn next_round(&mut self, plan: &JoinPlan) -> Result<Option<(Vec<Serie>, Vec<Serie>)>> {
         if let Some(source) = self.source.take() {
             let side = plan.build.other();
-            for chunk in source {
+            for chunk in source.into_chunks() {
                 self.scatter(plan, side, &chunk?)?;
             }
         }
@@ -1490,7 +1494,7 @@ impl Grace {
 /// Where the probe rows of the round being joined come from.
 enum Probe {
     /// The probe side itself, one batch pulled per step.
-    Stream(SerieReader),
+    Stream(StreamChunkedSerie),
     /// One grace partition's probe chunks, written to disk.
     Spooled(std::vec::IntoIter<Serie>),
 }
@@ -1500,7 +1504,7 @@ impl Iterator for Probe {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Stream(reader) => reader.next().map(|chunk| chunk.map_err(Into::into)),
+            Self::Stream(reader) => reader.next_chunk().map(|chunk| chunk.map_err(Into::into)),
             Self::Spooled(chunks) => chunks.next().map(Ok),
         }
     }
@@ -1824,21 +1828,21 @@ impl std::iter::FusedIterator for JoinOutput {}
 
 /// Resolve and run one join over two sources.
 pub(crate) fn join(
-    left: SerieSource,
-    right: SerieSource,
+    left: Serie,
+    right: Serie,
     by: impl IntoJoinKeys,
     how: JoinKind,
     options: &JoinOptions,
 ) -> Result<JoinOutput> {
     let keys = by.into_join_keys()?;
     let plan = JoinPlan::compile(
-        left.root()?,
-        right.root()?,
+        left.record_root()?,
+        right.record_root()?,
         &keys,
         how,
         options,
-        left.memory_size(),
-        right.memory_size(),
+        left.held_memory_size(),
+        right.held_memory_size(),
     )?;
     plan.run(left, right)
 }

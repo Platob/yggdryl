@@ -14,8 +14,8 @@ use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::expression::{IntoOrderings, Ordering as OrderBy, Selector};
 use yggdryl::{
-    ArrowCastOptions, DataType, Error, Field, FieldPath, Scalar, Serie, SerieReader, SerieWindows,
-    SortOptions, StructType, TimeUnit, Timezone,
+    ArrowCastOptions, DataType, Error, Field, FieldPath, KeySeries, Scalar, Serie, SortOptions,
+    StreamChunkedSerie, StructType, TimeUnit, Timezone,
 };
 
 /// `field` without the order its root declares: what a sort leaves equal
@@ -270,107 +270,151 @@ fn into_filtered_keeps_what_the_mask_keeps_and_an_absent_mask_row_keeps_nothing(
 #[test]
 fn partition_by_groups_in_first_occurrence_order_and_slices_sorted_keys_zero_copy() {
     let prices = int64_column(vec![Some(1), Some(2), Some(3), Some(4)]);
-    let sorted_keys = utf8_column(vec![Some("a"), Some("a"), Some("b"), None]);
-    let groups = prices.partition_by(&sorted_keys).expect("groups");
-    assert_eq!(groups.len(), 3);
-    assert_eq!(groups[0].0, Scalar::from("a"));
-    assert_eq!(groups[0].1.rows().to_vec(), i64s(&[1, 2]));
-    assert_eq!(groups[1].0, Scalar::from("b"));
-    assert_eq!(groups[1].1.rows().to_vec(), i64s(&[3]));
-    assert_eq!(groups[2].0, Scalar::Null);
-    assert_eq!(groups[2].1.rows().to_vec(), i64s(&[4]));
-    // Sorted keys: every group is a slice sharing the column's buffer.
-    let whole = prices.require_arrow_array().expect("a column").to_data();
-    let held = whole.buffers()[0].as_ptr() as usize..whole.buffers()[0].as_ptr() as usize + 32;
-    for (_, group) in &groups {
-        let group_data = group.require_arrow_array().expect("a column").to_data();
-        assert!(held.contains(&(group_data.buffers()[0].as_ptr() as usize)));
+    for (keys, values) in [
+        (
+            utf8_column(vec![Some("a"), Some("a"), Some("b"), None]),
+            vec![
+                (one_cell("a"), i64s(&[1, 2])),
+                (one_cell("b"), i64s(&[3])),
+                (one_cell(Scalar::Null), i64s(&[4])),
+            ],
+        ),
+        (
+            utf8_column(vec![Some("b"), Some("b"), Some("a"), Some("a")]),
+            vec![
+                (one_cell("b"), i64s(&[1, 2])),
+                (one_cell("a"), i64s(&[3, 4])),
+            ],
+        ),
+    ] {
+        let groups = prices.partition_by(&keys).unwrap();
+        assert_eq!(groups.len(), values.len());
+        let whole = prices.require_arrow_array().unwrap().to_data();
+        let held = whole.buffers()[0].as_ptr() as usize..whole.buffers()[0].as_ptr() as usize + 32;
+        for (group, (key, rows)) in groups.iter().zip(values) {
+            assert_eq!(group.key(), &key);
+            let payload = group.rows().child("price").unwrap();
+            assert_eq!(payload.rows().as_ref(), rows.as_slice());
+            let data = payload.require_arrow_array().unwrap().to_data();
+            assert!(held.contains(&(data.buffers()[0].as_ptr() as usize)));
+        }
     }
-
     let keys = utf8_column(vec![Some("b"), Some("a"), Some("b"), Some("a")]);
-    let groups = prices.partition_by(&keys).expect("groups");
-    assert_eq!(groups.len(), 2);
-    assert_eq!(groups[0].0, Scalar::from("b"));
-    assert_eq!(groups[0].1.rows().to_vec(), i64s(&[1, 3]));
-    assert_eq!(groups[1].0, Scalar::from("a"));
-    assert_eq!(groups[1].1.rows().to_vec(), i64s(&[2, 4]));
-
-    // A run partitions the same way, by a run of keys.
-    let run = Serie::new(i64s(&[1, 2, 3, 4]));
-    let run_keys = Serie::new(vec![
-        Scalar::from("b"),
-        Scalar::from("a"),
-        Scalar::from("b"),
-        Scalar::Null,
-    ]);
-    let groups = run.partition_by(&run_keys).expect("groups");
-    assert_eq!(groups.len(), 3);
-    assert_eq!(groups[2].0, Scalar::Null);
-    assert_eq!(groups[2].1.rows().to_vec(), i64s(&[4]));
-
-    let refused = prices
-        .partition_by(&Serie::new(i64s(&[1])))
-        .unwrap_err()
-        .to_string();
+    let groups = prices.partition_by(&keys).unwrap();
+    assert_eq!(groups[0].key(), &one_cell("b"));
+    assert_eq!(
+        groups[0].rows().child("price").unwrap().rows().as_ref(),
+        i64s(&[1, 3])
+    );
+    assert_eq!(groups[1].key(), &one_cell("a"));
+    assert_eq!(
+        groups[1].rows().child("price").unwrap().rows().as_ref(),
+        i64s(&[2, 4])
+    );
+    assert!(Serie::new(i64s(&[1, 2])).partition_by(&keys).is_err());
     assert!(
-        refused.contains("1 keys cannot partition the 4 rows"),
-        "{refused}"
+        prices
+            .partition_by(&Serie::new(i64s(&[1])))
+            .unwrap_err()
+            .to_string()
+            .contains("1 keys cannot partition by the 4 rows")
     );
     assert!(
-        Serie::new(Vec::<Scalar>::new())
-            .partition_by(&Serie::new(Vec::new()))
-            .expect("no group")
+        int64_column(vec![])
+            .partition_by(&utf8_column(vec![]))
+            .unwrap()
             .is_empty()
     );
 }
 
 #[test]
-fn partition_by_paths_keys_a_record_by_the_run_of_its_cells() {
+fn key_paths_keep_their_projected_fields_metadata() {
+    // A code rides an extension name and a column may state its own
+    // metadata: the key record keeps both, so it lands under the key root.
+    let mut venue = DataType::utf8().required_field("venue");
+    venue
+        .insert_metadata("FIELD:partition", "true")
+        .expect("metadata");
+    let root = DataType::from(
+        StructType::from_fields([venue, DataType::Ccy.required_field("ccy")]).expect("a record"),
+    )
+    .required_field("trade");
+    let trades = Serie::from_scalars(
+        root,
+        [("XNAS", "USD"), ("XLON", "GBP"), ("XNAS", "USD")].map(|(venue, ccy)| {
+            Scalar::from_sequence([
+                Scalar::from(venue),
+                DataType::Ccy.scalar(Scalar::from(ccy)).expect("a currency"),
+            ])
+        }),
+    )
+    .expect("trades");
+    let paths: Vec<FieldPath> = ["venue", "ccy"]
+        .into_iter()
+        .map(|path| path.parse().expect("a path"))
+        .collect();
+    let groups = trades.partition_by(&paths).expect("groups");
+    assert_eq!(groups.len(), 2);
+    assert_eq!(
+        groups.key_field().fields()[0].get_metadata("FIELD:partition"),
+        Some("true")
+    );
+    assert_eq!(groups[0].rows().len(), 2);
+    assert_eq!(groups[1].rows().len(), 1);
+}
+
+#[test]
+fn key_paths_group_a_record_by_the_run_of_its_cells() {
     let quotes = quotes(&[("XNAS", 1), ("XNYS", 2), ("XNAS", 1), ("XNAS", 3)]);
     let venue: FieldPath = "venue".parse().expect("a path");
     let price: FieldPath = "price".parse().expect("a path");
     let groups = quotes
-        .partition_by_paths(&[venue.clone(), price.clone()])
+        .partition_by(&[venue.clone(), price.clone()])
         .expect("groups");
     assert_eq!(groups.len(), 3);
     assert_eq!(
-        groups[0].0,
+        *groups[0].key(),
         Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(1_i64)])
     );
-    assert_eq!(groups[0].1.len(), 2);
-    assert_eq!(groups[0].1.field(), quotes.field());
+    assert_eq!(groups[0].rows().len(), 2);
+    assert_eq!(Some(groups[0].field()), quotes.field());
     assert_eq!(
-        groups[1].0,
+        *groups[1].key(),
         Scalar::from_sequence([Scalar::from("XNYS"), Scalar::from(2_i64)])
     );
-    let by_venue = quotes.partition_by_paths(&[venue]).expect("groups");
+    let by_venue = quotes.partition_by(&[venue]).expect("groups");
     assert_eq!(by_venue.len(), 2);
-    assert_eq!(by_venue[0].0, Scalar::from_sequence([Scalar::from("XNAS")]));
-    assert_eq!(by_venue[0].1.len(), 3);
-    // One child is the same ask through `child`.
-    let by_child = quotes
-        .partition_by(quotes.child("venue").expect("a child"))
-        .expect("groups");
-    assert_eq!(by_child[0].0, Scalar::from("XNAS"));
-    assert_eq!(by_child[0].1, by_venue[0].1);
+    assert_eq!(
+        *by_venue[0].key(),
+        Scalar::from_sequence([Scalar::from("XNAS")])
+    );
+    assert_eq!(by_venue[0].rows().len(), 3);
+    // External cells are added: a name collision needs an alias.
+    assert!(
+        quotes
+            .partition_by(quotes.child("venue").unwrap())
+            .unwrap_err()
+            .to_string()
+            .contains("alias the key cell")
+    );
 
-    let refused = quotes.partition_by_paths(&[]).unwrap_err().to_string();
-    assert!(refused.contains("partitions by no path"), "{refused}");
-    let missing: FieldPath = "tier".parse().expect("a path");
     let refused = quotes
-        .partition_by_paths(&[missing])
+        .partition_by(&[] as &[FieldPath])
         .unwrap_err()
         .to_string();
     assert!(
-        refused.contains("tier reaches no column of quote"),
+        refused.contains("expected at least one column to partition by"),
         "{refused}"
     );
+    let missing: FieldPath = "tier".parse().expect("a path");
+    let refused = quotes.partition_by(&[missing]).unwrap_err().to_string();
+    assert!(refused.contains("tier"), "{refused}");
     let refused = Serie::new(i64s(&[1]))
-        .partition_by_paths(&[price])
+        .partition_by(&[price])
         .unwrap_err()
         .to_string();
     assert!(
-        refused.contains("a schema-free run partitions by no path"),
+        refused.contains("a schema-free run declares no field"),
         "{refused}"
     );
 }
@@ -582,7 +626,7 @@ fn every_layout_answers_every_verb_through_the_ladder() {
             column.scalar(3).expect("a row"),
             "{what}"
         );
-        let groups = column.partition_by(&column).expect(&what);
+        let groups = self_groups(&column, &column);
         assert_eq!(groups.len(), 3, "{what}");
         assert_eq!(groups[0].1.len(), 2, "{what}");
         let mut written = column.clone();
@@ -620,6 +664,65 @@ const ORDERINGS: [SortOptions; 4] = [
 /// Pin that `column` and the run of its own rows answer every ordering,
 /// uniqueness and grouping verb alike under all four orderings: one order,
 /// whichever rung of the ladder reads it.
+/// Self-keying checks every native value layout against an independent run oracle.
+fn self_groups(serie: &Serie, prototype: &Serie) -> Vec<(Scalar, Vec<Scalar>)> {
+    let field = prototype.require_field().unwrap();
+    let record = field.dtype().as_fields().is_some();
+    if serie.field().is_none() {
+        let mut groups: Vec<(Scalar, Vec<Scalar>)> = Vec::new();
+        for value in serie.rows().iter() {
+            let key = if record {
+                if value.is_null() {
+                    Scalar::from_sequence(vec![Scalar::Null; field.field_len()])
+                } else {
+                    value.clone()
+                }
+            } else {
+                Scalar::from_sequence([value.clone()])
+            };
+            // Source record absence stays distinct from a present null-cell record.
+            let position = groups
+                .iter()
+                .position(|(held, rows)| *held == key && rows[0].is_null() == value.is_null());
+            if let Some(position) = position {
+                groups[position].1.push(value.clone());
+            } else {
+                groups.push((key, vec![value.clone()]));
+            }
+        }
+        return groups;
+    }
+    let selector = if record {
+        yggdryl::Selector::new(
+            field
+                .fields()
+                .iter()
+                .map(|field| yggdryl::expression::Projection::column(field.name())),
+        )
+    } else {
+        yggdryl::Selector::from(yggdryl::FieldPath::new([yggdryl::FieldSegment::Field(
+            field.name().into(),
+        )]))
+    };
+    serie
+        .partition_by(selector)
+        .unwrap()
+        .into_iter()
+        .map(|item| {
+            let values = Serie::from(item.clone()).rows().into_owned();
+            let values = if record {
+                values
+            } else {
+                values
+                    .into_iter()
+                    .map(|row| row.get(0).unwrap().into_owned())
+                    .collect()
+            };
+            (item.key().clone(), values)
+        })
+        .collect()
+}
+
 fn agrees_with_its_run(column: &Serie) {
     let field = column.field().expect("a column").clone();
     let run = Serie::new(column.rows().into_owned());
@@ -672,14 +775,7 @@ fn agrees_with_its_run(column: &Serie) {
         run.into_unique().expect(&what).rows(),
         "{what}: into_unique"
     );
-    let groups = |serie: &Serie| -> Vec<(Scalar, Vec<Scalar>)> {
-        serie
-            .partition_by(serie)
-            .expect("grouped by itself")
-            .into_iter()
-            .map(|(key, rows)| (key, rows.rows().into_owned()))
-            .collect()
-    };
+    let groups = |serie: &Serie| self_groups(serie, column);
     assert_eq!(groups(column), groups(&run), "{what}: partition_by");
 }
 
@@ -725,7 +821,7 @@ fn a_float_column_reads_every_nan_payload_as_the_one_nan_its_rows_hold() {
             .all(|row| row.as_f64().is_some_and(f64::is_nan))
     );
     assert_eq!(sorted[7], Scalar::Null);
-    let groups = column.partition_by(&column).expect("grouped");
+    let groups = self_groups(&column, &column);
     assert_eq!(groups.len(), 6);
     // A uniquely held float column sorts in place to the same order.
     let mut held = column.clone();
@@ -875,10 +971,7 @@ fn a_registered_code_whose_column_pads_it_is_one_value_with_the_trimmed_code() {
     assert_eq!(stored.value(0), "USD\0");
     agrees_with_its_run(&currencies);
     assert_eq!(currencies.unique_count(), 2);
-    assert_eq!(
-        currencies.partition_by(&currencies).expect("grouped").len(),
-        2
-    );
+    assert_eq!(self_groups(&currencies, &currencies).len(), 2);
 }
 
 /// The record field `q{a: int64?, b: utf8}`.
@@ -1264,11 +1357,21 @@ fn venue_runs() -> Serie {
     ])
 }
 
-/// Each window as its key, its offset and its length.
-fn cuts(windows: &SerieWindows<'_>) -> Vec<(Scalar, usize, usize)> {
+/// Compare source positions, using output positions after a gather.
+fn cuts(windows: &KeySeries) -> Vec<(Scalar, usize, usize)> {
+    let mut position = 0;
     windows
         .iter()
-        .map(|(key, window)| (key, window.offset(), window.len()))
+        .map(|item| {
+            let key = if item.rows().is_null(0).unwrap() {
+                Scalar::Null
+            } else {
+                item.key().clone()
+            };
+            let offset = item.rownum().map_or(position, |row| row as usize);
+            position += item.rows().len();
+            (key, offset, item.rows().len())
+        })
         .collect()
 }
 
@@ -1319,7 +1422,7 @@ fn window_by_refuses(sorted: bool) {
             .to_string();
         assert!(refused.contains("in a key"), "{what}: {refused}");
         // A column the record does not hold, named; the binder's own text.
-        let root = SerieReader::root_of(serie.field().expect("a column")).expect("a root");
+        let root = StreamChunkedSerie::root_of(serie.field().expect("a column")).expect("a root");
         let unknown = "tier".parse::<Selector>().expect("a selector");
         let refused = serie.window_by(&unknown, sorted).unwrap_err().to_string();
         assert_eq!(refused, unknown.bind(&root).unwrap_err().to_string());
@@ -1342,7 +1445,7 @@ fn window_by_refuses(sorted: bool) {
             invalid_record(run.window_by("price", sorted).unwrap_err()),
             (
                 "$".to_owned(),
-                "a schema-free run windows by no term".to_owned()
+                "a schema-free run declares no field".to_owned()
             ),
             "sorted {sorted}"
         );
@@ -1364,7 +1467,7 @@ fn window_by_refuses(sorted: bool) {
         ])],
     )
     .expect("a pair");
-    let root = SerieReader::root_of(&field).expect("a root");
+    let root = StreamChunkedSerie::root_of(&field).expect("a root");
     let selector = "a".parse::<Selector>().expect("a selector");
     let refused = pair.window_by(&selector, sorted).unwrap_err().to_string();
     assert_eq!(refused, selector.bind(&root).unwrap_err().to_string());
@@ -1399,27 +1502,27 @@ fn window_by_cuts_runs_of_equal_adjacent_keys_in_row_order() {
             (one_cell("XNAS"), 3, 1),
         ]
     );
-    // Every window is a view over the serie; together they cover it, one
-    // after another, and no two side by side share a key.
+    // Owned items cover the source in order; adjacent keys differ.
     let mut next = 0;
-    for (key, window) in &drained {
-        assert!(std::ptr::eq(window.serie(), &quotes));
-        assert_eq!(window.offset(), next);
-        assert!(!window.is_empty());
-        next += window.len();
+    for item in &drained {
+        assert_eq!(item.rownum(), Some(next as u64));
+        assert!(!item.rows().is_empty());
+        next += item.rows().len();
         assert_eq!(
-            Scalar::from_sequence([window
-                .scalar(0)
-                .expect("a row")
-                .get(0)
-                .expect("venue")
-                .into_owned()]),
-            *key
+            item.key(),
+            &one_cell(
+                Serie::from((*item).clone())
+                    .scalar(0)
+                    .unwrap()
+                    .get(0)
+                    .unwrap()
+                    .into_owned()
+            )
         );
     }
     assert_eq!(next, quotes.len());
     for pair in drained.windows(2) {
-        assert_ne!(pair[0].0, pair[1].0);
+        assert_ne!(pair[0].key(), pair[1].key());
     }
 
     // Two terms key a two-cell run in selector order, the alias naming the
@@ -1540,12 +1643,12 @@ fn window_by_keys_consecutive_absent_rows_as_one_null_window() {
             .collect::<Vec<_>>(),
         vec![(0, 1), (1, 2), (3, 1)]
     );
-    let (key, _) = identity.iter().nth(1).expect("the absent window");
-    assert_eq!(key, Scalar::Null);
+    let item = identity.iter().nth(1).expect("the absent window");
+    assert_eq!(item.key(), &Scalar::from_sequence(vec![Scalar::Null; 3]));
 }
 
 #[test]
-fn window_by_over_sorted_keys_answers_what_partition_by_paths_answers() {
+fn window_by_over_sorted_keys_answers_what_partition_by_answers() {
     let negative_nan = f64::from_bits(f64::NAN.to_bits() | (1 << 63));
     let payload_nan = f64::from_bits(f64::NAN.to_bits() | 1);
     let venues: ArrayRef = Arc::new(StringArray::from(vec![
@@ -1578,25 +1681,25 @@ fn window_by_over_sorted_keys_answers_what_partition_by_paths_answers() {
         "venue".parse::<FieldPath>().expect("a path"),
         "px".parse().expect("a path"),
     ];
-    let groups = quotes.partition_by_paths(&paths).expect("groups");
+    let groups = quotes.partition_by(&paths).expect("groups");
     let windows = quotes.window_by("venue, px", false).expect("windows");
     let windows: Vec<_> = windows.iter().collect();
     // Three NaN payloads are one key, -0.0 and 0.0 two, the absent price
     // one of its own.
     assert_eq!(windows.len(), 6);
     assert_eq!(groups.len(), windows.len());
-    for ((group_key, group), (window_key, window)) in groups.iter().zip(&windows) {
-        assert_eq!(group_key, window_key);
-        assert_eq!(*group, window.into_serie());
+    for (group, window) in groups.iter().zip(&windows) {
+        assert_eq!(group.key(), window.key());
+        assert_eq!(group.rows(), window.rows());
     }
     // The whole serie keyed through the column alone agrees too.
     let px = quotes.child("px").expect("a child");
     let by_column = px.window_by("px", false).expect("windows");
-    let grouped = px.partition_by(px).expect("groups");
+    let grouped = px.partition_by("px").expect("groups");
     assert_eq!(by_column.len(), grouped.len());
-    for ((group_key, group), (window_key, window)) in grouped.iter().zip(&by_column) {
-        assert_eq!(&one_cell(group_key.clone()), &window_key);
-        assert_eq!(*group, window.into_serie());
+    for (group, window) in grouped.iter().zip(&by_column) {
+        assert_eq!(group.key(), window.key());
+        assert_eq!(group.rows(), window.rows());
     }
 }
 
@@ -1775,10 +1878,7 @@ fn reference_cuts(keys: &[Scalar], sorted: bool) -> (Vec<(Scalar, usize, usize)>
     (windows, order)
 }
 
-/// Pin `serie.window_by(by, sorted)` under both flags against the
-/// reference cut of `keys`, the key each row computes: the same keys,
-/// offsets and lengths, and the rows the windows' serie holds - the serie
-/// itself where nothing is gathered, else its rows taken once in key order.
+/// The owned key kinds answer the same cuts as the independent row oracle.
 fn cuts_as_its_values_do(serie: &Serie, by: &str, keys: &[Scalar]) {
     for sorted in [false, true] {
         let what = format!("{by} over {serie}, sorted {sorted}");
@@ -1786,24 +1886,36 @@ fn cuts_as_its_values_do(serie: &Serie, by: &str, keys: &[Scalar]) {
         let (expected, order) = reference_cuts(keys, sorted);
         assert_eq!(cuts(&windows), expected, "{what}");
         assert_eq!(windows.len(), expected.len(), "{what}");
-        let gathered = order.iter().enumerate().any(|(at, row)| at as u32 != *row);
-        assert_eq!(
-            std::ptr::eq(windows.serie(), serie),
-            !gathered,
-            "{what}: the serie is borrowed exactly when nothing is gathered"
-        );
-        assert_eq!(
-            without_order(windows.serie().field()),
-            serie.field().cloned(),
-            "{what}"
-        );
-        let taken = serie
-            .into_taken(&Serie::new(u32s(&order)))
-            .expect("the reference order");
-        assert_eq!(windows.serie().rows(), taken.rows(), "{what}");
-        for (_, window) in &windows {
-            assert!(std::ptr::eq(window.serie(), windows.serie()), "{what}");
+        let original = serie.rows();
+        let field = serie.require_field().unwrap();
+        let mut at = 0;
+        for item in &windows {
+            let remaining = item.serie_field().fields();
+            let expected: Vec<_> = order[at..at + item.rows().len()]
+                .iter()
+                .map(|row| {
+                    let value = &original[*row as usize];
+                    if field.dtype().as_fields().is_some() && value.is_null() {
+                        return Scalar::Null;
+                    }
+                    Scalar::from_sequence(remaining.iter().map(|child| {
+                        let index = field
+                            .fields()
+                            .iter()
+                            .position(|field| field.name() == child.name())
+                            .unwrap();
+                        value.get(index).unwrap().into_owned()
+                    }))
+                })
+                .collect();
+            assert_eq!(
+                item.rows().rows().as_ref(),
+                expected.as_slice(),
+                "{what}: payload"
+            );
+            at += item.rows().len();
         }
+        assert_eq!(at, serie.len(), "{what}");
     }
 }
 
@@ -1847,10 +1959,7 @@ fn window_by_sorted_over_keys_in_order_answers_the_unsorted_windows_over_the_ser
         let unsorted = quotes.window_by(by, false).expect("windows");
         let sorted = quotes.window_by(by, true).expect("windows");
         assert_eq!(cuts(&sorted), cuts(&unsorted), "{by}");
-        assert!(std::ptr::eq(sorted.serie(), &quotes), "{by}");
-        for (_, window) in &sorted {
-            assert!(std::ptr::eq(window.serie(), &quotes), "{by}");
-        }
+        assert!(sorted.iter().all(|item| item.rownum().is_some()), "{by}");
     }
     assert_eq!(
         cuts(&quotes.window_by("venue", true).expect("windows")),
@@ -1896,7 +2005,7 @@ fn window_by_sorted_over_keys_in_order_answers_the_unsorted_windows_over_the_ser
     let sorted = quotes.window_by("venue, px", true).expect("windows");
     assert_eq!(sorted.len(), 6);
     assert_eq!(cuts(&sorted), cuts(&unsorted));
-    assert!(std::ptr::eq(sorted.serie(), &quotes));
+    assert!(sorted.iter().all(|item| item.rownum().is_some()));
     // The prices alone, before the XNYS row brings 1.0 after the absent one.
     let px = quotes
         .child("px")
@@ -1908,12 +2017,12 @@ fn window_by_sorted_over_keys_in_order_answers_the_unsorted_windows_over_the_ser
         cuts(&sorted),
         cuts(&px.window_by("px", false).expect("windows"))
     );
-    assert!(std::ptr::eq(sorted.serie(), &px));
+    assert!(sorted.iter().all(|item| item.rownum().is_some()));
     assert_eq!(sorted.len(), 5);
 }
 
 #[test]
-fn window_by_sorted_gathers_the_rows_once_in_stable_key_order() {
+fn window_by_sorted_groups_source_pieces_in_stable_key_order() {
     let quotes = quote_column(vec![
         quote(Some("XNYS"), 1, 0),
         quote(Some("XNAS"), 2, 1),
@@ -1934,26 +2043,17 @@ fn window_by_sorted_gathers_the_rows_once_in_stable_key_order() {
             (one_cell(Scalar::Null), 4, 1),
         ]
     );
-    // The rows are gathered once into a serie the windows own, under the
-    // same field; every window views it.
-    assert!(!std::ptr::eq(windows.serie(), &quotes));
+    // Each item owns source slices in stable key order; the collection
+    // declares no order across items.
+    assert!(windows.iter().all(|item| item.rownum().is_none()));
+    assert!(!windows.field().as_sort().declares_order());
     let stable = Serie::new(u32s(&[1, 4, 0, 2, 3]));
     let taken = quotes.into_taken(&stable).expect("taken");
+    assert_eq!(Serie::from(windows.clone()).rows(), taken.rows());
+    let xnas = windows.iter().next().unwrap();
     assert_eq!(
-        without_order(windows.serie().field()),
-        quotes.field().cloned()
-    );
-    assert_eq!(windows.serie().rows(), taken.rows());
-    for (_, window) in &windows {
-        assert!(std::ptr::eq(window.serie(), windows.serie()));
-    }
-    let (_, xnas) = windows.iter().next().expect("a first window");
-    assert_eq!(
-        xnas.rows().to_vec(),
-        vec![
-            quotes.scalar(1).expect("a row"),
-            quotes.scalar(4).expect("a row")
-        ]
+        Serie::from(xnas.clone()).rows().as_ref(),
+        [quotes.scalar(1).unwrap(), quotes.scalar(4).unwrap()]
     );
     // It is the stable order taken, then cut in row order.
     assert_eq!(
@@ -2009,10 +2109,8 @@ fn window_by_sorted_gathers_the_rows_once_in_stable_key_order() {
     );
     assert_eq!(
         windows
-            .serie()
-            .rows()
             .iter()
-            .map(|row| row.get(1).expect("count").into_owned())
+            .flat_map(|item| item.rows().child("count").unwrap().rows().into_owned())
             .collect::<Vec<_>>(),
         i64s(&[3, 2, 1, 4])
     );
@@ -2784,7 +2882,7 @@ fn sort_by_refuses_by_name_before_any_row() {
             .to_string();
         assert!(refused.contains("unnest"), "{what}: {refused}");
         // A column the record does not hold: the binder's own text.
-        let root = SerieReader::root_of(serie.field().expect("a column")).expect("a root");
+        let root = StreamChunkedSerie::root_of(serie.field().expect("a column")).expect("a root");
         let unknown = "tier".parse::<Selector>().expect("a selector");
         assert_eq!(
             serie.sort_indices_by("tier desc").unwrap_err().to_string(),

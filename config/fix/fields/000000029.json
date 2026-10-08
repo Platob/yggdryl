@@ -7,6 +7,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2900",
       "description": "Identifies class or source of the LegSettlCurrency(675) value.",
       "display": "LegSettlCurrencyCodeSource"
@@ -20,6 +21,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2901",
       "description": "Identifies class or source of the SideCurrency(1154) value.",
       "display": "SideCurrencyCodeSource"
@@ -33,6 +35,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2902",
       "description": "Identifies class or source of the SideSettlCurrency(1155) value.",
       "display": "SideSettlCurrencyCodeSource"
@@ -46,6 +49,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2903",
       "description": "Identifies class or source of the SettlementAmountCurrency(1702) value.",
       "display": "SettlementAmountCurrencyCodeSource"
@@ -59,6 +63,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2904",
       "description": "Identifies class or source of the StrikeCurrency(947) value.",
       "display": "StrikeCurrencyCodeSource"
@@ -72,6 +77,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2905",
       "description": "Identifies class or source of the UnitOfMeasureCurrency(1716) value.",
       "display": "UnitOfMeasureCurrencyCodeSource"
@@ -85,6 +91,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2906",
       "description": "Identifies class or source of the PriceUnitOfMeasureCurrency(1717) value.",
       "display": "PriceUnitOfMeasureCurrencyCodeSource"
@@ -98,6 +105,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2907",
       "description": "Identifies class or source of the PriceQuoteCurrency(1524) value.",
       "display": "PriceQuoteCurrencyCodeSource"
@@ -111,6 +119,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2908",
       "description": "Identifies class or source of the LegStrikeCurrency(942) value.",
       "display": "LegStrikeCurrencyCodeSource"
@@ -124,6 +133,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2909",
       "description": "Identifies class or source of the LegUnitOfMeasureCurrency(1720) value.",
       "display": "LegUnitOfMeasureCurrencyCodeSource"
@@ -137,6 +147,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2910",
       "description": "Identifies class or source of the LegPriceUnitOfMeasureCurrency(1721) value.",
       "display": "LegPriceUnitOfMeasureCurrencyCodeSource"
@@ -150,6 +161,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2911",
       "description": "Identifies class or source of the LegPriceQuoteCurrency(1528) value.",
       "display": "LegPriceQuoteCurrencyCodeSource"
@@ -163,6 +175,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2912",
       "description": "Identifies class or source of the DerivativeStrikeCurrency(1262) value.",
       "display": "DerivativeStrikeCurrencyCodeSource"
@@ -176,6 +189,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2913",
       "description": "Identifies class or source of the DerivativeUnitOfMeasureCurrency(1722) value.",
       "display": "DerivativeUnitOfMeasureCurrencyCodeSource"
@@ -189,6 +203,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2914",
       "description": "Identifies class or source of the DerivativePriceUnitOfMeasureCurrency(1723) value.",
       "display": "DerivativePriceUnitOfMeasureCurrencyCodeSource"
@@ -202,6 +217,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2915",
       "description": "Identifies class or source of the DerivativePriceQuoteCurrency(1576) value.",
       "display": "DerivativePriceQuoteCurrencyCodeSource"
@@ -215,6 +231,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2916",
       "description": "Identifies class or source of the UnderlyingCurrency(318) value.",
       "display": "UnderlyingCurrencyCodeSource"
@@ -228,6 +245,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2917",
       "description": "Identifies class or source of the UnderlyingStrikeCurrency(941) value.",
       "display": "UnderlyingStrikeCurrencyCodeSource"
@@ -241,6 +259,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2918",
       "description": "Identifies class or source of the UnderlyingUnitOfMeasureCurrency(1718) value.",
       "display": "UnderlyingUnitOfMeasureCurrencyCodeSource"
@@ -254,6 +273,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2919",
       "description": "Identifies class or source of the UnderlyingPriceUnitOfMeasureCurrency(1719) value.",
       "display": "UnderlyingPriceUnitOfMeasureCurrencyCodeSource"
@@ -267,6 +287,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2920",
       "description": "Identifies class or source of the UnderlyingPriceQuoteCurrency(1526) value.",
       "display": "UnderlyingPriceQuoteCurrencyCodeSource"
@@ -280,6 +301,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2921",
       "description": "Identifies class or source of the UnderlyingNotionalCurrency(2615) value.",
       "display": "UnderlyingNotionalCurrencyCodeSource"
@@ -293,6 +315,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2922",
       "description": "Identifies class or source of the CommCurrency(479) value.",
       "display": "CommCurrencyCodeSource"
@@ -306,6 +329,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2923",
       "description": "Identifies class or source of the CommissionCurrency(2643) value.",
       "display": "CommissionCurrencyCodeSource"
@@ -319,6 +343,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2924",
       "description": "Identifies class or source of the CommissionUnitOfMeasureCurrency(2645) value.",
       "display": "CommissionUnitOfMeasureCurrencyCodeSource"
@@ -332,6 +357,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2925",
       "description": "Identifies class or source of the AllocCommissionCurrency(2657) value.",
       "display": "AllocCommissionCurrencyCodeSource"
@@ -345,6 +371,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2926",
       "description": "Identifies class or source of the AllocCommissionUnitOfMeasureCurrency(2659) value.",
       "display": "AllocCommissionUnitOfMeasureCurrencyCodeSource"
@@ -358,6 +385,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2927",
       "description": "Identifies class or source of the AllocSettlCurrency(736) value.",
       "display": "AllocSettlCurrencyCodeSource"
@@ -371,6 +399,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2928",
       "description": "Identifies class or source of the LegAllocSettlCurrency(1367) value.",
       "display": "LegAllocSettlCurrencyCodeSource"
@@ -384,6 +413,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2929",
       "description": "Identifies class or source of the CollateralCurrency(1705) value.",
       "display": "CollateralCurrencyCodeSource"
@@ -397,6 +427,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2930",
       "description": "Identifies class or source of the SideCollateralCurrency(2695) value.",
       "display": "SideCollateralCurrencyCodeSource"
@@ -410,6 +441,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2931",
       "description": "Identifies class or source of the CollateralReinvestmentCurrency(2843) value.",
       "display": "CollateralReinvestmentCurrencyCodeSource"
@@ -423,6 +455,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2932",
       "description": "Identifies class or source of the SideCollateralReinvestmentCurrency(2866) value.",
       "display": "SideCollateralReinvestmentCurrencyCodeSource"
@@ -436,6 +469,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2933",
       "description": "Identifies class or source of the TradeAllocCurrency(1847) value.",
       "display": "TradeAllocCurrencyCodeSource"
@@ -449,6 +483,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2934",
       "description": "Identifies class or source of the TradingCurrency(1245) value.",
       "display": "TradingCurrencyCodeSource"
@@ -462,6 +497,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2935",
       "description": "Identifies class or source of the LimitAmtCurrency(1634) value.",
       "display": "LimitAmtCurrencyCodeSource"
@@ -475,6 +511,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2936",
       "description": "Identifies class or source of the PosQtyUnitOfMeasureCurrency(1835) value.",
       "display": "PosQtyUnitOfMeasureCurrencyCodeSource"
@@ -488,6 +525,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2937",
       "description": "Identifies class or source of the PositionCurrency(1055) value.",
       "display": "PositionCurrencyCodeSource"
@@ -501,6 +539,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2938",
       "description": "Identifies class or source of the LegPosCurrency(1589) value.",
       "display": "LegPosCurrencyCodeSource"
@@ -514,6 +553,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2939",
       "description": "Identifies class or source of the RiskLimitCurrency(1532) value.",
       "display": "RiskLimitCurrencyCodeSource"
@@ -527,6 +567,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2940",
       "description": "Identifies class or source of the EntitlementAttribCurrency(1781) value.",
       "display": "EntitlementAttribCurrencyCodeSource"
@@ -540,6 +581,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2941",
       "description": "Identifies class or source of the ComplexOptPayoutCurrency(2122) value.",
       "display": "ComplexOptPayoutCurrencyCodeSource"
@@ -553,6 +595,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2942",
       "description": "Identifies class or source of the ComplexEventCurrencyOne(2124) value.",
       "display": "ComplexEventCurrencyOneCodeSource"
@@ -566,6 +609,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2943",
       "description": "Identifies class or source of the ComplexEventCurrencyTwo(2125) value.",
       "display": "ComplexEventCurrencyTwoCodeSource"
@@ -579,6 +623,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2944",
       "description": "Identifies class or source of the LegComplexOptPayoutCurrency(2226) value.",
       "display": "LegComplexOptPayoutCurrencyCodeSource"
@@ -592,6 +637,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2945",
       "description": "Identifies class or source of the LegComplexEventCurrencyOne(2233) value.",
       "display": "LegComplexEventCurrencyOneCodeSource"
@@ -605,6 +651,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2946",
       "description": "Identifies class or source of the LegComplexEventCurrencyTwo(2234) value.",
       "display": "LegComplexEventCurrencyTwoCodeSource"
@@ -618,6 +665,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2947",
       "description": "Identifies class or source of the UnderlyingComplexOptPayoutCurrency(2266) value.",
       "display": "UnderlyingComplexOptPayoutCurrencyCodeSource"
@@ -631,6 +679,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2948",
       "description": "Identifies class or source of the UnderlyingComplexEventCurrencyOne(2268) value.",
       "display": "UnderlyingComplexEventCurrencyOneCodeSource"
@@ -644,6 +693,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2949",
       "description": "Identifies class or source of the UnderlyingComplexEventCurrencyTwo(2269) value.",
       "display": "UnderlyingComplexEventCurrencyTwoCodeSource"
@@ -657,6 +707,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2950",
       "description": "Identifies class or source of the BenchmarkCurveCurrency(220) value.",
       "display": "BenchmarkCurveCurrencyCodeSource"
@@ -670,6 +721,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2951",
       "description": "Identifies class or source of the LegBenchmarkCurveCurrency(676) value.",
       "display": "LegBenchmarkCurveCurrencyCodeSource"
@@ -683,6 +735,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2952",
       "description": "Identifies class or source of the AgreementCurrency(918) value.",
       "display": "AgreementCurrencyCodeSource"
@@ -696,6 +749,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2953",
       "description": "Identifies class or source of the LegAgreementCurrency(2495) value.",
       "display": "LegAgreementCurrencyCodeSource"
@@ -709,6 +763,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2954",
       "description": "Identifies class or source of the FundingSourceCurrency(2847) value.",
       "display": "FundingSourceCurrencyCodeSource"
@@ -722,6 +777,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2955",
       "description": "Identifies class or source of the PayCollectCurrency(1709) value.",
       "display": "PayCollectCurrencyCodeSource"
@@ -735,6 +791,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2956",
       "description": "Identifies class or source of the PostTradePaymentCurrency(2818) value.",
       "display": "PostTradePaymentCurrencyCodeSource"
@@ -747,6 +804,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2957",
       "description": "Reference to the first or second currency or digital asset in Symbol(55) for FX-style trading.",
       "display": "SymbolPositionNumber"
@@ -759,6 +817,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2958",
       "description": "Reference to the first or second currency or digital asset in LegSymbol(600) for FX-style trading.",
       "display": "LegSymbolPositionNumber"
@@ -771,6 +830,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2959",
       "description": "Reference to the first or second currency or digital asset in UnderlyingSymbol(311) for FX-style trading.",
       "display": "UnderlyingSymbolPositionNumber"
@@ -784,6 +844,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2960",
       "description": "Identifies the class or source of the SettlPriceUnitOfMeasureCurrency(1887) value.",
       "display": "SettlPriceUnitOfMeasureCurrencyCodeSource"
@@ -796,6 +857,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "2961",
       "description": "Indicates whether the trade or transaction was executed anonymously.",
       "display": "AnonymousTradeIndicator"
@@ -808,6 +870,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2962",
       "description": "May be used to generically assist in disambiguating an instrument where the security identifier and core reference data attributes are not sufficient to uniquely identify the instrument. The values used are bilaterally agreed.",
       "display": "SecurityReferenceDataSupplement"
@@ -821,6 +884,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "multijurisdictionreportingindicatorcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2963",
       "description": "Indicate whether a trade is eligible to be reported to more than one regulatory jurisdictions, e.g. due to overlapping reporting rules that require reporting to different jurisdictions.",
       "display": "MultiJurisdictionReportingIndicator"
@@ -834,6 +898,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "selfmatchpreventioninstructioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2964",
       "description": "Indicate the instruction for self-match prevention when the incoming (aggressive) order has the same SelfMatchPreventionID(2362) as a resting (passive) order.",
       "display": "SelfMatchPreventionInstruction"
@@ -846,6 +911,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2965",
       "description": "Unique identifier of the SettlementStatusRequest(35=EC).",
       "display": "SettlStatusRequestID"
@@ -859,6 +925,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "settlstatusrequeststatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2966",
       "description": "Status of the SettlementStatusRequest(35=EC) message being responded to.",
       "display": "SettlStatusRequestStatus"
@@ -871,6 +938,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2967",
       "description": "Unique identifier of the SettlementStatusReport(35=EE).",
       "display": "SettlStatusReportID"
@@ -883,6 +951,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2968",
       "description": "The settlement status of the identified trade.",
       "display": "SettlStatus"
@@ -895,6 +964,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2969",
       "description": "Used to provide additional reason or qualify the reason for the settlement status specified in SettlStatus(2968).",
       "display": "SettlStatusReason"
@@ -907,6 +977,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2970",
       "description": "Text description associated with SettlStatusReason(2969).",
       "display": "SettlStatusReasonText"
@@ -919,6 +990,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Length",
       "FIX:tag": "2971",
       "description": "Byte length of encoded (non-ASCII characters) EncodedSettlStatusReasonText(2972) field.",
       "display": "EncodedSettlStatusReasonTextLen"
@@ -931,6 +1003,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "data",
       "FIX:tag": "2972",
       "description": "Encoded (non-ASCII characters) representation of the SettlStatusReasonText(2970) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the SettlStatusReasonText(2970) field.",
       "display": "EncodedSettlStatusReasonText"
@@ -944,6 +1017,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "settlstatusreportstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2973",
       "description": "Status of the report being responded to.",
       "display": "SettlStatusReportStatus"
@@ -956,6 +1030,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2974",
       "description": "Identifier for quantity subgroup assigned by the clearinghouse.",
       "display": "AllocGroupSubQtyID"
@@ -968,6 +1043,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2975",
       "description": "Indicates number of subgroups in an allocation group.",
       "display": "NoAllocGroupSubQtys"
@@ -982,6 +1058,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2976",
       "description": "Total quantity in the subgroup of an allocation group.",
       "display": "AllocGroupSubQty"
@@ -996,6 +1073,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2977",
       "description": "Change in quantity in the subgroup of an allocation group.",
       "display": "AllocGroupSubQtyOffset"
@@ -1010,6 +1088,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "2978",
       "description": "Remaining quantity in the subgroup of an allocation group.",
       "display": "AllocGroupRemainingSubQty"
@@ -1022,6 +1101,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2979",
       "description": "Indicates number of trade attributes used to define a subgroup in an allocation group.",
       "display": "NoAllocGroupSubQtyAttributes"
@@ -1035,6 +1115,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "allocgroupsubqtytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2980",
       "description": "Type of trade attribute defining a subgroup in an allocation group.",
       "display": "AllocGroupSubQtyType"
@@ -1047,6 +1128,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2981",
       "description": "Value of the trade attribute defining a subgroup in an allocation group.",
       "display": "AllocGroupSubQtyValue"
@@ -1060,6 +1142,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "timeunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2982",
       "description": "Time unit associated with the minimum frequency of the instrument maturity intervals.",
       "display": "MaturityFrequencyUnit"
@@ -1072,6 +1155,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2983",
       "description": "Time unit multiplier for the minimum frequency of the instrument maturity intervals.",
       "display": "MaturityFrequencyPeriod"
@@ -1085,6 +1169,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "timeunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2984",
       "description": "Time unit associated with the minimum frequency of the instrument maturity intervals.",
       "display": "UnderlyingMaturityFrequencyUnit"
@@ -1097,6 +1182,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2985",
       "description": "Time unit multiplier for the minimum frequency of the instrument maturity intervals.",
       "display": "UnderlyingMaturityFrequencyPeriod"
@@ -1110,6 +1196,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "timeunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "2986",
       "description": "Time unit associated with the minimum frequency of the instrument maturity intervals.",
       "display": "LegMaturityFrequencyUnit"
@@ -1122,6 +1209,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "2987",
       "description": "Time unit multiplier for the minimum frequency of the instrument maturity intervals.",
       "display": "LegMaturityFrequencyPeriod"
@@ -1134,6 +1222,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2988",
       "description": "Unique identifier for the SecurityRiskMetricsReport(35=EG) message.",
       "display": "SecurityRiskMetricsReportID"
@@ -1146,6 +1235,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2989",
       "description": "Describes a group of related instruments for which risk metrics are provided.",
       "display": "RiskMetricsSecurityGroup"
@@ -1158,6 +1248,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "2990",
       "description": "Describes a sub-group of a group identified by RiskMetricsSecurityGroup(2989).",
       "display": "RiskMetricsSecuritySubGroup"
@@ -1172,6 +1263,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2991",
       "description": "Bid price of the underlying instrument.",
       "display": "UnderlyingBidPx"
@@ -1186,6 +1278,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "2992",
       "description": "Offer price of the underlying instrument.",
       "display": "UnderlyingOfferPx"
@@ -1199,6 +1292,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "metricscalculationpricesourcecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2993",
       "description": "Specifies the source of the price(s) of the security used in the calculation of the metrics or analytics data.",
       "display": "MetricsCalculationPriceSource"
@@ -1212,6 +1306,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "assetvaluationmodelcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "2994",
       "description": "Identifies the model used for asset valuation or pricing calculations.",
       "display": "AssetValuationModel"
@@ -1224,6 +1319,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "2995",
       "description": "Number of instruments with security risk metrics data.",
       "display": "NoSecurityRiskMetrics"
@@ -1236,6 +1332,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2996",
       "description": "The rate of change of Delta over time.",
       "display": "Gamma"
@@ -1248,6 +1345,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2997",
       "description": "The security's value rate of change in response to a 1% change in (risk-free) interest rate. Measures the security's sensitivity to interest rate change.",
       "display": "Rho"
@@ -1260,6 +1358,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2998",
       "description": "The security's price rate of change in relation to passage of time. Also known as \"time decay\".",
       "display": "Theta"
@@ -1272,6 +1371,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "2999",
       "description": "The security's price sensitivity to change in volatility of the underlying asset price.",
       "display": "Vega"

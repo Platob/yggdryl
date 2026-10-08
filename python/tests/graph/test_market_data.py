@@ -201,9 +201,9 @@ def test_the_field_is_the_lifted_marketdata_struct() -> None:
     assert names.index("marketdatakind") == 15
     assert names[16] == "marketdatatype"
     # The strike is the market fact after the ticker, before the metadata.
-    assert len(names) == 63
-    assert names.index("strikepx") == names.index("ticker") + 1 == 48
-    assert names[49] == "metadata"
+    assert len(names) == 65
+    assert names.index("strikepx") == names.index("ticker") + 1 == 49
+    assert names[50] == "metadata"
     assert str(field["strikepx"].dtype) == "decimal"
     for name in (
         "currunix",
@@ -220,7 +220,8 @@ def test_the_field_is_the_lifted_marketdata_struct() -> None:
         "identifiers",
         "bookscope",
         "alive",
-        "deltas",
+        "delta",
+        "events",
         "executions",
         "bidlimits",
         "asklimits",
@@ -238,6 +239,7 @@ def test_the_field_is_the_lifted_marketdata_struct() -> None:
         "limits",
         "userids",
         "marketoperationid",
+        "deltas",
         "spread",
     ):
         assert retired not in names, retired
@@ -352,7 +354,7 @@ def test_a_row_states_the_stored_cross_code_and_nothing_else() -> None:
 
 
 # The root's nested columns: what a flat view drops.
-NESTED = ("alive", "deltas", "executions", "bidlimits", "asklimits")
+NESTED = ("alive", "delta", "events", "executions", "bidlimits", "asklimits")
 ISIN = "US0378331005"
 
 
@@ -493,14 +495,90 @@ def test_the_plans_the_views_are() -> None:
         f"select * exclude ({nested}), securityids['isin'] as isin "
         "where marketdatakind = 'ORDR'"
     )
-    # A book states its deltas - a complete one its alive entries beside
-    # them - where a snapshot control states neither.
+    # A book states its delta and its events - a complete one its alive
+    # entries beside them - where a snapshot control states neither.
     assert str(graph.MarketData.plan("books")) == (
-        "select * exclude (executions) where marketdatakind = 'BOOK' and deltas is not null"
+        "select * exclude (executions) where marketdatakind = 'BOOK' "
+        "and (delta is not null or events is not null)"
     )
     # Applying a view is applying its plan.
     plan = graph.MarketData.plan("trades")
     assert plan.apply_arrow_reader(_stream()).read_all().equals(_view("trades"))
+
+
+def test_the_delta_and_the_events_of_held_books_are_laid_out_by_kind() -> None:
+    def order(clock: int, code: str, side: str) -> graph.OrderEvent:
+        return graph.OrderEvent(
+            clock, crosscode=code, side=side, price=D("101"), quantity=1, ticker="ACME", state="NEW"
+        )
+
+    fill = graph.ExecutionEvent(CLOCK + 2, crosscode="E-1", side="BUYS", lastqty=1, ticker="ACME")
+    # Three books, one per instant - the fill's an event-only delta book -
+    # laid out as rows once and held: what a table of books holds.
+    books = list(graph.BookIterator([order(CLOCK, "B-1", "BUYS"), order(CLOCK + 1, "A-1", "SELL"), fill]))
+    rows = graph.MarketData.arrow_reader(books).read_all()
+    assert rows.num_rows == 3
+
+    def count(serie: Any) -> int:
+        return int(serie.read_all().num_rows)
+
+    # The two orders are the books' delta, the fill their events.
+    assert count(graph.MarketData.delta_serie(rows)) == 2
+    assert count(graph.MarketData.delta_serie(rows, "ORDR")) == 2
+    assert count(graph.MarketData.delta_serie(rows, "QUOT")) == 0
+    assert count(graph.MarketData.events_serie(rows)) == 1
+    assert count(graph.MarketData.events_serie(rows, "EXEC")) == 1
+    assert count(graph.MarketData.events_serie(rows, "BOOK")) == 0
+    laid_out = graph.MarketData.events_serie(rows).read_all()
+    assert laid_out.column("crosscode").to_pylist() == ["8:1:E-1"]
+    assert laid_out.column("marketdatakind").to_pylist() == [int(MarketDataKind.EXEC)]
+    # A snapshot control replacing the membership is an event of the
+    # complete book it made, laid out under `BOOK`.
+    control = graph.SnapshotEvent.snapshot(graph.OrderEvent(CLOCK + 3, ticker="ACME"))
+    walked = list(graph.BookIterator([order(CLOCK, "B-1", "BUYS"), control]))
+    assert [len(book.controls) for book in walked] == [0, 1]
+    controlled = graph.MarketData.arrow_reader(walked).read_all()
+    assert count(graph.MarketData.events_serie(controlled, "BOOK")) == 1
+    assert count(graph.MarketData.events_serie(controlled, "EXEC")) == 0
+    assert count(graph.MarketData.delta_serie(controlled)) == 1
+    # A kind no spelling reads is refused at the door.
+    with pytest.raises(ValueError):
+        graph.MarketData.delta_serie(rows, "NOPE")
+
+
+def test_a_book_row_states_no_sources_while_its_delta_and_events_rows_do() -> None:
+    lines = [f"018bcfe5-6800-7000-8000-00000000000{n}" for n in (1, 2, 3)]
+    facts: dict[str, Any] = {"price": D("101"), "quantity": 1, "ticker": "ACME", "state": "NEW"}
+    order = graph.OrderEvent(CLOCK, crosscode="B-1", side="BUYS", srcuuids=[lines[0]], **facts)
+    quote = graph.QuoteEvent(CLOCK, crosscode="Q-1", side="BUYS", srcuuids=[lines[1]], **facts)
+    fill = graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUYS", lastqty=1, ticker="ACME", srcuuids=[lines[2]])
+    book = graph.BookEvent(CLOCK, "ACME").with_operations([order, quote, fill])
+    # A book states no sources; the events it holds keep theirs.
+    assert book.srcuuids == []
+    assert [[source.as_py() for source in entry.srcuuids] for entry in book.delta] == [[lines[0]], [lines[1]]]
+
+    rows = graph.MarketData.arrow_reader([book]).read_all()
+    assert rows.column("srcuuids").to_pylist() == [None]
+    (row,) = rows.to_pylist()
+    # An alive entry writes none: the delta row that applied it does.
+    assert [entry["srcuuids"] for entry in row["alive"]] == [None, None]
+    assert all(entry["srcuuids"] is not None for entry in row["delta"] + row["events"])
+
+    # Read back, the book is the one written and states no source, nor do
+    # its alive entries.
+    (read,) = graph.MarketData.from_arrow_reader(rows)
+    held = read.as_book_event()
+    assert held is not None and held.curruuid == book.curruuid and held.srcuuids == []
+    assert [entry.curruuid for entry in held.alive] == [entry.curruuid for entry in book.alive]
+    assert [entry.srcuuids for entry in held.alive] == [[], []]
+
+    # The delta and the events laid out of the book rows carry every source.
+    def sources(serie: Any) -> list[list[str]]:
+        laid_out = graph.MarketData.from_arrow_reader(serie.read_all())
+        return [[source.as_py() for source in entry.srcuuids] for entry in laid_out]
+
+    assert sources(graph.MarketData.delta_serie(rows)) == [[lines[0]], [lines[1]]]
+    assert sources(graph.MarketData.events_serie(rows)) == [[lines[2]]]
 
 
 def test_an_identifier_column_is_a_sorted_map_from_its_key_to_its_value() -> None:

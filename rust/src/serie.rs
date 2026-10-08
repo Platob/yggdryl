@@ -131,8 +131,9 @@ use arrow_array::ArrayRef;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::expression::FieldSegment;
+use crate::shared_stream::SharedStream;
 use crate::value::{Children, ColumnRows, NestedValue, SerieValue, Value};
-use crate::{DataType, Field, FieldPath, Result, Scalar};
+use crate::{ChunkedSerie, DataType, Field, FieldPath, Result, Scalar, StreamSerie};
 
 // ------------------------------------------------------------------------
 // The machinery every leaf reads and writes through, declared before the
@@ -200,12 +201,15 @@ macro_rules! serie_leaf {
     };
 }
 
+pub(crate) use serie_leaf;
+
 pub(crate) mod arrow;
+pub use arrow::{IntoStreamChunks, StreamChunkedSerie, StreamChunks};
 pub(crate) use arrow::{
     Proof, Resolved, canonical_rows, default_array, default_dtype_array, from_canonical_rows, land,
     land_batch, land_planned, land_planned_under, land_resolved, land_under, proven_cell,
+    require_record_rows,
 };
-pub use arrow::{SerieReader, SerieReaderWindows};
 mod boolean;
 mod bytes;
 mod datatype;
@@ -216,11 +220,15 @@ mod lit;
 mod mapping;
 mod null;
 mod order;
-pub(crate) use order::{compare_values, require_indexable, spelled, stored_order_is_value_order};
+mod partition;
+pub(crate) use order::{compare_values, spelled, stored_order_is_value_order};
+pub use partition::PartitionOptions;
+pub(crate) use partition::{Closing, Partitions};
 mod primitive;
 mod runend;
 mod sequence;
 mod spill;
+mod stream;
 mod string;
 mod structure;
 mod union;
@@ -623,6 +631,45 @@ pub enum Serie {
     Geometry(Arc<BinarySerie>),
     /// A column of geospatial features on a sphere, as Well-Known Binary.
     Geography(Arc<BinarySerie>),
+    /// Columns of one field held apart - a chunked array, or a table - read
+    /// across the chunks as one column.
+    Chunked(Arc<ChunkedSerie>),
+    /// Rows of one record root, each a value, pulled once and shared by
+    /// every clone: [`SharedStream`] states the rules.
+    Stream(Arc<SharedStream<StreamSerie>>),
+    /// Record columns of one root, pulled once and shared by every clone.
+    StreamChunked(Arc<SharedStream<StreamChunkedSerie>>),
+    /// One key beside its payload, read as global record rows.
+    Key(Arc<crate::KeySerie>),
+    /// Held keyed items, read as their global rows in item order.
+    Keys(Arc<crate::KeySeries>),
+    /// Lazy keyed items, retaining their layout and boundaries when shared.
+    StreamKey(Arc<SharedStream<crate::StreamKeySerie>>),
+    /// A retained native ipc scan, decoded only on demand.
+    Ipc(Arc<crate::ipc::IpcSerie>),
+    #[cfg(feature = "parquet")]
+    /// A retained native parquet scan, decoded only on demand.
+    Parquet(Arc<crate::parquet::ParquetSerie>),
+    /// A retained native avro scan, decoded only on demand.
+    Avro(Arc<crate::avro::AvroSerie>),
+    /// A retained native csv scan, decoded only on demand.
+    Csv(Arc<crate::csv::CSVSerie>),
+    /// A retained native text scan, decoded only on demand.
+    Text(Arc<crate::text::TextSerie>),
+    /// A retained native excel scan, decoded only on demand.
+    Excel(Arc<crate::excel::ExcelSerie>),
+    /// A retained native xmla scan, decoded only on demand.
+    Xmla(Arc<crate::xmla::XmlaSerie>),
+    #[cfg(feature = "iceberg")]
+    /// A retained native iceberg scan, decoded only on demand.
+    IcebergTable(Arc<crate::iceberg::IcebergTableSerie>),
+    /// A retained native warehouse scan, decoded only on demand.
+    WarehouseTable(Arc<crate::warehouse::WarehouseTableSerie>),
+    #[cfg(feature = "http")]
+    /// A retained native http scan, decoded only on demand.
+    Http(Arc<crate::http::HttpSerie>),
+    /// A retained native media scan, decoded only on demand.
+    GenericMedia(Arc<crate::media::GenericMediaSerie>),
 }
 
 // A run's window - one shared `Arc<[Scalar]>`, where it starts, how long -
@@ -636,7 +683,7 @@ const _: () = assert!(size_of::<Serie>() == 40);
 /// field states what a run answers instead rather than pretending it has one.
 macro_rules! column {
     ($self:ident, $run:ident => $bare:expr, $column:ident => $answer:expr) => {
-        match $self {
+        match $self.held_leaf() {
             Serie::Run($run) => $bare,
             Serie::Null($column) => $answer,
             Serie::Lit($column) => $answer,
@@ -728,6 +775,28 @@ macro_rules! column {
             Serie::Variant($column) => $answer,
             Serie::Geometry($column) => $answer,
             Serie::Geography($column) => $answer,
+            Serie::Chunked(_)
+            | Serie::Stream(_)
+            | Serie::StreamChunked(_)
+            | Serie::Key(_)
+            | Serie::Keys(_)
+            | Serie::StreamKey(_)
+            | Serie::Ipc(_)
+            | Serie::Avro(_)
+            | Serie::Csv(_)
+            | Serie::Text(_)
+            | Serie::Excel(_)
+            | Serie::Xmla(_)
+            | Serie::WarehouseTable(_)
+            | Serie::GenericMedia(_) => {
+                unreachable!("a held leaf is never a composite")
+            }
+            #[cfg(feature = "parquet")]
+            Serie::Parquet(_) => unreachable!("a held leaf is never a composite"),
+            #[cfg(feature = "iceberg")]
+            Serie::IcebergTable(_) => unreachable!("a held leaf is never a composite"),
+            #[cfg(feature = "http")]
+            Serie::Http(_) => unreachable!("a held leaf is never a composite"),
         }
     };
 }
@@ -739,7 +808,7 @@ macro_rules! column {
 /// then copies the rows once.
 macro_rules! column_mut {
     ($self:ident, $run:ident => $bare:expr, $column:ident => $answer:expr) => {
-        match $self {
+        match $self.held_leaf_mut() {
             Serie::Run($run) => $bare,
             Serie::Null(held) => {
                 let $column = Arc::make_mut(held);
@@ -1101,6 +1170,28 @@ macro_rules! column_mut {
                 let $column = Arc::make_mut(held);
                 $answer
             }
+            Serie::Chunked(_)
+            | Serie::Stream(_)
+            | Serie::StreamChunked(_)
+            | Serie::Key(_)
+            | Serie::Keys(_)
+            | Serie::StreamKey(_)
+            | Serie::Ipc(_)
+            | Serie::Avro(_)
+            | Serie::Csv(_)
+            | Serie::Text(_)
+            | Serie::Excel(_)
+            | Serie::Xmla(_)
+            | Serie::WarehouseTable(_)
+            | Serie::GenericMedia(_) => {
+                unreachable!("a held leaf is never a composite")
+            }
+            #[cfg(feature = "parquet")]
+            Serie::Parquet(_) => unreachable!("a held leaf is never a composite"),
+            #[cfg(feature = "iceberg")]
+            Serie::IcebergTable(_) => unreachable!("a held leaf is never a composite"),
+            #[cfg(feature = "http")]
+            Serie::Http(_) => unreachable!("a held leaf is never a composite"),
         }
     };
 }
@@ -2389,6 +2480,18 @@ fn splice_run(run: &mut Run, range: Range<usize>, rows: Vec<Scalar>) {
 
 impl fmt::Debug for Serie {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(media) = self.media_state() {
+            return fmt::Debug::fmt(media, formatter);
+        }
+        match self {
+            Self::Chunked(chunked) => return fmt::Debug::fmt(chunked.as_ref(), formatter),
+            Self::Stream(stream) => return fmt::Debug::fmt(stream.as_ref(), formatter),
+            Self::StreamChunked(stream) => return fmt::Debug::fmt(stream.as_ref(), formatter),
+            Self::Key(key) => return fmt::Debug::fmt(key.as_ref(), formatter),
+            Self::Keys(keys) => return fmt::Debug::fmt(keys.as_ref(), formatter),
+            Self::StreamKey(stream) => return fmt::Debug::fmt(stream.as_ref(), formatter),
+            _ => {}
+        }
         column!(
             self,
             run => fmt::Debug::fmt(run, formatter),
@@ -2399,6 +2502,9 @@ impl fmt::Debug for Serie {
 
 impl fmt::Display for Serie {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Self::Chunked(chunked) = self {
+            return fmt::Display::fmt(chunked.as_ref(), formatter);
+        }
         column!(
             self,
             run => fmt::Display::fmt(run, formatter),
@@ -2418,6 +2524,18 @@ impl Serie {
     /// A run is schema free: its rows are whatever they are, and its
     /// datatype is agreed back out of them rather than read off a field.
     pub fn field(&self) -> Option<&Field> {
+        if let Some(media) = self.media_state() {
+            return Some(&media.field);
+        }
+        match self {
+            Self::Chunked(chunked) => return Some(chunked.field()),
+            Self::Stream(stream) => return Some(stream.field()),
+            Self::StreamChunked(stream) => return Some(stream.field()),
+            Self::Key(key) => return Some(key.field()),
+            Self::Keys(keys) => return Some(keys.field()),
+            Self::StreamKey(stream) => return Some(stream.field()),
+            _ => {}
+        }
         column!(
             self,
             _run => None,
@@ -2427,6 +2545,18 @@ impl Serie {
 
     /// Return the shared field, or `None` for a run.
     pub fn field_ref(&self) -> Option<&Arc<Field>> {
+        if let Some(media) = self.media_state() {
+            return Some(&media.field);
+        }
+        match self {
+            Self::Chunked(chunked) => return Some(chunked.field_ref()),
+            Self::Stream(stream) => return Some(stream.root()),
+            Self::StreamChunked(stream) => return Some(stream.root()),
+            Self::Key(key) => return Some(&key.layout.field),
+            Self::Keys(keys) => return Some(&keys.layout.field),
+            Self::StreamKey(stream) => return Some(stream.root()),
+            _ => {}
+        }
         column!(
             self,
             _run => None,
@@ -2460,6 +2590,9 @@ impl Serie {
     /// Constant for either leaf: a column knows its length without reading a
     /// row.
     pub fn len(&self) -> usize {
+        if let Some(chunks) = self.held_chunks() {
+            return chunks.len();
+        }
         column!(
             self,
             run => run.as_slice().len(),
@@ -2479,6 +2612,9 @@ impl Serie {
     /// bitmap, so it walks its values - the one ask where the two leaves
     /// differ in cost rather than in answer.
     pub fn null_count(&self) -> usize {
+        if let Some(chunks) = self.held_chunks() {
+            return chunks.null_count();
+        }
         column!(
             self,
             run => run.as_slice().iter().filter(|value| value.is_null()).count(),
@@ -2493,6 +2629,13 @@ impl Serie {
     /// Returns an error naming the serie and both counts when `index` is
     /// past the end.
     pub fn is_null(&self, index: usize) -> Result<bool> {
+        if let Some(media) = self.media_state() {
+            return media.scalar(index).map(|row| row.is_null());
+        }
+        if let Some(chunks) = self.held_chunks() {
+            self.raise_held()?;
+            return chunks.is_null(index);
+        }
         column!(
             self,
             run => {
@@ -2514,6 +2657,13 @@ impl Serie {
     /// Returns an error naming the serie and both counts when `index` is
     /// past the end.
     pub fn scalar(&self, index: usize) -> Result<Scalar> {
+        if let Some(media) = self.media_state() {
+            return media.scalar(index);
+        }
+        if let Some(chunks) = self.held_chunks() {
+            self.raise_held_rows()?;
+            return chunks.scalar(index);
+        }
         column!(
             self,
             run => {
@@ -2529,6 +2679,12 @@ impl Serie {
     /// Borrowed for a run, built for a column: the one lookup that allocates
     /// on a column, by contract.
     pub fn get(&self, index: usize) -> Option<Cow<'_, Scalar>> {
+        if let Some(media) = self.media_state() {
+            return media.scalar(index).ok().map(Cow::Owned);
+        }
+        if let Some(chunks) = self.held_chunks() {
+            return chunks.get(index).map(Cow::Owned);
+        }
         match self {
             Self::Run(run) => run.as_slice().get(index).map(Cow::Borrowed),
             column => (index < column.len()).then(|| Cow::Owned(proven_row(column, index))),
@@ -2728,6 +2884,10 @@ impl Serie {
         if offset == 0 && length == self.len() {
             return Ok(self.clone());
         }
+        if let Some(chunks) = self.held_chunks() {
+            self.raise_held_rows()?;
+            return chunks.slice(offset, length).map(Self::from);
+        }
         column!(
             self,
             run => Ok(Self::Run(run.slice(offset, length))),
@@ -2737,7 +2897,7 @@ impl Serie {
 
     /// Borrow a record column's child by exact name; `None` elsewhere.
     pub fn child(&self, name: &str) -> Option<&Self> {
-        match self {
+        match self.held_leaf() {
             Self::Struct(column) => column.child(name),
             _ => None,
         }
@@ -2751,7 +2911,7 @@ impl Serie {
     /// Borrow a record column's children, or a union column's; empty
     /// elsewhere.
     pub fn children(&self) -> &[Self] {
-        match self {
+        match self.held_leaf() {
             Self::Struct(column) => column.children(),
             Self::Union(column) => column.children(),
             _ => &[],
@@ -2761,7 +2921,7 @@ impl Serie {
     /// Borrow the column under this one: a sequence column's items, a
     /// mapping column's entries, an encoding's values; `None` elsewhere.
     pub fn items(&self) -> Option<&Self> {
-        match self {
+        match self.held_leaf() {
             Self::Serie(column) => Some(column.items()),
             Self::SerieView(column) => Some(column.items()),
             Self::FixedSizeSerie(column) => Some(column.items()),
@@ -2793,7 +2953,7 @@ impl Serie {
         let FieldSegment::Field(name) = segment else {
             return None;
         };
-        let child = match self {
+        let child = match self.held_leaf() {
             Self::Struct(column) => column.child(name)?,
             Self::Union(column) => {
                 let DataType::Union(members, _) = column.field().dtype() else {
@@ -2848,6 +3008,9 @@ impl Serie {
     /// Returns an error naming the serie when `range` is reversed or reaches
     /// past the end, or [`SerieValue::splice`]'s refusal for a column.
     pub fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
+        if self.media_state().is_some() {
+            return self.splice_media(range, rows);
+        }
         let written = range.start..range.start + rows.len();
         // A removal takes rows out of an order it cannot break, so only a
         // write of rows is read against the declaration.
@@ -3228,7 +3391,8 @@ impl Serie {
     /// is not a record, when `child` is a run, or when it does not hold
     /// exactly `len` rows.
     pub fn set_child(&mut self, child: Self) -> Result<()> {
-        match self {
+        self.raise_held()?;
+        match self.held_leaf_mut() {
             Self::Struct(held) => Arc::make_mut(held).set_child(child)?,
             other => return Err(other.not_a_record("holds no child")),
         }
@@ -3251,7 +3415,8 @@ impl Serie {
     /// level is not a record column, when row `index` of any record on the
     /// way is absent, or when `value` is not one the leaf's field accepts.
     pub fn set_cell(&mut self, path: &FieldPath, index: usize, value: Scalar) -> Result<()> {
-        match self {
+        self.raise_held()?;
+        match self.held_leaf_mut() {
             Self::Struct(held) => Arc::make_mut(held).set_cell(path, index, value)?,
             other => return Err(other.not_a_record("holds no cell")),
         }
@@ -3351,15 +3516,189 @@ impl Serie {
     /// every typed narrowing and every reader of buffers sees the layout
     /// and never the constant.
     pub(crate) fn laid_out(&self) -> &Self {
-        match self {
+        match self.held_leaf() {
             Self::Lit(lit) => lit.laid_out(),
             other => other,
+        }
+    }
+
+    /// The leaf this serie reads as where only one column answers: itself,
+    /// or a composite's rows joined once and kept - a chunked serie's one
+    /// join, every row a stream yields held then joined. A composite that
+    /// could not hold its rows answers what it held, and keeps why for
+    /// [`Self::raise_held`].
+    pub(crate) fn held_leaf(&self) -> &Self {
+        if let Some(media) = self.media_state() {
+            return media.rows().held_leaf();
+        }
+        match self {
+            Self::Chunked(chunked) => &chunked.held().0,
+            Self::Stream(stream) => &stream.joined().0,
+            Self::StreamChunked(stream) => &stream.joined().0,
+            Self::Key(key) => &key.global_chunks().0.held().0,
+            Self::Keys(keys) => &keys.global_chunks().0.held().0,
+            Self::StreamKey(stream) => &stream.joined().0,
+            leaf => leaf,
+        }
+    }
+
+    /// [`Self::held_leaf`] to write: a composite becomes the leaf it holds,
+    /// so the write lands in one column.
+    pub(crate) fn held_leaf_mut(&mut self) -> &mut Self {
+        if self.is_composite() {
+            *self = self.held_leaf().clone();
+        }
+        self
+    }
+
+    /// Whether this serie is a composite - chunks, or a stream - rather
+    /// than one leaf.
+    pub(crate) fn is_composite(&self) -> bool {
+        self.media_state().is_some()
+            || matches!(
+                self,
+                Self::Chunked(_)
+                    | Self::Stream(_)
+                    | Self::StreamChunked(_)
+                    | Self::Key(_)
+                    | Self::Keys(_)
+                    | Self::StreamKey(_)
+            )
+    }
+
+    /// Raise what a composite met holding its rows - a stream's failure, a
+    /// join no column can lay out - holding them first; nothing for a leaf
+    /// or a composite that held them whole.
+    ///
+    /// # Errors
+    ///
+    /// The failure, naming the serie, and why.
+    pub(crate) fn raise_held(&self) -> Result<()> {
+        if let Some(media) = self.media_state() {
+            return media.rows().raise_held();
+        }
+        let failure = match self {
+            Self::Chunked(chunked) => chunked.held().1.as_ref(),
+            Self::Stream(stream) => stream.joined().1.as_ref(),
+            Self::StreamChunked(stream) => stream.joined().1.as_ref(),
+            Self::Key(key) => key
+                .global_chunks()
+                .1
+                .as_ref()
+                .or_else(|| key.global_chunks().0.held().1.as_ref()),
+            Self::Keys(keys) => keys
+                .global_chunks()
+                .1
+                .as_ref()
+                .or_else(|| keys.global_chunks().0.held().1.as_ref()),
+            Self::StreamKey(stream) => stream.joined().1.as_ref(),
+            _ => None,
+        };
+        self.refuse_held(failure)
+    }
+
+    /// Raise a kept failure while reading chunks, without joining them.
+    pub(crate) fn raise_held_rows(&self) -> Result<()> {
+        if let Some(media) = self.media_state() {
+            return media.rows().raise_held_rows();
+        }
+        let failure = match self {
+            Self::Chunked(chunked) => chunked.held_failure(),
+            Self::Stream(stream) => stream.held_failure(),
+            Self::StreamChunked(stream) => stream.held_failure(),
+            Self::Key(key) => key
+                .global_chunks()
+                .1
+                .as_ref()
+                .or_else(|| key.global_chunks().0.held_failure()),
+            Self::Keys(keys) => keys
+                .global_chunks()
+                .1
+                .as_ref()
+                .or_else(|| keys.global_chunks().0.held_failure()),
+            Self::StreamKey(stream) => stream.held_failure(),
+            _ => None,
+        };
+        self.refuse_held(failure)
+    }
+
+    fn refuse_held(&self, failure: Option<&smol_str::SmolStr>) -> Result<()> {
+        failure.map_or(Ok(()), |reason| {
+            Err(crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new(self.name()),
+                reason: smol_str::format_smolstr!(
+                    "{} could not hold its rows: {reason}",
+                    self.name()
+                ),
+            })
+        })
+    }
+
+    /// The rows of a stream, held, or a chunked serie's own chunks; `None`
+    /// for a leaf. A stream that failed answers what it held before.
+    pub(crate) fn held_chunks(&self) -> Option<&ChunkedSerie> {
+        if let Some(media) = self.media_state() {
+            return media.rows().held_chunks();
+        }
+        match self {
+            Self::Chunked(chunked) => Some(chunked),
+            Self::Stream(stream) => Some(&stream.drained().0),
+            Self::StreamChunked(stream) => Some(&stream.drained().0),
+            Self::Key(key) => Some(&key.global_chunks().0),
+            Self::Keys(keys) => Some(&keys.global_chunks().0),
+            Self::StreamKey(stream) => Some(&stream.drained().0),
+            _ => None,
+        }
+    }
+
+    /// Borrow the [`ChunkedSerie`] this is - columns held apart - `None` for
+    /// any other kind.
+    #[must_use]
+    pub fn as_chunked(&self) -> Option<&ChunkedSerie> {
+        match self {
+            Self::Chunked(chunked) => Some(chunked),
+            _ => None,
+        }
+    }
+
+    /// The record root the rows stream under: a record column's own, any
+    /// other column the one child of a `row` record
+    /// ([`StreamChunkedSerie::root_of`]), a stream's own root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a run, which names no column.
+    pub(crate) fn record_root(&self) -> Result<Field> {
+        StreamChunkedSerie::root_of(self.require_field()?)
+    }
+
+    /// The bytes the rows occupy where every row is held; `None` for a
+    /// stream with rows still to pull, which nothing pulls to answer.
+    pub(crate) fn held_memory_size(&self) -> Option<usize> {
+        self.is_held().then(|| self.memory_size())
+    }
+
+    /// Whether every row is held: a leaf, a chunked serie, or a stream
+    /// already drained; `false` for a stream that still has rows to pull.
+    #[must_use]
+    pub fn is_held(&self) -> bool {
+        if let Some(media) = self.media_state() {
+            return media.is_held();
+        }
+        match self {
+            Self::Stream(stream) => stream.is_held(),
+            Self::StreamChunked(stream) => stream.is_held(),
+            Self::Key(key) => key.rows().is_held(),
+            Self::Keys(keys) => keys.iter().all(|key| key.rows().is_held()),
+            Self::StreamKey(stream) => stream.is_held(),
+            _ => true,
         }
     }
 
     /// [`Self::laid_out`] to write: a constant column becomes the leaf it
     /// laid out as, so the write lands in buffers.
     pub(crate) fn lay_out_mut(&mut self) -> &mut Self {
+        self.held_leaf_mut();
         if let Self::Lit(lit) = &*self {
             *self = lit.laid_out().clone();
         }
@@ -4268,6 +4607,28 @@ impl From<Serie> for Scalar {
     }
 }
 
+impl From<ChunkedSerie> for Serie {
+    /// Columns held apart, as the one serie they read as; no row is moved.
+    fn from(chunked: ChunkedSerie) -> Self {
+        Self::Chunked(Arc::new(chunked))
+    }
+}
+
+impl From<StreamChunkedSerie> for Serie {
+    /// A stream of record columns, as the one serie its clones share,
+    /// nothing pulled.
+    fn from(stream: StreamChunkedSerie) -> Self {
+        Self::StreamChunked(Arc::new(SharedStream::new(stream)))
+    }
+}
+
+impl From<StreamSerie> for Serie {
+    /// A stream of rows, as the one serie its clones share, nothing pulled.
+    fn from(stream: StreamSerie) -> Self {
+        Self::Stream(Arc::new(SharedStream::new(stream)))
+    }
+}
+
 impl From<Run> for Serie {
     fn from(value: Run) -> Self {
         Self::Run(value)
@@ -4287,5 +4648,21 @@ impl<'a> IntoIterator for &'a Serie {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
+    }
+}
+
+impl From<crate::KeySerie> for Serie {
+    fn from(key: crate::KeySerie) -> Self {
+        Self::Key(Arc::new(key))
+    }
+}
+impl From<crate::KeySeries> for Serie {
+    fn from(keys: crate::KeySeries) -> Self {
+        Self::Keys(Arc::new(keys))
+    }
+}
+impl From<crate::StreamKeySerie> for Serie {
+    fn from(stream: crate::StreamKeySerie) -> Self {
+        Self::StreamKey(Arc::new(SharedStream::new(stream)))
     }
 }

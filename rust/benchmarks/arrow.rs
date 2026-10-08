@@ -22,13 +22,13 @@ use yggdryl::SerieValue as _;
 use arrow_array::{ArrayRef, Decimal128Array, RecordBatch};
 use arrow_schema::SchemaRef;
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use yggdryl::SerieSource;
+
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{
     ArrowCastOptions, ChunkedSerie, DataType, Field, IOBase, IOMedia, IOMode, MediaType, MimeType,
-    Scalar, Serie, SerieReader, StructType, TimeUnit, Timezone, Url,
+    Scalar, Serie, StreamChunkedSerie, StructType, TimeUnit, Timezone, Url,
 };
 
 /// Rows per fixture: one small enough to stay warm, one at the size a
@@ -143,12 +143,12 @@ fn streamed(schema: &SchemaRef, parts: &[RecordBatch]) -> BatchReader {
 }
 
 /// A column in hand as the stream of the one batch it is.
-fn held_reader(serie: Serie) -> SerieReader {
-    SerieReader::from_serie(serie).expect("a held column is one batch")
+fn held_reader(serie: Serie) -> StreamChunkedSerie {
+    StreamChunkedSerie::from_serie(serie).expect("a held column is one batch")
 }
 
 /// Pull one batch: the latency half of an iteration surface.
-fn first_batch(reader: SerieReader) -> usize {
+fn first_batch(reader: StreamChunkedSerie) -> usize {
     reader
         .into_arrow_reader()
         .next()
@@ -158,7 +158,7 @@ fn first_batch(reader: SerieReader) -> usize {
 }
 
 /// Pull every batch: the throughput half.
-fn drain(reader: SerieReader) -> usize {
+fn drain(reader: StreamChunkedSerie) -> usize {
     drain_reader(reader.into_arrow_reader())
 }
 
@@ -171,8 +171,9 @@ fn drain_reader(reader: BatchReader) -> usize {
 
 /// One held batch as the stream a write takes: its record column, yielded as
 /// it stands.
-fn written(root: &Field, batch: &RecordBatch) -> SerieReader {
-    SerieReader::from_serie(held(root, batch)).expect("a record column with every row present")
+fn written(root: &Field, batch: &RecordBatch) -> StreamChunkedSerie {
+    StreamChunkedSerie::from_serie(held(root, batch))
+        .expect("a record column with every row present")
 }
 
 /// The one section a structured document reads off record options: the
@@ -248,7 +249,7 @@ fn construction_benchmarks(criterion: &mut Criterion) {
             bencher.iter_batched(
                 || batch_reader(Arc::clone(&schema), parts.clone()),
                 |reader| {
-                    SerieReader::from_arrow_reader(None, reader, options)
+                    StreamChunkedSerie::from_arrow_reader(None, reader, options)
                         .expect("the stream names its root")
                 },
                 BatchSize::SmallInput,
@@ -318,10 +319,10 @@ fn reader_benchmarks(criterion: &mut Criterion) {
         };
         let batch_value = || held_reader(held(&root, &batch));
         let stream_value = || {
-            SerieReader::from_arrow_reader(None, streamed(&schema, &parts), options)
+            StreamChunkedSerie::from_arrow_reader(None, streamed(&schema, &parts), options)
                 .expect("the stream names its root")
         };
-        let shapes: [(&str, &dyn Fn() -> SerieReader); 3] = [
+        let shapes: [(&str, &dyn Fn() -> StreamChunkedSerie); 3] = [
             ("array", &array_value),
             ("batch", &batch_value),
             ("stream", &stream_value),
@@ -515,7 +516,7 @@ fn cast_target() -> Field {
 /// A held cast is `Serie::cast` on the column a batch landed as, which
 /// compiles one plan from its field and applies it once; its bare call is
 /// `Serie::from_arrow_batch` into the target and back out through
-/// `into_arrow_batch`. A stream cast is one `SerieReader` planned for the
+/// `into_arrow_batch`. A stream cast is one `StreamChunkedSerie` planned for the
 /// whole stream: drained as the record columns it lands, and as its bare
 /// transport face through `into_arrow_reader`, which reconciles each batch and
 /// lands none. Each column arm sits next to its bare call over the same rows,
@@ -539,15 +540,23 @@ fn cast_benchmarks(criterion: &mut Criterion) {
         // Every path answers the same rows, which is what makes each pair a
         // comparison rather than two numbers.
         let streamed_rows = drain_reader(
-            SerieReader::from_arrow_reader(Some(&target), streamed(&schema, &parts), options)
-                .expect("the stream is plannable")
-                .into_arrow_reader(),
+            StreamChunkedSerie::from_arrow_reader(
+                Some(&target),
+                streamed(&schema, &parts),
+                options,
+            )
+            .expect("the stream is plannable")
+            .into_arrow_reader(),
         );
-        let landed_rows =
-            SerieReader::from_arrow_reader(Some(&target), streamed(&schema, &parts), options)
-                .expect("the stream is plannable")
-                .map(|column| column.expect("a batch casts").len())
-                .sum::<usize>();
+        let landed_rows = StreamChunkedSerie::from_arrow_reader(
+            Some(&target),
+            streamed(&schema, &parts),
+            options,
+        )
+        .expect("the stream is plannable")
+        .into_chunks()
+        .map(|column| column.expect("a batch casts").len())
+        .sum::<usize>();
         assert_eq!(
             streamed_rows,
             Serie::from_arrow_batch(Some(&target), &batch, options)
@@ -589,8 +598,9 @@ fn cast_benchmarks(criterion: &mut Criterion) {
             bencher.iter_batched(
                 || streamed(&schema, &parts),
                 |reader| {
-                    SerieReader::from_arrow_reader(Some(&target), reader, options)
+                    StreamChunkedSerie::from_arrow_reader(Some(&target), reader, options)
                         .expect("the stream is plannable")
+                        .into_chunks()
                         .map(|column| column.expect("a batch casts").len())
                         .sum::<usize>()
                 },
@@ -602,7 +612,7 @@ fn cast_benchmarks(criterion: &mut Criterion) {
                 || batch_reader(Arc::clone(&schema), parts.clone()),
                 |reader| {
                     drain_reader(
-                        SerieReader::from_arrow_reader(Some(&target), reader, options)
+                        StreamChunkedSerie::from_arrow_reader(Some(&target), reader, options)
                             .expect("the stream is plannable")
                             .into_arrow_reader(),
                     )
@@ -632,11 +642,7 @@ fn structured_benchmarks(criterion: &mut Criterion) {
         for (format, name) in [("json", "trades.json"), ("jsonl", "trades.jsonl")] {
             let mut source = handle(name);
             source
-                .write_serie(
-                    SerieSource::from(written(&root, &batch)),
-                    IOMode::Overwrite,
-                    None,
-                )
+                .write_serie(Serie::from(written(&root, &batch)), IOMode::Overwrite, None)
                 .expect("the Arrow rows write");
             let options = declaring(&root);
             let bytes = source.read_all_bytes().expect("the document reads back");
@@ -657,7 +663,7 @@ fn structured_benchmarks(criterion: &mut Criterion) {
                     || (handle(name), written(&root, &batch)),
                     |(mut target, value)| {
                         target
-                            .write_serie(SerieSource::from(value), IOMode::Overwrite, None)
+                            .write_serie(Serie::from(value), IOMode::Overwrite, None)
                             .expect("the Arrow rows write");
                     },
                     BatchSize::SmallInput,
@@ -676,11 +682,15 @@ fn structured_benchmarks(criterion: &mut Criterion) {
             });
             group.bench_function(format!("read_serie/{format}/{count}"), |bencher| {
                 bencher.iter(|| {
-                    black_box(&source)
-                        .read_serie(Some(black_box(&options)))
-                        .expect("the document reads as rows")
-                        .map(|column| column.expect("the document is a record column").len())
-                        .sum::<usize>()
+                    yggdryl::StreamChunkedSerie::from_serie(
+                        black_box(&source)
+                            .read_serie(Some(black_box(&options)))
+                            .expect("the document reads as rows"),
+                    )
+                    .expect("native record stream")
+                    .into_chunks()
+                    .map(|column| column.expect("the document is a record column").len())
+                    .sum::<usize>()
                 });
             });
             group.bench_function(format!("read_scalar/{format}/{count}"), |bencher| {
@@ -1037,11 +1047,16 @@ fn window_batch(count: usize) -> RecordBatch {
 
 /// Pull every window and every piece of it, each window read before the
 /// next is taken: the rows served.
-fn drain_windows(windows: yggdryl::SerieReaderWindows) -> usize {
+fn drain_windows(windows: yggdryl::StreamKeySerie) -> usize {
     windows
         .map(|window| {
             window
                 .expect("a window opens")
+                .into_parts()
+                .1
+                .into_chunked_stream(None, None)
+                .expect("the payload streams")
+                .into_chunks()
                 .map(|piece| piece.expect("a piece decodes").len())
                 .sum::<usize>()
         })
@@ -1065,7 +1080,7 @@ fn window_benchmarks(criterion: &mut Criterion) {
         ("column_key", "symbol".parse().expect("a column key"), false),
         (
             "path_key",
-            "order.symbol".parse().expect("a path key"),
+            "order.symbol as order_symbol".parse().expect("a path key"),
             false,
         ),
         ("code_key", "venue".parse().expect("a code key"), false),
@@ -1077,13 +1092,13 @@ fn window_benchmarks(criterion: &mut Criterion) {
         ("sorted", "symbol".parse().expect("a column key"), true),
     ];
 
-    let mut group = criterion.benchmark_group("serie_reader");
+    let mut group = criterion.benchmark_group("chunked_stream");
     for count in ROWS {
         let batch = window_batch(count);
         let schema = batch.schema();
         let parts = parts(&batch);
         let stream = || {
-            SerieReader::from_arrow_reader(Some(&root), streamed(&schema, &parts), options)
+            StreamChunkedSerie::from_arrow_reader(Some(&root), streamed(&schema, &parts), options)
                 .expect("the stream lands under its root")
         };
         group.throughput(Throughput::Elements(count as u64));
@@ -1092,6 +1107,7 @@ fn window_benchmarks(criterion: &mut Criterion) {
                 stream,
                 |reader| {
                     reader
+                        .into_chunks()
                         .map(|batch| batch.expect("a batch lands").len())
                         .sum::<usize>()
                 },
@@ -1109,7 +1125,11 @@ fn window_benchmarks(criterion: &mut Criterion) {
                             .next()
                             .expect("a window")
                             .expect("a window opens")
-                            .next()
+                            .into_parts()
+                            .1
+                            .into_chunked_stream(None, None)
+                            .expect("the payload streams")
+                            .next_chunk()
                             .map_or(0, |piece| piece.expect("a piece decodes").len())
                     },
                     BatchSize::SmallInput,
@@ -1267,7 +1287,8 @@ fn join_benchmarks(criterion: &mut Criterion) {
             bencher.iter_batched(
                 || {
                     (
-                        SerieReader::from_chunked(trade_chunks.clone()).expect("the chunks stream"),
+                        StreamChunkedSerie::from_chunked(trade_chunks.clone())
+                            .expect("the chunks stream"),
                         instruments.clone(),
                     )
                 },
@@ -1276,7 +1297,7 @@ fn join_benchmarks(criterion: &mut Criterion) {
                         .join_with(build, &by_id, JoinKind::Inner, &built)
                         .expect("the join resolves");
                     let mut rows = 0;
-                    for batch in joined {
+                    for batch in joined.into_chunks() {
                         rows += batch.expect("an output batch").len();
                     }
                     rows

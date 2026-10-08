@@ -78,7 +78,7 @@ The closed function set, and its one door: a user-defined function is registered
 
     ```python
     import pyarrow as pa
-    from yggdryl import Field, Filter, Selector, Term
+    from yggdryl import Field, Filter, Selector, Term, Serie
     from yggdryl.expression import user_defined_filter, user_defined_function, user_function_signature
 
     @user_defined_function(namespace="docs")
@@ -109,7 +109,7 @@ The closed function set, and its one door: a user-defined function is registered
     assert projected.column("doubled").to_pylist() == [2, None, 6]
     assert projected.column("loud").to_pylist() == ["A", "B", "C"]
     assert big.where("size").apply_arrow_batch(batch).column("ccy").to_pylist() == ["c"]
-    assert Filter("docs.big(size)").apply_records([{"size": 5, "ccy": "x"}], rows).collect() == [{"size": 5, "ccy": "x"}]
+    assert Serie.from_(Filter("docs.big(size)").apply_records([{"size": 5, "ccy": "x"}], rows)).as_py() == [{"size": 5, "ccy": "x"}]
 
     # A stored column derives by function and the terms it reads.
     stored = Selector("docs.double(size) as doubled").into_field(rows)
@@ -204,7 +204,7 @@ A date has no clock, so a sub-day period over one is refused where it is typed; 
 === "Python"
 
     ```python
-    from yggdryl import DataType, Field, Selector
+    from yggdryl import DataType, Field, Selector, Serie
 
     root = Field("rows", "struct<ts:timestamp(us)>", False)
     selector = Selector("year(ts) as calendar, years(ts) as y, minutes(ts, 15) as q, days(ts) as d")

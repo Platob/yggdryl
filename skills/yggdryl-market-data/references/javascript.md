@@ -144,8 +144,9 @@ assert.deepEqual(merged.srcuuids, [LINE_1, LINE_2])
 
 ## Walk a stream into chains
 
-`graph.EventIterator` chains a stream by cross identity (and by a live
-element's `identifiers`), yields a twin as a restatement rather than a successor,
+`graph.EventIterator` chains a stream by cross identity (and by the chain identities a live
+element's `identifiers` hold, never an `execid`), re-keys each element onto its
+chain's side and first cross code, yields a twin as a restatement rather than a successor,
 retires a chain at a terminal state and emits one `EXPIRED` at a deadline.
 An order's or an execution's chain is keyed by side - a quote's is one chain
 whatever side it tags - a chain lives within one `marketdatakind` (an order and
@@ -263,10 +264,10 @@ const { BatchReader, MarketDataKind, graph } = require('yggdryl')
 const order = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001' })
 const values = [new graph.Order(), order, new graph.BookEvent(1_700_000_001_000_000_000n, 'AAPL')]
 
-// 63 columns: 6 element, 9 event, 35 market (marketdatakind first), 5 operation,
-// the book controls bookscope, bookaction and bookposition, 5 nested.
+// 65 columns: 6 element, 9 event, 36 market (marketdatakind first), 5 operation,
+// the book controls bookscope, bookaction and bookposition, 6 nested.
 const field = graph.MarketData.field()
-assert.equal(field.fieldLen, 63)
+assert.equal(field.fieldLen, 65)
 assert.equal(field.fieldAt(15).name, 'marketdatakind')
 const table = graph.MarketData.arrowReader(values, 1_000).intoTable()
 // The column stores each member's code.
@@ -313,10 +314,10 @@ fs.rmSync(directory, { recursive: true, force: true })
 `new graph.BookIterator(items, snapshotMillis = 0, filter = undefined)` folds
 sorted orders and quotes into one `BookEvent` per instant and book key that
 moved it - the instrument's ISIN, else its ticker, else `XX0000000000` -
-pruning every execution and trade. A book is complete (`isComplete`) only at a
-snapshot tick; every other book states its deltas alone beside the top of book
-they settled on, and `withPrevious` over the complete book before it rebuilds
-it whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
+recording every execution among its `events()` and pruning every trade. A
+book is complete (`isComplete`) only at a snapshot tick; every other book is a
+delta book - its `delta()` and `events()` beside the top of book they settled
+on - and `withPrevious` over the complete book before it rebuilds it whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -334,10 +335,12 @@ const stream = [bid(T, 'B-1', '189.48', 300), bid(T + SECOND, 'B-2', '189.49', 2
 
 const books = [...new graph.BookIterator(stream)]
 assert.equal(books.length, 2, 'one book per instant that moved it; the execution is recorded beside the better bid')
-// No grid and no snapshot input: each book states its deltas alone and its top of book.
+// No grid and no snapshot input: each book is a delta book - the bid in its
+// delta, the execution in its events - and its top of book.
 const last = books[1]
 assert.equal(last.isComplete, false)
-assert.deepEqual([last.currunix, last.deltas().length, last.alive().length], [T + SECOND, 2, 0])
+assert.deepEqual([last.currunix, last.delta().length, last.events().length, last.alive().length], [T + SECOND, 1, 1, 0])
+assert.deepEqual(last.executions().map((execution) => execution.crosscode), ['8:1:E-1'])
 assert.equal(last.bestPrice('BUYS'), '189.49')
 // Rebuilt whole: the first over the empty book its key starts from, the next over it.
 assert.equal(books[0].prevuuid, null)
@@ -372,10 +375,9 @@ first, the unpriced market level last) and its entries as `aliveOn(side)`,
 the orders resting as `ordlive()`; every book answers the readings of the
 first level that can trade: `bestPrice`, `bestQuantity`, the `bidpx`/`askpx`
 it states, `spread`; a complete one `depth` and `imbalance` too - all as
-exact decimal text. Its deltas read by kind as `orddelta()`, `quotes()` and
-`executions()`, which partition them - a book records no other kind; the
-`events` catch-all Rust and Python read is not bound in JavaScript. A book
-built by hand is complete. A
+exact decimal text. Its `delta()` reads by kind as `orddelta()` and
+`quotes()`, which partition it, and its `events()` as `executions()` and
+`controls()`. A book built by hand is complete. A
 side is its stored name, any spelling `Side` reads, or its code.
 
 ```javascript
@@ -408,12 +410,14 @@ assert.equal(book.isLocked || book.isCrossed, false)
 assert.equal(book.depth('BUYS', 2), '310')
 assert.equal(book.isComplete, true)
 assert.deepEqual([book.alive().length, book.aliveOn('BUYS').length, book.aliveOn(Side.SELL).length], [5, 4, 1])
-// The deltas are the five orders, in the order applied.
-assert.deepEqual(book.deltas().map((delta) => delta.crosscode), ['10:1:B-0', '10:1:B-1', '10:1:B-2', '10:2:A-1', '10:1:MKT'])
+// The delta is the five orders, in the order applied.
+assert.deepEqual(book.delta().map((entry) => entry.crosscode), ['10:1:B-0', '10:1:B-1', '10:1:B-2', '10:2:A-1', '10:1:MKT'])
 // By kind: the orders resting in book order - the bids best first and the
-// market order last, then the offer - and every delta an order.
+// market order last, then the offer - and every delta entry an order.
 assert.deepEqual(book.ordlive().map((order) => order.crosscode), ['10:1:B-0', '10:1:B-1', '10:1:B-2', '10:1:MKT', '10:2:A-1'])
-assert.deepEqual([book.orddelta().length, book.quotes().length, book.executions().length], [book.deltas().length, 0, 0])
+assert.deepEqual([book.orddelta().length, book.quotes().length], [book.delta().length, 0])
+// No execution and no snapshot control: the events are empty.
+assert.deepEqual([book.events().length, book.executions().length, book.controls().length], [0, 0, 0])
 ```
 
 ## Replace a scope with a snapshot
@@ -436,6 +440,8 @@ const control = graph.SnapshotEvent.snapshot(new graph.OrderEvent(T + 1_000_000_
 assert.equal(control.book.action, 'snapshot')
 const after = book.withOperations([control])
 assert.deepEqual(after.alive(), [])
+// The control is recorded among the book's events.
+assert.equal(after.controls().length, 1)
 assert.deepEqual([after.price, after.bidpx, after.askpx], [null, null, null])
 ```
 
@@ -505,8 +511,9 @@ assert.deepEqual(values.map((value) => value.marketdatakind), ['BOOK', 'BOOK'])
 assert.equal(values[0].asBookEvent().isComplete, true)
 const last = values[1].asBookEvent()
 assert.equal(last.bestPrice('BUYS'), '101')
-// The bid's change and the trade entry (`269=2`), recorded as the execution it is, are the deltas.
-assert.deepEqual([last.isComplete, last.deltas().length], [false, 2])
+// The bid's change is the delta; the trade entry (`269=2`), recorded as the
+// execution it is, is among the events.
+assert.deepEqual([last.isComplete, last.delta().length, last.executions().length], [false, 1, 1])
 ```
 
 ## Fold books into candles
@@ -618,11 +625,11 @@ assert.equal(typeof book.serve, 'function')
   `MarketDataKind.ORDR`), a getter answers the name.
 - `new graph.EventIterator(items)` defaults `sorted` to `true` and trusts the
   order: an unsorted array is not refused, it yields broken chains (a step
-  before its live element yielded as it came, `prevuuid` null); pass `false`
+  before its live element yielded following nothing, `prevuuid` null); pass `false`
   for one you have not sorted.
 - Iterators (`BookIterator`, `EventIterator`, `fromArrowReader`) and
   `BatchReader`s are one-shot: spread once, or rebuild the reader.
-- A book's `alive()`, `aliveOn(side)`, `deltas()`, `limits(side)`,
+- A book's `alive()`, `aliveOn(side)`, `delta()`, `events()`, `limits(side)`,
   `bestPrice(side)`, `depth(side, n)` are methods; `isComplete`, `spread`,
   `isCrossed`, `isLocked`, `bboMidpoint` are getters; `BookEvent.keyed(unix,
   key)` is static.
@@ -637,9 +644,9 @@ assert.equal(typeof book.serve, 'function')
   you called is unchanged. Only `withPrevious`/`mergeWith` answer `null` when
   nothing moved; `withOperations` refuses an undated `Order` at
   `$.operations[i].kind` (`BookIterator` at `$.operation.kind`); an execution
-  is recorded among the book's deltas, resting on no side, and a trade is
+  is recorded among the book's events, resting on no side, and a trade is
   pruned, no error and no book. What `BookIterator`
   finds wrong in the data - an operation dated before its book - it leaves
   out, and an order or a quote stating neither side it places nowhere (still
-  the book's delta), each with a warning on standard error (unless a handler
+  in the book's delta), each with a warning on standard error (unless a handler
   on `logging.getLogger('yggdryl')` takes it), and no error.

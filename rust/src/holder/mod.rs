@@ -35,6 +35,24 @@ pub(crate) fn system_time_ns(value: std::time::SystemTime) -> Option<i64> {
     }
 }
 
+/// The handle at `holder`'s own location, built as the child its file name
+/// names under its parent - its prefix on the same client, its directory in
+/// the same archive - which is how a second store role on one client is
+/// built. `None` where it has no parent or no file name: a bucket's root, a
+/// location spelled with a trailing slash, an archive's root.
+fn sibling(holder: &Holder) -> Result<Option<Holder>> {
+    if holder.url().is_some_and(Url::has_trailing_slash) {
+        return Ok(None);
+    }
+    let Some(name) = holder.uri().and_then(Uri::file_name) else {
+        return Ok(None);
+    };
+    match holder.parent() {
+        Some(parent) => parent.child_by_path(name).map(Some),
+        None => Ok(None),
+    }
+}
+
 /// A concrete, sized value holding any core [`IOBase`] implementation.
 ///
 /// Hierarchy accessors such as [`IOBase::parent`], [`IOBase::child_by_path`], and
@@ -359,7 +377,7 @@ impl Holder {
                 url.scheme().as_str(),
             ));
         }
-        let mut held = if url.is_local() {
+        let held = if url.is_local() {
             if url
                 .fragment(false)?
                 .is_some_and(|fragment| !fragment.is_empty())
@@ -428,23 +446,143 @@ impl Holder {
                 url.scheme().as_str(),
             ));
         };
+        held.described(url, &properties)
+    }
+
+    /// `self` under the two properties every backend's handle reads, as
+    /// [`Self::from_url`] states them: `media_type` declares what the bytes
+    /// are, `codec` presents them decoded over a value - a location `url`
+    /// spells as a container takes none.
+    fn described(mut self, url: &Url, properties: &[(String, String)]) -> Result<Self> {
         // An HTTP URL names one resource however its path is spelled.
         let container = !url.scheme().is_http() && (url.is_glob() || url.has_trailing_slash());
-        for (name, value) in &properties {
+        for (name, value) in properties {
             match name.to_ascii_lowercase().replace('-', "_").as_str() {
                 "media_type" | "mime_type" | "content_type" => {
-                    held.set_media_type(value.parse::<MediaType>()?);
+                    self.set_media_type(value.parse::<MediaType>()?);
                 }
                 "codec" | "content_encoding" => {
                     let codec = value.parse::<crate::Codec>()?;
                     if !container {
-                        held = held.into_coded_with(codec, crate::Level::default());
+                        self = self.into_coded_with(codec, crate::Level::default());
                     }
                 }
                 _ => {}
             }
         }
+        Ok(self)
+    }
+
+    /// A second handle on the resource `holder` addresses, over the same
+    /// store, touching nothing: how a clone of an object rooted on a
+    /// caller's handle reaches the bytes that handle was built over.
+    ///
+    /// The plain handle beneath every wrapper - a page cache, a coding, a
+    /// record medium - is what is held again, and composing a wrapper over
+    /// it is the caller's: a local role over its path; an object-store role
+    /// on its own client - an `S3Folder` cloned, an
+    /// `S3Path` or an `S3File` built as the child of its parent folder, its
+    /// role kept - so the endpoint, the credentials, the session and every
+    /// other option it was built with travel with it; an HTTP session or
+    /// request cloned, its defaults, authorization, cookie jar and pool with
+    /// it; a location bound to a caller's filesystem rebuilt on that
+    /// filesystem; an archive member as the child of its parent in the one
+    /// archive both read; an identifier and a warehouse object cloned.
+    /// Nothing is rebuilt from its URL alone, since a URL says where a
+    /// resource is and not how it is reached. The media type the plain
+    /// handle declares is carried across.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::Unsupported`] for a handle with no resource
+    /// to address again - an in-memory buffer, one HTTP answer, a body on
+    /// the wire - and for a member at an archive's root, which has no
+    /// parent to hold it under; the backend's own refusal to build the
+    /// child otherwise.
+    pub fn from_handle(holder: &Self) -> Result<Self> {
+        let plain = holder.plain();
+        let unsupported = |what: &'static str| {
+            crate::Error::unsupported(
+                what,
+                plain
+                    .url()
+                    .map_or_else(|| "an unlocated handle".to_owned(), ToString::to_string),
+            )
+        };
+        let mut held = match plain {
+            Self::LocalFolder(folder) => Self::LocalFolder(folder.clone()),
+            Self::LocalPath(path) => {
+                Self::LocalPath(crate::local::LocalPath::from_url(path.url().clone())?)
+            }
+            Self::LocalFile(file) => Self::LocalFile(LocalFile::new(file.path())?),
+            Self::FsFolder(_) | Self::FsPath(_) | Self::FsFile(_) => match plain.bound_location() {
+                Some(bound) => crate::fs::located(bound.clone()),
+                None => return Err(unsupported("holding again a handle bound to no location")),
+            },
+            #[cfg(feature = "s3")]
+            Self::S3Folder(folder) => Self::S3Folder(folder.clone()),
+            #[cfg(feature = "s3")]
+            Self::S3Path(path) => match sibling(plain)? {
+                Some(sibling) => sibling,
+                // The bucket itself, or a location spelled with a trailing
+                // slash: a container by its spelling, on the same client.
+                None => Self::S3Folder(path.as_directory()?),
+            },
+            #[cfg(feature = "s3")]
+            Self::S3File(_) => match sibling(plain)? {
+                Some(Self::S3Path(path)) => Self::S3File(path.as_file()?),
+                Some(held) => held,
+                None => return Err(unsupported("holding again an object with no container")),
+            },
+            #[cfg(feature = "http")]
+            Self::HttpSession(session) => Self::HttpSession(session.clone()),
+            #[cfg(feature = "http")]
+            Self::HttpRequest(request) => Self::HttpRequest(request.clone()),
+            #[cfg(feature = "http")]
+            Self::HttpResponse(_) | Self::HttpStream(_) => {
+                return Err(unsupported("holding again one HTTP answer"));
+            }
+            Self::ZipNode(_) | Self::ZipPath(_) | Self::ZipLeaf(_) => match sibling(plain)? {
+                Some(member) if member.url() == plain.url() => member,
+                _ => return Err(unsupported("holding again an archive's root")),
+            },
+            Self::Uri(uri) => Self::Uri(uri.clone()),
+            Self::Catalog(catalog) => Self::Catalog(catalog.clone()),
+            Self::Namespace(namespace) => Self::Namespace(namespace.clone()),
+            Self::Table(table) => Self::Table(table.clone()),
+            Self::Buffer(_) => return Err(unsupported("holding again an in-memory buffer")),
+            Self::Buffered(_) | Self::Coded(_) | Self::Text(_) | Self::Media(_) => {
+                unreachable!("the plain handle beneath every wrapper")
+            }
+        };
+        if held.media_type() != plain.media_type() {
+            held.set_media_type(plain.media_type().clone());
+        }
         Ok(held)
+    }
+
+    /// The plain handle beneath every wrapper this one composes.
+    fn plain(&self) -> &Self {
+        match self {
+            Self::Buffered(buffered) => buffered.handle().plain(),
+            Self::Coded(coded) => coded.handle().plain(),
+            Self::Text(text) => text.handle().plain(),
+            Self::Media(media) => media.handle().plain(),
+            held => held,
+        }
+    }
+
+    /// [`Self::from_handle`] of `holder`, under the two properties every
+    /// backend's handle reads ([`Self::from_url`]): what a warehouse object
+    /// rooted on a caller's native handle opens with. The rest of
+    /// `properties` - who signs, where the store is - is the handle's own
+    /// client's to say, and is not read.
+    pub(crate) fn from_handle_with(holder: &Self, properties: &[(String, String)]) -> Result<Self> {
+        let held = Self::from_handle(holder)?;
+        match held.url().cloned() {
+            Some(url) => held.described(&url, properties),
+            None => Ok(held),
+        }
     }
 
     /// Whether `name` is a property the backend `url` selects reads for
@@ -985,76 +1123,42 @@ impl crate::IOMedia for Holder {
         crate::IOMedia::read_arrow_field(self.as_media(), options)
     }
 
-    fn read_arrow_reader(
-        &self,
-        options: &crate::media::RecordOptions,
-    ) -> Result<crate::arrow::BatchReader> {
-        crate::IOMedia::read_arrow_reader(self.as_media(), options)
-    }
-
     /// Forwarded, because a handle can answer its rows other than through
     /// its bytes - an HTTP request walks the pages of a paginated document.
-    fn read_serie(
-        &self,
-        options: Option<&crate::media::RecordOptions>,
-    ) -> Result<crate::SerieReader> {
+    fn read_serie(&self, options: Option<&crate::media::RecordOptions>) -> Result<crate::Serie> {
         crate::IOMedia::read_serie(self.as_media(), options)
     }
 
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &crate::media::RecordOptions,
+        value: crate::Serie,
+        options: Option<&crate::media::RecordOptions>,
     ) -> Result<crate::IOResult> {
-        crate::IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
+        crate::IOMedia::overwrite_serie(self.as_media_mut(), value, options)
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
+        value: crate::StreamChunkedSerie,
         options: &crate::media::RecordOptions,
     ) -> Result<()> {
-        crate::IOMedia::overwrite_prepared_arrow_reader(self.as_media_mut(), batches, options)
+        crate::IOMedia::overwrite_prepared_serie(self.as_media_mut(), value, options)
     }
 
-    fn overwrite_arrow_batch(
+    fn append_serie(
         &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &crate::media::RecordOptions,
+        value: crate::Serie,
+        options: Option<&crate::media::RecordOptions>,
     ) -> Result<crate::IOResult> {
-        crate::IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
+        crate::IOMedia::append_serie(self.as_media_mut(), value, options)
     }
 
-    fn append_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &crate::media::RecordOptions,
+        value: crate::Serie,
+        options: Option<&crate::media::RecordOptions>,
     ) -> Result<crate::IOResult> {
-        crate::IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
-    }
-
-    fn append_arrow_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &crate::media::RecordOptions,
-    ) -> Result<crate::IOResult> {
-        crate::IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
-    }
-
-    fn merge_arrow_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &crate::media::RecordOptions,
-    ) -> Result<crate::IOResult> {
-        crate::IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
-    }
-
-    fn merge_arrow_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &crate::media::RecordOptions,
-    ) -> Result<crate::IOResult> {
-        crate::IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
+        crate::IOMedia::merge_serie(self.as_media_mut(), value, options)
     }
 }
 
@@ -1080,6 +1184,10 @@ impl IOBase for Holder {
 
     fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
         self.as_io().read_range_bytes(offset, length)
+    }
+
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        self.as_io().read_tail_bytes(length)
     }
 
     fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {
@@ -1228,6 +1336,10 @@ impl IOBase for Holder {
 
     fn is_atomic(&self) -> bool {
         self.as_io().is_atomic()
+    }
+
+    fn is_thread_bound(&self) -> bool {
+        self.as_io().is_thread_bound()
     }
 
     fn is_tabular(&self) -> bool {

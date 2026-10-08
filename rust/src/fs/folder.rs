@@ -240,6 +240,10 @@ impl IOBase for FsFolder {
         false
     }
 
+    fn is_thread_bound(&self) -> bool {
+        self.filesystem().is_thread_bound()
+    }
+
     fn is_tabular(&self) -> bool {
         self.folder_is_tabular()
     }

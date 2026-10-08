@@ -178,7 +178,7 @@ macro_rules! event_getters {
     };
 }
 
-/// The twenty-seven facts [`yggdryl::graph::Market`] answers.
+/// Getters over the thirty-six facts [`yggdryl::graph::Market`] answers.
 macro_rules! market_getters {
     ($class:ident) => {
         #[napi]
@@ -193,6 +193,26 @@ macro_rules! market_getters {
             #[napi(getter)]
             pub fn currency(&self) -> String {
                 ::yggdryl::graph::Market::get_currency(&self.inner)
+                    .as_str()
+                    .to_owned()
+            }
+
+            /// The currency the instrument originates in - the one it was
+            /// issued in, which a depositary receipt or a share class listed
+            /// in another currency trades apart from - as the `ccy` code it
+            /// is, where the element states it or a registry filled it;
+            /// `null` where neither did, never defaulted.
+            #[napi(getter)]
+            pub fn origccy(&self) -> Option<String> {
+                let held = ::yggdryl::graph::Market::get_origccy(&self.inner);
+                (!held.is_none()).then(|| held.as_str().to_owned())
+            }
+
+            /// The origin currency read with its default: `origccy` where
+            /// held, else `currency` - `XXX` only where neither is stated.
+            #[napi(getter)]
+            pub fn origin_currency(&self) -> String {
+                ::yggdryl::graph::Market::origin_currency(&self.inner)
                     .as_str()
                     .to_owned()
             }

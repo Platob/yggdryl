@@ -1267,7 +1267,7 @@ mod internal {
                 })
                 .collect();
             let mut handle = Buffer::new();
-            write_manifest(&mut handle, FormatVersion::V2, &schema, &spec, &entries).unwrap();
+            write_manifest(&mut handle, FormatVersion::V3, &schema, &spec, &entries).unwrap();
             let manifest = ManifestFile {
                 manifest_path: "metadata/statistics-free.avro".into(),
                 manifest_length: 128,
@@ -1480,7 +1480,7 @@ mod iceberg {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             spec,
         )
@@ -1603,7 +1603,7 @@ mod iceberg {
         let arrow = schema.clone().into_arrow_schema().unwrap();
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
@@ -1661,7 +1661,7 @@ mod iceberg {
         let path = root("scan_layouts");
         let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
+            FormatVersion::V3,
             schema(),
             PartitionSpec::unpartitioned(),
         )
@@ -1744,7 +1744,7 @@ mod iceberg {
         let schema = schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table =
-            IcebergTable::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
+            IcebergTable::create(folder.clone(), FormatVersion::V3, schema, spec).unwrap();
         for (id, venue) in ["XNAS", "XNYS", "XLON", "XPAR", "XETR", "XTKS"]
             .into_iter()
             .enumerate()
@@ -1805,6 +1805,150 @@ mod iceberg {
         assert!(
             sequential_costs.contains("open_input_stream=3"),
             "{sequential_costs}"
+        );
+    }
+}
+
+/// What a scan costs an object store, by request.
+#[cfg(feature = "s3")]
+mod object_store {
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::arrow::BatchReader;
+    use yggdryl::iceberg::{
+        FormatVersion, IcebergTable, PartitionSpec, SchemaUpdate, assign_field_ids,
+    };
+    use yggdryl::s3::{self, Credentials, S3Folder, S3Options};
+    use yggdryl::{DataType, Field, StructType};
+
+    use crate::server::FakeS3;
+
+    const BUCKET: &str = "trades";
+
+    /// Options reaching `store` and consulting nothing outside the test.
+    fn options(store: &FakeS3) -> S3Options {
+        S3Options::default()
+            .with_environment(false)
+            .with_endpoint(store.endpoint())
+            .with_region("us-east-1")
+            .with_path_style(true)
+            .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"))
+    }
+
+    fn schema() -> Field {
+        let mut schema = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().nullable_field("symbol"),
+            DataType::utf8().nullable_field("venue"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        schema
+    }
+
+    fn rows(ids: &[i64], venues: &[&str]) -> BatchReader {
+        let batch = RecordBatch::try_new(
+            schema().into_arrow_schema().unwrap(),
+            vec![
+                Arc::new(Int64Array::from(ids.to_vec())),
+                Arc::new(StringArray::from(vec!["AAPL"; ids.len()])),
+                Arc::new(StringArray::from(venues.to_vec())),
+            ],
+        )
+        .unwrap();
+        yggdryl::arrow::batch_reader(batch.schema(), [batch])
+    }
+
+    /// The `GET`s of data files the store answered since it was last cleared,
+    /// each as the key and the `Range` it asked for.
+    fn data_reads(store: &FakeS3) -> Vec<(String, String)> {
+        store
+            .requests()
+            .into_iter()
+            .filter(|request| request.method == "GET" && request.path.contains("/data/"))
+            .map(|request| {
+                let range = request
+                    .headers
+                    .iter()
+                    .find(|(name, _)| name.eq_ignore_ascii_case("range"))
+                    .map_or_else(String::new, |(_, value)| value.clone());
+                (request.path, range)
+            })
+            .collect()
+    }
+
+    /// A projected scan of `root`, opened afresh, answering its rows and the
+    /// data-file reads it cost.
+    fn projected(
+        store: &FakeS3,
+        root: &S3Folder,
+        columns: &[&str],
+    ) -> (usize, Vec<(String, String)>) {
+        let table = IcebergTable::open(root.clone()).unwrap();
+        let target = table
+            .schema()
+            .unwrap()
+            .clone()
+            .without_fields(columns)
+            .unwrap();
+        store.clear_requests();
+        let rows = table
+            .scan(Some(&target))
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        (rows, data_reads(store))
+    }
+
+    /// A table that renamed a column reads each data file once, as a table
+    /// that renamed nothing does: the projection takes the names a file
+    /// stores off its footer, read in the one read that takes a file this
+    /// short whole, and the record read decodes from those bytes and that
+    /// footer. Before, the footer was read for the names and the file's end
+    /// again for the read - two reads of each file.
+    #[test]
+    fn a_renamed_column_reads_each_data_file_once() {
+        let store = FakeS3::start();
+        store.create_bucket(BUCKET);
+        let root =
+            s3::folder_with(&format!("s3://{BUCKET}/lake/renamed"), options(&store)).unwrap();
+        let schema = schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            IcebergTable::create(root.clone(), FormatVersion::V3, schema, spec).unwrap();
+        table
+            .commit_append(rows(&[1, 2, 3], &["XNAS", "XNYS", "XLON"]))
+            .unwrap();
+
+        let (read, plain) = projected(&store, &root, &["symbol"]);
+        assert_eq!(read, 3);
+        println!("an unrenamed projected scan reads the data files as {plain:?}");
+
+        table
+            .commit_metadata_changes(|metadata| {
+                let mut update = SchemaUpdate::from_metadata(metadata)?;
+                update.rename_column("symbol", "ticker");
+                let evolved = update.into_field()?;
+                let schema_id = metadata.add_schema(evolved)?;
+                metadata.set_current_schema(schema_id)
+            })
+            .unwrap();
+        let (read, renamed) = projected(&store, &root, &["venue"]);
+        assert_eq!(read, 3);
+        println!("a renamed projected scan reads the data files as {renamed:?}");
+        let files = |reads: &[(String, String)]| {
+            let mut files: Vec<String> = reads.iter().map(|(path, _)| path.clone()).collect();
+            files.sort();
+            files
+        };
+        assert_eq!(plain.len(), 3, "one read per file: {plain:?}");
+        assert_eq!(
+            files(&renamed),
+            files(&plain),
+            "one read per file: {renamed:?}"
         );
     }
 }

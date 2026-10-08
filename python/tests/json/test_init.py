@@ -64,8 +64,8 @@ def test_first_class_scalars_round_trip_exactly() -> None:
     # A zone survives as the zone name, not as the offset it happened to be
     # at, because the offset alone cannot say Europe/Paris.
     assert restored["zoned"] == "2026-08-15T12:03:04.000005+02:00[Europe/Paris]"
-    assert restored["utc"] == "2026-08-15T00:00:00.000000Z"
-    assert restored["offset"] == "2026-08-15T00:00:00.000000+05:30"
+    assert restored["utc"] == "2026-08-15T00:00:00Z"
+    assert restored["offset"] == "2026-08-15T00:00:00+05:30"
     assert restored["delta"] == "-PT172796.999996S"
 
 
@@ -79,7 +79,7 @@ def test_temporal_and_decimal_names_are_the_cross_language_ones() -> None:
     encoded = json.dumps(value).decode()
 
     # Values outside JSON's grammar use ordinary interoperable strings.
-    assert '"at":"2026-08-15T00:00:00.000000Z"' in encoded
+    assert '"at":"2026-08-15T00:00:00Z"' in encoded
     assert '"on":"2026-08-15"' in encoded
     assert '"price":"-10.5"' in encoded
     assert "PYTHON:" not in encoded
@@ -295,7 +295,7 @@ def test_nested_field_class_round_trips_as_plain_nested_mappings() -> None:
     assert b"PYTHON:" not in encoded
     assert json.loads(encoded) == {
         "order_id": 7,
-        "fill": {"price": "12.5", "when": "2026-08-15T08:00:00.000000"},
+        "fill": {"price": "12.5", "when": "2026-08-15T08:00:00"},
     }
 
 

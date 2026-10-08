@@ -1,6 +1,8 @@
 import {
   BatchReader,
   ChunkedSerie,
+  KeySerie,
+  KeySeries,
   Field,
   FixedSizeSerieSerie,
   LargeSerieSerie,
@@ -9,8 +11,8 @@ import {
   Scalar,
   Serie,
   Selector,
-  SerieReader,
-  SerieReaderWindows,
+  StreamChunkedSerie,
+  StreamKeySerie,
   SerieSerie,
   SerieViewSerie,
   WindowSerie,
@@ -23,6 +25,7 @@ import {
   type JoinOptionsInput,
   type OrderingKey,
   type OrderingKeys,
+  type PartitionOptionsInput,
   type SortOptions,
 } from '..'
 import type {
@@ -52,7 +55,7 @@ const back: ArrowVector = cast.intoArrowArray()
 const rows: ArrowRecordBatch = records.intoArrowBatch()
 
 // A reader yields one record serie per batch and hands its stream back.
-const series: SerieReader = SerieReader.fromArrowReader(reader, root, unsafely)
+const series: StreamChunkedSerie = StreamChunkedSerie.fromArrowReader(reader, root, unsafely)
 const typedBy: Field = series.field
 for (const serie of series) {
   const landed: Serie = serie
@@ -60,18 +63,18 @@ for (const serie of series) {
 }
 const stream: BatchReader = series.intoArrowReader()
 // A held column is a stream of the one record serie it is.
-const held: SerieReader = SerieReader.fromSerie(records)
+const held: StreamChunkedSerie = StreamChunkedSerie.fromSerie(records)
 // A held chunked column is a stream of one record serie per chunk.
-const chunked: SerieReader = SerieReader.fromChunked(ChunkedSerie.fromSerie(records))
+const chunked: StreamChunkedSerie = StreamChunkedSerie.fromChunked(ChunkedSerie.fromSerie(records))
 
 // @ts-expect-error a held stream takes a Serie, not an Arrow table
-SerieReader.fromSerie(table)
+StreamChunkedSerie.fromSerie(table)
 // @ts-expect-error the private native bridge is hidden
-SerieReader._fromSerieNative
+StreamChunkedSerie._fromSerieNative
 // @ts-expect-error a stream of chunks takes a ChunkedSerie, not a Serie
-SerieReader.fromChunked(records)
+StreamChunkedSerie.fromChunked(records)
 // @ts-expect-error the private native bridge is hidden
-SerieReader._fromChunkedNative
+StreamChunkedSerie._fromChunkedNative
 
 // @ts-expect-error an Arrow door takes an Arrow Vector, not a JavaScript array
 Serie.fromArrowArray([0])
@@ -231,9 +234,9 @@ const reversed: Serie = wide.intoReversed()
 const taken: Serie = wide.intoTaken([2, 0])
 const takenBy: Serie = wide.intoTaken(order)
 const filtered: Serie = wide.intoFiltered([true, false])
-const groups: Array<[Scalar, Serie]> = wide.partitionBy(['a', 'b'])
-const byPaths: Array<[Scalar, Serie]> = records.partitionByPaths(['id'])
-const byPath: Array<[Scalar, Serie]> = records.partitionByPaths('id')
+const groups: KeySeries = wide.partitionBy(Serie.from(['a', 'b']))
+const byPaths: KeySeries = records.partitionBy(['id'])
+const byPath: KeySeries = records.partitionBy('id')
 const chained: Serie = wide.asSorted().asUnique().asReversed().asTaken([0]).asFiltered([true])
 const leafChained: StructSerie = records.child('row') as StructSerie
 const sameLeaf: StructSerie = leafChained.asSorted()
@@ -252,46 +255,82 @@ void [order, ordered, unique, distinct, bytes, sorted, deduplicated, reversed, t
 
 // Windows by key: each `[key, window]`, the window stating its record; a
 // stream cuts into one lazy reader per window.
-const windows: Array<[Scalar, WindowSerie]> = records.windowBy('id')
-const sortedWindows: Array<[Scalar, WindowSerie]> = records.windowBy(['id'], true)
-const clearedWindows: Array<[Scalar, WindowSerie]> = records.windowBy(new Selector('id'), null)
-const termWindows: Array<[Scalar, WindowSerie]> = records.windowBy([Term.column('id'), 'id as k'])
-const windowRecord: Scalar | null = windows[0][1].staticValues
-const walk: SerieReaderWindows = SerieReader.fromSerie(records).windowBy('id', false)
+const windows: KeySeries = records.windowBy('id')
+const sortedWindows: KeySeries = records.windowBy(['id'], true)
+const clearedWindows: KeySeries = records.windowBy(new Selector('id'), null)
+const termWindows: KeySeries = records.windowBy([Term.column('id'), 'id as k'])
+const windowRecord: Scalar = windows.get(0)!.key
+const walk: StreamKeySerie = StreamChunkedSerie.fromSerie(records).windowBy('id', false)
 const walkField: Field = walk.field
-const walkStaticField: Field = walk.staticField
-const step: IteratorResult<SerieReader> = walk.next()
-const self: SerieReaderWindows = walk[Symbol.iterator]()
+const walkKeyField: Field = walk.keyField
+const step: IteratorResult<KeySerie> = walk.next()
+const self: StreamKeySerie = walk[Symbol.iterator]()
 for (const opened of walk) {
-  const sub: SerieReader = opened
-  const subRecord: Scalar | null = sub.staticValues
-  const nested: SerieReaderWindows = sub.windowBy(Term.column('id'))
-  for (const serie of sub) {
-    const piece: Serie = serie
+  const sub: Serie = opened.rows
+  const subRecord: Scalar = opened.key
+  const nested: KeySeries = sub.windowBy(Term.column('id'))
+  for (const serie of sub.intoStream()) {
+    const piece: Scalar = serie
     void piece
   }
   void [subRecord, nested]
 }
-const readerRecord: Scalar | null = held.staticValues
+const readerField: Field = held.field
 // @ts-expect-error `sorted` is a boolean
 records.windowBy('id', 'yes')
 // @ts-expect-error `sorted` is a boolean
-SerieReader.fromSerie(records).windowBy('id', 1)
+StreamChunkedSerie.fromSerie(records).windowBy('id', 1)
 // @ts-expect-error a key is a Selector, a Term, a text or an array of them
 records.windowBy(7)
 // @ts-expect-error a reader's record is a getter, not a mutable slot
 held.staticValues = null
 // @ts-expect-error a serie states no record: only a window does
 records.staticValues
-// @ts-expect-error the walk is handed out by a reader, never constructed
-new SerieReaderWindows()
 // @ts-expect-error the private windowing bridges are hidden
 records._windowByNative
 // @ts-expect-error the private windowing bridges are hidden
 walk._nextNative
 
 void [windows, sortedWindows, clearedWindows, termWindows, windowRecord, walkField,
-  walkStaticField, step, self, readerRecord]
+  walkKeyField, step, self, readerField]
+
+// Partitions by key: a stream cut into `[key, rows]` pairs, each yielded as
+// its partition closes.
+const partitionOptions: PartitionOptionsInput = { maxOpen: 2, threads: 1, clustered: false }
+const clearedPartitionOptions: PartitionOptionsInput = {
+  maxOpen: null,
+  threads: null,
+  clustered: null,
+}
+const partitions: StreamKeySerie = StreamChunkedSerie.fromSerie(records).partitionBy('id')
+const boundedPartitions: StreamKeySerie = StreamChunkedSerie.fromSerie(records).partitionBy(
+  [Term.column('id')],
+  partitionOptions,
+)
+const clearedPartitions: StreamKeySerie = StreamChunkedSerie.fromSerie(records).partitionBy(
+  new Selector('id'),
+  null,
+)
+const partitionRoot: Field = partitions.field
+const partitionStep: IteratorResult<KeySerie> = partitions.next()
+const partitionsSelf: StreamKeySerie = partitions[Symbol.iterator]()
+for (const partition of boundedPartitions) {
+  const key: Scalar = partition.key
+  const rows: Serie = partition.rows
+  void [key, rows]
+}
+// @ts-expect-error a bound is a number
+StreamChunkedSerie.fromSerie(records).partitionBy('id', { maxOpen: '2' })
+// @ts-expect-error `clustered` is a boolean
+StreamChunkedSerie.fromSerie(records).partitionBy('id', { clustered: 1 })
+// @ts-expect-error a key is a Selector, a Term, a text or an array of them
+StreamChunkedSerie.fromSerie(records).partitionBy(7)
+// @ts-expect-error the private partitioning bridges are hidden
+partitions._nextNative
+// @ts-expect-error the private partitioning bridges are hidden
+StreamChunkedSerie.fromSerie(records)._partitionByNative
+
+void [clearedPartitionOptions, clearedPartitions, partitionRoot, partitionStep, partitionsSelf]
 
 // Spill: where the rows live; `spill` takes options or the process default.
 const resident: number = wide.residentSize()
@@ -310,8 +349,8 @@ const spilledInPlace: Serie = wide.asSpilled(new SpillOptions({ byteSize: 0 })).
 const spilledDefault: Serie = wide.asSpilled()
 const spilledCopy: Serie = wide.intoSpilled(null)
 const recordSpilled: StructSerie = (records.child('row') as StructSerie).asSpilled()
-const readerSpilledInPlace: SerieReader = held.asSpilled()
-const readerSpilledCopy: SerieReader = held.intoSpilled(new SpillOptions({ byteSize: 0 }))
+const readerSpilledInPlace: StreamChunkedSerie = held.asSpilled()
+const readerSpilledCopy: StreamChunkedSerie = held.intoSpilled(new SpillOptions({ byteSize: 0 }))
 // @ts-expect-error asSpilled takes a SpillOptions, not its init object
 wide.asSpilled({ byteSize: 0 })
 // @ts-expect-error the private spill bridges are hidden
@@ -343,8 +382,8 @@ const orderByKeys: Serie = records.sortIndicesBy(keys)
 const orderBySelector: Serie = records.sortIndicesBy(new Selector('id'))
 const sortedBy: Serie = records.intoSortBy(key)
 const sortedInPlace: StructSerie = (records.child('row') as StructSerie).asSortBy('id')
-const streamSorted: SerieReader = SerieReader.fromSerie(records).intoSorted({ descending: true })
-const streamSortedBy: SerieReader = SerieReader.fromSerie(records).intoSortBy(['id'])
+const streamSorted: StreamChunkedSerie = StreamChunkedSerie.fromSerie(records).intoSorted({ descending: true })
+const streamSortedBy: StreamChunkedSerie = StreamChunkedSerie.fromSerie(records).intoSortBy(['id'])
 const camelFlag: Serie = records.sortIndicesBy([{ term: 'id', nullsFirst: true }])
 const snakeFlag: Serie = records.sortIndicesBy([{ term: 'id', nulls_first: true }])
 // @ts-expect-error a key is text, a record or a Selector
@@ -369,12 +408,12 @@ const joined: Serie = records.joinWith(records, 'id')
 const joinedLeft: Serie = records.joinWith(window, byPair, 'left', joinOptions)
 const joinedMap: Serie = records.joinWith(records, new Map([['id', 'id']]), null, null)
 const joinedObject: Serie = records.joinWith(records, { id: 'id' }, 'left outer join')
-const streamJoined: SerieReader = SerieReader.fromSerie(records).joinWith(
-  SerieReader.fromSerie(records),
+const streamJoined: StreamChunkedSerie = StreamChunkedSerie.fromSerie(records).joinWith(
+  StreamChunkedSerie.fromSerie(records),
   'id',
   'semi',
 )
-const streamJoinedHeld: SerieReader = SerieReader.fromSerie(records).joinWith(
+const streamJoinedHeld: StreamChunkedSerie = StreamChunkedSerie.fromSerie(records).joinWith(
   ChunkedSerie.fromSerie(records),
   ['id'],
 )

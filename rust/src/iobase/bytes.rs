@@ -144,10 +144,10 @@ macro_rules! delegate_iobase {
     // request plan.
     ($handle:ident) => {
         $crate::delegate_iobase!(@methods $handle: pread, read_all_bytes, read_range_bytes,
-            read_digest, read_range_digest, write_all_bytes, create_bytes, append_bytes,
+            read_tail_bytes, read_digest, read_range_digest, write_all_bytes, create_bytes, append_bytes,
             applied_codec, pstream_bytes, pwrite, size, capacity, reserve,
             truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
-            ls, kind, is_container, clear, remove, is_atomic, is_tabular, is_io);
+            ls, kind, is_container, clear, remove, is_atomic, is_tabular, is_io, is_thread_bound);
     };
 
     // Everything but [`IOBase::clear`] and [`IOBase::remove`], which a wrapper
@@ -157,9 +157,9 @@ macro_rules! delegate_iobase {
     // mirroring the bytes underneath. The same list, named once instead of at
     // five call sites.
     ($handle:ident, except_lifecycle) => {
-        $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, create_bytes, size, capacity, reserve,
+        $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, read_tail_bytes, pwrite, create_bytes, size, capacity, reserve,
             truncate, uri, url, bound_location, mtime, media_type, set_media_type, applied_codec, flush, open, opened, close,
-            parent, child_by_path, ls, kind, is_container);
+            parent, child_by_path, ls, kind, is_container, is_thread_bound);
     };
 
     ($handle:ident: $($method:ident),+ $(,)?) => {
@@ -185,6 +185,12 @@ macro_rules! delegate_iobase {
     (@method $handle:ident, read_range_bytes) => {
         fn read_range_bytes(&self, offset: u64, length: usize) -> $crate::Result<Vec<u8>> {
             $crate::IOBase::read_range_bytes(&self.$handle, offset, length)
+        }
+    };
+
+    (@method $handle:ident, read_tail_bytes) => {
+        fn read_tail_bytes(&self, length: usize) -> $crate::Result<(Vec<u8>, u64)> {
+            $crate::IOBase::read_tail_bytes(&self.$handle, length)
         }
     };
 
@@ -380,6 +386,12 @@ macro_rules! delegate_iobase {
         }
     };
 
+    (@method $handle:ident, is_thread_bound) => {
+        fn is_thread_bound(&self) -> bool {
+            $crate::IOBase::is_thread_bound(&self.$handle)
+        }
+    };
+
     (@method $handle:ident, is_tabular) => {
         fn is_tabular(&self) -> bool {
             $crate::IOBase::is_tabular(&self.$handle)
@@ -426,6 +438,10 @@ macro_rules! __delegate_resolved_iobase {
 
         fn read_range_bytes(&self, offset: u64, length: usize) -> $crate::Result<Vec<u8>> {
             $crate::IOBase::read_range_bytes(self.$get()?, offset, length)
+        }
+
+        fn read_tail_bytes(&self, length: usize) -> $crate::Result<(Vec<u8>, u64)> {
+            $crate::IOBase::read_tail_bytes(self.$get()?, length)
         }
 
         fn read_digest(
@@ -573,6 +589,10 @@ macro_rules! __delegate_resolved_iobase {
             self.$get().is_ok_and($crate::IOBase::is_atomic)
         }
 
+        fn is_thread_bound(&self) -> bool {
+            self.$get().is_ok_and($crate::IOBase::is_thread_bound)
+        }
+
         fn is_tabular(&self) -> bool {
             self.$get().is_ok_and($crate::IOBase::is_tabular)
         }
@@ -695,68 +715,40 @@ impl IOMedia for Box<dyn IOBase> {
 
     // Forwarded, because a handle can answer its rows other than through its
     // bytes - an HTTP request walks the pages of a paginated document.
-    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
         IOMedia::read_serie(&**self, options)
     }
 
-    fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
-        IOMedia::read_arrow_reader(self.as_ref(), options)
-    }
-
-    fn overwrite_arrow_reader(
+    fn overwrite_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        IOMedia::overwrite_arrow_reader(self.as_mut(), batches, options)
+        IOMedia::overwrite_serie(self.as_mut(), value, options)
     }
 
-    fn overwrite_prepared_arrow_reader(
+    fn overwrite_prepared_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
+        value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> Result<()> {
-        IOMedia::overwrite_prepared_arrow_reader(self.as_mut(), batches, options)
+        IOMedia::overwrite_prepared_serie(self.as_mut(), value, options)
     }
 
-    fn overwrite_arrow_batch(
+    fn append_serie(
         &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        IOMedia::overwrite_arrow_batch(self.as_mut(), batch, options)
+        IOMedia::append_serie(self.as_mut(), value, options)
     }
 
-    fn append_arrow_reader(
+    fn merge_serie(
         &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
+        value: crate::Serie,
+        options: Option<&RecordOptions>,
     ) -> Result<crate::IOResult> {
-        IOMedia::append_arrow_reader(self.as_mut(), batches, options)
-    }
-
-    fn append_arrow_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        IOMedia::append_arrow_batch(self.as_mut(), batch, options)
-    }
-
-    fn merge_arrow_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        IOMedia::merge_arrow_reader(self.as_mut(), batches, options)
-    }
-
-    fn merge_arrow_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &RecordOptions,
-    ) -> Result<crate::IOResult> {
-        IOMedia::merge_arrow_batch(self.as_mut(), batch, options)
+        IOMedia::merge_serie(self.as_mut(), value, options)
     }
 }
 
@@ -775,6 +767,10 @@ impl IOBase for Box<dyn IOBase> {
 
     fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
         self.as_ref().read_range_bytes(offset, length)
+    }
+
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        self.as_ref().read_tail_bytes(length)
     }
 
     fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {
@@ -895,6 +891,10 @@ impl IOBase for Box<dyn IOBase> {
     // trait's `kind` here rather than the one the value inside answers.
     fn is_atomic(&self) -> bool {
         self.as_ref().is_atomic()
+    }
+
+    fn is_thread_bound(&self) -> bool {
+        self.as_ref().is_thread_bound()
     }
 
     fn is_tabular(&self) -> bool {

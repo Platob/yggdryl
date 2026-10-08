@@ -8,6 +8,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "900",
       "description": "TotalNetValue is determined as follows:",
       "display": "TotalNetValue"
@@ -22,6 +23,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "901",
       "description": "Starting consideration less repayments",
       "display": "CashOutstanding"
@@ -34,6 +36,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "902",
       "description": "Collateral Assignment Identifier",
       "display": "CollAsgnID"
@@ -47,6 +50,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collasgntranstypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "903",
       "description": "Collateral Assignment Transaction Type",
       "display": "CollAsgnTransType"
@@ -59,6 +63,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "904",
       "description": "Collateral Response Identifier",
       "display": "CollRespID"
@@ -72,6 +77,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collasgnresptypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "905",
       "description": "Type of collateral assignment response.",
       "display": "CollAsgnRespType"
@@ -85,6 +91,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collasgnrejectreasoncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "906",
       "description": "Collateral Assignment Reject Reason",
       "display": "CollAsgnRejectReason"
@@ -97,6 +104,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "907",
       "description": "Collateral Assignment Identifier to which a transaction refers",
       "display": "CollAsgnRefID"
@@ -109,6 +117,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "908",
       "description": "Collateral Report Identifier",
       "display": "CollRptID"
@@ -121,6 +130,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "909",
       "description": "Collateral Inquiry Identifier",
       "display": "CollInquiryID"
@@ -134,6 +144,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "910",
       "description": "Collateral Status",
       "display": "CollStatus"
@@ -146,6 +157,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "911",
       "description": "Total number of reports returned in response to a request.",
       "display": "TotNumReports"
@@ -159,6 +171,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "lastrptrequestedcodeset",
+      "FIX:datatype": "Boolean",
       "FIX:tag": "912",
       "description": "Indicates whether this message is the last report message in response to a request message, e.g. OrderMassStatusRequest(35=AF), TradeCaptureReportRequest(35=AD).",
       "display": "LastRptRequested"
@@ -171,6 +184,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "913",
       "description": "The full name of the base standard agreement, annexes and amendments in place between the principals applicable to a financing transaction. See https://fpml.org/coding-scheme/master-agreement-type for derivative values.",
       "display": "AgreementDesc"
@@ -183,6 +197,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "914",
       "description": "A common reference to the applicable standing agreement between the counterparties to a financing transaction.",
       "display": "AgreementID"
@@ -196,6 +211,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "915",
       "description": "A reference to the date the underlying agreement specified by AgreementID and AgreementDesc was executed.",
       "display": "AgreementDate"
@@ -209,6 +225,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "916",
       "description": "Start date of a financing deal, i.e. the date the buyer pays the seller cash and takes control of the collateral",
       "display": "StartDate"
@@ -222,6 +239,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "917",
       "description": "End date of a financing deal, i.e. the date the seller reimburses the buyer and takes back control of the collateral",
       "display": "EndDate"
@@ -234,6 +252,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "918",
       "description": "Contractual currency forming the basis of a financing agreement and associated transactions. Usually, but not always, the same as the trade currency.",
       "display": "AgreementCurrency"
@@ -247,6 +266,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "deliverytypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "919",
       "description": "Identifies type of settlement",
       "display": "DeliveryType"
@@ -261,6 +281,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "920",
       "description": "Accrued Interest Amount applicable to a financing transaction on the End Date.",
       "display": "EndAccruedInterestAmt"
@@ -275,6 +296,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "921",
       "description": "Starting dirty cash consideration of a financing deal, i.e. paid to the seller on the Start Date.",
       "display": "StartCash"
@@ -289,6 +311,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "922",
       "description": "Ending dirty cash consideration of a financing deal. i.e. reimbursed to the buyer on the End Date.",
       "display": "EndCash"
@@ -301,6 +324,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "923",
       "description": "Unique identifier for a User Request.",
       "display": "UserRequestID"
@@ -314,6 +338,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "userrequesttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "924",
       "description": "Indicates the action required by a User Request Message",
       "display": "UserRequestType"
@@ -326,6 +351,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "925",
       "description": "New Password or passphrase",
       "display": "NewPassword"
@@ -339,6 +365,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "userstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "926",
       "description": "Indicates the status of a user",
       "display": "UserStatus"
@@ -351,6 +378,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "927",
       "description": "A text description associated with a user status.",
       "display": "UserStatusText"
@@ -364,6 +392,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "statusvaluecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "928",
       "description": "Indicates the status of a network connection",
       "display": "StatusValue"
@@ -376,6 +405,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "929",
       "description": "A text description associated with a network status.",
       "display": "StatusText"
@@ -388,6 +418,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "930",
       "description": "Assigned value used to identify a firm.",
       "display": "RefCompID"
@@ -400,6 +431,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "931",
       "description": "Assigned value used to identify specific elements within a firm.",
       "display": "RefSubID"
@@ -412,6 +444,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "932",
       "description": "Unique identifier for a network response.",
       "display": "NetworkResponseID"
@@ -424,6 +457,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "933",
       "description": "Unique identifier for a network resquest.",
       "display": "NetworkRequestID"
@@ -436,6 +470,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "934",
       "description": "Identifier of the previous Network Response message sent to a counterparty, used to allow incremental updates.",
       "display": "LastNetworkResponseID"
@@ -449,6 +484,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "networkrequesttypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "935",
       "description": "Indicates the type and level of details required for a Network Status Request Message",
       "display": "NetworkRequestType"
@@ -461,6 +497,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "936",
       "description": "Number of CompID entries in a repeating group.",
       "display": "NoCompIDs"
@@ -474,6 +511,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "networkstatusresponsetypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "937",
       "description": "Indicates the type of Network Response Message.",
       "display": "NetworkStatusResponseType"
@@ -486,6 +524,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "938",
       "description": "Number of CollInquiryQualifier entries in a repeating group.",
       "display": "NoCollInquiryQualifier"
@@ -499,6 +538,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "trdrptstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "939",
       "description": "Trade Report Status",
       "display": "TrdRptStatus"
@@ -512,6 +552,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "affirmstatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "940",
       "description": "Specifies the affirmation status of the confirmation.",
       "display": "AffirmStatus"
@@ -524,6 +565,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "941",
       "description": "Currency in which the strike price of an underlying instrument is denominated",
       "display": "UnderlyingStrikeCurrency"
@@ -536,6 +578,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "942",
       "description": "Currency in which the strike price of a instrument leg of a multileg instrument is denominated",
       "display": "LegStrikeCurrency"
@@ -548,6 +591,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "943",
       "description": "A code that represents a time interval in which a fill or trade occurred.",
       "display": "TimeBracket"
@@ -561,6 +605,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collactioncodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "944",
       "description": "Action proposed for an Underlying Instrument instance.",
       "display": "CollAction"
@@ -574,6 +619,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collinquirystatuscodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "945",
       "description": "Status of Collateral Inquiry",
       "display": "CollInquiryStatus"
@@ -587,6 +633,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "collinquiryresultcodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "946",
       "description": "Result returned in response to Collateral Inquiry",
       "display": "CollInquiryResult"
@@ -599,6 +646,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Currency",
       "FIX:tag": "947",
       "description": "Currency in which the StrikePrice is denominated.",
       "display": "StrikeCurrency"
@@ -611,6 +659,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "948",
       "description": "Number of Nested3PartyID (949), Nested3PartyIDSource (950), and Nested3PartyRole (95) entries",
       "display": "NoNested3PartyIDs"
@@ -623,6 +672,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "949",
       "description": "PartyID value within a \"third instance\" Nested repeating group.",
       "display": "Nested3PartyID"
@@ -636,6 +686,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyidsourcecodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "950",
       "description": "PartyIDSource value within a \"third instance\" Nested repeating group.",
       "display": "Nested3PartyIDSource"
@@ -649,6 +700,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partyrolecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "951",
       "description": "PartyRole value within a \"third instance\" Nested repeating group.",
       "display": "Nested3PartyRole"
@@ -661,6 +713,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "952",
       "description": "Number of Nested3PartySubIDs (953) entries",
       "display": "NoNested3PartySubIDs"
@@ -673,6 +726,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "953",
       "description": "PartySubID value within a \"third instance\" Nested repeating group.",
       "display": "Nested3PartySubID"
@@ -686,6 +740,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "partysubidtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "954",
       "description": "PartySubIDType value within a \"third instance\" Nested repeating group.",
       "display": "Nested3PartySubIDType"
@@ -700,6 +755,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "MonthYear",
       "FIX:tag": "955",
       "description": "Specifies when the contract (i.e. MBS/TBA) will settle.",
       "display": "LegContractSettlMonth"
@@ -713,6 +769,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "956",
       "description": "The start date used for calculating accrued interest on debt instruments which are being sold between interest payment dates. Often but not always the same as the Issue Date and the Dated Date",
       "display": "LegInterestAccrualDate"
@@ -725,6 +782,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "957",
       "description": "Indicates number of strategy parameters",
       "display": "NoStrategyParameters"
@@ -737,6 +795,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "958",
       "description": "Name of parameter",
       "display": "StrategyParameterName"
@@ -750,6 +809,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "strategyparametertypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "959",
       "description": "Datatype of the parameter",
       "display": "StrategyParameterType"
@@ -762,6 +822,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "960",
       "description": "Value of the parameter",
       "display": "StrategyParameterValue"
@@ -774,6 +835,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "961",
       "description": "Host assigned entity ID that can be used to reference all components of a cross; sides + strategy + legs. Used as the primary key with which to refer to the Cross Order for cancellation and replace. The HostCrossID will also be used to link together components of the Cross Order. For example, each individual Execution Report associated with the order will carry HostCrossID in order to tie back to the original cross order.",
       "display": "HostCrossID"
@@ -788,6 +850,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "962",
       "description": "Indicates how long the order as specified in the side stays in effect. SideTimeInForce allows a two-sided cross order to specify order behavior separately for each side. Absence of this field indicates that TimeInForce should be referenced. SideTimeInForce will override TimeInForce if both are provided.",
       "display": "SideTimeInForce"
@@ -800,6 +863,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "963",
       "description": "Unique identifier for the Market Data Report.",
       "display": "MDReportID"
@@ -812,6 +876,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "964",
       "description": "Identifies a Security List message.",
       "display": "SecurityReportID"
@@ -825,6 +890,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securitystatuscodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "965",
       "description": "Indicates the current state of the instrument.",
       "display": "SecurityStatus"
@@ -837,6 +903,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "966",
       "description": "Indicator to determine if instrument is settle on open",
       "display": "SettleOnOpenFlag"
@@ -849,6 +916,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "967",
       "description": "Used for derivatives. Multiplier applied to the strike price for the purpose of calculating the settlement value.",
       "display": "StrikeMultiplier"
@@ -861,6 +929,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "968",
       "description": "Used for derivatives. The number of shares/units for the financial instrument involved in the option trade.",
       "display": "StrikeValue"
@@ -873,6 +942,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "float",
       "FIX:tag": "969",
       "description": "Minimum price increase for a given exchange-traded Instrument",
       "display": "MinPriceIncrement"
@@ -885,6 +955,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "970",
       "description": "Position Limit for a given exchange-traded product.",
       "display": "PositionLimit"
@@ -897,6 +968,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "int",
       "FIX:tag": "971",
       "description": "Position Limit in the near-term contract for a given exchange-traded product.",
       "display": "NTPositionLimit"
@@ -909,6 +981,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Percentage",
       "FIX:tag": "972",
       "description": "Percent of the Strike Price that this underlying represents.",
       "display": "UnderlyingAllocationPercent"
@@ -923,6 +996,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "973",
       "description": "Cash amount associated with the underlying component.",
       "display": "UnderlyingCashAmount"
@@ -936,6 +1010,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "underlyingcashtypecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "974",
       "description": "Used for derivatives that deliver into cash underlying.",
       "display": "UnderlyingCashType"
@@ -949,6 +1024,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "underlyingsettlementtypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "975",
       "description": "Indicates order settlement period for the underlying instrument.",
       "display": "UnderlyingSettlementType"
@@ -962,6 +1038,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "976",
       "description": "Date associated to the quantity that is being reported for the position.",
       "display": "QuantityDate"
@@ -974,6 +1051,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "977",
       "description": "Unique identifier for the Contrary Intention report",
       "display": "ContIntRptID"
@@ -986,6 +1064,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Boolean",
       "FIX:tag": "978",
       "description": "Indicates if the contrary intention was received after the exchange imposed cutoff time",
       "display": "LateIndicator"
@@ -998,6 +1077,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "979",
       "description": "Originating source of the request.",
       "display": "InputSource"
@@ -1011,6 +1091,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "securityupdateactioncodeset",
+      "FIX:datatype": "char",
       "FIX:tag": "980",
       "description": "Specifies the action taken or to be taken for the specified instrument or list of instruments.",
       "display": "SecurityUpdateAction"
@@ -1023,6 +1104,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "981",
       "description": "Number of Expiration Qty entries",
       "display": "NoExpiration"
@@ -1036,6 +1118,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "expirationqtytypecodeset",
+      "FIX:datatype": "int",
       "FIX:names": [
         "exptype"
       ],
@@ -1053,6 +1136,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Qty",
       "FIX:tag": "983",
       "description": "Expiration Quantity associated with the Expiration Type",
       "display": "ExpQty"
@@ -1065,6 +1149,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "NumInGroup",
       "FIX:tag": "984",
       "description": "Total number of occurrences of Amount to pay in order to receive the underlying instrument",
       "display": "NoUnderlyingAmounts"
@@ -1079,6 +1164,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "985",
       "description": "Amount to pay in order to receive the underlying instrument",
       "display": "UnderlyingPayAmount"
@@ -1093,6 +1179,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Amt",
       "FIX:tag": "986",
       "description": "Amount to collect in order to deliver the underlying instrument",
       "display": "UnderlyingCollectAmount"
@@ -1106,6 +1193,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "LocalMktDate",
       "FIX:tag": "987",
       "description": "Date the underlying instrument will settle. Used for derivatives that deliver into more than one underlying instrument. Settlement dates can vary across underlying instruments.",
       "display": "UnderlyingSettlementDate"
@@ -1118,6 +1206,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "988",
       "description": "Settlement status of the underlying instrument. Used for derivatives that deliver into more than one underlying instrument. Settlement can be delayed for an underlying instrument.",
       "display": "UnderlyingSettlementStatus"
@@ -1130,6 +1219,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:idmap": [
         {
           "map": "identifiers",
@@ -1148,6 +1238,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "990",
       "description": "Additional attribute to store the Trade ID of the Leg.",
       "display": "LegReportID"
@@ -1162,6 +1253,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "Price",
       "FIX:tag": "991",
       "description": "Specifies average price rounded to quoted precision.",
       "display": "RndPx"
@@ -1175,6 +1267,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "individualalloctypecodeset",
+      "FIX:datatype": "int",
       "FIX:tag": "992",
       "description": "Identifies whether the allocation is to be sub-allocated or allocated to a third party",
       "display": "IndividualAllocType"
@@ -1187,6 +1280,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "993",
       "description": "Capacity of customer in the allocation block.",
       "display": "AllocCustomerCapacity"
@@ -1199,6 +1293,7 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:datatype": "String",
       "FIX:tag": "994",
       "description": "The Tier the trade was matched by the clearing system.",
       "display": "TierCode"
@@ -1212,6 +1307,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "996",
       "description": "The unit of measure of the underlying commodity upon which the contract is based. Two groups of units of measure enumerations are supported.",
       "display": "UnitOfMeasure"
@@ -1225,6 +1321,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "timeunitcodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "997",
       "description": "Unit of time associated with the contract.",
       "display": "TimeUnit"
@@ -1238,6 +1335,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "998",
       "description": "Underlying unit of measure.",
       "display": "UnderlyingUnitOfMeasure"
@@ -1251,6 +1349,7 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "unitofmeasurecodeset",
+      "FIX:datatype": "String",
       "FIX:tag": "999",
       "description": "Multileg instrument unit of measure.",
       "display": "LegUnitOfMeasure"

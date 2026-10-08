@@ -1533,18 +1533,19 @@ mod dataset {
         );
 
         // Every order folds into a book and every execution is recorded
-        // among its book's deltas, read off the `Buffer` source so no
+        // among its book's events, read off the `Buffer` source so no
         // modification time dates a line: a fill moved its book through its
-        // order's report already and stands beside that report. Every order
-        // and every execution is a delta of its book, so a book stands at
+        // order's report already, the report in the book's delta and the
+        // execution among its events. Every order is a delta entry of its
+        // book and every execution an event of it, so a book stands at
         // every instant one states - the one instant only an execution
-        // touched among them. The Sell order of
+        // touched among them, an event-only book. The Sell order of
         // `2454` states no price: it rests at its side's one unpriced level
         // rather than being refused, and it leaves the side at the same
-        // instant, so the one book of that instant applies both as deltas and
-        // holds nothing. Eleven books come out - the NOVN order's three steps
-        // each its book's instant - each stating its deltas alone - with no
-        // grid and no snapshot input no book is whole, a code's first
+        // instant, so the one book of that instant applies both in its delta
+        // and holds nothing. Eleven books come out - the NOVN order's three
+        // steps each its book's instant - each a delta book - with no grid
+        // and no snapshot input no book is complete, a code's first
         // following no book - and the last is that one.
         let books: Vec<yggdryl::graph::BookEvent> =
             BookIterator::new(operations.clone().into_iter().map(Ok), 0)
@@ -1570,8 +1571,8 @@ mod dataset {
         // and no live entry to continue, and one restating the fill that
         // ended an order its book stopped holding at an earlier instant. Each
         // places nothing - what was alive before it is alive after it - yet
-        // each is the one order delta of the book of its instant, the fill
-        // it reports recorded beside it.
+        // each is the one order in the delta of the book of its instant, the
+        // fill it reports recorded among that book's events.
         let ended: Vec<&MarketData> = operations
             .iter()
             .filter(|operation| {
@@ -1585,14 +1586,7 @@ mod dataset {
                             (book.book_crosscode().to_owned(), book.get_currunix())
                                 == key(operation)
                         })
-                        .is_some_and(|book| {
-                            book.deltas()
-                                .filter(|delta| {
-                                    delta.marketdatakind() == yggdryl::MarketDataKind::Order
-                                })
-                                .count()
-                                == 1
-                        })
+                        .is_some_and(|book| book.orddelta().count() == 1)
             })
             .collect();
         assert_eq!(
@@ -1613,9 +1607,9 @@ mod dataset {
                 .find(|book| (book.book_crosscode().to_owned(), book.get_currunix()) == key(order))
                 .expect("the book of its instant");
             let delta = book
-                .deltas()
+                .delta()
                 .find(|delta| delta.marketdatakind() == yggdryl::MarketDataKind::Order)
-                .expect("the order's delta");
+                .expect("the order's delta entry");
             assert_eq!(delta.get_crossuuid(), order.get_crossuuid());
             let MarketData::OrderEvent(delta) = delta else {
                 panic!("an order, got {}", delta.kind().as_str())
@@ -1623,22 +1617,38 @@ mod dataset {
             assert!(!delta.get_state().is_live());
         }
         // The one instant no order states is the trade capture's, which its
-        // execution of side `UKNW` alone touched: the book of that instant
-        // states that execution alone.
+        // execution of side `UKNW` alone touched: the book of that instant is
+        // an event-only book - its delta empty, its events that execution
+        // alone.
         let alone: Vec<&yggdryl::graph::BookEvent> = books
             .iter()
-            .filter(|book| {
-                book.deltas()
-                    .all(|delta| delta.marketdatakind() == yggdryl::MarketDataKind::Execution)
-            })
+            .filter(|book| book.delta().next().is_none())
             .collect();
         let [trade_book] = alone[..] else {
             panic!("the trade capture's book alone, got {}", alone.len())
         };
-        let [MarketData::ExecutionEvent(trade_fill)] = trade_book.deltas().collect::<Vec<_>>()[..]
+        assert!(!trade_book.is_complete());
+        let [MarketData::ExecutionEvent(trade_fill)] = trade_book.events().collect::<Vec<_>>()[..]
         else {
             panic!("the trade capture's execution alone")
         };
+        assert_eq!(trade_book.controls().count(), 0);
+        // Every execution of the capture is an event of exactly one book,
+        // and no book records an order or a quote among its events.
+        assert_eq!(
+            books
+                .iter()
+                .map(|book| book.executions().count())
+                .sum::<usize>(),
+            operations
+                .iter()
+                .filter(|operation| operation.marketdatakind() == yggdryl::MarketDataKind::Execution)
+                .count()
+        );
+        assert!(
+            books.iter().all(|book| book.controls().count() == 0
+                && book.executions().count() == book.events().len())
+        );
         assert_eq!(trade_fill.get_side(), yggdryl::Side::Unknown);
         let last = books.last().expect("a last book");
         assert_eq!(last.get_ticker(), Some("2454"));
@@ -1668,10 +1678,11 @@ mod dataset {
         assert!(last.limits(yggdryl::Side::Buy).next().is_none());
         assert!(last.limits(yggdryl::Side::Sell).next().is_none());
         assert_eq!(last.alive().count(), 0);
-        let deltas: Vec<&yggdryl::graph::MarketData> = last.deltas().collect();
-        assert_eq!(deltas.len(), 2, "the unpriced order and its exit");
+        let delta: Vec<&yggdryl::graph::MarketData> = last.delta().collect();
+        assert_eq!(delta.len(), 2, "the unpriced order and its exit");
+        assert_eq!(last.events().len(), 0, "no execution touched its instant");
         assert_eq!(
-            deltas
+            delta
                 .iter()
                 .map(|delta| yggdryl::graph::Market::get_price(*delta))
                 .collect::<Vec<_>>(),
@@ -1679,9 +1690,9 @@ mod dataset {
         );
         // A cancel request states what was ordered, never what is left
         // open: its quantity is none, its ordered quantity the 10,000.
-        assert_eq!(yggdryl::graph::Market::get_quantity(deltas[0]), None);
+        assert_eq!(yggdryl::graph::Market::get_quantity(delta[0]), None);
         assert!(matches!(
-            deltas[0],
+            delta[0],
             yggdryl::graph::MarketData::OrderEvent(order)
                 if yggdryl::graph::Operation::get_ordqty(order) == Some(yggdryl::Decimal::from_int(10_000))
         ));
@@ -1756,8 +1767,13 @@ mod dataset {
         // again when a book came to state `BOTH` as its side: the book's own
         // market event feeds its side, `BOTH` where a side nobody stated fed.
         // The zero-side spelling `UKNW` does not move this book: its side is
-        // `BOTH`, and both deltas still name `SELL`.
-        assert_eq!(last.get_currhashcode(), 1_914_142_786_384_712_743);
+        // `BOTH`, and both deltas still name `SELL`. It moved again when a
+        // book split what its instant recorded into its `delta` - the
+        // orders and quotes - and its `events` - the executions and the
+        // snapshot controls - and came to digest the events after the
+        // delta: this book holds no event, so it feeds the empty list's
+        // count beside its two delta entries.
+        assert_eq!(last.get_currhashcode(), 10_745_751_629_392_559_435);
 
         // No leaf keys a typed fact, save the one the NOVN delivery's hops
         // disagree on: its rows state two `OMSDEALERORDERID` values, the

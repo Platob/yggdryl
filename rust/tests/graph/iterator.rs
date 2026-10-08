@@ -11,7 +11,23 @@ use yggdryl::graph::{
 };
 use yggdryl::{IdType, Identifier, State, Uuid};
 
-use super::element::filled;
+use super::element::{crosshash, filled};
+
+/// Asserts `event` derives its cross identity from the cross code it
+/// stores: the cross hash the code's XXH3-64, the cross element the UUIDv8
+/// over that hash.
+fn assert_derived(event: &impl Element, what: &str) {
+    assert_eq!(
+        event.get_crosshashcode(),
+        crosshash(event.get_crosscode()),
+        "{what}: the cross hash"
+    );
+    assert_eq!(
+        event.get_crossuuid(),
+        Uuid::from_v8(u128::from(event.get_crosshashcode())),
+        "{what}: the cross element"
+    );
+}
 
 /// One identifier of a plain holder: a value of `kind` from `fix`.
 fn identifier(kind: &IdType, value: &str) -> Identifier {
@@ -737,23 +753,48 @@ fn an_element_under_no_live_identity_follows_the_live_one_it_shares_a_name_with(
     assert_eq!(other.get_crosscode(), "10:0:O-900");
     assert_eq!(walk.alive().count(), 3);
 
-    // A chain that ended took its names with it: a later report spelling
-    // only the name starts afresh.
-    let mut fill = named("O-100", 20, &CL_ORD_ID, "C-1");
+    // A chain that ended took its names with it - the value it was placed
+    // under and the one a replace gave it alike: a later report spelling
+    // either alone starts afresh.
+    let mut replaced = named("O-100", 15, &CL_ORD_ID, "C-2");
+    replaced
+        .insert_identifier(identifier(&IdType::OrigClOrdId, "C-1"))
+        .unwrap();
+    replaced.finalize();
+    let mut fill = named("O-100", 20, &CL_ORD_ID, "C-2");
     fill.set_state(filled());
     fill.finalize();
-    let late = anonymous(30, &[(CL_ORD_ID, "C-1")]);
     let mut walk = EventIterator::new(
-        vec![named("O-100", 10, &CL_ORD_ID, "C-1"), fill, late],
+        vec![
+            named("O-100", 10, &CL_ORD_ID, "C-1"),
+            replaced,
+            fill,
+            anonymous(30, &[(CL_ORD_ID, "C-1")]),
+            anonymous(40, &[(CL_ORD_ID, "C-2")]),
+        ],
         true,
     );
     walk.next().expect("the order");
+    let replaced = walk.next().expect("the replace");
+    assert_eq!(replaced.get_crosscode(), "10:0:O-100");
     walk.next().expect("the fill");
     assert_eq!(walk.alive().count(), 0);
-    let late = walk.next().expect("the late report");
-    assert_eq!((late.get_seqnum(), late.get_prevuuid()), (0, None));
-    assert_eq!(late.get_crosscode(), "");
-    assert_eq!(late.get_crossuuid(), late.get_curruuid());
+    #[cfg(feature = "internals")]
+    assert_eq!(
+        yggdryl::internals::graph_iterator::named_identities(&walk),
+        0,
+        "the ended chain holds no name"
+    );
+    for value in ["C-1", "C-2"] {
+        let late = walk.next().expect("a late report");
+        assert_eq!(
+            (late.get_seqnum(), late.get_prevuuid()),
+            (0, None),
+            "{value}"
+        );
+        assert_eq!(late.get_crosscode(), "", "{value}");
+        assert_eq!(late.get_crossuuid(), late.get_curruuid(), "{value}");
+    }
 }
 
 #[test]
@@ -775,6 +816,49 @@ fn an_element_before_the_live_one_is_yielded_as_it_came_and_changes_nothing() {
     let fourth = walk.next().expect("the fourth");
     assert_eq!(fourth.get_prevuuid(), Some(third.get_curruuid()));
     assert_eq!(fourth.get_seqnum(), 0);
+
+    // A late element stating no side and another code of the chain's kind,
+    // naming the chain by a name it goes by: it follows nothing and moves
+    // the live element not at all, but it is one of the chain's statements,
+    // so it stands under the chain's side, stored cross code and cross
+    // element.
+    use yggdryl::Side;
+    let arrived = vec![
+        sided("O-100", 10, Side::Buy, State::New, &[(CL_ORD_ID, "C-1")]),
+        sided(
+            "O-100",
+            30,
+            Side::Buy,
+            State::PartiallyFilled,
+            &[(CL_ORD_ID, "C-1")],
+        ),
+        sided(
+            "O-777",
+            20,
+            Side::Unknown,
+            State::PartiallyFilled,
+            &[(CL_ORD_ID, "C-1")],
+        ),
+    ];
+    assert_eq!(arrived[2].get_crosscode(), "10:0:O-777");
+    let mut walk = EventIterator::new(arrived, true);
+    walk.next().expect("the order");
+    let live = walk.next().expect("the live one");
+    let stray = walk.next().expect("the late one");
+    assert_eq!(stray.get_prevuuid(), None, "it follows nothing");
+    assert_eq!(stray.get_side(), Side::Buy, "the chain's side");
+    assert_eq!(stray.get_crosscode(), "10:1:O-100", "the chain's code");
+    assert_derived(&stray, "the late element");
+    assert_eq!(stray.get_crossuuid(), live.get_crossuuid());
+    assert_eq!(
+        stray.get_curruuid(),
+        stray.time_uuid().expect("an identity")
+    );
+    assert_eq!(
+        walk.alive().collect::<Vec<_>>(),
+        [&live],
+        "the live element unchanged"
+    );
 }
 
 #[test]
@@ -896,6 +980,8 @@ fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
     assert_eq!(expired.get_prevuuid(), Some(walked[0].get_curruuid()));
     assert_eq!(expired.get_seqnum(), 0);
     assert_eq!(expired.get_crossuuid(), walked[0].get_crossuuid());
+    assert_eq!(expired.get_crosscode(), "10:0:O-100");
+    assert_derived(expired, "the expiry");
     assert_eq!(
         (walked[3].get_seqnum(), walked[3].get_prevuuid()),
         (0, None),
@@ -1104,6 +1190,7 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
         assert_eq!(snapshot.get_seqnum(), source.get_seqnum());
         assert_eq!(snapshot.get_prevuuid(), source.get_prevuuid());
         assert_eq!(snapshot.get_crossuuid(), source.get_crossuuid());
+        assert_derived(snapshot, "the view");
         assert_eq!(
             snapshot.get_curruuid() == source.get_curruuid(),
             tick == source.get_currunix()
@@ -1131,24 +1218,21 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
 /// The name index a caller only ever sees the result of.
 ///
 /// An event arriving under no live identity finds its chain through a name a
-/// live event goes by - one of its identifiers - and the two maps
-/// that make that lookup are the walk's own; settling and retiring an
-/// identity directly is what pins that retiring a name forgets exactly the
-/// records it opened.
+/// live event goes by - one of its chain identities, or the chain's first
+/// value a lineage field names under its base - and the two maps that make
+/// that lookup are the walk's own; settling and retiring an identity directly
+/// is what pins that a name has one live holder and that retiring it forgets
+/// exactly the records it opened.
 #[cfg(feature = "internals")]
 mod naming {
-    use yggdryl::graph::{Element, EventIterator, Operation, OrderEvent};
+    use yggdryl::graph::{Element, Event, EventIterator, Operation, OrderEvent};
 
-    use super::identifier;
-    use yggdryl::IdType;
+    use super::{CL_ORD_ID, EXEC_ID, ORDER_ID, anonymous, identifier, named as named_at};
     use yggdryl::internals::graph_iterator::{
-        name_records, named_identities, named_identity, named_schemes, retire, settle,
+        name_records, named_chains, named_identities, named_schemes, retire, settle,
     };
-
-    /// A type no member names: an `Other` word.
-    fn venue() -> IdType {
-        "venueorderid".parse().unwrap()
-    }
+    use yggdryl::internals::logging_warning::count;
+    use yggdryl::{IdType, State};
 
     fn named(cross: &str, unix: i64, scheme: &IdType, name: &str) -> OrderEvent {
         let mut event = OrderEvent::at(unix);
@@ -1162,7 +1246,7 @@ mod naming {
 
     #[test]
     fn retiring_the_last_name_removes_its_whole_index() {
-        let event = named("A", 1, &venue(), "A-1");
+        let event = named("A", 1, &CL_ORD_ID, "A-1");
         let identity = event.get_crossuuid();
         let mut walk = EventIterator::new(Vec::<OrderEvent>::new(), true);
         settle(&mut walk, identity, &event, event.get_curruuid());
@@ -1174,10 +1258,14 @@ mod naming {
         assert_eq!(named_identities(&walk), 0);
     }
 
+    /// A name has one live holder: the first chain that stated it keeps it
+    /// however often another settles stating it too, and holds the one
+    /// reverse record; it is released when that chain ends, and the next
+    /// chain stating it files it.
     #[test]
-    fn alternating_name_ownership_keeps_one_reverse_record() {
-        let first = named("A", 1, &venue(), "SHARED");
-        let second = named("B", 2, &venue(), "SHARED");
+    fn a_name_keeps_its_first_live_holder() {
+        let first = named("A", 1, &CL_ORD_ID, "SHARED");
+        let second = named("B", 2, &CL_ORD_ID, "SHARED");
         let first_identity = first.get_crossuuid();
         let second_identity = second.get_crossuuid();
         let mut walk = EventIterator::new(Vec::<OrderEvent>::new(), true);
@@ -1190,24 +1278,128 @@ mod naming {
             };
             settle(&mut walk, identity, event, event.get_curruuid());
             assert_eq!(
-                named_identity(&walk, &venue(), "SHARED"),
-                Some(identity),
-                "the latest owner remains the lookup target"
+                named_chains(&walk, &CL_ORD_ID, "SHARED"),
+                [first_identity],
+                "the first holder keeps the name"
             );
-            assert_eq!(
-                name_records(&walk),
-                1,
-                "one current lookup retains one reverse ownership record"
-            );
+            assert_eq!(name_records(&walk), 1, "one holder, one reverse record");
         }
 
-        assert!(retire(&mut walk, first_identity), "the first owner retires");
+        assert!(
+            retire(&mut walk, first_identity),
+            "the first holder retires"
+        );
+        assert!(named_chains(&walk, &CL_ORD_ID, "SHARED").is_empty());
+        assert_eq!(named_schemes(&walk), 0, "the index holds nothing for it");
+        settle(&mut walk, second_identity, &second, second.get_curruuid());
+        assert_eq!(
+            named_chains(&walk, &CL_ORD_ID, "SHARED"),
+            [second_identity],
+            "released, the next chain stating it files it"
+        );
         assert!(
             retire(&mut walk, second_identity),
-            "the second owner retires"
+            "the second holder retires"
         );
         assert_eq!(named_schemes(&walk), 0);
         assert_eq!(named_identities(&walk), 0);
+    }
+
+    /// A per-report reference - an `ExecID(17)`, a `TrdMatchID(880)` -
+    /// names no chain, so two orders whose reports share one stay two
+    /// chains, and a chain of many reports holds one record per identity
+    /// type it goes by, never one per report.
+    #[test]
+    fn a_per_report_reference_names_no_chain() {
+        let trdmatchid = IdType::TrdMatchId;
+        let report = |ms: i64, order: &str, exec: &str| {
+            anonymous(
+                ms,
+                &[
+                    (ORDER_ID, order),
+                    (EXEC_ID, exec),
+                    (trdmatchid.clone(), "M1"),
+                ],
+            )
+        };
+        let arrived = vec![
+            named_at("O-1", 10, &ORDER_ID, "A"),
+            named_at("O-2", 11, &ORDER_ID, "B"),
+            report(20, "A", "E1"),
+            report(21, "B", "E1"),
+        ];
+        let mut walk = EventIterator::new(arrived, true);
+        let walked: Vec<OrderEvent> = walk.by_ref().collect();
+        assert_eq!(walked[2].get_prevuuid(), Some(walked[0].get_curruuid()));
+        assert_eq!(
+            walked[3].get_prevuuid(),
+            Some(walked[1].get_curruuid()),
+            "B's report joins B, never A by the execution they share"
+        );
+        assert_eq!(walked[3].get_crosscode(), "10:0:O-2");
+        assert_eq!(walk.alive().count(), 2);
+        assert!(named_chains(&walk, &EXEC_ID, "E1").is_empty());
+        assert!(named_chains(&walk, &trdmatchid, "M1").is_empty());
+        assert_eq!(
+            named_chains(&walk, &ORDER_ID, "A"),
+            [walked[0].get_crossuuid()]
+        );
+
+        // One order, a client order identifier and sixty-four reports each
+        // stating an execution of its own: two records, whatever the count.
+        let mut order = named_at("O-1", 0, &ORDER_ID, "A");
+        order
+            .insert_identifier(identifier(&CL_ORD_ID, "C"))
+            .unwrap();
+        order.finalize();
+        let reports = (1..=64).map(|step| {
+            let mut report = report(step, "A", &format!("E{step}"));
+            report.set_state(State::PartiallyFilled);
+            report.finalize();
+            report
+        });
+        let mut walk = EventIterator::new(std::iter::once(order).chain(reports), true);
+        assert_eq!(walk.by_ref().count(), 65);
+        assert_eq!(walk.alive().count(), 1);
+        assert_eq!(name_records(&walk), 2, "orderid and clordid, once each");
+        assert!(named_chains(&walk, &EXEC_ID, "E64").is_empty());
+    }
+
+    /// A replace keeps the old value a living identity of the chain beside
+    /// the new one, filed under the base, and files the lineage field's raw
+    /// type nowhere.
+    #[test]
+    fn a_replace_files_both_values_under_the_base_and_no_lineage_slot() {
+        let walked = super::replace_chain();
+        let walk = &walked.1;
+        let chain = walked.0[0].get_crossuuid();
+        assert_eq!(named_chains(walk, &CL_ORD_ID, "C1"), [chain]);
+        assert_eq!(named_chains(walk, &CL_ORD_ID, "C2"), [chain]);
+        assert!(named_chains(walk, &IdType::OrigClOrdId, "C1").is_empty());
+    }
+
+    /// The conflict an element citing two live chains is: warned under its
+    /// kind each time it is stated, and the conflicted statement files none
+    /// of the names it shares with the chains it cited.
+    #[test]
+    fn a_conflict_is_warned_and_files_no_name_another_chain_holds() {
+        let warned = || {
+            count(
+                "yggdryl::graph::iterator",
+                "lifecycle element cites two live chains: it stands under its own identity",
+                "ORDR",
+            )
+        };
+        let before = warned();
+        let (walked, walk) = super::conflicted(&[]);
+        assert!(warned() > before, "the conflict is warned");
+        let (first, second) = (walked[0].get_crossuuid(), walked[1].get_crossuuid());
+        assert_eq!(named_chains(&walk, &CL_ORD_ID, "C1"), [first]);
+        assert_eq!(
+            named_chains(&walk, &IdType::SecondaryClOrdId, "S2"),
+            [second]
+        );
+        assert_eq!(walk.alive().count(), 3, "the conflicted statement's own");
     }
 }
 
@@ -1252,6 +1444,62 @@ fn a_market_data_walk_chains_within_one_kind_and_passes_the_rest_through() {
         (0, Some(order.get_curruuid()))
     );
     assert_eq!(walk.alive().count(), 2, "the order's chain and the fill's");
+
+    // Across leaves: a FIX message following a typed order of its kind, and
+    // a typed order stating no side following a FIX message, each stand
+    // under the chain's side, stored cross code and cross element, whatever
+    // following the other leaf answered.
+    use yggdryl::graph::Market;
+    use yggdryl::{FixCodec, FixMsg, FixRegistry, Side};
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let folder = yggdryl::local::LocalFolder::new(root).expect("the local seed path");
+    let codec = FixCodec::new(std::sync::Arc::new(
+        FixRegistry::from_handle(&folder).expect("the committed dictionary loads"),
+    ));
+    let message = |line: &str| -> MarketData {
+        let message: FixMsg = codec
+            .parse_line(line.as_bytes())
+            .expect("a readable line")
+            .next()
+            .expect("one frame")
+            .expect("the frame parses");
+        MarketData::from(message)
+    };
+    let typed = sided("T-1", 10, Side::Buy, State::New, &[(CL_ORD_ID, "A1")]);
+    let fix = message(
+        "8=FIX.4.4|35=D|49=S|56=T|34=1|52=20231114-22:13:20.020|11=A1|55=AAPL|54=1|38=100|10=0|",
+    );
+    assert_eq!(fix.get_crosscode(), "10:1:A1");
+    let walked: Vec<MarketData> =
+        EventIterator::new(vec![MarketData::from(typed), fix], true).collect();
+    assert!(walked[1].as_fix().is_some(), "the message keeps its leaf");
+    assert_eq!(walked[1].get_side(), Side::Buy);
+    assert_eq!(
+        walked[1].get_crosscode(),
+        "10:1:T-1",
+        "the typed chain's code"
+    );
+    assert_derived(&walked[1], "a FIX follower of a typed order");
+    assert_eq!(walked[1].get_crossuuid(), walked[0].get_crossuuid());
+
+    let fix = message(
+        "8=FIX.4.4|35=D|49=S|56=T|34=1|52=20231114-22:13:20.010|11=B1|55=AAPL|54=1|38=100|10=0|",
+    );
+    let unsided = sided("Z-9", 20, Side::Unknown, State::New, &[(CL_ORD_ID, "B1")]);
+    assert_eq!(unsided.get_crosscode(), "10:0:Z-9");
+    let walked: Vec<MarketData> =
+        EventIterator::new(vec![fix, MarketData::from(unsided)], true).collect();
+    let follower = walked[1]
+        .as_order_event()
+        .expect("the order keeps its leaf");
+    assert_eq!(follower.get_side(), Side::Buy, "the FIX chain's side");
+    assert_eq!(follower.get_crosscode(), "10:1:B1", "the FIX chain's code");
+    assert_derived(follower, "a typed follower of a FIX message");
+    assert_eq!(follower.get_crossuuid(), walked[0].get_crossuuid());
+    assert_eq!(
+        follower.get_curruuid(),
+        follower.time_uuid().expect("an identity")
+    );
 }
 
 /// One event of `order` at `ms` stating `state`.
@@ -1785,32 +2033,52 @@ fn two_sides_of_one_code_stay_two_chains_for_as_long_as_both_live() {
     assert_eq!(alive(&walk), [("10:2:ORD-1".to_owned(), 40)]);
 }
 
-/// The type of a parent of an order identifier: `parentorderid`, a word no
-/// member names.
+/// The previous-value slot of an order identifier: `parentorderid`, the
+/// first of `orderid`'s two parents.
 fn parent_order_id() -> IdType {
     "parentorderid".parse().expect("a type")
 }
 
-/// An element joins a live chain through the value of a parent identifier
-/// too: one stating `parentorderid` A names the chain whose `orderid` is A,
-/// whatever `orderid` it states itself or states none, and a parent naming
-/// no live chain joins nothing.
+/// The first value of an order identifier's chain: `origorderid`, the last
+/// of `orderid`'s two parents.
+fn orig_order_id() -> IdType {
+    "origorderid".parse().expect("a type")
+}
+
+/// An element joins a live chain through the chain's first value a lineage
+/// field names: one stating `origorderid` A names the chain whose `orderid`
+/// was first A, whatever `orderid` it states itself, and a value the chain
+/// moved past still names it. The previous-value slot `parentorderid` names
+/// no chain - the walk writes it from a value the chain holds, and a bridge
+/// spells a hierarchy parent by it - so an element stating it beside an
+/// `orderid` of its own starts afresh, while one stating it alone is what it
+/// came from: finalizing fills its `orderid` from it. A parent naming no
+/// live chain joins nothing.
 #[test]
 fn an_element_joins_a_live_chain_through_a_parent_identifiers_value() {
-    // An order replaced under a new `orderid` that says what it replaced.
+    // An order replaced under a new `orderid` that says where it began.
     let first = named("O-100", 10, &ORDER_ID, "A");
-    let replacement = anonymous(20, &[(ORDER_ID, "B"), (parent_order_id(), "A")]);
+    let replacement = anonymous(20, &[(ORDER_ID, "B"), (orig_order_id(), "A")]);
     assert_ne!(replacement.get_crossuuid(), first.get_crossuuid());
     let restated = anonymous(30, &[(ORDER_ID, "B")]);
-    let replaced_again = anonymous(40, &[(ORDER_ID, "C"), (parent_order_id(), "B")]);
+    let replaced_again = anonymous(40, &[(ORDER_ID, "C"), (orig_order_id(), "A")]);
+    let cited = anonymous(50, &[(ORDER_ID, "A")]);
     let walked: Vec<OrderEvent> = EventIterator::new(
-        vec![first.clone(), replacement, restated, replaced_again],
+        vec![first.clone(), replacement, restated, replaced_again, cited],
         true,
     )
     .collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(first.get_curruuid()));
-    assert_eq!(walked[1].get_crosscode(), "10:0:O-100", "the chain's code");
-    assert_eq!(walked[1].get_crossuuid(), first.get_crossuuid());
+    assert!(
+        walked
+            .windows(2)
+            .all(|pair| pair[1].get_prevuuid() == Some(pair[0].get_curruuid())),
+        "one chain"
+    );
+    for (at, event) in walked.iter().enumerate() {
+        assert_eq!(event.get_crosscode(), "10:0:O-100", "statement {at}");
+        assert_derived(event, &format!("statement {at}"));
+        assert_eq!(event.get_crossuuid(), first.get_crossuuid());
+    }
     let held = |event: &OrderEvent, kind: &str| {
         event
             .get_identifiers()
@@ -1820,20 +2088,26 @@ fn an_element_joins_a_live_chain_through_a_parent_identifiers_value() {
     assert_eq!(held(&walked[1], "orderid").as_deref(), Some("B"));
     assert_eq!(held(&walked[1], "parentorderid").as_deref(), Some("A"));
     assert_eq!(held(&walked[1], "origorderid").as_deref(), Some("A"));
-    // The chain now goes by B, so a statement under B alone follows, with
-    // the parents the chain gave B.
-    assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_curruuid()));
+    // The chain now goes by B too, so a statement under B alone follows,
+    // with the parents the chain gave B.
     assert_eq!(held(&walked[2], "parentorderid").as_deref(), Some("A"));
     assert_eq!(held(&walked[2], "origorderid").as_deref(), Some("A"));
-    // C names B as its parent and joins by it: the chain A, B, C ends with
-    // `parentorderid` B and `origorderid` A.
-    assert_eq!(walked[3].get_prevuuid(), Some(walked[2].get_curruuid()));
-    assert_eq!(walked[3].get_crossuuid(), first.get_crossuuid());
+    // C names the chain's first value and joins by it: the chain A, B, C
+    // ends with `parentorderid` B and `origorderid` A.
     assert_eq!(held(&walked[3], "orderid").as_deref(), Some("C"));
     assert_eq!(held(&walked[3], "parentorderid").as_deref(), Some("B"));
     assert_eq!(held(&walked[3], "origorderid").as_deref(), Some("A"));
+    // And A, the value the chain moved past, still names it until it ends.
+    assert_eq!(held(&walked[4], "orderid").as_deref(), Some("A"));
 
-    // An element stating only the parent is what it came from: finalizing
+    // The previous-value slot beside an `orderid` of its own names nothing:
+    // a hierarchy parent, a chain of its own.
+    let child = anonymous(20, &[(ORDER_ID, "B"), (parent_order_id(), "A")]);
+    let walked: Vec<OrderEvent> = EventIterator::new(vec![first.clone(), child], true).collect();
+    assert_eq!(walked[1].get_prevuuid(), None);
+    assert_eq!(walked[1].get_crosscode(), "");
+
+    // An element stating only the slot is what it came from: finalizing
     // fills its `orderid` from it, and it joins the chain going by A.
     let only = anonymous(20, &[(parent_order_id(), "A")]);
     assert_eq!(held(&only, "orderid").as_deref(), Some("A"));
@@ -1841,11 +2115,143 @@ fn an_element_joins_a_live_chain_through_a_parent_identifiers_value() {
     assert_eq!(walked[1].get_prevuuid(), Some(first.get_curruuid()));
     assert_eq!(walked[1].get_crosscode(), "10:0:O-100");
 
-    // A parent no live chain goes by joins nothing: a chain of its own.
-    let stranger = anonymous(20, &[(ORDER_ID, "Y"), (parent_order_id(), "Z")]);
+    // A first value no live chain goes by joins nothing: a chain of its own.
+    let stranger = anonymous(20, &[(ORDER_ID, "Y"), (orig_order_id(), "Z")]);
     let walked: Vec<OrderEvent> = EventIterator::new(vec![first, stranger], true).collect();
     assert_eq!(walked[1].get_prevuuid(), None);
     assert_eq!(walked[1].get_crosscode(), "");
+}
+
+/// An order placed under `ClOrdID` C1 and replaced under C2 - the replace
+/// stating C1 as its `OrigClOrdID(41)` and a parse code of its own - then
+/// reported under C2 alone, under C1 alone, and under the lineage field
+/// alone, which finalizing makes C1 as well, walked: what it yielded and the
+/// walk after it.
+fn replace_chain() -> (
+    Vec<OrderEvent>,
+    EventIterator<OrderEvent, std::vec::IntoIter<OrderEvent>>,
+) {
+    let mut replace = named("O-200", 20, &CL_ORD_ID, "C2");
+    replace
+        .insert_identifier(identifier(&IdType::OrigClOrdId, "C1"))
+        .unwrap();
+    replace.finalize();
+    let lineage = anonymous(50, &[(IdType::OrigClOrdId, "C1")]);
+    assert_eq!(
+        lineage.get_identifiers().get(&CL_ORD_ID),
+        Some("C1"),
+        "filled from its parent"
+    );
+    let arrived = vec![
+        named("O-100", 10, &CL_ORD_ID, "C1"),
+        replace,
+        anonymous(30, &[(CL_ORD_ID, "C2")]),
+        anonymous(40, &[(CL_ORD_ID, "C1")]),
+        lineage,
+    ];
+    let mut walk = EventIterator::new(arrived, true);
+    let walked = walk.by_ref().collect();
+    (walked, walk)
+}
+
+/// R1 and R3 over a replace: the replace and every report after it - one
+/// citing the new value, one the old, one the lineage field - are one chain
+/// under the first statement's stored cross code, each deriving its cross
+/// hash and cross element from it and its identity once under them.
+#[test]
+fn a_replace_under_a_new_identifier_keeps_the_chains_cross_code_and_hashes() {
+    let (walked, walk) = replace_chain();
+    assert_eq!(walked.len(), 5);
+    for (at, event) in walked.iter().enumerate() {
+        assert_eq!(event.get_crosscode(), "10:0:O-100", "statement {at}");
+        assert_derived(event, &format!("statement {at}"));
+        assert_eq!(
+            event.get_curruuid(),
+            event.time_uuid().expect("an identity"),
+            "statement {at}"
+        );
+        if at > 0 {
+            assert_eq!(
+                event.get_prevuuid(),
+                Some(walked[at - 1].get_curruuid()),
+                "statement {at} follows the one before"
+            );
+        }
+    }
+    assert_eq!(walk.alive().count(), 1);
+}
+
+/// Chain A placed under `ClOrdID` C1, chain B under `SecondaryClOrdID` S2,
+/// and an element under no live code citing both, then `after`, walked.
+fn conflicted(
+    after: &[OrderEvent],
+) -> (
+    Vec<OrderEvent>,
+    EventIterator<OrderEvent, std::vec::IntoIter<OrderEvent>>,
+) {
+    let mut arrived = vec![
+        named("O-1", 10, &CL_ORD_ID, "C1"),
+        named("O-2", 20, &IdType::SecondaryClOrdId, "S2"),
+        anonymous(30, &[(CL_ORD_ID, "C1"), (IdType::SecondaryClOrdId, "S2")]),
+    ];
+    arrived.extend_from_slice(after);
+    let mut walk = EventIterator::new(arrived, true);
+    let walked = walk.by_ref().collect();
+    (walked, walk)
+}
+
+/// R2's stated conflict: an element citing two live chains joins neither by
+/// a pick. It stands under its own identity - its own live chain where that
+/// is one of the cited, a chain of its own otherwise - and another
+/// statement of it resolves the same way, as a restatement. A side-less
+/// element whose base both sides hold names neither by the base, and the
+/// one name it states decides.
+#[test]
+fn an_element_citing_two_live_chains_is_a_stated_conflict_and_stands_under_its_own_identity() {
+    use yggdryl::Side;
+
+    // Under no live code of its own: a chain of its own beside the two.
+    let (walked, walk) = conflicted(&[]);
+    assert_eq!(walked[2].get_prevuuid(), None);
+    assert_eq!(walked[2].get_crosscode(), "");
+    assert_eq!(walk.alive().count(), 3);
+
+    // Under its own live code, citing the other chain too: its own chain,
+    // and a statement of it logged again restates it.
+    let own = named("O-2", 40, &CL_ORD_ID, "C1");
+    let walked: Vec<OrderEvent> = EventIterator::new(
+        vec![
+            named("O-1", 10, &CL_ORD_ID, "C1"),
+            named("O-2", 20, &IdType::SecondaryClOrdId, "S2"),
+            own.clone(),
+            own,
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_curruuid()));
+    assert_eq!(walked[2].get_crosscode(), "10:0:O-2");
+    assert_eq!(walked[3], walked[2], "the twin restates it");
+
+    // A side-less element whose base both sides hold: its name decides.
+    let walked: Vec<OrderEvent> = EventIterator::new(
+        vec![
+            sided("C-1", 10, Side::Buy, State::New, &[(CL_ORD_ID, "CB")]),
+            sided("C-1", 20, Side::Sell, State::New, &[(CL_ORD_ID, "CS")]),
+            sided(
+                "C-1",
+                30,
+                Side::Unknown,
+                State::Canceled,
+                &[(CL_ORD_ID, "CB")],
+            ),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[2].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[2].get_side(), Side::Buy);
+    assert_eq!(walked[2].get_crosscode(), "10:1:C-1");
 }
 
 /// Parentage along a walk: each event of one chain takes the parents of the
@@ -1918,13 +2324,14 @@ fn a_walk_carries_the_parents_of_each_identifier_along_its_chain() {
             .collect::<Vec<_>>(),
         [None, some("A"), some("B")]
     );
-    // `parentclordid` is that one parent's other spelling, never a second.
+    // `parentclordid` is a word of its own - a bridge's hierarchy parent -
+    // and no parent the walk writes.
     assert_eq!(
         replaced
             .iter()
             .map(|event| held(event, "parentclordid"))
             .collect::<Vec<_>>(),
-        [None, some("A"), some("B")]
+        [None, None, None]
     );
 }
 

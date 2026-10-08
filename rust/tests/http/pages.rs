@@ -371,16 +371,16 @@ fn the_arrow_reader_answers_one_batch_per_page_under_one_schema() {
 }
 
 #[test]
-fn the_serie_reader_yields_one_record_column_per_page() {
+fn the_chunked_stream_yields_one_record_column_per_page() {
     let server = HttpServer::start();
     server.paginate("/p", pages(), PageMode::Cursor);
     let reader = request(&server, "/p")
         .pages()
-        .into_serie_reader(None)
+        .chunked_stream(None)
         .expect("a serie reader");
     let mut lengths = Vec::new();
     let mut first_id = None;
-    for column in reader {
+    for column in reader.into_chunks() {
         let column = column.expect("a column");
         lengths.push(column.len());
         if first_id.is_none() {

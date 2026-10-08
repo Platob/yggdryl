@@ -69,6 +69,7 @@ mod typing;
 mod user;
 
 mod arrow;
+pub(crate) use arrow::child_position;
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -86,7 +87,6 @@ pub use plan::{
     IntoOrderings, IntoPlan, Join, Location, Ordering, Plan, Source, Target, Verb, Write,
 };
 pub use pushdown::{Bounds, ColumnBounds, Residual};
-pub use records::Records;
 pub use selector::{BoundSelector, IntoSelector, Projection, Selector};
 pub use term::{Term, col, lit};
 pub(crate) use transform::{
@@ -1029,6 +1029,44 @@ pub(crate) fn filter_after_select<'a>(
     filter.columns().iter().any(|column| {
         !input.iter().any(|held| held.eq_ignore_ascii_case(column)) && select.publishes(column)
     })
+}
+
+/// Place each conjunction at the schema its columns belong to. This keeps
+/// native source pruning available beside predicates on selected aliases.
+pub(crate) fn filter_phases<'filter, 'name>(
+    filter: &'filter Filter,
+    select: &Selector,
+    input: impl IntoIterator<Item = &'name str>,
+) -> (
+    std::borrow::Cow<'filter, Filter>,
+    std::borrow::Cow<'filter, Filter>,
+) {
+    use std::borrow::Cow;
+    if filter.is_always_true() || select.is_all() {
+        return (Cow::Borrowed(filter), Cow::Owned(Filter::always_true()));
+    }
+    let input: Vec<&str> = input.into_iter().collect();
+    if !filter_after_select(filter, select, input.iter().copied()) {
+        return (Cow::Borrowed(filter), Cow::Owned(Filter::always_true()));
+    }
+    let mut early = Vec::new();
+    let mut late = Vec::new();
+    for term in filter.term().conjuncts() {
+        let clause = Filter::new(term);
+        if filter_after_select(&clause, select, input.iter().copied()) {
+            late.push(clause);
+        } else {
+            early.push(clause);
+        }
+    }
+    if early.is_empty() {
+        (Cow::Owned(Filter::always_true()), Cow::Borrowed(filter))
+    } else {
+        (
+            Cow::Owned(Filter::all(early)),
+            Cow::Owned(Filter::all(late)),
+        )
+    }
 }
 
 impl From<Selector> for Expression {

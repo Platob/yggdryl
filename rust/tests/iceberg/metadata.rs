@@ -35,7 +35,7 @@ fn normalization_cannot_hide_duplicate_statistics_or_key_ids() {
     for collection in ["statistics", "partition-statistics"] {
         let duplicates =
             yggdryl::json::from_utf8(r#"[{"snapshot-id":7},{"snapshot-id":7}]"#).unwrap();
-        let candidate = document(FormatVersion::V2)
+        let candidate = document(FormatVersion::V3)
             .with_key(collection, duplicates)
             .unwrap();
         let message = TableMetadata::from_json(&candidate)
@@ -58,7 +58,7 @@ fn normalization_cannot_hide_duplicate_statistics_or_key_ids() {
 
 #[test]
 fn sequence_counters_must_be_non_negative() {
-    let candidate = document(FormatVersion::V2)
+    let candidate = document(FormatVersion::V3)
         .with_key("last-sequence-number", -1_i64)
         .unwrap();
     let message = TableMetadata::from_json(&candidate)
@@ -72,6 +72,7 @@ fn sequence_counters_must_be_non_negative() {
 
 #[test]
 fn v1_accepts_only_the_derived_main_ref_emitted_by_pyiceberg() {
+    // v1's derived main ref: the reading pinned here.
     let mut metadata = TableMetadata::from_json(&document(FormatVersion::V1)).unwrap();
     metadata
         .set_current_snapshot(Snapshot {
@@ -135,7 +136,7 @@ fn sort_order_json_has_no_implicit_fields_or_options() {
 
 #[test]
 fn every_historical_layout_must_bind_to_a_retained_schema() {
-    let mut partition_document = document(FormatVersion::V2);
+    let mut partition_document = document(FormatVersion::V3);
     let mut specs: Vec<Scalar> = partition_document
         .get_key_str("partition-specs")
         .unwrap()
@@ -157,7 +158,7 @@ fn every_historical_layout_must_bind_to_a_retained_schema() {
     assert!(message.contains("partition spec 1"), "{message}");
     assert!(message.contains("retained schema"), "{message}");
 
-    let mut sort_document = document(FormatVersion::V2);
+    let mut sort_document = document(FormatVersion::V3);
     let mut orders: Vec<Scalar> = sort_document
         .get_key_str("sort-orders")
         .unwrap()
@@ -249,7 +250,7 @@ fn a_transform_of_the_crates_own_binds_only_to_a_source_it_reads() {
     };
     for (source_id, transform, dtype) in refusals {
         let message = TableMetadata::new(
-            FormatVersion::V2,
+            FormatVersion::V3,
             "file:///tmp/period-sources",
             period_sources(),
             period_spec(0, source_id, transform),
@@ -259,7 +260,7 @@ fn a_transform_of_the_crates_own_binds_only_to_a_source_it_reads() {
         named(&message, transform, dtype);
 
         let mut metadata = TableMetadata::new(
-            FormatVersion::V2,
+            FormatVersion::V3,
             "file:///tmp/period-sources",
             period_sources(),
             PartitionSpec::unpartitioned(),
@@ -307,7 +308,7 @@ fn a_transform_of_the_crates_own_binds_only_to_a_source_it_reads() {
         (3, Transform::Quarter),
     ] {
         let metadata = TableMetadata::new(
-            FormatVersion::V2,
+            FormatVersion::V3,
             "file:///tmp/period-sources",
             period_sources(),
             period_spec(0, source_id, transform),
@@ -499,6 +500,7 @@ fn a_v1_or_v2_table_takes_no_v3_type_through_evolution_either() {
     let schema =
         yggdryl::iceberg::schema_from_json("row", &yggdryl::json::from_utf8(document).unwrap())
             .unwrap();
+    // The versions before v3 refuse its types: the contract pinned here.
     for version in [FormatVersion::V1, FormatVersion::V2] {
         for (column, spelling) in [
             (DataType::Variant.nullable_field("later"), "variant"),
@@ -664,7 +666,7 @@ fn columns_stating_bits_ride_one_table_property_by_identifier() {
     )
     .required_field("row");
     let mut metadata = TableMetadata::new(
-        FormatVersion::V2,
+        FormatVersion::V3,
         "file:///tmp/bits-metadata",
         schema,
         PartitionSpec::unpartitioned(),
