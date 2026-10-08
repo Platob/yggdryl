@@ -345,7 +345,7 @@ mod columns {
                 ]),
             ),
             (
-                Field::new("side", DataType::Side, true),
+                Field::new("side", DataType::side(), true),
                 Scalar::from_sequence([Scalar::from("BUY"), Scalar::from("SELL"), Scalar::Null]),
             ),
             (
@@ -357,11 +357,11 @@ mod columns {
                 Scalar::from_sequence([Scalar::from("NEW"), Scalar::from("FILLED"), Scalar::Null]),
             ),
             (
-                Field::new("marketdatakind", DataType::MarketDataKind, true),
+                Field::new("marketdatakind", DataType::marketdatakind(), true),
                 Scalar::from_sequence([Scalar::from("ORDR"), Scalar::from("TRAD"), Scalar::Null]),
             ),
             (
-                Field::new("marketdatatype", DataType::MarketDataType, true),
+                Field::new("marketdatatype", DataType::marketdatatype(), true),
                 Scalar::from_sequence([
                     Scalar::from("ORDLIMIT"),
                     Scalar::from("TRDBLOCK"),
@@ -369,11 +369,11 @@ mod columns {
                 ]),
             ),
             (
-                Field::new("timeinforce", DataType::TimeInForce, true),
+                Field::new("timeinforce", DataType::timeinforce(), true),
                 Scalar::from_sequence([Scalar::from("0"), Scalar::from("6"), Scalar::Null]),
             ),
             (
-                Field::new("pluginside", DataType::Side, true),
+                Field::new("pluginside", DataType::side(), true),
                 Scalar::from_sequence([
                     Scalar::from("BUYS"),
                     Scalar::from("sell-side"),
@@ -1042,7 +1042,7 @@ mod columns {
         // a family whose buffer arm and fallback were never compared.
         let covered: std::collections::HashSet<DataTypeId> =
             columns().iter().map(|(field, _)| field.id()).collect();
-        let missing: Vec<&str> = DataTypeId::ALL
+        let missing: Vec<&str> = DataTypeId::all()
             .into_iter()
             .filter(|id| {
                 !matches!(

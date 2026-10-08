@@ -52,7 +52,7 @@ fn an_arrow_field_typed_by_a_marker_imports_as_its_datatype() {
         ),
         (
             ArrowField::new("x", ArrowDataType::UInt8, true).with_extension_type(SideType),
-            DataType::Side,
+            DataType::side(),
         ),
         (
             ArrowField::new("x", ArrowDataType::FixedSizeBinary(16), true)
@@ -127,7 +127,7 @@ fn the_names_are_one_per_extension_and_every_datatype_writes_its_own() {
     distinct.dedup();
     assert_eq!(distinct.len(), names.len(), "{names:?}");
     assert_eq!(names.len(), 35, "{names:?}");
-    for id in DataTypeId::ALL {
+    for id in DataTypeId::all() {
         if let Some(name) = id.arrow_extension_name() {
             assert!(names.contains(&name), "{id:?}");
         }

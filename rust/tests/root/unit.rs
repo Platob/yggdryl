@@ -94,7 +94,7 @@ mod coded {
         assert_ne!(value, Scalar::from("Shares"));
         assert_ne!(
             DataType::Unit.scalar(Scalar::from("BUY")).unwrap(),
-            DataType::Side.scalar(Scalar::from("BUY")).unwrap()
+            DataType::side().scalar(Scalar::from("BUY")).unwrap()
         );
     }
 
@@ -282,7 +282,7 @@ fn the_unit_wire_contracts_are_pinned() {
     assert_eq!(dtype.id().as_str(), "unit");
     assert_eq!(Field::from_str("value unit").unwrap().dtype(), &dtype);
     assert_eq!(DataType::from_logical_name("unit").unwrap(), dtype);
-    let logical: Vec<&str> = DataType::LOGICAL_NAMES
+    let logical: Vec<&str> = DataType::logical_names()
         .iter()
         .filter(|(_, held)| *held == dtype)
         .map(|(logical, _)| *logical)

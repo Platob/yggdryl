@@ -2613,7 +2613,7 @@ mod committed {
         assert_eq!(codes.code_value("NewOrderSingle"), Some("D"));
 
         let side = registry.field_by_tag(54).expect("tag 54");
-        assert_eq!(side.dtype(), &DataType::Side);
+        assert_eq!(side.dtype(), &DataType::side());
         let codes = registry.codeset_of(side).expect("the Side code set");
         assert_eq!(codes.name(), "sidecodeset");
         assert_eq!(codes.code_name("1"), Some("Buy"));

@@ -334,7 +334,7 @@ mod value {
                 DataType::binary().scalar(code).unwrap().as_bytes(),
                 Some(b"USD".as_slice())
             );
-            let member = DataType::Side.scalar("1").unwrap();
+            let member = DataType::side().scalar("1").unwrap();
             assert_eq!(
                 DataType::binary().scalar(member).unwrap().as_bytes(),
                 Some(b"BUYS".as_slice())

@@ -12,7 +12,8 @@ use crate::runend::RunEndEncodedType;
 use crate::structure::StructType;
 use crate::union::UnionFields;
 use crate::{
-    DataTypeId, DataTypeKind, Error, Field, Result, Scalar, TimeUnit, Timezone, UnionMode,
+    DataTypeId, DataTypeKind, Error, Field, MarketType, Result, Scalar, TimeUnit, Timezone,
+    UnionMode,
 };
 
 use crate::decimal::validate_decimal;
@@ -167,19 +168,19 @@ pub enum DataType {
     /// ISO 6166: a securities identification number, twelve ASCII bytes
     /// closed by a check digit.
     Isin,
-    /// FIX's side of a trade: an enum stored as the `int32` code of its
-    /// member.
-    Side,
+    /// A registered enum kind - `side`, `timeinforce`, `marketdatakind`,
+    /// `marketdatatype`, or a crate's own - under the one variant every kind
+    /// shares: the kind is the [`MarketType`]'s descriptor, claimed through
+    /// [`crate::market::claim`].
+    Market(MarketType),
     /// What state one thing is in: a lifecycle-sorted enum, stored as the
-    /// `int32` code of its member.
+    /// `uint16` code of its member.
     ///
     /// The hundreds of the code are the rank, so the stored integers sort
     /// from the first state to the terminal ones wherever they are sorted.
     /// One vocabulary over FIX's `OrdStatus` and `ExecType` and an ordinary
     /// scheduler's words, because they describe the same shape.
     State,
-    /// How long an order stands, eight ASCII bytes.
-    TimeInForce,
     /// One 128-bit universally unique identifier: sixteen fixed bytes,
     /// whichever RFC 9562 version wrote them.
     Uuid,
@@ -305,12 +306,6 @@ pub enum DataType {
     /// A Refinitiv Identification Code: a ticker and an exchange mnemonic, up
     /// to thirty-two ASCII bytes.
     Ric,
-    /// What kind of market data an element is: FIX's MsgCat code set, stored
-    /// as the `int32` code of its member.
-    MarketDataKind,
-    /// What type of its kind a market element is - an order, quote, trade
-    /// or book entry type - stored as the `int32` code of its member.
-    MarketDataType,
     /// ISO 4217 currency pair: `CCY/CCY`, seven ASCII bytes.
     Forex,
     /// ISO 17442 legal entity identifier: twenty ASCII bytes closed by two
@@ -444,11 +439,8 @@ impl DataType {
             Self::Dti => DataTypeId::Dti,
             Self::Fisn => DataTypeId::Fisn,
             Self::Figi => DataTypeId::Figi,
-            Self::Side => DataTypeId::Side,
+            Self::Market(kind) => kind.id(),
             Self::State => DataTypeId::State,
-            Self::MarketDataKind => DataTypeId::MarketDataKind,
-            Self::MarketDataType => DataTypeId::MarketDataType,
-            Self::TimeInForce => DataTypeId::TimeInForce,
             Self::Unit => DataTypeId::Unit,
             Self::Decimal => DataTypeId::Decimal,
             Self::BigDecimal => DataTypeId::BigDecimal,
@@ -487,7 +479,12 @@ impl DataType {
 
     /// Returns a stable, parameter-independent variant name.
     pub const fn name(&self) -> &'static str {
-        self.id().as_str()
+        match self {
+            // A registered kind's name is its descriptor's: read off the
+            // kind in hand, never the register.
+            Self::Market(kind) => kind.name(),
+            other => other.id().core_str(),
+        }
     }
 
     /// Returns whether this type contains child fields or a nested value.
@@ -637,6 +634,8 @@ impl DataType {
                 encoded.run_ends.validate()?;
                 encoded.values.validate()
             }
+            // A kind built by hand is refused here unless a claim holds it.
+            Self::Market(kind) => crate::DataTypeValue::validate(kind),
             _ => Ok(()),
         }
     }
@@ -738,6 +737,7 @@ impl Ord for DataType {
             (D::Geometry(left), D::Geometry(right)) | (D::Geography(left), D::Geography(right)) => {
                 left.cmp(right)
             }
+            (D::Market(left), D::Market(right)) => left.cmp(right),
             _ => Ordering::Equal,
         }
     }
@@ -752,87 +752,94 @@ impl Ord for DataType {
 // other variant its own old position and payload, so no digest moves.
 impl Hash for DataType {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        Shape::of(self).hash(state);
+        match self {
+            // A registered kind hashes as the position it held as a variant,
+            // its `shape`, written here because the marker itself hashes
+            // nothing.
+            Self::Market(kind) => state.write_isize(kind.kind().shape),
+            other => Shape::of(other).hash(state),
+        }
     }
 }
 
 /// [`DataType`] as it was declared before its leaves split, borrowed: the
 /// derived `Hash` of this enum is the hash every datatype has always had.
-/// Keep the order; append a new datatype at the end of both enums.
+/// Every variant states its position, because the positions the registered
+/// kinds held are theirs and never reused; a new core datatype takes the
+/// position after the last one stated.
 #[derive(Hash)]
+#[repr(isize)]
 enum Shape<'a> {
-    Null,
-    Boolean,
-    Int8,
-    Int16,
-    Int32,
-    Int64,
-    UInt8,
-    UInt16,
-    UInt32,
-    UInt64,
-    Float16,
-    Float32,
-    Float64,
-    DateTime64(&'a TimeUnit, &'a Timezone),
-    Date32,
-    Date64,
-    Time32(&'a TimeUnit),
-    Time64(&'a TimeUnit),
-    Duration32(&'a TimeUnit),
-    Duration64(&'a TimeUnit),
-    Interval(&'a TimeUnit),
-    Bytes(crate::bytes::BytesType),
-    String(crate::string::StringType),
-    Country,
-    Ccy,
-    Mic,
-    Cfi,
-    Isin,
-    Side,
-    State,
-    TimeInForce,
-    Uuid,
-    Version,
-    Url,
-    Urn,
-    Serie(&'a Arc<Field>),
-    SerieView(&'a Arc<Field>),
-    FixedSizeSerie(&'a Arc<Field>, &'a i32),
-    LargeSerie(&'a Arc<Field>),
-    LargeSerieView(&'a Arc<Field>),
-    Struct(&'a StructType),
-    Union(&'a UnionFields, &'a UnionMode),
-    Dictionary(&'a Arc<DictionaryType>),
-    Decimal32(&'a u8, &'a i8),
-    Decimal64(&'a u8, &'a i8),
-    Decimal128(&'a u8, &'a i8),
-    Decimal256(&'a u8, &'a i8),
-    Map(&'a Arc<MapType>),
-    SortedMap(&'a Arc<MapType>),
-    RunEndEncoded(&'a Arc<RunEndEncodedType>),
-    Variant,
-    Geometry(&'a Arc<GeospatialParameters>),
-    Geography(&'a Arc<GeospatialParameters>),
-    Timezone,
-    MimeType,
-    MediaType,
-    Cusip,
-    Sedol,
-    Bbg,
-    Figi,
-    Unit,
-    Decimal,
-    BigDecimal,
-    Ric,
-    MarketDataKind,
-    MarketDataType,
-    Forex,
-    Lei,
-    Bic,
-    Elf,
-    Dti,
-    Fisn,
+    Null = 0,
+    Boolean = 1,
+    Int8 = 2,
+    Int16 = 3,
+    Int32 = 4,
+    Int64 = 5,
+    UInt8 = 6,
+    UInt16 = 7,
+    UInt32 = 8,
+    UInt64 = 9,
+    Float16 = 10,
+    Float32 = 11,
+    Float64 = 12,
+    DateTime64(&'a TimeUnit, &'a Timezone) = 13,
+    Date32 = 14,
+    Date64 = 15,
+    Time32(&'a TimeUnit) = 16,
+    Time64(&'a TimeUnit) = 17,
+    Duration32(&'a TimeUnit) = 18,
+    Duration64(&'a TimeUnit) = 19,
+    Interval(&'a TimeUnit) = 20,
+    Bytes(crate::bytes::BytesType) = 21,
+    String(crate::string::StringType) = 22,
+    Country = 23,
+    Ccy = 24,
+    Mic = 25,
+    Cfi = 26,
+    Isin = 27,
+    // 28 is `side`'s, 30 `timeinforce`'s, 64 `marketdatakind`'s and 65
+    // `marketdatatype`'s: the core enum kinds' descriptors state them.
+    State = 29,
+    Uuid = 31,
+    Version = 32,
+    Url = 33,
+    Urn = 34,
+    Serie(&'a Arc<Field>) = 35,
+    SerieView(&'a Arc<Field>) = 36,
+    FixedSizeSerie(&'a Arc<Field>, &'a i32) = 37,
+    LargeSerie(&'a Arc<Field>) = 38,
+    LargeSerieView(&'a Arc<Field>) = 39,
+    Struct(&'a StructType) = 40,
+    Union(&'a UnionFields, &'a UnionMode) = 41,
+    Dictionary(&'a Arc<DictionaryType>) = 42,
+    Decimal32(&'a u8, &'a i8) = 43,
+    Decimal64(&'a u8, &'a i8) = 44,
+    Decimal128(&'a u8, &'a i8) = 45,
+    Decimal256(&'a u8, &'a i8) = 46,
+    Map(&'a Arc<MapType>) = 47,
+    SortedMap(&'a Arc<MapType>) = 48,
+    RunEndEncoded(&'a Arc<RunEndEncodedType>) = 49,
+    Variant = 50,
+    Geometry(&'a Arc<GeospatialParameters>) = 51,
+    Geography(&'a Arc<GeospatialParameters>) = 52,
+    Timezone = 53,
+    MimeType = 54,
+    MediaType = 55,
+    Cusip = 56,
+    Sedol = 57,
+    Bbg = 58,
+    Figi = 59,
+    Unit = 60,
+    Decimal = 61,
+    BigDecimal = 62,
+    Ric = 63,
+    Forex = 66,
+    Lei = 67,
+    Bic = 68,
+    Elf = 69,
+    Dti = 70,
+    Fisn = 71,
     // 72 was `PluginSide`, retired; a position is never reused.
 }
 
@@ -891,9 +898,10 @@ impl<'a> Shape<'a> {
             D::Mic => Self::Mic,
             D::Cfi => Self::Cfi,
             D::Isin => Self::Isin,
-            D::Side => Self::Side,
+            D::Market(_) => {
+                unreachable!("a market datatype hashes as its kind before its shape is read")
+            }
             D::State => Self::State,
-            D::TimeInForce => Self::TimeInForce,
             D::Uuid => Self::Uuid,
             D::Version => Self::Version,
             D::Url => Self::Url,
@@ -910,8 +918,6 @@ impl<'a> Shape<'a> {
             D::Unit => Self::Unit,
             D::Decimal => Self::Decimal,
             D::BigDecimal => Self::BigDecimal,
-            D::MarketDataKind => Self::MarketDataKind,
-            D::MarketDataType => Self::MarketDataType,
             D::Forex => Self::Forex,
             D::Lei => Self::Lei,
             D::Bic => Self::Bic,
@@ -962,34 +968,7 @@ macro_rules! bytes_dtypes {
     };
 }
 
-/// The enum leaves as one pattern over [`DataType`]: a closed set of members
-/// stored as the code of each. A match that must cover every datatype
-/// spells them through this rather than a guard, which counts for nothing
-/// towards exhaustiveness.
-macro_rules! enum_dtypes {
-    () => {
-        $crate::enum8_dtypes!() | $crate::enum16_dtypes!()
-    };
-}
-
-/// The enum leaves whose codes fit one byte, stored as Arrow `UInt8`.
-macro_rules! enum8_dtypes {
-    () => {
-        $crate::DataType::MarketDataKind | $crate::DataType::Side | $crate::DataType::TimeInForce
-    };
-}
-
-/// The enum leaves whose codes pass 255, stored as Arrow `UInt16`.
-macro_rules! enum16_dtypes {
-    () => {
-        $crate::DataType::State | $crate::DataType::MarketDataType
-    };
-}
-
 pub(crate) use bytes_dtypes;
-pub(crate) use enum_dtypes;
-pub(crate) use enum8_dtypes;
-pub(crate) use enum16_dtypes;
 pub(crate) use string_dtypes;
 
 impl PartialOrd for DataType {
@@ -1054,14 +1033,14 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Variant => 50,
         DataType::Geometry(_) => 51,
         DataType::Geography(_) => 52,
+        // A registered kind states the rank it held as a variant.
+        DataType::Market(kind) => kind.kind().dtype_rank,
         // Appended rather than grouped with the other codes so no existing
         // rank moves: this ordering is total, not a wire contract, and a
         // renumbering would change how every unrelated pair sorts.
-        DataType::Side => 53,
         // 54 was `msgdirection`, since retired; the rank stays
         // unused so no other pair moves.
         DataType::State => 55,
-        DataType::TimeInForce => 56,
         DataType::Url => 57,
         DataType::Isin => 58,
         DataType::Timezone => 59,
@@ -1077,8 +1056,6 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::BigDecimal => 70,
         DataType::Ric => 71,
         DataType::Forex => 72,
-        DataType::MarketDataKind => 73,
-        DataType::MarketDataType => 74,
         DataType::Lei => 75,
         DataType::Bic => 76,
         DataType::Elf => 77,
@@ -1374,9 +1351,10 @@ mod arrow {
                 | R::Elf
                 | R::Dti
                 | R::Fisn => code::code_arrow_storage(self)?,
-                // An enum member is the code of its leaf.
-                R::MarketDataKind | R::Side | R::TimeInForce => <u8 as crate::EnumRepr>::ARROW,
-                R::State | R::MarketDataType => <u16 as crate::EnumRepr>::ARROW,
+                // An enum member is the code of its kind: the storage the
+                // kind states (`UInt8` or `UInt16`).
+                R::Market(kind) => kind.storage().arrow(),
+                R::State => <u16 as crate::EnumRepr>::ARROW,
                 R::Version => VersionType::arrow_storage(),
                 R::Url | R::Urn => UriType::arrow_storage(),
                 R::Timezone => TimezoneType::arrow_storage(),
@@ -1674,7 +1652,12 @@ mod arrow {
             if let Self::Dictionary(dictionary) = self {
                 return dictionary.value().arrow_extension();
             }
-            let name = self.id().arrow_extension_name()?;
+            let name = match self {
+                // A registered kind carries its own name: the kind in hand
+                // answers, never the register.
+                Self::Market(kind) => kind.kind().extension_name,
+                other => other.id().arrow_extension_name()?,
+            };
             let document = match self {
                 // Which crs and which edges a geometry or a geography reads by.
                 Self::Geometry(geospatial) | Self::Geography(geospatial) => {

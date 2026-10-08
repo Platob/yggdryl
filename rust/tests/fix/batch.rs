@@ -3537,7 +3537,7 @@ fn the_arrow_batch_door_stamps_the_codecs_plugin_role_on_every_message() {
             assert_eq!(message.msgpluginside(), side, "{source:?}");
             assert_eq!(
                 message.get_by_tag(MSGPLUGINSIDE_TAG_NAME.0),
-                Some(Scalar::Side(side))
+                Some(Scalar::from(side))
             );
         }
         let parsed = batches(

@@ -344,7 +344,7 @@ impl FixCapture {
         if is(MSGPLUGINID_TAG_NAME) {
             text(&self.msgpluginid)
         } else if is(MSGPLUGINSIDE_TAG_NAME) {
-            Some(Scalar::Side(self.msgpluginside))
+            Some(Scalar::from(self.msgpluginside))
         } else if is(MSGCTXID_TAG_NAME) {
             text(&self.msgctxid)
         } else if is(MSGSESSIONID_TAG_NAME) {

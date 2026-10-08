@@ -83,13 +83,13 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         let leaves: [(&str, DataType, [&str; 5], [i32; 5]); 2] = [
             (
                 "marketdatakind",
-                DataType::MarketDataKind,
+                DataType::marketdatakind(),
                 ["ORDR", "QUOT", "EXEC", "TRAD", "BOOK"],
                 [10, 14, 8, 21, 3],
             ),
             (
                 "side",
-                DataType::Side,
+                DataType::side(),
                 ["BUY", "SELL", "1", "2", "SellShort"],
                 [1, 2, 5, 1, 2],
             ),

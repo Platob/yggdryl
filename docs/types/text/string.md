@@ -762,7 +762,7 @@ is bare text under the default leaf and an object naming the leaf otherwise.
     )
     const field = new Field('name', 'fixed_cp1252(8)', true)
     assert.ok(Field.fromJSONBytes(field.toJSONBytes()).equals(field))
-    assert.throws(() => DataType.fromJSON({ type: 'utf8' }), /unknown variant `utf8`/)
+    assert.throws(() => DataType.fromJSON({ type: 'utf8' }), /unknown datatype "utf8"/)
     ```
 
 ## The vocabulary a string column declares

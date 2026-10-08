@@ -2638,7 +2638,7 @@ fn typed_translation(
     let dtype = field.dtype();
     if dtype.is_enum()
         && let Some(member) =
-            named(spelling).and_then(|name| crate::enums::read_enum_spelling(dtype.id(), name).ok())
+            named(spelling).and_then(|name| crate::enums::read_enum_spelling(dtype, name).ok())
     {
         return Ok(member);
     }

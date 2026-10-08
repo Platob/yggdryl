@@ -34,7 +34,8 @@ enum_leaf! {
     /// assert_eq!(Side::Both.fix_code(), None);
     /// assert_eq!(Side::Unknown.merge_with(Side::Both), Side::Both);
     /// ```
-    pub enum Side: u8, kind = "side", extension = SIDE_EXTENSION_NAME, aliases = side_aliases {
+    pub enum Side: u8, kind = "side", extension = SIDE_EXTENSION_NAME, aliases = side_aliases,
+    market = SIDE_KIND [0xc3, 29, 53, 28] {
         #[default]
         Unknown = 0 as "UKNW": "A side stated as none, which a merge takes the other side over.",
         Buy = 1 as "BUYS": "Buy.",
@@ -289,5 +290,21 @@ static SIDE_NAMES: &[(&str, Side)] = &[
 /// The Arrow extension name of FIX's side of a trade, over `uint8` storage.
 pub(crate) const SIDE_EXTENSION_NAME: &str = "yggdryl.side";
 
+impl crate::DataType {
+    /// Creates FIX's side of a trade, stored as the `uint8` code of its
+    /// member.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// assert_eq!(DataType::side().to_string(), "side");
+    /// assert!(DataType::side().is_enum());
+    /// ```
+    #[must_use]
+    pub const fn side() -> Self {
+        Self::Market(crate::MarketType::new(&SIDE_KIND))
+    }
+}
+
 // /// A side-typed field: FIX's side of a trade.
-define_field_types!(SideType, Side);
+define_field_types!(SideType, SideField, market = SIDE_KIND, Side);

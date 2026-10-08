@@ -81,9 +81,9 @@ use crate::serie::{
     UInt8Serie, UInt16Serie, UInt32Serie, UInt64Serie, Utf8StringSerie,
 };
 use crate::{
-    ArrowCastOptions, Ccy, Cfi, CodeValue, DataType, Decimal, Error, Field, Limit, MarketDataKind,
-    Mic, Representation, Result, Serie, Side, State, StreamChunkedSerie, StructType, TimeInForce,
-    Unit, Uuid,
+    ArrowCastOptions, Ccy, Cfi, CodeValue, DataType, DataTypeId, Decimal, Error, Field, Limit,
+    MarketDataKind, MarketSerie, Mic, Representation, Result, Serie, Side, State,
+    StreamChunkedSerie, StructType, TimeInForce, Unit, Uuid,
 };
 use crate::{IdKey, IdType, Identifier, Identifiers};
 
@@ -2015,6 +2015,12 @@ impl Code {
     }
 }
 
+/// Whether a landed market column is of the kind `id`: its storage is one
+/// every kind of that storage shares, so the kind is read off its field.
+fn lands(serie: &Serie, id: DataTypeId) -> bool {
+    serie.field().is_some_and(|field| field.id() == id)
+}
+
 /// One landed column, narrowed to its storage leaf.
 enum Leaf {
     Clock(Arc<DateTimeNanosecondSerie>),
@@ -2058,12 +2064,22 @@ impl Leaf {
             (Storage::UInt32, Serie::UInt32(held)) => Self::UInt32(Arc::clone(held)),
             (Storage::UInt64, Serie::UInt64(held)) => Self::UInt64(Arc::clone(held)),
             (Storage::State, Serie::State(held)) => Self::State(Arc::clone(held)),
-            (Storage::Side, Serie::Side(held)) => Self::Side(Arc::clone(held)),
-            (Storage::TimeInForce, Serie::TimeInForce(held)) => Self::TimeInForce(Arc::clone(held)),
-            (Storage::MarketDataKind, Serie::MarketDataKind(held)) => {
+            (Storage::Side, Serie::Market(MarketSerie::Code8(held))) if lands(serie, Side::ID) => {
+                Self::Side(Arc::clone(held))
+            }
+            (Storage::TimeInForce, Serie::Market(MarketSerie::Code8(held)))
+                if lands(serie, TimeInForce::ID) =>
+            {
+                Self::TimeInForce(Arc::clone(held))
+            }
+            (Storage::MarketDataKind, Serie::Market(MarketSerie::Code8(held)))
+                if lands(serie, MarketDataKind::ID) =>
+            {
                 Self::MarketDataKind(Arc::clone(held))
             }
-            (Storage::MarketDataType, Serie::MarketDataType(held)) => {
+            (Storage::MarketDataType, Serie::Market(MarketSerie::Code16(held)))
+                if lands(serie, crate::MarketDataType::ID) =>
+            {
                 Self::MarketDataType(Arc::clone(held))
             }
             (Storage::Boolean, Serie::Boolean(held)) => Self::Boolean(Arc::clone(held)),

@@ -1951,7 +1951,7 @@ impl FixMsg {
             .ok();
         }
         if tag == super::MARKETDATAKIND_TAG_NAME.0 {
-            return Some(Scalar::MarketDataKind(self.marketdatakind()));
+            return Some(Scalar::from(self.marketdatakind()));
         }
         let fact = Typed {
             event: &self.event,

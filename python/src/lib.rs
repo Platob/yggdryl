@@ -429,7 +429,10 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     let listing = PyDict::new(py);
     listing.set_item(
         "data_type_ids",
-        DataTypeId::ALL.map(DataTypeId::as_str).to_vec(),
+        DataTypeId::all()
+            .into_iter()
+            .map(DataTypeId::as_str)
+            .collect::<Vec<_>>(),
     )?;
     listing.set_item(
         "data_type_kinds",

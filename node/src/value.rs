@@ -93,11 +93,8 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         // A code reads back as the text it stores and a UUID as its
         // hyphenated spelling, so both project as the string family does.
         text if text.is_string() || text.is_code() => JsValueHint::String,
-        D::Side
-        | D::State
-        | D::MarketDataKind
-        | D::MarketDataType
-        | D::TimeInForce
+        D::State
+        | D::Market(_)
         | D::Unit
         | D::Ric
         | D::Uuid
@@ -366,11 +363,8 @@ fn text_or_binary_to_js<'env>(
         | D::Bbg
         | D::Figi
         | D::Forex
-        | D::Side
         | D::State
-        | D::MarketDataKind
-        | D::MarketDataType
-        | D::TimeInForce
+        | D::Market(_)
         | D::Unit
         | D::Ric => value
             .as_str()

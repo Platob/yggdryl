@@ -43,7 +43,8 @@ enum_leaf! {
     /// assert_eq!(MarketDataKind::from_spelling("10"), None);
     /// ```
     #[non_exhaustive]
-    pub enum MarketDataKind: u8, kind = "marketdatakind", extension = MARKETDATAKIND_EXTENSION_NAME, aliases = marketdatakind_aliases {
+    pub enum MarketDataKind: u8, kind = "marketdatakind", extension = MARKETDATAKIND_EXTENSION_NAME, aliases = marketdatakind_aliases,
+    market = MARKETDATAKIND_KIND [0xc2, 28, 73, 64] {
         #[default]
         Unknown = 0 as "UKNW": "No published category: a message type the dictionary does not file.",
         Account = 1 as "ACCT": "Account reporting.",
@@ -279,20 +280,25 @@ impl crate::DataType {
     /// Creates the market data kind datatype: FIX's MsgCat code set.
     ///
     /// ```
-    /// use yggdryl::DataType;
+    /// use yggdryl::{DataType, MARKETDATAKIND_KIND};
     ///
-    /// assert_eq!(DataType::marketdatakind(), DataType::MarketDataKind);
+    /// assert_eq!(DataType::marketdatakind(), MARKETDATAKIND_KIND.dtype());
     /// assert_eq!(DataType::marketdatakind().to_string(), "marketdatakind");
     /// assert!(DataType::marketdatakind().is_enum());
     /// ```
     #[must_use]
     pub const fn marketdatakind() -> Self {
-        Self::MarketDataKind
+        Self::Market(crate::MarketType::new(&MARKETDATAKIND_KIND))
     }
 }
 
 // /// A field declared as a market data element's kind.
-define_field_types!(MarketDataKindType, MarketDataKind);
+define_field_types!(
+    MarketDataKindType,
+    MarketDataKindField,
+    market = MARKETDATAKIND_KIND,
+    MarketDataKind
+);
 
 #[cfg(feature = "internals")]
 #[doc(hidden)]

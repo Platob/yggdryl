@@ -200,7 +200,7 @@ fn direct_market_categories_move_into_their_operation_kind_and_arrow_round_trip(
         assert_eq!(source.marketdatakind().code(), *operation_id);
         assert_eq!(
             source.get_by_tag(yggdryl::MARKETDATAKIND_TAG_NAME.0),
-            Some(Scalar::MarketDataKind(source.marketdatakind()))
+            Some(Scalar::from(source.marketdatakind()))
         );
         let operations = source.into_market_data().expect("a market category");
         assert_eq!(operations.len(), 1);
@@ -1176,7 +1176,7 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
     assert_ne!(stated.get_currhashcode(), explicit_hash);
     assert_eq!(
         stated.remove(yggdryl::MARKETDATAKIND_TAG_NAME.0).unwrap(),
-        Some(Scalar::MarketDataKind(MarketDataKind::Quotation))
+        Some(Scalar::from(MarketDataKind::Quotation))
     );
     assert_eq!(stated.marketdatakind(), MarketDataKind::Quotation);
 }
@@ -1185,7 +1185,7 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
 fn marketdatakind_registry_values_are_stable_int32_operation_ids() {
     let registry = committed_registry();
     let field = registry.field(yggdryl::MARKETDATAKIND_TAG_NAME.0).unwrap();
-    assert_eq!(field.dtype(), &DataType::MarketDataKind);
+    assert_eq!(field.dtype(), &DataType::marketdatakind());
     let codes = registry
         .codeset_of(field)
         .expect("the marketdatakind vocabulary");

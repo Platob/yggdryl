@@ -104,7 +104,7 @@ fn the_elf_wire_contracts_are_pinned() {
     assert_eq!(dtype.id().as_str(), "elf");
     assert_eq!(Field::from_str("value elf").unwrap().dtype(), &dtype);
     assert_eq!(DataType::from_logical_name("elf").unwrap(), dtype);
-    let logical: Vec<&str> = DataType::LOGICAL_NAMES
+    let logical: Vec<&str> = DataType::logical_names()
         .iter()
         .filter(|(_, held)| *held == dtype)
         .map(|(logical, _)| *logical)

@@ -1122,23 +1122,23 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             };
             Ok((canonical, true))
         }
-        // An enum member is its leaf's: an integer is read as the code it is
-        // and text as the spelling it is, and one that names no member is
-        // refused rather than stored unread. A member of another enum leaf
-        // is neither: validation refused it before this door.
-        crate::enum_dtypes!() => {
+        // An enum member is its leaf's - the core's `State` or a registered
+        // kind's: one already of the leaf is answered unchanged, an integer
+        // is read as the code it is and text as the spelling it is, and one
+        // that names no member is refused rather than stored unread. A value
+        // of another enum or code kind is a value of another vocabulary,
+        // never a spelling of this one, and validation refused it before
+        // this door.
+        D::Market(_) | D::State => {
             if value.id() == dtype.id() {
                 return Ok((value.clone(), false));
             }
-            if value.is_enum() {
+            if value.is_enum() || value.is_code() {
                 return canonicalization_failure(dtype);
             }
             let member = match (value.as_i128(), value.as_str()) {
-                (Some(code), _) => crate::enums::read_enum_code(
-                    dtype.id(),
-                    i64::try_from(code).map_err(|_| enum_code_refusal(dtype, code))?,
-                )?,
-                (None, Some(text)) => crate::enums::read_enum_spelling(dtype.id(), text)?,
+                (Some(code), _) => enum_code_member(dtype, code)?,
+                (None, Some(text)) => crate::enums::read_enum_spelling(dtype, text)?,
                 (None, None) => return canonicalization_failure(dtype),
             };
             Ok((member, true))
@@ -1760,11 +1760,19 @@ fn check_string_bound(parameters: StringType, text: &str) -> Result<()> {
     Ok(())
 }
 
-/// The refusal an integer too wide to be an enum member's code answers with.
-fn enum_code_refusal(dtype: &DataType, code: i128) -> Error {
-    Error::InvalidDataType {
+/// The member a caller's integer names under the enum leaf `dtype`, refused
+/// where the integer is too wide to be a code. A datatype door holds no
+/// validated field, so a registered kind is read through
+/// [`MarketDescriptor::member`](crate::MarketDescriptor::member), which holds
+/// its claim.
+fn enum_code_member(dtype: &DataType, code: i128) -> Result<Scalar> {
+    let code = i64::try_from(code).map_err(|_| Error::InvalidDataType {
         kind: dtype.name(),
         reason: format_smolstr!("expected the code of a {dtype}, got {code}"),
+    })?;
+    match dtype {
+        DataType::Market(kind) => kind.kind().member(code),
+        _ => crate::enums::read_enum_code(dtype, code),
     }
 }
 
@@ -1990,18 +1998,18 @@ fn validate_dtype_value(
                 .map_err(ascii_failure),
             None => Err(expected(dtype.name(), value)),
         },
-        crate::enum_dtypes!() => match value {
+        // An enum leaf's value is checked by the leaf the datatype names: a
+        // member of the leaf is its own proof.
+        D::Market(_) | D::State => match value {
             member if member.id() == dtype.id() => Ok(()),
-            // A member of another enum leaf is a value of another vocabulary,
-            // never a spelling of this one.
-            member if member.is_enum() => Err(expected(dtype.name(), value)),
+            // A value of another enum or code kind is a value of another
+            // vocabulary, never a spelling of this one.
+            held if held.is_enum() || held.is_code() => Err(expected(dtype.name(), value)),
             other => match (other.as_i128(), other.as_str()) {
-                (Some(code), _) => i64::try_from(code)
-                    .map_err(|_| enum_code_refusal(dtype, code))
-                    .and_then(|code| crate::enums::read_enum_code(dtype.id(), code))
+                (Some(code), _) => enum_code_member(dtype, code)
                     .map(|_| ())
                     .map_err(ascii_failure),
-                (None, Some(text)) => crate::enums::read_enum_spelling(dtype.id(), text)
+                (None, Some(text)) => crate::enums::read_enum_spelling(dtype, text)
                     .map(|_| ())
                     .map_err(ascii_failure),
                 (None, None) => Err(expected(dtype.name(), value)),

@@ -731,11 +731,8 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::Ccy(_)
             | Scalar::Mic(_)
             | Scalar::Cfi(_)
-            | Scalar::Side(_)
+            | Scalar::Market(_)
             | Scalar::State(_)
-            | Scalar::MarketDataKind(_)
-            | Scalar::MarketDataType(_)
-            | Scalar::TimeInForce(_)
             | Scalar::Isin(_)
             | Scalar::Cusip(_)
             | Scalar::Sedol(_)
@@ -806,10 +803,8 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         code_scalars!() => {
             write_scalar_string(writer, value.as_str().expect("a code borrowed its text"))?;
         }
-        crate::enum_scalars!() => write_scalar_string(
-            writer,
-            value.enum_name().expect("an enum member names itself"),
-        )?,
+        Scalar::Market(held) => write_scalar_string(writer, held.as_str())?,
+        Scalar::State(held) => write_scalar_string(writer, held.as_str())?,
         Scalar::Version(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Url(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Urn(value) => write_scalar_string(writer, &value.to_string())?,

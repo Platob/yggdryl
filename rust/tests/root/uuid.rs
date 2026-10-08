@@ -639,11 +639,11 @@ mod parameters {
         // MarketDataKind and MarketDataType an enum leaf each, and LEI,
         // BIC, ELF, DTI and FISN a code leaf each in the text range's tail
         // the code family took, without changing the UUID family's range.
-        assert_eq!(DataTypeId::ALL.len(), 96);
+        assert_eq!(DataTypeId::all().len(), 96);
         assert_eq!(DataTypeId::Uuid.as_u8(), 0x81);
         assert_eq!(DataTypeId::from_u8(0x80), None);
         assert!(
-            DataTypeId::ALL
+            DataTypeId::all()
                 .iter()
                 .all(|id| id == &DataTypeId::Uuid || !(0x80..=0x8f).contains(&id.as_u8()))
         );

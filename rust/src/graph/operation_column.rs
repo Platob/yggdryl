@@ -82,7 +82,7 @@ impl OperationColumn {
     pub fn datatype(self) -> DataType {
         match self {
             Self::OrdQty => DataType::Decimal,
-            Self::TimeInForce => DataType::TimeInForce,
+            Self::TimeInForce => DataType::timeinforce(),
             Self::Tradable => DataType::Boolean,
             Self::Identifiers | Self::PartyIds => Identifiers::dtype(),
         }

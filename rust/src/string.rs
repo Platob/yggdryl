@@ -106,7 +106,7 @@ mod arrow {
     /// document, written whole. Which is which is the leaf's identifier's
     /// [`DataTypeId::arrow_extension_name`].
     pub(crate) const fn needs_extension(parameters: StringType) -> bool {
-        parameters.id().arrow_extension_name().is_some()
+        parameters.id().core_arrow_extension_name().is_some()
     }
 
     /// The Arrow storage one string datatype lays out.
@@ -307,7 +307,7 @@ pub(crate) mod casts {
                     budget,
                     |index| {
                         codes.is_valid(index).then(|| {
-                            crate::enums::read_enum_code($held.id(), i64::from(codes.value(index)))
+                            crate::enums::read_enum_code($held, i64::from(codes.value(index)))
                                 .and_then(|member| {
                                     read(Cell::Text(
                                         member.enum_name().expect("the leaf's own member"),
@@ -1438,7 +1438,7 @@ impl StringType {
     /// The canonical name of this leaf.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        self.id().as_str()
+        self.id().core_str()
     }
 
     /// The charset the stored bytes are written in.

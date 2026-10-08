@@ -6,9 +6,9 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 97 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the seventeen [codes](codes/index.md), the six [enums](enum/index.md) |
+| Owns | 91 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the seventeen [codes](codes/index.md), the [`state`](enum/state.md) enum, and `Market`, the one variant the four market [enums](enum/index.md) sit under as [registered kinds](#registered-kinds) |
 | Parses | Arrow, SQL, Hive, Spark, Iceberg, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
-| Identity | `id()`, `kind()`: 97 ids, 13 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
+| Identity | `id()`, `kind()`: 96 ids - the core's 92, the seventeen codes among them, `DataTypeId::ALL`, and the four registered market enums, `DataTypeId::all()` - 13 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf, a registered kind's its claimed byte |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
@@ -64,7 +64,7 @@ Parse any spelling, display the canonical one, round-trip both text forms.
 
 ## Logical names
 
-A FIX name resolves to, and displays as, an ordinary datatype.
+A FIX name resolves to, and displays as, an ordinary datatype. `DataType::logical_names()` lists every name in name order, a [registered kind](#registered-kinds)'s own name among them, and `DataType::register_logical_name(name, dtype, by)` claims one more for a crate, once, on the same claim-once register, Rust only.
 
 === "Rust"
 
@@ -96,7 +96,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
         DataType::from_str("utc_date_only")?,
         DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?,
     );
-    assert_eq!(DataType::LOGICAL_NAMES[0], ("ccy", DataType::Ccy));
+    assert!(DataType::logical_names().contains(&("ccy", DataType::Ccy)));
 
     // Three of the names also prebuild the vocabulary their codes come from.
     assert_eq!(StringEnum::prebuilt_values("MIC"), StringEnum::MICS);
@@ -298,6 +298,35 @@ The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifie
     ```
 
 Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take and a placeholder no leaf takes but for the null family's, and `DataTypeKind::last` its end - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [value stream](value-stream.md) and the [digest feed](../hashing.md#encoding) write that byte. `DataTypeKind::range`, `last`, `contains` and `DataTypeId::temporal_family` are Rust only.
+
+## Registered kinds
+
+A registered kind - one of the four market [enums](enum/index.md) `marketdatakind`, `side`, `marketdatatype` and `timeinforce`, or an enum a crate claims - is no variant of its own. It is a `MarketDescriptor`, one `static` in the kind's root file (`SIDE_KIND`), and the one `DataType::Market` variant holds it through a `MarketType`, as `Field::Market`, `Scalar::Market` (a `MarketScalar`) and `Serie::Market` (a `MarketSerie`) do beside it. The descriptor states the kind's byte in the enum range, its name, its Arrow extension name, its storage - `MarketStorage::Code8` or `Code16`, the `uint8` or `uint16` code of a member - its `members` in code order, the ranks its values and its datatype order and hash by, and `read`, the door a spelling crosses into a member's code. The kind's own type answers `ID`, `NAME` and `EXTENSION_NAME` (`Side::ID`) and `MarketValue`, the owned narrowing of a scalar back to it. The seventeen [codes](codes/index.md) are not registered kinds: each is a variant of its own, like every other core leaf, and `DataTypeId::ALL` counts them.
+
+A kind is claimed once, by `yggdryl::market::claim(kind, by)`, under its byte, its name and its extension name, and a second claim of any of the three is refused naming the first claimant. The byte is a free one in the enum range: `0xc2..=0xc5` are the core's four kinds, `0xc1` is `state`, `0xc6` is retired and no kind takes it again, and `0xc7..=0xcf` are free. A claim by a crate other than the core states the reserved ranks, at least one member in code order within the storage's width, a name in its folded spelling that the datatype grammar does not already read, and an extension name the core does not recognize. Every intake - a parsed name, a serde tag, a value-stream byte, an Arrow extension name - reads the register through `market::kind_of(id)`, `market::kind_named(name)` and `market::kind_for_extension(name)`, and `market::kinds()` lists every claim in byte order; a value in hand carries its kind and reads nothing. A name no claim answers is refused as ``unknown datatype "x": no registered datatype answers it; install the crate that claims it and call its `install()` ``. Until the kinds move to `yggdryl-market`, the core claims its own four itself before the register answers anything, so `side` parses with nothing installed.
+
+The register is Rust only; Python and JavaScript reach the kinds exactly as before - `DataType("side")`, the field factories and every value door - and gain no door.
+
+```rust
+use yggdryl::{market, DataType, Side, SIDE_KIND};
+
+let side = DataType::from_str("side")?;
+let DataType::Market(kind) = &side else {
+    panic!("expected a registered kind, got {side}");
+};
+assert_eq!(kind.name(), "side");
+assert_eq!(kind.kind().name, "side");
+assert_eq!(kind.id(), Side::ID);
+assert_eq!(side, DataType::side());
+
+// Every intake reads the register; a name no claim answers finds nothing.
+assert_eq!(market::kind_named("side"), Some(&SIDE_KIND));
+assert_eq!(market::kind_for_extension(Side::EXTENSION_NAME), Some(&SIDE_KIND));
+assert_eq!(market::kind_of(Side::ID), Some(&SIDE_KIND));
+assert_eq!(market::kind_named("acme"), None);
+// A byte, a name and an extension name are claimed once.
+assert!(market::claim(&SIDE_KIND, "acme").is_err());
+```
 
 ## As a struct
 

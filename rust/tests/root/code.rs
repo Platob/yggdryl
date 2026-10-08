@@ -283,8 +283,8 @@ mod datatypes {
         assert!(refused.to_string().contains("4 bytes"), "{refused}");
         // An enum is no code: it packs into no integer, because its column
         // stores its member's code already.
-        assert!(DataType::Side.ascii_packed(b"BUY").is_err());
-        assert!(DataType::TimeInForce.ascii_packed(b"GTC").is_err());
+        assert!(DataType::side().ascii_packed(b"BUY").is_err());
+        assert!(DataType::timeinforce().ascii_packed(b"GTC").is_err());
     }
 
     #[test]

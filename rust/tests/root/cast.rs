@@ -2619,7 +2619,7 @@ mod typed {
                 DataType::Bbg,
                 DataType::Ric,
                 DataType::Figi,
-                DataType::TimeInForce,
+                DataType::timeinforce(),
                 DataType::Forex,
             ]
         }
@@ -3504,7 +3504,7 @@ mod certification {
         for target in [
             DataType::Ccy,
             DataType::Country,
-            DataType::Side,
+            DataType::side(),
             DataType::State,
         ] {
             certified(target, Arc::clone(&codes));

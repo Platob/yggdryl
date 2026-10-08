@@ -295,8 +295,8 @@ impl MarketColumn {
     #[must_use]
     pub fn datatype(self) -> DataType {
         match self {
-            Self::MarketDataKind => DataType::MarketDataKind,
-            Self::MarketDataType => DataType::MarketDataType,
+            Self::MarketDataKind => DataType::marketdatakind(),
+            Self::MarketDataType => DataType::marketdatatype(),
             Self::Price
             | Self::StopPx
             | Self::StrikePx
@@ -319,7 +319,7 @@ impl MarketColumn {
             | Self::AskQty => DataType::Decimal,
             Self::Currency | Self::OrigCcy | Self::BidCcy | Self::AskCcy => DataType::Ccy,
             Self::Unit => DataType::Unit,
-            Self::Side => DataType::Side,
+            Self::Side => DataType::side(),
             Self::SecurityIds => Identifiers::dtype(),
             Self::IsinCode => DataType::Isin,
             Self::CfiCode => DataType::Cfi,
@@ -381,8 +381,8 @@ impl MarketColumn {
     /// states none.
     pub fn fact<E: Market + ?Sized>(self, element: &E) -> Option<Scalar> {
         match self {
-            Self::MarketDataKind => Some(Scalar::MarketDataKind(element.marketdatakind())),
-            Self::MarketDataType => Some(Scalar::MarketDataType(element.get_marketdatatype())),
+            Self::MarketDataKind => Some(Scalar::from(element.marketdatakind())),
+            Self::MarketDataType => Some(Scalar::from(element.get_marketdatatype())),
             Self::Price => element.get_price().map(Scalar::from),
             Self::StopPx => element.get_stoppx().map(Scalar::from),
             Self::StrikePx => element.get_strikepx().map(Scalar::from),

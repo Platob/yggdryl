@@ -806,7 +806,7 @@ fn every_scalar_leaf_has_an_answer_for_every_target() {
     //
     // This walks every parameter-free identifier instead of the seven, so the
     // next leaf added without a compatibility arm fails here.
-    for id in DataTypeId::ALL {
+    for id in DataTypeId::all() {
         if id.is_parameterized() {
             continue;
         }
@@ -838,7 +838,7 @@ fn every_scalar_leaf_has_an_answer_for_every_target() {
 fn every_foreign_engine_reads_an_enum_as_its_int32_code_and_a_code_as_its_text() {
     let mut enums = 0;
     let mut codes = 0;
-    for id in DataTypeId::ALL {
+    for id in DataTypeId::all() {
         if id.is_parameterized() {
             continue;
         }
@@ -884,7 +884,7 @@ fn every_foreign_engine_reads_an_enum_as_its_int32_code_and_a_code_as_its_text()
 fn every_iceberg_widening_lands_on_a_type_the_iceberg_writer_spells() {
     use yggdryl::DataTypeKind;
     use yggdryl::iceberg::PrimitiveType;
-    let mut samples: Vec<DataType> = DataTypeId::ALL
+    let mut samples: Vec<DataType> = DataTypeId::all()
         .iter()
         .filter(|id| !id.is_parameterized())
         .filter_map(|id| DataType::from_str(id.as_str()).ok())

@@ -213,11 +213,11 @@ fn every_datatype() -> Vec<DataType> {
         DataType::Ccy,
         DataType::Mic,
         DataType::Cfi,
-        DataType::Side,
+        DataType::side(),
         DataType::State,
-        DataType::MarketDataKind,
-        DataType::TimeInForce,
-        DataType::MarketDataType,
+        DataType::marketdatakind(),
+        DataType::timeinforce(),
+        DataType::marketdatatype(),
         DataType::Isin,
         DataType::Cusip,
         DataType::Sedol,
@@ -478,9 +478,8 @@ fn every_datatype_id_a_datatype_holds_is_stated_by_its_family() {
     let covered = corpus.iter().map(DataType::id).collect::<BTreeSet<_>>();
     // Arrow has no 128-bit integer layout, so no datatype answers the two
     // identifiers the 128-bit scalars carry.
-    let uncovered = DataTypeId::ALL
-        .iter()
-        .copied()
+    let uncovered = DataTypeId::all()
+        .into_iter()
         .filter(|id| !covered.contains(id))
         .collect::<Vec<_>>();
     assert_eq!(uncovered, [DataTypeId::Int128, DataTypeId::UInt128]);
@@ -507,8 +506,9 @@ fn a_datatype_read_back_from_its_canonical_spelling_is_stated_as_itself() {
 
 #[test]
 fn every_logical_name_is_stated_by_the_family_it_resolves_to() {
-    assert!(!DataType::LOGICAL_NAMES.is_empty());
-    for (name, dtype) in DataType::LOGICAL_NAMES {
+    let names = DataType::logical_names();
+    assert!(!names.is_empty());
+    for (name, dtype) in &names {
         assert_eq!(DbType::of(dtype), by_family(dtype), "{name} as {dtype}");
         let read = name
             .parse::<DataType>()
@@ -959,11 +959,11 @@ fn every_registered_code_is_wstr() {
         (DataType::Bbg, DbType::Wstr),
         (DataType::Figi, DbType::Wstr),
         (DataType::Ric, DbType::Wstr),
-        (DataType::Side, DbType::Wstr),
+        (DataType::side(), DbType::Wstr),
         (DataType::State, DbType::Wstr),
-        (DataType::MarketDataKind, DbType::Wstr),
-        (DataType::TimeInForce, DbType::Wstr),
-        (DataType::MarketDataType, DbType::Wstr),
+        (DataType::marketdatakind(), DbType::Wstr),
+        (DataType::timeinforce(), DbType::Wstr),
+        (DataType::marketdatatype(), DbType::Wstr),
         (DataType::Unit, DbType::Wstr),
         (DataType::Forex, DbType::Wstr),
         (DataType::Lei, DbType::Wstr),

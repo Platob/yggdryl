@@ -7,19 +7,15 @@
 use arrow_array::Array;
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::{
-    ArrowCastOptions, DataType, DataTypeId, DataTypeKind, EnumValue, Field, MarketDataKind,
-    MarketDataType, Scalar, Serie,
+    ArrowCastOptions, DataType, DataTypeKind, Field, MarketDataKind, MarketDataType, Scalar, Serie,
 };
 
 #[test]
 fn every_member_is_its_code_its_stored_name_and_its_fix_value() {
     assert_eq!(MarketDataType::default(), MarketDataType::Unknown);
     assert_eq!(MarketDataType::Unknown.code(), 0);
-    assert_eq!(<MarketDataType as EnumValue>::KIND, "marketdatatype");
-    assert_eq!(
-        <MarketDataType as EnumValue>::EXTENSION_NAME,
-        "yggdryl.marketdatatype"
-    );
+    assert_eq!(MarketDataType::NAME, "marketdatatype");
+    assert_eq!(MarketDataType::EXTENSION_NAME, "yggdryl.marketdatatype");
     let mut previous = None;
     for member in MarketDataType::ALL.iter().copied() {
         // In code order, each set in its hundreds.
@@ -150,7 +146,7 @@ fn the_retired_spelling_unkn_names_no_type() {
         MarketDataType::Unknown
     );
     assert!(
-        DataType::MarketDataType
+        DataType::marketdatatype()
             .scalar(Scalar::from("UNKN"))
             .is_err()
     );
@@ -240,37 +236,37 @@ fn a_message_type_names_its_own_typing_field_before_its_kind() {
 
 #[test]
 fn the_datatype_is_an_enum_over_uint16_codes() {
-    assert_eq!(DataType::MarketDataType.id(), DataTypeId::MarketDataType);
-    assert_eq!(DataTypeId::MarketDataType.kind(), DataTypeKind::Enum);
-    assert!(DataType::MarketDataType.is_enum());
+    assert_eq!(DataType::marketdatatype().id(), MarketDataType::ID);
+    assert_eq!(MarketDataType::ID.kind(), DataTypeKind::Enum);
+    assert!(DataType::marketdatatype().is_enum());
     assert_eq!(
         DataType::from_str("marketdatatype").unwrap(),
-        DataType::MarketDataType
+        DataType::marketdatatype()
     );
-    assert_eq!(DataType::MarketDataType.to_string(), "marketdatatype");
+    assert_eq!(DataType::marketdatatype().to_string(), "marketdatatype");
     assert_eq!(
-        DataType::MarketDataType.default_value().unwrap(),
-        Scalar::MarketDataType(MarketDataType::Unknown)
+        DataType::marketdatatype().default_value().unwrap(),
+        Scalar::from(MarketDataType::Unknown)
     );
     assert_eq!(
-        DataType::MarketDataType
+        DataType::marketdatatype()
             .scalar(Scalar::from("ORDLIMIT"))
             .unwrap(),
-        Scalar::MarketDataType(MarketDataType::OrdLimit)
+        Scalar::from(MarketDataType::OrdLimit)
     );
     assert_eq!(
-        DataType::MarketDataType
+        DataType::marketdatatype()
             .scalar(Scalar::from(102_i32))
             .unwrap(),
-        Scalar::MarketDataType(MarketDataType::OrdLimit)
+        Scalar::from(MarketDataType::OrdLimit)
     );
-    let wire = serde_json::to_string(&Scalar::MarketDataType(MarketDataType::TrdBlock)).unwrap();
+    let wire = serde_json::to_string(&Scalar::from(MarketDataType::TrdBlock)).unwrap();
     assert_eq!(
         serde_json::from_str::<Scalar>(&wire).unwrap(),
-        Scalar::MarketDataType(MarketDataType::TrdBlock)
+        Scalar::from(MarketDataType::TrdBlock)
     );
 
-    let field = Field::new("marketdatatype", DataType::MarketDataType, true);
+    let field = Field::new("marketdatatype", DataType::marketdatatype(), true);
     let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt16);
     assert_eq!(
@@ -279,9 +275,9 @@ fn the_datatype_is_an_enum_over_uint16_codes() {
     );
     assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
     let values = [
-        Scalar::MarketDataType(MarketDataType::OrdLimit),
+        Scalar::from(MarketDataType::OrdLimit),
         Scalar::Null,
-        Scalar::MarketDataType(MarketDataType::BookBid),
+        Scalar::from(MarketDataType::BookBid),
     ];
     let serie = Serie::from_scalars(field.clone(), values.clone()).unwrap();
     let array = serie.require_arrow_array().unwrap();
@@ -343,7 +339,7 @@ fn the_marketdatatype_wire_contracts_are_pinned() {
         DataType::from_logical_name("marketdatatype").unwrap(),
         dtype
     );
-    let logical: Vec<&str> = DataType::LOGICAL_NAMES
+    let logical: Vec<&str> = DataType::logical_names()
         .iter()
         .filter(|(_, held)| *held == dtype)
         .map(|(logical, _)| *logical)

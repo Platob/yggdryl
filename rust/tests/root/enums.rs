@@ -34,10 +34,10 @@ fn a_leaf_holds_its_codes_at_the_narrowest_width_they_fit() {
     );
     assert!(two > 255, "a state's code passes a byte");
     for (dtype, storage) in [
-        (DataType::Side, ArrowDataType::UInt8),
-        (DataType::MarketDataKind, ArrowDataType::UInt8),
+        (DataType::side(), ArrowDataType::UInt8),
+        (DataType::marketdatakind(), ArrowDataType::UInt8),
         (DataType::State, ArrowDataType::UInt16),
-        (DataType::MarketDataType, ArrowDataType::UInt16),
+        (DataType::marketdatatype(), ArrowDataType::UInt16),
     ] {
         let arrow = Field::new("x", dtype.clone(), true)
             .into_arrow_field()
@@ -50,7 +50,7 @@ fn a_leaf_holds_its_codes_at_the_narrowest_width_they_fit() {
 /// code no member takes is refused naming the row, whatever width held it.
 #[test]
 fn every_integer_width_lands_as_the_codes_it_holds() {
-    let side = Field::new("side", DataType::Side, true);
+    let side = Field::new("side", DataType::side(), true);
     let sources: [ArrayRef; 6] = [
         Arc::new(Int8Array::from(vec![1, 2])),
         Arc::new(Int16Array::from(vec![1, 2])),
@@ -64,12 +64,12 @@ fn every_integer_width_lands_as_the_codes_it_holds() {
         let landed = Serie::from_arrow_array(Some(&side), source, strict()).unwrap();
         assert_eq!(
             landed.scalar(0).unwrap(),
-            Scalar::Side(Side::Buy),
+            Scalar::from(Side::Buy),
             "{width}"
         );
         assert_eq!(
             landed.scalar(1).unwrap(),
-            Scalar::Side(Side::Sell),
+            Scalar::from(Side::Sell),
             "{width}"
         );
     }
@@ -115,8 +115,8 @@ fn a_column_casts_out_to_any_integer_and_to_text() {
     assert_eq!(names.scalar(1).unwrap(), Scalar::from("FILLED"));
 
     let side = Serie::from_scalars(
-        Field::new("side", DataType::Side, true),
-        [Scalar::Side(Side::SellUnd)],
+        Field::new("side", DataType::side(), true),
+        [Scalar::from(Side::SellUnd)],
     )
     .unwrap();
     let narrow = side
@@ -144,7 +144,7 @@ fn a_column_casts_out_to_any_integer_and_to_text() {
 #[test]
 fn nested_enum_leaves_cast_from_and_to_any_integer() {
     let target = StructType::from_fields([
-        Field::new("side", DataType::Side, true),
+        Field::new("side", DataType::side(), true),
         Field::new(
             "states",
             DataType::serie(DataType::State.nullable_field("item")),
@@ -178,7 +178,7 @@ fn nested_enum_leaves_cast_from_and_to_any_integer() {
     let landed =
         Serie::from_arrow_array(Some(&target), Arc::new(source) as ArrayRef, strict()).unwrap();
     let row = landed.scalar(0).unwrap();
-    assert_eq!(row.get(0).unwrap().as_ref(), &Scalar::Side(Side::Sell));
+    assert_eq!(row.get(0).unwrap().as_ref(), &Scalar::from(Side::Sell));
     let items = row.get(1).unwrap();
     assert_eq!(items.get(0).unwrap().as_ref(), &Scalar::State(State::New));
 
@@ -297,15 +297,15 @@ fn a_column_of_one_enum_leaf_is_never_cast_into_another() {
     use yggdryl::{ArrowCastPlan, Side, State, TimeInForce};
 
     let sides = Serie::from_scalars(
-        Field::new("s", DataType::Side, false),
-        [Scalar::Side(Side::Buy), Scalar::Side(Side::Sell)],
+        Field::new("s", DataType::side(), false),
+        [Scalar::from(Side::Buy), Scalar::from(Side::Sell)],
     )
     .unwrap();
     let tifs = Serie::from_scalars(
-        Field::new("t", DataType::TimeInForce, false),
+        Field::new("t", DataType::timeinforce(), false),
         [
-            Scalar::TimeInForce(TimeInForce::Day),
-            Scalar::TimeInForce(TimeInForce::GoodTillCancel),
+            Scalar::from(TimeInForce::Day),
+            Scalar::from(TimeInForce::GoodTillCancel),
         ],
     )
     .unwrap();
@@ -315,9 +315,9 @@ fn a_column_of_one_enum_leaf_is_never_cast_into_another() {
     )
     .unwrap();
     for (source, target) in [
-        (&sides, DataType::TimeInForce),
-        (&tifs, DataType::Side),
-        (&states, DataType::Side),
+        (&sides, DataType::timeinforce()),
+        (&tifs, DataType::side()),
+        (&states, DataType::side()),
         (&tifs, DataType::State),
     ] {
         let target = Field::new("x", target, false);
@@ -346,11 +346,11 @@ fn a_column_of_one_enum_leaf_is_never_cast_into_another() {
     }
     let same = sides
         .cast(
-            &Field::new("same", DataType::Side, false),
+            &Field::new("same", DataType::side(), false),
             ArrowCastOptions::new(),
         )
         .unwrap();
-    assert_eq!(same.scalar(1).unwrap(), Scalar::Side(Side::Sell));
+    assert_eq!(same.scalar(1).unwrap(), Scalar::from(Side::Sell));
     let codes = sides
         .cast(
             &Field::new("codes", DataType::Int32, false),

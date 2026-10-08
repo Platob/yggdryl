@@ -5284,11 +5284,11 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
         assert_eq!(message.capture().msgpluginside(), side);
         assert_eq!(
             message.get_by_tag(MSGPLUGINSIDE_TAG_NAME.0),
-            Some(Scalar::Side(side))
+            Some(Scalar::from(side))
         );
         assert_eq!(
             message.by_name("msgpluginside").unwrap(),
-            Scalar::Side(side)
+            Scalar::from(side)
         );
         // Independent of the message's own side, and no entry on the wire.
         assert_eq!(message.get_side(), Side::Buy);
@@ -5300,7 +5300,7 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
         );
         // The row cell, and the message read back off it.
         let row = message.into_row(&schema).expect("a fixed row");
-        assert_eq!(row.as_sequence().expect("a row")[at], Scalar::Side(side));
+        assert_eq!(row.as_sequence().expect("a row")[at], Scalar::from(side));
         let again = FixMsg::from_row(Arc::clone(&registry), &schema, &row).expect("the row read");
         assert_eq!(again.msgpluginside(), side, "{id}: the row's word");
         assert_eq!(again.into_row(&schema).unwrap(), row);
@@ -5356,7 +5356,7 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
     assert_eq!(message.msgpluginside(), Side::Unknown);
     assert_eq!(
         message.get_by_tag(MSGPLUGINSIDE_TAG_NAME.0),
-        Some(Scalar::Side(Side::Unknown))
+        Some(Scalar::from(Side::Unknown))
     );
 
     // A row-header capture named for the column is the row's word, and one

@@ -400,11 +400,14 @@ fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec
         // An enum member is the code it stores, under its leaf's identifier,
         // written at the canonical four bytes whatever width a column stores
         // it at, so the stream never moves when a leaf's width does.
-        held @ crate::enum_scalars!() => fixed(
+        Scalar::State(held) => fixed(
             chunk,
-            held.id(),
-            &i32::from(held.enum_code().expect("an enum member stores its code")).to_le_bytes(),
+            DataTypeId::State,
+            &i32::from(held.code()).to_le_bytes(),
         ),
+        // A registered enum's member is its code under the kind's own
+        // identifier, written as a state's is, at the canonical four bytes.
+        Scalar::Market(held) => fixed(chunk, held.id(), &i32::from(held.code()).to_le_bytes()),
         // A registered code is its text under its own identifier.
         code @ crate::code_scalars!() => write_text(
             chunk,
@@ -530,6 +533,14 @@ impl<'a> Reader<'a> {
         let byte = self.byte()?;
         let Some(id) = DataTypeId::from_u8(byte) else {
             return Err(self.refuse(match DataTypeKind::of_u8(byte) {
+                // A leaf byte of the family a kind is claimed in is a kind no
+                // crate in this process registered.
+                Some(kind @ DataTypeKind::Enum) if byte != kind.id() => {
+                    format_smolstr!(
+                        "{}",
+                        crate::market::unregistered(format_args!("{byte:#04x}"))
+                    )
+                }
                 Some(kind) => {
                     format_smolstr!("byte {byte:#04x} is a placeholder of the {kind} family")
                 }
@@ -542,8 +553,12 @@ impl<'a> Reader<'a> {
             DataTypeId::Int8 => Scalar::from(i8::from_le_bytes(self.array()?)),
             DataTypeId::Int16 => Scalar::from(i16::from_le_bytes(self.array()?)),
             DataTypeId::Int32 => Scalar::from(i32::from_le_bytes(self.array()?)),
+            // The enum family holds the core's `State` and the kinds claimed
+            // in this process, the datatype each byte names built once here.
             held if DataTypeKind::Enum.contains(held) => {
-                crate::enums::read_enum_code(held, i64::from(i32::from_le_bytes(self.array()?)))?
+                let dtype = crate::market::kind_of(held)
+                    .map_or(DataType::State, crate::MarketDescriptor::dtype);
+                crate::enums::read_enum_code(&dtype, i64::from(i32::from_le_bytes(self.array()?)))?
             }
             DataTypeId::Int64 => Scalar::from(i64::from_le_bytes(self.array()?)),
             DataTypeId::Int128 => Scalar::from(i128::from_le_bytes(self.array()?)),

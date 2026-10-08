@@ -2348,7 +2348,7 @@ fn the_record_rung_agrees_with_its_run_under_every_ordering() {
     // ordered by its value.
     let field = StructType::from_fields([
         DataType::Mic.required_field("venue"),
-        DataType::Side.required_field("side"),
+        DataType::side().required_field("side"),
         DataType::Int64.required_field("count"),
     ])
     .map(DataType::from)

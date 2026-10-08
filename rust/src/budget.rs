@@ -34,7 +34,7 @@ use crate::{bytes, string};
 mod limits {
 
     use crate::arrow::{Error, Result};
-    use crate::{DataType, Field, Scalar, TimeUnit, UnionMode};
+    use crate::{DataType, Field, MarketStorage, Scalar, TimeUnit, UnionMode};
 
     // Composite Arrow layouts can turn one logical null or inactive union member
     // into a large number of mandatory physical child slots. Keep the same
@@ -324,11 +324,9 @@ mod limits {
 
             match dtype {
                 DataType::Boolean => self.add_bytes(bitmap_bytes(rows)?)?,
-                // An enum member is the code of its leaf, at the leaf's width.
-                DataType::Int8 | DataType::UInt8 | crate::enum8_dtypes!() => {
-                    self.add_fixed_rows(rows, 1)?;
-                }
-                DataType::Int16 | DataType::UInt16 | DataType::Float16 | crate::enum16_dtypes!() => {
+                DataType::Int8 | DataType::UInt8 => self.add_fixed_rows(rows, 1)?,
+                // A state is the code of its member, two bytes wide.
+                DataType::Int16 | DataType::UInt16 | DataType::Float16 | DataType::State => {
                     self.add_fixed_rows(rows, 2)?;
                 }
                 DataType::Int32
@@ -364,6 +362,12 @@ mod limits {
                     self.add_offsets(rows, 4)?;
                     self.add_fixed_rows(rows, dtype.code_width().unwrap_or_default())?;
                 }
+                // A registered enum charges the storage it declares: its code,
+                // at the width the storage names.
+                DataType::Market(kind) => match kind.storage() {
+                    MarketStorage::Code8 => self.add_fixed_rows(rows, 1)?,
+                    MarketStorage::Code16 => self.add_fixed_rows(rows, 2)?,
+                },
                 DataType::Int64
                 | DataType::UInt64
                 | DataType::Float64
@@ -455,11 +459,9 @@ mod limits {
             match dtype {
                 DataType::Null => {}
                 DataType::Boolean => self.add_bytes(bitmap_bytes(rows)?)?,
-                // An enum member is the code of its leaf, at the leaf's width.
-                DataType::Int8 | DataType::UInt8 | crate::enum8_dtypes!() => {
-                    self.add_fixed_rows(rows, 1)?;
-                }
-                DataType::Int16 | DataType::UInt16 | DataType::Float16 | crate::enum16_dtypes!() => {
+                DataType::Int8 | DataType::UInt8 => self.add_fixed_rows(rows, 1)?,
+                // A state is the code of its member, two bytes wide.
+                DataType::Int16 | DataType::UInt16 | DataType::Float16 | DataType::State => {
                     self.add_fixed_rows(rows, 2)?;
                 }
                 DataType::Int32
@@ -495,6 +497,12 @@ mod limits {
                     self.add_offsets(rows, 4)?;
                     self.add_fixed_rows(rows, dtype.code_width().unwrap_or_default())?;
                 }
+                // A registered enum charges the storage it declares: its code,
+                // at the width the storage names.
+                DataType::Market(kind) => match kind.storage() {
+                    MarketStorage::Code8 => self.add_fixed_rows(rows, 1)?,
+                    MarketStorage::Code16 => self.add_fixed_rows(rows, 2)?,
+                },
                 DataType::Int64
                 | DataType::UInt64
                 | DataType::Float64

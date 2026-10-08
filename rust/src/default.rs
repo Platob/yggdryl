@@ -5,7 +5,7 @@ use std::collections::TryReserveError;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::push_field_name_path;
-use crate::{DataTypeId, Error, Field, Result, Scalar, TimeUnit};
+use crate::{DataTypeId, Error, Field, MarketDescriptor, Result, Scalar, TimeUnit};
 
 use crate::DataType;
 
@@ -35,8 +35,10 @@ enum DefaultPlan {
     PointEmpty,
     /// The nil identifier, sixteen zero bytes in its hyphenated spelling.
     Uuid,
-    /// An enum leaf's member stated as none: code zero.
-    Enum(DataTypeId),
+    /// The state stated as none: code zero.
+    State,
+    /// A registered kind's own default, [`MarketDescriptor::default_scalar`].
+    Market(&'static MarketDescriptor),
     /// The minimum canonical version.
     Version,
     Url,
@@ -254,11 +256,8 @@ pub(crate) fn nesting_exceeds(
         | DataType::Bbg
         | DataType::Ric
         | DataType::Figi
-        | DataType::Side
+        | DataType::Market(_)
         | DataType::State
-        | DataType::MarketDataKind
-        | DataType::MarketDataType
-        | DataType::TimeInForce
         | DataType::Unit
         | DataType::Forex
         | DataType::Lei
@@ -370,11 +369,8 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Bbg
             | DataType::Ric
             | DataType::Figi
-            | DataType::Side
+            | DataType::Market(_)
             | DataType::State
-            | DataType::MarketDataKind
-            | DataType::MarketDataType
-            | DataType::TimeInForce
             | DataType::Unit
             | DataType::Forex
             | DataType::Lei
@@ -496,7 +492,9 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Elf
         | D::Dti
         | D::Fisn => scalar(DefaultPlan::String, false),
-        held @ crate::enum_dtypes!() => scalar(DefaultPlan::Enum(held.id()), false),
+        D::State => scalar(DefaultPlan::State, false),
+        // An enum's first member, code zero.
+        D::Market(kind) => scalar(DefaultPlan::Market(kind.kind()), false),
         D::Serie(_) | D::SerieView(_) | D::LargeSerie(_) | D::LargeSerieView(_) => {
             scalar(DefaultPlan::EmptySequence, false)
         }
@@ -759,7 +757,8 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         DefaultPlan::FixedBigDecimal => Ok(Scalar::BigDecimal(crate::BigDecimal::ZERO)),
         DefaultPlan::Interval(unit) => crate::Interval::new(0, 0, 0, unit).map(Scalar::Interval),
         DefaultPlan::String => Ok(Scalar::from("")),
-        DefaultPlan::Enum(id) => crate::enums::read_enum_code(id, 0),
+        DefaultPlan::State => crate::State::read_code(0).map(crate::Value::into_scalar),
+        DefaultPlan::Market(kind) => kind.default_scalar(),
         DefaultPlan::Bytes(width) => {
             let mut bytes = Vec::new();
             bytes
@@ -866,7 +865,9 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
         }
         DefaultPlan::Interval(unit) => interval_is_zero(value, *unit),
         DefaultPlan::String => value.as_str() == Some(""),
-        DefaultPlan::Enum(id) => value.id() == *id && value.enum_code() == Some(0),
+        DefaultPlan::State => value.id() == DataTypeId::State && value.enum_code() == Some(0),
+        // An enum's default is the member at code zero.
+        DefaultPlan::Market(kind) => value.id() == kind.id && value.enum_code() == Some(0),
         DefaultPlan::Bytes(width) => value
             .as_bytes()
             .is_some_and(|bytes| bytes.len() == *width && bytes.iter().all(|byte| *byte == 0)),

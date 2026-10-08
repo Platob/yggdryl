@@ -1115,7 +1115,7 @@ fn the_plugin_side_is_a_schema_column_an_intrinsic_set_and_clean_under_check() {
         .unwrap();
     assert_eq!(columns[at - 1], "msgpluginid");
     assert_eq!(columns[at + 1], "msgoriginator");
-    assert_eq!(written.fields()[at].dtype(), &DataType::Side);
+    assert_eq!(written.fields()[at].dtype(), &DataType::side());
     assert!(!written.fields()[at].is_nullable());
 
     // The intrinsic set is listed and read like any other, and refuses a

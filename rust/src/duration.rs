@@ -171,7 +171,7 @@ impl DurationType {
     /// The canonical name of this leaf.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        self.id().as_str()
+        self.id().core_str()
     }
 
     /// The resolution this column counts in, whichever width holds it.

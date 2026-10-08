@@ -107,6 +107,7 @@ mod listing;
 pub mod local;
 pub mod logging;
 pub mod mapping;
+pub mod market;
 pub mod marketdatakind;
 pub mod marketdatatype;
 pub mod media;
@@ -121,6 +122,7 @@ mod parallel;
 pub mod parquet;
 mod parser;
 mod path;
+pub mod plugin;
 mod pretty;
 pub mod protocol;
 mod regex;
@@ -284,7 +286,7 @@ pub(crate) use code::{code_refusal, code_text};
 pub use country::*;
 pub use cusip::*;
 pub use datatype::{DataType, VariantType};
-pub(crate) use datatype::{bytes_dtypes, enum_dtypes, enum8_dtypes, enum16_dtypes, string_dtypes};
+pub(crate) use datatype::{bytes_dtypes, string_dtypes};
 pub(crate) use datatype::{invalid, validate_non_negative};
 pub use date::*;
 pub use datetime::*;
@@ -320,6 +322,10 @@ pub use isin_registry::{IsinEntry, IsinRegistry, MatchTier, Resolution, Unmatche
 pub use lei::*;
 pub use limit::Limit;
 pub use mapping::*;
+pub use market::{
+    MarketDescriptor, MarketMember, MarketScalar, MarketSerie, MarketStorage, MarketType,
+    MarketValue,
+};
 pub use marketdatakind::*;
 pub use marketdatatype::*;
 pub(crate) use media_type::MEDIATYPE_EXTENSION_NAME;
@@ -334,7 +340,7 @@ pub use pretty::Pretty;
 pub use ric::*;
 pub use runend::*;
 pub use scalar::Scalar;
-pub(crate) use scalar::{bytes_scalars, code_scalars, enum_scalars, string_scalars};
+pub(crate) use scalar::{bytes_scalars, code_scalars, string_scalars};
 pub use sedol::*;
 pub use serie::*;
 pub use side::*;

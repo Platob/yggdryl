@@ -1934,6 +1934,21 @@ impl<'input> Parser<'input> {
     /// Answers `None` without consuming anything when the word is not a
     /// datatype, so the caller can fall back to reading it as a column.
     fn typed_literal(&mut self, position: usize) -> Result<Option<Term>> {
+        // A typed literal is a datatype - one word, or one opening its
+        // parameters - then a text or `null`: a word followed by anything
+        // else is a column, and is not tried as a datatype, so the try costs
+        // nothing where it cannot succeed.
+        let follows_datatype = |token: Option<&Token>| {
+            matches!(token, Some(Token::Text(_) | Token::Symbol("(" | "<")))
+                || matches!(token, Some(Token::Word(word)) if word.eq_ignore_ascii_case("null"))
+        };
+        if !follows_datatype(
+            self.tokens
+                .get(self.cursor + 1)
+                .map(|spanned| &spanned.token),
+        ) {
+            return Ok(None);
+        }
         let restore = self.cursor;
         let Ok(dtype) = self.dtype() else {
             self.cursor = restore;

@@ -1222,7 +1222,7 @@ const CRATED: [Crated; 52] = [
     ),
     Crated::own(
         MSGPLUGINSIDE_TAG_NAME,
-        || Ok(DataType::Side),
+        || Ok(DataType::side()),
         "Message Plugin Side",
         "The role of the FIX plugin whose session produced the message, as a \
          side: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW \

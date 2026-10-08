@@ -121,7 +121,7 @@ fn the_figi_wire_contracts_are_pinned() {
     assert_eq!(dtype.id().as_str(), "figi");
     assert_eq!(Field::from_str("value figi").unwrap().dtype(), &dtype);
     assert_eq!(DataType::from_logical_name("figi").unwrap(), dtype);
-    let logical: Vec<&str> = DataType::LOGICAL_NAMES
+    let logical: Vec<&str> = DataType::logical_names()
         .iter()
         .filter(|(_, held)| *held == dtype)
         .map(|(logical, _)| *logical)

@@ -23,7 +23,7 @@ pub fn array_memory_size(column: &ArrayRef) -> usize
 pub fn scalar_memory_size(value: &Scalar) -> usize
 
 ### yggdryl::arrow::extension  [rust/src/arrow/extension.rs]  (arrow-rs's typed extension types for the datatypes that ride a name, every method redirecting into the recognizer Field::from_arrow_field imports through: the name over the storage the datatype lays out, a dictionary of it included, is that datatype, and any other storage or a document a parameter-free name states none of is refused)
-impl ExtensionType for UuidType, VariantType, VersionType, TimezoneType, MimeTypeType, MediaTypeType, StateType, MarketDataKindType, MarketDataTypeType, SideType, TimeInForceType, CountryType, CcyType, MicType, CfiType, IsinType, CusipType, SedolType, FigiType, RicType, BbgType, UnitType, ForexType, LeiType, BicType, ElfType, DtiType, FisnType  (NAME the datatype identifier's arrow_extension_name, Metadata = (), no document)
+impl ExtensionType for UuidType, VariantType, VersionType, TimezoneType, MimeTypeType, MediaTypeType, StateType, MarketDataKindType, MarketDataTypeType, SideType, TimeInForceType, CountryType, CcyType, MicType, CfiType, IsinType, CusipType, SedolType, FigiType, RicType, BbgType, UnitType, ForexType, LeiType, BicType, ElfType, DtiType, FisnType  (NAME the datatype identifier's arrow_extension_name - for the four market enums their kind's own `EXTENSION_NAME`, read in a const context - Metadata = (), no document)
 impl ExtensionType for StringType  (NAME yggdryl.string, Metadata = Self: the leaf written whole as its extension_json document)
 impl ExtensionType for BytesType  (NAME yggdryl.bytes, Metadata = Self)
 
@@ -219,18 +219,23 @@ pub const COMPRESS_FROM: usize = 4 * 1024;  (a payload of no fixed width past th
 pub struct ValueStream  (Iterator<Item = Vec<u8>> + FusedIterator: one chunk per leaf, the children of a nested value after its header, holding what it has yet to write and nothing it wrote)
 
 ### yggdryl::root::datatype_id  [rust/src/datatype_id.rs]
-pub enum DataTypeId
-  pub const ALL: [Self; 96] = [all exact datatype identifiers in canonical declaration order, including Lei, Bic, Elf, Dti, Fisn at 0x6b..=0x6f, Figi, Decimal, BigDecimal, Ric at 0x7e and Forex at 0x7f, and ending State, MarketDataKind, Side, MarketDataType, TimeInForce at 0xc1..=0xc5];  (every discriminant is explicit; values are partitioned by DataTypeKind rather than declaration position; 0x75, 0x76 and 0x77 - side, state and timeinforce while each was a code - and 0xc6 - pluginside, until the plugin's role became a side - are retired and never reused; the code family took the text family's never-used tail 0x6a..=0x6f, so Text is 0x50..=0x69 and Code 0x6a..=0x7f)
-  pub fn from_str(value: &str) -> Result<Self>  (an identifier's as_str name or one of its LEGACY_NAMES, ignoring case)
-  pub const fn as_str(self) -> &'static str  (the serie family spells serie, serie_view, fixed_size_serie, large_serie, large_serie_view)
+pub struct DataTypeId(u8)  (Copy, Eq, Ord, Hash; the core's identifiers - the ninety-two of `ALL`, the seventeen codes among them - are associated consts under their CamelCase names - `DataTypeId::Int32`, `DataTypeId::Isin` - usable as values and as patterns; a registered kind's identifier is its own `ID` const, `Side::ID`; Debug and Display the name)
+  pub const ALL: [Self; 92] = [the core's own identifiers in canonical declaration order, Null first and State, at 0xc1, last, Lei, Bic, Elf, Dti, Fisn at 0x6b..=0x6f, Figi, Decimal, BigDecimal, Ric at 0x7e and Forex at 0x7f among them];  (every byte is explicit; values are partitioned by DataTypeKind rather than declaration position; 0x75, 0x76 and 0x77 - side, state and timeinforce while each was a code - and 0xc6 - pluginside, until the plugin's role became a side - are retired and never reused; the code family took the text family's never-used tail 0x6a..=0x6f, so Text is 0x50..=0x69 and Code 0x6a..=0x7f; the four market enum identifiers MarketDataKind, Side, MarketDataType and TimeInForce at 0xc2..=0xc5 are their kinds' own `ID` consts, claimed through yggdryl::market)
+  pub const fn market(byte: u8) -> Self  (the identifier a registered kind states: `byte` in the Enum range, refused at compile time outside it; whether the byte is free is the register's question, asked at the claim)
+  pub fn all() -> Vec<Self>  (every identifier a value can carry: ALL with every claimed kind spliced in after State, in byte order; 96 with the core's own four claimed; what a binding lists its datatype names from)
+  pub const fn core_name(self) -> Option<&'static str>  (a core identifier's canonical name; None for a byte the core does not own)
+  pub const fn is_core(self) -> bool
+  pub fn is_registered(self) -> bool  (a byte the core does not own that a claim holds)
+  pub fn from_str(value: &str) -> Result<Self>  (an identifier's as_str name - a core name or a claimed kind's, read off the register - or one of its LEGACY_NAMES, ignoring case)
+  pub fn as_str(self) -> &'static str  (a core identifier's own name, a registered kind's off the register, `unregistered` for a byte no claim holds, which no door hands out; the serie family spells serie, serie_view, fixed_size_serie, large_serie, large_serie_view)
   pub const LEGACY_NAMES: [(&'static str, Self); 5]  (the names the serie family had before it took its own - list, list_view, fixed_size_list, large_list, large_list_view - read by every door that reads a datatype's name, written by none)
   pub fn from_legacy_name(value: &str) -> Option<Self>  (one of LEGACY_NAMES, ignoring case; nothing for any other word)
   pub const fn as_u8(self) -> u8  (one byte laid out by family: the family's own number first, `DataTypeKind::id`, then its leaves in the family's range; the tag the digest feed and the variant encoding write)
-  pub const fn from_u8(byte: u8) -> Option<Self>  (the leaf one byte names; none for a family's own number, a placeholder in a family's range, or a byte past every family)
+  pub fn from_u8(byte: u8) -> Option<Self>  (the leaf one byte names - a core identifier's, else a claimed kind's off the register; none for a family's own number, a placeholder in a family's range, an unclaimed byte, or a byte past every family)
   pub const fn kind(self) -> DataTypeKind  (the family whose DataTypeKind::range the byte is in)
   pub const fn temporal_family(self) -> Option<&'static str>  (date, time, datetime, duration or interval: which of the five temporal families the leaf is in, the widths of one family sharing it; None outside DataTypeKind::Temporal)
-  pub const fn arrow_extension_name(self) -> Option<&'static str>  (the one owner of which datatype states itself to Arrow by a name: arrow.uuid, arrow.parquet.variant, geoarrow.wkb, yggdryl.string for every string leaf but plain utf8/large_utf8/utf8_view, yggdryl.bytes for sized_binary and large_binary_view, and yggdryl.<name> for the fixed decimals, the version, URL, URN, timezone, MIME and media types, the six enum leaves and the seventeen codes; None for every datatype Arrow states alone; DataType::arrow_extension reads its name here)
-  pub fn arrow_extension_names() -> impl Iterator<Item = &'static str>  (every distinct name arrow_extension_name answers, in ALL order - thirty-six; what a binding registers its runtime's extension types from)
+  pub fn arrow_extension_name(self) -> Option<&'static str>  (the one owner of which datatype states itself to Arrow by a name: arrow.uuid, arrow.parquet.variant, geoarrow.wkb, yggdryl.string for every string leaf but plain utf8/large_utf8/utf8_view, yggdryl.bytes for sized_binary and large_binary_view, and yggdryl.<name> for the fixed decimals, the version, URL, URN, timezone, MIME and media types, the state enum, the seventeen codes, and each registered kind's own `EXTENSION_NAME` off the register - the four market enums; None for every datatype Arrow states alone; DataType::arrow_extension reads its name here)
+  pub fn arrow_extension_names() -> impl Iterator<Item = &'static str>  (every distinct name arrow_extension_name answers, in all() order - thirty-five; what a binding registers its runtime's extension types from)
   pub const fn is_parameterized(self) -> bool  (a leaf whose datatype carries more than its identity: the temporal units, the fixed and sized string and byte leaves, the nested, dictionary, decimal and geospatial ones; the unnumbered string and byte leaves are their identifier)
   pub const fn is_integer(self) -> bool  (DataTypeKind::Integer.contains(self))
   pub const fn is_signed_integer(self) -> bool
@@ -259,6 +264,57 @@ pub enum DataTypeKind
   pub const fn is_numeric(self) -> bool
   pub const fn is_bytes(self) -> bool
   pub const fn is_ordered(self) -> bool
+
+### yggdryl::root::market  [rust/src/market.rs]  (the market extension point: one closed shape over registered enum kinds - a market enum is a MarketDescriptor, one static in the kind's own root file, claimed once under its byte, its name and its Arrow extension name, and held by the one Market variant of DataType, Field, Scalar and Serie; nothing in the core names a kind, every intake door reads the register and a value in hand carries its kind; the seventeen codes are not kinds, each a variant of its own; the types are re-exported at the crate root, the register's doors are yggdryl::market::<name>)
+pub enum MarketStorage  (Copy, Eq, Ord, Hash; Code8 - the members' codes in Arrow UInt8 - Code16 - in UInt16)
+  pub const fn arrow(self) -> ArrowDataType
+  pub const fn fits(self, code: u16) -> bool  (whether a code is stored at this width)
+pub struct MarketMember { pub code: u16, pub name: &'static str, pub description: &'static str }  (one member of a registered enum kind: its stored code, its stored name, what it means; Copy, Eq, Ord, Hash)
+pub struct MarketDescriptor { pub id: DataTypeId, pub name: &'static str, pub extension_name: &'static str, pub storage: MarketStorage, pub members: &'static [MarketMember], pub value_rank: u8, pub dtype_rank: u8, pub shape: isize, pub read: fn(&str) -> Result<u16> }  (what one registered enum kind states about itself, once - SIDE_KIND, TIMEINFORCE_KIND; the byte, the value rank, the datatype rank and the shape position are the wire contracts the kinds carried as variants and never move; members in code order; read a spelling into a member's code; Eq by byte; Debug, Display the name)
+  pub const RESERVED_ENUM_VALUE_RANK: u8 = 33;  (the value rank a kind another crate claims takes)
+  pub const RESERVED_DTYPE_RANK: u8 = 81;  (the datatype rank a kind another crate claims takes)
+  pub const RESERVED_SHAPE: isize = 73;  (the shape position a kind another crate claims hashes as)
+  pub const fn dtype(&'static self) -> DataType  (DataType::Market of this kind)
+  pub fn field(&'static self, name: impl Into<SmolStr>, nullable: bool) -> Field
+  pub fn member_of(&self, code: u16) -> Option<&'static MarketMember>  (a binary search of the members)
+  pub fn default_scalar(&'static self) -> Result<Scalar>  (the member at code zero)
+  pub fn scalar(&'static self, text: &str) -> Result<Scalar>  (the kind's read of the spelling, held to the member table: a code no member holds is refused naming the kind)
+  pub fn member(&'static self, code: i64) -> Result<Scalar>  (a member by its code; refused naming the code and the kind)
+pub struct MarketType(&'static MarketDescriptor)  (the payload of DataType::Market; Copy; Eq by the kind's byte, Ord by its datatype rank then the byte, Hash writing nothing, as a parameter-free marker does - DataType's own hash writes the kind's shape position; Debug and Display the name; DataTypeValue with FAMILY "market", validate refusing a kind no claim holds)
+  pub const fn new(kind: &'static MarketDescriptor) -> Self
+  pub const fn kind(self) -> &'static MarketDescriptor
+  pub const fn id(self) -> DataTypeId
+  pub const fn name(self) -> &'static str
+  pub const fn storage(self) -> MarketStorage
+pub struct MarketScalar  (the payload of Scalar::Market: the kind and a member's code, both private, built only through the kind's own doors; Eq and Ord by value rank, byte, then code, Hash the code at the kind's width, exactly what the kinds fed as variants; Debug `side("BUYS")`, Display the member's stored name; Copy, sixteen bytes)
+  pub const fn kind(&self) -> &'static MarketDescriptor
+  pub const fn id(&self) -> DataTypeId
+  pub const fn code(&self) -> u16  (the member's stored code)
+  pub fn member(&self) -> Option<&'static MarketMember>
+  pub fn as_str(&self) -> &'static str  (the member's stored name)
+  pub const fn dtype(&self) -> DataType
+pub enum MarketSerie  (the payload of Serie::Market: Code8(Arc<UInt8Serie>), Code16(Arc<UInt16Serie>) - the two storages every kind shares; the leaf's field holds the MarketType, so the kind is stored nowhere twice)
+pub trait MarketValue: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static  (what a registered kind's typed value answers - the four market enums: an owned narrowing, a member being Copy; Value::from_scalar lends the same member out of ALL)
+  const KIND: &'static MarketDescriptor
+  fn into_scalar(self) -> Scalar
+  fn from_scalar(value: &Scalar) -> Option<Self>  (owned; None for a scalar of any other kind)
+  fn dtype() -> DataType  (provided: KIND.dtype())
+pub fn claim(kind: &'static MarketDescriptor, by: &'static str) -> Result<()>  (the byte, the name and the extension name, each once for the life of the process; Error::Conflict naming the first claimant, Error::InvalidDataType for a byte outside the Enum range, a family's own number, the retired 0xc6, a byte a core leaf holds - State's 0xc1 - a claim by anyone but the core stating anything but the reserved (value_rank, dtype_rank, shape), no member, members out of code order or a Code8 member above 255, a name not in its folded spelling or one the datatype grammar already reads, or an extension name the core recognizes)
+pub fn kind_of(id: DataTypeId) -> Option<&'static MarketDescriptor>  (one read of a table by byte, what the value stream and the Arrow, serde and grammar doors ask at intake; a cell reader takes the kind off its field's datatype and asks nothing)
+pub fn kind_named(name: &str) -> Option<&'static MarketDescriptor>
+pub fn kind_for_extension(name: &str) -> Option<&'static MarketDescriptor>
+pub fn kinds() -> Vec<&'static MarketDescriptor>  (every claim, in byte order; the core claims its own four before the register answers anything, until they move to yggdryl-market; a name no claim answers is refused as an unknown datatype naming the crate to install)
+
+### yggdryl::root::plugin  [rust/src/plugin.rs]  (the one claim-once register every extension point lands on - a market kind, a logical name, a medium: a key is claimed once for the life of the process and never replaced, and a second claim is refused naming the first claimant and the key)
+pub struct Claim<V> { pub value: V, pub by: &'static str }  (one claim: what was registered and the crate that registered it; Clone, Debug)
+pub struct Register<K, V>  (a keyed claim-once register over one RwLock around a BTreeMap; `what` names it in a refusal; Debug)
+  pub const fn new(what: &'static str) -> Self  (const, so a register is a plain static)
+  pub fn claim(&self, key: K, value: V, by: &'static str) -> Result<()>  (Error::Conflict naming the first claimant where the key is claimed already, by another crate or by the same one twice)
+  pub fn get<Q>(&self, key: &Q) -> Option<V> where K: Borrow<Q>, Q: Ord + ?Sized,
+  pub fn claimant<Q>(&self, key: &Q) -> Option<&'static str> where K: Borrow<Q>, Q: Ord + ?Sized,
+  pub fn values(&self) -> Vec<V>  (every claimed value, in key order)
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
 
 ### yggdryl::root::digest  [rust/src/digest.rs]
 pub enum DigestAlgorithm
@@ -5354,6 +5410,7 @@ pub struct Differences<'schema>
 
 ### yggdryl::datatype  [rust/src/datatype.rs]
 pub enum DataType
+  DataType::Market(MarketType)  (the one variant every registered kind sits under - the four market enums, each a MarketDescriptor claimed through yggdryl::market; equal by the kind's byte, ordered by its datatype rank, hashed as its shape position; a kind's constructor `DataType::side()` answers it; the seventeen codes are variants of their own)
   DataType::Decimal, DataType::BigDecimal  (the parameter-free fixed decimal leaves over `Decimal128(38, 18)` and `Decimal256(76, 18)` storage under the extension names `yggdryl.decimal` and `yggdryl.bigdecimal`; bare storage imports as the parameterized width and casts onto the leaf by identity; `decimal` crosses Avro, Iceberg, Spark, Polars and pandas as their decimal(38, 18), `bigdecimal` is refused there)
   pub fn scalar(&self, value: impl Into<crate::Scalar>) -> Result<crate::Scalar>
   pub fn stable_hash(&self) -> u64
@@ -5370,7 +5427,8 @@ pub enum DataType
 
 ### yggdryl::field  [rust/src/field.rs]
   pub struct FieldOf<D: DataTypeValue>  (one field carrying its family's own datatype, so the payload is the proof and no marker carries it)
-  pub type Int8Field = FieldOf<Int8Type>;  (one alias per family: Int8Field .. Float64Field, DateTimeField, DateField, TimeField, DurationField, IntervalField, BytesField, StringField, the seventeen code fields CountryField .. FisnField, UuidField, VersionField, UriField, SerieField, StructField, UnionField, EnumField, DecimalField, MappingField, RunEndEncodedField, VariantField, GeometryField, GeographyField, TimezoneField, MimeTypeField, MediaTypeField, CusipField, SedolField, BbgField, FigiField)
+  pub type Int8Field = FieldOf<Int8Type>;  (one alias per family: Int8Field .. Float64Field, DateTimeField, DateField, TimeField, DurationField, IntervalField, BytesField, StringField, MarketField, the seventeen code fields CountryField .. FisnField, UuidField, VersionField, UriField, SerieField, StructField, UnionField, EnumField, DecimalField, MappingField, RunEndEncodedField, VariantField, GeometryField, GeographyField, TimezoneField, MimeTypeField, MediaTypeField, CusipField, SedolField, BbgField, FigiField)
+  pub type MarketField = FieldOf<MarketType>;  (the one leaf every registered kind's field is, Field::Market; a kind's typed field is FieldOf over the kind's own marker - FieldOf<SideType> - which widens to it)
   pub type FieldRef = Arc<ArrowField>;
   pub enum Field  (the enum over those leaves; every arm names the family that answers, and a variant is a datatype nobody can disagree with)
   pub fn new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Self
@@ -6024,7 +6082,7 @@ pub struct ProtocolField<'field>
   pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::scalar  [rust/src/scalar.rs]  (the Value contract and the leaf contracts a scalar's leaves answer are under yggdryl::value; a family is no value type, only the DataTypeId range its DataTypeKind owns)
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Decimal, BigDecimal (the fixed leaves' units at scale eighteen, wire tags `decimal` and `bigdecimal`, equal to and hashing as their Decimal128/Decimal256 twins), Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Ccy, Mic, Cfi, Side, State, TimeInForce, Isin, Cusip, Sedol, Bbg, Ric, Figi, Unit, Forex, Lei, Bic, Elf, Dti, Fisn, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the seventeen registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Decimal, BigDecimal (the fixed leaves' units at scale eighteen, wire tags `decimal` and `bigdecimal`, equal to and hashing as their Decimal128/Decimal256 twins), Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Ccy, Mic, Cfi, State, Market (a MarketScalar: a registered enum kind's value, its kind and its member's code, built only through the kind's own doors), Isin, Cusip, Sedol, Bbg, Ric, Figi, Unit, Forex, Lei, Bic, Elf, Dti, Fisn, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the seventeen registered codes included, a market enum's as one MarketScalar; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub const fn id(&self) -> DataTypeId
   pub const fn family(&self) -> DataTypeKind  (the family whose DataTypeKind::range id() is in; which temporal family is id().temporal_family())
   pub const fn kind(&self) -> &'static str
@@ -6067,7 +6125,7 @@ pub struct ProtocolField<'field>
   pub fn without_field(&self, name: &str) -> Result<Self>
 
 ### yggdryl::serie  [rust/src/serie.rs]  (Serie, the fourth side of the value model: many values, as a schema-free run or as the Arrow buffers of one Field; the flat root, the identity helpers and the serde shadow live here, the leaves in serie/)
-  pub enum Serie  (#[non_exhaustive]; Run(Run), then one variant per storage layout, named as the leaf that holds it without Serie - a variant names the layout, never the datatype, which is the field's (SerieValue::id): Null, Boolean, Int8 .. Float64 (Arc<Int8Serie> ..), DateTimeSecond, DateTimeMillisecond, DateTimeMicrosecond, DateTimeNanosecond (Arc<DateTimeSecondSerie> ..), Date32, Date64, Time32Second, Time32Millisecond, Time64Microsecond, Time64Nanosecond (Arc<Time32SecondSerie> ..), DurationSecond, DurationMillisecond, DurationMicrosecond, DurationNanosecond (Arc<DurationSecondSerie> ..; each holds duration32 and duration64 alike, the width the field's), IntervalYearMonth, IntervalDayTime, IntervalMonthDayNano (Arc<IntervalYearMonthSerie> ..), Binary (a sized binary too), LargeBinary, BinaryView (a large view too), FixedBytes (Arc<BinarySerie> .. Arc<FixedBytesSerie>), Utf8String (every string leaf laid out as UTF-8, ascii and sized_utf8 among them), LargeUtf8String, Utf8ViewString, BinaryString, LargeBinaryString, BinaryViewString, FixedString (Arc<Utf8StringSerie> .. Arc<FixedStringSerie>), the fourteen codes and Version, Url, Urn, Timezone, MimeType, MediaType (Arc<Utf8StringSerie>), Uuid(Arc<FixedBytesSerie>), Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (Arc<SerieSerie> .. Arc<LargeSerieViewSerie>; the one layout a datatype names, so the variant shares the datatype's name), Struct, Union, Dictionary(Arc<DictionarySerie>), Decimal32 .. Decimal256, Map, SortedMap (Arc<MapSerie>), RunEndEncoded, Variant, Geometry, Geography (Arc<BinarySerie>); 40 bytes, pinned by a const assert - a run's window inline, every column leaf one thin pointer; Clone is a pointer bump per column; Eq/Ord/Hash over the rows alone, never the leaf or the field, so a run and a column of equal rows are one value and hash alike; Display a run as its slice, a column as name[row, ...]; Debug a column as its leaf's Name { field, len, nulls }; Default = an empty run)
+  pub enum Serie  (#[non_exhaustive]; Run(Run), then one variant per storage layout, named as the leaf that holds it without Serie - a variant names the layout, never the datatype, which is the field's (SerieValue::id): Null, Boolean, Int8 .. Float64 (Arc<Int8Serie> ..), DateTimeSecond, DateTimeMillisecond, DateTimeMicrosecond, DateTimeNanosecond (Arc<DateTimeSecondSerie> ..), Date32, Date64, Time32Second, Time32Millisecond, Time64Microsecond, Time64Nanosecond (Arc<Time32SecondSerie> ..), DurationSecond, DurationMillisecond, DurationMicrosecond, DurationNanosecond (Arc<DurationSecondSerie> ..; each holds duration32 and duration64 alike, the width the field's), IntervalYearMonth, IntervalDayTime, IntervalMonthDayNano (Arc<IntervalYearMonthSerie> ..), Binary (a sized binary too), LargeBinary, BinaryView (a large view too), FixedBytes (Arc<BinarySerie> .. Arc<FixedBytesSerie>), Utf8String (every string leaf laid out as UTF-8, ascii and sized_utf8 among them), LargeUtf8String, Utf8ViewString, BinaryString, LargeBinaryString, BinaryViewString, FixedString (Arc<Utf8StringSerie> .. Arc<FixedStringSerie>), the fourteen codes and Version, Url, Urn, Timezone, MimeType, MediaType (Arc<Utf8StringSerie>), Market (a MarketSerie: a registered enum kind's column in one of the two storages every kind shares, Code8 over a UInt8Serie and Code16 over a UInt16Serie, its kind read off the field), Uuid(Arc<FixedBytesSerie>), Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (Arc<SerieSerie> .. Arc<LargeSerieViewSerie>; the one layout a datatype names, so the variant shares the datatype's name), Struct, Union, Dictionary(Arc<DictionarySerie>), Decimal32 .. Decimal256, Map, SortedMap (Arc<MapSerie>), RunEndEncoded, Variant, Geometry, Geography (Arc<BinarySerie>); 40 bytes, pinned by a const assert - a run's window inline, every column leaf one thin pointer; Clone is a pointer bump per column; Eq/Ord/Hash over the rows alone, never the leaf or the field, so a run and a column of equal rows are one value and hash alike; Display a run as its slice, a column as name[row, ...]; Debug a column as its leaf's Name { field, len, nulls }; Default = an empty run)
   pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self  (a run)
   pub fn empty(field: impl Into<Arc<Field>>) -> Result<Self>  (the empty column of field; a union of no member, wherever it lies, refused)
   pub fn with_capacity(field: impl Into<Arc<Field>>, rows: usize) -> Result<Self>  (the empty column whose buffers reserve rows; an encoding reserves nothing)
@@ -6478,10 +6536,8 @@ pub trait CodeValue: Value  (implemented by the seventeen registered codes)
   fn rank(&self) -> u8  (provided as MAX_RANK: how real this value is, from zero to MAX_RANK - `new` admits the shape, and what the shape leaves open is this reading: an Isin closing under a listed prefix 2, closing or listed 1, neither 0; a Cusip, Sedol, Figi, Lei or Dti 1 where it closes; a Country 1 where ISO 3166 lists it; a Bic 1 where its country is listed or SWIFT's `XK`; a Ccy `XXX`, a Mic `XXXX` and an empty Unit 0; a Cfi unclassified 0, classified 1, detailed 2; every other code 1)
   fn is_real(&self) -> bool  (provided: `rank() == MAX_RANK`)
   fn merge_with(self, other: &Self) -> Self  (provided: the better statement of two codes of one kind - the other where it outranks this one, else this one, so a real value replaces a placeholder, a masked number or a typo whatever the order and two of one rank keep the one that leads; a Cfi folds further, filling every `X` from the other where the two describe one instrument, and keeping this code across another category or group or a contradicted attribute)
-pub trait EnumValue: Value + Copy + Default  (implemented by the Enum-family leaves State, MarketDataKind, Side, MarketDataType and TimeInForce through `enum_leaf!`: a closed set of members, each stored as its unsigned code at the width of its `Repr`)
+pub trait EnumValue: Value + Copy + Default  (implemented by the Enum-family leaves State, MarketDataKind, Side, MarketDataType and TimeInForce through `enum_leaf!`, the four market enums answering MarketValue beside it: a closed set of members, each stored as its unsigned code at the width of its `Repr`)
   const ALL: &'static [Self]
-  const KIND: &'static str  (the datatype's name and the refusal word)
-  const EXTENSION_NAME: &'static str
   type Repr: EnumRepr  (the width the codes are held and stored at: u8 or u16)
   fn code(self) -> Self::Repr
   fn as_str(self) -> &'static str
@@ -7320,7 +7376,7 @@ impl Record<'_>
   pub fn stable_hash(&self) -> u64  (XXH3-64 of the logger's name, the level and the rendered message, each framed; the message is rendered into the hash, never into text)
 
 ### yggdryl::side  [rust/src/side.rs]
-  pub enum Side  (#[repr(u8)], one byte; an Enum-family leaf, `DataTypeId::Side = 0xc3`, stored as the `uint8` code of its member under `yggdryl.side` over Arrow UInt8: `Unknown = 0`, then `Buy = 1`, `Sell`, `BuyMinus`, `SellPlus`, `SShort`, `SShortEx`, `Undisc`, `Cross`, `CrossSh`, `CrossShX`, `AsDef`, `Opposite`, `Subscr`, `Redeem`, `Lend`, `Borrow`, `SellUnd = 17` in FIX `Side(54)` code order, then `Both = 99` (`BOTH`), both sides at once - a book's and a two-sided quote's - with no wire character; Copy, Default (Unknown), total Ord by code; Display and serde as the stored four-letter code, deserialized from a code or a spelling; `SideType` marks its field, `SideField` is `FieldOf<SideType>`)
+  pub enum Side  (#[repr(u8)], one byte; an Enum-family leaf, `Side::ID = 0xc3`, a registered kind under `DataType::Market`, stored as the `uint8` code of its member under `yggdryl.side` over Arrow UInt8: `Unknown = 0`, then `Buy = 1`, `Sell`, `BuyMinus`, `SellPlus`, `SShort`, `SShortEx`, `Undisc`, `Cross`, `CrossSh`, `CrossShX`, `AsDef`, `Opposite`, `Subscr`, `Redeem`, `Lend`, `Borrow`, `SellUnd = 17` in FIX `Side(54)` code order, then `Both = 99` (`BOTH`), both sides at once - a book's and a two-sided quote's - with no wire character; Copy, Default (Unknown), total Ord by code; Display and serde as the stored four-letter code, deserialized from a code or a spelling; `SideType` marks its field over the `Market` variant, `FieldOf<SideType>` its typed field)
   pub const ALL: &'static [Self]  (every member in code order)
   pub const fn code(self) -> u8
   pub const fn as_str(self) -> &'static str  (the stored four-letter code: `UKNW`, `BUYS`, `SELL`, `BUYM`, `SELP`, `SSHT`, `SSEX`, `UNDI`, `CROS`, `CRSH`, `CRSX`, `ASDF`, `OPPO`, `SUBS`, `REDM`, `LEND`, `BORR`, `SELU`, `BOTH`)
@@ -7335,8 +7391,12 @@ impl Record<'_>
   pub fn read(spelling: &str) -> Result<Self>  (`from_spelling` as a refusal naming the spelling, kind "side")
   pub fn read_code(code: i64) -> Result<Self>  (`from_code` as a refusal naming the code)
   pub fn from_spelling(spelling: &str) -> Option<Self>  (the stored code, a `Side(54)` wire code unfolded, or the specification's name folded - the name a member was stored under before its code (`BUY`, `SSHORT`), read and never written, and the two roles a FIX plugin plays, `BuySide` and `SellSide`, which are the sides they name; a stored integer code is never text)
-  impl Value, EnumValue<Repr = u8> for Side; From<Side> for Scalar; From<Side> for u8; TryFrom<u8> for Side
-  pub type SideField = FieldOf<SideType>;
+  impl Value, EnumValue<Repr = u8>, MarketValue for Side; From<Side> for Scalar; From<Side> for u8; TryFrom<u8> for Side  (`Scalar::Market` of SIDE_KIND; `Value::from_scalar` lends the member out of `ALL`, `MarketValue::from_scalar` copies it)
+  pub const fn side() -> Self  (on DataType)
+  pub const ID: DataTypeId = DataTypeId::market(0xc3);  (the identifier the kind claims, a usable pattern; `NAME` and `EXTENSION_NAME` beside it)
+  pub const NAME: &'static str = "side";
+  pub const EXTENSION_NAME: &'static str = "yggdryl.side";
+  pub static SIDE_KIND: MarketDescriptor  (the registered kind, re-exported at the crate root: `Code8`, 19 members, value rank 29, datatype rank 53, shape position 28; claimed by the core's own seed until the kinds move to yggdryl-market)
 
 ### yggdryl::state  [rust/src/state.rs]
   pub enum State  (#[repr(u16)], #[non_exhaustive]; sixty-two members from Unknown = 0 to NotFound = 9506 - `Updated = 3004`, stated anew over a live predecessor, in the working band - each stored as its `uint16` code, the hundreds of the code its rank: 0 unknown, 10 pending, 20 acknowledged, 30 working, 40 working with events, or acknowledged and awaiting its next step (`PendingVerification` 4006, `PendingAllocation` 4007, `PendingApproval` 4008), 50 halted, 60 change outstanding, 70 changed and carrying on, 80-89 done (`Approved` 8013 among them, reached by spelling and by no FIX status code), 90-94 cancelled, 95-99 failed; Copy, Default (Unknown), total Ord by code; `StateType` marks its field, `StateField` is `FieldOf<StateType>`; Display and serde as the stored name, deserialized from a code or a spelling)
@@ -7367,7 +7427,7 @@ impl Record<'_>
   pub type StateField = FieldOf<StateType>;
 
 ### yggdryl::marketdatakind  [rust/src/marketdatakind.rs]
-  pub enum MarketDataKind  (#[repr(u8)], #[non_exhaustive]; the FIX MsgCat code set as an Enum-family leaf, `DataTypeId::MarketDataKind = 0xc2`, stored as the `uint8` code of its member under `yggdryl.marketdatakind` over Arrow UInt8; twenty-six members, `Unknown = 0` (`UKNW`), `Account` (`ACCT`), `Allocation` (`ALLO`), `Book = 3` (`BOOK`), `Certificate`, `Collateral`, `Communication`, `Confirmation`, `Execution = 8` (`EXEC`), `MarketStructure`, `Order = 10` (`ORDR`), `Payment`, `Position`, `Parties`, `Quotation = 14` (`QUOT`), `Registration`, `Risk`, `Securities`, `Session`, `Settlement`, `Stream`, `Trade = 21` (`TRAD`), then the batches `OrderBatch = 22` (`ORDB`), `QuoteBatch = 23` (`QUOB`), `ExecutionBatch = 24` (`EXEB`), `TradeBatch = 25` (`TRDB`); the four-letter code is the stored name; Copy, Default (Unknown), total Ord by code; Display and serde as the stored name, deserialized from a code or a spelling; `MarketDataKindType` marks its field, `MarketDataKindField` is `FieldOf<MarketDataKindType>`)
+  pub enum MarketDataKind  (#[repr(u8)], #[non_exhaustive]; the FIX MsgCat code set as an Enum-family leaf, `MarketDataKind::ID = 0xc2`, a registered kind under `DataType::Market`, stored as the `uint8` code of its member under `yggdryl.marketdatakind` over Arrow UInt8; twenty-six members, `Unknown = 0` (`UKNW`), `Account` (`ACCT`), `Allocation` (`ALLO`), `Book = 3` (`BOOK`), `Certificate`, `Collateral`, `Communication`, `Confirmation`, `Execution = 8` (`EXEC`), `MarketStructure`, `Order = 10` (`ORDR`), `Payment`, `Position`, `Parties`, `Quotation = 14` (`QUOT`), `Registration`, `Risk`, `Securities`, `Session`, `Settlement`, `Stream`, `Trade = 21` (`TRAD`), then the batches `OrderBatch = 22` (`ORDB`), `QuoteBatch = 23` (`QUOB`), `ExecutionBatch = 24` (`EXEB`), `TradeBatch = 25` (`TRDB`); the four-letter code is the stored name; Copy, Default (Unknown), total Ord by code; Display and serde as the stored name, deserialized from a code or a spelling; `MarketDataKindType` marks its field over the `Market` variant, `FieldOf<MarketDataKindType>` its typed field)
   pub const ALL: &'static [Self]  (every member in code order)
   pub const fn code(self) -> u8
   pub const fn as_str(self) -> &'static str  (the four-letter code: `ORDR`)
@@ -7382,12 +7442,15 @@ impl Record<'_>
   pub const fn is_recorded(self) -> bool  (`is_booked`, and `Execution`: the kinds a book folds into a side or records among its events, the one rule every pruning site of a book walk reads)
   pub const fn is_batch(self) -> bool  (`OrderBatch`, `QuoteBatch`, `ExecutionBatch`, `TradeBatch`: a message stating many entries, which a FIX parse splits into one message of `item` per entry)
   pub const fn item(self) -> Self  (the kind one entry of a batch is - `Order`, `Quotation`, `Execution`, `Trade` - and this kind itself for any other)
-  impl Value, EnumValue<Repr = u8> for MarketDataKind; From<MarketDataKind> for Scalar; From<MarketDataKind> for u8; TryFrom<u8> for MarketDataKind
+  impl Value, EnumValue<Repr = u8>, MarketValue for MarketDataKind; From<MarketDataKind> for Scalar; From<MarketDataKind> for u8; TryFrom<u8> for MarketDataKind  (`Scalar::Market` of MARKETDATAKIND_KIND; `Value::from_scalar` lends the member out of `ALL`, `MarketValue::from_scalar` copies it)
   pub const fn marketdatakind() -> Self  (on DataType)
-  pub type MarketDataKindField = FieldOf<MarketDataKindType>;
+  pub const ID: DataTypeId = DataTypeId::market(0xc2);  (the identifier the kind claims, a usable pattern; `NAME` and `EXTENSION_NAME` beside it)
+  pub const NAME: &'static str = "marketdatakind";
+  pub const EXTENSION_NAME: &'static str = "yggdryl.marketdatakind";
+  pub static MARKETDATAKIND_KIND: MarketDescriptor  (the registered kind, re-exported at the crate root: `Code8`, 26 members, value rank 28, datatype rank 73, shape position 64; claimed by the core's own seed until the kinds move to yggdryl-market)
 
 ### yggdryl::marketdatatype  [rust/src/marketdatatype.rs]
-  pub enum MarketDataType  (#[repr(u16)], #[non_exhaustive]; the type of a market element within its kind as an Enum-family leaf, `DataTypeId::MarketDataType = 0xc4`, stored as the `uint16` code of its member under `yggdryl.marketdatatype` over Arrow UInt16; 118 members, `Unknown = 0` (`UKNW`), then the hundreds of the code name the FIX set typing it - `1xx` an `OrdType(40)` order type (`OrdMarket = 101` `ORDMKT`, `OrdLimit = 102` `ORDLIMIT`), `2xx` a `QuoteType(537)` quote type, `3xx` a `TrdType(828)` trade type, `4xx` a `MDEntryType(269)` book entry type (`BookMid = 417`), `5xx` a `TradeReportType(856)` (`TRPT*`), `6xx` a `QuoteRequestType(303)` (`QRQ*`), `7xx` a `MassCancelRequestType(530)` (`MCX*`), `8xx` a `SubscriptionRequestType(263)` (`MDR*`) - each set closing with an `OTHER` member (`OrdOther`, `QuoOther`, `TrdOther`, `BookOther = 499`, `TrptOther`, `QrqOther`, `McxOther = 799`, `MdrOther = 899`) a wire value no member names reads as; Copy, Default (Unknown), total Ord by code; `MarketDataTypeType` marks its field)
+  pub enum MarketDataType  (#[repr(u16)], #[non_exhaustive]; the type of a market element within its kind as an Enum-family leaf, `MarketDataType::ID = 0xc4`, a registered kind under `DataType::Market`, stored as the `uint16` code of its member under `yggdryl.marketdatatype` over Arrow UInt16; 118 members, `Unknown = 0` (`UKNW`), then the hundreds of the code name the FIX set typing it - `1xx` an `OrdType(40)` order type (`OrdMarket = 101` `ORDMKT`, `OrdLimit = 102` `ORDLIMIT`), `2xx` a `QuoteType(537)` quote type, `3xx` a `TrdType(828)` trade type, `4xx` a `MDEntryType(269)` book entry type (`BookMid = 417`), `5xx` a `TradeReportType(856)` (`TRPT*`), `6xx` a `QuoteRequestType(303)` (`QRQ*`), `7xx` a `MassCancelRequestType(530)` (`MCX*`), `8xx` a `SubscriptionRequestType(263)` (`MDR*`) - each set closing with an `OTHER` member (`OrdOther`, `QuoOther`, `TrdOther`, `BookOther = 499`, `TrptOther`, `QrqOther`, `McxOther = 799`, `MdrOther = 899`) a wire value no member names reads as; Copy, Default (Unknown), total Ord by code; `MarketDataTypeType` marks its field)
   pub const ALL: &'static [Self]  (every member in code order)
   pub const fn code(self) -> u16
   pub const fn as_str(self) -> &'static str  (the stored name: `ORDLIMIT`)
@@ -7403,12 +7466,15 @@ impl Record<'_>
   pub const fn fix_tags(kind: MarketDataKind) -> &'static [i32]  (the fields that type an element of a kind, the one its kind names first: an order `[40]`, a quote `[537, 40]`, an execution or a trade `[828, 40]`, every other `[269, 828, 537, 40]`)
   pub const MARKETDATATYPE_FIX_TAGS: [i32; 8]  (`OrdType(40)`, `QuoteType(537)`, `TrdType(828)`, `MDEntryType(269)`, `TradeReportType(856)`, `QuoteRequestType(303)`, `MassCancelRequestType(530)`, `SubscriptionRequestType(263)`, in that order)
   pub const MARKETDATATYPE_MSGTYPE_RULES: &[(&str, &[i32])]  (the message types typed by their own field before their kind's: `AE`/`AR` `[856, 828, 40]`, `R` `[303, 537, 40]`, `AG` `[303, 537]`, `q`/`r` `[530]`, `V` `[263]`)
-  impl Value, EnumValue<Repr = u16> for MarketDataType; From<MarketDataType> for Scalar; From<MarketDataType> for u16; TryFrom<u16> for MarketDataType
+  impl Value, EnumValue<Repr = u16>, MarketValue for MarketDataType; From<MarketDataType> for Scalar; From<MarketDataType> for u16; TryFrom<u16> for MarketDataType  (`Scalar::Market` of MARKETDATATYPE_KIND; `Value::from_scalar` lends the member out of `ALL`, `MarketValue::from_scalar` copies it)
   pub const fn marketdatatype() -> Self  (on DataType)
-  pub type MarketDataTypeField = FieldOf<MarketDataTypeType>;
+  pub const ID: DataTypeId = DataTypeId::market(0xc4);  (the identifier the kind claims, a usable pattern; `NAME` and `EXTENSION_NAME` beside it)
+  pub const NAME: &'static str = "marketdatatype";
+  pub const EXTENSION_NAME: &'static str = "yggdryl.marketdatatype";
+  pub static MARKETDATATYPE_KIND: MarketDescriptor  (the registered kind, re-exported at the crate root: `Code16`, 118 members, value rank 30, datatype rank 74, shape position 65; claimed by the core's own seed until the kinds move to yggdryl-market)
 
 ### yggdryl::timeinforce  [rust/src/timeinforce.rs]
-  pub enum TimeInForce  (#[non_exhaustive]; how long an order stands, `TimeInForce(59)`, as an Enum-family leaf through `enum_leaf!`, `DataTypeId::TimeInForce = 0xc5`, stored as the `uint8` code of its member under `yggdryl.timeinforce` over Arrow UInt8; fifteen members, `Unknown = 0` (`UKNW`), `Day = 1` (`DAY`), `GoodTillCancel` (`GTC`), `AtTheOpening` (`OPG`), `ImmediateOrCancel` (`IOC`), `FillOrKill` (`FOK`), `GoodTillCrossing` (`GTX`), `GoodTillDate` (`GTD`), `AtTheClose` (`ATC`), `GoodThroughCrossing` (`GTHX`), `AtCrossing` (`ATX`), `GoodForTime` (`GFT`), `GoodForAuction` (`GFA`), `GoodForMonth = 13` (`GFM`), `Other = 99` (`OTHER`); Copy, Default (Unknown), total Ord by code; `TimeInForceType` marks its field)
+  pub enum TimeInForce  (#[non_exhaustive]; how long an order stands, `TimeInForce(59)`, as an Enum-family leaf through `enum_leaf!`, `TimeInForce::ID = 0xc5`, a registered kind under `DataType::Market`, stored as the `uint8` code of its member under `yggdryl.timeinforce` over Arrow UInt8; fifteen members, `Unknown = 0` (`UKNW`), `Day = 1` (`DAY`), `GoodTillCancel` (`GTC`), `AtTheOpening` (`OPG`), `ImmediateOrCancel` (`IOC`), `FillOrKill` (`FOK`), `GoodTillCrossing` (`GTX`), `GoodTillDate` (`GTD`), `AtTheClose` (`ATC`), `GoodThroughCrossing` (`GTHX`), `AtCrossing` (`ATX`), `GoodForTime` (`GFT`), `GoodForAuction` (`GFA`), `GoodForMonth = 13` (`GFM`), `Other = 99` (`OTHER`); Copy, Default (Unknown), total Ord by code; `TimeInForceType` marks its field)
   pub const ALL: &'static [Self]  (every member in code order)
   pub const fn code(self) -> u8
   pub const fn as_str(self) -> &'static str  (the stored name: `GTC`)
@@ -7420,10 +7486,13 @@ impl Record<'_>
   pub fn from_spelling(spelling: &str) -> Option<Self>  (the stored name in any case, the FIX specification's own name folded, or the `TimeInForce(59)` wire value unfolded; a stored code is an integer, never text)
   pub fn from_fix(wire: &str) -> Self  (the member one `TimeInForce(59)` wire value stands for; `Other` for a venue's own value)
   pub const fn fix_code(self) -> Option<&'static str>  (the wire value a member stands for; `None` for `Unknown` and `Other`)
-  impl Value, EnumValue<Repr = u8> for TimeInForce; From<TimeInForce> for Scalar; From<TimeInForce> for u8; TryFrom<u8> for TimeInForce
+  impl Value, EnumValue<Repr = u8>, MarketValue for TimeInForce; From<TimeInForce> for Scalar; From<TimeInForce> for u8; TryFrom<u8> for TimeInForce  (`Scalar::Market` of TIMEINFORCE_KIND; `Value::from_scalar` lends the member out of `ALL`, `MarketValue::from_scalar` copies it)
   (extension `yggdryl.timeinforce` over Arrow UInt8, crate-private; a foreign storage under the name imports as that storage)
   pub const fn timeinforce() -> Self  (on DataType)
-  pub type TimeInForceField = FieldOf<TimeInForceType>;
+  pub const ID: DataTypeId = DataTypeId::market(0xc5);  (the identifier the kind claims, a usable pattern; `NAME` and `EXTENSION_NAME` beside it)
+  pub const NAME: &'static str = "timeinforce";
+  pub const EXTENSION_NAME: &'static str = "yggdryl.timeinforce";
+  pub static TIMEINFORCE_KIND: MarketDescriptor  (the registered kind, re-exported at the crate root: `Code8`, 15 members, value rank 31, datatype rank 56, shape position 30; claimed by the core's own seed until the kinds move to yggdryl-market)
 
 ### yggdryl::unit  [rust/src/unit.rs]
   pub struct Unit(SmolStr)  (one validated code; `UnitType` marks its field, `UnitField` is `FieldOf<UnitType>`)
@@ -7598,7 +7667,7 @@ impl StringEnum
   pub fn from_logical_name(name: &str) -> Result<Self>
   pub fn prebuilt_values(name: &str) -> &'static [&'static str]
   pub type StringField = FieldOf<StringType>;  (the Field leaf over the eighteen string variants; see yggdryl::field)
-pub struct CountryType  // and CcyType, MicType, CfiType, IsinType, CusipType, SedolType, BbgType, RicType, FigiType, SideType, UnitType: the code markers (country, ccy, mic, cfi, isin, cusip, sedol, bbg, ric, figi, side, unit)
+pub struct CountryType  // and CcyType, MicType, CfiType, IsinType, CusipType, SedolType, BbgType, RicType, FigiType, UnitType: the code markers (country, ccy, mic, cfi, isin, cusip, sedol, bbg, ric, figi, unit)
   pub type CountryField = FieldOf<CountryType>;
   pub type CcyField = FieldOf<CcyType>;
   pub type MicField = FieldOf<MicType>;
@@ -7609,8 +7678,8 @@ pub struct CountryType  // and CcyType, MicType, CfiType, IsinType, CusipType, S
   pub type BbgField = FieldOf<BbgType>;
   pub type RicField = FieldOf<RicType>;
   pub type FigiField = FieldOf<FigiType>;
-  pub type SideField = FieldOf<SideType>;
-  pub type TimeInForceField = FieldOf<TimeInForceType>;
+pub struct MarketDataKindType  // and SideType, MarketDataTypeType, TimeInForceType  (each registered enum kind's marker, written by `define_field_types!(.., market = <KIND>, ..)` in the kind's own file: DataTypeValue::id the kind's `ID`, into_dtype DataType::Market of it; FieldOf<SideType> the typed field, Field::Market(MarketField) what it widens to)
+  pub type MarketDataKindField = FieldOf<MarketDataKindType>;  // and SideField, MarketDataTypeField, TimeInForceField  (one alias per enum kind, written beside the marker)
 impl Field
   pub fn string_enum(&self) -> Result<Option<StringEnum>>
   pub fn set_string_enum(&mut self, value: &StringEnum) -> Result<()>  (refused unless the datatype is a fixed US-ASCII string of at most sixteen bytes or a code)
@@ -7702,7 +7771,8 @@ pub struct FieldRecord<'a>
 pub fn shared_field(&self) -> Option<&'static Field>  (on DataType and on Scalar; None for a datatype that carries parameters, because no two of those are the same field)
 
 ### yggdryl::vocabulary  [rust/src/vocabulary.rs]
-pub const LOGICAL_NAMES: &'static [(&'static str, DataType)]
+pub fn logical_names() -> Vec<(&'static str, DataType)>  (on DataType: every logical name in name order with what it resolves to - the core's own - the seventeen codes' names among them - every market kind's under its own name, `exchange` for mic, and every name a crate claimed - read off the claim-once register)
+  pub fn register_logical_name(name: &'static str, dtype: DataType, by: &'static str) -> Result<()>  (a folded name claimed for a crate, once, read by from_logical_name and the grammar; Error::Conflict naming the first claimant, Error::InvalidDataType for a name not in its folded spelling, a word the grammar or a market kind answers, or a dtype that does not validate)
   pub fn from_logical_name(name: &str) -> Result<Self>
 
 ### yggdryl::root::union_mode  [rust/src/union_mode.rs]

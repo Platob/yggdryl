@@ -145,6 +145,8 @@ mod limit;
 mod listing;
 #[path = "root/mapping.rs"]
 mod mapping;
+#[path = "root/market.rs"]
+mod market;
 #[path = "root/marketdatakind.rs"]
 mod marketdatakind;
 #[path = "root/marketdatatype.rs"]
@@ -169,6 +171,8 @@ mod parser;
 #[cfg(feature = "internals")]
 #[path = "root/path.rs"]
 mod path;
+#[path = "root/plugin.rs"]
+mod plugin;
 #[path = "root/protocol.rs"]
 mod protocol;
 #[path = "root/regex.rs"]

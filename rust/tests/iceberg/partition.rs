@@ -1061,7 +1061,7 @@ fn every_iceberg_primitive_is_an_identity_source_and_unknown_and_variant_are_non
         DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
         DataType::utf8(),
         DataType::Ccy,
-        DataType::Side,
+        DataType::side(),
         DataType::Uuid,
         DataType::fixed_binary(16).unwrap(),
         DataType::Binary,

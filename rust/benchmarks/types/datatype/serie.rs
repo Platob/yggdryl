@@ -380,7 +380,7 @@ fn coded_ticks_column() -> Serie {
         DataType::from(
             StructType::from_fields([
                 DataType::Mic.required_field("venue"),
-                DataType::Side.required_field("side"),
+                DataType::side().required_field("side"),
                 DataType::Int64.required_field("count"),
             ])
             .expect("three named children"),

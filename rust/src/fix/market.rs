@@ -1098,10 +1098,7 @@ fn batch_entry(
         );
         return Vec::new();
     }
-    entry.record(
-        super::MARKETDATAKIND_TAG_NAME.0,
-        &Scalar::MarketDataKind(kind),
-    );
+    entry.record(super::MARKETDATAKIND_TAG_NAME.0, &Scalar::from(kind));
     entry.set_crosscode(crosscode);
     entry.set_srcuuids(provenance(batch));
     entry.settle_facts();
@@ -1205,10 +1202,7 @@ impl FixMsg {
                 } else {
                     MarketDataKind::Order
                 };
-                self.record(
-                    super::MARKETDATAKIND_TAG_NAME.0,
-                    &Scalar::MarketDataKind(report),
-                );
+                self.record(super::MARKETDATAKIND_TAG_NAME.0, &Scalar::from(report));
                 self.settle_refiled();
             }
             let base = self
@@ -1242,7 +1236,7 @@ impl FixMsg {
 fn refile_executed(source: &FixMsg, derived: &mut FixMsg, base: String) {
     derived.record(
         super::MARKETDATAKIND_TAG_NAME.0,
-        &Scalar::MarketDataKind(MarketDataKind::Execution),
+        &Scalar::from(MarketDataKind::Execution),
     );
     derived.record(super::STATE_TAG_NAME.0, &Scalar::State(State::Filled));
     derived.set_crosscode(base);

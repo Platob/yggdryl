@@ -328,7 +328,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     let typed = |tag: i32| fields[column_of(&schema, tag)].dtype().clone();
     assert_eq!(typed(15), DataType::Ccy, "Currency(15)");
     assert_eq!(typed(120), DataType::Ccy, "SettlCurrency(120)");
-    assert_eq!(typed(54), DataType::Side, "Side(54)");
+    assert_eq!(typed(54), DataType::side(), "Side(54)");
     assert_eq!(typed(35), DataType::utf8(), "MsgType(35)");
     assert!(
         matches!(typed(60), DataType::DateTime64 { .. }),
@@ -1150,7 +1150,7 @@ fn an_identifier_column_holding_what_no_map_holds_is_refused_on_its_column() {
 fn a_datatype_is_named_the_same_by_both_documents() {
     use yggdryl::{DataType, DataTypeId, Field, Scalar};
 
-    for id in DataTypeId::ALL {
+    for id in DataTypeId::all() {
         // Only the parameterless ones are nameable without a shape; the
         // parameterized families are covered by their own suites.
         if id.is_parameterized() {
@@ -1908,7 +1908,7 @@ fn an_iceberg_stop_order_states_its_terms_in_the_shared_columns() {
     );
     assert_eq!(
         cell("marketdatatype"),
-        yggdryl::Scalar::MarketDataType(MarketDataType::OrdStopLimit)
+        yggdryl::Scalar::from(MarketDataType::OrdStopLimit)
     );
     assert_eq!(
         cell("ordtype").as_str(),

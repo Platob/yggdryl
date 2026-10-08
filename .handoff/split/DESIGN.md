@@ -22,7 +22,7 @@ restated as taken and are not reopened here.
 | crate | path | holds | depends on | lands |
 | --- | --- | --- | --- | --- |
 | `yggdryl` | `rust/` | the core; from S1 the registered-kind shape (`DataType::Market`, `Field::Market`, `Scalar::Market`, `Serie::Market(MarketSerie)`) and the one register; from S2 the media register; `State` and the event vocabulary stay (D4) | - | - |
-| `yggdryl-market` | `rust/market` | the 17 codes with `code.rs`, `country/tables.rs`, `mic/tables.rs`; `marketdatakind`, `marketdatatype`, `side`, `timeinforce`; `idkey`, `identifier`, `idtype`, `idsource`, `securityid`, `eusipa`, `limit`; the ISIN registry and its seed; `graph/` less `element.rs`, `column.rs`, `element_column.rs`; the CLI's `market` code | `yggdryl` | S4 |
+| `yggdryl-market` | `rust/market` | (D25: the 17 codes, `code.rs`, `country/tables.rs` and `mic/tables.rs` stay in the core) `marketdatakind`, `marketdatatype`, `side`, `timeinforce`; `idkey`, `identifier`, `idtype`, `idsource`, `securityid`, `eusipa`, `limit`; the ISIN registry and its seed; `graph/` less `element.rs`, `column.rs`, `element_column.rs`; the CLI's `market` code | `yggdryl` | S4 |
 | `yggdryl-fix` | `rust/fix` | all of `fix/` and `constants.rs`, `fix_category.rs`, the `FixField` view, `State`'s FIX tables, D10's moves; `scripts/generate_fix_dictionary.py`, `config/fix/`, the dump, the hash pin, the `fix` and `fix_allocations` benches, `docs/fix/`, `skills/yggdryl-fix`, the CLI's FIX code | `yggdryl`, `yggdryl-market` | S4 |
 | `yggdryl-avro` | `rust/avro` | `avro/` whole, with its own `snap` (D16) | `yggdryl` | S6 |
 | `yggdryl-parquet` | `rust/parquet` | `parquet/` | `yggdryl` | S6 |
@@ -762,6 +762,36 @@ HWUPKR0MPOU8FGXBT394`, `bic DEUTDEFFXXX`, `elf 2HBR`, `dti X9J9K872S`, `fisn
 (102), `side BUYS` (1), `timeinforce GTC` (2), `state
 PENDING_NEW` (1001).
 
+### D25, the codes stay core and flat (the user's fourth instruction, S1)
+
+The user, mid-S1: "bring back in core all the code types/field/serie/scalar
+implementations as they are generic not only market; keep most flattened
+generic enums serie/scalar/datatype/field". Decided: the seventeen
+registered codes (`country`, `ccy`, `mic`, `cfi`, `isin`, `cusip`, `sedol`,
+`bbg`, `ric`, `figi`, `unit`, `forex`, `lei`, `bic`, `elf`, `dti`, `fisn`)
+are the core's own, each a flat variant of `DataType`, `Field`, `Scalar`
+and `Serie` and a const of `DataTypeId` exactly as at `6d71a36ee`, with
+`CodeValue: Value`, `code_value!`, `code_scalars!`, `DataType::CODES`,
+`code_for_extension` and the rest of the code vocabulary as they were; the
+market extension point registers *enum* kinds alone - `side`, `timeinforce`,
+`marketdatakind`, `marketdatatype` today, a crate's own later - under the
+one `Market` variant of each root enum, in the Enum family's free bytes
+(`0xc7..=0xcf`; `0xc6` retired). `MarketStorage` is `Code8 | Code16`, a
+value is its kind and its member's code (`MarketScalar { kind, code }`),
+`MarketPayload`, the descriptor's `is_canonical` and `respell` and the
+`CODE_VALUE_RANK` reservation are deleted (a code's rank 18 is a core arm
+again), `MarketSerie` is `Code8(Arc<UInt8Serie>) | Code16(Arc<UInt16Serie>)`,
+and `DataTypeId::market(byte)` is const-refused outside the Enum range.
+Refused: keeping a `Text` storage on the register for a text kind a crate
+might claim later - the Code family has one free byte (`0x70`) and the user
+named codes generic, so a new code is a core variant, never a claim. The
+crate map moves with it: `yggdryl-market` carries the four market enums,
+`graph/`, the ISIN registry and what S3's seams name, and the codes never
+leave the core; U1's row is read with this correction. The S0 pins are
+unchanged: every code's byte, rank, shape, hash feed, serde document and
+value-stream byte is what `6d71a36ee` pinned, and the flat variants are
+those pins' own spellings.
+
 ### Bench baselines (`--quick`, saved as `s0` in `target/criterion`)
 
 **Bench baselines (S0).** Saved as the Criterion baseline `s0` under
@@ -843,6 +873,209 @@ A slice's handoff compares its run against `s0` with `--baseline s0` on the
 same filters and reports the direction; a number that moved past noise is a
 design answer, never a re-pin.
 
+## S1: what was built
+
+The market extension point, in place: four `Market` variants holding the
+core's four enum kinds, claimed by the core itself; the seventeen codes
+stay the core's own flat variants (D25, the user's instruction mid-slice,
+which reverted the first S1 build's claim of the codes). What the slice
+decided beyond S0's decisions, each with its reason:
+
+- **A registered kind is an enum kind** (D25): `MarketStorage` is `Code8 |
+  Code16`, a value is its kind and its member's code (`MarketScalar { kind,
+  code }`), the descriptor's one function pointer is `read: fn(&str) ->
+  Result<u16>` (a spelling into a member's code) and its one door
+  `scalar(text)` holds the reader's answer to the member table;
+  `default_scalar()` is the member at code zero; `MarketSerie` is
+  `Code8(Arc<UInt8Serie>) | Code16(Arc<UInt16Serie>)`; `DataTypeId::market(byte)`
+  is const-refused outside the Enum family; `CORE_KINDS` are `marketdatakind`,
+  `side`, `marketdatatype`, `timeinforce`; the retired byte is `0xc6` alone.
+  Everything a code needs - `CodeValue: Value`, `code_value!`,
+  `code_scalars!`, `DataType::CODES`, `code_for_extension`, `code_text`,
+  `code_cell_text`, the per-code arms of every door, `IsinField` from the
+  `field.rs` table - is HEAD's (`6d71a36ee`), verbatim.
+- **`MarketValue` lives in `market.rs`**, beside the descriptor it names,
+  and is re-exported at the root - not in `value/` as D20 wrote. The
+  trait's one fact is `KIND: &'static MarketDescriptor`; `value/` keeps
+  the contracts every core leaf answers (`Value`, `CodeValue: Value`,
+  `EnumValue`). `EnumValue::KIND` and `EnumValue::EXTENSION_NAME` are
+  deleted for the leaves' inherent `NAME` and `EXTENSION_NAME`, which
+  `State` gains too.
+- **A kind's static is `<UPPER>_KIND`** (`SIDE_KIND`), written by the
+  market arm of `enum_leaf!` beside the type, re-exported at the root like
+  the type; `Side::ID`, `Side::NAME` and `Side::EXTENSION_NAME` are the
+  consts the static reads, so a `const` context never reads a static;
+  `define_field_types!(SideType, SideField, market = SIDE_KIND, Side)`
+  writes the marker and `SideField = FieldOf<SideType>`.
+- **`DataTypeId` is a `u8` newtype** (D3): `ALL` holds the core's
+  ninety-two consts, the seventeen codes among them after the text family
+  at HEAD's bytes; `all()` splices the registered kinds in after `state`
+  in byte order (ninety-six with the core's four); `as_str`,
+  `arrow_extension_name`, `code_width`, `from_u8` and `FromStr` answer the
+  core table for a core byte and the register for a registered one;
+  `core_str` and `core_arrow_extension_name` are crate-private const doors.
+- **A claim takes its three keys together** under one lock after every
+  refusal is checked: a byte outside the Enum family, the family's own
+  number, the retired byte, the core's `state`, a non-core claim not
+  stating the reserved `(value_rank 33, dtype_rank 81, shape 73)` - so no
+  rank ever meets the core's and the `unreachable!` an equal rank over
+  unequal kinds would hit cannot be reached - no member, members out of
+  code order or past the storage's width, an unfolded name or one the
+  grammar already reads, an extension name the core recognizes; then the
+  byte, the name and the extension name each against its first claimant.
+  The grammar-word check is skipped for the core's own claims: the grammar
+  reads the register, which is seeding while they run, and a read inside
+  the seed would re-enter the `OnceLock` and hang (the first smoke run of
+  the narrowed register did, in every harness test); the core's names are
+  pinned as no grammar word by their own tests. The logical-name door seeds
+  the market register before it takes the registers' shared lock, for the
+  same reason: the seeding takes that lock, and a reader under it would
+  wait on itself (the `register_logical_name` doctest did, once). The core seeds its four on
+  the register's first read or claim;
+  `kind_of`, `kind_named`, `kind_for_extension`, `kinds` are the readers;
+  `unregistered` the refusal every intake door raises; `MarketType::validate`
+  is pointer identity with the claimed descriptor, so a copy stating a
+  claimed byte is no kind. `adopt_code` is crate-private, the kinds' macro
+  its only caller.
+- **The serde tags are read tag first, never buffered**: a derive cannot
+  spell a run-time tag, and an `#[serde(untagged)]` wrapper over the derived
+  shadow would buffer the document whole, which loses a 128-bit integer and
+  swallows the shadow's own error messages. `Scalar`'s reader is one
+  `Document` visitor that reads the `type` key, asks the derived
+  `StructuralWire` whether the tag is the core's (`serde::core_tag::<Wire>`,
+  one probe shared with `DataType`'s reader, recording `unknown_variant`
+  and building no message), replays the key and tag into the derived reader
+  for a core tag, and reads `value` through `kind.scalar` for a registered
+  one; a document whose `value` precedes its `type` is the one case
+  buffered. `DataType`'s reader reads the held document as the core wire
+  first and, where no core tag reads it, as `{type}` through the register,
+  keeping the core's own refusal word for word. Writing is by hand for a
+  market value, byte-identical to the documents the kinds wrote as
+  variants.
+- **`RecognizedExtension::Market(&'static MarketDescriptor)`** beside
+  HEAD's `Code(DataType)` and a `State` of its own: the identity an Arrow
+  field declares is the kind, and the cast plan reads `kind.member(code)`
+  where it read the enum leaf.
+- **`Serie::Market(MarketSerie)` holds the storage leaf inline** - sixteen
+  bytes, so the 40-byte pin holds - and forwards every column verb to that
+  leaf, which already reads its cells as the kind's members through the
+  reading the landing resolved from the field; `column!` and `column_mut!`
+  dispatch to the inner leaf, and `as_uint8`/`as_uint16` still narrow to it.
+- **A kind's marker hashes nothing**, as the unit markers the kinds were
+  did, and `Hash for DataType` writes the kind's `shape` where the variant's
+  discriminant stood: a field of a kind therefore hashes its name, its
+  nullability and its metadata alone, which is what keeps the FIX
+  dictionary's pinned hash (`14_542_711_836_201_211_247`) byte-identical.
+- **One enum rule**: `State` and the market kinds refuse a value of another
+  enum or code kind as a value of another vocabulary (HEAD's `State` arm
+  read a code's text as a spelling); a market enum's `Value::from_scalar`
+  is a binary search over `ALL`.
+- **The unknown-word refusal of the datatype grammar is positioned**: an
+  `Error::Parse` at the word's byte offset whose reason is the one
+  `unregistered` sentence (`unknown datatype "x": no registered datatype
+  answers it; install the crate that claims it and call its install()`), so
+  `rust/tests/root/parser.rs`'s offset pin holds; and the expression grammar
+  (`typed_literal`) tries a word as a datatype only where a text literal,
+  `null` or a parameter list follows it, so a bare column name costs no
+  speculative parse - the one cost pin S1 moves on purpose: `DECLARED_READ`
+  28 -> 21 and `ORDER_PARSE` 19 -> 12 in `allocations.rs`, seven
+  allocations fewer per key spelled `count desc`, the three `sort_by` rows
+  with them, each re-pinned with that sentence.
+- **The logical names are a register** (`vocabulary.rs`, D8): `logical_names()`
+  answers name order, `register_logical_name` claims one for a crate,
+  `folded_logical_name` falls back to `kind_named`; `DataType::LOGICAL_NAMES`
+  is gone, `DataType::CODES` stays HEAD's.
+- **`Shape` states every position** (`#[repr(isize)]`, explicit
+  discriminants) so the positions the enum kinds held stay theirs and the
+  codes' are their variants' own.
+- **What the second review changed** (an `opus` reviewer read the narrowed
+  diff; nine findings, each taken or answered): the text-to-enum ingest
+  read a spelling through the kind's `read` alone and certified the
+  landing, so a kind whose reader answers a non-member code would have
+  landed it - every spelling and every code now enter through
+  `kind.scalar`/`kind.member` (the crate-private `adopt_spelling` and
+  `adopt_member` where a validated field is in hand, so a cell pays the
+  reader and the member search alone), pinned by a claimed lying kind cast
+  from text; the grammar's refusal is positioned again and `typed_literal`
+  guards its speculative parse, as the bullet above states;
+  the public doors that mint a value (`scalar`, `member`,
+  `default_scalar`) check the descriptor is the claimed one, and `claim`
+  refuses the core's own name, so neither an unclaimed descriptor nor a
+  crate claiming as `yggdryl` can state a core rank; `read_enum_spelling`
+  and `read_enum_code` take the `DataType`, so a FIX message's and an
+  Iceberg row's enum values read no register per value; `BY_BYTE` is
+  written first so a name a reader answers validates already; the logical
+  names claim under the market register's lock; `MarketScalar` is `Copy`;
+  a safe cast of a non-member code under a nullable field lands null, as
+  HEAD pins for `side`, and the harness pins that beside the strict
+  refusal. Answered and left: a scalar document whose `value` precedes its
+  `type` and is no text refuses with serde's untagged message, and
+  `DataType`'s and `Scalar`'s serde readers stay two shapes.
+- **The test-only kinds**: `rust/tests/market_register.rs` claims `testenum`
+  at `0xc7` (`Code8`) and `testwide` at `0xc8` (`Code16`) as
+  `yggdryl-tests`, and pins the claim, every refusal, every intake door,
+  the pointer identity, the reader check, the late claim and the install
+  rule; `rust/tests/root/market.rs` pins the core's four in byte order, the
+  refusal of an unclaimed name, byte and tag beside the lossless Arrow
+  fallback, that a code is no kind, and holds the cross-kind order pin S0
+  wrote in `scalar.rs`; `rust/tests/root/plugin.rs` pins the register;
+  `allocations.rs` gains the two rows the prompt names, over a `side`
+  column.
+- **Re-pins, each accounted for**: `logical_names()` answers name order,
+  so a datatype's names list sorted (`rust/tests/root/mic.rs`,
+  `vocabulary.rs`); `DataTypeId::all().last()` is `TimeInForce::ID`
+  (`version.rs`); the unknown-tag refusal reads as above
+  (`node/tests/datatype.test.js`, `docs/types/text/string.md`). No byte,
+  rank, shape, hash feed, serde document or value-stream byte moved; the
+  one cost pin that moved is the grammar's, above, on purpose.
+
+### S1 results
+
+Every command below ran on the tree committed as S1, from `/home/user/yggdryl`,
+with `CARGO_INCREMENTAL=0` and the debug info off; a background chain holds the
+cargo lock for the long steps and the foreground ran the rest.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| it builds | `cargo check --workspace --all-targets --all-features --keep-going --message-format=short` | clean: 0 errors, 0 warnings, the four crates |
+| the register | `cargo test -p yggdryl --test market_register` | 7 passed |
+| the root files | `cargo test -p yggdryl --test root` | 1681 passed |
+| the series | `cargo test -p yggdryl --test serie` | 338 passed |
+| the value contracts | `cargo test -p yggdryl --test value` | 25 passed |
+| the digests | `cargo test -p yggdryl --test xxhash` | 81 passed |
+| the dictionary hash | `cargo test -p yggdryl --test fix store` | 83 passed; `14_542_711_836_201_211_247` unmoved |
+| the cell and ingest rows | `cargo test -p yggdryl --test allocations -- leaf_cell registered prebuilt` | 4 passed |
+| the call counts | `cargo test -p yggdryl --test iobase_calls` | 37 passed |
+| the private pins | `cargo test -p yggdryl --features internals --test root` | 1852 passed |
+| the whole run | `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 70 targets; 8968 passed in the 69 green ones; `allocations` 179 passed, 5 failed - `DECLARED_READ`, `ORDER_PARSE` and the three `sort_by` rows, each seven allocations under its pin, the grammar's deliberate move - re-pinned with that sentence |
+| the re-pins | `cargo test -p yggdryl --test allocations -- declared sort_by`; `--test root -- vocabulary market`; `--test market_register`; `--doc vocabulary` | 8, 87, 7 and 3 passed |
+| the code files | `git diff 6d71a36ee --stat -- rust/src/code.rs rust/src/{country,ccy,mic,cfi,isin,cusip,sedol,bbg,ric,figi,unit,forex,lei,bic,elf,dti,fisn}.rs docs/types/codes` | empty: byte-identical to HEAD (D25) |
+| clippy, all features | `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings` | exit 0 |
+| clippy, default features | `cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings` | exit 0 |
+| the CLI | `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 35 passed, 6 ignored over its five harnesses (`fix`, `market`, `quality`, `style`, `xmla`) |
+| the whole run, default features | `cargo test -p yggdryl --all-targets --no-fail-fast` | 70 targets, 6505 passed, 0 failed - after the first attempt died at the linker on a full disk (the sandbox allowance, not the tree): 20 GiB of stale `target/debug` artifacts of the workspace crates removed by `cargo clean -p`, then the run whole |
+| rustdoc examples | `cargo test -p yggdryl --doc` | 626 passed |
+| the API pages | `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | exit 0 |
+| Python | `VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then `-m pytest python/tests -q` and `-m mypy --strict --config-file python/pyproject.toml python/yggdryl python/tests/typing_bindings.py python/tests/typing_fields.py` | the extension installed; 2780 passed, 4 skipped - the same four as at P0, P1 and S0; mypy exit 0 |
+| Node | `npm run --prefix node build:debug`; `cargo build --locked -p yggdryl-cli`; `npm test --prefix node`; `npx tsc --noEmit` in `node/`; `git diff --stat -- node/index.js node/index.d.ts` | the addon built; the CLI built; 1122 tests, 1120 passed, the 2 failing ones the sandbox `TextDecoder` pair below; tsc exit 0; the generated loader and declarations unchanged |
+| the docs manifests | `node scripts/build_docs_fix.js --check`; `node scripts/build_docs_playground.js --check` | both current |
+| the page examples | `python scripts/check_docs_examples.py --lang rust`, `--lang python`, `--lang javascript` | Rust 936 passed; Python 836 run, 3 skipped, 0 failed; JavaScript 788 run, 2 skipped, 0 failed |
+| the site | `python -m mkdocs build --strict --config-file mkdocs.yml` | built in 18 s, no warning |
+| formatting | `cargo fmt --all -- --check`; `git diff --check` | both clean |
+| the inventories | `python scripts/check_api_inventory.py`; `python scripts/generate_internals.py --check` | current (181 source files and 595 `pub` names not described yet, as before); `yggdryl::internals` current |
+| no test code under `src/` | `grep -rn '#\[cfg(test)\]\|#\[test\]' rust/src python/src node/src cli/src` | empty |
+| CI | the run on `ccr-0fe6f9d0-ruymat` for PR #209 | read to the end after the push, before the handoff commit; the result is the `Checks` section of `.handoff/next/MARKET_SPLIT_NEXT.md` |
+
+Not run, as the slice made nothing of theirs stale: the charset table and
+interop checks, the ISIN seed check, the country and MIC table checks, every
+`cargo bench` and `npm run bench:*`, the Python boundary benchmarks, the
+scale run and the free-threaded lane. The two Node charset tests that compare
+the package to the runtime's `TextDecoder` (`node/tests/charset.test.js`:
+`decoding agrees with TextDecoder over the same names`, `iso-8859-1 is not a
+spelling of windows-1252 here`) fail in this sandbox alone, whose Node 22.22
+decodes the C1 range of `windows-1252` as ISO 8859-1 does; they failed at P0,
+P1 and S0 the same way and CI's Node proves them.
+
 ## S1: file sets per worker
 
 The S1 sweep is partitioned by path so no two workers touch one file; each
@@ -897,6 +1130,7 @@ belong to the worker whose files hold them.
 | D22 | `pluginside` deleted; the plugin's role is a `Side` read by `fix::plugin_side`; `buyside`/`sellside` spell `BUYS`/`SELL`; byte `0xc6`, `Shape` 72 and rank 32 retired; the dump, the codeset and the dictionary hash moved with it | the user's instruction; `side.rs`, `fix/source.rs`, `fix/crated.rs` | P0 |
 | D23 | the medium holds its `RecordOptions`; the media serie keeps no copy | the user's instruction; `media_serie.rs:18`; the understanding workflow's map | P1 |
 | D24 | `yggdryl-excel`, a seventh crate through the media point, claimed in S2, its own commit after S6; the bindings keep their Excel doors in the one native module | the user's instruction; the 39 core sites and the import lines above; crates.io 404 | S0, built S6b |
+| D25 | the seventeen codes stay core and flat; the register holds enum kinds alone (`Code8`/`Code16`), `MarketPayload`, `is_canonical`, `respell` and `CODE_VALUE_RANK` deleted; `yggdryl-market` carries the enums, `graph/` and the ISIN registry | the user's instruction; the S0 pins; one free Code byte | S1 |
 
 ## Review (S0)
 

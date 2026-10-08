@@ -183,7 +183,7 @@ fn the_bbg_wire_contracts_are_pinned() {
     assert_eq!(dtype.id().as_str(), "bbg");
     assert_eq!(Field::from_str("value bbg").unwrap().dtype(), &dtype);
     assert_eq!(DataType::from_logical_name("bbg").unwrap(), dtype);
-    let logical: Vec<&str> = DataType::LOGICAL_NAMES
+    let logical: Vec<&str> = DataType::logical_names()
         .iter()
         .filter(|(_, held)| *held == dtype)
         .map(|(logical, _)| *logical)

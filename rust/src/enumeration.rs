@@ -94,7 +94,7 @@ impl Vocabulary {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Codec(value) => value.as_str(),
-            Self::DataTypeId(value) => value.as_str(),
+            Self::DataTypeId(value) => value.core_str(),
             Self::DataTypeKind(value) => value.as_str(),
             Self::EdgeAlgorithm(value) => value.as_str(),
             Self::IOKind(value) => value.as_str(),

@@ -8,7 +8,7 @@ An enum is not a [code](../codes/index.md). A code is an identity over a publish
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | Each enum's `DataType` variant, `Field` leaf and `Scalar` variant; the family is the `enum` range of `DataTypeId` bytes, not a type |
+| Owns | `state`'s own `DataType` variant, `Field` leaf and `Scalar` variant, and the four registered kinds - `marketdatakind`, `side`, `marketdatatype`, `timeinforce` - each under the one `Market` variant of `DataType`, `Field` and `Scalar` and claimed through the [register](../datatype.md#registered-kinds); the family is the `enum` range of `DataTypeId` bytes, not a type |
 | Validates | At the value door, once: a member, the code of one, or a spelling one of its vocabularies names; anything else is refused naming the enum |
 | Lazy | Nothing - the member tables are static |
 | Cached | The Arrow projection of a [`Field`](../field.md), built once per field |
@@ -18,7 +18,7 @@ An enum is not a [code](../codes/index.md). A code is an identity over a publish
 | Identity | The extension *name*: `yggdryl.state` over `uint16` is a state, `yggdryl.side` over `uint8` a side, and the same integers under no name are the integers they are |
 | Intake | Any integer column - signed or unsigned, any width, nested as deep as it likes - casts into an enum column, each value read as a code and refused by name where it names no member; a text column is read as spellings |
 | Crossing | Rust holds the member; Python the member of an `enum.IntEnum` built from the core's table; JavaScript the member's name, beside a frozen object mapping every name to its code ([below](#enum-facts-in-the-bindings)) |
-| Rust only | `EnumValue`, the contract every enum answers - `ALL`, `KIND`, `EXTENSION_NAME`, `type Repr` (`u8` or `u16`, the width a column stores), `code` (answering a `Repr`), `as_str`, `description`, `from_code`, `read`, `read_code`; `Scalar::is_enum`, `enum_code`, `enum_name` |
+| Rust only | `EnumValue`, the contract every enum answers - `ALL`, `type Repr` (`u8` or `u16`, the width a column stores), `code` (answering a `Repr`), `as_str`, `description`, `from_code`, `read`, `read_code`, and on each leaf its own `NAME` and `EXTENSION_NAME` consts; `Scalar::is_enum`, `enum_code`, `enum_name`; `MarketValue`, the owned narrowing a registered kind's member answers beside it |
 
 ## Pages
 

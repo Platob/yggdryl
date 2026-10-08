@@ -33,12 +33,12 @@ mod reading {
             Scalar::from(i32::from(State::New.code()))
         );
         assert_eq!(
-            DataType::UInt8.scalar(Scalar::Side(Side::Buy)).unwrap(),
+            DataType::UInt8.scalar(Scalar::from(Side::Buy)).unwrap(),
             Scalar::from(Side::Buy.code())
         );
         assert_eq!(
             DataType::UInt16
-                .scalar(Scalar::MarketDataKind(MarketDataKind::Order))
+                .scalar(Scalar::from(MarketDataKind::Order))
                 .unwrap(),
             Scalar::from(u16::from(MarketDataKind::Order.code()))
         );

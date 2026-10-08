@@ -6,7 +6,7 @@ Which side of the market a trade took: FIX `Side(54)` as an enum of nineteen mem
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `side`, `SideType`/`SideField`, the `Side` enum and `Scalar::Side` |
+| Owns | `side`, the registered kind `SIDE_KIND` under `DataType::Market`, its marker `SideType`, the `Side` enum |
 | Validates | A member, the code of one, or a spelling one of three vocabularies names - the four-letter code, a FIX wire code, the specification's name - reaches one member; anything else is refused rather than stored |
 | Lazy | Nothing - the member table and the vocabularies are static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -18,19 +18,20 @@ A `Side` is one byte in memory and its code in a column. What `as_str` answers a
 
 ## DataType
 
-`side` is the one spelling; the datatype is the variant, kind `enum`, and there is no shorthand constructor.
+`side` is the one spelling, `DataType::side()` the constructor, `Side::ID` the id - a [registered kind](../datatype.md#registered-kinds) under `DataType::Market`; kind `enum`.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, DataTypeKind};
+    use yggdryl::{DataType, DataTypeKind, Side};
 
-    assert_eq!(DataType::from_str("side")?, DataType::Side);
-    assert_eq!(DataType::Side.to_string(), "side");
-    assert_eq!(DataType::Side.kind(), DataTypeKind::Enum);
-    assert_eq!(DataType::Side.id().as_u8(), 0xc3);
-    assert!(DataType::Side.is_enum() && !DataType::Side.is_code());
-    assert_eq!(DataType::Side.code_width(), None);
+    assert!(matches!(DataType::side(), DataType::Market(kind) if kind.id() == Side::ID));
+    assert_eq!(DataType::from_str("side")?, DataType::side());
+    assert_eq!(DataType::side().to_string(), "side");
+    assert_eq!(DataType::side().kind(), DataTypeKind::Enum);
+    assert_eq!(DataType::side().id().as_u8(), 0xc3);
+    assert!(DataType::side().is_enum() && !DataType::side().is_code());
+    assert_eq!(DataType::side().code_width(), None);
     ```
 
 === "Python"
@@ -56,7 +57,7 @@ A `Side` is one byte in memory and its code in a column. What `as_str` answers a
 
 ## Field
 
-`SideField` is the typed marker; Python and JavaScript name the factory `side`.
+`SideField` is `FieldOf<SideType>`, `SideType` the kind's marker over the `Market` variant; Python and JavaScript name the factory `side`.
 
 === "Rust"
 
@@ -64,8 +65,8 @@ A `Side` is one byte in memory and its code in a column. What `as_str` answers a
     use yggdryl::{DataType, Field, SideField};
 
     let side = SideField::unit("side", false);
-    assert_eq!(side.dtype(), &DataType::Side);
-    assert_eq!(side.to_field(), Field::new("side", DataType::Side, false));
+    assert_eq!(side.dtype(), &DataType::side());
+    assert_eq!(side.to_field(), Field::new("side", DataType::side(), false));
     ```
 
 === "Python"
@@ -100,22 +101,22 @@ The value is the member, whichever vocabulary named it: `BUYS` for FIX's `1`, it
     ```rust
     use yggdryl::{DataType, Scalar, Side};
 
-    let buy = DataType::Side.scalar("BUYS")?;
-    assert_eq!(buy, Scalar::Side(Side::Buy));
+    let buy = DataType::side().scalar("BUYS")?;
+    assert_eq!(buy, Scalar::from(Side::Buy));
     assert_eq!(buy.kind(), "side");
     assert_eq!(Side::Buy.code(), 1);
 
     // Three vocabularies and the code reach one member.
-    assert_eq!(DataType::Side.scalar("1")?, buy);
-    assert_eq!(DataType::Side.scalar("BUY")?, buy);
-    assert_eq!(DataType::Side.scalar("Buy")?, buy);
-    assert_eq!(DataType::Side.scalar(1_i32)?, buy);
-    assert_eq!(DataType::Side.scalar("SellShortExempt")?, Scalar::Side(Side::SShortEx));
+    assert_eq!(DataType::side().scalar("1")?, buy);
+    assert_eq!(DataType::side().scalar("BUY")?, buy);
+    assert_eq!(DataType::side().scalar("Buy")?, buy);
+    assert_eq!(DataType::side().scalar(1_i32)?, buy);
+    assert_eq!(DataType::side().scalar("SellShortExempt")?, Scalar::from(Side::SShortEx));
 
     // A spelling nothing publishes, or the code of no member, answers nothing
     // rather than a guess.
-    assert!(DataType::Side.scalar("Z").is_err());
-    assert!(DataType::Side.scalar(18_i32).is_err());
+    assert!(DataType::side().scalar("Z").is_err());
+    assert!(DataType::side().scalar(18_i32).is_err());
     ```
 
 === "Python"
@@ -166,7 +167,7 @@ The value is the member, whichever vocabulary named it: `BUYS` for FIX's `1`, it
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
-    let side = Field::new("side", DataType::Side, false);
+    let side = Field::new("side", DataType::side(), false);
     let arrow = side.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.side");
@@ -420,7 +421,7 @@ A FIX plugin stands on one side of its session: a Buy-Side plugin originates ord
     assert_eq!(plugin_side("buyside.FIXCPluginCBlock"), Side::Unknown);
     assert_eq!(plugin_side(""), Side::Unknown);
     // The role's own name is a spelling of the side.
-    assert_eq!(DataType::Side.scalar("sell-side")?, Scalar::Side(Side::Sell));
+    assert_eq!(DataType::side().scalar("sell-side")?, Scalar::from(Side::Sell));
     assert_eq!(Side::from_spelling("BuySide"), Some(Side::Buy));
 
     // A CBlock read under a dialect records the role on the dialect's entry.

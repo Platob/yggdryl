@@ -29,8 +29,8 @@ use yggdryl::{
     FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
     FixEntry as CoreFixEntry, FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMerge,
     FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, FixSource as CoreFixSource,
-    IOBase as CoreIOBase, IdType, MsgType as CoreMsgType, Scalar, Side, StructType, TimeUnit,
-    Timezone,
+    IOBase as CoreIOBase, IdType, MarketValue, MsgType as CoreMsgType, Scalar, Side, StructType,
+    TimeUnit, Timezone,
 };
 
 use crate::field::{PyField, core_field_from_value};
@@ -130,16 +130,11 @@ fn source_record<'py>(py: Python<'py>, source: &CoreFixSource) -> PyResult<Bound
 /// datatype's own value door so a spelling the column refuses is refused
 /// here too.
 pub(crate) fn pluginside_from_py(given: &Bound<'_, PyAny>) -> PyResult<Side> {
-    match CoreDataType::Side
+    let value = CoreDataType::side()
         .scalar(from_py(given)?)
-        .map_err(|error| value_error(format!("pluginside: {error}")))?
-    {
-        Scalar::Side(side) => Ok(side),
-        other => Err(value_error(format!(
-            "expected a Side, got {}",
-            other.kind()
-        ))),
-    }
+        .map_err(|error| value_error(format!("pluginside: {error}")))?;
+    <Side as MarketValue>::from_scalar(&value)
+        .ok_or_else(|| value_error(format!("expected a Side, got {}", value.kind())))
 }
 
 /// The side one plugin class names: a `CBlock` root's `type`, whose last

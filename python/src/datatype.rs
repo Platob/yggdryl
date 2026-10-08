@@ -787,14 +787,10 @@ impl PyDataType {
             "large_cp1252" => CoreDataType::large_cp1252(),
             "cp1252_view" => CoreDataType::cp1252_view(),
             "large_cp1252_view" => CoreDataType::large_cp1252_view(),
-            "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
-            "timeinforce" => CoreDataType::TimeInForce,
             "unit" => CoreDataType::Unit,
             "ric" => CoreDataType::Ric,
             "forex" => CoreDataType::Forex,
-            "marketdatakind" => CoreDataType::MarketDataKind,
-            "marketdatatype" => CoreDataType::MarketDataType,
             "uuid" => CoreDataType::uuid(),
             "decimal" => CoreDataType::Decimal,
             "bigdecimal" => CoreDataType::BigDecimal,
@@ -804,11 +800,17 @@ impl PyDataType {
             "timezone" => CoreDataType::Timezone,
             "mimetype" => CoreDataType::MimeType,
             "mediatype" => CoreDataType::MediaType,
-            _ => {
-                return Err(PyValueError::new_err(format!(
-                    "{kind:?} is not a parameter-free datatype kind"
-                )));
-            }
+            // A registered enum kind is named by the register, so a kind the
+            // core or another crate claims reaches this door with no arm of
+            // its own; a core name is never read as one.
+            _ => match yggdryl::market::kind_named(kind) {
+                Some(market) => market.dtype(),
+                None => {
+                    return Err(PyValueError::new_err(format!(
+                        "{kind:?} is not a parameter-free datatype kind"
+                    )));
+                }
+            },
         };
         Self::from_validated(inner)
     }
@@ -1123,8 +1125,8 @@ impl PyDataType {
     #[staticmethod]
     fn logical_names(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let names = PyDict::new(py);
-        for (name, dtype) in CoreDataType::LOGICAL_NAMES {
-            names.set_item(name, Self::from_validated(dtype.clone())?)?;
+        for (name, dtype) in CoreDataType::logical_names() {
+            names.set_item(name, Self::from_validated(dtype)?)?;
         }
         Ok(names)
     }

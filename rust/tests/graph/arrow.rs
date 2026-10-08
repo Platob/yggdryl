@@ -360,14 +360,14 @@ fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
     assert_eq!(names[15], "marketdatakind");
     assert_eq!(
         field.fields()[15].dtype(),
-        &yggdryl::DataType::MarketDataKind
+        &yggdryl::DataType::marketdatakind()
     );
     assert!(!field.fields()[15].is_nullable());
     // The type of its kind follows, stated as none where it is none.
     assert_eq!(names[16], "marketdatatype");
     assert_eq!(
         field.fields()[16].dtype(),
-        &yggdryl::DataType::MarketDataType
+        &yggdryl::DataType::marketdatatype()
     );
     assert!(!field.fields()[16].is_nullable());
     // The origin currency follows the currency it defaults to, null where

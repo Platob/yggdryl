@@ -500,7 +500,7 @@ mod grammar {
         // The two spellings agreed only because nothing had drifted yet; this
         // walks every identifier so a variant that displays as anything but its
         // own name fails here instead of silently breaking the round trip.
-        for id in DataTypeId::ALL {
+        for id in DataTypeId::all() {
             if id.is_parameterized() {
                 continue;
             }

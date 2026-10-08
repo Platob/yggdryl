@@ -19,10 +19,9 @@ use crate::{
     DateTimeType, DateType, DecimalType, DtiType, DurationType, ElfType, EnumType, FigiType,
     FisnType, Float16Type, Float32Type, Float64Type, ForexType, GeographyType, GeometryType,
     Int8Type, Int16Type, Int32Type, Int64Type, IntervalType, IsinType, LeiType, MappingType,
-    MarketDataKindType, MarketDataTypeType, MediaTypeType, MicType, MimeTypeType, NullType,
-    RicType, RunEndType, SedolType, SerieType, SideType, StateType, StringType, StructType,
-    TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
-    UnionType, UnitType, UriType, UuidType, VariantType, VersionType,
+    MarketType, MediaTypeType, MicType, MimeTypeType, NullType, RicType, RunEndType, SedolType,
+    SerieType, StateType, StringType, StructType, TimeType, TimezoneType, UInt8Type, UInt16Type,
+    UInt32Type, UInt64Type, UnionType, UnitType, UriType, UuidType, VariantType, VersionType,
 };
 use crate::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -924,7 +923,7 @@ impl<D: DataTypeValue> Hash for FieldOf<D> {
 /// question down.
 /// The payload of a variant that was just matched is always there.
 ///
-/// One cold function rather than an `expect` in each of the fifty-three arms:
+/// One cold function rather than an `expect` in each arm:
 /// a panic site per arm is a stack frame per arm in a debug build, and these
 /// constructors sit on the recursive walk of a nested schema.
 #[cold]
@@ -1617,11 +1616,8 @@ field_leaves! {
     [Mic] => MicField / MicType,
     [Cfi] => CfiField / CfiType,
     [Isin] => IsinField / IsinType,
-    [Side] => SideField / SideType,
+    [Market] => MarketField / MarketType,
     [State] => StateField / StateType,
-    [MarketDataKind] => MarketDataKindField / MarketDataKindType,
-    [MarketDataType] => MarketDataTypeField / MarketDataTypeType,
-    [TimeInForce] => TimeInForceField / TimeInForceType,
     [Uuid] => UuidField / UuidType,
     [Version] => VersionField / VersionType,
     [Url, Urn] => UriField / UriType,
@@ -2355,6 +2351,12 @@ mod arrow {
         /// under `yggdryl.string` is a bounded ASCII string, and neither imports
         /// as the other.
         Code(DataType),
+        /// A registered enum kind's own `yggdryl.<kind>` - `yggdryl.side`,
+        /// `yggdryl.timeinforce` and the others the register holds - over the
+        /// unsigned codes of its members at the kind's width: which kind,
+        /// because a side's codes and a time in force's are two vocabularies
+        /// over one storage.
+        Market(&'static crate::MarketDescriptor),
         /// The `yggdryl.string` extension: a layout, a charset and a bound over
         /// the Arrow storage that layout and charset lay out.
         String(DataType),
@@ -2363,11 +2365,9 @@ mod arrow {
         Bytes(DataType),
         /// The canonical `arrow.uuid` identifier over `FixedSizeBinary(16)`.
         Uuid,
-        /// An enum leaf's own `yggdryl.<enum>` - `yggdryl.state`,
-        /// `yggdryl.side` and the three beside them - over the unsigned codes
-        /// of its members at the leaf's width: which leaf, because a side's
-        /// codes and a time in force's are two vocabularies over one storage.
-        Enum(DataType),
+        /// The core's own lifecycle enum, `yggdryl.state`, over the `UInt16`
+        /// codes of its members.
+        State,
         /// The `yggdryl.decimal` fixed decimal over `Decimal128(38, 18)`.
         Decimal,
         /// The `yggdryl.bigdecimal` fixed decimal over `Decimal256(76, 18)`.
@@ -2398,10 +2398,9 @@ mod arrow {
                         DataType::Geometry(Arc::new(geospatial))
                     }
                 }
-                Self::Code(dtype)
-                | Self::String(dtype)
-                | Self::Bytes(dtype)
-                | Self::Enum(dtype) => dtype,
+                Self::Code(dtype) | Self::String(dtype) | Self::Bytes(dtype) => dtype,
+                Self::Market(kind) => kind.dtype(),
+                Self::State => DataType::State,
                 Self::Uuid => DataType::Uuid,
                 Self::Decimal => DataType::Decimal,
                 Self::BigDecimal => DataType::BigDecimal,
@@ -2421,8 +2420,10 @@ mod arrow {
     /// encoding with an empty extension metadata document,
     /// `yggdryl.string` and `yggdryl.bytes` over the storage their documents lay
     /// out, each registered code's own `yggdryl.{country,ccy,mic,cfi}` over
-    /// Utf8, and the canonical `arrow.uuid` over `FixedSizeBinary(16)`, each with
-    /// an empty or absent document.
+    /// Utf8, `yggdryl.state` and each registered enum kind's own extension name
+    /// over the unsigned codes of its members at the kind's width, and the
+    /// canonical `arrow.uuid` over `FixedSizeBinary(16)`, each with an empty or
+    /// absent document.
     ///
     /// The answer is what the extension describes, which is the *values* of a
     /// dictionary-encoded column: [`encoded_values`] peels the encoding here and
@@ -2431,10 +2432,11 @@ mod arrow {
     ///
     /// Any other pairing keeps today's behavior exactly - a foreign extension
     /// name, one of ours over a storage it does not spell, a variant or a code
-    /// with a non-empty document: the field imports as its storage type with the
-    /// `ARROW:extension:*` keys as plain metadata. A code, a version and a URL
-    /// all ride Utf8, so it is the *name* that separates them, and a name none of
-    /// them claims leaves the column the plain text it is.
+    /// with a non-empty document, a `yggdryl.<name>` no registered kind claims:
+    /// the field imports as its storage type with the `ARROW:extension:*` keys
+    /// as plain metadata. A code, a version and a URL all ride Utf8, so it is
+    /// the *name* that separates them, and a name none of them claims leaves the
+    /// column the plain text it is.
     ///
     /// # Errors
     ///
@@ -2553,19 +2555,20 @@ mod arrow {
                 ArrowDataType::Utf8
             )
             .then_some(RecognizedExtension::MediaType)),
-            // An enum leaf is its codes under its own name, at the leaf's
-            // own width, with nothing to say in a document: the name says
-            // which leaf, and any other storage is a foreign field wearing it.
-            held if document.unwrap_or("").is_empty()
-                && crate::enums::enum_for_extension(held).is_some_and(|leaf| {
-                    leaf.arrow_datatype().is_ok_and(|held| &held == storage)
-                }) =>
-            {
-                Ok(crate::enums::enum_for_extension(held).map(RecognizedExtension::Enum))
+            crate::State::EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+                Ok(matches!(storage, ArrowDataType::UInt16).then_some(RecognizedExtension::State))
             }
-            code if document.unwrap_or("").is_empty() && matches!(storage, ArrowDataType::Utf8) => {
-                Ok(code_for_extension(code).map(RecognizedExtension::Code))
-            }
+            // A registered name carries nothing in its document, and the
+            // storage says which family claims it: a code is Utf8 under its
+            // own name, an enum kind its member codes at the kind's own width.
+            // A name no code and no kind claims, or one of ours over another
+            // storage, is a foreign field wearing it.
+            held if document.unwrap_or("").is_empty() => Ok(match storage {
+                ArrowDataType::Utf8 => code_for_extension(held).map(RecognizedExtension::Code),
+                _ => crate::market::kind_for_extension(held)
+                    .filter(|kind| &kind.storage.arrow() == storage)
+                    .map(RecognizedExtension::Market),
+            }),
             _ => Ok(None),
         }
     }

@@ -8,7 +8,7 @@ use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::{
     ArrowCastOptions, DataType, DataTypeId, DataTypeKind, DigestAlgorithm, EnumValue, Field,
-    Scalar, Serie, Side, StringEnum, StructType, Value,
+    MarketSerie, Scalar, Serie, Side, StringEnum, StructType, Value,
 };
 
 fn strict() -> ArrowCastOptions {
@@ -104,10 +104,10 @@ fn the_retired_spelling_unkn_names_no_side() {
         serde_json::from_str::<Side>("\"UKNW\"").unwrap(),
         Side::Unknown
     );
-    assert!(DataType::Side.scalar(Scalar::from("UNKN")).is_err());
+    assert!(DataType::side().scalar(Scalar::from("UNKN")).is_err());
     assert_eq!(
-        DataType::Side.scalar(Scalar::from("UKNW")).unwrap(),
-        Scalar::Side(Side::Unknown)
+        DataType::side().scalar(Scalar::from("UKNW")).unwrap(),
+        Scalar::from(Side::Unknown)
     );
 }
 
@@ -118,8 +118,8 @@ fn a_side_is_one_byte_whose_code_is_the_position_of_its_wire_character() {
     assert_eq!(Side::default(), Side::Unknown);
     assert_eq!(Side::ALL.len(), 19);
     assert_eq!(<Side as EnumValue>::ALL, Side::ALL);
-    assert_eq!(<Side as EnumValue>::KIND, "side");
-    assert_eq!(<Side as EnumValue>::EXTENSION_NAME, "yggdryl.side");
+    assert_eq!(Side::NAME, "side");
+    assert_eq!(Side::EXTENSION_NAME, "yggdryl.side");
 
     for (index, (code, stored, former, _, side)) in SIDES.iter().enumerate() {
         assert_eq!(*side as usize, index, "{stored}");
@@ -265,12 +265,15 @@ fn both_sides_at_once_is_its_own_member_with_no_wire_code() {
     assert_eq!(serde_json::to_string(&both).unwrap(), "\"BOTH\"");
     assert_eq!(serde_json::from_str::<Side>("\"BOTH\"").unwrap(), both);
     assert_eq!(serde_json::from_str::<Side>("99").unwrap(), both);
-    let value = Scalar::Side(both);
+    let value = Scalar::from(both);
     assert_eq!(
         Scalar::decode_value_bytes(&value.into_value_bytes()).unwrap(),
         value
     );
-    assert_eq!(DataType::Side.scalar(Scalar::from(99_i32)).unwrap(), value);
+    assert_eq!(
+        DataType::side().scalar(Scalar::from(99_i32)).unwrap(),
+        value
+    );
 }
 
 #[test]
@@ -312,10 +315,19 @@ fn a_side_serializes_as_its_stored_name_and_reads_back_by_code_or_spelling() {
 
     // And a scalar carries the side, not the text and not the integer.
     let scalar = Scalar::from(Side::Buy);
-    assert_eq!(scalar, DataType::Side.scalar(Scalar::from("1")).unwrap());
-    assert_eq!(scalar, DataType::Side.scalar(Scalar::from(1_i32)).unwrap());
-    assert_eq!(scalar, DataType::Side.scalar(Scalar::from(1_i64)).unwrap());
-    assert_eq!(scalar, DataType::Side.scalar(Scalar::from("Buy")).unwrap());
+    assert_eq!(scalar, DataType::side().scalar(Scalar::from("1")).unwrap());
+    assert_eq!(
+        scalar,
+        DataType::side().scalar(Scalar::from(1_i32)).unwrap()
+    );
+    assert_eq!(
+        scalar,
+        DataType::side().scalar(Scalar::from(1_i64)).unwrap()
+    );
+    assert_eq!(
+        scalar,
+        DataType::side().scalar(Scalar::from("Buy")).unwrap()
+    );
     assert_eq!(scalar.as_str(), Some("BUYS"));
     assert_eq!(scalar.enum_code(), Some(1));
     assert_eq!(scalar.enum_name(), Some("BUYS"));
@@ -330,10 +342,10 @@ fn a_side_serializes_as_its_stored_name_and_reads_back_by_code_or_spelling() {
     assert_eq!(serde_json::from_str::<Scalar>(&wire).unwrap(), scalar);
     // A code of another enum leaf and a spelling that names no side are
     // refused by the value door, naming the datatype.
-    assert!(DataType::Side.scalar(Scalar::from(18_i32)).is_err());
-    assert!(DataType::Side.scalar(Scalar::from("Z")).is_err());
+    assert!(DataType::side().scalar(Scalar::from(18_i32)).is_err());
+    assert!(DataType::side().scalar(Scalar::from("Z")).is_err());
     assert!(
-        DataType::Side
+        DataType::side()
             .scalar(Scalar::State(yggdryl::State::New))
             .is_err()
     );
@@ -343,28 +355,28 @@ fn a_side_serializes_as_its_stored_name_and_reads_back_by_code_or_spelling() {
         DataType::utf8().scalar(scalar.clone()).unwrap(),
         Scalar::from("BUYS")
     );
-    assert!(DataType::Side.ascii_packed(b"BUYS").is_err());
+    assert!(DataType::side().ascii_packed(b"BUYS").is_err());
 }
 
 #[test]
 fn a_side_is_a_datatype_of_the_enum_family() {
-    assert_eq!(DataType::Side.id(), DataTypeId::Side);
-    assert_eq!(DataTypeId::Side.as_u8(), 0xc3);
+    assert_eq!(DataType::side().id(), Side::ID);
+    assert_eq!(Side::ID.as_u8(), 0xc3);
     assert_eq!(DataTypeId::from_u8(0x75), None, "the code byte is retired");
-    assert_eq!(DataTypeId::Side.as_str(), "side");
-    assert_eq!(DataTypeId::Side.kind(), DataTypeKind::Enum);
-    assert!(DataTypeKind::Enum.contains(DataTypeId::Side));
-    assert!(DataType::Side.is_enum());
-    assert!(!DataType::Side.is_code());
-    assert!(!DataType::Side.is_string());
-    assert_eq!(DataType::Side.code_width(), None);
-    assert_eq!(DataType::Side.code_name(), None);
-    assert_eq!(DataType::Side.fixed_byte_width(), None);
-    assert_eq!(DataType::from_str("side").unwrap(), DataType::Side);
-    assert_eq!(DataType::Side.to_string(), "side");
+    assert_eq!(Side::ID.as_str(), "side");
+    assert_eq!(Side::ID.kind(), DataTypeKind::Enum);
+    assert!(DataTypeKind::Enum.contains(Side::ID));
+    assert!(DataType::side().is_enum());
+    assert!(!DataType::side().is_code());
+    assert!(!DataType::side().is_string());
+    assert_eq!(DataType::side().code_width(), None);
+    assert_eq!(DataType::side().code_name(), None);
+    assert_eq!(DataType::side().fixed_byte_width(), None);
+    assert_eq!(DataType::from_str("side").unwrap(), DataType::side());
+    assert_eq!(DataType::side().to_string(), "side");
     assert_eq!(
-        DataType::Side.default_value().unwrap(),
-        Scalar::Side(Side::Unknown)
+        DataType::side().default_value().unwrap(),
+        Scalar::from(Side::Unknown)
     );
     assert!(
         DataType::CODES.iter().all(|(name, _, _)| *name != "side"),
@@ -375,7 +387,7 @@ fn a_side_is_a_datatype_of_the_enum_family() {
 
 #[test]
 fn a_column_is_uint8_codes_under_the_side_extension() {
-    let field = Field::new("side", DataType::Side, true);
+    let field = Field::new("side", DataType::side(), true);
     let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.side");
@@ -383,12 +395,12 @@ fn a_column_is_uint8_codes_under_the_side_extension() {
     assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
 
     let values = [
-        Scalar::Side(Side::Buy),
+        Scalar::from(Side::Buy),
         Scalar::Null,
-        Scalar::Side(Side::SellUnd),
+        Scalar::from(Side::SellUnd),
     ];
     let serie = Serie::from_scalars(field.clone(), values.clone()).unwrap();
-    assert!(matches!(serie, Serie::Side(_)));
+    assert!(matches!(serie, Serie::Market(MarketSerie::Code8(_))));
     let array = serie.require_arrow_array().unwrap();
     let codes = array
         .as_any()
@@ -418,7 +430,7 @@ fn a_column_is_uint8_codes_under_the_side_extension() {
 
 #[test]
 fn text_and_integers_land_as_sides_and_a_stranger_is_refused_by_row() {
-    let field = Field::new("side", DataType::Side, false);
+    let field = Field::new("side", DataType::side(), false);
     // A `utf8` column of the stored name, a wire code and the specification's
     // name lands as the codes they name.
     let landed = Serie::from_arrow_array(
@@ -433,7 +445,7 @@ fn text_and_integers_land_as_sides_and_a_stranger_is_refused_by_row() {
         .downcast_ref::<arrow_array::UInt8Array>()
         .unwrap();
     assert_eq!(codes.values().as_ref(), [1, 1, 2, 5]);
-    assert_eq!(landed.scalar(3).unwrap(), Scalar::Side(Side::SShort));
+    assert_eq!(landed.scalar(3).unwrap(), Scalar::from(Side::SShort));
     let text = landed
         .cast(&Field::new("side", DataType::utf8(), false), strict())
         .unwrap()
@@ -445,16 +457,16 @@ fn text_and_integers_land_as_sides_and_a_stranger_is_refused_by_row() {
         [Some("BUYS"), Some("BUYS"), Some("SELL"), Some("SSHT")]
     );
 
-    let nullable = Field::new("side", DataType::Side, true);
+    let nullable = Field::new("side", DataType::side(), true);
     let landed = Serie::from_arrow_array(
         Some(&nullable),
         Arc::new(Int64Array::from(vec![Some(2), None, Some(17)])) as ArrayRef,
         strict(),
     )
     .unwrap();
-    assert_eq!(landed.scalar(0).unwrap(), Scalar::Side(Side::Sell));
+    assert_eq!(landed.scalar(0).unwrap(), Scalar::from(Side::Sell));
     assert_eq!(landed.scalar(1).unwrap(), Scalar::Null);
-    assert_eq!(landed.scalar(2).unwrap(), Scalar::Side(Side::SellUnd));
+    assert_eq!(landed.scalar(2).unwrap(), Scalar::from(Side::SellUnd));
     let refused = Serie::from_arrow_array(
         Some(&nullable),
         Arc::new(Int32Array::from(vec![1, 18])) as ArrayRef,
@@ -483,9 +495,9 @@ fn text_and_integers_land_as_sides_and_a_stranger_is_refused_by_row() {
 #[test]
 fn a_side_crosses_the_value_stream_the_digest_and_the_structured_codecs() {
     for side in [Side::Unknown, Side::Buy, Side::SellUnd] {
-        let value = Scalar::Side(side);
+        let value = Scalar::from(side);
         let bytes = value.into_value_bytes();
-        assert_eq!(bytes[1], DataTypeId::Side.as_u8());
+        assert_eq!(bytes[1], Side::ID.as_u8());
         // The canonical four bytes, whatever width a column stores.
         assert_eq!(bytes[2..], i32::from(side.code()).to_le_bytes());
         assert_eq!(Scalar::decode_value_bytes(&bytes).unwrap(), value);
@@ -504,7 +516,7 @@ fn a_side_crosses_the_value_stream_the_digest_and_the_structured_codecs() {
             "{side}"
         );
     }
-    let value = Scalar::Side(Side::Buy);
+    let value = Scalar::from(Side::Buy);
     let row = Scalar::from_struct([("side", value.clone())]).unwrap();
     assert_eq!(
         yggdryl::into_json_scalar(&row).unwrap(),
@@ -534,14 +546,14 @@ fn a_side_filters_and_casts_by_its_member_in_an_expression() {
     use yggdryl::expression::{Expression, Filter};
 
     let root =
-        DataType::from(StructType::from_fields([DataType::Side.nullable_field("side")]).unwrap())
+        DataType::from(StructType::from_fields([DataType::side().nullable_field("side")]).unwrap())
             .required_field("row");
     let sides = [Side::Buy, Side::Sell, Side::SShort, Side::Cross];
     let column = Serie::from_scalars(
         root.fields()[0].clone(),
         sides
             .iter()
-            .map(|side| Scalar::Side(*side))
+            .map(|side| Scalar::from(*side))
             .collect::<Vec<_>>(),
     )
     .unwrap()
@@ -584,18 +596,18 @@ fn the_canonical_default_is_the_side_stated_as_none() {
     // code zero as every enum leaf's, so a named row leaving out a required
     // side defaults at the value door rather than failing on the empty text.
     assert_eq!(
-        DataType::Side.default_value().unwrap(),
-        Scalar::Side(Side::Unknown)
+        DataType::side().default_value().unwrap(),
+        Scalar::from(Side::Unknown)
     );
     assert!(
-        DataType::Side
-            .is_default_value(&Scalar::Side(Side::Unknown))
+        DataType::side()
+            .is_default_value(&Scalar::from(Side::Unknown))
             .unwrap()
     );
     let root = DataType::from(
         StructType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Side.required_field("side"),
+            DataType::side().required_field("side"),
         ])
         .unwrap(),
     )
@@ -603,7 +615,7 @@ fn the_canonical_default_is_the_side_stated_as_none() {
     assert_eq!(
         root.scalar(Scalar::from_struct([("id", Scalar::from(1_i64))]).unwrap())
             .unwrap(),
-        Scalar::from_sequence([Scalar::from(1_i64), Scalar::Side(Side::Unknown)])
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(Side::Unknown)])
     );
 }
 
@@ -616,7 +628,7 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     assert!(Side::ALL.contains(&Side::Unknown));
     assert!(Side::from_spelling("NONE").is_none());
 
-    let field = Field::new("side", DataType::Side, true);
+    let field = Field::new("side", DataType::side(), true);
     let row = Field::new(
         "row",
         DataType::from(StructType::from_fields([field.clone()]).unwrap()),
@@ -632,7 +644,7 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     let required = Field::new(
         "row",
         DataType::from(
-            StructType::from_fields([Field::new("side", DataType::Side, false)]).unwrap(),
+            StructType::from_fields([Field::new("side", DataType::side(), false)]).unwrap(),
         ),
         false,
     );
@@ -683,7 +695,7 @@ fn the_side_wire_contracts_are_pinned() {
     assert_eq!(dtype.id().as_str(), "side");
     assert_eq!(Field::from_str("value side").unwrap().dtype(), &dtype);
     assert_eq!(DataType::from_logical_name("side").unwrap(), dtype);
-    let logical: Vec<&str> = DataType::LOGICAL_NAMES
+    let logical: Vec<&str> = DataType::logical_names()
         .iter()
         .filter(|(_, held)| *held == dtype)
         .map(|(logical, _)| *logical)

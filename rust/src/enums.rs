@@ -192,9 +192,238 @@ fn is_valid_dictionary_key(key: &DataType) -> bool {
 /// also the width a column stores ([`EnumRepr`]) - its `kind` (the refusal
 /// word and the datatype's name)
 /// and its extension name, and writes `from_spelling` itself, because the
-/// spellings a leaf accepts are its own.
+/// spellings a leaf accepts are its own. A registered leaf states its
+/// `market` static and the numbers beside it too, and gains its `ID`,
+/// `NAME` and `EXTENSION_NAME`, the [`MarketDescriptor`](crate::MarketDescriptor)
+/// it is claimed under - its members and its `read` - and
+/// [`MarketValue`](crate::MarketValue); its scalar is
+/// [`Scalar::Market`](crate::Scalar::Market), never a variant of its own.
 macro_rules! enum_leaf {
+    // A leaf of the core's own: the datatype has a variant of its own.
     (
+        $(#[$outer:meta])*
+        $vis:vis enum $name:ident: $repr:ty, kind = $kind:literal, extension = $extension:path, aliases = $aliases:path {
+            $($(#[$meta:meta])* $variant:ident = $code:literal as $spelling:literal: $doc:literal,)+
+        }
+    ) => {
+        $crate::enums::enum_leaf!(@members
+            $(#[$outer])*
+            $vis enum $name: $repr, kind = $kind, extension = $extension, aliases = $aliases {
+                $($(#[$meta])* $variant = $code as $spelling: $doc,)+
+            }
+        );
+
+        impl $name {
+            /// The canonical name: the datatype's spelling, the serde tag
+            /// and the parser's word.
+            pub const NAME: &'static str = $kind;
+            /// The Arrow extension name a column of this enum rides under.
+            pub const EXTENSION_NAME: &'static str = $extension;
+        }
+
+        impl $crate::Value for $name {
+            fn dtype(&self) -> $crate::Result<$crate::DataType> {
+                Ok($crate::DataType::$name)
+            }
+
+            fn into_scalar(self) -> $crate::Scalar {
+                $crate::Scalar::$name(self)
+            }
+
+            fn from_scalar(value: &$crate::Scalar) -> Option<&Self> {
+                match value {
+                    $crate::Scalar::$name(value) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+
+        impl $crate::EnumValue for $name {
+            const ALL: &'static [Self] = <$name>::ALL;
+            type Repr = $repr;
+
+            fn code(self) -> $repr {
+                <$name>::code(self)
+            }
+
+            fn as_str(self) -> &'static str {
+                <$name>::as_str(self)
+            }
+
+            fn description(self) -> &'static str {
+                <$name>::description(self)
+            }
+
+            fn from_code(code: $repr) -> Option<Self> {
+                <$name>::from_code(code)
+            }
+
+            fn read(spelling: &str) -> $crate::Result<Self> {
+                <$name>::read(spelling)
+            }
+
+            fn read_code(code: i64) -> $crate::Result<Self> {
+                <$name>::read_code(code)
+            }
+        }
+
+        impl From<$name> for $crate::Scalar {
+            fn from(value: $name) -> Self {
+                Self::$name(value)
+            }
+        }
+
+        impl From<$name> for $repr {
+            fn from(value: $name) -> Self {
+                value.code()
+            }
+        }
+
+        impl TryFrom<$repr> for $name {
+            type Error = $crate::Error;
+
+            fn try_from(code: $repr) -> $crate::Result<Self> {
+                Self::read_code(i64::from(code))
+            }
+        }
+    };
+    // A registered kind: the leaf states its byte and the three numbers
+    // its values and its datatype order and hash by, and every door
+    // reaches it through the register.
+    (
+        $(#[$outer:meta])*
+        $vis:vis enum $name:ident: $repr:ty, kind = $kind:literal, extension = $extension:path, aliases = $aliases:path,
+        market = $kind_static:ident [$byte:literal, $value_rank:literal, $dtype_rank:literal, $shape:literal] {
+            $($(#[$meta:meta])* $variant:ident = $code:literal as $spelling:literal: $doc:literal,)+
+        }
+    ) => {
+        $crate::enums::enum_leaf!(@members
+            $(#[$outer])*
+            $vis enum $name: $repr, kind = $kind, extension = $extension, aliases = $aliases {
+                $($(#[$meta])* $variant = $code as $spelling: $doc,)+
+            }
+        );
+
+        impl $name {
+            /// The identifier this enum's datatype carries.
+            pub const ID: $crate::DataTypeId = $crate::DataTypeId::market($byte);
+            /// The canonical name: the datatype's spelling, the serde tag
+            /// and the parser's word.
+            pub const NAME: &'static str = $kind;
+            /// The Arrow extension name a column of this enum rides under.
+            pub const EXTENSION_NAME: &'static str = $extension;
+        }
+
+        #[doc = concat!("The registered kind `", $kind, "`: what [`", stringify!($name), "`] states about itself, once.")]
+        pub static $kind_static: $crate::MarketDescriptor = $crate::MarketDescriptor {
+            id: <$name>::ID,
+            name: <$name>::NAME,
+            extension_name: <$name>::EXTENSION_NAME,
+            storage: <$repr as $crate::EnumRepr>::MARKET_STORAGE,
+            members: &[$($crate::MarketMember { code: $code as u16, name: $spelling, description: $doc },)+],
+            value_rank: $value_rank,
+            dtype_rank: $dtype_rank,
+            shape: $shape,
+            read: |text| <$name>::read(text).map(|member| member.code() as u16),
+        };
+
+        // The members are listed in code order, which the register's
+        // lookup by code relies on.
+        const _: () = {
+            let members = $kind_static.members;
+            let mut index = 1;
+            while index < members.len() {
+                assert!(members[index - 1].code < members[index].code, "enum members are listed in code order");
+                index += 1;
+            }
+        };
+
+        impl $crate::Value for $name {
+            fn dtype(&self) -> $crate::Result<$crate::DataType> {
+                Ok($kind_static.dtype())
+            }
+
+            fn into_scalar(self) -> $crate::Scalar {
+                $kind_static.adopt_code(self.code() as u16)
+            }
+
+            fn from_scalar(value: &$crate::Scalar) -> Option<&Self> {
+                match value {
+                    // `ALL` is in code order, so the member's own place is
+                    // one search, never a scan.
+                    $crate::Scalar::Market(held) if held.id() == Self::ID => Self::ALL
+                        .binary_search_by_key(&held.code(), |member| u16::from(member.code()))
+                        .ok()
+                        .map(|index| &Self::ALL[index]),
+                    _ => None,
+                }
+            }
+        }
+
+        impl $crate::MarketValue for $name {
+            const KIND: &'static $crate::MarketDescriptor = &$kind_static;
+
+            fn into_scalar(self) -> $crate::Scalar {
+                $kind_static.adopt_code(self.code() as u16)
+            }
+
+            fn from_scalar(value: &$crate::Scalar) -> Option<Self> {
+                <Self as $crate::Value>::from_scalar(value).copied()
+            }
+        }
+
+        impl $crate::EnumValue for $name {
+            const ALL: &'static [Self] = <$name>::ALL;
+            type Repr = $repr;
+
+            fn code(self) -> $repr {
+                <$name>::code(self)
+            }
+
+            fn as_str(self) -> &'static str {
+                <$name>::as_str(self)
+            }
+
+            fn description(self) -> &'static str {
+                <$name>::description(self)
+            }
+
+            fn from_code(code: $repr) -> Option<Self> {
+                <$name>::from_code(code)
+            }
+
+            fn read(spelling: &str) -> $crate::Result<Self> {
+                <$name>::read(spelling)
+            }
+
+            fn read_code(code: i64) -> $crate::Result<Self> {
+                <$name>::read_code(code)
+            }
+        }
+
+        impl From<$name> for $crate::Scalar {
+            fn from(value: $name) -> Self {
+                $crate::MarketValue::into_scalar(value)
+            }
+        }
+
+        impl From<$name> for $repr {
+            fn from(value: $name) -> Self {
+                value.code()
+            }
+        }
+
+        impl TryFrom<$repr> for $name {
+            type Error = $crate::Error;
+
+            fn try_from(code: $repr) -> $crate::Result<Self> {
+                Self::read_code(i64::from(code))
+            }
+        }
+    };
+    // The member table and what every leaf answers over it, written once
+    // for both kinds of leaf.
+    (@members
         $(#[$outer:meta])*
         $vis:vis enum $name:ident: $repr:ty, kind = $kind:literal, extension = $extension:path, aliases = $aliases:path {
             $($(#[$meta:meta])* $variant:ident = $code:literal as $spelling:literal: $doc:literal,)+
@@ -345,73 +574,6 @@ macro_rules! enum_leaf {
             }
         }
 
-        impl $crate::Value for $name {
-            fn dtype(&self) -> $crate::Result<$crate::DataType> {
-                Ok($crate::DataType::$name)
-            }
-
-            fn into_scalar(self) -> $crate::Scalar {
-                $crate::Scalar::$name(self)
-            }
-
-            fn from_scalar(value: &$crate::Scalar) -> Option<&Self> {
-                match value {
-                    $crate::Scalar::$name(value) => Some(value),
-                    _ => None,
-                }
-            }
-        }
-
-        impl $crate::EnumValue for $name {
-            const ALL: &'static [Self] = <$name>::ALL;
-            const KIND: &'static str = $kind;
-            const EXTENSION_NAME: &'static str = $extension;
-            type Repr = $repr;
-
-            fn code(self) -> $repr {
-                <$name>::code(self)
-            }
-
-            fn as_str(self) -> &'static str {
-                <$name>::as_str(self)
-            }
-
-            fn description(self) -> &'static str {
-                <$name>::description(self)
-            }
-
-            fn from_code(code: $repr) -> Option<Self> {
-                <$name>::from_code(code)
-            }
-
-            fn read(spelling: &str) -> $crate::Result<Self> {
-                <$name>::read(spelling)
-            }
-
-            fn read_code(code: i64) -> $crate::Result<Self> {
-                <$name>::read_code(code)
-            }
-        }
-
-        impl From<$name> for $crate::Scalar {
-            fn from(value: $name) -> Self {
-                Self::$name(value)
-            }
-        }
-
-        impl From<$name> for $repr {
-            fn from(value: $name) -> Self {
-                value.code()
-            }
-        }
-
-        impl TryFrom<$repr> for $name {
-            type Error = $crate::Error;
-
-            fn try_from(code: $repr) -> $crate::Result<Self> {
-                Self::read_code(i64::from(code))
-            }
-        }
     };
 }
 
@@ -430,18 +592,22 @@ pub trait EnumRepr:
     const ARROW: arrow_schema::DataType;
     /// The bytes one stored code takes.
     const BYTES: usize;
+    /// The storage a registered enum of this width declares.
+    const MARKET_STORAGE: crate::MarketStorage;
 }
 
 impl EnumRepr for u8 {
     type Primitive = arrow_array::types::UInt8Type;
     const ARROW: arrow_schema::DataType = arrow_schema::DataType::UInt8;
     const BYTES: usize = 1;
+    const MARKET_STORAGE: crate::MarketStorage = crate::MarketStorage::Code8;
 }
 
 impl EnumRepr for u16 {
     type Primitive = arrow_array::types::UInt16Type;
     const ARROW: arrow_schema::DataType = arrow_schema::DataType::UInt16;
     const BYTES: usize = 2;
+    const MARKET_STORAGE: crate::MarketStorage = crate::MarketStorage::Code16;
 }
 
 impl DataType {
@@ -452,6 +618,7 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// assert!(DataType::State.is_enum());
+    /// assert!(DataType::side().is_enum());
     /// assert!(!DataType::Int32.is_enum());
     /// ```
     #[must_use]
@@ -460,68 +627,42 @@ impl DataType {
     }
 }
 
-/// The member of the enum leaf `id` one stored code names, as the scalar it
-/// is: the one door an integer takes into any enum leaf.
+/// The member of the enum leaf `dtype` one stored code names, as the scalar
+/// it is: the one door an integer takes into any enum leaf once its
+/// datatype is in hand.
+///
+/// A registered kind rides in the datatype, so a code reads no register:
+/// the datatype is a validated field's or the register's own answer, and
+/// the kind's member table alone is asked. A caller's value arriving
+/// through a datatype door goes through [`crate::MarketDescriptor::member`],
+/// which holds the kind's claim.
 ///
 /// # Errors
 ///
-/// The leaf's own refusal naming the code, or one naming `id` where it is not
-/// an enum leaf.
-pub(crate) fn read_enum_code(id: DataTypeId, code: i64) -> Result<crate::Scalar> {
-    match id {
-        DataTypeId::State => crate::State::read_code(code).map(crate::Value::into_scalar),
-        DataTypeId::MarketDataKind => {
-            crate::MarketDataKind::read_code(code).map(crate::Value::into_scalar)
-        }
-        DataTypeId::MarketDataType => {
-            crate::MarketDataType::read_code(code).map(crate::Value::into_scalar)
-        }
-        DataTypeId::Side => crate::Side::read_code(code).map(crate::Value::into_scalar),
-        DataTypeId::TimeInForce => {
-            crate::TimeInForce::read_code(code).map(crate::Value::into_scalar)
-        }
-        _ => Err(enum_refusal(id)),
+/// The leaf's own refusal naming the code, or one naming `dtype` where it is
+/// not an enum leaf.
+pub(crate) fn read_enum_code(dtype: &DataType, code: i64) -> Result<crate::Scalar> {
+    match dtype {
+        DataType::State => crate::State::read_code(code).map(crate::Value::into_scalar),
+        DataType::Market(kind) => kind.kind().adopt_member(code),
+        other => Err(enum_refusal(other.id())),
     }
 }
 
-/// The member of the enum leaf `id` one spelling names, as the scalar it is:
-/// the one door text takes into any enum leaf, each leaf reading the
-/// spellings it accepts.
+/// The member of the enum leaf `dtype` one spelling names, as the scalar it
+/// is: the one door text takes into any enum leaf, each leaf reading the
+/// spellings it accepts - a registered kind through its own reader, held to
+/// its member table.
 ///
 /// # Errors
 ///
-/// The leaf's own refusal naming the spelling, or one naming `id` where it
-/// is not an enum leaf.
-pub(crate) fn read_enum_spelling(id: DataTypeId, spelling: &str) -> Result<crate::Scalar> {
-    match id {
-        DataTypeId::State => crate::State::read(spelling).map(crate::Value::into_scalar),
-        DataTypeId::MarketDataKind => {
-            crate::MarketDataKind::read(spelling).map(crate::Value::into_scalar)
-        }
-        DataTypeId::MarketDataType => {
-            crate::MarketDataType::read(spelling).map(crate::Value::into_scalar)
-        }
-        DataTypeId::Side => crate::Side::read(spelling).map(crate::Value::into_scalar),
-        DataTypeId::TimeInForce => {
-            crate::TimeInForce::read(spelling).map(crate::Value::into_scalar)
-        }
-        _ => Err(enum_refusal(id)),
-    }
-}
-
-/// The enum leaf one Arrow extension name imports as.
-///
-/// The name alone; the caller checks the storage is the leaf's own width, so
-/// a `yggdryl.state` over anything else stays the storage it is rather than
-/// silently becoming a state.
-pub(crate) fn enum_for_extension(name: &str) -> Option<DataType> {
-    match name {
-        crate::STATE_EXTENSION_NAME => Some(DataType::State),
-        crate::MARKETDATAKIND_EXTENSION_NAME => Some(DataType::MarketDataKind),
-        crate::MARKETDATATYPE_EXTENSION_NAME => Some(DataType::MarketDataType),
-        crate::SIDE_EXTENSION_NAME => Some(DataType::Side),
-        crate::TIMEINFORCE_EXTENSION_NAME => Some(DataType::TimeInForce),
-        _ => None,
+/// The leaf's own refusal naming the spelling, or one naming `dtype` where
+/// it is not an enum leaf.
+pub(crate) fn read_enum_spelling(dtype: &DataType, spelling: &str) -> Result<crate::Scalar> {
+    match dtype {
+        DataType::State => crate::State::read(spelling).map(crate::Value::into_scalar),
+        DataType::Market(kind) => kind.kind().scalar(spelling),
+        other => Err(enum_refusal(other.id())),
     }
 }
 
@@ -543,15 +684,16 @@ pub(crate) mod casts {
     use arrow_array::{Array, ArrayRef, Int64Array, PrimitiveArray, StringArray};
     use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer};
     use arrow_schema::DataType as ArrowDataType;
+    use smol_str::format_smolstr;
 
     use crate::arrow::Result;
     use crate::budget::MaterializationBudget;
     use crate::cast::columns::is_exposed;
     use crate::cast::{arrow_cast_exposed, downcast, named_cell};
-    use crate::{DataType, EnumRepr, EnumValue, Field};
+    use crate::{DataType, EnumRepr, EnumValue, Field, MarketDescriptor, MarketStorage};
 
-    /// Validates every exposed, non-null value entering an enum leaf and
-    /// stores the code of its member.
+    /// Validates every exposed, non-null value entering the core's enum leaf
+    /// `E` and stores the code of its member.
     ///
     /// An integer source is read as the codes it holds; anything else renders
     /// as Utf8 through Arrow's kernel and is read as the spelling it is. A
@@ -563,6 +705,107 @@ pub(crate) mod casts {
         field: &Field,
         exposure: Option<&BooleanBuffer>,
         budget: &mut MaterializationBudget,
+    ) -> Result<ArrayRef> {
+        ingest_codes::<E::Repr>(
+            array,
+            safe,
+            field,
+            exposure,
+            budget,
+            |code| E::read_code(code).map(E::code),
+            |spelling| E::read(spelling).map(E::code),
+        )
+    }
+
+    /// Validates every exposed, non-null value entering the registered enum
+    /// `kind` and stores the code of its member, at the width its storage
+    /// states.
+    ///
+    /// The caller resolves `kind` once per array off the target field, and
+    /// the storage picks the width once here; every row then reads the
+    /// descriptor alone - an integer as the member code it holds
+    /// ([`MarketDescriptor::adopt_member`]), any other cell rendered as Utf8
+    /// and read through the kind's spelling door
+    /// ([`MarketDescriptor::scalar`]), which holds what the kind's own
+    /// reader answers to its member table - so every code stored is a
+    /// member's, which is what the plan certifies. The failing-cell and null
+    /// policies are [`ingest_enum_array`]'s.
+    pub(crate) fn ingest_market_enum_array(
+        array: &ArrayRef,
+        kind: &'static MarketDescriptor,
+        safe: bool,
+        field: &Field,
+        exposure: Option<&BooleanBuffer>,
+        budget: &mut MaterializationBudget,
+    ) -> Result<ArrayRef> {
+        match kind.storage {
+            MarketStorage::Code8 => ingest_codes::<u8>(
+                array,
+                safe,
+                field,
+                exposure,
+                budget,
+                |code| member_code(kind, code),
+                |spelling| spelled_code(kind, spelling),
+            ),
+            MarketStorage::Code16 => ingest_codes::<u16>(
+                array,
+                safe,
+                field,
+                exposure,
+                budget,
+                |code| member_code(kind, code),
+                |spelling| spelled_code(kind, spelling),
+            ),
+        }
+    }
+
+    /// The code `kind` stores for the member `code` names, at the width
+    /// `R`, refused naming the code where no member holds it.
+    fn member_code<R: EnumRepr>(kind: &'static MarketDescriptor, code: i64) -> crate::Result<R> {
+        stored_code(kind, &kind.adopt_member(code)?)
+    }
+
+    /// The code `kind` stores for the member `spelling` names, read by the
+    /// kind's own reader and held to its member table, at the width `R`;
+    /// the field the cast lands under proved the kind claimed.
+    fn spelled_code<R: EnumRepr>(
+        kind: &'static MarketDescriptor,
+        spelling: &str,
+    ) -> crate::Result<R> {
+        stored_code(kind, &kind.adopt_spelling(spelling)?)
+    }
+
+    /// The code one member of `kind` stores, at the width `R` its storage
+    /// states - which the kind's claim proved every member's code fits.
+    fn stored_code<R: EnumRepr>(
+        kind: &'static MarketDescriptor,
+        member: &crate::Scalar,
+    ) -> crate::Result<R> {
+        member
+            .enum_code()
+            .and_then(|code| R::try_from(i64::from(code)).ok())
+            .ok_or_else(|| crate::Error::InvalidDataType {
+                kind: kind.name,
+                reason: format_smolstr!(
+                    "expected a member of {} stored as {:?}, got {member:?}",
+                    kind.name,
+                    kind.storage
+                ),
+            })
+    }
+
+    /// Reads every exposed cell of `array` as a member's code at the width
+    /// `R`: an integer source through `read_code`, anything else rendered as
+    /// Utf8 through Arrow's kernel and read through `read`.
+    fn ingest_codes<R: EnumRepr>(
+        array: &ArrayRef,
+        safe: bool,
+        field: &Field,
+        exposure: Option<&BooleanBuffer>,
+        budget: &mut MaterializationBudget,
+        read_code: impl Fn(i64) -> crate::Result<R>,
+        read: impl Fn(&str) -> crate::Result<R>,
     ) -> Result<ArrayRef> {
         if array.data_type().is_integer() {
             // Every width, signed or unsigned, is read as the code it holds.
@@ -578,11 +821,11 @@ pub(crate) mod casts {
                 budget,
             )?;
             let codes = downcast::<Int64Array>(codes.as_ref())?;
-            return enum_storage::<E>(field, codes.len(), safe, exposure, budget, |index| {
+            return code_storage::<R>(field, codes.len(), safe, exposure, budget, |index| {
                 if codes.is_valid(index) {
-                    Some(E::read_code(codes.value(index)))
+                    Some(read_code(codes.value(index)))
                 } else {
-                    array.is_valid(index).then(|| E::read_code(i64::MAX))
+                    array.is_valid(index).then(|| read_code(i64::MAX))
                 }
             });
         }
@@ -599,46 +842,44 @@ pub(crate) mod casts {
             )?
         };
         let cells = downcast::<StringArray>(text.as_ref())?;
-        enum_storage::<E>(field, cells.len(), safe, exposure, budget, |index| {
-            cells.is_valid(index).then(|| E::read(cells.value(index)))
+        code_storage::<R>(field, cells.len(), safe, exposure, budget, |index| {
+            cells.is_valid(index).then(|| read(cells.value(index)))
         })
     }
 
-    /// Builds the codes of an enum column, at the leaf's width, from one
+    /// Builds the codes of an enum column, at the width `R`, from one
     /// reading per row.
-    fn enum_storage<E: EnumValue>(
+    fn code_storage<R: EnumRepr>(
         field: &Field,
         rows: usize,
         safe: bool,
         exposure: Option<&BooleanBuffer>,
         budget: &mut MaterializationBudget,
-        cell: impl Fn(usize) -> Option<crate::Result<E>>,
+        cell: impl Fn(usize) -> Option<crate::Result<R>>,
     ) -> Result<ArrayRef> {
         budget.add_array(field.dtype(), rows)?;
-        let mut codes = vec![<E::Repr>::default(); rows];
+        let mut codes = vec![R::default(); rows];
         let mut validity = BooleanBufferBuilder::new(rows);
         for (index, code) in codes.iter_mut().enumerate() {
-            let member = match is_exposed(exposure, index).then(|| cell(index)).flatten() {
-                Some(Ok(member)) => Some(member),
+            let stored = match is_exposed(exposure, index).then(|| cell(index)).flatten() {
+                Some(Ok(read)) => Some(read),
                 Some(Err(_)) if safe => None,
                 Some(read @ Err(_)) => Some(named_cell(field, index, read)?),
                 None => None,
             };
-            if let Some(member) = member {
-                *code = member.code();
+            if let Some(stored) = stored {
+                *code = stored;
             }
-            validity.append(member.is_some());
+            validity.append(stored.is_some());
         }
-        Ok(Arc::new(
-            PrimitiveArray::<<E::Repr as EnumRepr>::Primitive>::new(
-                codes.into(),
-                Some(NullBuffer::new(validity.finish())),
-            ),
-        ))
+        Ok(Arc::new(PrimitiveArray::<R::Primitive>::new(
+            codes.into(),
+            Some(NullBuffer::new(validity.finish())),
+        )))
     }
 }
 
-pub(crate) use casts::ingest_enum_array;
+pub(crate) use casts::{ingest_enum_array, ingest_market_enum_array};
 
 // ------------------------------------------------------------------------
 // Arrow projection: a key width over the values it stands for.

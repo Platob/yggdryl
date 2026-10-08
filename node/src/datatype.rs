@@ -125,11 +125,11 @@ impl JsDataType {
             "large_cp1252" => CoreDataType::large_cp1252(),
             "cp1252_view" => CoreDataType::cp1252_view(),
             "large_cp1252_view" => CoreDataType::large_cp1252_view(),
-            "side" => CoreDataType::Side,
+            "side" => CoreDataType::side(),
             "state" => CoreDataType::State,
-            "marketdatakind" => CoreDataType::MarketDataKind,
-            "marketdatatype" => CoreDataType::MarketDataType,
-            "timeinforce" => CoreDataType::TimeInForce,
+            "marketdatakind" => CoreDataType::marketdatakind(),
+            "marketdatatype" => CoreDataType::marketdatatype(),
+            "timeinforce" => CoreDataType::timeinforce(),
             "unit" => CoreDataType::Unit,
             "ric" => CoreDataType::Ric,
             "uuid" => CoreDataType::uuid(),
@@ -320,8 +320,8 @@ impl JsDataType {
     #[napi(ts_return_type = "Record<string, DataType>")]
     pub fn logical_names(env: &Env) -> Result<Object<'_>> {
         let mut names = Object::new(env)?;
-        for (name, dtype) in CoreDataType::LOGICAL_NAMES {
-            names.set(*name, Self::from_core(dtype.clone()))?;
+        for (name, dtype) in CoreDataType::logical_names() {
+            names.set(name, Self::from_core(dtype))?;
         }
         Ok(names)
     }

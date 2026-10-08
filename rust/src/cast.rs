@@ -50,7 +50,7 @@ use crate::cast::text::{blank_text_as_null, holds_text, ingest_text_values, keep
 use crate::decimal::casts::{
     holds_decimal, ingest_float_values, is_float_arrow, render_decimal_text,
 };
-use crate::enums::{enum_refusal, ingest_enum_array};
+use crate::enums::{enum_refusal, ingest_enum_array, ingest_market_enum_array};
 use crate::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
 use crate::json::casts::{ingest_json_array, render_json_array};
 use crate::path::{Path, Segment};
@@ -1720,10 +1720,13 @@ impl ArrayCastPlan {
             // An enum column written as its own leaf holds member codes;
             // bare integers are codes nothing has checked under this leaf
             // yet, and another leaf's codes were refused above.
-            held if held.is_enum() => !matches!(
+            DataType::Market(kind) => !matches!(
                 source_extension.as_ref(),
-                Some(RecognizedExtension::Enum(source)) if source == field.dtype()
+                Some(RecognizedExtension::Market(source)) if source.id == kind.id()
             ),
+            DataType::State => {
+                !matches!(source_extension.as_ref(), Some(RecognizedExtension::State))
+            }
             DataType::Uuid => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Uuid)),
             DataType::Version => !matches!(
                 source_extension.as_ref(),
@@ -2012,7 +2015,8 @@ impl ArrayCastPlan {
                         Some(
                             RecognizedExtension::String(_)
                                 | RecognizedExtension::Code(_)
-                                | RecognizedExtension::Enum(_)
+                                | RecognizedExtension::Market(_)
+                                | RecognizedExtension::State
                                 | RecognizedExtension::Uuid
                         )
                     )) =>
@@ -2039,7 +2043,8 @@ impl ArrayCastPlan {
                             .string_parameters()
                             .map_or(StringSource::Bare, StringSource::String),
                         Some(RecognizedExtension::Code(code)) => StringSource::Code(code.clone()),
-                        Some(RecognizedExtension::Enum(held)) => StringSource::Enum(held.clone()),
+                        Some(RecognizedExtension::Market(kind)) => StringSource::Enum(kind.dtype()),
+                        Some(RecognizedExtension::State) => StringSource::Enum(DataType::State),
                         Some(RecognizedExtension::Uuid) => StringSource::Uuid,
                         _ => StringSource::Bare,
                     },
@@ -2611,8 +2616,9 @@ impl ArrayCastPlan {
             ArrayCastKind::BytesIngest => {
                 ingest_bytes_array(&array, self.safe(), &self.field, exposure, budget)?
             }
-            // One match per array selects the enum leaf; every row after it
-            // runs against that leaf's members.
+            // One match per array selects the enum leaf - the core's `State`
+            // by its type, a registered enum by its descriptor - and every row
+            // after it runs against that leaf's members.
             ArrayCastKind::EnumIngest => match self.field.dtype() {
                 DataType::State => ingest_enum_array::<crate::State>(
                     &array,
@@ -2621,29 +2627,9 @@ impl ArrayCastPlan {
                     exposure,
                     budget,
                 )?,
-                DataType::MarketDataKind => ingest_enum_array::<crate::MarketDataKind>(
+                DataType::Market(kind) => ingest_market_enum_array(
                     &array,
-                    self.safe(),
-                    &self.field,
-                    exposure,
-                    budget,
-                )?,
-                DataType::Side => ingest_enum_array::<crate::Side>(
-                    &array,
-                    self.safe(),
-                    &self.field,
-                    exposure,
-                    budget,
-                )?,
-                DataType::MarketDataType => ingest_enum_array::<crate::MarketDataType>(
-                    &array,
-                    self.safe(),
-                    &self.field,
-                    exposure,
-                    budget,
-                )?,
-                DataType::TimeInForce => ingest_enum_array::<crate::TimeInForce>(
-                    &array,
+                    kind.kind(),
                     self.safe(),
                     &self.field,
                     exposure,
@@ -3104,6 +3090,13 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         .dtype()
         .string_parameters()
         .is_some_and(is_text_storage);
+    let other_enum = |source: DataType, held: &DataType| Error::Unsupported {
+        kind: held.name(),
+        reason: format!(
+            "casting {source} to {held} is not supported: a member code of one enum leaf is a \
+             value of another vocabulary, so a column of one enum is never read as another"
+        ),
+    };
     match (target.dtype(), source) {
         (DataType::Variant, RecognizedExtension::Variant) => Ok(()),
         (_, RecognizedExtension::Code(_) | RecognizedExtension::String(_)) => Ok(()),
@@ -3113,17 +3106,13 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         // An enum source is member codes: its own leaf re-reads them, an
         // integer reads the codes, and text spells each member's name.
         // Another enum leaf is another vocabulary, which no code crosses.
-        (held, RecognizedExtension::Enum(source)) if held.is_enum() && source != held => {
-            Err(Error::Unsupported {
-                kind: held.name(),
-                reason: format!(
-                    "casting {source} to {held} is not supported: a member code of one enum \
-                     leaf is a value of another vocabulary, so a column of one enum is never \
-                     read as another"
-                ),
-            })
+        (held, RecognizedExtension::Market(source)) if held.is_enum() && held.id() != source.id => {
+            Err(other_enum(source.dtype(), held))
         }
-        (_, RecognizedExtension::Enum(_)) => Ok(()),
+        (held @ DataType::Market(_), RecognizedExtension::State) => {
+            Err(other_enum(DataType::State, held))
+        }
+        (_, RecognizedExtension::Market(_) | RecognizedExtension::State) => Ok(()),
         // A fixed decimal source is its decimal storage with the scale
         // already fixed: every target reads it as it reads that storage,
         // except text, which spells the leaf's own trimmed text.

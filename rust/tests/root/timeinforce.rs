@@ -32,7 +32,7 @@ fn shipped() -> Vec<(String, String)> {
 
 #[test]
 fn the_time_in_force_is_an_enum_leaf_over_uint8_codes() {
-    let dtype = DataType::TimeInForce;
+    let dtype = DataType::timeinforce();
     assert_eq!(DataType::from_str("timeinforce").unwrap(), dtype);
     assert_eq!(DataType::timeinforce(), dtype);
     assert_eq!(dtype.to_string(), "timeinforce");
@@ -116,12 +116,12 @@ fn a_spelling_reads_as_one_member_and_a_stranger_is_refused() {
 
     // The value door reads the same spellings and codes.
     assert_eq!(
-        DataType::TimeInForce.scalar("ioc").unwrap(),
-        Scalar::TimeInForce(TimeInForce::ImmediateOrCancel)
+        DataType::timeinforce().scalar("ioc").unwrap(),
+        Scalar::from(TimeInForce::ImmediateOrCancel)
     );
     assert_eq!(
-        DataType::TimeInForce.scalar(5_i32).unwrap(),
-        Scalar::TimeInForce(TimeInForce::FillOrKill)
+        DataType::timeinforce().scalar(5_i32).unwrap(),
+        Scalar::from(TimeInForce::FillOrKill)
     );
 }
 
@@ -151,14 +151,18 @@ fn the_retired_spelling_unkn_names_no_time_in_force() {
         serde_json::from_str::<TimeInForce>("\"UKNW\"").unwrap(),
         TimeInForce::Unknown
     );
-    assert!(DataType::TimeInForce.scalar(Scalar::from("UNKN")).is_err());
+    assert!(
+        DataType::timeinforce()
+            .scalar(Scalar::from("UNKN"))
+            .is_err()
+    );
 }
 
 /// A text column lands as the codes its spellings name, and the column
 /// renders back as the stored names.
 #[test]
 fn a_text_column_lands_as_codes_and_renders_as_names() {
-    let field = Field::new("timeinforce", DataType::TimeInForce, true);
+    let field = Field::new("timeinforce", DataType::timeinforce(), true);
     let landed = Serie::from_arrow_array(
         Some(&field),
         Arc::new(StringArray::from(vec!["0", "GTC", "ImmediateOrCancel"])) as ArrayRef,
@@ -220,7 +224,7 @@ fn the_timeinforce_wire_contracts_are_pinned() {
         &dtype
     );
     assert_eq!(DataType::from_logical_name("timeinforce").unwrap(), dtype);
-    let logical: Vec<&str> = DataType::LOGICAL_NAMES
+    let logical: Vec<&str> = DataType::logical_names()
         .iter()
         .filter(|(_, held)| *held == dtype)
         .map(|(logical, _)| *logical)

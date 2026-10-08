@@ -787,7 +787,7 @@ There is no partition column. How a layout is cut is the target's to decide: an 
     let message = codec.parse_fix_line(line)?;
     assert_eq!(message.msgpluginside(), Side::Sell);
     assert_eq!(MSGPLUGINSIDE_TAG_NAME, (65_043, "msgpluginside"));
-    assert_eq!(message.get_by_tag(65_043), Some(Scalar::Side(Side::Sell)));
+    assert_eq!(message.get_by_tag(65_043), Some(Scalar::from(Side::Sell)));
     // The session's role, never the order's side.
     assert_eq!(message.get_side(), Side::Buy);
 

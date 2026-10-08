@@ -33,7 +33,8 @@ enum_leaf! {
     /// assert_eq!(TimeInForce::from_fix("Z"), TimeInForce::Other);
     /// ```
     #[non_exhaustive]
-    pub enum TimeInForce: u8, kind = "timeinforce", extension = TIMEINFORCE_EXTENSION_NAME, aliases = timeinforce_aliases {
+    pub enum TimeInForce: u8, kind = "timeinforce", extension = TIMEINFORCE_EXTENSION_NAME, aliases = timeinforce_aliases,
+    market = TIMEINFORCE_KIND [0xc5, 31, 56, 30] {
         #[default]
         Unknown = 0 as "UKNW": "No time in force stated.",
         Day = 1 as "DAY": "Good for the trading day.",
@@ -141,17 +142,22 @@ impl crate::DataType {
     /// Creates the time-in-force datatype: how long an order stands.
     ///
     /// ```
-    /// use yggdryl::DataType;
+    /// use yggdryl::{DataType, TIMEINFORCE_KIND};
     ///
-    /// assert_eq!(DataType::timeinforce(), DataType::TimeInForce);
+    /// assert_eq!(DataType::timeinforce(), TIMEINFORCE_KIND.dtype());
     /// assert_eq!(DataType::timeinforce().to_string(), "timeinforce");
     /// assert!(DataType::timeinforce().is_enum());
     /// ```
     #[must_use]
     pub const fn timeinforce() -> Self {
-        Self::TimeInForce
+        Self::Market(crate::MarketType::new(&TIMEINFORCE_KIND))
     }
 }
 
 // /// A field declared as how long an order stands.
-define_field_types!(TimeInForceType, TimeInForce);
+define_field_types!(
+    TimeInForceType,
+    TimeInForceField,
+    market = TIMEINFORCE_KIND,
+    TimeInForce
+);

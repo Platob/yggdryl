@@ -227,8 +227,8 @@ fn updated_is_the_working_band_stated_anew_over_a_live_predecessor() {
 fn a_state_answers_the_enum_contract_every_enum_leaf_owes() {
     use yggdryl::EnumValue;
 
-    assert_eq!(<State as EnumValue>::KIND, "state");
-    assert_eq!(<State as EnumValue>::EXTENSION_NAME, "yggdryl.state");
+    assert_eq!(State::NAME, "state");
+    assert_eq!(State::EXTENSION_NAME, "yggdryl.state");
     assert_eq!(<State as EnumValue>::ALL, State::ALL);
     assert_eq!(EnumValue::code(State::Filled), 8003);
     assert_eq!(EnumValue::as_str(State::Filled), "FILLED");
@@ -760,7 +760,7 @@ fn the_state_wire_contracts_are_pinned() {
     assert_eq!(dtype.id().as_str(), "state");
     assert_eq!(Field::from_str("value state").unwrap().dtype(), &dtype);
     assert_eq!(DataType::from_logical_name("state").unwrap(), dtype);
-    let logical: Vec<&str> = DataType::LOGICAL_NAMES
+    let logical: Vec<&str> = DataType::logical_names()
         .iter()
         .filter(|(_, held)| *held == dtype)
         .map(|(logical, _)| *logical)

@@ -709,9 +709,7 @@ mod field {
                 reason,
                 ..
             } => field_parse_error(position.saturating_add(nested), reason),
-            Error::UnknownDataType(name) => {
-                field_parse_error(position, format!("unknown datatype {name:?}"))
-            }
+            unknown @ Error::UnknownDataType(_) => field_parse_error(position, unknown.to_string()),
             Error::InvalidDataType { kind, reason } => {
                 field_parse_error(position, format!("invalid {kind} datatype: {reason}"))
             }
@@ -853,7 +851,8 @@ impl fmt::Display for DataType {
         use DataType as D;
         match self {
             // Every parameter-free type displays as its variant name, which
-            // `DataTypeId::as_str` already spells; only parameters need an arm.
+            // `DataType::name` already spells - a registered kind's its own -
+            // so only parameters need an arm.
             D::Null
             | D::Boolean
             | D::Int8
@@ -877,11 +876,8 @@ impl fmt::Display for DataType {
             | D::Bbg
             | D::Ric
             | D::Figi
-            | D::Side
+            | D::Market(_)
             | D::State
-            | D::MarketDataKind
-            | D::MarketDataType
-            | D::TimeInForce
             | D::Unit
             | D::Forex
             | D::Lei
@@ -1330,15 +1326,21 @@ impl<'a> Parser<'a> {
             }
             "map" => self.parse_map(depth + 1)?,
             "runendencoded" | "runend" | "ree" => self.parse_run_end(depth + 1)?,
-            // A registered logical name is one more spelling of the datatype
-            // it names, resolved through the registry and never a copied
-            // list. The keyword is already folded, so the lookup reuses it.
+            // A registered logical name - a market kind's own name among
+            // them, read from the market register - is one more spelling of
+            // the datatype it names, resolved through the register and never
+            // a copied list. The keyword is already folded, so the lookup
+            // reuses it, and a word no register answers is refused naming
+            // the registration it lacks.
             _ => match crate::vocabulary::folded_logical_name(&keyword) {
                 Some(dtype) => dtype,
+                // Positioned, as every refusal of the grammar is, and
+                // naming the registration the word lacks.
                 None => {
-                    return Err(
-                        self.error_at(token.start, format_smolstr!("unknown datatype {word:?}"))
-                    );
+                    return Err(self.error_at(
+                        token.start,
+                        format_smolstr!("{}", crate::market::unregistered(format_args!("{word}"))),
+                    ));
                 }
             },
         };

@@ -208,7 +208,7 @@ fn the_isin_wire_contracts_are_pinned() {
     assert_eq!(dtype.id().as_str(), "isin");
     assert_eq!(Field::from_str("value isin").unwrap().dtype(), &dtype);
     assert_eq!(DataType::from_logical_name("isin").unwrap(), dtype);
-    let logical: Vec<&str> = DataType::LOGICAL_NAMES
+    let logical: Vec<&str> = DataType::logical_names()
         .iter()
         .filter(|(_, held)| *held == dtype)
         .map(|(logical, _)| *logical)

@@ -12,8 +12,8 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::{
-    ArrowCastOptions, DataType, DataTypeId, DataTypeKind, DigestAlgorithm, EnumValue, Field,
-    MarketDataKind, Scalar, Serie,
+    ArrowCastOptions, DataType, DataTypeKind, DigestAlgorithm, Field, MARKETDATAKIND_KIND,
+    MarketDataKind, MarketSerie, Scalar, Serie,
 };
 
 fn strict() -> ArrowCastOptions {
@@ -103,7 +103,7 @@ fn the_retired_spelling_unkn_names_no_kind() {
         MarketDataKind::Unknown
     );
     assert!(
-        DataType::MarketDataKind
+        DataType::marketdatakind()
             .scalar(Scalar::from("UNKN"))
             .is_err()
     );
@@ -309,72 +309,69 @@ fn a_kind_answers_its_code_in_any_case_and_its_folded_word() {
             Some(expected)
         );
     }
-    assert_eq!(<MarketDataKind as EnumValue>::KIND, "marketdatakind");
-    assert_eq!(
-        <MarketDataKind as EnumValue>::EXTENSION_NAME,
-        "yggdryl.marketdatakind"
-    );
+    assert_eq!(MarketDataKind::NAME, "marketdatakind");
+    assert_eq!(MarketDataKind::EXTENSION_NAME, "yggdryl.marketdatakind");
 }
 
 #[test]
 fn a_kind_is_a_datatype_of_the_enum_family() {
-    assert_eq!(DataType::MarketDataKind.id(), DataTypeId::MarketDataKind);
-    assert_eq!(DataTypeId::MarketDataKind.as_u8(), 0xc2);
-    assert_eq!(DataTypeId::MarketDataKind.as_str(), "marketdatakind");
-    assert_eq!(DataTypeId::MarketDataKind.kind(), DataTypeKind::Enum);
-    assert!(DataTypeKind::Enum.contains(DataTypeId::MarketDataKind));
-    assert!(DataType::MarketDataKind.is_enum());
-    assert!(!DataType::MarketDataKind.is_code());
-    assert!(!DataType::MarketDataKind.is_string());
-    assert_eq!(DataType::MarketDataKind.code_width(), None);
-    assert_eq!(DataType::MarketDataKind.code_name(), None);
+    assert_eq!(DataType::marketdatakind().id(), MarketDataKind::ID);
+    assert_eq!(MarketDataKind::ID.as_u8(), 0xc2);
+    assert_eq!(MarketDataKind::ID.as_str(), "marketdatakind");
+    assert_eq!(MarketDataKind::ID.kind(), DataTypeKind::Enum);
+    assert!(DataTypeKind::Enum.contains(MarketDataKind::ID));
+    assert!(DataType::marketdatakind().is_enum());
+    assert!(!DataType::marketdatakind().is_code());
+    assert!(!DataType::marketdatakind().is_string());
+    assert_eq!(DataType::marketdatakind().code_width(), None);
+    assert_eq!(DataType::marketdatakind().code_name(), None);
     assert_eq!(
         DataType::from_str("marketdatakind").unwrap(),
-        DataType::MarketDataKind
+        DataType::marketdatakind()
     );
     assert_eq!(
         DataType::from_str("MarketDataKind").unwrap(),
-        DataType::MarketDataKind
+        DataType::marketdatakind()
     );
-    assert_eq!(DataType::MarketDataKind.to_string(), "marketdatakind");
-    assert_eq!(DataType::marketdatakind(), DataType::MarketDataKind);
+    assert_eq!(DataType::marketdatakind().to_string(), "marketdatakind");
+    assert_eq!(DataType::marketdatakind(), MARKETDATAKIND_KIND.dtype());
     assert_eq!(
-        DataType::MarketDataKind.default_value().unwrap(),
-        Scalar::MarketDataKind(MarketDataKind::Unknown)
+        DataType::marketdatakind().default_value().unwrap(),
+        Scalar::from(MarketDataKind::Unknown)
     );
     assert!(
-        DataType::MarketDataKind
-            .is_default_value(&Scalar::MarketDataKind(MarketDataKind::Unknown))
+        DataType::marketdatakind()
+            .is_default_value(&Scalar::from(MarketDataKind::Unknown))
             .unwrap()
     );
     assert!(
-        !DataType::MarketDataKind
-            .is_default_value(&Scalar::MarketDataKind(MarketDataKind::Order))
+        !DataType::marketdatakind()
+            .is_default_value(&Scalar::from(MarketDataKind::Order))
             .unwrap()
     );
     // The datatype's own wire is the one spelling, and it round-trips.
-    let json = DataType::MarketDataKind.into_json().unwrap();
+    let json = DataType::marketdatakind().into_json().unwrap();
     assert_eq!(json, r#"{"type":"marketdatakind"}"#);
     assert_eq!(
         DataType::from_json(&json).unwrap(),
-        DataType::MarketDataKind
+        DataType::marketdatakind()
     );
-    let rendered = serde_json::to_string(&DataType::MarketDataKind).unwrap();
+    let rendered = serde_json::to_string(&DataType::marketdatakind()).unwrap();
     assert_eq!(rendered, r#"{"type":"marketdatakind"}"#);
     assert_eq!(
         serde_json::from_str::<DataType>(&rendered).unwrap(),
-        DataType::MarketDataKind
+        DataType::marketdatakind()
     );
     assert_eq!(
         DataType::from_logical_name("marketdatakind").unwrap(),
-        DataType::MarketDataKind
+        DataType::marketdatakind()
     );
 }
 
 #[test]
 fn the_value_door_reads_a_member_a_code_and_a_spelling() {
-    let field = DataType::MarketDataKind.required_field("marketdatakind");
-    let order = Scalar::MarketDataKind(MarketDataKind::Order);
+    let field = DataType::marketdatakind().required_field("marketdatakind");
+    let order = Scalar::from(MarketDataKind::Order);
     assert_eq!(field.scalar(order.clone()).unwrap(), order);
     assert_eq!(field.scalar(Scalar::from(10_i32)).unwrap(), order);
     assert_eq!(field.scalar(Scalar::from(10_i64)).unwrap(), order);
@@ -390,8 +387,8 @@ fn the_value_door_reads_a_member_a_code_and_a_spelling() {
             .is_err()
     );
     assert_eq!(order.as_str(), Some("ORDR"));
-    assert_eq!(order.dtype().unwrap(), DataType::MarketDataKind);
-    assert_eq!(order.id(), DataTypeId::MarketDataKind);
+    assert_eq!(order.dtype().unwrap(), DataType::marketdatakind());
+    assert_eq!(order.id(), MarketDataKind::ID);
     assert_eq!(order.kind(), "marketdatakind");
     assert!(order.is_enum());
     assert!(!order.is_code());
@@ -404,17 +401,14 @@ fn the_value_door_reads_a_member_a_code_and_a_spelling() {
     );
     // The members order by code, and a kind is one kind apart from a state
     // of the same code.
-    assert!(
-        Scalar::MarketDataKind(MarketDataKind::Book)
-            < Scalar::MarketDataKind(MarketDataKind::Trade)
-    );
+    assert!(Scalar::from(MarketDataKind::Book) < Scalar::from(MarketDataKind::Trade));
     assert_ne!(order, Scalar::from(10_i32));
     assert_ne!(order, Scalar::from("ORDR"));
 }
 
 #[test]
 fn a_column_is_uint8_codes_under_the_marketdatakind_extension() {
-    let field = Field::new("marketdatakind", DataType::MarketDataKind, true);
+    let field = Field::new("marketdatakind", DataType::marketdatakind(), true);
     let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(
@@ -425,12 +419,12 @@ fn a_column_is_uint8_codes_under_the_marketdatakind_extension() {
     assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
 
     let values = [
-        Scalar::MarketDataKind(MarketDataKind::Order),
+        Scalar::from(MarketDataKind::Order),
         Scalar::Null,
-        Scalar::MarketDataKind(MarketDataKind::Trade),
+        Scalar::from(MarketDataKind::Trade),
     ];
     let serie = Serie::from_scalars(field.clone(), values.clone()).unwrap();
-    assert!(matches!(serie, Serie::MarketDataKind(_)));
+    assert!(matches!(serie, Serie::Market(MarketSerie::Code8(_))));
     let array = serie.require_arrow_array().unwrap();
     let codes = array
         .as_any()
@@ -442,13 +436,10 @@ fn a_column_is_uint8_codes_under_the_marketdatakind_extension() {
     for (index, value) in values.iter().enumerate() {
         assert_eq!(&back.scalar(index).unwrap(), value, "row {index}");
     }
-    let one = Serie::from_scalars(
-        field.clone(),
-        [Scalar::MarketDataKind(MarketDataKind::Quotation)],
-    )
-    .unwrap()
-    .into_arrow_scalar()
-    .unwrap();
+    let one = Serie::from_scalars(field.clone(), [Scalar::from(MarketDataKind::Quotation)])
+        .unwrap()
+        .into_arrow_scalar()
+        .unwrap();
     assert_eq!(
         one.into_inner()
             .as_any()
@@ -479,7 +470,7 @@ fn a_column_is_uint8_codes_under_the_marketdatakind_extension() {
 
 #[test]
 fn integers_and_text_land_as_members_and_a_stranger_is_refused_by_row() {
-    let field = Field::new("marketdatakind", DataType::MarketDataKind, true);
+    let field = Field::new("marketdatakind", DataType::marketdatakind(), true);
     let landed = Serie::from_arrow_array(
         Some(&field),
         Arc::new(Int64Array::from(vec![Some(10), None, Some(21)])) as ArrayRef,
@@ -488,12 +479,12 @@ fn integers_and_text_land_as_members_and_a_stranger_is_refused_by_row() {
     .unwrap();
     assert_eq!(
         landed.scalar(0).unwrap(),
-        Scalar::MarketDataKind(MarketDataKind::Order)
+        Scalar::from(MarketDataKind::Order)
     );
     assert_eq!(landed.scalar(1).unwrap(), Scalar::Null);
     assert_eq!(
         landed.scalar(2).unwrap(),
-        Scalar::MarketDataKind(MarketDataKind::Trade)
+        Scalar::from(MarketDataKind::Trade)
     );
 
     let refused = Serie::from_arrow_array(
@@ -512,7 +503,7 @@ fn integers_and_text_land_as_members_and_a_stranger_is_refused_by_row() {
     .unwrap();
     assert_eq!(safe.scalar(1).unwrap(), Scalar::Null);
 
-    let required = Field::new("marketdatakind", DataType::MarketDataKind, false);
+    let required = Field::new("marketdatakind", DataType::marketdatakind(), false);
     let landed = Serie::from_arrow_array(
         Some(&required),
         Arc::new(StringArray::from(vec!["ORDR", "quotation", "exec"])) as ArrayRef,
@@ -521,15 +512,15 @@ fn integers_and_text_land_as_members_and_a_stranger_is_refused_by_row() {
     .unwrap();
     assert_eq!(
         landed.scalar(0).unwrap(),
-        Scalar::MarketDataKind(MarketDataKind::Order)
+        Scalar::from(MarketDataKind::Order)
     );
     assert_eq!(
         landed.scalar(1).unwrap(),
-        Scalar::MarketDataKind(MarketDataKind::Quotation)
+        Scalar::from(MarketDataKind::Quotation)
     );
     assert_eq!(
         landed.scalar(2).unwrap(),
-        Scalar::MarketDataKind(MarketDataKind::Execution)
+        Scalar::from(MarketDataKind::Execution)
     );
     let text = landed
         .cast(
@@ -571,9 +562,9 @@ fn a_kind_crosses_the_value_stream_the_digest_and_the_structured_codecs() {
         MarketDataKind::Order,
         MarketDataKind::Trade,
     ] {
-        let value = Scalar::MarketDataKind(member);
+        let value = Scalar::from(member);
         let bytes = value.into_value_bytes();
-        assert_eq!(bytes[1], DataTypeId::MarketDataKind.as_u8());
+        assert_eq!(bytes[1], MarketDataKind::ID.as_u8());
         // The canonical four bytes, whatever width a column stores.
         assert_eq!(bytes[2..], i32::from(member.code()).to_le_bytes());
         assert_eq!(Scalar::decode_value_bytes(&bytes).unwrap(), value);
@@ -581,7 +572,7 @@ fn a_kind_crosses_the_value_stream_the_digest_and_the_structured_codecs() {
         // free to change, and a state of the same code is another value.
         assert_ne!(
             value.stable_hash(),
-            Scalar::MarketDataKind(MarketDataKind::Book).stable_hash(),
+            Scalar::from(MarketDataKind::Book).stable_hash(),
             "{member}"
         );
         assert_ne!(
@@ -605,7 +596,7 @@ fn a_kind_crosses_the_value_stream_the_digest_and_the_structured_codecs() {
     assert_eq!(read, MarketDataKind::Order);
     assert!(serde_json::from_value::<MarketDataKind>(serde_json::json!("ORDERS")).is_err());
     // The scalar's structural wire names the leaf.
-    let value = Scalar::MarketDataKind(MarketDataKind::Order);
+    let value = Scalar::from(MarketDataKind::Order);
     let wire = serde_json::to_string(&value).unwrap();
     assert_eq!(wire, r#"{"type":"marketdatakind","value":"ORDR"}"#);
     assert_eq!(serde_json::from_str::<Scalar>(&wire).unwrap(), value);
@@ -637,7 +628,7 @@ fn a_kind_filters_and_casts_by_its_member_in_an_expression() {
     use yggdryl::expression::{Expression, Filter};
 
     let root = DataType::from(
-        yggdryl::StructType::from_fields([DataType::MarketDataKind.nullable_field("kind")])
+        yggdryl::StructType::from_fields([DataType::marketdatakind().nullable_field("kind")])
             .unwrap(),
     )
     .required_field("row");
@@ -651,7 +642,7 @@ fn a_kind_filters_and_casts_by_its_member_in_an_expression() {
         root.fields()[0].clone(),
         members
             .iter()
-            .map(|member| Scalar::MarketDataKind(*member))
+            .map(|member| Scalar::from(*member))
             .collect::<Vec<_>>(),
     )
     .unwrap()
@@ -799,7 +790,7 @@ fn the_marketdatakind_wire_contracts_are_pinned() {
         DataType::from_logical_name("marketdatakind").unwrap(),
         dtype
     );
-    let logical: Vec<&str> = DataType::LOGICAL_NAMES
+    let logical: Vec<&str> = DataType::logical_names()
         .iter()
         .filter(|(_, held)| *held == dtype)
         .map(|(logical, _)| *logical)

@@ -85,12 +85,14 @@ impl Scalar {
                     self.as_str().expect("a code borrowed its text").as_bytes(),
                 ));
             }
-            held @ crate::enum_scalars!() => {
+            Self::State(held) => {
                 // The canonical four bytes, whatever width a column holds.
-                return Some(ValueBytes::inline(
-                    &i32::from(held.enum_code().expect("an enum member stores its code"))
-                        .to_le_bytes(),
-                ));
+                return Some(ValueBytes::inline(&i32::from(held.code()).to_le_bytes()));
+            }
+            // A registered enum member is the canonical four bytes of its
+            // code.
+            Self::Market(held) => {
+                return Some(ValueBytes::inline(&i32::from(held.code()).to_le_bytes()));
             }
             Self::Timezone(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::MimeType(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
@@ -351,12 +353,15 @@ impl Scalar {
             }
             // An enum member feeds the code it stores under its leaf's tag, so
             // renaming a member moves no digest.
-            held @ crate::enum_scalars!() => {
+            Self::State(held) => {
+                write_tag(sink, DataTypeId::State);
+                sink.write(&i32::from(held.code()).to_le_bytes());
+            }
+            // A registered enum feeds the code it stores under its own tag, as
+            // a state does, so renaming a member moves no digest.
+            Self::Market(held) => {
                 write_tag(sink, held.id());
-                sink.write(
-                    &i32::from(held.enum_code().expect("an enum member stores its code"))
-                        .to_le_bytes(),
-                );
+                sink.write(&i32::from(held.code()).to_le_bytes());
             }
             Self::Uuid(value) => {
                 write_tag(sink, DataTypeId::Uuid);

@@ -6,7 +6,7 @@ How long an order stands: FIX `TimeInForce(59)` as an enum of fifteen members - 
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `timeinforce`, `TimeInForceType`/`TimeInForceField`, the `TimeInForce` enum and `Scalar::TimeInForce`; `DataType::timeinforce()` |
+| Owns | `timeinforce`, the registered kind `TIMEINFORCE_KIND` under `DataType::Market`, its marker `TimeInForceType`, the `TimeInForce` enum; `DataType::timeinforce()` |
 | Validates | A member, the code of one, or a spelling - the stored name in any case, the FIX specification's name folded, or the `TimeInForce(59)` wire value unfolded - reaches one member; anything else is refused rather than stored |
 | Lazy | Nothing - the member table is static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -19,20 +19,20 @@ What `as_str` answers and every text format writes is the member's stored name -
 
 ## DataType
 
-`timeinforce` is the one spelling, `DataType::timeinforce()` the constructor; kind `enum`.
+`timeinforce` is the one spelling, `DataType::timeinforce()` the constructor, `TimeInForce::ID` the id - a [registered kind](../datatype.md#registered-kinds) under `DataType::Market`; kind `enum`.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, DataTypeKind};
+    use yggdryl::{DataType, DataTypeKind, TimeInForce};
 
-    assert_eq!(DataType::timeinforce(), DataType::TimeInForce);
-    assert_eq!(DataType::from_str("timeinforce")?, DataType::TimeInForce);
-    assert_eq!(DataType::TimeInForce.to_string(), "timeinforce");
-    assert_eq!(DataType::TimeInForce.kind(), DataTypeKind::Enum);
-    assert_eq!(DataType::TimeInForce.id().as_u8(), 0xc5);
-    assert!(DataType::TimeInForce.is_enum() && !DataType::TimeInForce.is_code());
-    assert_eq!(DataType::TimeInForce.code_width(), None);
+    assert!(matches!(DataType::timeinforce(), DataType::Market(kind) if kind.id() == TimeInForce::ID));
+    assert_eq!(DataType::from_str("timeinforce")?, DataType::timeinforce());
+    assert_eq!(DataType::timeinforce().to_string(), "timeinforce");
+    assert_eq!(DataType::timeinforce().kind(), DataTypeKind::Enum);
+    assert_eq!(DataType::timeinforce().id().as_u8(), 0xc5);
+    assert!(DataType::timeinforce().is_enum() && !DataType::timeinforce().is_code());
+    assert_eq!(DataType::timeinforce().code_width(), None);
     ```
 
 === "Python"
@@ -58,7 +58,7 @@ What `as_str` answers and every text format writes is the member's stored name -
 
 ## Field
 
-`TimeInForceField` is the typed marker; Python and JavaScript name the factory `timeinforce`.
+`TimeInForceField` is `FieldOf<TimeInForceType>`, `TimeInForceType` the kind's marker over the `Market` variant; Python and JavaScript name the factory `timeinforce`.
 
 === "Rust"
 
@@ -66,8 +66,8 @@ What `as_str` answers and every text format writes is the member's stored name -
     use yggdryl::{DataType, Field, TimeInForceField};
 
     let tif = TimeInForceField::unit("timeinforce", true);
-    assert_eq!(tif.dtype(), &DataType::TimeInForce);
-    assert_eq!(tif.to_field(), Field::new("timeinforce", DataType::TimeInForce, true));
+    assert_eq!(tif.dtype(), &DataType::timeinforce());
+    assert_eq!(tif.to_field(), Field::new("timeinforce", DataType::timeinforce(), true));
     ```
 
 === "Python"
@@ -102,27 +102,27 @@ The value is the member, whichever spelling named it: `GTC` for `GTC`, `gtc`, FI
     ```rust
     use yggdryl::{DataType, Scalar, TimeInForce};
 
-    let gtc = DataType::TimeInForce.scalar("GTC")?;
-    assert_eq!(gtc, Scalar::TimeInForce(TimeInForce::GoodTillCancel));
+    let gtc = DataType::timeinforce().scalar("GTC")?;
+    assert_eq!(gtc, Scalar::from(TimeInForce::GoodTillCancel));
     assert_eq!(gtc.kind(), "timeinforce");
     assert_eq!(TimeInForce::GoodTillCancel.code(), 2);
 
     // The stored name in any case, FIX's name, the wire value and the code
     // reach one member.
-    assert_eq!(DataType::TimeInForce.scalar("gtc")?, gtc);
-    assert_eq!(DataType::TimeInForce.scalar("GoodTillCancel")?, gtc);
-    assert_eq!(DataType::TimeInForce.scalar("1")?, gtc);
-    assert_eq!(DataType::TimeInForce.scalar(2_i32)?, gtc);
+    assert_eq!(DataType::timeinforce().scalar("gtc")?, gtc);
+    assert_eq!(DataType::timeinforce().scalar("GoodTillCancel")?, gtc);
+    assert_eq!(DataType::timeinforce().scalar("1")?, gtc);
+    assert_eq!(DataType::timeinforce().scalar(2_i32)?, gtc);
     // Text is a spelling, an integer a code: `1` is the code of `DAY`.
     assert_eq!(
-        DataType::TimeInForce.scalar(1_i32)?,
-        Scalar::TimeInForce(TimeInForce::Day)
+        DataType::timeinforce().scalar(1_i32)?,
+        Scalar::from(TimeInForce::Day)
     );
 
     // A spelling nothing publishes, or the code of no member, answers nothing
     // rather than a guess.
-    assert!(DataType::TimeInForce.scalar("Z").is_err());
-    assert!(DataType::TimeInForce.scalar(14_i32).is_err());
+    assert!(DataType::timeinforce().scalar("Z").is_err());
+    assert!(DataType::timeinforce().scalar(14_i32).is_err());
     ```
 
 === "Python"
@@ -178,7 +178,7 @@ The value is the member, whichever spelling named it: `GTC` for `GTC`, `gtc`, FI
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
-    let tif = Field::new("timeinforce", DataType::TimeInForce, false);
+    let tif = Field::new("timeinforce", DataType::timeinforce(), false);
     let arrow = tif.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.timeinforce");

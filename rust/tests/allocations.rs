@@ -2995,13 +2995,14 @@ fn quote_records(rows: usize) -> Serie {
 #[test]
 fn sort_by_over_row_format_keys_costs_a_constant_and_never_a_row() {
     // Two keys of a record column whose cells order as their buffers: the
-    // text parsed (19 allocations), the keys bound and the key record lent
+    // text parsed (12 allocations), the keys bound and the key record lent
     // zero copy, one row converter over both cells, the order and the
     // stable sort's scratch, the index column; `into_sort_by` then one take
     // of every column instead of the index column (twenty-four), and the
     // order it declares on the result's root - the two keys rendered,
-    // parsed back and canonicalized by the metadata validator
-    // (seventy-four), the root shared once more and the record's leaf
+    // parsed back and canonicalized by the metadata validator (sixty: two
+    // more parses of `count desc`, each seven cheaper since S1, see
+    // `DECLARED_READ`), the root shared once more and the record's leaf
     // copied with its field swapped (three) - and `as_sort_by` costs exactly
     // its read. The count is the same at 2,048 and at 16,384 rows - both
     // above the 1,024 indices the sort's scratch keeps on the stack - so
@@ -3027,7 +3028,7 @@ fn sort_by_over_row_format_keys_costs_a_constant_and_never_a_row() {
     }
     assert_eq!(
         costs,
-        vec![(66, 167, 167); 2],
+        vec![(59, 146, 146); 2],
         "sort_indices_by, into_sort_by and as_sort_by over two keys at 2,048 and 16,384 rows"
     );
 }
@@ -4038,7 +4039,7 @@ fn coded_orders(rows: usize) -> Serie {
     let root = DataType::from(
         StructType::from_fields([
             DataType::Mic.required_field("venue"),
-            DataType::Side.required_field("side"),
+            DataType::side().required_field("side"),
             DataType::Int64.required_field("count"),
         ])
         .expect("three children"),
@@ -5321,6 +5322,88 @@ fn a_text_to_boolean_cast_allocates_nothing_per_cell() {
     );
 }
 
+/// A registered enum kind's column reads its cells as the kind's own values
+/// without allocating: a member's code is read off its buffer, and the kind
+/// is read off the field, never looked up.
+#[test]
+fn a_registered_column_cell_read_allocates_nothing() {
+    for rows in [64_usize, 4_096] {
+        let side = DataType::side();
+        let members = Serie::from_scalars(
+            side.clone().nullable_field("side"),
+            (0..rows).map(|row| {
+                if row % 5 == 4 {
+                    Scalar::Null
+                } else {
+                    side.scalar("BUYS").expect("a side")
+                }
+            }),
+        )
+        .expect("an enum column");
+        let dtype = members.field().expect("a column").dtype().clone();
+        free(&format!("reading a {dtype} cell at {rows} rows"), || {
+            black_box(black_box(&members).scalar(0).expect("a cell"));
+        });
+        free(
+            &format!("reading an absent {dtype} cell at {rows} rows"),
+            || {
+                black_box(black_box(&members).scalar(4).expect("a cell"));
+            },
+        );
+        assert_eq!(members.scalar(0).expect("a cell").enum_name(), Some("BUYS"));
+    }
+}
+
+/// A cast into a registered enum kind reads the kind once per array and runs
+/// its per-row check against that reading: a column costs its output
+/// buffers whatever its length, never a lookup or a value per row.
+#[test]
+fn a_registered_cast_ingest_costs_the_same_at_any_length() {
+    let side = Field::new("side", DataType::side(), true);
+    let text = Field::new("side", DataType::utf8(), true);
+    let names = ArrowCastPlan::compile(&text, &side, ArrowCastOptions::new())
+        .expect("text casts into an enum");
+    let numbers = Field::new("side", DataType::Int64, true);
+    let members = ArrowCastPlan::compile(&numbers, &side, ArrowCastOptions::new())
+        .expect("integers cast into an enum");
+    let spellings = ["BUYS", "SELL", "SSHT"];
+    let mut name_counts = Vec::new();
+    let mut member_counts = Vec::new();
+    for rows in [64_usize, 4_096] {
+        let column = Serie::from_scalars(
+            text.clone(),
+            (0..rows).map(|row| Scalar::from(spellings[row % spellings.len()])),
+        )
+        .expect("a text column");
+        let cast = || names.apply(&column).expect("the column casts");
+        drop(cast());
+        let (allocations, landed) = counted(cast);
+        assert_eq!(landed.len(), rows);
+        assert_eq!(landed.scalar(1).expect("a row").enum_name(), Some("SELL"));
+        name_counts.push(allocations);
+
+        let column = Serie::from_scalars(
+            numbers.clone(),
+            (0..rows).map(|row| Scalar::from(i64::try_from(row % 3).expect("small"))),
+        )
+        .expect("an integer column");
+        let cast = || members.apply(&column).expect("the column casts");
+        drop(cast());
+        let (allocations, landed) = counted(cast);
+        assert_eq!(landed.len(), rows);
+        assert_eq!(landed.scalar(2).expect("a row").enum_name(), Some("SELL"));
+        member_counts.push(allocations);
+    }
+    assert_eq!(
+        name_counts[0], name_counts[1],
+        "a text to enum cast cost {name_counts:?} allocations at 64 and 4096 rows"
+    );
+    assert_eq!(
+        member_counts[0], member_counts[1],
+        "an integer to enum cast cost {member_counts:?} allocations at 64 and 4096 rows"
+    );
+}
+
 #[test]
 fn stated_bits_cast_by_sharing_the_buffer_at_any_length() {
     // A column stating `FIELD:representation=bits` takes a `uint64` column
@@ -5935,6 +6018,8 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
+    use yggdryl::{MarketDataKind, MarketDataType, TimeInForce};
+
     let seeds: [(DataTypeId, Scalar); 58] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
@@ -5991,11 +6076,11 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Elf, Scalar::from("8888")),
         (DataTypeId::Dti, Scalar::from("X9J9K872S")),
         (DataTypeId::Fisn, Scalar::from("ACME CORP/SH")),
-        (DataTypeId::Side, Scalar::from("1")),
+        (Side::ID, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("NEW")),
-        (DataTypeId::MarketDataKind, Scalar::from("ORDR")),
-        (DataTypeId::TimeInForce, Scalar::from("DAY")),
-        (DataTypeId::MarketDataType, Scalar::from("ORDLIMIT")),
+        (MarketDataKind::ID, Scalar::from("ORDR")),
+        (TimeInForce::ID, Scalar::from("DAY")),
+        (MarketDataType::ID, Scalar::from("ORDLIMIT")),
         (DataTypeId::Unit, Scalar::from("Shares")),
         (
             DataTypeId::Uuid,
@@ -6038,7 +6123,7 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
     // a variant is the one datatype with no value of its own.
     let unnamed = [DataTypeId::Variant];
     let pinned: std::collections::HashSet<DataTypeId> = values.iter().map(|(id, _)| *id).collect();
-    for id in DataTypeId::ALL {
+    for id in DataTypeId::all() {
         let prebuilt = !id.is_parameterized()
             && DataType::from_str(id.as_str()).is_ok_and(|dtype| dtype.id() == id);
         if prebuilt && !unnamed.contains(&id) {
@@ -10790,16 +10875,20 @@ fn sorted_quotes(rows: usize, root: &Field, ascending: bool) -> Serie {
 
 /// What [`Serie::declared_order`] costs over `["venue","count desc"]`:
 /// the stored JSON list read and each of its two keys parsed by the `order
-/// by` grammar.
-const DECLARED_READ: usize = 28;
+/// by` grammar. It fell from twenty-eight when the grammar stopped trying
+/// a word as a datatype where no text literal, `null` or parameter list
+/// follows it (S1): `count desc` no longer pays a refused datatype parse of
+/// `count`, seven allocations less per key so spelled.
+const DECLARED_READ: usize = 21;
 
 /// The same over `["venue","count"]`, two keys with no suffix to parse.
 const DECLARED_READ_ASCENDING: usize = 21;
 
 /// What the text `venue, count desc` costs to parse into its two keys, as
 /// [`sort_by_over_row_format_keys_costs_a_constant_and_never_a_row`]
-/// states it.
-const ORDER_PARSE: usize = 19;
+/// states it; nineteen before `count` stopped being tried as a datatype
+/// (see [`DECLARED_READ`]).
+const ORDER_PARSE: usize = 12;
 
 /// What reading a landed record against the order its root declares costs
 /// beyond the read: the key selector built and bound against the root, the

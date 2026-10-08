@@ -262,15 +262,12 @@ pub trait CodeValue: Value {
 /// every text a person reads, so the two readings are one door each:
 /// [`Self::read_code`] over an integer and [`Self::read`] over a spelling,
 /// the spellings each leaf accepts being its own (`from_spelling`) and the
-/// refusal naming the leaf by [`Self::KIND`]. The `enum_leaf!` macro in
-/// `enums.rs` writes the whole of it for a leaf from its member table.
+/// refusal naming the leaf. The `enum_leaf!` macro in `enums.rs` writes the
+/// whole of it for a leaf from its member table; the leaf's name and
+/// extension name are its own inherent `NAME` and `EXTENSION_NAME`.
 pub trait EnumValue: Value + Copy + Default {
     /// Every member, in code order.
     const ALL: &'static [Self];
-    /// The datatype's name, which every refusal names: `state`, `side`.
-    const KIND: &'static str;
-    /// The Arrow extension name the codes ride under.
-    const EXTENSION_NAME: &'static str;
     /// The width the codes are held and stored at.
     type Repr: crate::EnumRepr;
 
@@ -286,13 +283,13 @@ pub trait EnumValue: Value + Copy + Default {
     ///
     /// # Errors
     ///
-    /// Returns an error naming the spelling under [`Self::KIND`].
+    /// Returns an error naming the spelling under the leaf's name.
     fn read(spelling: &str) -> Result<Self>;
     /// The member one stored code names, refused where none does.
     ///
     /// # Errors
     ///
-    /// Returns an error naming the code under [`Self::KIND`].
+    /// Returns an error naming the code under the leaf's name.
     fn read_code(code: i64) -> Result<Self>;
 
     /// The member one value states: the member itself, the code an integer
@@ -1085,7 +1082,7 @@ macro_rules! payload_datatype {
         }
 
         impl DataTypeValue for $name {
-            const FAMILY: &'static str = DataTypeId::$variant.as_str();
+            const FAMILY: &'static str = DataTypeId::$variant.core_str();
 
             type Sidecar = ();
 

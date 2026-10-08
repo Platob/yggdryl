@@ -44,7 +44,8 @@ enum_leaf! {
     /// assert_eq!(MarketDataType::from_fix(54, "1"), None);
     /// ```
     #[non_exhaustive]
-    pub enum MarketDataType: u16, kind = "marketdatatype", extension = MARKETDATATYPE_EXTENSION_NAME, aliases = marketdatatype_aliases {
+    pub enum MarketDataType: u16, kind = "marketdatatype", extension = MARKETDATATYPE_EXTENSION_NAME, aliases = marketdatatype_aliases,
+    market = MARKETDATATYPE_KIND [0xc4, 30, 74, 65] {
         #[default]
         Unknown = 0 as "UKNW": "No type stated.",
         OrdMarket = 101 as "ORDMKT": "Market order.",
@@ -548,17 +549,22 @@ impl crate::DataType {
     /// trade or book entry type.
     ///
     /// ```
-    /// use yggdryl::DataType;
+    /// use yggdryl::{DataType, MARKETDATATYPE_KIND};
     ///
-    /// assert_eq!(DataType::marketdatatype(), DataType::MarketDataType);
+    /// assert_eq!(DataType::marketdatatype(), MARKETDATATYPE_KIND.dtype());
     /// assert_eq!(DataType::marketdatatype().to_string(), "marketdatatype");
     /// assert!(DataType::marketdatatype().is_enum());
     /// ```
     #[must_use]
     pub const fn marketdatatype() -> Self {
-        Self::MarketDataType
+        Self::Market(crate::MarketType::new(&MARKETDATATYPE_KIND))
     }
 }
 
 // /// A field declared as a market data element's type.
-define_field_types!(MarketDataTypeType, MarketDataType);
+define_field_types!(
+    MarketDataTypeType,
+    MarketDataTypeField,
+    market = MARKETDATATYPE_KIND,
+    MarketDataType
+);

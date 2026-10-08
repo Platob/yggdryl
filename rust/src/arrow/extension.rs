@@ -50,14 +50,26 @@ fn unexpected_document(name: &str, document: &str) -> ArrowError {
 
 /// [`ExtensionType`] for parameter-free markers: the name the datatype's
 /// identifier rides, no document, and the storage the recognizer reads as
-/// that datatype.
+/// that datatype. A core marker reads its name off its identifier; a
+/// registered enum kind's marker - `SideType => market Side` - off the kind's
+/// own type, since a kind's name is the register's and not a core constant.
 macro_rules! marker_extension {
-    ($($marker:ident => $variant:ident),* $(,)?) => {$(
-        impl ExtensionType for crate::$marker {
-            const NAME: &'static str = match crate::DataTypeId::$variant.arrow_extension_name() {
+    (@one $marker:ident => market $leaf:ident) => {
+        marker_extension!(@impl $marker, <crate::$leaf>::EXTENSION_NAME, <crate::$leaf>::ID);
+    };
+    (@one $marker:ident => $variant:ident) => {
+        marker_extension!(
+            @impl $marker,
+            match crate::DataTypeId::$variant.core_arrow_extension_name() {
                 Some(name) => name,
                 None => panic!("a marker's datatype rides an extension name"),
-            };
+            },
+            crate::DataTypeId::$variant
+        );
+    };
+    (@impl $marker:ident, $name:expr, $id:expr) => {
+        impl ExtensionType for crate::$marker {
+            const NAME: &'static str = $name;
 
             type Metadata = ();
 
@@ -78,7 +90,7 @@ macro_rules! marker_extension {
 
             fn supports_data_type(&self, data_type: &ArrowDataType) -> Result<(), ArrowError> {
                 match recognized(Self::NAME, None, data_type)? {
-                    Some(dtype) if dtype.id() == crate::DataTypeId::$variant => Ok(()),
+                    Some(dtype) if dtype.id() == $id => Ok(()),
                     _ => Err(unsupported(Self::NAME, data_type)),
                 }
             }
@@ -87,6 +99,9 @@ macro_rules! marker_extension {
                 Self.supports_data_type(data_type).map(|()| Self)
             }
         }
+    };
+    ($($marker:ident => $($leaf:ident)+),* $(,)?) => {$(
+        marker_extension!(@one $marker => $($leaf)+);
     )*};
 }
 
@@ -98,10 +113,10 @@ marker_extension! {
     MimeTypeType => MimeType,
     MediaTypeType => MediaType,
     StateType => State,
-    MarketDataKindType => MarketDataKind,
-    MarketDataTypeType => MarketDataType,
-    SideType => Side,
-    TimeInForceType => TimeInForce,
+    MarketDataKindType => market MarketDataKind,
+    MarketDataTypeType => market MarketDataType,
+    SideType => market Side,
+    TimeInForceType => market TimeInForce,
     CountryType => Country,
     CcyType => Ccy,
     MicType => Mic,

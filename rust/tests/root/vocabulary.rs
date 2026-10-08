@@ -186,11 +186,11 @@ mod logical {
             ("bbg", DataType::Bbg),
             ("ric", DataType::Ric),
             ("figi", DataType::Figi),
-            ("side", DataType::Side),
+            ("side", DataType::side()),
             ("state", DataType::State),
-            ("marketdatakind", DataType::MarketDataKind),
-            ("marketdatatype", DataType::MarketDataType),
-            ("timeinforce", DataType::TimeInForce),
+            ("marketdatakind", DataType::marketdatakind()),
+            ("marketdatatype", DataType::marketdatatype()),
+            ("timeinforce", DataType::timeinforce()),
             ("unit", DataType::Unit),
             ("forex", DataType::Forex),
             ("lei", DataType::Lei),
@@ -277,8 +277,11 @@ mod logical {
 
     #[test]
     fn the_registry_is_the_documented_mapping_and_holds_no_repeat() {
-        assert_eq!(DataType::LOGICAL_NAMES, registered().as_slice());
-        let mut names: Vec<&str> = DataType::LOGICAL_NAMES
+        // The listing is in name order; the documented mapping is not.
+        let mut expected = registered();
+        expected.sort_by_key(|(name, _)| *name);
+        assert_eq!(DataType::logical_names(), expected);
+        let mut names: Vec<&str> = DataType::logical_names()
             .iter()
             .map(|(name, _)| *name)
             .collect();
@@ -372,7 +375,7 @@ mod logical {
         ] {
             assert_eq!(spelling.parse::<DataType>().unwrap(), dtype, "{spelling}");
             assert!(
-                !DataType::LOGICAL_NAMES
+                !DataType::logical_names()
                     .iter()
                     .any(|(name, _)| *name == spelling.to_ascii_lowercase()),
                 "{spelling} must not be registered"
@@ -406,7 +409,7 @@ mod logical {
         // The prebuilt vocabularies are keyed by the same names.
         for (name, _) in yggdryl::StringEnum::PREBUILT {
             assert!(
-                DataType::LOGICAL_NAMES
+                DataType::logical_names()
                     .iter()
                     .any(|(other, _)| other == name),
                 "{name} prebuilds nothing registered"

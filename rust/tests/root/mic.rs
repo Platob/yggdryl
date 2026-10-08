@@ -172,12 +172,13 @@ fn the_mic_wire_contracts_are_pinned() {
     assert_eq!(dtype.id().as_str(), "mic");
     assert_eq!(Field::from_str("value mic").unwrap().dtype(), &dtype);
     assert_eq!(DataType::from_logical_name("mic").unwrap(), dtype);
-    let logical: Vec<&str> = DataType::LOGICAL_NAMES
+    let logical: Vec<&str> = DataType::logical_names()
         .iter()
         .filter(|(_, held)| *held == dtype)
         .map(|(logical, _)| *logical)
         .collect();
-    assert_eq!(logical, ["mic", "exchange"]);
+    // The listing is in name order.
+    assert_eq!(logical, ["exchange", "mic"]);
 
     // Arrow: the extension name over its storage, both directions.
     let field = dtype.clone().nullable_field("value");

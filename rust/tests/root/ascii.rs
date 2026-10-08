@@ -612,7 +612,7 @@ mod leaves {
             DataType::fixed_ascii(17).unwrap(),
             DataType::fixed_utf8(4).unwrap(),
             DataType::utf8(),
-            DataType::Side,
+            DataType::side(),
         ] {
             let message = Field::new("side", refused.clone(), false)
                 .try_with_string_enum(&sides)

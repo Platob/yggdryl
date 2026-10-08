@@ -8,6 +8,10 @@ use crate::code::folded_spelling;
 use crate::enums::enum_leaf;
 use crate::typed::define_field_types;
 
+/// The Arrow extension name the lifecycle codes ride under, which the
+/// macro below states as `State::EXTENSION_NAME`.
+const STATE_EXTENSION_NAME: &str = "yggdryl.state";
+
 enum_leaf! {
     /// What state one thing is in, from asked for to ended.
     ///
@@ -552,9 +556,6 @@ static STATE_NAMES: &[(&str, State)] = &[
 fn state_aliases() -> Vec<(&'static str, State)> {
     STATE_NAMES.to_vec()
 }
-
-/// The Arrow extension name of a thing's state, over `uint16` storage.
-pub(crate) const STATE_EXTENSION_NAME: &str = "yggdryl.state";
 
 // /// A field declared as a thing's state.
 define_field_types!(StateType, State);

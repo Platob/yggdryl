@@ -10,7 +10,7 @@ use yggdryl::graph::{
     BookEvent as CoreBookEvent, BookIterator as CoreBookIterator, MarketData as CoreMarketData,
     SnapshotEvent as CoreSnapshotEvent,
 };
-use yggdryl::{DataType, Scalar, Side as CoreSide};
+use yggdryl::{DataType, MarketValue, Side as CoreSide};
 
 use super::decimal_scalar;
 use super::market_data::{PyMarketData, event_market_of, market_data_of};
@@ -22,16 +22,11 @@ use crate::{Failed, Pulled, python_failure, value_error};
 /// The side one argument names - a `Side` member, its code or any spelling
 /// the core reads - checked through the `side` datatype's own value contract.
 fn side_of(value: &Bound<'_, PyAny>) -> PyResult<CoreSide> {
-    match DataType::Side
+    let value = DataType::side()
         .scalar(from_py(value)?)
-        .map_err(value_error)?
-    {
-        Scalar::Side(side) => Ok(side),
-        other => Err(PyTypeError::new_err(format!(
-            "expected a side, got {}",
-            other.kind()
-        ))),
-    }
+        .map_err(value_error)?;
+    <CoreSide as MarketValue>::from_scalar(&value)
+        .ok_or_else(|| PyTypeError::new_err(format!("expected a side, got {}", value.kind())))
 }
 
 /// One coherent view of a market at one exact nanosecond instant: the live

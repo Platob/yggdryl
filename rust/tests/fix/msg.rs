@@ -3451,7 +3451,7 @@ mod settled_market {
         assert_eq!(order.marketdatakind(), MarketDataKind::Order);
         assert_eq!(
             order.get_by_tag(yggdryl::MARKETDATAKIND_TAG_NAME.0),
-            Some(Scalar::MarketDataKind(MarketDataKind::Order))
+            Some(Scalar::from(MarketDataKind::Order))
         );
         // A row stating another category is the row's word.
         let schema = fix_schema(&registry, "fix").unwrap();
@@ -3464,7 +3464,7 @@ mod settled_market {
             .as_sequence()
             .expect("a row")
             .to_vec();
-        cells[at] = Scalar::MarketDataKind(MarketDataKind::Book);
+        cells[at] = Scalar::from(MarketDataKind::Book);
         let stated = FixMsg::from_row(
             Arc::clone(&registry),
             &schema,
