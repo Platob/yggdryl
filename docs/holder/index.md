@@ -1707,7 +1707,7 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     write_arrow_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
     write_records(&mut self, records, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
 
-    read_serie(&self, options: Option<&RecordOptions>) -> Result<StreamChunkedSerie>   // None: the handle's own
+    read_serie(&self, options: Option<&RecordOptions>) -> Result<Serie>   // None: the handle's own
     write_serie(&mut self, value: Serie, mode: IOMode, options: Option<&RecordOptions>) -> Result<IOResult>
     overwrite|append|merge_serie(&mut self, value: Serie, options: Option<&RecordOptions>) -> Result<IOResult>
 
@@ -1725,7 +1725,7 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     overwrite|append|merge_records(records, *, options=None) -> IOResult
     write_arrow_reader|table|batch(value, mode, *, options=None) -> IOResult
     write_records(records, mode, *, options=None) -> IOResult
-    read_serie(*, options=None) -> StreamChunkedSerie
+    read_serie(*, options=None) -> Serie
     write_serie(value, mode="overwrite", *, options=None) -> IOResult
     overwrite|append|merge_serie(value, *, options=None) -> IOResult
 
@@ -1743,7 +1743,7 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     overwrite|append|mergeRecords(records, options?) -> IOResult | Promise<IOResult>
     writeArrowReader|Table|Batch(value, mode, options?) -> IOResult
     writeRecords(records, mode, options?) -> IOResult | Promise<IOResult>
-    readSerie(options?) -> StreamChunkedSerie
+    readSerie(options?) -> Serie
     writeSerie(value, mode?, options?) -> IOResult
     overwrite|append|mergeSerie(value, options?) -> IOResult
 

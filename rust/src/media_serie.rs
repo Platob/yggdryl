@@ -1,21 +1,57 @@
-//! Series retaining their medium and scan clauses until rows are requested.
+//! Series retaining their medium and the scan clauses their own verbs
+//! stated, until rows are requested. The medium holds the options - it
+//! states them, or infers them from what it is and defaults the rest - and
+//! a serie keeps no copy: every read asks the medium and lays its own
+//! clauses over the answer.
 
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use crate::expression::{IntoFilter, IntoSelector};
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::{Field, IOMedia, Result, Serie, SerieValue, StreamChunkedSerie, StreamSerie};
+use crate::{
+    Field, Filter, IOMedia, Result, Selector, Serie, SerieValue, StreamChunkedSerie, StreamSerie,
+};
 
 type Read<T> = fn(&T, &RecordOptions) -> Result<Serie>;
 
-/// Shared storage, one scan configuration and its lazily retained rows.
-/// The fields are private so a scan cannot change after its first pull.
+/// What a media serie's own verbs stated over its medium's options, and
+/// nothing the medium answered: the predicate `with_filter` and `with_key`
+/// conjoined, the selection `with_select` restated, the row range
+/// `with_row_range` set. A clause left unstated is the medium's own.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Scan {
+    filter: Filter,
+    select: Option<Selector>,
+    range: Option<(u64, Option<u64>)>,
+}
+
+impl Scan {
+    /// Lay the stated clauses over the medium's options: the predicate
+    /// conjoined with the medium's, the selection and the range replacing
+    /// them where stated.
+    fn lay(&self, options: &mut RecordOptions) {
+        if !self.filter.is_always_true() {
+            options.set_filter(options.filter().clone().and(self.filter.clone()));
+        }
+        if let Some(select) = &self.select {
+            options.set_select(select.clone());
+        }
+        if let Some((offset, length)) = self.range {
+            options.set_row_offset(Some(offset));
+            options.set_max_row_size(length);
+        }
+    }
+}
+
+/// Shared storage, the scan clauses this serie stated and its lazily
+/// retained rows. The fields are private so a scan cannot change after its
+/// first pull; the options are the medium's, read through it on every read.
 pub struct MediaSerieState<T: IOMedia + Send + 'static> {
     pub(crate) media: Arc<Mutex<T>>,
     pub(crate) source_field: Arc<Field>,
     pub(crate) field: Arc<Field>,
-    pub(crate) options: RecordOptions,
+    pub(crate) scan: Scan,
     pub(crate) read: Read<T>,
     pub(crate) edited: Option<Serie>,
     pub(crate) rows: Arc<OnceLock<Serie>>,
@@ -27,7 +63,7 @@ impl<T: IOMedia + Send + 'static> Clone for MediaSerieState<T> {
             media: Arc::clone(&self.media),
             source_field: Arc::clone(&self.source_field),
             field: Arc::clone(&self.field),
-            options: self.options.clone(),
+            scan: self.scan.clone(),
             read: self.read,
             edited: self.edited.clone(),
             rows: Arc::clone(&self.rows),
@@ -39,7 +75,7 @@ impl<T: IOMedia + Send + 'static> fmt::Debug for MediaSerieState<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MediaSerieState")
             .field("field", &self.field)
-            .field("options", &self.options)
+            .field("scan", &self.scan)
             .field("edited", &self.edited.is_some())
             .field("rows", &self.rows.get())
             .finish()
@@ -47,55 +83,73 @@ impl<T: IOMedia + Send + 'static> fmt::Debug for MediaSerieState<T> {
 }
 
 impl<T: IOMedia + Send + 'static> MediaSerieState<T> {
-    /// Retain a medium and bind its scan without decoding result rows.
+    /// Retain a medium under its own options and bind its scan without
+    /// decoding result rows: one `record_options` and one `read_arrow_field`
+    /// of the medium, nothing of the store a wrapper already answers for.
     ///
     /// # Errors
     /// Schema, scan and limit refusals.
-    pub fn new(media: T, options: Option<RecordOptions>) -> Result<Self> {
-        Self::with_reader(media, options, |media, options| {
-            media.read_serie(Some(options))
-        })
+    pub fn new(media: T) -> Result<Self> {
+        Self::with_reader(
+            media,
+            |media, options| media.read_serie(Some(options)),
+            |_| Ok(()),
+        )
     }
 
+    /// `require` judges the options the medium answers before the schema is
+    /// read, so a leaf refuses a medium of another encoding on the one
+    /// `record_options` the construction costs.
     pub(crate) fn with_reader(
         media: T,
-        options: Option<RecordOptions>,
         read: Read<T>,
+        require: fn(&RecordOptions) -> Result<()>,
     ) -> Result<Self> {
-        let options = options.map_or_else(|| media.record_options(), Ok)?;
+        let options = media.record_options()?;
+        require(&options)?;
         options.require_write_limits()?;
-        let mut source = options.clone();
-        source.set_select(crate::Selector::all());
-        source.set_filter(crate::Filter::always_true());
-        source.set_max_row_size(None);
-        source.set_max_byte_size(None);
-        source.set_row_offset(None);
+        let source = crate::iomedia::dimensions(options.clone());
         let source_field = Arc::new(media.read_arrow_field(&source)?);
         let field = Arc::new(scan_field(&source_field, &options)?);
         Ok(Self {
             media: Arc::new(Mutex::new(media)),
             source_field,
             field,
-            options,
+            scan: Scan::default(),
             read,
             edited: None,
             rows: Arc::new(OnceLock::new()),
         })
     }
 
-    fn media(&self) -> MutexGuard<'_, T> {
+    pub(crate) fn media(&self) -> MutexGuard<'_, T> {
         self.media
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// The options a read runs under: the medium's own - an edited snapshot's
+    /// with the clauses the snapshot already answered taken off and its field
+    /// declared - with `scan` laid over them.
+    fn compose(&self, media: &T, scan: &Scan) -> Result<RecordOptions> {
+        let mut options = media.record_options()?;
+        if self.edited.is_some() {
+            options = crate::iomedia::dimensions(options);
+            options.set_field((*self.source_field).clone());
+        }
+        scan.lay(&mut options);
+        options.require_write_limits()?;
+        Ok(options)
+    }
+
     fn read(&self) -> Result<Serie> {
+        let media = self.media();
+        let options = self.compose(&media, &self.scan)?;
         match &self.edited {
-            Some(rows) => self
-                .options
+            Some(rows) => options
                 .apply_stream(rows.clone().into_stream()?)
                 .map(Serie::from),
-            None => (self.read)(&self.media(), &self.options),
+            None => (self.read)(&media, &options),
         }
     }
 
@@ -117,15 +171,36 @@ impl<T: IOMedia + Send + 'static> MediaSerieState<T> {
         }
     }
 
-    fn planned(&self, options: RecordOptions) -> Result<Self> {
-        options.require_write_limits()?;
-        let field = Arc::new(scan_field(&self.source_field, &options)?);
-        Ok(Self {
-            field,
-            options,
+    /// The same medium under `scan`, the rows to be pulled afresh and the
+    /// field still the one the clauses before it bound: nothing is asked
+    /// of the medium until a leaf's `from_media_state` binds the field.
+    fn with_scan(&self, scan: Scan) -> Self {
+        Self {
+            scan,
             rows: Arc::new(OnceLock::new()),
             ..self.clone()
-        })
+        }
+    }
+
+    /// Bind the field under this scan and install the leaf's reader, on
+    /// one ask of the medium that `require` judges first: what every
+    /// leaf's `from_media_state` does, so a re-plan - `with_scan` then
+    /// this - asks the medium once and the public door refuses a medium of
+    /// another encoding on that same ask. A refusal leaves nothing behind.
+    pub(crate) fn bound(
+        mut self,
+        read: Read<T>,
+        require: fn(&RecordOptions) -> Result<()>,
+    ) -> Result<Self> {
+        let field = {
+            let media = self.media();
+            let options = self.compose(&media, &self.scan)?;
+            require(&options)?;
+            scan_field(&self.source_field, &options)?
+        };
+        self.field = Arc::new(field);
+        self.read = read;
+        Ok(self)
     }
 
     pub(crate) fn splice(
@@ -138,19 +213,26 @@ impl<T: IOMedia + Send + 'static> MediaSerieState<T> {
         let mut edited = rows.held_leaf().clone();
         edited.splice(range, values)?;
         let field = Arc::clone(edited.field_ref().expect("media rows have a field"));
-        let mut options = self.options.clone();
-        options.set_filter(crate::Filter::always_true());
-        options.set_select(crate::Selector::all());
-        options.set_max_row_size(None);
-        options.set_max_byte_size(None);
-        options.set_row_offset(None);
-        options.set_field((*field).clone());
         self.source_field = Arc::clone(&field);
         self.field = field;
-        self.options = options;
+        self.scan = Scan::default();
         self.rows = Arc::new(OnceLock::from(edited.clone()));
         self.edited = Some(edited);
         Ok(())
+    }
+
+    /// A slice of the held rows as an edited snapshot: the clauses the rows
+    /// already answered are stated no more.
+    pub(crate) fn sliced(&self, rows: Serie) -> Self {
+        let field = Arc::clone(rows.field_ref().expect("media rows have a field"));
+        Self {
+            source_field: Arc::clone(&field),
+            field,
+            scan: Scan::default(),
+            rows: Arc::new(OnceLock::from(rows.clone())),
+            edited: Some(rows),
+            ..self.clone()
+        }
     }
 
     pub(crate) fn held_memory_size(&self) -> usize {
@@ -169,31 +251,36 @@ impl<T: IOMedia + Send + 'static> MediaSerieState<T> {
         if let Some(rows) = self.rows.get() {
             return rows.scalar(index);
         }
-        // A stated Arrow-byte limit is global and cannot restart at a seek.
-        if self.options.max_byte_size().is_some()
-            || self
-                .options
-                .max_row_size()
-                .is_some_and(|length| index as u64 >= length)
-        {
+        let seek = {
+            let media = self.media();
+            let options = self.compose(&media, &self.scan)?;
+            // A stated Arrow-byte limit is global and cannot restart at a seek.
+            if options.max_byte_size().is_some()
+                || options
+                    .max_row_size()
+                    .is_some_and(|length| index as u64 >= length)
+            {
+                None
+            } else {
+                let offset = options
+                    .row_offset()
+                    .unwrap_or(0)
+                    .checked_add(index as u64)
+                    .ok_or_else(|| crate::Error::InvalidRecord {
+                        path: self.field.name().into(),
+                        reason: "the row offset exceeds uint64".into(),
+                    })?;
+                let mut seek = options;
+                seek.set_row_offset(Some(offset));
+                seek.set_max_row_size(Some(1));
+                seek.require_write_limits()?;
+                Some((self.read)(&media, &seek)?)
+            }
+        };
+        let Some(rows) = seek else {
             return self.rows().scalar(index);
-        }
-        let mut options = self.options.clone();
-        let offset = options
-            .row_offset()
-            .unwrap_or(0)
-            .checked_add(index as u64)
-            .ok_or_else(|| crate::Error::InvalidRecord {
-                path: self.field.name().into(),
-                reason: "the row offset exceeds uint64".into(),
-            })?;
-        options.set_row_offset(Some(offset));
-        options.set_max_row_size(Some(1));
-        options.require_write_limits()?;
-        let mut scan = self.clone();
-        scan.options = options;
-        scan.rows = Arc::new(OnceLock::new());
-        let mut rows = scan.into_rows()?.into_stream()?;
+        };
+        let mut rows = rows.into_stream()?;
         match rows.next() {
             Some(row) => row,
             None => {
@@ -221,18 +308,22 @@ fn scan_field(source: &Field, options: &RecordOptions) -> Result<Field> {
 }
 
 /// Defaults for a series whose rows belong to an [`IOMedia`].
-/// Scan clauses remain in the medium's native options: Parquet and Iceberg
-/// prune metadata, Avro skips unselected fields, and row codecs read rows.
+/// Scan clauses reach the medium's native options at every read: Parquet
+/// and Iceberg prune metadata, Avro skips unselected fields, and row codecs
+/// read rows.
 pub trait MediaSerieValue<T: IOMedia + Send + 'static>: SerieValue {
     /// The retained medium and immutable scan state.
     fn media_state(&self) -> &MediaSerieState<T>;
-    /// Build this specialized series from its common scan state.
+    /// Build this specialized series from its common scan state: one ask
+    /// of the medium, judging its encoding and binding the scan's field
+    /// under this leaf's rule. Every re-plan crosses it, so a re-plan
+    /// asks the medium once.
     ///
     /// # Errors
-    /// A scan configuration belonging to another media encoding.
+    /// A medium of another encoding, or a clause its field refuses.
     fn from_media_state(state: MediaSerieState<T>) -> Result<Self>;
 
-    /// Validate native options before a source can be opened.
+    /// Validate the medium's options before a source can be opened.
     ///
     /// # Errors
     /// A configuration belonging to another encoding.
@@ -249,21 +340,14 @@ pub trait MediaSerieValue<T: IOMedia + Send + 'static>: SerieValue {
         media.read_serie(Some(options))
     }
 
-    /// The scan configuration retained without pulling rows.
-    fn read_options(&self) -> &RecordOptions {
-        &self.media_state().options
-    }
-
     /// Conjoin a source predicate, retaining it for native pruning.
     ///
     /// # Errors
     /// Parse and binding failures before a row is pulled.
     fn with_filter(self, filter: impl IntoFilter) -> Result<Self> {
-        let mut options = self.read_options().clone();
-        options.set_filter(options.filter().clone().and(filter.into_filter()?));
-        self.media_state()
-            .planned(options)
-            .and_then(Self::from_media_state)
+        let mut scan = self.media_state().scan.clone();
+        scan.filter = scan.filter.and(filter.into_filter()?);
+        Self::from_media_state(self.media_state().with_scan(scan))
     }
 
     /// Choose source expressions before decoding their values.
@@ -271,11 +355,9 @@ pub trait MediaSerieValue<T: IOMedia + Send + 'static>: SerieValue {
     /// # Errors
     /// Parse and binding failures before a row is pulled.
     fn with_select(self, select: impl IntoSelector) -> Result<Self> {
-        let mut options = self.read_options().clone();
-        options.set_select(select.into_selector()?);
-        self.media_state()
-            .planned(options)
-            .and_then(Self::from_media_state)
+        let mut scan = self.media_state().scan.clone();
+        scan.select = Some(select.into_selector()?);
+        Self::from_media_state(self.media_state().with_scan(scan))
     }
 
     /// Bound result rows in the native scan, after filtering and selection.
@@ -283,12 +365,9 @@ pub trait MediaSerieValue<T: IOMedia + Send + 'static>: SerieValue {
     /// # Errors
     /// An invalid combination with a merge key.
     fn with_row_range(self, offset: u64, length: Option<u64>) -> Result<Self> {
-        let mut options = self.read_options().clone();
-        options.set_row_offset(Some(offset));
-        options.set_max_row_size(length);
-        self.media_state()
-            .planned(options)
-            .and_then(Self::from_media_state)
+        let mut scan = self.media_state().scan.clone();
+        scan.range = Some((offset, length));
+        Self::from_media_state(self.media_state().with_scan(scan))
     }
 
     /// Retain an exact key predicate in the native scan, including null cells
@@ -389,7 +468,8 @@ pub trait MediaSerieValue<T: IOMedia + Send + 'static>: SerieValue {
         }
     }
 
-    /// Publish any serie through the medium's explicit write door.
+    /// Publish any serie through the medium's explicit write door, under the
+    /// medium's own options where none are given.
     /// A row mutation edits this series' held snapshot until this is called.
     ///
     /// # Errors
@@ -454,27 +534,29 @@ pub(crate) fn require_kind(options: &RecordOptions, kind: &str) -> Result<()> {
 /// Define the media's leaf in its own module; defaults have one owner here.
 macro_rules! media_serie {
     ($name:ident, $variant:ident, $access:ident, $access_mut:ident $(, $read:path)?) => {
-        /// A lazy series retaining this medium's native scan configuration.
+        /// A lazy series over this medium, reading under the medium's own
+        /// options and the clauses its verbs state.
         #[derive(Clone, Debug)]
         pub struct $name {
             state: $crate::MediaSerieState<Box<dyn $crate::IOBase>>,
         }
         impl $name {
-            /// Retain a media handle; discover its schema without decoding
-            /// result batches. Explicit options override the handle's own.
+            /// Retain a media handle under its own options; discover its
+            /// schema without decoding result batches. A medium of another
+            /// encoding is refused before its schema is read.
             ///
             /// # Errors
             /// Schema, encoding and scan binding refusals.
-            pub fn new<H: $crate::IOBase + 'static>(media: H, options: Option<$crate::media::RecordOptions>) -> $crate::Result<Self> {
+            pub fn new<H: $crate::IOBase + 'static>(media: H) -> $crate::Result<Self> {
                 let media: Box<dyn $crate::IOBase> = Box::new(media);
-                let options = options.map_or_else(|| $crate::IOMedia::record_options(&media), Ok)?;
-                $crate::media_serie::require_kind(&options, stringify!($variant))?;
-                Ok(Self { state: $crate::media_serie::MediaSerieState::with_reader(media, Some(options), <Self as $crate::MediaSerieValue<Box<dyn $crate::IOBase>>>::read_native)? })
+                Ok(Self { state: $crate::media_serie::MediaSerieState::with_reader(media, <Self as $crate::MediaSerieValue<Box<dyn $crate::IOBase>>>::read_native, <Self as $crate::MediaSerieValue<Box<dyn $crate::IOBase>>>::require_media_options)? })
             }
         }
         impl $crate::MediaSerieValue<Box<dyn $crate::IOBase>> for $name {
             fn media_state(&self) -> &$crate::MediaSerieState<Box<dyn $crate::IOBase>> { &self.state }
-            fn from_media_state(state: $crate::MediaSerieState<Box<dyn $crate::IOBase>>) -> $crate::Result<Self> { Self::require_media_options(&state.options)?; Ok(Self { state }) }
+            fn from_media_state(state: $crate::MediaSerieState<Box<dyn $crate::IOBase>>) -> $crate::Result<Self> {
+                state.bound(<Self as $crate::MediaSerieValue<Box<dyn $crate::IOBase>>>::read_native, <Self as $crate::MediaSerieValue<Box<dyn $crate::IOBase>>>::require_media_options).map(|state| Self { state })
+            }
             fn require_media_options(options: &$crate::media::RecordOptions) -> $crate::Result<()> { $crate::media_serie::require_kind(options, stringify!($variant)) }
             $(fn read_native(media: &Box<dyn $crate::IOBase>, options: &$crate::media::RecordOptions) -> $crate::Result<$crate::Serie> { $read(media.as_ref(), options) })?
         }
@@ -498,18 +580,7 @@ macro_rules! media_serie {
             fn slice(&self, offset: usize, length: usize) -> $crate::Result<Self> {
                 let rows = self.state.rows();
                 rows.raise_held_rows()?;
-                let sliced = rows.slice(offset, length)?;
-                let mut state = self.state.clone();
-                state.rows = ::std::sync::Arc::new(::std::sync::OnceLock::from(sliced.clone()));
-                state.edited = Some(sliced);
-                $crate::media::IORecordOptions::set_filter(&mut state.options, $crate::Filter::always_true());
-                $crate::media::IORecordOptions::set_select(&mut state.options, $crate::Selector::all());
-                $crate::media::IORecordOptions::set_row_offset(&mut state.options, None);
-                $crate::media::IORecordOptions::set_max_row_size(&mut state.options, None);
-                $crate::media::IORecordOptions::set_max_byte_size(&mut state.options, None);
-                $crate::media::IORecordOptions::set_field(&mut state.options, (*state.field).clone());
-                state.source_field = ::std::sync::Arc::clone(&state.field);
-                Ok(Self { state })
+                Ok(Self { state: self.state.sliced(rows.slice(offset, length)?) })
             }
             fn splice(&mut self, range: ::std::ops::Range<usize>, rows: Vec<$crate::Scalar>) -> $crate::Result<()> { self.state.splice(range, rows) }
             fn into_arrow_array(&self) -> ::arrow_array::ArrayRef { self.state.rows().into_arrow_array().expect("media rows have a field") }

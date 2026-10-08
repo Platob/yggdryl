@@ -18,7 +18,6 @@ fn csv(bytes: &[u8]) -> CSVSerie {
     CSVSerie::new(
         Csv::new(Buffer::from_bytes(bytes.to_vec()))
             .with_options(CsvOptions::new().with_field(field())),
-        None,
     )
     .unwrap()
 }
@@ -205,7 +204,7 @@ fn generic_mutation_retains_the_specialized_media_snapshot() {
 fn a_specialized_media_refuses_another_encoding_before_reading_rows() {
     let other = yggdryl::ipc::Ipc::new(Buffer::new())
         .with_options(yggdryl::ipc::IpcOptions::new().with_field(field()));
-    assert!(CSVSerie::new(other, None).is_err());
+    assert!(CSVSerie::new(other).is_err());
 }
 
 #[test]
@@ -326,7 +325,7 @@ fn native_media_windows_and_key_row_conversion_pull_one_row_at_a_time() {
             pulls: Arc::clone(&count),
             length,
         };
-        let source = yggdryl::media::GenericMediaSerie::new(media, None).unwrap();
+        let source = yggdryl::media::GenericMediaSerie::new(media).unwrap();
         let mut windows = source.window_by("id", false).unwrap();
         assert_eq!(count.load(Ordering::Relaxed), 0);
         let first = windows.next().unwrap().unwrap();
@@ -368,7 +367,7 @@ fn native_media_partitions_close_without_prebatching_later_keys() {
             pulls: Arc::clone(&count),
             length,
         };
-        let source = yggdryl::media::GenericMediaSerie::new(media, None).unwrap();
+        let source = yggdryl::media::GenericMediaSerie::new(media).unwrap();
         let mut groups = source
             .partition_by("id", yggdryl::PartitionOptions::new().with_max_open(1))
             .unwrap();
@@ -439,7 +438,6 @@ fn native_row_windows_verify_the_order_the_source_declares() {
     let source = CSVSerie::new(
         Csv::new(Buffer::from_bytes(b"id,value\n1,2\n1,1\n".to_vec()))
             .with_options(CsvOptions::new().with_field(ordered)),
-        None,
     )
     .unwrap();
     let mut windows = source.window_by("id", false).unwrap();
@@ -475,7 +473,6 @@ fn exact_key_predicates_keep_source_terms_casts_and_null_cells() {
             Scalar::from_sequence([Scalar::from("2")]),
         )
         .unwrap();
-    assert_eq!(selected.read_options().filter().columns(), ["id"]);
     assert_eq!(
         selected.key_values("id").unwrap().collect_rows().unwrap(),
         [Scalar::from_sequence([Scalar::from(2_i64)])]
@@ -494,7 +491,6 @@ fn exact_key_predicates_keep_source_terms_casts_and_null_cells() {
             b"id,value\n,invalid\n2,invalid\n".to_vec(),
         ))
         .with_options(CsvOptions::new().with_field(nullable)),
-        None,
     )
     .unwrap();
     let keys = source
@@ -534,7 +530,7 @@ fn a_public_scan_state_cannot_bypass_the_specialized_encoding_refusal() {
         yggdryl::ipc::Ipc::new(Buffer::new())
             .with_options(yggdryl::ipc::IpcOptions::new().with_field(field())),
     );
-    let state = yggdryl::MediaSerieState::new(media, None).unwrap();
+    let state = yggdryl::MediaSerieState::new(media).unwrap();
     assert!(CSVSerie::from_media_state(state).is_err());
 }
 
@@ -594,15 +590,50 @@ fn an_iomedia_csv_read_keeps_the_native_row_kind() {
 }
 
 #[test]
-fn a_sliced_media_snapshot_publishes_its_current_write_field() {
+fn a_sliced_media_snapshot_keeps_the_selected_field_and_reads_its_rows() {
     let snapshot = csv(b"id,value\n1,2\n2,4\n")
         .with_select("id")
         .unwrap()
         .slice(0, 1)
         .unwrap();
+    let names: Vec<&str> = snapshot.field().fields().iter().map(|f| f.name()).collect();
+    assert_eq!(names, ["id"]);
     assert_eq!(
-        snapshot.read_options().field().as_ref(),
-        Some(snapshot.field())
+        snapshot.into_stream().unwrap().collect_rows().unwrap(),
+        [Scalar::from_sequence([Scalar::from(1_i64)])]
+    );
+}
+
+/// The medium holds the options and every scan over it states only its
+/// own clauses: a sibling's re-plan changes nothing the source reads.
+#[test]
+fn a_clone_keeps_its_scan_when_a_sibling_re_plans_over_the_shared_medium() {
+    let source = csv(b"id,value\n1,2\n2,4\n3,6\n");
+    let sibling = source
+        .clone()
+        .with_filter("id > 1")
+        .unwrap()
+        .with_select("value")
+        .unwrap();
+    let names: Vec<&str> = sibling.field().fields().iter().map(|f| f.name()).collect();
+    assert_eq!(names, ["value"]);
+    assert_eq!(source.field().fields().len(), 2);
+    assert_eq!(
+        source
+            .clone()
+            .into_stream()
+            .unwrap()
+            .collect_rows()
+            .unwrap()
+            .len(),
+        3
+    );
+    assert_eq!(
+        sibling.into_stream().unwrap().collect_rows().unwrap(),
+        [
+            Scalar::from_sequence([Scalar::from(4_i64)]),
+            Scalar::from_sequence([Scalar::from(6_i64)]),
+        ]
     );
 }
 
@@ -628,7 +659,6 @@ fn text_key_projection_skips_unreadable_unused_event_facts() {
     let source = yggdryl::text::TextSerie::new(
         yggdryl::text::Text::new(Buffer::from_bytes(b"not-a-date payload\n".to_vec()))
             .with_options(options),
-        None,
     )
     .unwrap();
     let rows = source.key_values("body").unwrap().collect_rows().unwrap();
@@ -649,7 +679,7 @@ fn ipc_native_rows_keep_the_published_media_root_name() {
         None,
     )
     .unwrap();
-    let source = yggdryl::ipc::IpcSerie::new(media, None).unwrap();
+    let source = yggdryl::ipc::IpcSerie::new(media).unwrap();
     let published = source.field().clone();
     assert_eq!(published.name(), "scan");
     let stream = source.into_stream().unwrap();
@@ -671,7 +701,7 @@ fn parquet_native_rows_keep_the_published_media_root_name() {
         None,
     )
     .unwrap();
-    let source = yggdryl::parquet::ParquetSerie::new(media, None).unwrap();
+    let source = yggdryl::parquet::ParquetSerie::new(media).unwrap();
     let published = source.field().clone();
     assert_eq!(published.name(), "scan");
     assert_eq!(source.into_stream().unwrap().field(), &published);

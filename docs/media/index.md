@@ -27,11 +27,15 @@ Each medium has a page of its own - what declares it, how it reads, how it write
 ## Read
 
 A read's primitive is `read_serie` / `readSerie`, returning the generic
-`Serie`: a held value, native row or chunk stream, key kind, or a lazy media
-variant. Specialized Rust variants such as `Serie::Parquet(ParquetSerie)` and
-`Serie::IcebergTable(IcebergTableSerie)` keep native scan clauses and prune source
-keys before decoding payloads. `MediaSerieValue<T: IOMedia>` implements their
-shared accessors and snapshot mutations. Explicit writes publish changes.
+`Serie`: a held value, a native row or chunk stream, or a key kind. The
+specialized Rust media series - `ParquetSerie`, `IcebergTableSerie` and the
+others, built over a medium by `new(media)` - hold no options of their own:
+the medium holds them, stating or inferring them with their defaults, and a
+serie reads under the medium's answer plus the clauses its own verbs state
+(`with_filter`, `with_key`, `with_select`, `with_row_range`), which prune
+source keys before payloads are decoded. `MediaSerieValue<T: IOMedia>`
+implements their shared accessors and snapshot mutations. Explicit writes
+publish changes under the medium's options.
 `read_arrow_reader` is an adapter over that same primitive. Native record mapping
 adapters are Python `read_records` and JavaScript `readRecords`.
 

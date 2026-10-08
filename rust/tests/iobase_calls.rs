@@ -1002,6 +1002,73 @@ mod records {
         });
     }
 
+    /// A media serie keeps no options of its own: it asks the medium for
+    /// them on every read and lays its own clauses over the answer. Its
+    /// construction costs one `record_options` and one `read_arrow_field`,
+    /// a re-plan one `record_options` and no byte, and a drained read
+    /// exactly what the handle's own `read_serie(None)` costs - the
+    /// medium asked once more, the rows once.
+    #[test]
+    fn a_media_serie_asks_its_medium_for_the_options_on_every_read() {
+        use yggdryl::media::GenericMediaSerie;
+        use yggdryl::{MediaSerieValue, SerieValue};
+
+        let handle = written("file:///lake/serie.arrow", 64);
+        let calls = Arc::clone(handle.calls());
+        let mut built = None;
+        costs(
+            "ipc: a media serie built",
+            &calls,
+            "pstream_bytes=1 media_type=2 is_container=2",
+            || {
+                built = Some(GenericMediaSerie::new(handle).expect("a media serie"));
+            },
+        );
+        let serie = built.expect("built");
+        let mut planned = None;
+        costs(
+            "ipc: a media serie re-planned",
+            &calls,
+            "media_type=1 is_container=1",
+            || {
+                planned = Some(
+                    serie
+                        .clone()
+                        .with_filter("id > 31")
+                        .expect("a filtered serie"),
+                );
+            },
+        );
+        let filtered = planned.expect("planned");
+        let read = "pstream_bytes=1 url=1 media_type=3 is_container=2 parent=1";
+        costs("ipc: a media serie drained", &calls, read, || {
+            let rows = serie
+                .clone()
+                .into_stream()
+                .expect("a stream")
+                .filter_map(Result::ok)
+                .count();
+            assert_eq!(rows, 64);
+        });
+        costs("ipc: a filtered media serie drained", &calls, read, || {
+            let rows = filtered
+                .into_stream()
+                .expect("a stream")
+                .filter_map(Result::ok)
+                .count();
+            assert_eq!(rows, 32);
+        });
+        // A cell asked of a serie that holds no rows yet is one seek: the
+        // medium asked for its options once and read once at that row.
+        costs("ipc: a media serie's cell sought", &calls, read, || {
+            let row = serie.scalar(40).expect("a row");
+            assert_eq!(
+                row.get(0).map(|cell| cell.into_owned()),
+                Some(yggdryl::Scalar::from(40_i64))
+            );
+        });
+    }
+
     /// A Parquet file past a megabyte is read footer first: one read of its
     /// end, which holds the footer, then its column chunks as one range.
     #[cfg(feature = "parquet")]

@@ -1105,15 +1105,22 @@ pub trait IOMedia: Send {
 
 /// Remove settings that narrow a read before computing whole-media dimensions.
 pub(crate) fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<RecordOptions> {
+    media.record_options().map(dimensions)
+}
+
+/// `options` with the five clauses that narrow a read taken off - the
+/// filter, the selection, the row bound, the row offset and the byte bound -
+/// the one owner of that list, which a dimension and an edited media serie
+/// read under.
+pub(crate) fn dimensions(mut options: RecordOptions) -> RecordOptions {
     use crate::media::IORecordOptions;
 
-    let mut options = media.record_options()?;
     options.set_filter(crate::Filter::always_true());
     options.set_select(crate::Selector::all());
     options.set_max_row_size(None);
     options.set_row_offset(None);
     options.set_max_byte_size(None);
-    Ok(options)
+    options
 }
 
 /// Count a container's rows: a located table format answers from its

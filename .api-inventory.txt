@@ -2957,7 +2957,7 @@ pub trait IOMedia: Send
   fn parquet_footer(&self) -> Option<std::sync::Arc<::parquet::file::metadata::ParquetMetaData>>  (#[doc(hidden)], under `parquet`: the decoded footer this handle already holds for the Parquet file it is - an opened `Parquet` the one its `open` read, every other handle and a closed one `None` - which a record read through it takes so it reads none of the file's end again and fetches only the column chunks)
   fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field>
   fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader>
-  fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::StreamChunkedSerie>  (one record Serie per batch; None the handle's own record_options() - a container the table its leaves hold; a structured text document is the one column its rows parse into, reading only the declared field off the options; forwarded by Holder, Uri, Box<dyn IOBase> and delegate_iomedia!, the HTTP request walking its pages)
+  fn read_serie(&self, options: Option<&RecordOptions>) -> Result<Serie>  (the generic Serie: a record encoding one record Serie per batch; None the handle's own record_options() - a container the table its leaves hold; a structured text document is the one column its rows parse into, reading only the declared field off the options; forwarded by Holder, Uri, Box<dyn IOBase> and delegate_iomedia!, the HTTP request walking its pages)
   fn overwrite_serie( &mut self, value: crate::Serie, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (write_serie under IOMode::Overwrite)
   fn append_serie( &mut self, value: crate::Serie, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (write_serie under IOMode::Append)
   fn merge_serie( &mut self, value: crate::Serie, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (write_serie under IOMode::Merge, keyed by the options' merge_by, else the destination's own merge_by())
@@ -4687,8 +4687,8 @@ pub struct Element<'a>
     pub fn is_held(&self) -> bool
 
 ### yggdryl::root::media_serie  [rust/src/media_serie.rs]
-  pub struct MediaSerieState<T: IOMedia + Send + 'static> (schema and options fixed before pull; lazy read, explicit snapshot mutation)
-    pub fn new(media: T, options: Option<RecordOptions>) -> Result<Self>
+  pub struct MediaSerieState<T: IOMedia + Send + 'static> (the medium under its own options, the schema read once, the clauses the serie's verbs stated; lazy read, explicit snapshot mutation)
+    pub fn new(media: T) -> Result<Self>
   pub trait MediaSerieValue<T: IOMedia + Send + 'static>: SerieValue
 
 ### yggdryl::serie::stream  [rust/src/serie/stream.rs]
