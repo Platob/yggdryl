@@ -1258,5 +1258,14 @@ mod parquet {
             2,
             "the end, then the part of the one column chunk it lacks: {asked:?}"
         );
+        // The part it lacks runs from the chunk's start, right after the
+        // leading magic, to the byte before the end in hand: nothing the end
+        // holds is asked for twice.
+        let held_from = size - 1024 * 1024;
+        assert_eq!(
+            asked[1],
+            format!("GET bytes=4-{}", held_from - 1),
+            "{asked:?}"
+        );
     }
 }

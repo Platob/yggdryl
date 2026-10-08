@@ -111,9 +111,16 @@ fn a_blob_written_here_reads_back_whole_and_by_range() {
         b"symbol,price\nAAPL,187.23\n"
     );
     assert_eq!(handle.size(), 25);
-    // A ranged read carries `x-ms-range`, which the signature covers through
-    // the canonicalized headers rather than through the `Range` line.
+    // A ranged read carries the standard `Range` header, which the Shared
+    // Key signature covers through its own `Range` line.
     assert_eq!(handle.read_range_bytes(13, 4).expect("a range"), b"AAPL");
+    // Blob Storage reads no suffix range, so a tail read is counted back from
+    // the size - a `HEAD`, none once the size is known - and read with one
+    // such ranged `GET`.
+    assert_eq!(
+        handle.read_tail_bytes(7).expect("a tail"),
+        (b"187.23\n".to_vec(), 25)
+    );
     assert_eq!(handle.kind(), IOKind::File);
 }
 

@@ -137,6 +137,13 @@ impl IOBase for FsPath {
         }
     }
 
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        match self.as_file().read_tail_bytes(length) {
+            Err(error) if is_directory(&error) => self.as_directory().read_tail_bytes(length),
+            other => other,
+        }
+    }
+
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
         self.as_file().pwrite(offset, bytes)
     }

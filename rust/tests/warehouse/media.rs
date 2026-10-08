@@ -227,6 +227,60 @@ fn a_table_bound_to_a_handle_composes_what_its_name_declares() {
     }
 }
 
+/// A table over an object reads the object's end as the object does: one
+/// `GET` with a suffix range and no `HEAD` for the size, through the table,
+/// the warehouse `Table` holding it and the medium its name composes.
+#[cfg(feature = "s3")]
+#[test]
+fn a_tail_read_through_a_table_over_an_object_is_one_suffix_ranged_get() {
+    use yggdryl::s3::{self, Credentials, S3Options};
+
+    let store = crate::server::FakeS3::start();
+    store.create_bucket("market");
+    store.put("market", "lake/part.parquet", b"PAR1....footerPAR1");
+    let options = S3Options::default()
+        .with_environment(false)
+        .with_endpoint(store.endpoint())
+        .with_region("us-east-1")
+        .with_path_style(true)
+        .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"));
+    let asked = || -> Vec<String> {
+        store
+            .requests()
+            .iter()
+            .map(|request| {
+                let range = request
+                    .headers
+                    .iter()
+                    .find(|(name, _)| name == "range")
+                    .map_or("whole", |(_, value)| value.as_str());
+                format!("{} {range}", request.method)
+            })
+            .collect()
+    };
+    let object = s3::file_with("s3://market/lake/part.parquet", options).expect("an object");
+    let table = MediaTable::bound("lake.part", Holder::S3File(object)).expect("a table");
+
+    store.clear_requests();
+    assert_eq!(
+        table.read_tail_bytes(4).expect("the tail"),
+        (b"PAR1".to_vec(), 18)
+    );
+    assert_eq!(asked(), ["GET bytes=-4"], "the table's tail read");
+
+    let table = Table::from(table);
+    store.clear_requests();
+    assert_eq!(
+        table.read_tail_bytes(10).expect("the tail"),
+        (b"footerPAR1".to_vec(), 18)
+    );
+    assert_eq!(
+        asked(),
+        ["GET bytes=-10"],
+        "the warehouse table's tail read"
+    );
+}
+
 #[test]
 fn a_table_over_a_buffer_cannot_be_rebuilt_after_a_clone_and_says_so() {
     let mut buffer = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());

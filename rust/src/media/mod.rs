@@ -416,6 +416,10 @@ impl IOBase for Media {
         self.as_io().read_range_bytes(offset, length)
     }
 
+    fn read_tail_bytes(&self, length: usize) -> crate::Result<(Vec<u8>, u64)> {
+        self.as_io().read_tail_bytes(length)
+    }
+
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
         self.as_io_mut().pwrite(offset, bytes)
     }

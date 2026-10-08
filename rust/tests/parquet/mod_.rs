@@ -1276,6 +1276,75 @@ mod records {
         file
     }
 
+    /// A handle that records the range of every ranged read asked of it, and
+    /// answers everything else as the buffer beneath it.
+    struct Ranges {
+        handle: Buffer,
+        asked: Mutex<Vec<(u64, usize)>>,
+    }
+
+    impl yggdryl::IOMedia for Ranges {
+        yggdryl::impl_default_iomedia!();
+    }
+
+    impl IOBase for Ranges {
+        yggdryl::delegate_iobase!(handle: pread, read_all_bytes, read_tail_bytes, pstream_bytes,
+            create_bytes, pwrite, size, capacity, reserve, truncate, uri, url, media_type,
+            set_media_type, flush, parent, child_by_path, ls, kind, clear, remove, is_atomic,
+            is_tabular);
+
+        fn read_range_bytes(&self, offset: u64, length: usize) -> yggdryl::Result<Vec<u8>> {
+            self.asked
+                .lock()
+                .expect("the ranges asked")
+                .push((offset, length));
+            self.handle.read_range_bytes(offset, length)
+        }
+    }
+
+    /// A column chunk running into the end the footer was read out of is
+    /// fetched only up to where that end begins, and read whole out of the
+    /// fetch and the end joined: no byte the end holds is fetched again.
+    #[test]
+    fn a_chunk_reaching_into_the_held_end_is_fetched_only_up_to_it() {
+        use arrow_array::Array as _;
+
+        let ranges = Ranges {
+            handle: large(200_000, 1_000_000),
+            asked: Mutex::new(Vec::new()),
+        };
+        let size = ranges.size();
+        let options = ranges.record_options().unwrap();
+        let mut sum = 0_i64;
+        let mut last = None;
+        for batch in ranges.read_arrow_reader(&options).unwrap() {
+            let batch = batch.unwrap();
+            let ids = batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap();
+            sum += ids.values().iter().sum::<i64>();
+            let symbols = batch
+                .column(1)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            last = Some(symbols.value(symbols.len() - 1).to_owned());
+        }
+        assert_eq!(sum, (0..200_000_i64).sum::<i64>());
+        assert_eq!(last.as_deref(), Some("SYM199999"), "the rows the end holds");
+        // A read of every row takes the file's last MiB first - its footer
+        // and the end of the one row group's last chunk - then everything
+        // from the first chunk, right after the leading magic, to that end.
+        let held_from = size - 1024 * 1024;
+        assert_eq!(
+            *ranges.asked.lock().unwrap(),
+            [(4, usize::try_from(held_from - 4).unwrap())],
+            "one fetch, up to the end in hand"
+        );
+    }
+
     /// The calls `operation` makes of a counted handle.
     fn cost(calls: &Arc<Calls>, operation: impl FnOnce()) -> String {
         calls.reset();

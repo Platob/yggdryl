@@ -207,6 +207,10 @@ impl IOBase for Table {
         self.as_io().read_range_bytes(offset, length)
     }
 
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        self.as_io().read_tail_bytes(length)
+    }
+
     fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {
         self.as_io().read_digest(algorithm)
     }

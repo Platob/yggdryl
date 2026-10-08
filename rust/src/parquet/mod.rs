@@ -1251,8 +1251,10 @@ impl ParquetSource {
     /// a pruned row group or an unprojected column is read only when it lies
     /// in such a gap between kept ones, and on an object store a gap costs
     /// less than the request it saves. A chunk starting inside the end the
-    /// footer was read out of is read from that end and costs no read. The
-    /// copies are the reader's own:
+    /// footer was read out of is read from that end and costs no read, and one
+    /// running into it is fetched only up to where the end begins, the fetch
+    /// and the end joined into the one range the chunk is read out of, so no
+    /// byte the end holds is fetched again. The copies are the reader's own:
     /// nothing a batch holds points back into the handle's storage, so
     /// rewriting the file while a reader or its batches live is safe.
     ///
@@ -1307,9 +1309,23 @@ impl ParquetSource {
         }
         // A chunk starting inside the held end lies in it whole, because the
         // end runs to the file's last byte and a chunk is cut at the length.
+        // One starting before it and running into it is fetched only up to
+        // where the end begins: the reader reads a chunk out of one range,
+        // so that fetch is joined to the end below.
         let held_from = self.held.as_ref().map_or(u64::MAX, |(offset, _)| *offset);
-        let served = wanted.iter().any(|(start, _)| *start >= held_from);
-        wanted.retain(|(start, _)| *start < held_from);
+        let mut served = false;
+        let mut joins = false;
+        wanted.retain_mut(|(start, end)| {
+            if *start >= held_from {
+                served = true;
+                return false;
+            }
+            if *end > held_from {
+                *end = held_from;
+                joins = true;
+            }
+            true
+        });
         wanted.sort_unstable();
         let mut coalesced: Vec<(u64, u64)> = Vec::with_capacity(wanted.len());
         for (start, end) in wanted {
@@ -1320,7 +1336,8 @@ impl ParquetSource {
                 _ => coalesced.push((start, end)),
             }
         }
-        let mut ranges = Vec::with_capacity(coalesced.len());
+        let mut held = self.held.as_ref().filter(|_| served || joins);
+        let mut ranges = Vec::with_capacity(coalesced.len() + 1);
         for (start, end) in coalesced {
             let length = usize::try_from(end - start).map_err(|_| {
                 CoreError::from(crate::arrow::Error::from(ArrowError::ExternalError(
@@ -1331,11 +1348,23 @@ impl ParquetSource {
                     .into(),
                 )))
             })?;
-            ranges.push((start, Bytes::from(handle.read_range_bytes(start, length)?)));
+            let mut bytes = handle.read_range_bytes(start, length)?;
+            // Only the last range reaches the end, every other one ending a
+            // gap before the next. A short read stays apart from it, so the
+            // chunk it cuts is reported as the short chunk it is.
+            if joins
+                && end == held_from
+                && bytes.len() == length
+                && let Some((_, tail)) = held.take()
+            {
+                bytes.reserve_exact(tail.len());
+                bytes.extend_from_slice(tail);
+            }
+            ranges.push((start, Bytes::from(bytes)));
         }
         // Last: every fetched range starts before it, so the ranges stay in
         // file order and a chunk inside it is found in it.
-        if served && let Some(held) = &self.held {
+        if let Some(held) = held {
             ranges.push(held.clone());
         }
         self.data.ranges = ranges.into();
@@ -1528,7 +1557,8 @@ fn row_bound(options: &ParquetOptions) -> Option<u64> {
 /// the file. A larger file's footer comes out of that end - or out of one
 /// more read of its own range, where it is longer - and its column chunks
 /// only through [`ParquetSource::fetch`], once pruning and projection have
-/// said which, a chunk the end already holds read from it. With a row bound
+/// said which: a chunk the end holds is read from it, and of one reaching
+/// into it only what lies before the end is fetched. With a row bound
 /// and no filter - stored rows then are result rows - only the leading row
 /// groups whose counts cover [`row_bound`] are kept. The bound is a fetch
 /// plan, not the limit itself: the record methods above still trim the

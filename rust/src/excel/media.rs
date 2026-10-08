@@ -522,7 +522,8 @@ impl<H: IOBase> IOMedia for Excel<H> {
 }
 
 impl<H: IOBase> IOBase for Excel<H> {
-    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
+    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, read_tail_bytes,
+        pstream_bytes,
         size, capacity, reserve, uri, url, bound_location, mtime, media_type, applied_codec, flush, parent,
         child_by_path, ls, kind, is_container);
 

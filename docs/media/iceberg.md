@@ -1418,6 +1418,10 @@ The pipeline's Iceberg reads and writes alone were then counted on 2026-10-08 ov
 | run 3, window B again, the handles held | 62 | 51 | 72 | 61 |
 | run 4, window B again, a fresh lake | 69 | 66 | 79 | 76 |
 
+```bash
+cargo test -p yggdryl --features s3tables --test medallion_ledger -- --nocapture
+```
+
 The control plane's requests did not move - 39, 7, 6 and 15 a run in both scenarios - and no run sent a store a `HEAD` or a listing, before or after. Every request saved is one `GET` of a manifest list the handle that wrote it no longer reads back, 29 in each scenario. A data file of at most a megabyte - every file of the small scenario - was one whole `GET` and is one suffix-ranged `GET` of its end, which holds all of it, so its count stays.
 
 === "Rust"

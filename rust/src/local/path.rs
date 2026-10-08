@@ -253,6 +253,10 @@ impl IOBase for LocalPath {
         })?
     }
 
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        self.with_resolved(Ok((Vec::new(), 0)), |handle| handle.read_tail_bytes(length))?
+    }
+
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
         self.with_resolved_mut(|handle| handle.pwrite(offset, bytes))?
     }

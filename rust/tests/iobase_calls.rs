@@ -294,6 +294,36 @@ fn a_metadata_question_is_one_call_and_names_what_it_asks() {
     });
 }
 
+/// A record wrapper reads a tail as the handle it wraps does - one
+/// [`IOBase::read_tail_bytes`], which a store answers with one suffix-ranged
+/// request - and never as the default's `size` then `read_range_bytes`,
+/// which on a store is a `HEAD` before the read.
+#[test]
+fn a_record_wrapper_forwards_the_tail_read() {
+    let url = "file:///lake/part.bin";
+    let bytes = payload(64);
+    let tail = (bytes[60..].to_vec(), 64);
+    let check = |what: &str, wrap: fn(Counted<Buffer>) -> Box<dyn IOBase>| {
+        let handle = source(&bytes, url);
+        let calls = Arc::clone(handle.calls());
+        let wrapper = wrap(handle);
+        costs(what, &calls, "read_tail_bytes=1", || {
+            assert_eq!(wrapper.read_tail_bytes(4).expect("the tail"), tail);
+        });
+    };
+    check("ipc", |handle| Box::new(yggdryl::ipc::Ipc::new(handle)));
+    check("avro", |handle| Box::new(yggdryl::avro::Avro::new(handle)));
+    check("csv", |handle| Box::new(yggdryl::csv::Csv::new(handle)));
+    check("excel", |handle| {
+        Box::new(yggdryl::excel::Excel::new(handle))
+    });
+    check("xmla", |handle| Box::new(yggdryl::xmla::Xmla::new(handle)));
+    check("text", |handle| Box::new(yggdryl::text::Text::new(handle)));
+    check("a running digest", |handle| {
+        Box::new(yggdryl::xxhash::Hashed::new(handle, DigestAlgorithm::Xxh3))
+    });
+}
+
 #[test]
 fn a_wrapper_asks_the_container_question_rather_than_the_kind() {
     use yggdryl::holder::buffered::{Buffered, BufferedOptions};
