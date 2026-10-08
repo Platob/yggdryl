@@ -2435,32 +2435,11 @@ impl FixRegistry {
             });
         }
         // A held name under another tag is the same field spelled with
-        // another number - save the other spelling a parent field was only
-        // inferred to answer to, which a field of that name and of another
-        // identifier type replaces ([`Self::reconcile_parents`]).
+        // another number.
         Ok(match self.position_by_name(field.name()) {
-            Some(holder) if self.is_inferred_spelling(holder, field) => Route::New,
             Some(holder) => Route::Named(holder),
             None => Route::New,
         })
-    }
-
-    /// Whether `field`'s name reaches the field at `holder` only as the
-    /// other spelling of the holder's parent type, while naming another
-    /// identifier type: `ParentOrderID` reaching `OrigOrderID`, never
-    /// `ParentClOrdID` reaching `OrigClOrdID`, one type spelled two ways.
-    fn is_inferred_spelling(&self, holder: usize, field: &Field) -> bool {
-        if self.canonical_position_by_name(field.name()).is_some() {
-            return false;
-        }
-        let Some(held) = self.fields.get(holder).and_then(identifier_type) else {
-            return false;
-        };
-        let Some(arriving) = identifier_type(field) else {
-            return false;
-        };
-        arriving != held
-            && other_spelling(&held).is_some_and(|spelling| spelling == arriving.as_str())
     }
 
     /// Folds `field` where [`Self::route`] landed it: `None` when it was this
@@ -3027,15 +3006,17 @@ impl FixRegistry {
     /// arrive - a store loading, a field inserted, updated or added, a
     /// dictionary or a `CBlock` merged - a field named as another's parent
     /// (`parent` or `orig` before that field's name, as
-    /// [`IdType::parent_of`](crate::IdType::parent_of) reads it) is listed
-    /// among that field's `FIX:parents`, a `parent` type before an `orig`
-    /// one, beside what the field already states; a field that is its
-    /// base's only parent also answers to its other spelling - `OrigClOrdID`
-    /// to `parentclordid` - until a field of that name arrives. So `OrigClOrdID(41)` makes
+    /// [`IdType::parent_of`](crate::IdType::parent_of) reads it, which names
+    /// a parent of a chain identity alone) is listed among that field's
+    /// `FIX:parents`, a `parent` type before an `orig` one, beside what the
+    /// field already states. Each parent field answers to its own name
+    /// alone: `ParentOrderID` beside `OrigOrderID` is a second parent, never
+    /// the first spelled another way. So `OrigClOrdID(41)` makes
     /// `ClOrdID(11)`'s parents `origclordid`, `OrigTradeID(1126)`
     /// `TradeID(1003)`'s `origtradeid`, and an identifier no field is a
-    /// parent of keeps the parents its name has
-    /// ([`IdType::parents`](crate::IdType::parents)).
+    /// parent of by name keeps the parents its type has
+    /// ([`IdType::parents`](crate::IdType::parents)) -
+    /// `TradeReportID(571)`'s `tradereportrefid`, which no field states.
     ///
     /// ```
     /// use yggdryl::{FixRegistry, IdType};
@@ -3066,13 +3047,14 @@ impl FixRegistry {
     ///     venue.field_by_name(name)?.as_fix().tag()
     /// };
     /// assert_eq!(stated(&venue)?, ["origorderid"]);
-    /// // The one parent answers to both spellings...
-    /// assert_eq!(tag_of(&venue, "ParentOrderID")?, Some(9001));
-    /// // ...until a field of the other spelling arrives: two parents now.
+    /// // The one parent answers to its own name alone...
+    /// assert!(venue.field_by_name("ParentOrderID").is_err());
+    /// assert!(venue.field_by_tag(9001)?.as_fix().names().next().is_none());
+    /// // ...so a field of the other spelling is a second parent.
     /// venue.add_field(field("ParentOrderID", 9002)?)?;
     /// assert_eq!(stated(&venue)?, ["parentorderid", "origorderid"]);
     /// assert_eq!(tag_of(&venue, "ParentOrderID")?, Some(9002));
-    /// assert!(venue.field_by_tag(9001)?.as_fix().names().next().is_none());
+    /// assert_eq!(tag_of(&venue, "OrigOrderID")?, Some(9001));
     /// # Ok(())
     /// # }
     /// ```
@@ -3126,13 +3108,11 @@ impl FixRegistry {
     }
 
     /// States, on every field this dictionary holds a parent of by name,
-    /// that parent among its `FIX:parents` ([`Self::parent_sources`]), and
-    /// keeps each such parent's other spelling in step: what a dictionary
-    /// that took fields in from elsewhere runs once before its definitions
-    /// resolve. Whether any field moved.
+    /// that parent among its `FIX:parents` ([`Self::parent_sources`]): what
+    /// a dictionary that took fields in from elsewhere runs once before its
+    /// definitions resolve. Whether any field moved.
     pub(super) fn state_parents(&mut self) -> bool {
         let mut bases: Vec<usize> = (0..self.fields.len())
-            .filter(|at| is_parent_named(&self.fields[*at]))
             .filter_map(|at| self.parent_link(at).map(|(base, ..)| base))
             .collect();
         bases.sort_unstable();
@@ -3163,100 +3143,40 @@ impl FixRegistry {
         moved
     }
 
-    /// Brings the field at `base_at` and its parent fields in step: each
-    /// field its name has as a parent ([`IdType::parents`](crate::IdType::parents))
-    /// is listed among its `FIX:parents`; a parent field that is the base's
-    /// only one also answers to its other spelling - an `orig` field to
-    /// `parent`, a `parent` field to `orig`, since with one parent the two
-    /// name one field - where no field holds that spelling; and where the
-    /// base has two parent fields, neither keeps the other's name as an
-    /// alias. Whether anything moved.
+    /// Brings the field at `base_at` in step with its parent fields: each
+    /// field named as a parent its type has
+    /// ([`IdType::parents`](crate::IdType::parents)) is listed among its
+    /// `FIX:parents`. Whether anything moved.
     fn reconcile_parents(&mut self, base_at: usize) -> bool {
         let Some(base) = self.fields.get(base_at).and_then(identifier_type) else {
             return false;
         };
-        let held: Vec<(usize, usize, crate::IdType)> = base
+        let held: Vec<(usize, crate::IdType)> = base
             .parents()
             .iter()
             .filter_map(|parent| {
-                let at = self.position_of_type(parent)?;
-                let (linked, rank, kind) = self.parent_link(at)?;
-                (linked == base_at).then_some((at, rank, kind))
+                let (linked, rank, kind) = self.parent_link(self.position_of_type(parent)?)?;
+                (linked == base_at).then_some((rank, kind))
             })
             .collect();
         let mut moved = false;
-        for (_, rank, kind) in &held {
-            moved |= self.state_parent(base_at, *rank, kind.clone());
-        }
-        match held.as_slice() {
-            [(at, _, kind)] => moved |= self.state_other_spelling(*at, kind),
-            _ => {
-                for (at, _, kind) in &held {
-                    moved |= self.retire_other_spelling(*at, kind);
-                }
-            }
+        for (rank, kind) in held {
+            moved |= self.state_parent(base_at, rank, kind);
         }
         moved
     }
 
-    /// Names the parent field at `at` by the other spelling of its type,
-    /// where no field holds that spelling as a name or an alias.
-    fn state_other_spelling(&mut self, at: usize, kind: &crate::IdType) -> bool {
-        let Some(spelling) = other_spelling(kind) else {
-            return false;
-        };
-        if self.position_by_name(&spelling).is_some() {
-            return false;
-        }
-        let mut names: Vec<String> = self.fields[at]
-            .as_fix()
-            .names()
-            .map(str::to_owned)
-            .collect();
-        names.push(spelling.to_string());
-        if self.fields[at].as_fix_mut().set_names(&names).is_err() {
-            return false;
-        }
-        self.aliases.insert(name_digest(&spelling, ALIAS_SEED), at);
-        true
-    }
-
-    /// Takes the other spelling of its type off the parent field at `at`,
-    /// where it holds it as an alias.
-    fn retire_other_spelling(&mut self, at: usize, kind: &crate::IdType) -> bool {
-        let Some(spelling) = other_spelling(kind) else {
-            return false;
-        };
-        let names: Vec<String> = self.fields[at]
-            .as_fix()
-            .names()
-            .map(str::to_owned)
-            .collect();
-        if !names
-            .iter()
-            .any(|name| name.eq_ignore_ascii_case(&spelling))
-        {
-            return false;
-        }
-        let kept: Vec<&String> = names
-            .iter()
-            .filter(|name| !name.eq_ignore_ascii_case(&spelling))
-            .collect();
-        if self.fields[at].as_fix_mut().set_names(kept).is_err() {
-            return false;
-        }
-        let digest = name_digest(&spelling, ALIAS_SEED);
-        if self.aliases.get(&digest) == Some(&at) {
-            self.aliases.remove(&digest);
-        }
-        true
-    }
-
     /// The field one field is a parent of by name, the place the parent
     /// takes among that field's parents, and the parent's type:
-    /// `OrigClOrdID` is `ClOrdID`'s first.
+    /// `OrigClOrdID` is `ClOrdID`'s first. A field whose name opens as no
+    /// parent's is none, though its type has a base - `TradeReportRefID` is
+    /// `TradeReportID`'s parent by the vocabulary, which no field states.
     fn parent_link(&self, position: usize) -> Option<(usize, usize, crate::IdType)> {
-        let kind = identifier_type(self.fields.get(position)?)?;
+        let field = self.fields.get(position)?;
+        if !is_parent_named(field) {
+            return None;
+        }
+        let kind = identifier_type(field)?;
         let (base, rank) = kind.parent_of()?;
         let at = self.position_of_type(&base)?;
         (at != position).then_some((at, rank, kind))
@@ -3613,15 +3533,4 @@ fn is_parent_named(field: &Field) -> bool {
         name.get(..prefix.len())
             .is_some_and(|head| head.eq_ignore_ascii_case(prefix.as_bytes()))
     })
-}
-
-/// A parent type's other spelling: `parent{type}` for `orig{type}` and
-/// back, `parentclordid` and `origclordid` alike.
-fn other_spelling(kind: &crate::IdType) -> Option<SmolStr> {
-    let word = kind.as_str();
-    let (prefix, rest) = ["parent", "orig"]
-        .iter()
-        .find_map(|prefix| Some((*prefix, word.strip_prefix(prefix)?)))?;
-    let other = if prefix == "parent" { "orig" } else { "parent" };
-    Some(format_smolstr!("{other}{rest}"))
 }

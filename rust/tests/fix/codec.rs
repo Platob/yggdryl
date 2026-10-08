@@ -3658,7 +3658,7 @@ mod equivalence {
     /// corpus exists to pin. A golden file of the *reading* asks for every
     /// shape; that the filter keeps three of them out is pinned by
     /// `codec::the_default_refusals_are_the_session_traffic_and_the_typeless_row`.
-    fn committed_codec() -> FixCodec {
+    pub(super) fn committed_codec() -> FixCodec {
         super::fixed_codec(super::committed_registry()).with_exclude_msgtypes::<[&str; 0], &str>([])
     }
 
@@ -3925,7 +3925,7 @@ mod equivalence {
     /// The one decode entry point, which is the door the codec now takes: the
     /// same read the batch path is built from, handed over rather than made
     /// again.
-    fn capture_lines() -> Vec<TextLine> {
+    pub(super) fn capture_lines() -> Vec<TextLine> {
         let uri = Arc::new(Uri::from_str("file:///ulbridge.log").expect("an identifier"));
         let source = Buffer::from_bytes(LOG.to_vec()).with_media_type(uri.media_type());
         let RecordOptions::Text(options) = reading() else {
@@ -3946,7 +3946,7 @@ mod equivalence {
     }
 
     /// What the bridge's row header captures, in the order a line answers them.
-    fn capture_names() -> Vec<String> {
+    pub(super) fn capture_names() -> Vec<String> {
         let RecordOptions::Text(options) = reading() else {
             panic!("a text read")
         };
@@ -4026,6 +4026,24 @@ mod equivalence {
     /// `crossuuid` of an execution split off a report naming no `ExecID` or
     /// `TradeID` - its cross code derives from the report's `currhashcode` -
     /// changed; no wire, entry or `seqnum` did.
+    /// It last moved when the lifecycle came to name a chain by its chain
+    /// identities alone and FIX's trade lineage became identifiers: the
+    /// order chain's fills (`lifecycle[010]`, `[012]`) no longer carry
+    /// `parentexecid`, `origexecid`, `parenttrdmatchid`, `origtrdmatchid`,
+    /// `parenttvtic` or `origtvtic`; a bridge's `PARENTCLORDID` is the word
+    /// `parentclordid` rather than `OrigClOrdID(41)`, so the nine bridge
+    /// rows and the five walked messages stating one (`lifecycle[006]`,
+    /// `[007]`, `[015]`, `[016]`, `[033]`) moved their identifiers, their
+    /// `origclordid`, entries, wire, digests and identities, and the
+    /// `prevuuid` and `srcuuids` naming them moved with them; and a trade
+    /// capture states `TradeReportID(571)` as `tradereportid` and is keyed
+    /// by its trade tags ahead of its order's, so the capture's trade and
+    /// its execution (`ulbridge[111]`, `lifecycle[031]`, `[032]`) gain
+    /// `tradereportid` and keep their code - one value under 571 and 11 -
+    /// while the two trade fixtures stating no order tag at their root
+    /// (`frames[005]` and its `verbatim` reading, `enrich[024]`) are keyed
+    /// `21:0:<TradeID>`, else `21:0:<TradeReportID>`, their split
+    /// execution's code, hashes and identities moving with the trade's.
     #[test]
     fn the_codec_answers_what_it_answered() {
         let pinned = read();
@@ -4094,6 +4112,295 @@ mod equivalence {
                 String::new()
             }
         );
+    }
+}
+
+mod lifecycle_identifiers {
+    use yggdryl::graph::{Element, Event, Market, Operation};
+    use yggdryl::{FixCodec, FixMsg, IdKey, IdType, MarketDataKind, Side, Uuid};
+
+    use super::equivalence::{capture_lines, capture_names, committed_codec};
+
+    /// The capture's codec, as the equivalence gate reads it: the committed
+    /// dictionary, nothing refused, the bridge's captures named.
+    fn codec() -> FixCodec {
+        committed_codec().with_capture_names(capture_names())
+    }
+
+    /// Every message the capture's lines read as, in line order.
+    fn parsed(codec: &FixCodec) -> Vec<FixMsg> {
+        codec
+            .parse_text_lines(capture_lines())
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("every line reads")
+    }
+
+    /// The capture walked as one lifecycle under `codec`.
+    fn walked(codec: &FixCodec) -> Vec<FixMsg> {
+        codec
+            .lifecycle(parsed(codec))
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the capture walks")
+    }
+
+    /// `lines` parsed - each with what it splits into - and walked.
+    fn walked_lines(codec: &FixCodec, lines: &[&[u8]]) -> Vec<FixMsg> {
+        let messages = codec
+            .parse_lines(lines.iter().copied())
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("every line reads");
+        codec
+            .lifecycle(messages)
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the walk")
+    }
+
+    /// The message's identifiers as `src:type=value`, in their order.
+    fn shown(message: &FixMsg) -> Vec<String> {
+        message
+            .get_identifiers()
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    /// What the message's identifiers hold under the base key of `kind`.
+    fn base(message: &FixMsg, kind: &IdType) -> Option<String> {
+        message
+            .get_identifiers()
+            .get_from(&IdKey::base(kind.clone()))
+            .map(ToOwned::to_owned)
+    }
+
+    /// Whether the walk told a conflict on `message`.
+    fn conflicted(message: &FixMsg) -> bool {
+        message
+            .anomalies()
+            .iter()
+            .any(|anomaly| anomaly.field() == "crosscode")
+    }
+
+    /// The capture walks to 39 rows - 42 with the three twins a walk that
+    /// remembers none restates - and every one derives its cross hash from
+    /// its stored cross code and, where it states one, its cross element
+    /// from that hash; every follower stands under its predecessor's code
+    /// and cross element, and no message cites two live chains.
+    #[test]
+    fn every_walked_row_derives_its_cross_identity_from_its_code() {
+        let walk = walked(&codec());
+        assert_eq!(walk.len(), 39);
+        assert_eq!(walked(&codec().with_dedup_window_ms(0)).len(), 42);
+        let mut coded = 0;
+        for message in &walk {
+            let code = message.get_crosscode();
+            if code.is_empty() {
+                assert_eq!(message.get_crosshashcode(), 0);
+                continue;
+            }
+            coded += 1;
+            assert_eq!(
+                message.get_crosshashcode(),
+                yggdryl::xxhash::xxh3(code.as_bytes()),
+                "{code}"
+            );
+            assert_eq!(
+                message.get_crossuuid(),
+                Uuid::from_v8(u128::from(message.get_crosshashcode())),
+                "{code}"
+            );
+        }
+        assert_eq!(coded, 26);
+        let mut followers = 0;
+        for message in &walk {
+            let Some(previous) = message.get_prevuuid() else {
+                continue;
+            };
+            let previous = walk
+                .iter()
+                .find(|held| held.get_curruuid() == previous)
+                .expect("a predecessor the walk yielded");
+            assert_eq!(message.get_crosscode(), previous.get_crosscode());
+            assert_eq!(message.get_crossuuid(), previous.get_crossuuid());
+            followers += 1;
+        }
+        assert_eq!(followers, 5);
+        assert!(!walk.iter().any(conflicted));
+    }
+
+    /// Lines 130-131: a cancel request, then its reject stating no
+    /// `Side(54)`. The reject cites its order by the base its one live side
+    /// holds, by its `ClOrdID(11)`, by the first value its `OrigClOrdID(41)`
+    /// names and by its `OrderID(37)` - all one chain, so no conflict - and
+    /// stands under the cancel's code, the side written to its wire.
+    #[test]
+    fn a_cancel_reject_naming_no_side_joins_its_order_by_base_and_names() {
+        let walk = walked(&codec());
+        let of_type = |msgtype: &str| {
+            let held: Vec<&FixMsg> = walk
+                .iter()
+                .filter(|message| message.header().msgtype() == msgtype)
+                .collect();
+            let [message] = held.as_slice() else {
+                panic!("one {msgtype}, not {}", held.len())
+            };
+            *message
+        };
+        let (cancel, reject) = (of_type("F"), of_type("9"));
+        assert_eq!(cancel.get_crosscode(), "10:2:931070583-1940-30712_192");
+        assert_eq!(reject.get_prevuuid(), Some(cancel.get_curruuid()));
+        assert_eq!(reject.get_crosscode(), cancel.get_crosscode());
+        assert_eq!(reject.get_crossuuid(), cancel.get_crossuuid());
+        assert_eq!(reject.get_side(), Side::Sell);
+        let wire = String::from_utf8(reject.into_bytes(b'|')).expect("a text wire");
+        assert!(wire.contains("|54=2|"), "{wire}");
+        assert_eq!(
+            shown(reject),
+            [
+                "clordid=0201623594616113",
+                "orderid=931070583-1940-30712_192",
+                "origclordid=0201623594616112",
+            ]
+        );
+        assert!(!conflicted(cancel) && !conflicted(reject));
+    }
+
+    /// Lines 73-92: the order's third fill states no `ClOrdID(11)`. It cites
+    /// the order's chain by its `OrderID(37)` and joins it, the walk writing
+    /// the chain's client order identifier back onto it; and no report of
+    /// the capture carries a lineage of the references each fill states of
+    /// itself - its `ExecID(17)`, its `TrdMatchID(880)`, its `TVTIC`.
+    #[test]
+    fn a_fill_stating_no_client_order_identifier_cites_the_chain_by_its_order() {
+        let codec = codec();
+        let report = |messages: &[FixMsg], execid: &str| -> FixMsg {
+            messages
+                .iter()
+                .find(|message| {
+                    message.marketdatakind() == MarketDataKind::Order
+                        && base(message, &IdType::ExecId).as_deref() == Some(execid)
+                })
+                .cloned()
+                .unwrap_or_else(|| panic!("the report of {execid}"))
+        };
+        let read = report(&parsed(&codec), "00064703468GBYZ0");
+        assert_eq!(base(&read, &IdType::ClOrdId), None, "the line states none");
+        let walk = walked(&codec);
+        let followed: Vec<FixMsg> = walk
+            .iter()
+            .filter(|message| message.get_prevuuid().is_some())
+            .cloned()
+            .collect();
+        let (second, third) = (
+            report(&followed, "00064703467GBYZ0"),
+            report(&followed, "00064703468GBYZ0"),
+        );
+        assert_eq!(third.get_prevuuid(), Some(second.get_curruuid()));
+        assert_eq!(third.get_crosscode(), "10:1:00079132557GLXC0");
+        assert_eq!(third.get_crosscode(), second.get_crosscode());
+        assert_eq!(
+            base(&third, &IdType::ClOrdId).as_deref(),
+            Some("00079132557GLXC0.9"),
+            "the chain's, written back"
+        );
+        assert!(!conflicted(&third));
+        let lineage = [
+            "parentexecid",
+            "origexecid",
+            "parenttrdmatchid",
+            "origtrdmatchid",
+            "parenttvtic",
+            "origtvtic",
+        ];
+        for message in &walk {
+            for id in message.get_identifiers().iter() {
+                assert!(
+                    !lineage.contains(&id.kind().as_str()),
+                    "{id} on {}",
+                    message.get_crosscode()
+                );
+            }
+        }
+    }
+
+    /// Two child orders a bridge names under one hierarchy parent - one
+    /// `PARENTORDERID`, one `PARENTCLORDID` - are two chains: the parent's
+    /// `ClOrdID` is the word `parentclordid`, a type of its own and no
+    /// lineage, and the previous-value slot `parentorderid` names no chain,
+    /// so neither child meets the other through it - nor does the parent
+    /// order's own report meet either child.
+    #[test]
+    fn two_child_orders_of_one_parent_are_two_chains() {
+        let walk = walked_lines(
+            &codec(),
+            &[
+                b"8=FIX.4.4|35=8|52=20260814-12:00:00|37=O1|11=X1|17=E1|150=0|39=0|54=1|55=ABB|PARENTORDERID=P|PARENTCLORDID=K|10=0|",
+                b"8=FIX.4.4|35=8|52=20260814-12:00:01|37=O2|11=X2|17=E2|150=0|39=0|54=1|55=ABB|PARENTORDERID=P|PARENTCLORDID=K|10=0|",
+                b"8=FIX.4.4|35=8|52=20260814-12:00:02|37=P|11=K|17=E3|150=0|39=0|54=1|55=ABB|10=0|",
+            ],
+        );
+        let [first, second, parent] = walk.as_slice() else {
+            panic!("three reports, not {}", walk.len())
+        };
+        assert_eq!(first.get_crosscode(), "10:1:O1");
+        assert_eq!(second.get_crosscode(), "10:1:O2");
+        assert_eq!(parent.get_crosscode(), "10:1:P");
+        for message in [first, second, parent] {
+            assert_eq!(message.get_prevuuid(), None, "{}", message.get_crosscode());
+            assert!(!conflicted(message));
+        }
+        let hierarchy: IdType = "parentclordid".parse().expect("a word");
+        assert_eq!(hierarchy.parent_of(), None);
+        for child in [first, second] {
+            assert_eq!(base(child, &hierarchy).as_deref(), Some("K"));
+            assert_eq!(
+                base(child, &"parentorderid".parse().unwrap()).as_deref(),
+                Some("P")
+            );
+            assert_eq!(base(child, &IdType::OrigClOrdId), None);
+        }
+    }
+
+    /// A trade capture is a coded chain: one stating no order tag is keyed
+    /// `21:0:<TradeID>`, and a capture stating the trade it supersedes -
+    /// `OrigTradeID(1126)`, or `TradeReportRefID(572)` for a report - joins
+    /// that trade's chain through the first value its lineage field names,
+    /// keeping the chain's code.
+    #[test]
+    fn a_trade_capture_is_a_coded_chain() {
+        let walk = walked_lines(
+            &codec(),
+            &[
+                b"8=FIX.4.4|35=AE|52=20260814-12:00:00|571=TR1|1003=T1|55=ABB|32=10|31=100|10=0|",
+                b"8=FIX.4.4|35=AE|52=20260814-12:00:01|571=TR2|572=TR1|487=2|1003=T2|1126=T1|55=ABB|32=10|31=100|10=0|",
+                b"8=FIX.4.4|35=AE|52=20260814-12:00:02|571=TR5|55=ABB|32=10|31=100|10=0|",
+                b"8=FIX.4.4|35=AE|52=20260814-12:00:03|571=TR6|572=TR5|487=2|55=ABB|32=10|31=100|10=0|",
+            ],
+        );
+        let [first, replaced, report, corrected] = walk.as_slice() else {
+            panic!("four trade captures, not {}", walk.len())
+        };
+        assert_eq!(first.get_crosscode(), "21:0:T1");
+        assert_eq!(replaced.get_prevuuid(), Some(first.get_curruuid()));
+        assert_eq!(replaced.get_crosscode(), "21:0:T1", "the chain's");
+        assert_eq!(replaced.get_crossuuid(), first.get_crossuuid());
+        assert_eq!(base(replaced, &IdType::TradeId).as_deref(), Some("T2"));
+        assert_eq!(
+            base(replaced, &"origtradeid".parse().unwrap()).as_deref(),
+            Some("T1")
+        );
+        assert_eq!(
+            base(replaced, &IdType::TradeReportRefId).as_deref(),
+            Some("TR1")
+        );
+        assert_eq!(report.get_crosscode(), "21:0:TR5");
+        assert_eq!(report.get_prevuuid(), None, "another trade");
+        assert_eq!(corrected.get_prevuuid(), Some(report.get_curruuid()));
+        assert_eq!(corrected.get_crosscode(), "21:0:TR5");
+        assert_eq!(
+            base(corrected, &IdType::TradeReportRefId).as_deref(),
+            Some("TR5")
+        );
+        assert!(!walk.iter().any(conflicted));
     }
 }
 

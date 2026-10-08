@@ -128,3 +128,52 @@ fn a_located_namespace_resolves_its_handle_under_its_effective_properties() {
     );
     assert!(namespace.modified().is_some());
 }
+
+/// An object a caller's object-store folder roots keeps that folder's own
+/// client: a listed table and its clone resolve against the endpoint the
+/// folder was built with, signed with its key pair, and building either -
+/// listing aside - sends nothing. Before, a clone was rebuilt from the
+/// location under default options, reaching another store.
+#[cfg(feature = "s3")]
+#[test]
+fn a_clone_of_an_object_on_a_callers_store_folder_keeps_its_client() {
+    use yggdryl::s3::{self, Credentials, S3Options};
+
+    let store = crate::server::FakeS3::start();
+    store.create_bucket("market");
+    store.put(
+        "market",
+        "lake/eu/trades.csv",
+        b"symbol,price
+AAPL,1
+",
+    );
+    let options = S3Options::default()
+        .with_environment(false)
+        .with_endpoint(store.endpoint())
+        .with_region("us-east-1")
+        .with_path_style(true)
+        .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"));
+    let catalog = Catalog::Folder(Box::new(FolderCatalog::bound(
+        "market",
+        Holder::S3Folder(s3::folder_with("s3://market/lake", options).expect("a folder")),
+    )));
+    let table = catalog.table("eu.trades").expect("the table");
+    store.clear_requests();
+    let twin = table.clone();
+    assert!(!IOBase::opened(&twin), "a clone starts unresolved");
+    assert_eq!(store.request_count(), 0, "a clone sends nothing");
+
+    assert_eq!(twin.row_size().expect("one row"), 1);
+    let requests = store.requests();
+    assert!(!requests.is_empty(), "the clone read the fake store");
+    for request in &requests {
+        assert!(
+            request.headers.iter().any(|(name, value)| {
+                name.eq_ignore_ascii_case("authorization")
+                    && value.contains("Credential=AKIAIOSFODNN7EXAMPLE/")
+            }),
+            "signed with the folder's key pair: {request:?}"
+        );
+    }
+}

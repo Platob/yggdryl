@@ -421,7 +421,13 @@ assert!(String::from_utf8(sink)?.starts_with("8=FIX.4.4|35=D|11=ORDER-1|18=G|999
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
 its order and side under one `crossuuid`, within one market data kind (`marketdatakind`); a
-report stating no side joins the one side alive under its identifiers. A fill's
+report stating no side joins the one side alive under its identifiers - its
+chain identities (`orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid`,
+never `execid`, `trdmatchid` or `quotereqid`) and the first value a lineage
+field names - and every message of a chain carries the chain's first
+`crosscode`, a replace under a new `ClOrdID` included. A message citing two
+live chains is joined to neither: it stands under its own identity and carries
+a `FixAnomaly` under `crosscode` naming both, warned once per kind. A fill's
 execution, split off at the parse, is a chain of its own and never restates,
 follows or ends its order. A codec pinned `with_sorted_lifecycle(true)` reads a source already in
 instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
@@ -534,11 +540,13 @@ assert_eq!(walked[0].get_cficode().map(|code| code.as_str()), Some("ESVUFR"));
 
 ## Follow a replace chain's parents
 
-A message that states an identifier again under another value is a step in
+A message that states a chain identity again under another value is a step in
 its chain: `lifecycle` keeps the value before it as the type's parent
 (`orderid` leaves `parentorderid` and the chain's first as `origorderid`,
-`clordid` leaves `origclordid`), and joins a replace to its order by that
-parent too. `registry.parents_of(&base)` lists them, nearest first, from the
+`clordid` leaves `origclordid`), and joins a replace to its order by the first value its lineage field
+names (`OrigClOrdID(41)`, `OrigTradeID(1126)`, `TradeReportRefID(572)`), under
+the base; only a chain identity has parents, so an `ExecID(17)` carries none.
+`registry.parents_of(&base)` lists them, nearest first, from the
 `FIX:parents` a field states.
 
 ```rust

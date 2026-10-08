@@ -1103,7 +1103,9 @@ The cost of the warehouse is stated in store calls and pinned in `rust/tests/iob
 | the first child | one listing and one entry classified: `list=2` |
 | a path | one listing per level descended, one listing of `metadata/` per folder passed through, the matched leaf's role once: `file_info=1 list=1` for `trades`, `file_info=1 list=3` for `eu.fills`, `list=3` to an absence under `eu` |
 | a read through `Holder::Table` | exactly what the same read on the table's own handle costs: `file_info=1 open_input_stream=1`; the schema through a resolved path `file_info=2 list=3 open_input_stream=1`, which is the path and then the schema |
-| a read through a clone | the clone rebuilds its handle from the leaf's location on its first verb, one role resolution more than the leaf in hand: `file_info=3 open_input_stream=1` |
+| a read through a clone | a clone starts unresolved and sends nothing; its first verb opens its handle again from the leaf's site, one role resolution more than the leaf in hand: `file_info=3 open_input_stream=1` |
+
+An object rooted on a caller's own object-store or HTTP handle - an `S3Folder` built with its endpoint, its keys and its session - keeps that handle's client: its site holds the handle's reopen (`Holder::from_handle`), so a listed table and its clone resolve on the caller's client, signed as it signs and sent where it sends, and building either sends nothing - which `rust/tests/warehouse/handle.rs` and the catalog's object-store leg in `rust/tests/iceberg/catalog/mod_.rs` pin against the in-process store. A location named rather than handed over opens under its effective properties.
 
 The benchmark is `warehouse` in the `holder` target: `resolve/registered` at one and a thousand registered tables - the floor of the abstraction, a walk of the memory levels and the clone of the object answered, no store touched - and `first_table/folder` beside `drain/folder` over a folder of 10, 1 000 and 100 000 CSV leaves, time to the first table against the full drain, as the listing benchmarks measure a folder. No number is stated here until a release run on a named machine writes it; regenerate with:
 

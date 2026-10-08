@@ -1,8 +1,9 @@
 //! `rust/src/idtype.rs`: the type of name an identifier is - one vocabulary for
 //! security, operation and party identifiers - the FIX `SecurityIDSource(22)`
 //! codes its security members carry, the field names that name them, the rule
-//! each type holds its values to, which `Identifier::new` applies, and the
-//! parent types a base lists and a parent reads back to its base.
+//! each type holds its values to, which `Identifier::new` applies, the ten
+//! chain identities a lifecycle names a chain by, and the parent types such a
+//! base lists and a parent reads back to its base.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -910,7 +911,9 @@ fn a_security_identifier_reads_its_type_and_holds_its_value_canonically() {
 #[test]
 fn a_bridge_and_a_parentage_spelling_are_words_no_member_names() {
     // The bridge types and the parent spellings were members once: a word
-    // like any other now, read for what it is by `parent_of`.
+    // like any other now, read for what it is by `parent_of`. A bridge's
+    // `ParentClOrdID` - the hierarchy parent child orders share - is one of
+    // them, never a spelling of `OrigClOrdID(41)`.
     for spelling in [
         "ParentOrderID",
         "OMSDealerParentOrderID",
@@ -920,6 +923,8 @@ fn a_bridge_and_a_parentage_spelling_are_words_no_member_names() {
         "origorderid",
         "origtradeid",
         "originclordid",
+        "ParentClOrdID",
+        "parentclordid",
     ] {
         let read = kind(spelling);
         assert!(!read.is_known(), "{spelling:?}");
@@ -927,12 +932,86 @@ fn a_bridge_and_a_parentage_spelling_are_words_no_member_names() {
         assert!(!read.is_security() && !read.is_party(), "{spelling:?}");
         assert_eq!(read.max_value_width(), 64, "{spelling:?}");
     }
-    assert!(IdType::OrigClOrdId.is_known(), "the one parent FIX names");
-    assert_eq!(
-        kind("ParentClOrdID"),
+    // The two parents FIX names are members, each spelled as FIX spells it.
+    assert_eq!(kind("OrigClOrdID"), IdType::OrigClOrdId);
+    assert_eq!(kind("TradeReportRefID"), IdType::TradeReportRefId);
+    assert_eq!(IdType::TradeReportRefId.as_str(), "tradereportrefid");
+}
+
+#[test]
+fn a_chain_identity_is_one_of_ten_members_and_nothing_else() {
+    let chains = [
+        IdType::OrderId,
+        IdType::ClOrdId,
+        IdType::SecondaryOrderId,
+        IdType::SecondaryClOrdId,
+        IdType::QuoteId,
+        IdType::SecondaryQuoteId,
+        IdType::TradeId,
+        IdType::SecondaryTradeId,
+        IdType::SecondaryFirmTradeId,
+        IdType::TradeReportId,
+    ];
+    for known in &IdType::KNOWN {
+        assert_eq!(known.is_chain_identity(), chains.contains(known), "{known}");
+    }
+    // A reference an event states about itself or about a request many
+    // chains answer names no chain, nor does a security, a party, the
+    // account, an instrument key or a parent type.
+    for reference in [
+        IdType::ExecId,
+        IdType::SecondaryExecId,
+        IdType::TrdMatchId,
+        IdType::Tvtic,
+        IdType::QuoteReqId,
+        IdType::MdReqId,
+        IdType::MdEntryId,
+        IdType::MdEntryRefId,
+        IdType::ReportTrackingNumber,
+        IdType::RegTradeId,
+        IdType::PrevRegTradeId,
+        IdType::BlockRegTradeId,
+        IdType::RelatedRegTradeId,
+        IdType::ClearedRegTradeId,
+        IdType::SecondaryAllocId,
+        IdType::SecondaryIndividualAllocId,
+        IdType::Account,
+        IdType::InstrumentId,
+        IdType::Isin,
+        IdType::ExecutingFirm,
         IdType::OrigClOrdId,
-        "its other spelling"
-    );
+        IdType::TradeReportRefId,
+    ] {
+        assert!(!reference.is_chain_identity(), "{reference}");
+    }
+    // Any other word names none, whatever it ends with: a parentage word, a
+    // reference a dictionary lifts (`RefOrderID(1080)`), a bridge's word.
+    for word in [
+        "venueorderid",
+        "reforderid",
+        "firmtradeid",
+        "parentclordid",
+        "parentorderid",
+        "origorderid",
+        "origtradeid",
+        "allocid",
+        "housekey",
+    ] {
+        assert!(!kind(word).is_chain_identity(), "{word}");
+    }
+    // A bridge key ending with a member's spelling is split into a source
+    // and that member before any type is read, so the member decides.
+    let keyed = Identifier::from_key("VENUE_ORDERID", "O-1").expect("an identifier");
+    assert_eq!(keyed.to_string(), "venue:orderid=O-1");
+    assert!(keyed.kind().is_chain_identity());
+    // The ten are exactly the types the crate names that have parents.
+    for known in &IdType::KNOWN {
+        assert_eq!(
+            known.is_chain_identity(),
+            !known.parents().is_empty(),
+            "{known}"
+        );
+    }
 }
 
 #[test]
@@ -944,67 +1023,84 @@ fn a_base_type_lists_its_parents_nearest_first() {
             .collect::<Vec<_>>()
     };
     // `clordid`: FIX's `OrigClOrdID(41)`, the client order identifier a
-    // cancel/replace replaced, alone.
+    // cancel/replace replaced, alone; `tradereportid`: FIX's
+    // `TradeReportRefID(572)`, the report a cancel or a replace refers to,
+    // alone.
     assert_eq!(IdType::ClOrdId.parents().as_ref(), [IdType::OrigClOrdId]);
     assert_eq!(parents(&IdType::ClOrdId), ["origclordid"]);
-    // Any other type the crate names, or a word ending in `id`: the value
-    // before the last change, then the chain's first.
+    assert_eq!(
+        IdType::TradeReportId.parents().as_ref(),
+        [IdType::TradeReportRefId]
+    );
+    assert_eq!(parents(&IdType::TradeReportId), ["tradereportrefid"]);
+    // Any other chain identity: the value before the last change, then the
+    // chain's first.
     assert_eq!(parents(&IdType::OrderId), ["parentorderid", "origorderid"]);
     assert_eq!(parents(&IdType::TradeId), ["parenttradeid", "origtradeid"]);
-    assert_eq!(parents(&IdType::ExecId), ["parentexecid", "origexecid"]);
-    assert_eq!(parents(&IdType::Isin), ["parentisin", "origisin"]);
-    assert_eq!(parents(&IdType::Account), ["parentaccount", "origaccount"]);
-    assert_eq!(parents(&kind("firmid")), ["parentfirmid", "origfirmid"]);
-    assert_eq!(parents(&kind("Firm_ID")), ["parentfirmid", "origfirmid"]);
-    // A word that names no identifier has none.
-    for word in ["housekey", "house", "market", "z", "parenthood"] {
+    assert_eq!(
+        parents(&IdType::SecondaryFirmTradeId),
+        ["parentsecondaryfirmtradeid", "origsecondaryfirmtradeid"]
+    );
+    // A per-report reference, a request many chains answer, a security, a
+    // party and the account have none: no value of theirs names a chain, so
+    // none has a value before it last changed.
+    for none in [
+        IdType::ExecId,
+        IdType::TrdMatchId,
+        IdType::Tvtic,
+        IdType::QuoteReqId,
+        IdType::MdReqId,
+        IdType::MdEntryId,
+        IdType::Isin,
+        IdType::Account,
+        IdType::ExecutingFirm,
+    ] {
+        assert!(none.parents().is_empty(), "{none}");
+    }
+    // Neither has any other word, one ending in `id` included.
+    for word in [
+        "firmid",
+        "Firm_ID",
+        "venueorderid",
+        "reforderid",
+        "housekey",
+        "house",
+        "market",
+        "z",
+        "parenthood",
+    ] {
         assert!(kind(word).parents().is_empty(), "{word}");
     }
     // Parentage never nests: a parent type has no parents of its own.
-    assert!(IdType::OrigClOrdId.parents().is_empty());
     for parent in [
         "origclordid",
+        "tradereportrefid",
         "parentorderid",
         "origorderid",
         "origtradeid",
-        "parentisin",
-        "parentfirmid",
+        "parentclordid",
     ] {
         assert!(kind(parent).parents().is_empty(), "{parent}");
     }
-    // Every type the crate names has the two of its rule, but `clordid`'s one
-    // and the parent FIX names, which has none.
+    // A chain identity has the two of its rule, but `clordid` and
+    // `tradereportid` the one FIX names each; no other type the crate names
+    // has any.
     for known in &IdType::KNOWN {
         let expected = match known {
-            IdType::ClOrdId => 1,
-            IdType::OrigClOrdId => 0,
-            _ => 2,
+            IdType::ClOrdId | IdType::TradeReportId => 1,
+            _ if known.is_chain_identity() => 2,
+            _ => 0,
         };
         assert_eq!(known.parents().len(), expected, "{known}");
     }
-    // A type the crate names answers borrowed from one table, so asking per
-    // identifier allocates nothing; any other word builds its list.
+    // Every answer is borrowed - a member's from one table, any other
+    // word's the empty list - so asking per identifier allocates nothing.
     for known in &IdType::KNOWN {
         assert!(matches!(known.parents(), Cow::Borrowed(_)), "{known}");
     }
-    assert!(matches!(kind("firmid").parents(), Cow::Owned(_)));
+    assert!(matches!(kind("firmid").parents(), Cow::Borrowed(_)));
     let (first, second) = (IdType::OrderId.parents(), IdType::OrderId.parents());
     assert!(std::ptr::eq(first.as_ptr(), second.as_ptr()), "one table");
-    // The parents are types, so each holds the width a type may be: a base
-    // that cannot spell `parent` and itself in 64 bytes loses that parent.
-    let widest = kind(&format!("{}id", "k".repeat(56)));
-    assert_eq!(widest.as_str().len(), 58);
-    assert_eq!(
-        widest
-            .parents()
-            .iter()
-            .map(|parent| parent.as_str().len())
-            .collect::<Vec<_>>(),
-        [64, 62]
-    );
-    let wider = kind(&format!("{}id", "k".repeat(62)));
-    assert_eq!(wider.as_str().len(), 64);
-    assert!(wider.parents().is_empty(), "neither parent fits");
 }
 
 #[test]
@@ -1012,17 +1108,15 @@ fn a_parent_type_names_its_base_and_its_place_among_the_bases_parents() {
     for (spelling, base, place) in [
         ("origclordid", IdType::ClOrdId, 0),
         ("OrigClOrdID", IdType::ClOrdId, 0),
+        ("tradereportrefid", IdType::TradeReportId, 0),
+        ("TradeReportRefID", IdType::TradeReportId, 0),
         ("parentorderid", IdType::OrderId, 0),
         ("ParentOrderID", IdType::OrderId, 0),
         ("origorderid", IdType::OrderId, 1),
         ("OrigOrderID", IdType::OrderId, 1),
         ("origtradeid", IdType::TradeId, 1),
-        ("parentexecid", IdType::ExecId, 0),
-        ("origexecid", IdType::ExecId, 1),
-        ("parentisin", IdType::Isin, 0),
-        ("origisin", IdType::Isin, 1),
-        ("parentfirmid", kind("firmid"), 0),
-        ("origfirmid", kind("firmid"), 1),
+        ("parentsecondaryclordid", IdType::SecondaryClOrdId, 0),
+        ("origquoteid", IdType::QuoteId, 1),
     ] {
         assert_eq!(
             kind(spelling).parent_of(),
@@ -1030,15 +1124,25 @@ fn a_parent_type_names_its_base_and_its_place_among_the_bases_parents() {
             "{spelling}"
         );
     }
-    // FIX gives a client order identifier the one parent, which
-    // `parentclordid` spells too. `origin` and `original` are words of their
-    // own, a base is no parent, and nothing but a type that has parents has
-    // one.
-    assert_eq!(
-        kind("parentclordid").parent_of(),
-        Some((IdType::ClOrdId, 0))
-    );
+    // FIX gives a client order identifier and a trade report the one parent
+    // each, spelled as FIX spells it, so the other prefixes name none: a
+    // bridge's `ParentClOrdID` is a hierarchy parent, a word of its own. Only
+    // a chain identity has a parent, so a per-report reference's, a
+    // security's or any other word's spelling names none. `origin` and
+    // `original` are words of their own, and a base is no parent.
     for spelling in [
+        "parentclordid",
+        "parenttradereportid",
+        "origtradereportid",
+        "parentexecid",
+        "origexecid",
+        "parenttrdmatchid",
+        "origtvtic",
+        "parentisin",
+        "origisin",
+        "parentaccount",
+        "parentfirmid",
+        "origfirmid",
         "originalorderid",
         "originorderid",
         "origintradeid",
@@ -1085,21 +1189,30 @@ fn a_parent_type_names_its_base_and_its_place_among_the_bases_parents() {
             );
         }
     }
-    for spelling in ["origclordid", "parentorderid", "origorderid", "origtradeid"] {
+    for spelling in [
+        "origclordid",
+        "tradereportrefid",
+        "parentorderid",
+        "origorderid",
+        "origtradeid",
+    ] {
         let parent = kind(spelling);
         let (base, place) = parent.parent_of().expect("a parent type");
         assert_eq!(base.parents()[place], parent, "{spelling}");
     }
-    // A type the crate names is a base with parents or a parent with none,
-    // never both: `origclordid` is the one parent among them.
+    // A type the crate names is a chain identity with parents, one of the
+    // two parents FIX names, or neither - never a base and a parent at once.
     for known in &IdType::KNOWN {
-        if known.parents().is_empty() {
-            assert!(
-                known.parent_of().is_some(),
-                "{known}: no parents, so a parent"
-            );
-        } else {
+        if known.is_chain_identity() {
             assert_eq!(known.parent_of(), None, "{known}: a base is no parent");
+        } else if known.parent_of().is_some() {
+            assert!(
+                matches!(known, IdType::OrigClOrdId | IdType::TradeReportRefId),
+                "{known}"
+            );
+            assert!(known.parents().is_empty(), "{known}: a parent has none");
+        } else {
+            assert!(known.parents().is_empty(), "{known}");
         }
     }
 }

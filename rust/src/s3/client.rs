@@ -365,7 +365,7 @@ impl Client {
         // The account the endpoint settled on is what a shared-key signature
         // names, so it is read back rather than resolved a second time.
         let endpoint_account = endpoint.account.clone();
-        Ok(Self {
+        let client = Self {
             agent: Self::agent(&options, tls)?,
             provider,
             endpoint,
@@ -387,7 +387,33 @@ impl Client {
             stats: Stats::default(),
             retries: RetryBudget::default(),
             jitter: AtomicU64::new(fresh_jitter()),
-        })
+        };
+        client.start_where_found(url)?;
+        Ok(client)
+    }
+
+    /// Start signed for, and addressed to, the region the session found
+    /// `url`'s bucket in ([`Session::bucket_region`]), on Amazon S3's
+    /// published hosts alone - a stated endpoint is where the store is, and
+    /// its region the caller's - so a second client on a bucket in another
+    /// region sends no redirect and no `HeadBucket` to find it again.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::adopt_region`].
+    fn start_where_found(&self, url: &Url) -> Result<()> {
+        if self.endpoint.published.is_none() {
+            return Ok(());
+        }
+        let Some(bucket) = url.bucket().filter(|bucket| !bucket.is_empty()) else {
+            return Ok(());
+        };
+        let signing = self.region();
+        let partition = crate::ArnPartition::from_region(&signing).as_str();
+        match self.session.bucket_region(partition, bucket) {
+            Some(found) if found != signing => self.adopt_region(bucket, &found),
+            _ => Ok(()),
+        }
     }
 
     /// The connection pool this client sends on: the crate's one HTTP pool,
@@ -435,6 +461,11 @@ impl Client {
     /// Keys per bulk delete on this store.
     pub(super) const fn delete_batch(&self) -> usize {
         self.provider.max_delete_batch()
+    }
+
+    /// Whether this store answers [`Self::get_tail`]'s suffix range.
+    pub(super) const fn reads_suffix_range(&self) -> bool {
+        self.provider.reads_suffix_range()
     }
 
     /// The AWS session this client signs with: the caller's, narrowed by what
@@ -937,7 +968,7 @@ impl Client {
             if !redirected && let Some(region) = self.redirect_region(request, &answer) {
                 redirected = true;
                 if region != place.region {
-                    self.adopt_region(&region)?;
+                    self.adopt_region(&request.bucket, &region)?;
                     continue;
                 }
             }
@@ -1210,7 +1241,7 @@ impl Client {
                 if !redirected && let Some(region) = self.redirect_region(request, &answer) {
                     redirected = true;
                     if region != place.region {
-                        self.adopt_region(&region)?;
+                        self.adopt_region(&request.bucket, &region)?;
                         continue;
                     }
                 }
@@ -1274,12 +1305,16 @@ impl Client {
     /// and the region move under the one lock both are read under. A stated
     /// endpoint is where the store is whatever region signs, so it stays.
     ///
+    /// On a published host the region is `bucket`'s, so the session keeps it
+    /// ([`Session::learn_bucket_region`]) and every client it builds for the
+    /// bucket starts there ([`Self::start_where_found`]).
+    ///
     /// # Errors
     ///
     /// A `region` a store's answer named that is no host label, where it
     /// would be built into the published host
     /// ([`crate::ArnPartition::check_region`]); nothing moves then.
-    fn adopt_region(&self, region: &str) -> Result<()> {
+    fn adopt_region(&self, bucket: &str, region: &str) -> Result<()> {
         let host = match self.endpoint.published {
             Some(published) => {
                 crate::ArnPartition::check_region(region, "a store's redirect")?;
@@ -1287,10 +1322,16 @@ impl Client {
             }
             None => None,
         };
-        let mut place = self.endpoint.place.write().map_err(|_| poisoned())?;
-        region.clone_into(&mut place.region);
-        if let Some(host) = host {
-            place.host = host;
+        let published = host.is_some();
+        {
+            let mut place = self.endpoint.place.write().map_err(|_| poisoned())?;
+            region.clone_into(&mut place.region);
+            if let Some(host) = host {
+                place.host = host;
+            }
+        }
+        if published && !bucket.is_empty() {
+            self.session.learn_bucket_region(bucket, region);
         }
         Ok(())
     }
@@ -1579,6 +1620,111 @@ impl Client {
             .map_err(Error::Io)?;
         drain(&mut reader);
         Ok((bytes, window.total))
+    }
+
+    /// Read the last `length` bytes of one object, and its whole length.
+    ///
+    /// One `GET` with `Range: bytes=-{length}`: a suffix range, which Amazon
+    /// S3 and Google Cloud Storage answer with the object's tail and a
+    /// `Content-Range` stating its whole length, so a footer-first reader
+    /// asks nothing before it - no `HEAD` for the size the window is counted
+    /// back from. A suffix longer than the object answers all of it. An empty
+    /// object satisfies no suffix range and answers `416`, which is a length
+    /// of `0`. A store that ignores the range answers `200` with the whole
+    /// object, which is read past to its tail, the body's length the total.
+    /// `None` is absence. Azure Blob Storage reads no suffix range, so its
+    /// handles never ask for one.
+    ///
+    /// `length` is at least one: a suffix of none is satisfiable by nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's refusal, a partial answer that states no whole
+    /// length, or a read failure part way through.
+    pub(super) fn get_tail(
+        &self,
+        bucket: &str,
+        key: &str,
+        length: u64,
+    ) -> Result<Option<(Vec<u8>, u64)>> {
+        let request = self
+            .get_request(bucket, key)
+            .header("range", format!("bytes=-{}", length.max(1)));
+        let (status, headers, mut reader) = self.stream(&request)?;
+        let answer = Answer {
+            status,
+            headers,
+            body: Vec::new(),
+        };
+        let malformed_answer = |reason: &str| {
+            malformed(
+                self.provider.service(),
+                request.operation,
+                &self.location(&request),
+                reason,
+            )
+        };
+        match status {
+            404 => return Ok(None),
+            // Only an object of no bytes refuses a suffix: a total it states
+            // beside the refusal is a store contradicting itself.
+            416 => {
+                return match total_of_content_range(answer.header("content-range")) {
+                    None | Some(0) => Ok(Some((Vec::new(), 0))),
+                    Some(total) => Err(malformed_answer(&format!(
+                        "a suffix range was refused over an object of {total} bytes"
+                    ))),
+                };
+            }
+            200..=299 => {}
+            _ => {
+                let mut body = Vec::new();
+                reader.read_to_end(&mut body).ok();
+                let answer = Answer {
+                    status,
+                    headers: answer.headers,
+                    body,
+                };
+                return Err(self.failure(&request, &answer));
+            }
+        }
+        let stated = answer
+            .header("content-length")
+            .and_then(|value| value.trim().parse::<u64>().ok());
+        if status != 200 {
+            let total = total_of_content_range(answer.header("content-range"))
+                .ok_or_else(|| malformed_answer("a partial answer stated no Content-Range"))?;
+            let coming = stated.unwrap_or(length).min(length);
+            let capacity = usize::try_from(coming).map_err(|_| crate::iobase::oversized(coming))?;
+            let mut bytes = Vec::new();
+            bytes
+                .try_reserve_exact(capacity)
+                .map_err(|_| crate::iobase::oversized(coming))?;
+            (&mut reader)
+                .take(length)
+                .read_to_end(&mut bytes)
+                .map_err(Error::Io)?;
+            drain(&mut reader);
+            return Ok(Some((bytes, total)));
+        }
+        // The whole object came back: what precedes the tail is read past,
+        // never held, so a store ignoring the range costs a transfer and not
+        // the object's length in memory.
+        let Some(whole) = stated else {
+            let (bytes, total) = tail_of(&mut reader, length)?;
+            return Ok(Some((bytes, total)));
+        };
+        if !discard(&mut reader, whole.saturating_sub(length))? {
+            return Err(malformed_answer(
+                "the body ended before the length it stated",
+            ));
+        }
+        let mut bytes = Vec::new();
+        (&mut reader)
+            .take(length)
+            .read_to_end(&mut bytes)
+            .map_err(Error::Io)?;
+        Ok(Some((bytes, whole)))
     }
 
     /// Issue one ranged `GET` and hand back the body the window is read from.
@@ -2738,6 +2884,31 @@ impl Drop for Pooled {
     }
 }
 
+/// The last `length` bytes of a body that states no length, and how many it
+/// held: at most twice `length` is held at once, the front dropped as the
+/// body arrives.
+fn tail_of(reader: &mut (impl Read + ?Sized), length: u64) -> Result<(Vec<u8>, u64)> {
+    let keep = usize::try_from(length).unwrap_or(usize::MAX);
+    let mut tail = Vec::new();
+    let mut total = 0_u64;
+    let mut chunk = [0_u8; 8192];
+    loop {
+        let read = reader.read(&mut chunk).map_err(Error::Io)?;
+        if read == 0 {
+            break;
+        }
+        total += read as u64;
+        tail.extend_from_slice(&chunk[..read]);
+        if tail.len() > keep.saturating_mul(2) {
+            tail.drain(..tail.len() - keep);
+        }
+    }
+    if tail.len() > keep {
+        tail.drain(..tail.len() - keep);
+    }
+    Ok((tail, total))
+}
+
 /// Read and throw away `count` bytes, reporting whether they were all there.
 fn discard(reader: &mut (impl Read + ?Sized), count: u64) -> Result<bool> {
     let mut discarded = 0_u64;
@@ -3126,16 +3297,16 @@ pub mod internals {
             self.0.region()
         }
 
-        /// Sign for `region` from here on, as a redirect naming it does, and
-        /// address Amazon S3's published host for it unless an endpoint was
-        /// stated.
+        /// Sign for `region` from here on, as a redirect for `bucket` naming
+        /// it does, and address Amazon S3's published host for it unless an
+        /// endpoint was stated - where the session keeps it as `bucket`'s.
         ///
         /// # Errors
         ///
         /// A `region` that is no host label where the published host would be
         /// built from it.
-        pub fn adopt_region(&self, region: &str) -> Result<()> {
-            self.0.adopt_region(region)
+        pub fn adopt_region(&self, bucket: &str, region: &str) -> Result<()> {
+            self.0.adopt_region(bucket, region)
         }
 
         /// The scheme the endpoint is reached over.

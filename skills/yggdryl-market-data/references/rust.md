@@ -172,8 +172,9 @@ assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
 
 ## Walk a stream into chains
 
-`EventIterator` chains a stream by cross identity (and by a live element's
-`identifiers`), yields a twin as a restatement rather than a successor, retires a
+`EventIterator` chains a stream by cross identity (and by the chain identities a live
+element's `identifiers` hold, never an `execid`), re-keys each element onto its
+chain's side and first cross code, yields a twin as a restatement rather than a successor, retires a
 chain at a terminal state and emits one `EXPIRED` at a deadline. An order's or
 an execution's chain is keyed by side - a quote's is one chain whatever side
 it tags - a chain lives within one `marketdatakind` (an order and an execution
@@ -831,7 +832,7 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
 - `EventIterator::new(items, false)` collects to sort; pass `true` only for a
   stream you know is sorted, so it streams - an unsorted stream under `true` is
   not refused, it yields broken chains (a step before its live element
-  yielded as it came, `prevuuid` null).
+  yielded following nothing, `prevuuid` null).
 - `BookIterator::new(items, snapshot_millis)` takes an iterator
   (`.into_iter()`) of `MarketData` or `Result<MarketData>` and yields
   `Result<BookEvent>`; `with_filter(filter)` binds an expression over the

@@ -1080,11 +1080,11 @@ ClOrdID(11)   [{"map":"identifiers","key":"clordid"}]
 | Follow | what an entry marks is what `Operation::is_followed_identifier` answers for a message and the lifecycle carries forward, each type's [parents](#parents-of-an-identifier) travelling with it: a message naming no `OrderID(37)` carries the chain's `orderid`, `parentorderid` and `origorderid` alike |
 | Role | a `PartyRole(452)` code of ASCII letters and digits, and only on `PartyID(448)` - a registry refuses one on any other tag, naming the field; a stored document whose map, key or role is no such word is refused naming the property, what it holds there and the word it holds - `expected "role" to be a PartyRole code, got "a role"`, as the writer refuses it |
 | Compiled | `FixRegistry::idmap_sources() -> &[(i32, FixIdSource)]`, every field's entries beside its tag in tag order, compiled once and forgotten by every change to the fields; Python `idmap_sources()` and JavaScript `idmapSources()` answer `{tag, map, key, follow, role}` records, JavaScript leaving `role` out where the entry states none |
-| Shipped | the generator writes the standard fields' from `IDMAP_SOURCES` in `scripts/generate_fix_dictionary.py`, validated against the dictionary at generation - `OrderID(37)`, `SecondaryOrderID(198)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `ExecID(17)`, `TrdMatchID(880)`, `QuoteID(117)`, `QuoteReqID(131)`, `MDReqID(262)`, `TradeID(1003)` and the secondary identifiers `SecondaryClOrdID(526)`, `SecondaryExecID(527)`, `SecondaryAllocID(793)`, `SecondaryIndividualAllocID(989)`, `SecondaryTradeID(1040)`, `SecondaryFirmTradeID(1042)` and `SecondaryQuoteID(1751)`; the crate states none of its own. No shipped field states a role: the parties a message names are no identifier of this map but its [party ids](message.md#parties-and-regulatory-trade-identifiers), which the crate reads itself |
+| Shipped | the generator writes the standard fields' from `IDMAP_SOURCES` in `scripts/generate_fix_dictionary.py`, validated against the dictionary at generation - 21 fields: `OrderID(37)`, `SecondaryOrderID(198)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `ExecID(17)`, `TrdMatchID(880)`, `QuoteID(117)`, `QuoteReqID(131)`, `MDReqID(262)`, `TradeID(1003)` and its lineage `OrigTradeID(1126)`, `TradeReportID(571)` and the report it refers to, `TradeReportRefID(572)`, and the secondary identifiers `SecondaryClOrdID(526)`, `SecondaryExecID(527)`, `SecondaryAllocID(793)`, `SecondaryIndividualAllocID(989)`, `SecondaryTradeID(1040)` and its lineage `OrigSecondaryTradeID(1127)`, `SecondaryFirmTradeID(1042)` and `SecondaryQuoteID(1751)`; the crate states none of its own. Which of them name a lifecycle chain is the type's, [`IdType::is_chain_identity`](../graph/identifier.md#parentage), never the entry's: `ExecID(17)` maps an identifier a [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins nothing by. No shipped field states a role: the parties a message names are no identifier of this map but its [party ids](message.md#parties-and-regulatory-trade-identifiers), which the crate reads itself |
 
 ## Parents of an identifier
 
-An identifier a chain changes keeps the values it held under types of their own - `clordid`'s `origclordid`, `orderid`'s `parentorderid` and `origorderid` - and which types those are is a fact about the field, so it travels on the field as `FIX:parents`: a JSON array of identifier types, folded words, nearest first. `ClOrdID(11)` states `["origclordid"]` - FIX's own `OrigClOrdID(41)` - and a message that follows another takes the parents its chain gave each base identifier it states ([Parentage](../graph/identifier.md#parentage)).
+An identifier a chain changes keeps the values it held under types of their own - `clordid`'s `origclordid`, `orderid`'s `parentorderid` and `origorderid` - and which types those are is a fact about the field, so it travels on the field as `FIX:parents`: a JSON array of identifier types, folded words, nearest first. `ClOrdID(11)` states `["origclordid"]` - FIX's own `OrigClOrdID(41)` - and a message that follows another takes the parents its chain gave each base identifier it states ([Parentage](../graph/identifier.md#parentage)). Only a chain identity has parents by its type ([`IdType::is_chain_identity`](../graph/identifier.md#parentage)), and `TradeReportID(571)`'s - `tradereportrefid`, FIX's `TradeReportRefID(572)` - is the vocabulary's, which no field states.
 
 ```text
 ClOrdID(11)    ["origclordid"]
@@ -1095,11 +1095,11 @@ TradeID(1003)  ["origtradeid"]
 | --- | --- |
 | Key | `FIX:parents`, read with `FixField::parents() -> Words` - each a folded identifier type, borrowed, nothing where absent - and written with `FixFieldMut::set_parents(spellings)`: each spelling folded as an [`IdType`](../graph/identifier.md#vocabularies) folds it, a spelling no type folds from or a type listed twice refused naming the field and leaving it unchanged, an empty list removing the property as `remove_parents()` does; Python and JavaScript `field.fix.parents` cross a list of words, assigning folds each |
 | Base | the identifier type the field states: its `FIX:idmap` key, else its folded name |
-| Inferred | a dictionary states what its own field names imply, wherever fields arrive - a store loading, a field inserted, updated or added, a dictionary merged: a field named as another's parent - `parent` or `orig` before that field's name, as `IdType::parent_of` reads it - is listed on that field among its `FIX:parents`, a `parent` type before an `orig` one, beside what it already states; a parent field that is its base's only one also answers to its other spelling (`OrigClOrdID` to `parentclordid`) until a field of that name arrives |
+| Inferred | a dictionary states what its own field names imply, wherever fields arrive - a store loading, a field inserted, updated or added, a dictionary merged: a field named as another's parent - `parent` or `orig` before that field's name, as `IdType::parent_of` reads it, which names a parent of a chain identity alone - is listed on that field among its `FIX:parents`, a `parent` type before an `orig` one, beside what it already states. Each parent field answers to its own name alone: a venue's `OrigOrderID` is `OrderID`'s one stated parent until a `ParentOrderID` arrives as a second, never its other spelling, and `OrigClOrdID(41)` is never `parentclordid` - the word a bridge spells a hierarchy parent by |
 | Compiled | `FixRegistry::parent_sources() -> &[(IdType, Box<[IdType]>)]`, every list under its base, compiled once and forgotten by every change to the fields; Python `parent_sources()` answers `{base, parents}` records and JavaScript `parentSources()` the same objects |
-| Lookup | `FixRegistry::parents_of(base)` - the stated list, else the ones the name has (`IdType::parents`: `orderid`'s are `parentorderid`, then `origorderid`) - and `parent_of(kind)` - the base `kind` is a parent of and its place among the base's parents, from a stated list first, else the name's reading for a base that states none; Python `parents_of(base)` and `parent_of(kind)` (a `(base, place)` pair or `None`), JavaScript `parentsOf(base)` and `parentOf(kind)` (`{base, at}` or `null`) |
-| Shipped | the generator writes them from the dictionary's own field names (`attach_parents` in `scripts/generate_fix_dictionary.py`): `ClOrdID(11)` states `["origclordid"]`, `TradeID(1003)` `["origtradeid"]`, `SecondaryTradeID(1040)` `["origsecondarytradeid"]`, `CrossID(548)` `["origcrossid"]` and `AllocID(70)` `["parentallocid"]`; `OrderID(37)` states none, and has the parents its name has |
-| Used by | a message's `Operation::parents_of` and `parent_of` read this registry, so [`follow_parents`](../graph/identifier.md#parentage) and the [lifecycle walk](lifecycle.md#a-chain-is-named-by-its-cross-code) follow the dictionary's lists |
+| Lookup | `FixRegistry::parents_of(base)` - the stated list, else the ones the type has (`IdType::parents`: `orderid`'s are `parentorderid`, then `origorderid`, `tradereportid`'s `tradereportrefid`, and a type that is no chain identity - `execid`, `isin` - has none) - and `parent_of(kind)` - the base `kind` is a parent of and its place among the base's parents, from a stated list first, else the name's reading for a base that states none (`parentexecid` and `parentclordid` are words of their own); Python `parents_of(base)` and `parent_of(kind)` (a `(base, place)` pair or `None`), JavaScript `parentsOf(base)` and `parentOf(kind)` (`{base, at}` or `null`) |
+| Shipped | the generator writes them from the dictionary's own field names (`attach_parents` in `scripts/generate_fix_dictionary.py`), each parent field under its own name alone: `ClOrdID(11)` states `["origclordid"]`, `TradeID(1003)` `["origtradeid"]`, `SecondaryTradeID(1040)` `["origsecondarytradeid"]`, `CrossID(548)` `["origcrossid"]` and `AllocID(70)` `["parentallocid"]`; `OrderID(37)` and `TradeReportID(571)` state none, and have the parents their type has. A list on a type that is no chain identity - `CrossID(548)`, `AllocID(70)` - names no lifecycle chain |
+| Used by | a message's `Operation::parents_of` and `parent_of` read this registry, so [`follow_parents`](../graph/identifier.md#parentage) and the [lifecycle walk](lifecycle.md#a-chain-is-named-by-its-cross-code) - which files the chain's first value, the last parent a chain identity's list names, under its base - follow the dictionary's lists |
 
 === "Rust"
 
@@ -1124,8 +1124,13 @@ TradeID(1003)  ["origtradeid"]
     assert_eq!(parents(IdType::ClOrdId), ["origclordid"]);
     assert_eq!(parents(IdType::TradeId), ["origtradeid"], "OrigTradeID(1126)");
     assert_eq!(parents(IdType::OrderId), ["parentorderid", "origorderid"], "no field: the name's");
+    assert_eq!(parents(IdType::TradeReportId), ["tradereportrefid"], "no field: the vocabulary's");
+    assert!(parents(IdType::ExecId).is_empty(), "no chain identity, no parents");
     // A stated list places its parents: here the one parent is the first.
     assert_eq!(registry.parent_of(&IdType::OrigClOrdId), Some((IdType::ClOrdId, 0)));
+    assert_eq!(registry.parent_of(&IdType::TradeReportRefId), Some((IdType::TradeReportId, 0)));
+    // A bridge's hierarchy parent is a word of its own, no parent at all.
+    assert_eq!(registry.parent_of(&"parentclordid".parse()?), None);
     ```
 
 === "Python"
@@ -1153,8 +1158,13 @@ TradeID(1003)  ["origtradeid"]
     assert registry.parents_of("clordid") == ["origclordid"]
     assert registry.parents_of("tradeid") == ["origtradeid"]
     assert registry.parents_of("orderid") == ["parentorderid", "origorderid"], "no field: the name's"
+    assert registry.parents_of("tradereportid") == ["tradereportrefid"], "no field: the vocabulary's"
+    assert registry.parents_of("execid") == [], "no chain identity, no parents"
     # A stated list places its parents: here the one parent is the first.
     assert registry.parent_of("origclordid") == ("clordid", 0)
+    assert registry.parent_of("tradereportrefid") == ("tradereportid", 0)
+    # A bridge's hierarchy parent is a word of its own, no parent at all.
+    assert registry.parent_of("parentclordid") is None
     assert {"base": "clordid", "parents": ["origclordid"]} in registry.parent_sources()
     ```
 

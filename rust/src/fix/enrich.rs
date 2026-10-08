@@ -452,8 +452,10 @@ fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
 /// always stands, a chain stating none lends none, and an unsided chain - a
 /// quote's, whose side is each statement's own tag - lends none either. A
 /// write the rebuild refuses leaves the side the message stated, `UKNW`,
-/// beside a warning.
-fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> bool {
+/// beside a warning. Unsettled: following settles the message after, and
+/// so does the walk re-keying one onto its chain
+/// ([`Operation::follow_identity`](crate::graph::Operation::follow_identity)).
+pub(super) fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> bool {
     let side = previous.get_side();
     if !previous.is_sided()
         || side == Side::Unknown
@@ -1128,7 +1130,15 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Walked<I> {
 impl<I: Iterator<Item = Result<FixMsg>>> FusedIterator for Walked<I> {}
 
 crate::graph::delegate_market!(LifecycleMessage, message);
-crate::graph::delegate_operation!(LifecycleMessage, message);
+crate::graph::delegate_operation!(LifecycleMessage, message;
+    /// The message's own: the side the chain lends written as `Side(54)`,
+    /// [`inherit_side`] as following writes it, so the row and the digest
+    /// state it, then the chain's stored cross code, the cross codes in
+    /// step - unsettled, for the walk to settle once.
+    fn follow_identity(&mut self, live: &Self) -> bool {
+        crate::graph::Operation::follow_identity(&mut self.message, &live.message)
+    }
+);
 
 #[cfg(feature = "internals")]
 #[doc(hidden)]

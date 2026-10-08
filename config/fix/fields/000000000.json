@@ -603,9 +603,6 @@
           "key": "origclordid"
         }
       ],
-      "FIX:names": [
-        "parentclordid"
-      ],
       "FIX:tag": "41",
       "description": "ClOrdID (11) of the previous order (NOT the initial order of the day) as assigned by the institution, used to identify the previous order in cancel and cancel/replace requests.",
       "display": "OrigClOrdID"

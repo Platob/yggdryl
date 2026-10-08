@@ -366,9 +366,11 @@ macro_rules! delegate_market {
 }
 
 /// `impl Operation` forwarding every fact to a field that is a
-/// `Operation`.
+/// `Operation`, and the conflict a lifecycle notes with them; what the type
+/// states over its own facts - [`Operation::follow_identity`], provided -
+/// stays its own unless items after a `;` override it.
 macro_rules! delegate_operation {
-    ($type:ty, $($field:ident).+) => {
+    ($type:ty, $($field:ident).+ $(; $($item:item)*)?) => {
         impl $crate::graph::Operation for $type {
             fn get_ordqty(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Operation::get_ordqty(&self.$($field).+)
@@ -421,6 +423,10 @@ macro_rules! delegate_operation {
             fn parent_of(&self, kind: &$crate::IdType) -> Option<($crate::IdType, usize)> {
                 $crate::graph::Operation::parent_of(&self.$($field).+, kind)
             }
+            fn note_conflict(&mut self, cited: &str) {
+                $crate::graph::Operation::note_conflict(&mut self.$($field).+, cited);
+            }
+            $($($item)*)?
         }
     };
 }

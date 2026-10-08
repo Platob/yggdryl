@@ -1285,10 +1285,12 @@ mod iceberg {
         });
         assert_eq!(alias_cost, window_cost);
 
-        // A whole read opens the manifest list, the three manifests and all
-        // nine data files, each of those sized five times on its way to a
-        // reader; one row is the first partition's first, and only that
-        // partition's three files are opened to answer it.
+        // A whole read opens the three manifests - their list is the one this
+        // handle's last commit wrote, carried rather than read back - and
+        // reads each of the nine data files once, in the one read of its end
+        // that takes a file this short whole, each sized five times on its
+        // way to a reader; one row is the first partition's first, and only
+        // that partition's three files are read to answer it.
         let options = table.record_options().unwrap();
         let whole = filesystem.costs(|| {
             let rows = quote_rows(&records_of(
@@ -1314,8 +1316,8 @@ mod iceberg {
         assert_eq!(
             (whole.as_str(), first.as_str()),
             (
-                "file_info=45 open_input_stream=13",
-                "file_info=15 open_input_stream=7"
+                "file_info=45 open_input_file=9 open_input_stream=3",
+                "file_info=15 open_input_file=3 open_input_stream=3"
             )
         );
     }
@@ -3021,14 +3023,16 @@ mod own_key {
         let unkeyed = blind_filesystem.costs(|| {
             blind.commit_append(reader(&[(50, "X", "XNAS")])).unwrap();
         });
-        // The replay: the manifest list, both manifests and the one data
-        // file whose bounds hold 10, sized five times on its way to a
-        // reader - and nothing created or opened for writing. The keyed
-        // append outside every bound costs the blind one's commit - its
-        // data file, manifest, list and hint written, its document created
-        // - plus the two manifests its plan opens, and no data file read.
-        // Inside the second file's bounds it reads the list, the three
-        // manifests and that one file; spanning both, both files.
+        // The replay: both manifests of the list this handle's last commit
+        // wrote, carried rather than read back, and the one data file whose
+        // bounds hold 10, read in the one read of its end and sized five
+        // times on its way to a reader - and nothing created or opened for
+        // writing. The keyed append outside every bound costs the blind
+        // one's commit - its data file, manifest, list and hint written, its
+        // document created, the hint and the other spelling read - plus the
+        // two manifests its plan opens, and no data file read. Inside the
+        // second file's bounds it reads the three manifests and that one
+        // file; spanning both, both files.
         assert_eq!(
             [
                 replay.as_str(),
@@ -3038,11 +3042,11 @@ mod own_key {
                 spanning.as_str()
             ],
             [
-                "file_info=5 open_input_stream=4",
-                "create_file=1 file_info=1 open_input_stream=5 open_output_stream=4",
-                "create_file=1 file_info=1 open_input_stream=3 open_output_stream=4",
-                "file_info=5 open_input_stream=5",
-                "file_info=10 open_input_stream=6"
+                "file_info=5 open_input_file=1 open_input_stream=2",
+                "create_file=1 file_info=1 open_input_stream=4 open_output_stream=4",
+                "create_file=1 file_info=1 open_input_stream=2 open_output_stream=4",
+                "file_info=5 open_input_file=1 open_input_stream=3",
+                "file_info=10 open_input_file=2 open_input_stream=3"
             ]
         );
     }
@@ -3112,10 +3116,10 @@ mod own_key {
                 spanning.as_str()
             ],
             [
-                "create_file=1 file_info=1 open_input_stream=5 open_output_stream=4",
-                "create_file=1 file_info=1 open_input_stream=3 open_output_stream=4",
-                "file_info=5 open_input_stream=5",
-                "file_info=10 open_input_stream=6"
+                "create_file=1 file_info=1 open_input_stream=4 open_output_stream=4",
+                "create_file=1 file_info=1 open_input_stream=2 open_output_stream=4",
+                "file_info=5 open_input_file=1 open_input_stream=3",
+                "file_info=10 open_input_file=2 open_input_stream=3"
             ]
         );
     }

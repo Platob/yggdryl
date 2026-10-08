@@ -101,7 +101,7 @@
     "enumFields": 2030,
     "codesets": 739,
     "codes": 7938,
-    "aliases": 56,
+    "aliases": 51,
     "alternates": 0,
     "messages": 181,
     "components": 928,
@@ -832,9 +832,6 @@
               "key": "origclordid",
               "map": "identifiers"
             }
-          ],
-          "FIX:names": [
-            "parentclordid"
           ],
           "FIX:tag": "41",
           "description": "ClOrdID (11) of the previous order (NOT the initial order of the day) as assigned by the institution, used to identify the previous order in cancel and cancel/replace requests.",
@@ -7867,9 +7864,6 @@
         },
         "metadata": {
           "FIX:datatype": "String",
-          "FIX:names": [
-            "parentcrossid"
-          ],
           "FIX:tag": "551",
           "description": "CrossID of the previous cross order (NOT the initial cross order of the day) as assigned by the institution, used to identify the previous cross order in Cross Cancel and Cross Cancel/Replace Requests.",
           "display": "OrigCrossID"
@@ -8151,6 +8145,12 @@
         },
         "metadata": {
           "FIX:datatype": "String",
+          "FIX:idmap": [
+            {
+              "key": "tradereportid",
+              "map": "identifiers"
+            }
+          ],
           "FIX:tag": "571",
           "description": "Unique identifier of trade capture report",
           "display": "TradeReportID"
@@ -8164,6 +8164,12 @@
         },
         "metadata": {
           "FIX:datatype": "String",
+          "FIX:idmap": [
+            {
+              "key": "tradereportrefid",
+              "map": "identifiers"
+            }
+          ],
           "FIX:tag": "572",
           "description": "Reference identifier used with CANCEL and REPLACE transaction types.",
           "display": "TradeReportRefID"
@@ -15768,8 +15774,11 @@
         },
         "metadata": {
           "FIX:datatype": "String",
-          "FIX:names": [
-            "parenttradeid"
+          "FIX:idmap": [
+            {
+              "key": "origtradeid",
+              "map": "identifiers"
+            }
           ],
           "FIX:tag": "1126",
           "description": "Used to preserve original trade id when original trade is being referenced in a subsequent trade transaction such as a transfer",
@@ -15784,8 +15793,11 @@
         },
         "metadata": {
           "FIX:datatype": "String",
-          "FIX:names": [
-            "parentsecondarytradeid"
+          "FIX:idmap": [
+            {
+              "key": "origsecondarytradeid",
+              "map": "identifiers"
+            }
           ],
           "FIX:tag": "1127",
           "description": "Used to preserve original secondary trade id when original trade is being referenced in a subsequent trade transaction such as a transfer",
@@ -22105,9 +22117,6 @@
         },
         "metadata": {
           "FIX:datatype": "String",
-          "FIX:names": [
-            "origallocid"
-          ],
           "FIX:tag": "1593",
           "description": "Contains the IndividualAllocId (tag 467) value of the allocation that is being offset as a result of a new allocation. This would be an optional field that would only be populated in the case of an allocation of an allocation (as well as any subsequent allocations). This wouldn’t be populated for an initial allocation since an allocation id is not supplied on default (initial) allocations.",
           "display": "ParentAllocID"

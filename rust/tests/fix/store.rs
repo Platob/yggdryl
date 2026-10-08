@@ -3419,10 +3419,25 @@ mod committed {
     /// `int` for a count, `Exchange` for the MIC), so the crate's field
     /// shard, its `metadata` group and the fixed row component were written
     /// again. No count of the census below moved.
+    /// It last moved when the dictionary came to read FIX's trade lineage as
+    /// identifiers and to name a parent by its own field alone:
+    /// `TradeReportID(571)`, `TradeReportRefID(572)`, `OrigTradeID(1126)`
+    /// and `OrigSecondaryTradeID(1127)` state a `FIX:idmap` into
+    /// `identifiers` - `tradereportid`; `tradereportrefid`, `tradereportid`'s
+    /// one parent in the crate's vocabulary, which no field restates as
+    /// `FIX:parents`; `origtradeid`; and `origsecondarytradeid` - so the
+    /// identifier-map census goes from 17 to 21; and the other prefix's
+    /// spelling a base's one parent took among its `FIX:names` is retired:
+    /// `OrigClOrdID(41)` no longer answers to `parentclordid`,
+    /// `OrigCrossID(551)` to `parentcrossid`, `OrigTradeID(1126)` to
+    /// `parenttradeid`, `OrigSecondaryTradeID(1127)` to
+    /// `parentsecondarytradeid`, and `ParentAllocID(1593)` to `origallocid`.
+    /// Four field shards were written again; the crate's dump and
+    /// `constants.rs` did not change. No count of the census below moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 8_131_206_900_106_093_781);
+        assert_eq!(registry.stable_hash(), 17_114_512_833_162_386_024);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

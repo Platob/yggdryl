@@ -8712,6 +8712,138 @@ mod concurrency {
         let _ = std::fs::remove_dir_all(&path);
     }
 
+    /// The interleaving the race above can lose a commit in, laid out by
+    /// hand: a writer reads a gzip claim of version 2, that claim is then
+    /// withdrawn - as its own check withdraws it once a plain claim of the
+    /// version landed before that check ran - and an appender's plain
+    /// version 2 commits in its place. The writer's commit claims version 3
+    /// on the document it read, finds that base no longer the version's one
+    /// document, withdraws its claim and rebases onto the version that
+    /// stands: the appender's rows, which it was told landed, are kept.
+    #[test]
+    fn a_commit_built_on_a_withdrawn_claim_rebases_onto_the_version_that_stands() {
+        let path = root("withdrawn-base");
+        let metadata = path.join("metadata");
+        IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V3,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        // The appender holds version 1 before anything else lands.
+        let mut appender = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+
+        // The flipper claims version 2 under gzip, and the writer reads it.
+        let mut flipper = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        flipper
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property("write.metadata.compression-codec", "gzip")?;
+                Ok(())
+            })
+            .unwrap();
+        let mut writer = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(writer.metadata_version().unwrap(), 2);
+
+        // The claim is withdrawn, and the appender's plain version 2 lands
+        // alone and commits.
+        std::fs::remove_file(metadata.join("v2.gz.metadata.json")).unwrap();
+        let rows = batch(1, 2);
+        appender
+            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+            .unwrap();
+        assert!(metadata.join("v2.metadata.json").is_file());
+
+        // The writer commits on the withdrawn document it read.
+        let rows = batch(2, 2);
+        writer
+            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+            .unwrap();
+
+        let table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(table.metadata_version().unwrap(), 3);
+        let mut ids: Vec<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        ids.sort_unstable();
+        assert_eq!(ids, [10, 11, 20, 21], "the appender's commit is kept");
+        let chain = chain(&table);
+        assert_eq!(chain.len(), 2);
+        assert_eq!(chain[1].parent_snapshot_id, Some(chain[0].snapshot_id));
+        assert_eq!(
+            table
+                .metadata()
+                .unwrap()
+                .property("write.metadata.compression-codec"),
+            None,
+            "the withdrawn claim's change is in no document"
+        );
+        let mut names: Vec<String> = std::fs::read_dir(&metadata)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".metadata.json"))
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            ["v1.metadata.json", "v2.metadata.json", "v3.metadata.json"]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// A claim withdrawn after a writer read it takes back the files it
+    /// named - its rebase withdraws the manifest list it wrote - so the
+    /// writer's next commit finds the list of the snapshot it holds gone.
+    /// Laid out by hand: the claim of version 2 and its list removed after
+    /// the writer read them. The writer's commit finds the document it holds
+    /// no longer stands, and rebases onto the version that does - version 1
+    /// - rather than failing on the missing list.
+    #[test]
+    fn a_commit_on_a_claim_whose_files_were_withdrawn_rebases_onto_what_stands() {
+        let path = root("withdrawn-files");
+        let metadata = path.join("metadata");
+        IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V3,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let mut claimer = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let rows = batch(1, 2);
+        claimer
+            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+            .unwrap();
+        let list = claimer
+            .current_snapshot()
+            .unwrap()
+            .unwrap()
+            .manifest_list
+            .clone();
+        let mut writer = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(writer.metadata_version().unwrap(), 2);
+
+        // The claim of version 2 is withdrawn, and its list with it.
+        std::fs::remove_file(metadata.join("v2.metadata.json")).unwrap();
+        std::fs::remove_file(yggdryl::Url::from_str(&list).unwrap().into_path().unwrap()).unwrap();
+
+        let rows = batch(2, 2);
+        writer
+            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+            .unwrap();
+        let table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(table.metadata_version().unwrap(), 2);
+        let mut ids: Vec<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        ids.sort_unstable();
+        assert_eq!(ids, [20, 21], "the commit built on the version that stands");
+        assert_eq!(chain(&table).len(), 1);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
     /// Appends racing whole-table overwrites: every attempt either lands or
     /// is a typed `CommitConflict`, and the rows the table holds are exactly
     /// the replay of its snapshot log - an overwrite the one row set it

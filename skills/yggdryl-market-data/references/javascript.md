@@ -144,8 +144,9 @@ assert.deepEqual(merged.srcuuids, [LINE_1, LINE_2])
 
 ## Walk a stream into chains
 
-`graph.EventIterator` chains a stream by cross identity (and by a live
-element's `identifiers`), yields a twin as a restatement rather than a successor,
+`graph.EventIterator` chains a stream by cross identity (and by the chain identities a live
+element's `identifiers` hold, never an `execid`), re-keys each element onto its
+chain's side and first cross code, yields a twin as a restatement rather than a successor,
 retires a chain at a terminal state and emits one `EXPIRED` at a deadline.
 An order's or an execution's chain is keyed by side - a quote's is one chain
 whatever side it tags - a chain lives within one `marketdatakind` (an order and
@@ -624,7 +625,7 @@ assert.equal(typeof book.serve, 'function')
   `MarketDataKind.ORDR`), a getter answers the name.
 - `new graph.EventIterator(items)` defaults `sorted` to `true` and trusts the
   order: an unsorted array is not refused, it yields broken chains (a step
-  before its live element yielded as it came, `prevuuid` null); pass `false`
+  before its live element yielded following nothing, `prevuuid` null); pass `false`
   for one you have not sorted.
 - Iterators (`BookIterator`, `EventIterator`, `fromArrowReader`) and
   `BatchReader`s are one-shot: spread once, or rebuild the reader.

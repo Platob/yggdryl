@@ -307,6 +307,50 @@ class FixCatalogGeneration(unittest.TestCase):
         # The key sorts with the other `FIX:` keys, ahead of the tag.
         self.assertEqual(["FIX:datatype", "FIX:tag"], list(fields[60]["metadata"])[:2])
 
+    def test_a_parent_is_named_by_its_own_field_alone(self) -> None:
+        catalog, _ = built(b'''<repository xmlns="http://fixprotocol.io/2020/orchestra/repository" version="FIX.5.0SP2">
+          <fields>
+            <field id="11" name="ClOrdID" type="String"/>
+            <field id="41" name="OrigClOrdID" type="String"/>
+            <field id="70" name="AllocID" type="String"/>
+            <field id="1593" name="ParentAllocID" type="String"/>
+            <field id="1003" name="TradeID" type="String"/>
+            <field id="1126" name="OrigTradeID" type="String"/>
+            <field id="571" name="TradeReportID" type="String"/>
+            <field id="572" name="TradeReportRefID" type="String"/>
+          </fields>
+        </repository>''')
+        fields = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
+        # The parents a base's field names say it has, as FIX names them.
+        self.assertEqual(["origclordid"], fields[11]["metadata"]["FIX:parents"])
+        self.assertEqual(["parentallocid"], fields[70]["metadata"]["FIX:parents"])
+        self.assertEqual(["origtradeid"], fields[1003]["metadata"]["FIX:parents"])
+        # A parent goes by its own name and no other prefix: a bridge's
+        # `parentclordid` is a hierarchy parent, never OrigClOrdID(41).
+        for tag in (41, 1593, 1126):
+            with self.subTest(tag=tag):
+                self.assertNotIn("FIX:names", fields[tag]["metadata"])
+        # TradeReportRefID(572) is TradeReportID(571)'s parent by the crate's
+        # vocabulary, which no field restates.
+        self.assertNotIn("FIX:parents", fields[571]["metadata"])
+
+    def test_a_trades_lineage_fields_name_its_identifiers(self) -> None:
+        sources = dict(GENERATOR.IDMAP_SOURCES)
+        expected = {
+            571: "tradereportid",
+            572: "tradereportrefid",
+            1126: "origtradeid",
+            1127: "origsecondarytradeid",
+        }
+        for tag, key in expected.items():
+            with self.subTest(tag=tag):
+                self.assertEqual([{"map": "identifiers", "key": key}], sources[tag])
+        # One entry per tag, in tag order: seventeen order, quote and trade
+        # fields and these four.
+        tags = [tag for tag, _ in GENERATOR.IDMAP_SOURCES]
+        self.assertEqual(sorted(set(tags)), tags)
+        self.assertEqual(21, len(tags))
+
     def test_aggressor_indicator_takes_the_bridge_aggressor_and_passive_spellings(self) -> None:
         catalog, code_sets = built(b'''<repository xmlns="http://fixprotocol.io/2020/orchestra/repository" version="FIX.5.0SP2">
           <codeSets>

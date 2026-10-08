@@ -1545,6 +1545,161 @@ fn contradictory_market_update_order_ids_refuse_without_removing_the_predecessor
     assert_eq!(book, before);
 }
 
+/// An `OrderID` change a continuation explains - a parent of `orderid` it
+/// states, either of the two, names the live order - continues the entry
+/// under the new identifier; one no parent explains is refused as another
+/// order's.
+#[test]
+fn a_market_update_stating_its_order_id_lineage_continues_the_entry() {
+    for parent in ["parentorderid", "origorderid"] {
+        let parent: IdType = parent.parse().unwrap();
+        let mut book = BookEvent::new(1, "IBM");
+        book.add_operations([with_book(
+            with_identifiers(
+                operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
+                &[(ORDER_ID, "ORDER-1")],
+            ),
+            acting(MdUpdateAction::New),
+        )])
+        .unwrap();
+        let previous = alive(&book, true).into_iter().next().unwrap().clone();
+        book.add_operations([with_book(
+            with_identifiers(
+                operation("order", "IBM", "O-1", 2, "Buy", "101", 3, "Replaced"),
+                &[(ORDER_ID, "ORDER-2"), (parent.clone(), "ORDER-1")],
+            ),
+            BookRef {
+                action: Some(MdUpdateAction::Change),
+                entry_px: Some(decimal("101")),
+                entry_size: Some(decimal("3")),
+                ..BookRef::default()
+            },
+        )])
+        .unwrap_or_else(|error| panic!("{parent}: {error}"));
+        let live = alive(&book, true);
+        assert_eq!(live.len(), 1, "{parent}");
+        assert_eq!(identifiers_of(live[0]).get(&ORDER_ID), Some("ORDER-2"));
+        assert_eq!(op(live[0]).get_prevuuid(), Some(previous.get_curruuid()));
+        assert_eq!(live[0].get_price(), Some(decimal("101")));
+    }
+
+    // A parent naming another order explains nothing.
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([with_book(
+        with_identifiers(
+            operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
+            &[(ORDER_ID, "ORDER-1")],
+        ),
+        acting(MdUpdateAction::New),
+    )])
+    .unwrap();
+    let before = book.clone();
+    let error = book
+        .add_operations([with_book(
+            with_identifiers(
+                operation("order", "IBM", "O-1", 2, "Buy", "101", 3, "Replaced"),
+                &[
+                    (ORDER_ID, "ORDER-2"),
+                    ("origorderid".parse().unwrap(), "ORDER-9"),
+                ],
+            ),
+            BookRef {
+                action: Some(MdUpdateAction::Change),
+                entry_px: Some(decimal("101")),
+                entry_size: Some(decimal("3")),
+                ..BookRef::default()
+            },
+        )])
+        .expect_err("an unexplained order identity is refused");
+    assert!(
+        matches!(&error, yggdryl::Error::InvalidRecord { path, .. } if path == "$.operation.identifiers.orderid"),
+        "{error}"
+    );
+    assert_eq!(book, before);
+}
+
+/// A replace under a new identifier, walked, moves no book entry: the walk
+/// states the replace under its order's stored cross code and cross element,
+/// so the book holds one entry for the order - the replace, standing where
+/// the placement stood - and the replace is its delta.
+#[test]
+fn a_replace_under_a_new_identifier_moves_no_book_entry() {
+    use yggdryl::graph::EventIterator;
+
+    let placed = with_identifiers(
+        operation("order", "IBM", "D-1", 1_000_000, "Buy", "100", 2, "New"),
+        &[(IdType::ClOrdId, "C1")],
+    );
+    let replace = with_identifiers(
+        operation(
+            "order", "IBM", "G-1", 2_000_000, "Buy", "101", 3, "Replaced",
+        ),
+        &[(IdType::ClOrdId, "C2"), (IdType::OrigClOrdId, "C1")],
+    );
+    let walked: Vec<MarketData> = EventIterator::new(vec![placed, replace], true).collect();
+    assert_eq!(walked[1].get_crosscode(), "10:1:D-1");
+    assert_eq!(walked[1].get_crossuuid(), walked[0].get_crossuuid());
+    let books = books_of(walked.clone());
+    assert_eq!(books.len(), 2);
+    assert_eq!(codes(books[1].delta()), ["10:1:D-1"]);
+    let whole = whole(&books);
+    let entries: Vec<&MarketData> = whole[1].alive().collect();
+    assert_eq!(entries.len(), 1, "one order, one entry");
+    assert_eq!(entries[0].get_crossuuid(), walked[0].get_crossuuid());
+    assert_eq!(entries[0].get_curruuid(), walked[1].get_curruuid());
+    assert_eq!(entries[0].get_price(), Some(decimal("101")));
+}
+
+/// A walked conflict - an order citing two live orders by the names it
+/// shares with each - stands under its own identity, so it is a book entry
+/// of its own beside the two it cited: the split is visible and warned,
+/// and nothing is folded into a stranger.
+#[test]
+fn a_conflicted_order_is_its_own_book_entry() {
+    use yggdryl::graph::EventIterator;
+
+    let first = with_identifiers(
+        operation("order", "IBM", "O-1", 1_000_000, "Buy", "100", 2, "New"),
+        &[(IdType::ClOrdId, "C1")],
+    );
+    let second = with_identifiers(
+        operation("order", "IBM", "O-2", 2_000_000, "Buy", "99", 3, "New"),
+        &[(IdType::SecondaryClOrdId, "S2")],
+    );
+    let conflicted = with_identifiers(
+        operation("order", "IBM", "O-3", 3_000_000, "Buy", "98", 4, "New"),
+        &[(IdType::ClOrdId, "C1"), (IdType::SecondaryClOrdId, "S2")],
+    );
+    let walked: Vec<MarketData> =
+        EventIterator::new(vec![first, second, conflicted], true).collect();
+    assert_eq!(op(&walked[2]).get_prevuuid(), None, "it joins neither");
+    assert_eq!(walked[2].get_crosscode(), "10:1:O-3");
+    #[cfg(feature = "internals")]
+    assert!(
+        yggdryl::internals::logging_warning::count(
+            "yggdryl::graph::iterator",
+            "lifecycle element cites two live chains: it stands under its own identity",
+            "ORDR",
+        ) >= 1,
+        "the conflict is warned"
+    );
+    let books = books_of(walked.clone());
+    let whole = whole(&books);
+    let mut keys: Vec<Uuid> = whole
+        .last()
+        .unwrap()
+        .alive()
+        .map(Element::get_crossuuid)
+        .collect();
+    keys.sort_unstable();
+    let mut expected: Vec<Uuid> = walked.iter().map(Element::get_crossuuid).collect();
+    expected.sort_unstable();
+    assert_eq!(
+        keys, expected,
+        "one entry per chain, the conflicted one apart"
+    );
+}
+
 /// A book folds what `MarketDataKind::is_booked` admits into its sides and
 /// its delta, and records what `is_recorded` admits beyond it among its
 /// events: a trade is pruned before the fold, so a group of nothing else

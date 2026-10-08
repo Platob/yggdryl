@@ -387,6 +387,66 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     assert_eq!(rebuilt.into_row(&schema).unwrap(), row);
 }
 
+/// A trade capture is keyed by the trade it reports - its `TradeID(1003)`,
+/// else its `TradeReportID(571)` - ahead of any order tag it states, so two
+/// reports of one order are two trades, and by its order's tags only where
+/// it states neither. The trade tags lead for a trade alone: an execution
+/// report naming the trade it filled stays its order's. A trade's lineage
+/// fields are identifiers, each under the type its base names as a parent.
+#[test]
+fn a_trade_capture_is_keyed_by_its_trade_before_any_order_it_names() {
+    let (registry, reader) = reader();
+    let trade = |tags: &str| {
+        reader
+            .sole_line(format!("8=FIX.4.4|35=AE|{tags}|55=AAPL|32=10|31=100|10=0|").as_bytes())
+            .expect("a trade capture")
+    };
+    assert_eq!(
+        trade("571=TR-1|1003=T-1|11=C-1|37=O-1").get_crosscode(),
+        "21:0:T-1",
+        "the trade tags lead for a trade"
+    );
+    assert_eq!(trade("571=TR-1|11=C-1").get_crosscode(), "21:0:TR-1");
+    assert_eq!(
+        trade("11=C-1|37=O-1").get_crosscode(),
+        "21:0:O-1",
+        "a trade stating neither trade tag is keyed by its order's"
+    );
+
+    let replace = trade("571=TR-2|572=TR-1|487=2|1003=T-2|1126=T-1|1040=S-2|1127=S-1");
+    assert_eq!(
+        shown(replace.get_identifiers()),
+        [
+            "origsecondarytradeid=S-1",
+            "origtradeid=T-1",
+            "secondarytradeid=S-2",
+            "tradeid=T-2",
+            "tradereportid=TR-2",
+            "tradereportrefid=TR-1",
+        ]
+    );
+    assert_eq!(
+        registry.parents_of(&IdType::TradeReportId).as_ref(),
+        [IdType::TradeReportRefId],
+        "the vocabulary's, which no field restates"
+    );
+    assert_eq!(
+        registry.parent_of(&IdType::TradeReportRefId),
+        Some((IdType::TradeReportId, 0))
+    );
+    let origtradeid: IdType = "origtradeid".parse().unwrap();
+    assert_eq!(
+        registry.parents_of(&IdType::TradeId).as_ref(),
+        std::slice::from_ref(&origtradeid)
+    );
+    assert_eq!(registry.parent_of(&origtradeid), Some((IdType::TradeId, 0)));
+
+    let report = reader
+        .sole_line(b"8=FIX.4.4|35=8|37=O-1|11=C-1|1003=T-1|17=E-1|150=0|39=0|54=1|55=AAPL|10=0|")
+        .unwrap();
+    assert_eq!(report.get_crosscode(), "10:1:O-1", "an order's report");
+}
+
 /// A message's cross code is stored under the kind it is filed under and
 /// the side it takes - `10:1:C1`, an order to buy - whatever prefix a code
 /// is given with: another kind's or side's is replaced, the side a write
@@ -437,15 +497,27 @@ fn a_cross_code_is_stored_under_the_kind_and_the_side_the_message_takes() {
     quote.set(54, Scalar::from("2")).unwrap();
     assert_eq!(quote.get_side().as_str(), "SELL");
     assert_eq!(quote.get_crosscode(), "14:0:Q5", "a tag moves no code");
-    let mut trade = reader
-        .parse_line(
-            b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=R1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=1|54=1|1427=E1|1009=10|37=O1|11=C3|10=0|",
-        )
-        .unwrap()
-        .next()
-        .expect("the trade")
-        .unwrap();
-    assert_eq!(trade.get_crosscode(), "", "an empty code stays empty");
+    let trade = |line: &[u8]| {
+        reader
+            .parse_line(line)
+            .unwrap()
+            .next()
+            .expect("the trade")
+            .unwrap()
+    };
+    // The order tags a side states are its group's, not the trade's root.
+    let unkeyed = trade(
+        b"8=FIX.4.4|35=AE|52=20260921-10:00:00|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=1|54=1|1427=E1|1009=10|37=O1|11=C3|10=0|",
+    );
+    assert_eq!(unkeyed.get_crosscode(), "", "an empty code stays empty");
+    let mut trade = trade(
+        b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=R1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=1|54=1|1427=E1|1009=10|37=O1|11=C3|10=0|",
+    );
+    assert_eq!(
+        trade.get_crosscode(),
+        "21:0:R1",
+        "a trade is keyed by its TradeReportID(571)"
+    );
     trade.set_crosscode("T1".to_owned());
     assert_eq!(trade.get_crosscode(), "21:0:T1");
     trade.set_crosscode("10:1:T1".to_owned());
@@ -2531,14 +2603,15 @@ mod identifier_maps {
              PARENTORDERID=P1|PARENTCLORDID=PC1|OMSDEALERPARENTORDERID=OP1|\
              EXCHANGECLIENTORDERID=X1|TRANSVERSAL_KEY=T1|ULTRADER_CLORDID=U1|10=0|",
         );
-        // The dictionary names four of the spellings: `parentclordid` is
-        // OrigClOrdID(41)'s other prefix, `exchangeclientorderid`
-        // SecondaryClOrdID(526), `ultraderclordid` ClOrdID(11) and
-        // `omsuserid` Username(553), each the field it names. The other
-        // keys are read as the identifier they name: the source is the
-        // rest of the key, the type the identifier name it ends with, a
-        // parentage word kept inside the type; a parent the message states
-        // without its base states the base, under its own source.
+        // The dictionary names three of the spellings:
+        // `exchangeclientorderid` SecondaryClOrdID(526), `ultraderclordid`
+        // ClOrdID(11) and `omsuserid` Username(553), each the field it
+        // names. The other keys are read as the identifier they name: the
+        // source is the rest of the key, the type the identifier name it
+        // ends with, a parentage word kept inside the type - so a bridge's
+        // `PARENTCLORDID`, a hierarchy parent and never OrigClOrdID(41), is
+        // the word `parentclordid`, a type of its own; a parent the message
+        // states without its base states the base, under its own source.
         assert_eq!(
             shown(held.get_identifiers()),
             [
@@ -2547,7 +2620,7 @@ mod identifier_maps {
                 "omsdealer:orderid=OP1",
                 "omsdealer:parentorderid=OP1",
                 "orderid=O1",
-                "origclordid=PC1",
+                "parentclordid=PC1",
                 "parentorderid=P1",
                 "secondaryclordid=X1",
             ]
@@ -2556,13 +2629,8 @@ mod identifier_maps {
             held.get_by_tag(tag)
                 .and_then(|value| value.as_str().map(str::to_owned))
         };
-        for (tag, value) in [
-            (11, "U1"),
-            (41, "PC1"),
-            (526, "X1"),
-            (553, "trader1"),
-            (1, "ACC"),
-        ] {
+        assert_eq!(text(41), None, "no OrigClOrdID(41)");
+        for (tag, value) in [(11, "U1"), (526, "X1"), (553, "trader1"), (1, "ACC")] {
             assert_eq!(text(tag).as_deref(), Some(value), "{tag}");
         }
         // `OMSDEALERACCOUNT` names `Account(1)`, which states another
@@ -2581,6 +2649,7 @@ mod identifier_maps {
         let schema = yggdryl::fix_schema(&registry, "fix").expect("a schema");
         for (name, value) in [
             ("omsdealerparentorderid", "OP1"),
+            ("parentclordid", "PC1"),
             ("parentorderid", "P1"),
             ("transversalkey", "T1"),
         ] {
@@ -2624,13 +2693,14 @@ mod identifier_maps {
         let wire = String::from_utf8(held.into_bytes(b'|')).expect("a text wire");
         for pair in [
             "|11=U1|",
-            "|41=PC1|",
+            "|parentclordid=PC1|",
             "|526=X1|",
             "|553=trader1|",
             "|1=ACC|",
         ] {
             assert!(wire.contains(pair), "{pair} in {wire}");
         }
+        assert!(!wire.contains("|41="), "{wire}");
         assert!(!wire.contains("YNHD5"), "{wire}");
         // A statement under a type and source held already fills nothing,
         // and the wire stays as the source sent it.

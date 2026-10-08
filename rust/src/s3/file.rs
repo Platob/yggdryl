@@ -22,10 +22,11 @@ use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Ur
 /// | [`IOBase::pread`] | one ranged `GET` |
 /// | [`IOBase::read_all_bytes`] | one `GET` |
 /// | [`IOBase::read_range_bytes`] | one ranged `GET` |
+/// | [`IOBase::read_tail_bytes`] | one `GET` with `Range: bytes=-N`; on Azure one `HEAD` (none while open or once known) and one ranged `GET` |
 /// | [`IOBase::pstream_bytes`] to the end | one `GET` |
 /// | [`IOBase::read_digest`] | one `GET` |
 /// | [`IOBase::read_range_digest`] | one ranged `GET`, of that range |
-/// | [`IOBase::size`] | one `HEAD`, or none while open |
+/// | [`IOBase::size`] | one `HEAD`; none while open, nor once a listing or a tail read stated it |
 /// | [`IOBase::write_all_bytes`] | one `PUT`, or a multipart upload above the threshold |
 /// | [`IOBase::append_bytes`] | one `GET` and one `PUT` |
 /// | [`IOBase::pwrite`] then [`IOBase::flush`] | one `GET` and one `PUT` |
@@ -204,6 +205,21 @@ impl S3File {
             }
             None
         })
+    }
+
+    /// Record a length the store has just stated, open or closed: what a
+    /// tail read learns from its `Content-Range`, kept as a listed size is
+    /// ([`Self::with_known_size`]) and dropped by the same writes.
+    fn know_size(state: &mut State, size: u64) {
+        match state.meta.as_mut() {
+            Some(Some(meta)) => meta.size = size,
+            _ => {
+                state.meta = Some(Some(S3Meta {
+                    size,
+                    ..S3Meta::default()
+                }));
+            }
+        }
     }
 
     /// Record what a read has just learned about the object's length.
@@ -622,6 +638,70 @@ impl IOBase for S3File {
             Self::learn_size(&mut *self.state()?, total);
         }
         Ok(bytes)
+    }
+
+    /// The last `length` bytes and the object's whole length, with one `GET`
+    /// and no `HEAD` before it.
+    ///
+    /// Amazon S3 and Google Cloud Storage answer `Range: bytes=-{length}`
+    /// with the tail and a `Content-Range` stating the total, which this
+    /// handle then knows as it knows a listed size: a later
+    /// [`IOBase::size`] asks nothing until a write through the handle. A
+    /// window wider than the object answers all of it; an empty object
+    /// answers no bytes and `0` for the same one request, and a missing one
+    /// the same, learning nothing. Azure Blob Storage reads no suffix range
+    /// (`Provider::reads_suffix_range`), so there the tail is counted back
+    /// from the size - one `HEAD`, none while open or once known - and read
+    /// with one ranged `GET`, as it is for a window of no bytes on every
+    /// store. A staged write answers from memory, and a size this scope
+    /// holds bounds the read: an empty or missing object open costs nothing.
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        let known = {
+            let state = self.state()?;
+            if let Some(stage) = state.stage.as_ref() {
+                let start = stage.bytes.len().saturating_sub(length);
+                return Ok((stage.bytes[start..].to_vec(), stage.bytes.len() as u64));
+            }
+            match state.meta.as_ref() {
+                Some(None) if state.opened => return Ok((Vec::new(), 0)),
+                Some(Some(meta)) if state.opened => Some(meta.size),
+                _ => None,
+            }
+        };
+        let total = match known {
+            Some(total) => total,
+            None if length > 0 && self.client.reads_suffix_range() => {
+                // The lock is released across the request, as for a ranged
+                // read, so two readers of one handle overlap on the wire.
+                let tail = self
+                    .client
+                    .get_tail(&self.bucket, &self.key, length as u64)?;
+                let mut state = self.state()?;
+                return Ok(match tail {
+                    Some((bytes, total)) => {
+                        Self::know_size(&mut state, total);
+                        (bytes, total)
+                    }
+                    None => {
+                        if state.opened {
+                            state.meta = Some(None);
+                        }
+                        (Vec::new(), 0)
+                    }
+                });
+            }
+            None => {
+                let mut state = self.state()?;
+                let meta = self.meta(&mut state)?;
+                drop(state);
+                meta.map_or(0, |meta| meta.size)
+            }
+        };
+        if total == 0 {
+            return Ok((Vec::new(), 0));
+        }
+        let start = total.saturating_sub(length as u64);
+        Ok((self.read_range_bytes(start, length)?, total))
     }
 
     /// Hash `length` bytes from `offset` with one `GET` of exactly that range.

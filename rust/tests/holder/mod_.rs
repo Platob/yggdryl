@@ -607,6 +607,52 @@ b1
     }
 }
 
+/// `Holder::from_handle`: a second handle on the resource one addresses,
+/// over the same store, touching nothing.
+mod second_handles {
+    use yggdryl::holder::{Buffer, Holder};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{Codec, IOBase, Level};
+
+    #[test]
+    fn a_local_role_is_held_again_over_its_path_beneath_every_wrapper() {
+        let path = LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap()
+            .join(format!("yggdryl-holder-second-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        let folder = Holder::folder(&path).unwrap();
+        let mut leaf = folder.child_by_path("trades.bin").unwrap();
+        leaf.write_all_bytes(b"AAPL").unwrap();
+
+        let again = Holder::from_handle(&leaf).unwrap();
+        assert_eq!(again.url(), leaf.url());
+        assert_eq!(again.read_all_bytes().unwrap(), b"AAPL");
+        let again = Holder::from_handle(&folder).unwrap();
+        assert!(again.is_container());
+        assert_eq!(again.url(), folder.url());
+
+        // A coding is the caller's to compose again: the plain bytes beneath
+        // it are what is held, under the media type they declare.
+        let coded = Holder::from_handle(&leaf)
+            .unwrap()
+            .into_coded_with(Codec::Gzip, Level::default());
+        let plain = Holder::from_handle(&coded).unwrap();
+        assert!(!matches!(plain, Holder::Coded(_)), "{plain:?}");
+        assert_eq!(plain.read_all_bytes().unwrap(), b"AAPL");
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_buffer_has_no_resource_to_hold_again() {
+        let buffer = Holder::buffer(Buffer::from_bytes(b"AAPL".to_vec()));
+        let error = Holder::from_handle(&buffer).unwrap_err();
+        assert!(error.is_unsupported(), "{error}");
+        assert!(error.to_string().contains("in-memory buffer"), "{error}");
+    }
+}
+
 /// The object-store roles: what `Holder::from_url` reads off a location's
 /// query, beneath the caller's properties, and takes off the location.
 #[cfg(feature = "s3")]
@@ -675,6 +721,59 @@ mod object_store_holders {
         let url = Url::from_str("s3://trades/lake/part.bin?versionId=3").unwrap();
         let error = Holder::from_url(&url, none).unwrap_err();
         assert!(error.to_string().contains("versionId"), "{error}");
+    }
+
+    /// A second handle on an object-store role is built on the role's own
+    /// client - the endpoint, the key pair and every other option it was
+    /// built with - with nothing sent: a folder cloned, a location and an
+    /// object built as the child of their parent folder, each role kept.
+    #[test]
+    fn a_store_role_is_held_again_on_its_own_client_sending_nothing() {
+        use yggdryl::s3::{self, Credentials, S3Options};
+
+        let store = FakeS3::start();
+        store.create_bucket("trades");
+        store.put("trades", "lake/part.bin", b"AAPL");
+        let options = S3Options::default()
+            .with_environment(false)
+            .with_endpoint(store.endpoint())
+            .with_region("us-east-1")
+            .with_path_style(true)
+            .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"));
+        let folder = Holder::S3Folder(s3::folder_with("s3://trades/lake", options).unwrap());
+        let path = folder.child_by_path("part.bin").unwrap();
+        let Holder::S3Path(located) = &path else {
+            panic!("expected a location, got {path:?}");
+        };
+        let file = Holder::S3File(located.as_file().unwrap());
+        store.clear_requests();
+
+        let folder_again = Holder::from_handle(&folder).unwrap();
+        let path_again = Holder::from_handle(&path).unwrap();
+        let file_again = Holder::from_handle(&file).unwrap();
+        assert_eq!(store.request_count(), 0, "holding again sends nothing");
+        assert!(
+            matches!(folder_again, Holder::S3Folder(_)),
+            "{folder_again:?}"
+        );
+        assert!(matches!(path_again, Holder::S3Path(_)), "{path_again:?}");
+        assert!(matches!(file_again, Holder::S3File(_)), "{file_again:?}");
+        assert_eq!(file_again.url(), file.url());
+
+        // The read goes to the fake's endpoint, signed with the key pair the
+        // first handle was built with.
+        assert_eq!(file_again.read_all_bytes().unwrap(), b"AAPL");
+        let signed = store.requests().iter().all(|request| {
+            request.headers.iter().any(|(name, value)| {
+                name.eq_ignore_ascii_case("authorization")
+                    && value.contains("Credential=AKIAIOSFODNN7EXAMPLE/")
+            })
+        });
+        assert!(
+            store.request_count() > 0 && signed,
+            "{:?}",
+            store.requests()
+        );
     }
 }
 

@@ -882,6 +882,28 @@ pub trait Operation: Market {
     fn parent_of(&self, kind: &IdType) -> Option<(IdType, usize)> {
         kind.parent_of()
     }
+    /// Stands this operation under the identity of `live`, the live
+    /// statement of the chain a lifecycle states it in: a sided operation
+    /// stating no side takes the live one's, as a follower does, and then
+    /// the live statement's stored cross code where that states one and
+    /// this one's differs, its cross hash code and cross element brought in
+    /// step - the side first, because a code is stored under the side its
+    /// holder takes. Whether anything moved; the caller finalizes where it
+    /// did. A holder whose side is content of its own - a FIX message
+    /// writing `Side(54)` - overrides it to state the side there.
+    fn follow_identity(&mut self, live: &Self) -> bool
+    where
+        Self: Element + Sized,
+    {
+        follow_identity(self, live)
+    }
+    /// Says that a lifecycle found this operation citing two live chains -
+    /// `cited` naming its own stored cross code and each chain's with the
+    /// name that cited it - and stood it under its own identity. Nothing by
+    /// default; a FIX message records it as an anomaly of its own.
+    fn note_conflict(&mut self, cited: &str) {
+        let _ = cited;
+    }
     /// Continues [`Market::digest_market`] with the operation's facts.
     fn digest_operation(&self) -> Xxh3
     where
@@ -1203,6 +1225,24 @@ pub(crate) fn feed_operation<E: Operation + ?Sized>(state: &mut Xxh3, this: &E) 
         staged.feed("partyids", id.kind().as_str().as_bytes());
         staged.feed("partyids", id.value().as_bytes());
     }
+}
+
+/// [`Operation::follow_identity`] over any element of a market, the live
+/// one of any holder the same type reads: what a walk over
+/// [`MarketData`](super::MarketData) states a follower under where its
+/// live statement is another variant. A sided element stating no side takes
+/// the live one's as [`chain_market`] does, then the live stored cross code
+/// is forced as [`follow_element`](super::element::follow_element) forces it.
+pub(crate) fn follow_identity<E: Element + Market + ?Sized>(this: &mut E, live: &E) -> bool {
+    let mut changed = false;
+    if this.is_sided() {
+        changed |= moved(
+            this.get_side(),
+            this.get_side().merge_with(live.get_side().tagged()),
+            |side| this.set_side(side, true),
+        );
+    }
+    changed | super::element::follow_element(this, live)
 }
 
 /// The market facts an event takes from the statement it follows: the

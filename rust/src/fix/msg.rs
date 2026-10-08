@@ -2006,7 +2006,9 @@ impl FixMsg {
     /// derive.
     ///
     /// The cross code names the chain and defaults to the first nonempty FIX
-    /// identifier in [`identity::CROSS_TAGS`], `OrderID(37)` first. The
+    /// identifier in [`identity::cross_tags`] of its category: a trade's
+    /// `TradeID(1003)` then `TradeReportID(571)` first, and for every other
+    /// category - a trade stating neither too - `OrderID(37)` first. The
     /// message type, capture session/context and message sequence name where
     /// a bridge observed the message instead: when all four are present,
     /// `sync_session_event_identifier` states their joined values as the
@@ -2027,7 +2029,15 @@ impl FixMsg {
     pub(super) fn settle_facts(&mut self) {
         self.sync_session_event_identifier();
         if self.event.get_crosscode().is_empty() {
-            let code = identity::CROSS_TAGS.iter().find_map(|tag| {
+            // The category the message stands under, else the one its type
+            // files under: what a parse knows before any fact is stated.
+            let kind = match self.event.marketdatakind() {
+                MarketDataKind::Unknown => {
+                    filed_marketdatakind(&self.registry, self.header.msgtype())
+                }
+                kind => kind,
+            };
+            let code = identity::cross_tags(kind).iter().find_map(|tag| {
                 self.get_by_tag(*tag)
                     .and_then(|value| value.as_str().map(str::to_owned))
                     .filter(|code| !code.is_empty())
@@ -6969,6 +6979,33 @@ impl Operation for FixMsg {
                 .registry
                 .parent_of(id.kind())
                 .is_some_and(|(base, _)| follows(&base))
+    }
+
+    /// The side and the stored cross code of the chain `live` stands in,
+    /// which a walk forces on a message it states as that chain's: the
+    /// chain's side written as `Side(54)` where the message states none and
+    /// the chain is sided, so its row and its digest state it too, then the
+    /// chain's cross code where it states one and this message's stored
+    /// spelling of it differs, the cross codes in step. Whether either
+    /// moved; nothing is settled, so the walk settles a message this moved
+    /// once, under the side it was lent.
+    fn follow_identity(&mut self, live: &Self) -> bool {
+        let mut moved = super::enrich::inherit_side(self, live);
+        let code = live.get_crosscode();
+        if !code.is_empty() && self.stored_crosscode(code) != self.get_crosscode() {
+            self.set_crosscode(code.to_owned());
+            self.sync_cross();
+            moved = true;
+        }
+        moved
+    }
+
+    /// The walk's conflict kept beside the message as its parse keeps a
+    /// refusal: a [`FixAnomaly`](super::FixAnomaly) under `crosscode`
+    /// naming the chains `cited` spells, once, so a twin carrying the same
+    /// citations records the same.
+    fn note_conflict(&mut self, cited: &str) {
+        self.note_anomaly(super::FixAnomaly::new("crosscode", cited));
     }
 }
 

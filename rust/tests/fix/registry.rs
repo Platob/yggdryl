@@ -3207,17 +3207,130 @@ mod parents {
             registry.parent_of(&word("origorderid")),
             Some((IdType::OrderId, 1))
         );
-        // `parentclordid` is the other spelling of `clordid`'s one parent,
-        // the dictionary's `origclordid`; and a word spelled `origin` or
-        // `original` before an identifier names no parent at all.
-        assert_eq!(word("parentclordid"), IdType::OrigClOrdId);
-        assert_eq!(
-            registry.parent_of(&word("parentclordid")),
-            Some((IdType::ClOrdId, 0))
-        );
+        // `clordid`'s one parent is spelled `origclordid` alone: a bridge's
+        // `parentclordid`, the hierarchy parent child orders share, is a
+        // word of its own and a parent of nothing. A word spelled `origin` or
+        // `original` before an identifier names no parent at all, and
+        // neither does a parent spelling of a type that names no chain.
+        assert!(matches!(word("parentclordid"), IdType::Other(_)));
+        assert_eq!(registry.parent_of(&word("parentclordid")), None);
+        assert_eq!(registry.parent_of(&word("parentexecid")), None);
+        assert!(registry.parents_of(&IdType::ExecId).is_empty());
+        assert!(registry.parents_of(&IdType::Isin).is_empty());
         assert_eq!(registry.parent_of(&word("originorderid")), None);
         assert_eq!(registry.parent_of(&word("originalorderid")), None);
         assert_eq!(registry.parent_of(&word("account")), None);
+    }
+
+    #[test]
+    fn a_trade_report_takes_its_parent_from_the_vocabulary_and_no_field_states_it() {
+        // `TradeReportRefID(572)` is `TradeReportID(571)`'s one parent by the
+        // type it is, not by a name opening as a parent's: loaded at once,
+        // field by field in either order, or committed, no field states a
+        // list for it and every reading answers the vocabulary's.
+        let bulk = FixRegistry::from_fields([
+            tagged("TradeReportID", 571),
+            tagged("TradeReportRefID", 572),
+        ])
+        .unwrap();
+        let mut forward = FixRegistry::from_fields([tagged("TradeReportID", 571)]).unwrap();
+        assert!(forward.add_field(tagged("TradeReportRefID", 572)).unwrap());
+        let mut backward = FixRegistry::from_fields([tagged("TradeReportRefID", 572)]).unwrap();
+        assert!(backward.add_field(tagged("TradeReportID", 571)).unwrap());
+        let committed = crate::committed_registry();
+        for registry in [&bulk, &forward, &backward, committed.as_ref()] {
+            assert_eq!(
+                registry
+                    .field_by_tag(571)
+                    .unwrap()
+                    .as_fix()
+                    .parents()
+                    .count(),
+                0
+            );
+            assert_eq!(
+                registry.parents_of(&IdType::TradeReportId).as_ref(),
+                [IdType::TradeReportRefId]
+            );
+            assert_eq!(
+                registry.parent_of(&IdType::TradeReportRefId),
+                Some((IdType::TradeReportId, 0))
+            );
+            assert_eq!(registry.parent_of(&word("parenttradereportid")), None);
+            assert_eq!(registry.parent_of(&word("origtradereportid")), None);
+        }
+    }
+
+    #[test]
+    fn a_parent_field_answers_to_its_own_name_alone() {
+        // No other spelling is written as fields arrive: `OrigClOrdID(41)`
+        // is named `origclordid` alone, so a bridge's `ParentClOrdID` reaches
+        // no field...
+        let mut registry =
+            FixRegistry::from_fields([tagged("ClOrdID", 11), tagged("OrigClOrdID", 41)]).unwrap();
+        assert!(
+            registry
+                .field_by_tag(41)
+                .unwrap()
+                .as_fix()
+                .names()
+                .next()
+                .is_none()
+        );
+        assert!(registry.field_by_name("ParentClOrdID").is_err());
+        // ...and arrives as a field of its own, which names no parent.
+        assert!(registry.add_field(tagged("ParentClOrdID", 9003)).unwrap());
+        assert_eq!(
+            registry
+                .field_by_name("ParentClOrdID")
+                .unwrap()
+                .as_fix()
+                .tag()
+                .unwrap(),
+            Some(9003)
+        );
+        assert_eq!(
+            registry
+                .field_by_name("OrigClOrdID")
+                .unwrap()
+                .as_fix()
+                .tag()
+                .unwrap(),
+            Some(41)
+        );
+        assert_eq!(
+            registry
+                .field_by_tag(11)
+                .unwrap()
+                .as_fix()
+                .parents()
+                .collect::<Vec<_>>(),
+            ["origclordid"]
+        );
+        // A one-parent base of the name rule: `OrigOrderID` alone answers to
+        // its own name, and `ParentOrderID` arriving is the second parent.
+        let mut venue =
+            FixRegistry::from_fields([tagged("OrderID", 37), tagged("OrigOrderID", 9001)]).unwrap();
+        assert!(venue.field_by_name("ParentOrderID").is_err());
+        assert!(venue.add_field(tagged("ParentOrderID", 9002)).unwrap());
+        assert_eq!(
+            venue
+                .field_by_tag(37)
+                .unwrap()
+                .as_fix()
+                .parents()
+                .collect::<Vec<_>>(),
+            ["parentorderid", "origorderid"]
+        );
+        assert!(
+            venue
+                .field_by_tag(9001)
+                .unwrap()
+                .as_fix()
+                .names()
+                .next()
+                .is_none()
+        );
     }
 
     #[test]

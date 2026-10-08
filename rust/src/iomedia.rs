@@ -10,22 +10,12 @@ use crate::Result;
 use crate::media::RecordOptions;
 
 /// What a handle opens as under `options`: a located table format, or the
-/// reader over a folder of leaves or over one leaf. Whether the handle is a
-/// container is asked exactly once here, because on the `fs` backend that
-/// question is a store round trip, and both the reader and the schema
-/// defaults read the answer.
+/// reader over a folder of leaves or over one leaf.
 enum Opened {
     // Boxed: a located table carries its whole metadata, a reader a pointer.
     #[cfg(feature = "iceberg")]
     Table(Box<crate::iceberg::Located>),
     Reader(crate::arrow::BatchReader),
-}
-
-fn open(handle: &dyn IOBase, options: &RecordOptions) -> Result<Opened> {
-    if handle.is_container() {
-        return open_container(handle, options);
-    }
-    Ok(Opened::Reader(crate::iobase::leaf_reader(handle, options)?))
 }
 
 /// What a handle already known to be a container opens as: the table format
@@ -410,11 +400,27 @@ pub trait IOMedia: Send {
         Ok(crate::parquet::read_geospatial_statistics(handle, column)?)
     }
 
+    /// The decoded footer this handle already holds for the Parquet file it
+    /// is, so a record read of it reads no byte of the file's end again: an
+    /// opened [`Parquet`](crate::parquet::Parquet) answers the footer its
+    /// `open` read; every other handle, and a closed one, `None`.
+    #[cfg(feature = "parquet")]
+    #[doc(hidden)]
+    fn parquet_footer(&self) -> Option<std::sync::Arc<::parquet::file::metadata::ParquetMetaData>> {
+        None
+    }
+
     /// Read the canonical non-null Struct root Field of this resource.
     ///
     /// A declared schema is returned as it stands; otherwise this is the shape
     /// [`Self::read_arrow_reader`] reports, so the schema a caller reads
-    /// and the batches a caller gets can never disagree.
+    /// and the batches a caller gets can never disagree. A leaf answers from
+    /// its encoding's header or footer - an Arrow IPC schema message, an Avro
+    /// header, a Parquet footer - typed by the plan its options state, the
+    /// filter and the selection in the phases a read runs them in, so a
+    /// `where` that does not bind still fails here and one over a column the
+    /// `select` builds is typed after it; no reader is built and no row is
+    /// read. A container answers as the table located in it or its leaves.
     ///
     /// # Errors
     ///
@@ -425,7 +431,13 @@ pub trait IOMedia: Send {
         if let Some(field) = options.field() {
             return Ok(field.clone());
         }
-        opened_field(open(self.as_io_base(), options)?, options)
+        let handle = self.as_io_base();
+        if handle.is_container() {
+            return opened_field(open_container(handle, options)?, options);
+        }
+        options
+            .plan()
+            .field_from(&crate::iobase::leaf_field(handle, options)?.with_name(options.name()))
     }
 
     /// Read this resource's rows as a [`StreamChunkedSerie`](crate::StreamChunkedSerie):

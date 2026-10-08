@@ -2496,3 +2496,82 @@ fn market_implications_are_confluent() {
     };
     converges("an execution", ExecutionEvent::at, &fill);
 }
+
+/// `Operation::follow_identity`, what a lifecycle stands every element it
+/// states as a chain's under: a sided operation stating no side takes the
+/// live statement's - so its price quotes that side - and then the live
+/// stored cross code, its cross hash and cross element derived from it; a
+/// live statement stating no code lends the side alone, and one already
+/// shared moves nothing. A conflict noted on a typed leaf records nothing.
+#[test]
+fn following_an_identity_lends_the_side_and_forces_the_code() {
+    let crosshash = |code: &str| {
+        let mut state = Xxh3::new();
+        state.write(code.as_bytes());
+        state.as_u64()
+    };
+    let mut live = OrderEvent::at(1);
+    live.set_crosscode("J".to_owned());
+    live.set_side(Side::Buy, true);
+    live.finalize();
+    assert_eq!(live.get_crosscode(), "10:1:J");
+    let unsided = || {
+        let mut event = OrderEvent::at(2);
+        event.set_crosscode("K".to_owned());
+        event.set_price(Some(Decimal::from_int(99)), true);
+        event.set_quantity(Some(Decimal::from_int(5)), true);
+        event.finalize();
+        event
+    };
+
+    let mut event = unsided();
+    assert_eq!(event.get_crosscode(), "10:0:K");
+    assert!(event.follow_identity(&live));
+    assert_eq!(event.get_side(), Side::Buy);
+    assert_eq!(event.get_crosscode(), "10:1:J");
+    assert_eq!(event.get_crosshashcode(), crosshash("10:1:J"));
+    assert_eq!(
+        event.get_crossuuid(),
+        Uuid::from_v8(u128::from(crosshash("10:1:J")))
+    );
+    assert_eq!(event.get_crossuuid(), live.get_crossuuid());
+    assert_eq!(
+        (event.get_bidpx(), event.get_bidqty()),
+        (Some(Decimal::from_int(99)), Some(Decimal::from_int(5))),
+        "the side lent quotes the price and the quantity"
+    );
+    // Moved, so the caller finalizes; settled, it moves nothing again.
+    event.finalize();
+    assert!(!event.follow_identity(&live), "one of equal side and code");
+    assert_eq!(event.get_crosscode(), "10:1:J");
+
+    // A live statement stating no code lends the side alone.
+    let mut codeless = OrderEvent::at(1);
+    codeless.set_side(Side::Sell, true);
+    codeless.finalize();
+    let mut event = unsided();
+    assert!(event.follow_identity(&codeless));
+    assert_eq!(event.get_side(), Side::Sell);
+    assert_eq!(
+        event.get_crosscode(),
+        "10:2:K",
+        "its own code, under the side"
+    );
+
+    // An unsided kind takes no side: a quote's is a tag.
+    let mut quote = QuoteEvent::at(2);
+    quote.set_crosscode("Q".to_owned());
+    quote.finalize();
+    let mut held = QuoteEvent::at(1);
+    held.set_crosscode("Q".to_owned());
+    held.set_side(Side::Buy, true);
+    held.finalize();
+    assert!(!quote.follow_identity(&held), "one code, no side lent");
+    assert_eq!(quote.get_side(), Side::Unknown);
+
+    // A conflict noted on a typed leaf records nothing.
+    let mut noted = unsided();
+    let before = noted.clone();
+    noted.note_conflict("10:0:K cites 10:1:J by clordid=C1 and 10:2:L by its cross code");
+    assert_eq!(noted, before);
+}

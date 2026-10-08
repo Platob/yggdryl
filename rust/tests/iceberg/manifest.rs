@@ -1328,3 +1328,69 @@ fn v3_row_range_assignment_fails_before_writing() {
     assert!(message.contains("added_rows_count") && message.contains("null"));
     assert!(handle.as_slice().is_empty());
 }
+
+/// A commit keeps the manifests its list states, as the list reader reads
+/// them back - each v3 data manifest's assigned `first_row_id` included -
+/// so the next commit of the same handle carries them forward without
+/// reading the list: the list removed from under the handle, that commit
+/// still lands every manifest, and a fresh handle reads every row.
+#[test]
+fn a_commit_holds_the_manifests_its_list_states_and_reads_no_list_back() {
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::iceberg::IcebergTable;
+    use yggdryl::local::LocalFolder;
+
+    let rows = |ids: &[i64]| {
+        let batch = RecordBatch::try_new(
+            field().into_arrow_schema().unwrap(),
+            vec![
+                std::sync::Arc::new(Int64Array::from(ids.to_vec())),
+                std::sync::Arc::new(StringArray::from(vec!["XNAS"; ids.len()])),
+            ],
+        )
+        .unwrap();
+        yggdryl::arrow::batch_reader(batch.schema(), [batch])
+    };
+    for version in [FormatVersion::V1, FormatVersion::V2, FormatVersion::V3] {
+        let path = LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap()
+            .join(format!(
+                "yggdryl-iceberg-held-list-v{}-{}",
+                version.number(),
+                std::process::id()
+            ));
+        let _ = std::fs::remove_dir_all(&path);
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            version,
+            field(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table.commit_append(rows(&[1, 2])).unwrap();
+
+        let list = table
+            .current_snapshot()
+            .unwrap()
+            .unwrap()
+            .manifest_list
+            .clone();
+        let stored = yggdryl::Url::from_str(&list).unwrap().into_path().unwrap();
+        let read = read_manifest_list(&yggdryl::local::LocalFile::new(&stored).unwrap()).unwrap();
+        assert_eq!(table.manifests().unwrap(), read, "v{}", version.number());
+
+        std::fs::remove_file(&stored).unwrap();
+        table.commit_append(rows(&[3])).unwrap();
+        assert_eq!(table.manifests().unwrap().len(), 2, "v{}", version.number());
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let read: usize = reopened
+            .scan(None)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        assert_eq!(read, 3, "v{}", version.number());
+        let _ = std::fs::remove_dir_all(&path);
+    }
+}

@@ -71,6 +71,11 @@ const REFUSED_KEYS: usize = 8;
 /// hand signs for, each holding its day's derived key. A process signs for a
 /// handful; the bound keeps one that names regions without end from growing.
 const SIGNERS: usize = 8;
+/// How many buckets' regions a session remembers, the least recently
+/// learned let go first: a process reads a few dozen buckets, and the bound
+/// keeps one that names buckets without end from growing.
+#[cfg(feature = "s3")]
+const BUCKET_REGIONS: usize = 64;
 /// The regions the global `sts.amazonaws.com` still serves under the legacy
 /// endpoint mode; every other region is regional in both modes.
 const LEGACY_STS_REGIONS: [&str; 15] = [
@@ -197,6 +202,22 @@ struct Inner {
     refused: Mutex<VecDeque<Refused>>,
     /// The signers of the set in hand, oldest first, at most `SIGNERS`.
     signers: Mutex<Vec<Held>>,
+    /// The region each bucket a redirect corrected was found in, oldest
+    /// first, at most `BUCKET_REGIONS`: shared by every session derived from
+    /// this one, because a bucket's region is the bucket's, whoever asks.
+    #[cfg(feature = "s3")]
+    bucket_regions: Arc<Mutex<VecDeque<BucketRegion>>>,
+}
+
+/// The region a bucket was found in, on the published hosts of one
+/// partition.
+#[cfg(feature = "s3")]
+struct BucketRegion {
+    /// The partition whose published hosts answered: a bucket name is
+    /// unique within a partition and nowhere else.
+    partition: &'static str,
+    bucket: String,
+    region: String,
 }
 
 /// One signer, and what it was made for: the whole set rather than its key
@@ -313,10 +334,14 @@ impl Default for Session {
 impl Session {
     /// A session that states nothing and resolves everything.
     pub fn new() -> Self {
-        Self::from_knobs(Knobs::default())
+        Self::from_knobs(Knobs::default(), None)
     }
 
-    fn from_knobs(knobs: Knobs) -> Self {
+    /// A session of `knobs` with nothing resolved, keeping what `parent`
+    /// learned of where its buckets are - no part of who signs or of any
+    /// knob - where it is derived from one.
+    #[cfg_attr(not(feature = "s3"), expect(unused_variables, reason = "s3-only"))]
+    fn from_knobs(knobs: Knobs, parent: Option<&Inner>) -> Self {
         Self {
             inner: Arc::new(Inner {
                 knobs,
@@ -332,15 +357,19 @@ impl Session {
                 skip_caches: AtomicBool::new(false),
                 refused: Mutex::new(VecDeque::new()),
                 signers: Mutex::new(Vec::new()),
+                #[cfg(feature = "s3")]
+                bucket_regions: parent
+                    .map_or_else(Arc::default, |parent| Arc::clone(&parent.bucket_regions)),
             }),
         }
     }
 
-    /// A session with one knob changed, and nothing resolved yet.
+    /// A session with one knob changed, and nothing resolved yet but where
+    /// its buckets were found ([`Self::bucket_region`]).
     fn modified(&self, change: impl FnOnce(&mut Knobs)) -> Self {
         let mut knobs = self.inner.knobs.clone();
         change(&mut knobs);
-        Self::from_knobs(knobs)
+        Self::from_knobs(knobs, Some(&self.inner))
     }
 
     // --- what the caller states ---------------------------------------------
@@ -648,7 +677,7 @@ impl Session {
             changed = true;
         }
         if changed {
-            Self::from_knobs(merged)
+            Self::from_knobs(merged, Some(&self.inner))
         } else {
             self.clone()
         }
@@ -1632,6 +1661,41 @@ impl Session {
             signer: Arc::clone(&signer),
         });
         Ok(Some(signer))
+    }
+
+    /// The region a redirect found `bucket` in on `partition`'s published
+    /// Amazon S3 hosts, when this session or one it shares its buckets with
+    /// learned it ([`Self::learn_bucket_region`]).
+    ///
+    /// A client built for the bucket starts signed for that region and
+    /// addressed to its host, so the redirect and the `HeadBucket` that
+    /// found it are paid once per session rather than once per client - a
+    /// table's every data file, a folder's every leaf, each built on a
+    /// client of its own.
+    #[cfg(feature = "s3")]
+    pub(crate) fn bucket_region(&self, partition: &str, bucket: &str) -> Option<String> {
+        lock(&self.inner.bucket_regions)
+            .iter()
+            .find(|held| held.partition == partition && held.bucket == bucket)
+            .map(|held| held.region.clone())
+    }
+
+    /// Remember that `bucket` answers in `region` on the published hosts of
+    /// the partition `region` belongs to, the oldest of `BUCKET_REGIONS`
+    /// let go to hold it.
+    #[cfg(feature = "s3")]
+    pub(crate) fn learn_bucket_region(&self, bucket: &str, region: &str) {
+        let partition = ArnPartition::from_region(region).as_str();
+        let mut held = lock(&self.inner.bucket_regions);
+        held.retain(|known| known.partition != partition || known.bucket != bucket);
+        if held.len() >= BUCKET_REGIONS {
+            held.pop_front();
+        }
+        held.push_back(BucketRegion {
+            partition,
+            bucket: bucket.to_owned(),
+            region: region.to_owned(),
+        });
     }
 
     /// Forget the set in hand and the files as read when the set in hand

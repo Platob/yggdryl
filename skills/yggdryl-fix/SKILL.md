@@ -29,9 +29,9 @@ order, so a report and the execution split off it are places 0 and 1.
 **Lifecycle is the only cross-message stage**: `lifecycle` collects a finite
 capture, sorts it by event time, folds duplicate deliveries, places each
 message by content among the messages of its instant (a content repeated
-there keeps its place), chains it to the live one of its order within its own `marketdatakind` (`crossuuid`,
-`prevuuid`; an order and an execution under one cross code are two chains), takes every bridge `metadata` key of the chain it does not state
-and the ids its dictionary follows, each with its parents, and learns instrument associations.
+there keeps its place), chains it to the live one of its order within its own `marketdatakind` - by its chain identities, `orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid` and their secondary ones, never `execid`, `trdmatchid` or `quotereqid`, and by the first value a lineage field names, `OrigClOrdID(41)`, `OrigTradeID(1126)`, `TradeReportRefID(572)` - (`crossuuid`,
+`prevuuid`; an order and an execution under one cross code are two chains), re-keys it onto its chain's side and first cross code, takes every bridge `metadata` key of the chain it does not state
+and the ids its dictionary follows, each with its parents, states a message citing two live chains as a conflict - a `FixAnomaly` under `crosscode`, warned once per kind - rather than picking one, and learns instrument associations.
 Nothing chains unasked.
 
 The dictionary is data, not code: the committed FIX Latest dictionary
@@ -122,7 +122,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    project in the parallel doors; chain once. The walk yields each
    `curruuid` once within `dedup_window_ms` of event time (one minute by
    default; `None`/`null`/`0` yields every restated twin too), so a
-   consumer keyed by `curruuid` needs no dedup of its own.
+   consumer keyed by `curruuid` needs no dedup of its own. Join a chain on
+   `crossuuid`: every message of one chain carries the chain's first
+   `crosscode` - a replace under a new `ClOrdID` keeps it - so never re-key by
+   an identifier yourself. A message citing two live chains is joined to
+   neither: it stands under its own identity and its `anomalies` hold a
+   `crosscode` entry naming both, so read them before trusting a split.
 6. Market hand-off is `market_data(lifecycle(messages))`: the walk settles
    each message, the sorted door orders every leaf by the instant a book folds
    it. One message is one leaf - an order, a quote holding both its legs, an
@@ -331,7 +336,11 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   of side `UKNW`, no `price` of its own, its `bidpx`/`bidqty` and
   `askpx`/`askqty` the two legs; one stating `Side(54)` tags the leg it
   quotes. A derived execution is chained under its `ExecID(17)` as given
-  (`8:1:E-1`), else `TradeID=<TradeID(1003)>`. Count messages after the
+  (`8:1:E-1`), else `TradeID=<TradeID(1003)>`. A trade capture (`TRAD`)
+  reads `TradeID(1003)` and `TradeReportID(571)` before any order tag
+  (`21:0:T1`). After `lifecycle` every message of a chain carries its first
+  message's code, `crosshashcode` and `crossuuid` derived from it: read a
+  message's own spelling off its fields. Count messages after the
   parse, not lines: one filling report is two messages.
 - A message's identifiers are logical `Identifiers` maps keyed `src:type`, read
   off its fields, the wire kept as sent, each identifier `key=value` in
@@ -379,7 +388,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   settle fill the parent's own type from its nearest stated parent (`orderid` from
   `parentorderid`, else `origorderid`); a follower whose `orderid` changed keeps
   the previous value as `parentorderid` and the chain's first as `origorderid`,
-  and one naming no `orderid` carries the chain's with both. A caller's
+  and one naming no `orderid` carries the chain's with both. Only a chain
+  identity has parents: `ExecID(17)` and `TrdMatchID(880)` carry none, and
+  `TradeReportID(571)`'s is `tradereportrefid` (`572`). A bridge's
+  `PARENTCLORDID` is the word `parentclordid` - no parent, no chain - and its
+  `PARENTORDERID` the previous-value slot `parentorderid`, which names no
+  chain but fills a missing `orderid`. A caller's
   `insert_*`/`set_*` is the message's word and writes no field: to change the
   wire, write the field. `SecurityID(48)`, `SecurityIDSource(22)`,
   `Parties(453)` and `SecAltIDGrp(454)` are no columns of the fixed row (151

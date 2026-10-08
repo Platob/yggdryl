@@ -103,6 +103,11 @@ impl Staging {
     /// nothing else. Unstaged, `write` runs against the table's own handle.
     /// Either way the published file is recorded for the rollback.
     ///
+    /// `write` answers the length it wrote where it knows it, which is the
+    /// size answered: nothing is asked of a handle it just wrote - on a
+    /// store that is a `HEAD` - and the handle answers for its own length
+    /// only where `write` states none.
+    ///
     /// # Errors
     ///
     /// Returns the write's own failure, or the upload failure.
@@ -111,28 +116,28 @@ impl Staging {
         root: &dyn IOBase,
         relative: &str,
         media_type: &MediaType,
-        write: impl FnOnce(&mut Holder) -> Result<T>,
+        write: impl FnOnce(&mut Holder) -> Result<(T, Option<u64>)>,
     ) -> Result<(T, u64)> {
         let mut target = leaf(root.child_by_path(relative)?)?;
         target.set_media_type(media_type.clone());
         let Some(directory) = &self.directory else {
-            let answer = match write(&mut target).and_then(|answer| {
+            let (answer, length) = match write(&mut target).and_then(|answer| {
                 target.flush()?;
                 Ok(answer)
             }) {
                 Ok(answer) => answer,
                 Err(error) => return Err(unpublished(target, error, self.keeps)),
             };
-            let size = target.size();
+            let size = length.unwrap_or_else(|| target.size());
             self.record(relative, target)?;
             return Ok((answer, size));
         };
         let path = directory.join(relative);
         let mut staged = Holder::file(&path)?;
         staged.set_media_type(media_type.clone());
-        let answer = write(&mut staged)?;
+        let (answer, length) = write(&mut staged)?;
         staged.flush()?;
-        let size = staged.size();
+        let size = length.unwrap_or_else(|| staged.size());
         drop(staged);
         let uploaded = upload(&mut target, &path, size);
         // The staged copy has served its purpose however the upload ended.
@@ -379,7 +384,7 @@ pub mod internals {
         }
 
         /// Write one file of the commit and answer what `write` answered
-        /// beside the file's size.
+        /// beside the file's size, which the handle answers for itself.
         pub fn publish<T>(
             &self,
             root: &dyn IOBase,
@@ -387,7 +392,9 @@ pub mod internals {
             media_type: &MediaType,
             write: impl FnOnce(&mut Holder) -> Result<T>,
         ) -> Result<(T, u64)> {
-            self.0.publish(root, relative, media_type, write)
+            self.0.publish(root, relative, media_type, |handle| {
+                write(handle).map(|answer| (answer, None))
+            })
         }
 
         /// Mark the commit ended, so dropping keeps what it published.

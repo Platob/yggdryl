@@ -92,6 +92,9 @@ pub(super) fn from_footer(statistics: &ParquetGeospatialStatistics) -> Geospatia
 /// recorded, this decodes the named top-level column and folds every non-null
 /// value through [`wkb::bounding_box`] and [`wkb::geometry_type_ids`] - so it
 /// answers for files whose writer recorded no geospatial statistics at all.
+/// It reads as a record read does: the file's end once, which is the whole
+/// of a file up to a megabyte, and of a larger one the footer, then that one
+/// column's chunks alone.
 ///
 /// # Errors
 ///
@@ -101,8 +104,10 @@ pub fn read_geospatial_statistics<H: IOBase + ?Sized>(
     handle: &H,
     column: &str,
 ) -> Result<GeospatialStatistics> {
-    let builder = super::open_builder(handle)?;
-    let schema = Arc::clone(builder.schema());
+    let Some(mut source) = super::open_footer(handle, None, None)? else {
+        return Err(super::short_tail(0));
+    };
+    let schema = Arc::clone(source.metadata.schema());
     let path = format_smolstr!("$.{column}");
     let Ok(index) = schema.index_of(column) else {
         return Err(invalid(
@@ -122,6 +127,8 @@ pub fn read_geospatial_statistics<H: IOBase + ?Sized>(
             format_smolstr!("{}", field.data_type()),
         ));
     }
+    source.fetch(handle, Some(&[index]))?;
+    let builder = source.builder();
     let mask = ProjectionMask::roots(builder.parquet_schema(), [index]);
     let reader = builder.with_projection(mask).build()?;
     let mut fold = WkbFold::default();

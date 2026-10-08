@@ -95,13 +95,21 @@
 //! A reader that meets both spellings of one version whole refuses with an
 //! error naming both, since choosing one by its own codec would drop the
 //! other's commit from the chain; a commit that meets them waits as a
-//! beaten attempt and reports the fork once its budget is spent. What stays
+//! beaten attempt and reports the fork once its budget is spent. A third
+//! writer may read a claim in the instant before that claim's own check
+//! withdraws it, so a claim that stands alone checks the document it built
+//! on too, where it read that document rather than published it: the other
+//! spelling of the base's version is read once and must hold nothing, and
+//! the base's own name once and must hold exactly the bytes read - their
+//! length and XXH3-64 kept where the document was read. A base that fails
+//! withdraws the claim, and the commit reads the version that stands: an
+//! append to a table stating no identifier and a metadata-only change
+//! rebase onto it, and the others end in a [`CommitConflict`]. What stays
 //! best-effort: a reader in the instant between a second claim and its
-//! withdrawal is refused rather than answered; a third writer that read the
-//! first claim in the instant before that claim's own check, and claimed
-//! the next version on it, has built on a document the check then
-//! withdraws; and a withdrawal the store refuses leaves the version forked,
-//! which the commit reports with every file its document names kept.
+//! withdrawal is refused rather than answered; a base whose own check had
+//! not yet run when this commit checked it may still be withdrawn after;
+//! and a withdrawal the store refuses leaves the version forked, which the
+//! commit reports with every file its document names kept.
 //!
 //! A table's first document is the one claim a listing goes before: the
 //! name `v1.metadata.json` cannot see a table laid out under another - a
@@ -183,7 +191,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::manifest::{
     DataFile, FieldSummary, ManifestContent, ManifestEntry, ManifestFile, is_iceberg_mime_type,
-    read_manifest_list, read_v1_direct_manifest_file, write_manifest, write_manifest_list,
+    read_manifest_list, read_v1_direct_manifest_file, write_manifest, write_manifest_list_rows,
 };
 use super::metadata::{FormatVersion, SortOrder, TableMetadata, now_ms, uuid};
 use super::options::{CommitSettings, IcebergOptions, WriteSettings, WriteStaging};
@@ -259,6 +267,43 @@ struct Opened {
     /// on - for a pointed table; `None` under the folder contract. A pointed
     /// table created in memory and not yet published states no location.
     pointed: Option<PointerState>,
+    /// What proves the document is still its version's one document when a
+    /// commit builds on it, under the folder contract; `None` for a pointed
+    /// table, whose publication is conditioned at the service, and for the
+    /// version 0 a create holds before its first document.
+    base: Option<Base>,
+    /// The manifests of the manifest list this handle's own commit wrote,
+    /// keyed by that list's location: what [`IcebergTable::manifests_at`]
+    /// answers for the snapshot naming it, without reading the list back.
+    manifests: Option<(SmolStr, Arc<[ManifestFile]>)>,
+}
+
+/// How a commit proves the document it built on still stands alone at its
+/// version, kept where the document was read or published.
+///
+/// A claim that lands is withdrawn when its own check finds the other
+/// spelling of its version held, so a document read in the instant before
+/// that check may be withdrawn after it was read; a commit built on it
+/// would chain past the document that won the version, and lose that
+/// version's commit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Base {
+    /// Read from the folder: the stored length and the XXH3-64 of the stored
+    /// bytes, which a read of its name must find again.
+    Read { length: u64, digest: u64 },
+    /// Published by this handle's own commit past its checks: a document no
+    /// writer withdraws once its claim stood alone.
+    Published,
+}
+
+impl Base {
+    /// The proof of a document read as `bytes`.
+    fn read(bytes: &[u8]) -> Self {
+        Self::Read {
+            length: bytes.len() as u64,
+            digest: crate::xxhash::xxh3(bytes),
+        }
+    }
 }
 
 impl IcebergTable<Handle> {
@@ -671,6 +716,8 @@ fn read_pointed<H: IOBase>(root: &H, pointer: &dyn MetadataPointer) -> Result<Op
         version,
         metadata_file_name,
         pointed: Some(state),
+        base: None,
+        manifests: None,
     }))
 }
 
@@ -718,7 +765,8 @@ fn missing_pointed<H: IOBase>(root: &H) -> Error {
 /// `*.metadata.json`.
 fn read_current<H: IOBase>(root: &H) -> Result<Option<Opened>> {
     let metadata_dir = container(root.child_by_path(METADATA_DIR)?)?;
-    let Some((version, metadata_file_name, document)) = find_metadata_document(&metadata_dir)?
+    let Some((version, metadata_file_name, (document, base))) =
+        find_metadata_document(&metadata_dir)?
     else {
         return Ok(None);
     };
@@ -732,6 +780,8 @@ fn read_current<H: IOBase>(root: &H) -> Result<Option<Opened>> {
         version,
         metadata_file_name,
         pointed: None,
+        base: Some(base),
+        manifests: None,
     }))
 }
 
@@ -860,8 +910,10 @@ impl<H: IOBase> IcebergTable<H> {
                     version: 0,
                     metadata_file_name: SmolStr::new_static(""),
                     pointed: None,
+                    base: None,
+                    manifests: None,
                 });
-                table.commit_metadata(None)?;
+                table.commit_metadata(None).map_err(Unclaimed::into_error)?;
             }
             Some(pointer) => {
                 // The pointer is read once: a table it already names a
@@ -876,6 +928,8 @@ impl<H: IOBase> IcebergTable<H> {
                     version: 0,
                     metadata_file_name: SmolStr::new_static(""),
                     pointed: Some(state),
+                    base: None,
+                    manifests: None,
                 });
                 table.publish_pointed(pointer.as_ref(), None)?;
                 table.pointer = Some(pointer);
@@ -1267,6 +1321,10 @@ impl<H: IOBase> IcebergTable<H> {
 
     /// Return every manifest one retained snapshot points at.
     ///
+    /// The manifest list is read from the store, one read - except the list
+    /// this handle's own last commit wrote, which the commit kept as the
+    /// list states its manifests and answers without a read.
+    ///
     /// # Errors
     ///
     /// Returns an error when a manifest or manifest list cannot be reached or decoded.
@@ -1282,6 +1340,16 @@ impl<H: IOBase> IcebergTable<H> {
         }
         if snapshot.manifest_list.is_empty() {
             return Ok(Vec::new());
+        }
+        // The list this handle's own commit wrote is answered as it states
+        // its manifests: a commit carrying them forward reads nothing back.
+        if let Some(Opened {
+            manifests: Some((list, manifests)),
+            ..
+        }) = self.opened.get()
+            && *list == snapshot.manifest_list
+        {
+            return Ok(manifests.to_vec());
         }
         let handle = self.child_at(&snapshot.manifest_list)?;
         read_manifest_list(&handle)
@@ -1638,18 +1706,20 @@ impl<H: IOBase> IcebergTable<H> {
             // visibility itself is uncertain.
             match find_metadata_document(&metadata_dir).and_then(|visible| {
                 visible
-                    .map(|(version, metadata_file_name, document)| {
+                    .map(|(version, metadata_file_name, (document, base))| {
                         TableMetadata::from_json(&document)
-                            .map(|metadata| (version, metadata_file_name, metadata))
+                            .map(|metadata| (version, metadata_file_name, metadata, base))
                     })
                     .transpose()
             }) {
-                Ok(Some((version, metadata_file_name, metadata))) => {
+                Ok(Some((version, metadata_file_name, metadata, base))) => {
                     table.adopt(Opened {
                         metadata,
                         version,
                         metadata_file_name,
                         pointed: None,
+                        base: Some(base),
+                        manifests: None,
                     });
                 }
                 Ok(None) | Err(_) => table.adopt(saved.clone()),
@@ -1678,7 +1748,9 @@ impl<H: IOBase> IcebergTable<H> {
                                     "expected the newer metadata document {metadata_file_name} to be read, got none"
                                 ))
                             })
-                            .and_then(|document| TableMetadata::from_json(&document));
+                            .and_then(|(document, base)| {
+                                TableMetadata::from_json(&document).map(|fresh| (fresh, base))
+                            });
                         match fresh {
                             Ok(fresh) => Some(fresh),
                             Err(error) => return restore(self, error, unresolved_claim),
@@ -1686,7 +1758,7 @@ impl<H: IOBase> IcebergTable<H> {
                     } else {
                         None
                     };
-                    if let (Some(attempted), Some(fresh)) = (&attempted_snapshot, &fresh)
+                    if let (Some(attempted), Some((fresh, base))) = (&attempted_snapshot, &fresh)
                         && fresh.snapshot_by_id(attempted.snapshot_id) == Some(attempted)
                     {
                         if let Some(staging) = staging {
@@ -1697,6 +1769,8 @@ impl<H: IOBase> IcebergTable<H> {
                             version,
                             metadata_file_name,
                             pointed: None,
+                            base: Some(*base),
+                            manifests: None,
                         });
                         return Ok(());
                     }
@@ -1717,12 +1791,14 @@ impl<H: IOBase> IcebergTable<H> {
                         Ok(wait) => wait,
                         Err(error) => return restore(self, error, unresolved_claim),
                     };
-                    if let Some(fresh) = fresh {
+                    if let Some((fresh, base)) = fresh {
                         self.adopt(Opened {
                             metadata: fresh,
                             version,
                             metadata_file_name,
                             pointed: None,
+                            base: Some(base),
+                            manifests: None,
                         });
                     }
                     log::debug!(
@@ -1765,21 +1841,50 @@ impl<H: IOBase> IcebergTable<H> {
             let updated = if let Some((version, metadata)) = pending_attempt.take()
                 && version == held_version
             {
-                metadata
+                Ok(metadata)
             } else {
-                match apply(self) {
-                    Ok(updated) => updated,
-                    Err(error) => return restore(self, error, unresolved_claim),
+                apply(self)
+            };
+            let attempt = match updated {
+                Ok(updated) => {
+                    attempted_snapshot = if on_conflict == OnConflict::Rebase && staging.is_some() {
+                        updated.current_snapshot().cloned()
+                    } else {
+                        None
+                    };
+                    let planned = std::mem::replace(&mut self.opened_mut()?.metadata, updated);
+                    self.commit_metadata(staging)
+                        .map_err(|unclaimed| (unclaimed, Some(planned)))
                 }
+                // A document read in the instant before its claim's own check
+                // withdrew it names files that withdrawal may have taken back
+                // with it: where the document held no longer stands, a failure
+                // to build on it is that withdrawal, and the attempt is beaten
+                // as one whose base moved under its claim is.
+                Err(error) => match self.held_moved() {
+                    Some(moved) => Err((Unclaimed::Failed(moved), None)),
+                    None => return restore(self, error, unresolved_claim),
+                },
             };
-            attempted_snapshot = if on_conflict == OnConflict::Rebase && staging.is_some() {
-                updated.current_snapshot().cloned()
-            } else {
-                None
-            };
-            let planned = std::mem::replace(&mut self.opened_mut()?.metadata, updated);
-            if let Err(error) = self.commit_metadata(staging) {
-                if !error.is_conflict() {
+            if let Err((unclaimed, planned)) = attempt {
+                let (error, withdrawn) = match unclaimed {
+                    Unclaimed::Withdrawn(error) => (error, true),
+                    Unclaimed::Failed(error) => (error, false),
+                };
+                // A withdrawn claim leaves nothing durable naming its
+                // snapshot: a document met naming it built on the claim
+                // before it was withdrawn, and goes with it, so it is no
+                // sign that this commit landed.
+                if withdrawn {
+                    attempted_snapshot = None;
+                }
+                // A claim withdrawn because the document it built on no
+                // longer stands alone at its version: the version that
+                // stands may carry the number held, or a lower one where the
+                // document held was a claim withdrawn since, and is the one
+                // to read.
+                let moved = is_moved_base(&error);
+                if !moved && !error.is_conflict() {
                     if unresolved_claim && let Some(staging) = staging {
                         staging.preserve_uncertain();
                     }
@@ -1787,10 +1892,14 @@ impl<H: IOBase> IcebergTable<H> {
                 }
                 // Keep one refused data attempt intact while its winner is
                 // unreadable: rebuilding it would withdraw the manifest list
-                // a visible descendant may already name.
-                let attempted = std::mem::replace(&mut self.opened_mut()?.metadata, planned);
-                if on_conflict == OnConflict::Rebase && staging.is_some() {
-                    pending_attempt = Some((held_version, attempted));
+                // a visible descendant may already name. An attempt whose
+                // base moved built on a document no version holds, and is
+                // rebuilt on the one that stands, never sent again.
+                if let Some(planned) = planned {
+                    let attempted = std::mem::replace(&mut self.opened_mut()?.metadata, planned);
+                    if on_conflict == OnConflict::Rebase && staging.is_some() && !moved {
+                        pending_attempt = Some((held_version, attempted));
+                    }
                 }
                 // The version this attempt claimed is another writer's. Where
                 // the table stands is read as a fresh handle reads it, past a
@@ -1802,13 +1911,15 @@ impl<H: IOBase> IcebergTable<H> {
                 let claimed = held_version.saturating_add(1);
                 let winner = match find_metadata_document(&metadata_dir).and_then(|visible| {
                     visible
-                        .map(|(version, metadata_file_name, document)| {
+                        .map(|(version, metadata_file_name, (document, base))| {
                             TableMetadata::from_json(&document)
-                                .map(|metadata| (version, metadata_file_name, metadata))
+                                .map(|metadata| (version, metadata_file_name, metadata, base))
                         })
                         .transpose()
                 }) {
-                    Ok(winner) => winner.filter(|(version, _, _)| *version > held_version),
+                    Ok(winner) => {
+                        winner.filter(|(version, _, _, _)| moved || *version > held_version)
+                    }
                     Err(reading) => {
                         log::debug!(
                             "iceberg commit beaten to version {claimed} found the winner \
@@ -1817,7 +1928,7 @@ impl<H: IOBase> IcebergTable<H> {
                         None
                     }
                 };
-                if let (Some(attempted), Some((version, metadata_file_name, metadata))) =
+                if let (Some(attempted), Some((version, metadata_file_name, metadata, base))) =
                     (&attempted_snapshot, &winner)
                     && metadata.snapshot_by_id(attempted.snapshot_id) == Some(attempted)
                 {
@@ -1829,24 +1940,27 @@ impl<H: IOBase> IcebergTable<H> {
                         version: *version,
                         metadata_file_name: metadata_file_name.clone(),
                         pointed: None,
+                        base: Some(*base),
+                        manifests: None,
                     });
                     return Ok(());
                 }
-                if winner.is_none() {
+                if winner.is_none() && !withdrawn && !moved {
                     // A refused create may be our durable document. Until it
                     // or another same-version winner is readable, rollback
-                    // cannot safely remove the files it may name.
+                    // cannot safely remove the files it may name - unless the
+                    // claim was withdrawn, which leaves nothing durable.
                     unresolved_claim = true;
                 } else if on_conflict == OnConflict::Rebase
                     && winner
                         .as_ref()
-                        .is_some_and(|(version, _, _)| *version == claimed)
+                        .is_some_and(|(version, _, _, _)| *version == claimed)
                 {
                     unresolved_claim = false;
                 }
                 let seen = winner
                     .as_ref()
-                    .map_or(claimed, |(version, _, _)| (*version).max(claimed));
+                    .map_or(claimed, |(version, _, _, _)| (*version).max(claimed));
                 let wait = match retry_wait_ms(
                     &settings,
                     &mut beaten,
@@ -1858,13 +1972,15 @@ impl<H: IOBase> IcebergTable<H> {
                     Err(error) => return restore(self, error, unresolved_claim),
                 };
                 if on_conflict == OnConflict::Rebase
-                    && let Some((version, metadata_file_name, metadata)) = winner
+                    && let Some((version, metadata_file_name, metadata, base)) = winner
                 {
                     self.adopt(Opened {
                         metadata,
                         version,
                         metadata_file_name,
                         pointed: None,
+                        base: Some(base),
+                        manifests: None,
                     });
                 }
                 log::debug!(
@@ -3547,16 +3663,32 @@ impl<H: IOBase> IcebergTable<H> {
     /// the version forked, which is reported - with every file the document
     /// names kept - rather than retried.
     ///
-    /// A document that passed that check is the commit's point of no
+    /// The document the commit built on is checked next, where it was read
+    /// from the folder rather than published by this handle: the other
+    /// spelling of its version is read once and must hold nothing, and its
+    /// own name is read once and must hold exactly the bytes read - the
+    /// length and the XXH3-64 kept where it was read ([`Base`]). A claim
+    /// read in the instant before its own check, and withdrawn by that
+    /// check, fails this one: the claim is withdrawn as a contested one is,
+    /// and the attempt answers [`is_moved_base`]'s refusal, on which the
+    /// ladder reads the version that stands - an append to a table stating
+    /// no identifier and a metadata-only commit rebase onto it, every other
+    /// commit ends in [`CommitConflict`]. What this cannot see is a base
+    /// whose own check had not yet run when this one read it.
+    ///
+    /// A document that passed those checks is the commit's point of no
     /// return, and the commit: the hint is written after it with one
     /// [`IOBase::write_all_bytes`], and a failure to write it is logged at
     /// warn rather than returned, since every reader walks past the version
     /// a hint names.
-    fn commit_metadata(&mut self, staging: Option<&Staging>) -> Result<()> {
+    fn commit_metadata(&mut self, staging: Option<&Staging>) -> std::result::Result<(), Unclaimed> {
         // A bad in-memory state is refused before a document exists, so a
         // broken table can only be read, never written.
         let held = self.opened()?;
         held.metadata.validate()?;
+        let base = held
+            .base
+            .map(|base| (held.metadata_file_name.clone(), base));
         let previous = (held.version > 0)
             .then(|| self.metadata_location())
             .transpose()?;
@@ -3575,11 +3707,11 @@ impl<H: IOBase> IcebergTable<H> {
         match document.create_bytes(&encoded) {
             Ok(()) => {}
             Err(error) if error.is_conflict() => {
-                return Err(Error::conflict(
+                return Err(Unclaimed::Failed(Error::conflict(
                     "Iceberg metadata version",
                     "Iceberg metadata version",
                     format!("{next_version}: {name}"),
-                ));
+                )));
             }
             // A create whose answer was lost may have landed: the name read
             // back holding exactly this document is the commit made, and
@@ -3589,7 +3721,7 @@ impl<H: IOBase> IcebergTable<H> {
                     .read_all_bytes()
                     .is_ok_and(|stored| stored == encoded);
                 if !landed {
-                    return Err(error);
+                    return Err(Unclaimed::Failed(error));
                 }
             }
         }
@@ -3615,19 +3747,40 @@ impl<H: IOBase> IcebergTable<H> {
             )),
             Err(error) => Some(error),
         };
+        // Alone at its version, the claim is still built on the document
+        // held: one that may have been withdrawn since it was read is read
+        // again, and any change - or a read that cannot say - withdraws this
+        // claim too.
+        let contested = match (contested, &base) {
+            (Some(contested), _) => Some(contested),
+            (None, Some((base_name, base))) => self.moved_base(next_version - 1, base_name, *base),
+            (None, None) => None,
+        };
         if let Some(contested) = contested {
             if let Err(removal) = document.remove(false) {
-                // The claim stands beside the other: every file it names is
-                // kept, and the fork is reported for an operator to settle.
+                // The claim stands beside the other, or on a base that moved:
+                // every file it names is kept, and the fork is reported for
+                // an operator to settle.
                 if let Some(staging) = staging {
                     staging.commit();
                 }
-                return Err(Error::iceberg(format_smolstr!(
-                    "expected one metadata document of version {next_version}, got {name} \
-                     beside {other_name}: withdrawing {name} after {contested} failed: {removal}"
+                return Err(Unclaimed::Failed(Error::iceberg(
+                    if is_moved_base(&contested) {
+                        format_smolstr!(
+                            "expected the metadata document {name} of version {next_version} \
+                         withdrawn from a base that moved, got it kept: withdrawing it \
+                         after {contested} failed: {removal}"
+                        )
+                    } else {
+                        format_smolstr!(
+                            "expected one metadata document of version {next_version}, got {name} \
+                         beside {other_name}: withdrawing {name} after {contested} failed: \
+                         {removal}"
+                        )
+                    },
                 )));
             }
-            return Err(contested);
+            return Err(Unclaimed::Withdrawn(contested));
         }
 
         // The versioned document is durable, alone at its version, and names
@@ -3662,8 +3815,52 @@ impl<H: IOBase> IcebergTable<H> {
             version: next_version,
             metadata_file_name: name,
             pointed: None,
+            base: Some(Base::Published),
+            manifests: None,
         });
         Ok(())
+    }
+
+    /// Why the document `name`, version `version`, no longer proves what a
+    /// commit built on it, when it does not: its other spelling holds a
+    /// byte, or its own name holds other bytes than `base` was read from -
+    /// a claim withdrawn by its own check, replaced by the one that won the
+    /// version - or a read that cannot say. `None` where it still stands
+    /// alone, and for a document this handle published, which no writer
+    /// withdraws.
+    fn moved_base(&self, version: u32, name: &str, base: Base) -> Option<Error> {
+        let Base::Read { .. } = base else {
+            return None;
+        };
+        let read = |name: &str| {
+            self.root
+                .child_by_path(&format!("{METADATA_DIR}/{name}"))
+                .and_then(leaf)
+                .and_then(|document| document.read_all_bytes())
+        };
+        if let Some(other) = other_spelling(name) {
+            match read(&other) {
+                Ok(bytes) if bytes.is_empty() => {}
+                Ok(_) => return Some(moved_base(version, name, &other)),
+                Err(error) => return Some(error),
+            }
+        }
+        match read(name) {
+            Ok(bytes) if Base::read(&bytes) == base => None,
+            Ok(_) => Some(moved_base(version, name, name)),
+            Err(error) => Some(error),
+        }
+    }
+
+    /// The refusal [`moved_base`] answers where the document this table
+    /// holds, read from its folder, no longer stands alone at its version;
+    /// `None` where it stands, where this handle published it, and where a
+    /// read cannot say.
+    fn held_moved(&self) -> Option<Error> {
+        let held = self.opened().ok()?;
+        let base = held.base?;
+        self.moved_base(held.version, &held.metadata_file_name, base)
+            .filter(is_moved_base)
     }
 
     /// [`Self::commit_document`] for a pointed table: the pointer is the
@@ -3816,6 +4013,8 @@ impl<H: IOBase> IcebergTable<H> {
             version: next_version,
             metadata_file_name: name,
             pointed: Some(published),
+            base: None,
+            manifests: None,
         });
         Ok(())
     }
@@ -4017,22 +4216,35 @@ impl<H: IOBase> IcebergTable<H> {
         };
 
         let operation = SmolStr::new(operation);
-        // The live manifests of one snapshot never change, so an attempt
+        // The manifests one manifest list names never change, so an attempt
         // beaten on write rather than on the version check re-uses the list
-        // it already read; only a rebase onto a newer snapshot reads again.
-        let mut listed: Option<(Option<i64>, Vec<ManifestFile>)> = None;
+        // it already read; only a rebase onto another list reads again. The
+        // list's location is the key, never the snapshot id alone: a commit
+        // keeps its snapshot id across its attempts, so a claim withdrawn and
+        // claimed again names one snapshot id over two lists.
+        let mut listed: Option<(ListKey, Vec<ManifestFile>)> = None;
         // The manifest list of the attempt before, when this one is a retry:
         // it names nothing a document will ever name, so it is withdrawn.
         let mut previous_list: Option<String> = None;
+        // The last attempt's list as it states its manifests, by location.
+        let written_list: std::cell::RefCell<Option<(SmolStr, Arc<[ManifestFile]>)>> =
+            std::cell::RefCell::new(None);
+        let listed_last = &written_list;
         let staged = &staging;
         let apply = move |table: &Self| {
             let sequence_number = next_sequence_number(&table.opened()?.metadata)?;
             let mut manifests = match &kept {
                 Some(kept) => kept.clone(),
                 None => {
-                    let current = table.opened()?.metadata.current_snapshot_id;
+                    let current = (
+                        table.opened()?.metadata.current_snapshot_id,
+                        table
+                            .current_snapshot()?
+                            .map(|snapshot| snapshot.manifest_list.clone())
+                            .unwrap_or_default(),
+                    );
                     match &listed {
-                        Some((snapshot, manifests)) if *snapshot == current => manifests.clone(),
+                        Some((list, manifests)) if *list == current => manifests.clone(),
                         _ => {
                             let manifests = table.manifests()?;
                             listed = Some((current, manifests.clone()));
@@ -4050,6 +4262,7 @@ impl<H: IOBase> IcebergTable<H> {
             }
 
             let list_name = format!("snap-{snapshot_id}-1-{}.avro", uuid());
+            let manifest_list = SmolStr::new(table.location_of(METADATA_DIR, &list_name)?);
             let first_row_id =
                 if table.opened()?.metadata.format_version >= FormatVersion::V3 {
                     Some(table.opened()?.metadata.next_row_id.ok_or_else(|| {
@@ -4070,20 +4283,22 @@ impl<H: IOBase> IcebergTable<H> {
                 staged.withdraw(&previous)?;
             }
             let list_path = format!("{METADATA_DIR}/{list_name}");
-            let (next_row_id, _) = staged.publish(
+            let ((next_row_id, stated), _) = staged.publish(
                 &table.root,
                 &list_path,
                 &crate::MediaType::new(MimeType::AVRO),
                 |list| {
-                    write_manifest_list(
-                        list,
-                        format_version,
-                        snapshot_id,
-                        parent_snapshot_id,
-                        sequence_number,
-                        first_row_id,
-                        &manifests,
-                    )
+                    written_whole(list, |list| {
+                        write_manifest_list_rows(
+                            list,
+                            format_version,
+                            snapshot_id,
+                            parent_snapshot_id,
+                            sequence_number,
+                            first_row_id,
+                            &manifests,
+                        )
+                    })
                 },
             )?;
 
@@ -4147,7 +4362,7 @@ impl<H: IOBase> IcebergTable<H> {
                 sequence_number: (table.opened()?.metadata.format_version >= FormatVersion::V2)
                     .then_some(sequence_number),
                 timestamp_ms: now_ms(),
-                manifest_list: SmolStr::new(table.location_of(METADATA_DIR, &list_name)?),
+                manifest_list: manifest_list.clone(),
                 manifests: None,
                 summary,
                 schema_id: Some(table.opened()?.metadata.current_schema_id),
@@ -4159,11 +4374,25 @@ impl<H: IOBase> IcebergTable<H> {
             let mut updated = table.opened()?.metadata.clone();
             updated.set_current_snapshot(snapshot)?;
             previous_list = Some(list_path);
+            *listed_last.borrow_mut() = Some((manifest_list, Arc::from(stated)));
             Ok(updated)
         };
         // The staging is committed inside, the moment the versioned document
         // is durable; what is left of it when it drops is the directory.
         self.commit_document(on_conflict, apply, Some(&staging))?;
+        // The list the last attempt wrote is the one the committed snapshot
+        // names - unless a winner that carried that snapshot was adopted
+        // past it - so the next commit's carried manifests are answered from
+        // it rather than read back.
+        if let Some((list, manifests)) = written_list.into_inner()
+            && let Ok(opened) = self.opened_mut()
+            && opened
+                .metadata
+                .current_snapshot()
+                .is_some_and(|snapshot| snapshot.manifest_list == list)
+        {
+            opened.manifests = Some((list, manifests));
+        }
         Ok(Some(Committed {
             files_written,
             skipped_rows,
@@ -4201,7 +4430,11 @@ impl<H: IOBase> IcebergTable<H> {
             &self.root,
             &format!("{METADATA_DIR}/{name}"),
             &crate::MediaType::new(MimeType::AVRO),
-            |handle| write_manifest(handle, version, schema, spec, entries),
+            |handle| {
+                written_whole(handle, |manifest| {
+                    write_manifest(manifest, version, schema, spec, entries)
+                })
+            },
         )?;
         Ok(ManifestFile {
             manifest_path: SmolStr::new(self.location_of(METADATA_DIR, name)?),
@@ -5869,6 +6102,22 @@ fn sliced(batches: Vec<RecordBatch>, target: u64) -> Vec<Vec<RecordBatch>> {
     files
 }
 
+/// Write what `encode` lays out into `handle` with one whole write, and
+/// answer its length beside what `encode` answered: a manifest or a manifest
+/// list is small by construction and laid out whole anyway, so its length is
+/// known here rather than asked of the handle it went to - on a store, a
+/// `HEAD`.
+fn written_whole<T>(
+    handle: &mut Holder,
+    encode: impl FnOnce(&mut crate::holder::Buffer) -> Result<T>,
+) -> Result<(T, Option<u64>)> {
+    let mut buffer = crate::holder::Buffer::new();
+    let answer = encode(&mut buffer)?;
+    let bytes = buffer.into_bytes();
+    handle.write_all_bytes(&bytes)?;
+    Ok((answer, Some(bytes.len() as u64)))
+}
+
 /// Write one file of one partition group and describe it.
 ///
 /// The file's name carries the MIME type's own extension, so the handle's
@@ -5901,9 +6150,10 @@ fn write_data_file(
         format!("{DATA_DIR}/{directory_path}/{name}")
     };
 
-    // The statistics are read back from the file the writer just wrote -
-    // the staged copy when the commit stages, so the footer read costs the
-    // store nothing - before the file reaches the table.
+    // A Parquet file's statistics and length are what its encoder closed it
+    // with, so nothing of it is read back - from the staged copy or the
+    // store - and nothing is asked of its handle: the name is fresh, so no
+    // stored shape is there to complete onto either.
     let arrow_schema = crate::arrow::arrow_schema_from_field(&stored)?;
     let parquet = mime_type == &MimeType::PARQUET;
     let nans = super::statistics::nan_value_counts(schema, &batches)?;
@@ -5918,13 +6168,20 @@ fn write_data_file(
                 .with_field(stored.clone());
             options.set_file_threads(threads);
             if parquet {
-                handle.overwrite_arrow_reader(
+                let RecordOptions::Parquet(parquet) = &options else {
+                    return Err(not_encodable(mime_type));
+                };
+                let (metadata, length) = crate::parquet::overwrite_buffered(
+                    handle,
                     crate::arrow::batch_reader(arrow_schema, batches),
-                    &options,
+                    parquet,
+                    crate::parquet::WRITE_BUFFER_BYTES,
                 )?;
-                handle.flush()?;
-                let statistics = crate::parquet::read_statistics(handle)?;
-                super::statistics::data_file(schema, &statistics)
+                let statistics = crate::parquet::FileStatistics::from_metadata(&metadata);
+                Ok((
+                    super::statistics::data_file(schema, &statistics)?,
+                    Some(length),
+                ))
             } else {
                 // The batches are measured before the write consumes them,
                 // because this format's file carries no footer to read them
@@ -5935,7 +6192,7 @@ fn write_data_file(
                     &options,
                 )?;
                 handle.flush()?;
-                Ok(file)
+                Ok((file, None))
             }
         },
     )?;
@@ -7085,10 +7342,22 @@ fn encoded_document(metadata: &TableMetadata) -> Result<(&'static str, Vec<u8>)>
     }
 }
 
+/// A metadata document as read: the parsed document, and the [`Base`] its
+/// stored bytes prove.
+type Document = (Scalar, Base);
+
+/// A metadata document found under the folder contract: its version, its
+/// exact name and the document.
+type Found = (u32, SmolStr, Document);
+
+/// What a commit's carried manifests were read for: the snapshot current and
+/// the location of the manifest list it names.
+type ListKey = (Option<i64>, SmolStr);
+
 /// Return the current metadata document with its exact name and number.
 ///
 /// [`find_metadata`] with the document always read.
-fn find_metadata_document(metadata_dir: &Holder) -> Result<Option<(u32, SmolStr, Scalar)>> {
+fn find_metadata_document(metadata_dir: &Holder) -> Result<Option<Found>> {
     match find_metadata(metadata_dir, None)? {
         Some((version, name, Some(document))) => Ok(Some((version, name, document))),
         Some((version, name, None)) => Err(invalid(format_smolstr!(
@@ -7120,11 +7389,11 @@ fn find_metadata_document(metadata_dir: &Holder) -> Result<Option<(u32, SmolStr,
 /// exactly it, the hint is taken at its word, nothing else is read, and the
 /// answer carries `None` for the document. That is a commit's look before it
 /// claims the next version, whose exclusive create is what decides; every
-/// other answer carries the document.
+/// other answer carries the document, and the [`Base`] its bytes prove.
 fn find_metadata(
     metadata_dir: &Holder,
     known: Option<u32>,
-) -> Result<Option<(u32, SmolStr, Option<Scalar>)>> {
+) -> Result<Option<(u32, SmolStr, Option<Document>)>> {
     // A folder that is not a table has no metadata directory at all, and the
     // laziness contract makes that a handle that simply is not a container.
     if !metadata_dir.is_container() {
@@ -7178,8 +7447,8 @@ fn find_metadata(
 /// whole document forked, and the walk refuses it naming both.
 fn newest_from(
     metadata_dir: &Holder,
-    (mut version, mut name, mut document): (u32, SmolStr, Scalar),
-) -> Result<(u32, SmolStr, Scalar)> {
+    (mut version, mut name, mut document): Found,
+) -> Result<Found> {
     while let Some(next) = version.checked_add(1) {
         let gzip_first = name.ends_with(".gz.metadata.json");
         let Some((next_name, next_document)) = versioned_document(metadata_dir, next, gzip_first)?
@@ -7206,9 +7475,9 @@ fn versioned_document(
     metadata_dir: &Holder,
     version: u32,
     gzip_first: bool,
-) -> Result<Option<(SmolStr, Scalar)>> {
+) -> Result<Option<(SmolStr, Document)>> {
     let suffixes = if gzip_first { [".gz", ""] } else { ["", ".gz"] };
-    let mut found: Option<(SmolStr, Scalar)> = None;
+    let mut found: Option<(SmolStr, Document)> = None;
     for suffix in suffixes {
         let name = format_smolstr!("v{version}{suffix}.metadata.json");
         let bytes = match leaf(metadata_dir.child_by_path(&name)?)?.read_all_bytes() {
@@ -7223,7 +7492,7 @@ fn versioned_document(
             continue;
         };
         match &found {
-            None => found = Some((name, document)),
+            None => found = Some((name, (document, Base::read(&bytes)))),
             Some((first, _)) => return Err(forked(version, first, &name)),
         }
     }
@@ -7280,6 +7549,69 @@ fn is_forked(error: &Error) -> bool {
     matches!(error, Error::Iceberg { source: Some(source), .. } if source.is::<Forked>())
 }
 
+/// A commit's base no longer its version's one document, the source of the
+/// error [`moved_base`] answers, so the commit ladder reads the version that
+/// stands even where it carries the number held.
+#[derive(Debug)]
+struct MovedBase;
+
+impl std::fmt::Display for MovedBase {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("the metadata document a commit built on was withdrawn")
+    }
+}
+
+impl std::error::Error for MovedBase {}
+
+/// The refusal of a claim built on `name`, version `version`, which no
+/// longer stands alone at its version: `found` holds what the version is
+/// now, the other spelling's document or other bytes under its own name.
+fn moved_base(version: u32, name: &str, found: &str) -> Error {
+    Error::Iceberg {
+        reason: format_smolstr!(
+            "expected the metadata document {name} a commit built on to stand alone at \
+             version {version}, got {found} changed since it was read; the claim it built \
+             on was withdrawn, and the commit reads the version that stands"
+        ),
+        source: Some(Box::new(MovedBase)),
+    }
+}
+
+/// Why a claim of the next version did not commit.
+#[derive(Debug)]
+enum Unclaimed {
+    /// The claim landed and was withdrawn - its document removed - because
+    /// the other spelling of its version holds a claim too, or because the
+    /// document it built on no longer stands: nothing durable names its
+    /// files, and a document met naming its snapshot built on the claim
+    /// before it was withdrawn.
+    Withdrawn(Error),
+    /// Any other failure: a refused create - whose document may still be
+    /// this commit's own, where the create's answer was lost - or a write or
+    /// a read that failed.
+    Failed(Error),
+}
+
+impl Unclaimed {
+    /// The failure, whichever way the claim went.
+    fn into_error(self) -> Error {
+        match self {
+            Self::Withdrawn(error) | Self::Failed(error) => error,
+        }
+    }
+}
+
+impl From<Error> for Unclaimed {
+    fn from(error: Error) -> Self {
+        Self::Failed(error)
+    }
+}
+
+/// Whether `error` is the refusal [`moved_base`] answers.
+fn is_moved_base(error: &Error) -> bool {
+    matches!(error, Error::Iceberg { source: Some(source), .. } if source.is::<MovedBase>())
+}
+
 /// The document a listing of `metadata/` settles on, for a folder whose hint
 /// names none: the hinted version where a listed name carries it, else the
 /// highest, its exact name kept.
@@ -7288,10 +7620,7 @@ fn is_forked(error: &Error) -> bool {
 /// cannot be read, are empty or do not decode the name below it answers
 /// instead; any other document that does not read or decode is the table's
 /// failure.
-fn listed_metadata(
-    metadata_dir: &Holder,
-    hinted_version: Option<u32>,
-) -> Result<Option<(u32, SmolStr, Scalar)>> {
+fn listed_metadata(metadata_dir: &Holder, hinted_version: Option<u32>) -> Result<Option<Found>> {
     // Exact filenames: a UUID filename is never rewritten into a synthetic
     // `vN` path.
     let mut candidates: Vec<(u32, SmolStr, Holder)> = Vec::new();
@@ -7348,7 +7677,11 @@ fn listed_metadata(
                     if let Some((_, other, _)) = other {
                         return Err(forked(*version, name, other));
                     }
-                    return Ok(Some((*version, name.clone(), document)));
+                    return Ok(Some((
+                        *version,
+                        name.clone(),
+                        (document, Base::read(&bytes)),
+                    )));
                 }
                 Err(error) if !newest => return Err(error),
                 Err(_) => {}

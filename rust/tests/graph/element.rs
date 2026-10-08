@@ -270,7 +270,7 @@ fn uuid_payload(currhashcode: u64, crosshashcode: u64, seqnum: u64) -> u64 {
 }
 
 /// The XXH3-64 of one cross code, as the trait derives it.
-fn crosshash(crosscode: &str) -> u64 {
+pub(crate) fn crosshash(crosscode: &str) -> u64 {
     let mut state = Xxh3::new();
     state.write(crosscode.as_bytes());
     state.as_u64()
@@ -1193,15 +1193,30 @@ fn following_adopts_the_predecessors_cross_code() {
     report.set_crosscode("O-999".to_owned());
     report.finalize();
     assert_ne!(report.get_crossuuid(), order.get_crossuuid());
+    // Every follower's cross identity derives from the code it stores.
+    let derived = |element: &dyn Element, what: &str| {
+        assert_eq!(
+            element.get_crosshashcode(),
+            crosshash(element.get_crosscode()),
+            "{what}"
+        );
+        assert_eq!(
+            element.get_crossuuid(),
+            Uuid::from_v8(u128::from(element.get_crosshashcode())),
+            "{what}"
+        );
+    };
     let report = report.with_previous(&order).expect("follows");
     assert_eq!(report.get_crosscode(), "O-100");
     assert_eq!(report.get_crosshashcode(), crosshash("O-100"));
     assert_eq!(report.get_crossuuid(), order.get_crossuuid());
+    derived(&report, "the report");
     // A follower stating none takes it the same way; one already sharing
     // it moves nothing on that account.
     let nameless = Report::at(3, 30).with_previous(&order).expect("follows");
     assert_eq!(nameless.get_crosscode(), "O-100");
     assert_eq!(nameless.get_crossuuid(), order.get_crossuuid());
+    derived(&nameless, "a follower stating none");
     let mut shared = Report::at(4, 40);
     shared.set_crosscode("O-100".to_owned());
     shared.finalize();
@@ -1209,6 +1224,7 @@ fn following_adopts_the_predecessors_cross_code() {
     // A later instant keeps its own place.
     assert_eq!(shared.get_seqnum(), 0);
     assert_eq!(shared.get_crossuuid(), order.get_crossuuid());
+    derived(&shared, "a follower sharing it");
 
     // The crate's own event does the same, and re-derives its identity.
     let mut placed = trade(10);
@@ -1222,6 +1238,7 @@ fn following_adopts_the_predecessors_cross_code() {
     // The code is stored under the side the event takes.
     assert_eq!(fill.get_crosscode(), "10:1:O-100");
     assert_eq!(fill.get_crossuuid(), placed.get_crossuuid());
+    derived(&fill, "the crate's own event");
     assert_eq!(fill.get_prevuuid(), Some(placed.get_curruuid()));
     assert_ne!(fill.get_curruuid(), before, "followed, so finalized");
     assert_eq!(fill.get_curruuid(), fill.time_uuid().expect("an identity"));
@@ -1236,6 +1253,7 @@ fn following_adopts_the_predecessors_cross_code() {
     let next = next.with_previous(&first).expect("follows");
     assert_eq!(next.get_crosscode(), "10:0:O-100");
     assert_eq!(next.get_crossuuid(), first.get_crossuuid());
+    derived(&next, "a market element");
     assert!(next.clone().with_previous(&next).is_none(), "never itself");
     assert!(
         next.clone().with_previous(&first).is_none(),

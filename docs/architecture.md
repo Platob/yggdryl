@@ -60,7 +60,7 @@ Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several
 | A family owns a subsection | Every [Types](types/index.md) family is a folder: `index.md` for what its leaves share, and one page per type, each presenting its datatype, its field, its scalar, its Arrow storage, then its features. |
 | One expression, three tiers | [`Expression`](expression/index.md) parses once, binds once, then evaluates a row, a batch, or container statistics; statistics answer `false` only when no row can match. |
 | One shape per hierarchy level | Collections use `get`, `create`, `open_or_create`, `contains`, lazy iteration, `len`, `is_empty`; dotted names descend. |
-| Bindings are views | Python and JavaScript coerce once at the boundary and call the core; parsing, validation, hashing, and conversion stay native. |
+| Bindings are views | Python and JavaScript coerce once at the boundary and call the core; parsing, validation, hashing, and conversion stay native. Python reaches every stable domain, JavaScript its essential doors, a new one only when it is asked for by name. |
 
 ## Watching what the core does
 
@@ -249,7 +249,7 @@ Every family page follows one order, so a reader who learns one page can navigat
 | Section | Holds |
 | --- | --- |
 | Contract | One compact table: what is owned, validated, lazy, cached, and refused |
-| Use | The smallest runnable example, in Rust, Python, and JavaScript tabs |
+| Use | The smallest runnable example, in Rust and Python tabs, and a JavaScript tab where the Node binding carries the door |
 | Feature sections | One per behaviour, each at most two sentences before its code |
 | Edges | Refusals, nulls, empties, overflows, and limits, one line each |
 | Commands | The test and benchmark commands scoped to the page |

@@ -4267,6 +4267,13 @@ def test_a_field_states_the_parents_of_the_identifier_it_names(seed: FixRegistry
     assert seed.parent_of("origorderid") == ("orderid", 1)
     assert seed.parent_of("origtradeid") == ("tradeid", 0)
     assert seed.parent_of("clordid") is None and seed.parent_of("originalorderid") is None
+    # Only a chain identity has parents: a per-report reference has none, a
+    # trade report's one is its `tradereportrefid`, and `parentclordid` is a
+    # bridge's word of its own rather than a parent of `clordid`.
+    assert seed.parents_of("execid") == [] and seed.parent_of("parentexecid") is None
+    assert seed.parents_of("tradereportid") == ["tradereportrefid"]
+    assert seed.parent_of("tradereportrefid") == ("tradereportid", 0)
+    assert seed.parent_of("parentclordid") is None
     with pytest.raises(ValueError, match="identifier"):
         seed.parents_of("café")
 

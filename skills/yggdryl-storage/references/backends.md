@@ -78,11 +78,12 @@ async runtime.
 | --- | --- | --- | --- |
 | build a handle, a child, a media type, a partition | 0 | 0 | 0 |
 | resolve a `lake/` (trailing slash) location | 0 | 0 | 0 |
-| resolve any other `S3Path` role | 1 single-key listing, or 2 | same | same |
-| ranged read | 1 ranged `GET` | 1 `GET` `alt=media` | 1 `GET` `x-ms-range` |
+| resolve any other `S3Path` role | 1 single-key listing, or 2; it states an object's size, so no `HEAD` follows | same | same |
+| ranged read | 1 ranged `GET` | 1 `GET` `alt=media` | 1 ranged `GET` |
+| tail read, `read_tail_bytes(n)` (Rust; every Parquet schema, count and read) | 1 `GET` `Range: bytes=-n`, size from `Content-Range`, no `HEAD` | same, `alt=media` | 1 `HEAD` (0 while open or once listed) + 1 ranged `GET`: no suffix range |
 | whole read, stream drain, digest | 1 `GET` | 1 `GET` | 1 `GET` |
 | size of a listed object | 0 | 0 | 0 |
-| `size` on a closed handle | 1 `HEAD` (0 while open) | 1 `objects.get` (0 while open) | 1 `HEAD` (0 while open) |
+| `size` on a closed handle | 1 `HEAD` (0 while open, listed or tail-read) | 1 `objects.get` (0 while open, listed or tail-read) | 1 `HEAD` (0 while open or listed) |
 | whole write | 1 `PUT` | 1 `multipart/related` `POST` | 1 `PUT` |
 | large write | parts + 2 | chunks + 1 | blocks + 1 |
 | append | 1 `GET` + 1 write (no `GET` while open) | same | same |
@@ -94,7 +95,11 @@ async runtime.
 A recursive listing is one flat listing (keys in byte order are depth-first
 pre-order). A ranged read learns the length from `Content-Range`;
 `S3File::with_known_size(n)` takes one a manifest already stated (an Iceberg
-scan reads each data file with one `GET`). `open` caches metadata, never bytes -
+scan reads each data file with one `GET`), and a tail read keeps the total
+its `Content-Range` states. A bucket's region a redirect corrected is kept on
+the session every client from the same options shares, so the redirect is
+paid once per session, not per client; a Google token is shared by the
+clients of one options value under one credential. `open` caches metadata, never bytes -
 do it before wrapping a remote handle in `buffered`. A move between objects is
 the copy and the removal, the value crossing the client: no server-side
 `CopyObject` yet.
@@ -228,6 +233,7 @@ versions. One synchronous client: a caller brings no async runtime.
 | --- | --- |
 | build a session, a request, a child | 0 |
 | `pread`, `read_range_bytes`, `read_range_digest` | 1 ranged `GET` |
+| `read_tail_bytes(n)` (Rust) | `size` + 1 ranged `GET`: 1 `HEAD` + 1 ranged `GET` closed, 1 ranged `GET` inside `open()` |
 | `read_all_bytes`, `read_digest`, a `pstream_bytes` drain | 1 `GET`, + 1 per resume |
 | `size`, `mtime`, `kind` closed | 1 `HEAD`; 0 inside `open()` |
 | `write_all_bytes`, `clear` | 1 `PUT` |

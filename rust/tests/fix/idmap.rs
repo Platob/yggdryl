@@ -205,14 +205,16 @@ fn the_committed_dictionary_follows_the_orders_own_identities() {
             "{source:?} is stated once"
         );
     }
-    // Seventeen fields of the dictionary and none of the crate's own, whose
-    // bridge keys are read off their names: the ten operation identifiers
-    // and the seven secondary ones - SecondaryClOrdID(526),
+    // Twenty-one fields of the dictionary and none of the crate's own, whose
+    // bridge keys are read off their names: the ten operation identifiers,
+    // the seven secondary ones - SecondaryClOrdID(526),
     // SecondaryExecID(527), SecondaryAllocID(793),
     // SecondaryIndividualAllocID(989), SecondaryTradeID(1040),
-    // SecondaryFirmTradeID(1042) and SecondaryQuoteID(1751); no account and
-    // no user is an identifier.
-    assert_eq!(sources.len(), 17, "{sources:?}");
+    // SecondaryFirmTradeID(1042) and SecondaryQuoteID(1751) - and the four
+    // trade lineage fields - TradeReportID(571), TradeReportRefID(572),
+    // OrigTradeID(1126) and OrigSecondaryTradeID(1127); no account and no
+    // user is an identifier.
+    assert_eq!(sources.len(), 21, "{sources:?}");
     for secondary in [526, 527, 793, 989, 1040, 1042, 1751] {
         assert!(
             sources.iter().any(|(tag, _)| *tag == secondary),

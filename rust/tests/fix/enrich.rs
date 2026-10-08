@@ -2002,7 +2002,7 @@ fn a_follower_naming_no_party_takes_its_chains_parties_and_writes_none() {
 mod parentage {
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Event, Operation};
+    use yggdryl::graph::{Element, Event, Market, Operation};
     use yggdryl::{FixCodec, FixMsg, IdType};
 
     use super::SoleMessage;
@@ -2224,6 +2224,123 @@ mod parentage {
                 [some("C"), some("B"), some("A"), some("A")],
                 [some("D"), some("C"), some("B"), some("A")],
             ]
+        );
+    }
+
+    /// A message stated before the chain's live one - out of order, so read
+    /// from a source in instant order once its hour was walked - follows
+    /// nothing, yet it is one of the chain's statements: the walk re-keys it
+    /// onto the chain, the side the chain states written as `Side(54)`
+    /// first, so its stored cross code is the chain's, its cross hash and
+    /// cross element derive from that code, and its identity is settled
+    /// once under them - its content code moved by the side it was lent.
+    #[test]
+    fn a_late_message_stating_no_side_is_rekeyed_onto_its_chain() {
+        use yggdryl::Side;
+
+        let codec = super::reader().with_sorted_lifecycle(true);
+        let late: &[u8] = b"8=FIX.4.2|35=9|49=S|56=B|34=72|52=20260814-10:00:00.500|11=C-2|37=O-1|41=C-1|39=8|434=1|60=20260814-10:00:00.500|10=0|";
+        let chain = walked(
+            &codec,
+            &[
+                b"8=FIX.4.2|35=D|49=B|56=S|34=70|52=20260814-10:00:00|11=C-1|55=2454|54=2|38=100|40=2|44=10|60=20260814-10:00:00|10=0|",
+                b"8=FIX.4.2|35=8|49=S|56=B|34=71|52=20260814-10:00:01|11=C-1|37=O-1|17=X1|150=0|39=0|54=2|55=2454|38=100|44=10|151=100|14=0|6=0|60=20260814-10:00:01|10=0|",
+                // Another order three hours on: the hour of the first two is
+                // walked before the late reject is read.
+                b"8=FIX.4.2|35=D|49=B|56=S|34=73|52=20260814-13:30:00|11=Z-1|55=2330|54=1|38=100|40=2|44=10|60=20260814-13:30:00|10=0|",
+                late,
+            ],
+        );
+        let of_type = |msgtype: &str| {
+            chain
+                .iter()
+                .find(|message| message.header().msgtype() == msgtype)
+                .unwrap_or_else(|| panic!("a {msgtype} in {}", chain.len()))
+        };
+        let (order, ack, stray) = (of_type("D"), of_type("8"), of_type("9"));
+        assert_eq!(chain.len(), 4);
+        assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
+        let parsed = codec.sole_line(late).expect("the late line");
+        assert_eq!(parsed.get_side(), Side::Unknown);
+        assert_eq!(parsed.get_crosscode(), "10:0:O-1", "its own code, no side");
+        assert!(stray.is_before(ack), "stated before the live one");
+        assert_eq!(stray.get_prevuuid(), None, "it follows nothing");
+        assert_eq!(stray.get_side(), Side::Sell);
+        assert_eq!(super::text(stray, 54).as_deref(), Some("SELL"));
+        assert_eq!(stray.get_crosscode(), "10:2:C-1");
+        assert_eq!(stray.get_crosscode(), order.get_crosscode());
+        assert_eq!(stray.get_crosshashcode(), order.get_crosshashcode());
+        assert_eq!(stray.get_crossuuid(), order.get_crossuuid());
+        assert_eq!(
+            stray.get_crossuuid(),
+            yggdryl::Uuid::from_v8(u128::from(stray.get_crosshashcode()))
+        );
+        assert_ne!(
+            stray.get_currhashcode(),
+            parsed.get_currhashcode(),
+            "the side it was lent is content"
+        );
+        assert_eq!(
+            stray.get_curruuid(),
+            stray.time_uuid().expect("an identity")
+        );
+        let wire = String::from_utf8(stray.into_bytes(b'|')).expect("a text wire");
+        assert!(wire.contains("|54=2|"), "{wire}");
+        // The live statement moved not at all.
+        assert_eq!(ack.get_crosscode(), order.get_crosscode());
+    }
+
+    /// A report citing two live chains - the `ClOrdID(11)` one chain holds,
+    /// the `OrderID(37)` the other's code is alive under - is a conflict the
+    /// walk states rather than picks: the report stands under its own
+    /// identity, the chain its own code is alive under, and carries the
+    /// conflict as a `FixAnomaly` under `crosscode` naming both chains'
+    /// codes; the report delivered again under another `MsgSeqNum(34)` - one
+    /// content, one identity - resolves through the same conflict and
+    /// carries the same anomaly once.
+    #[test]
+    fn a_message_citing_two_live_chains_carries_the_conflict_and_so_does_its_twin() {
+        let codec = super::reader().with_dedup_window_ms(0);
+        let chain = walked(
+            &codec,
+            &[
+                b"8=FIX.4.4|35=D|49=B|56=S|34=1|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=10|44=100|10=0|",
+                // The venue's report of an order the walk has not seen named
+                // by its OrderID: a chain of its own.
+                b"8=FIX.4.4|35=8|49=S|56=B|34=2|52=20260921-10:00:01|37=O1|17=E1|150=0|39=0|54=1|55=AAPL|10=0|",
+                b"8=FIX.4.4|35=8|49=S|56=B|34=3|52=20260921-10:00:02|11=C1|37=O1|17=E2|150=0|39=0|54=1|55=AAPL|10=0|",
+                b"8=FIX.4.4|35=8|49=S|56=B|34=4|52=20260921-10:00:02|11=C1|37=O1|17=E2|150=0|39=0|54=1|55=AAPL|10=0|",
+            ],
+        );
+        let [order, venue, report, twin] = chain.as_slice() else {
+            panic!("four statements, not {}", chain.len())
+        };
+        assert_eq!(order.get_crosscode(), "10:1:C1");
+        assert_eq!(venue.get_crosscode(), "10:1:O1");
+        assert_eq!(venue.get_prevuuid(), None, "two chains");
+        assert_eq!(report.get_prevuuid(), Some(venue.get_curruuid()), "its own");
+        assert_eq!(report.get_crosscode(), venue.get_crosscode());
+        let conflicts: Vec<&yggdryl::FixAnomaly> = report
+            .anomalies()
+            .iter()
+            .filter(|anomaly| anomaly.field() == "crosscode")
+            .collect();
+        let [conflict] = conflicts.as_slice() else {
+            panic!("one conflict, not {conflicts:?}")
+        };
+        for named in ["10:1:O1", "10:1:C1", "clordid=C1"] {
+            assert!(conflict.reason().contains(named), "{named} in {conflict}");
+        }
+        assert_eq!(twin.get_curruuid(), report.get_curruuid());
+        assert_eq!(twin.anomalies(), report.anomalies());
+        assert_eq!(twin.get_crosscode(), report.get_crosscode());
+        // A message citing one chain only states no conflict.
+        assert!(
+            order
+                .anomalies()
+                .iter()
+                .chain(venue.anomalies())
+                .all(|anomaly| anomaly.field() != "crosscode")
         );
     }
 }

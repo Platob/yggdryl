@@ -751,12 +751,11 @@ fn a_parentage_word_before_the_name_stays_part_of_the_type() {
         ("omsoriginalorderid", "oms:originalorderid=T-1", None),
         ("originorderid", "originorderid=T-1", None),
         ("originclordid", "originclordid=T-1", None),
-        // `parentclordid` is the other spelling of `clordid`'s one parent.
-        (
-            "firm.x.parentclordid",
-            "firm.x:origclordid=T-1",
-            Some((IdType::ClOrdId, 0)),
-        ),
+        // A bridge's `parentclordid` - the hierarchy parent child orders
+        // share - is no spelling of `clordid`'s one parent, `origclordid`:
+        // a type of its own, a parent of nothing.
+        ("firm.x.parentclordid", "firm.x:parentclordid=T-1", None),
+        ("PARENTCLORDID", "parentclordid=T-1", None),
     ] {
         let keyed = read(key, "T-1");
         assert_eq!(keyed.to_string(), expected, "{key}");
@@ -1844,11 +1843,20 @@ fn an_element_stating_a_parent_but_not_its_type_takes_the_type_from_its_nearest_
     assert_eq!(sources.get(&IdType::OrderId), Some("P"));
     assert_eq!(sources.len(), 7);
 
-    // A parent value its base refuses fills nothing, and a closure naming no
-    // parent fills nothing.
+    // A parent value its base refuses fills nothing. The crate's vocabulary
+    // names parents of chain identities alone, whose values are any text,
+    // so the refusal is a caller's vocabulary naming `parentisin` a parent
+    // of `isin` - which the crate's names a word of its own, filling
+    // nothing either.
     let mut refused = base(&[("parentisin", "NOT-AN-ISIN")]);
+    assert!(!refused.fill_parents(|kind| (kind == "parentisin").then_some((IdType::Isin, 0))));
+    assert_eq!(refused.len(), 1);
     assert!(!refused.fill_parents(IdType::parent_of));
     assert_eq!(refused.len(), 1);
+    let mut accepted = base(&[("parentisin", "US0378331005")]);
+    assert!(accepted.fill_parents(|kind| (kind == "parentisin").then_some((IdType::Isin, 0))));
+    assert_eq!(accepted.get(&IdType::Isin), Some("US0378331005"));
+    // A closure naming no parent fills nothing.
     let mut none = base(&[("origclordid", "A")]);
     assert!(!none.fill_parents(|_| None));
     assert_eq!(none.len(), 1);

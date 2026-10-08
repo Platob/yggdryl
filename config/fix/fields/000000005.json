@@ -719,9 +719,6 @@
     "nullable": true,
     "metadata": {
       "FIX:datatype": "String",
-      "FIX:names": [
-        "parentcrossid"
-      ],
       "FIX:tag": "551",
       "description": "CrossID of the previous cross order (NOT the initial cross order of the day) as assigned by the institution, used to identify the previous cross order in Cross Cancel and Cross Cancel/Replace Requests.",
       "display": "OrigCrossID"
@@ -1003,6 +1000,12 @@
     "nullable": true,
     "metadata": {
       "FIX:datatype": "String",
+      "FIX:idmap": [
+        {
+          "map": "identifiers",
+          "key": "tradereportid"
+        }
+      ],
       "FIX:tag": "571",
       "description": "Unique identifier of trade capture report",
       "display": "TradeReportID"
@@ -1016,6 +1019,12 @@
     "nullable": true,
     "metadata": {
       "FIX:datatype": "String",
+      "FIX:idmap": [
+        {
+          "map": "identifiers",
+          "key": "tradereportrefid"
+        }
+      ],
       "FIX:tag": "572",
       "description": "Reference identifier used with CANCEL and REPLACE transaction types.",
       "display": "TradeReportRefID"

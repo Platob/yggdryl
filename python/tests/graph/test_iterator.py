@@ -169,20 +169,22 @@ def test_a_walk_carries_the_parents_of_each_identifier_along_its_chain() -> None
         for data in graph.EventIterator([named(CLOCK + at, "clordid", value) for at, value in enumerate("ABC")])
     ]
     assert [held(event, "origclordid") for event in replaced] == [[None], ["A"], ["B"]]
-    # `parentclordid` is that one parent's other spelling, never a second.
-    assert [held(event, "parentclordid") for event in replaced] == [[None], ["A"], ["B"]]
+    # `parentclordid` is a word of its own - a bridge's hierarchy parent - and
+    # no parent the walk writes.
+    assert [held(event, "parentclordid") for event in replaced] == [[None], [None], [None]]
 
 
 def test_an_element_joins_a_live_chain_through_a_parent_identifiers_value() -> None:
     first = named(CLOCK, "orderid", "A")
-    # Replaced under a new `orderid` that says what it replaced: the chain of
-    # A, whose code - and cross identity - it keeps.
+    # Replaced under a new `orderid` that says where its chain began - its
+    # `origorderid`, the chain's first value: the chain of A, whose code - and
+    # cross identity - it keeps.
     replacement = graph.OrderEvent(
         CLOCK + 1,
-        identifiers=Identifiers([Identifier("orderid", "B"), Identifier("parentorderid", "A")]),
+        identifiers=Identifiers([Identifier("orderid", "B"), Identifier("origorderid", "A")]),
     )
-    # An element stating only the parent is what it came from: its `orderid`
-    # is filled from it, and it joins the chain going by A.
+    # An element stating only the previous-value slot is what it came from: its
+    # `orderid` is filled from it, and it joins the chain going by A.
     only = graph.OrderEvent(CLOCK + 1, identifiers=Identifiers([Identifier("parentorderid", "A")]))
     assert only.identifiers.get_from("orderid") == "A"
     [head, joined] = [data.as_order_event() for data in graph.EventIterator([first, replacement])]
@@ -193,9 +195,17 @@ def test_an_element_joins_a_live_chain_through_a_parent_identifiers_value() -> N
     [_, filled] = [data.as_order_event() for data in graph.EventIterator([first, only])]
     assert filled is not None and filled.prevuuid == head.curruuid
 
-    # A parent no live chain goes by joins nothing: a chain of its own.
+    # The previous-value slot beside an `orderid` of its own names nothing: a
+    # hierarchy parent, a chain of its own.
+    child = graph.OrderEvent(
+        CLOCK + 1, identifiers=Identifiers([Identifier("orderid", "B"), Identifier("parentorderid", "A")])
+    )
+    [_, apart] = [data.as_order_event() for data in graph.EventIterator([first, child])]
+    assert apart is not None and apart.prevuuid is None
+
+    # A first value no live chain goes by joins nothing: a chain of its own.
     stranger = graph.OrderEvent(
-        CLOCK + 1, identifiers=Identifiers([Identifier("orderid", "Y"), Identifier("parentorderid", "Z")])
+        CLOCK + 1, identifiers=Identifiers([Identifier("orderid", "Y"), Identifier("origorderid", "Z")])
     )
     [_, alone] = [data.as_order_event() for data in graph.EventIterator([first, stranger])]
     assert alone is not None and alone.prevuuid is None

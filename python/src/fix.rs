@@ -785,7 +785,8 @@ impl PyFixRegistry {
     /// The parent types of the identifier type `base`, nearest first: the
     /// list a field stating it names under `FIX:parents`, else the ones its
     /// name has (`orderid` is `["parentorderid", "origorderid"]`, `clordid`
-    /// `["origclordid"]`; a parent type has none).
+    /// `["origclordid"]`, `tradereportid` `["tradereportrefid"]`; only a
+    /// chain identity has any, so `execid` and a parent type have none).
     fn parents_of(&self, base: &str) -> PyResult<Vec<String>> {
         let base: IdType = base.parse().map_err(value_error)?;
         Ok(self

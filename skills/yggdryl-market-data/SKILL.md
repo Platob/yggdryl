@@ -64,8 +64,15 @@ Hold these facts:
   chain's first as `origorderid`, a changed `clordid` leaves `origclordid`
   (`FIX:parents` states the list a FIX field has). A FIX lifecycle message takes the `metadata` keys and
   only the ids its dictionary follows, each with its parents. `EventIterator` joins a stream by cross
-  identity and by the type and value of an `identifiers` identifier a live element
-  went by (or the parent identifier it replaced, joined under the parent's own type),
+  identity and by the type and value of a chain identity a live element went by
+  (`orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid` and their
+  secondary ones - never `execid`, `trdmatchid` or `quotereqid`) or the chain's
+  first value a lineage identifier names (`origclordid`, `origorderid`), filed
+  under its base, each name held by the first live chain that stated it; an
+  element citing two live chains joins neither - it stands under its own
+  identity, `Operation::note_conflict` tells it (a FIX message's `FixAnomaly`)
+  and the walk warns once per kind - and every element of a chain is re-keyed
+  onto the chain's side and first cross code,
   within one `marketdatakind` (an order and an execution under one cross code
   are two chains, so a fill never restates, follows or ends its order),
   folds twins, emits expiries, and leaves every element stating `creaunix`. A grid view is the live element
@@ -268,11 +275,11 @@ Hold these facts:
    book it settled on.
 7. Join and chain by identity: `crossuuid` is one chain whatever identifier an
    event used; a later event joins a live one of its side and its
-   `marketdatakind` through the type and value of an `identifiers` identifier
-   (`orderid`, `clordid`, `mdentryid`..., whatever its source) - a quote's
-   name alive on the side it tags, so a bid and an offer going by one
-   `mdentryid` are two entries - and one stating no side joins the single
-   side alive under its code. Name identifiers there, as `Identifier`s,
+   `marketdatakind` through the type and value of a chain identity
+   (`orderid`, `clordid`, `quoteid`, `tradeid`..., whatever its source, never
+   an `execid`) - a quote's name alive on the side it tags, so a bid and an
+   offer going by one name are two chains - and one stating no side joins the
+   single side alive under its code; one citing two chains joins neither. Name identifiers there, as `Identifier`s,
    rather than inventing a column.
 8. Leaves are immutable in the bindings: `with_previous`, `merge_with`,
    `restating`, `with_book`, `with_operations` answer a new value; only
@@ -355,7 +362,8 @@ Hold these facts:
   not the book its `prevuuid` names.
 - `EventIterator` defaults to `sorted=True` / `true` and trusts the order: an
   unsorted stream is not refused, it silently yields broken chains (an
-  element before the live one is yielded as it came and joins nothing). Pass `sorted=False` / `false` for a stream you have not
+  element before the live one follows nothing, though it carries its chain's
+  side and code). Pass `sorted=False` / `false` for a stream you have not
   sorted (it collects to sort); only `BookIterator` notices a regression, and
   leaves it out with a warning.
 - A trade is built only through `TradeEvent.from_parts`: at least one

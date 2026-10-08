@@ -4473,7 +4473,9 @@ fn left_out(operation: &MarketData) {
 /// # Errors
 ///
 /// Refuses a partial update continuing nothing that states no price or no
-/// size, an `OrderID` other than the live entry's, and a quote continuing
+/// size, an `OrderID` other than the live entry's that no parent of
+/// `orderid` it states names ([`Operation::parents_of`]: a replace under a
+/// new `OrderID` stating the one it replaced continues), and a quote continuing
 /// an order, or an order a quote, that no rule promotes.
 fn continue_entry(
     mut operation: MarketData,
@@ -4496,10 +4498,19 @@ fn continue_entry(
         }
         return Ok(operation);
     };
+    // An `OrderID` change the statement explains - a parent of `orderid` it
+    // states names the live order - continues the entry; any other is
+    // another order's.
+    let statement = operation.operation_event();
     if let (Some(stated), Some(known)) = (
-        operation.operation_event().get_identifiers().get(&ORDER_ID),
+        statement.get_identifiers().get(&ORDER_ID),
         previous.operation_event().get_identifiers().get(&ORDER_ID),
     ) && stated != known
+        && !previous
+            .operation_event()
+            .parents_of(&ORDER_ID)
+            .iter()
+            .any(|parent| statement.get_identifiers().get(parent) == Some(known))
     {
         return Err(invalid(
             "$.operation.identifiers.orderid",

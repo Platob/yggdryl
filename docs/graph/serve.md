@@ -255,16 +255,16 @@ What the package ships beside its binding, and the argument vector `serve()` spa
 
 ## The ULBridge capture, served
 
-One command, run from the root of a yggdryl checkout, serves the FIX bridge capture the crate's tests read, `rust/tests/fix/ulbridge.log`, read with the dictionary the checkout commits, `config/fix`: an absent folder becomes an Iceberg table, the capture's ten books land in it - with no grid each a delta book, keyed by the ISIN its instrument states - and the display answers on a free port. The bridge's clock writes Zurich time, so the lines are read under `--timezone Europe/Zurich`; the routes render in whatever `tz` a question states.
+One command, run from the root of a yggdryl checkout, serves the FIX bridge capture the crate's tests read, `rust/tests/fix/ulbridge.log`, read with the dictionary the checkout commits, `config/fix`: an absent folder becomes an Iceberg table, the capture's eleven books land in it - with no grid each a delta book, keyed by the ISIN its instrument states - and the display answers on a free port. The bridge's clock writes Zurich time, so the lines are read under `--timezone Europe/Zurich`; the routes render in whatever `tz` a question states.
 
 ```bash
 yggdryl market serve books=/tmp/books --registry config/fix --capture rust/tests/fix/ulbridge.log --timezone Europe/Zurich --bind 127.0.0.1:0
 ```
 
 ```text
-http://127.0.0.1:40799/
+http://127.0.0.1:64722/
 · table books over file:///tmp/books, created
-· capture rust/tests/fix/ulbridge.log: 10 books into books
+· capture rust/tests/fix/ulbridge.log: 11 books into books
 ```
 
 Both paths are the checkout's: neither the wheel nor the npm package ships a FIX dictionary or this capture. The command a registry install puts on the path - `pip install yggdryl`'s, which `book.serve` spawns - passes `--registry` the folder it keeps a dictionary in, a copy of a checkout's `config/fix`, and `--capture` its own bridge log; outside a checkout and without `--registry`, it refuses before it binds, `✗ expected a FIX dictionary at "file:///<working directory>/config/fix", got nothing`. Below, the port is the one this run took, and every answer is one line, wrapped here.
@@ -272,8 +272,8 @@ Both paths are the checkout's: neither the wheel nor the npm package ships a FIX
 The table it serves, and the book keys the table holds, each beside the first ticker its books state and the range that holds them:
 
 ```bash
-curl http://127.0.0.1:40799/api/tables
-curl 'http://127.0.0.1:40799/api/tickers?table=books'
+curl http://127.0.0.1:64722/api/tables
+curl 'http://127.0.0.1:64722/api/tickers?table=books'
 ```
 
 ```json
@@ -284,17 +284,18 @@ curl 'http://127.0.0.1:40799/api/tickers?table=books'
 [{"books":3,"crosscode":"3:0:CH0012005267","from":"2026-08-14T12:46:39Z","key":"CH0012005267","ticker":"NOVN","to":"2026-08-14T16:25:01Z"},
  {"books":2,"crosscode":"3:0:CH0012214059","from":"2026-08-14T12:46:39Z","key":"CH0012214059","ticker":"HOLN","to":"2026-08-14T12:46:41Z"},
  {"books":2,"crosscode":"3:0:CH0012221716","from":"2026-08-14T12:46:39Z","key":"CH0012221716","ticker":"ABBN.S","to":"2026-08-14T12:46:40Z"},
+ {"books":1,"crosscode":"3:0:EZN11TD1F7K3","from":"2026-08-14T14:52:55Z","key":"EZN11TD1F7K3","ticker":"XAU/USD","to":"2026-08-14T14:52:56Z"},
  {"books":1,"crosscode":"3:0:TW0001605004","from":"2026-08-14T01:03:17Z","key":"TW0001605004","ticker":"1605","to":"2026-08-14T01:03:18Z"},
  {"books":1,"crosscode":"3:0:TW0002454006","from":"2026-08-14T21:59:46Z","key":"TW0002454006","ticker":"2454","to":"2026-08-14T21:59:47Z"},
  {"books":1,"crosscode":"3:0:XX0000000001","from":"2026-08-14T12:46:58Z","key":"XX0000000001","ticker":"EXAMPLECO.S","to":"2026-08-14T12:46:59Z"}]
 ```
 
-The masked number one line states, `XX0000000001`, keys a book of its own; a line stating Holcim's ticker and no ISIN stands in Holcim's book, `CH0012214059`, through the lifecycle's [registry](isin-registry.md). A `ticker` parameter is a key first, and one naming no key is resolved to the one key whose books state it as their ticker: `HOLN` below is Holcim's key. Novartis's three books are the order the venue acknowledged, its restatement and its expiry at its `ExpireTime(126)`.
+The masked number one line states, `XX0000000001`, keys a book of its own, and so does the ISIN an XAU/USD option's trade capture report states, `EZN11TD1F7K3`, its one book recording the report's execution; a line stating Holcim's ticker and no ISIN stands in Holcim's book, `CH0012214059`, through the lifecycle's [registry](isin-registry.md). A `ticker` parameter is a key first, and one naming no key is resolved to the one key whose books state it as their ticker: `HOLN` below is Holcim's key. Novartis's three books are the order the venue acknowledged, its restatement and its expiry at its `ExpireTime(126)`.
 
 Holcim's day as hourly candles in Zurich - a naive `from` and `to` are Zurich wall clocks - is one candle, the `14:00` bucket, whose two books read a bid of `72.3` and no ask:
 
 ```bash
-curl 'http://127.0.0.1:40799/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-15T00:00:00&tz=Europe/Zurich&interval=1h'
+curl 'http://127.0.0.1:64722/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-15T00:00:00&tz=Europe/Zurich&interval=1h'
 ```
 
 ```json
@@ -308,7 +309,7 @@ curl 'http://127.0.0.1:40799/api/candles?table=books&ticker=HOLN&from=2026-08-14
 The book standing at the end of the day, rebuilt from the key's first book over the empty book a walk starts from: complete, one entry alive, the bid level it makes, no ask:
 
 ```bash
-curl 'http://127.0.0.1:40799/api/book?table=books&ticker=HOLN&at=2026-08-15T00:00:00&tz=Europe/Zurich'
+curl 'http://127.0.0.1:64722/api/book?table=books&ticker=HOLN&at=2026-08-15T00:00:00&tz=Europe/Zurich'
 ```
 
 ```json
@@ -318,11 +319,11 @@ curl 'http://127.0.0.1:40799/api/book?table=books&ticker=HOLN&at=2026-08-15T00:0
  "events":0,"imbalance":"1","iscrossed":false,"isincode":"CH0012214059","islocked":false,"midpoint":null,"spread":null,"ticker":"HOLN"}
 ```
 
-The audit of the day, gzip-coded and named after the book key and the range in UTC; the header line and one row per order of the books' `delta` - no book of the day is whole, so no row is an alive entry, and none recorded an execution, so no row is an event - cut to their first 114 characters here. Its `content-length` is this checkout's: a row's `srcuuids` are the UUIDs of the capture lines its message was read from, and a line's UUID derives from the URL of the log it was read from, so a checkout standing elsewhere compresses to a few bytes more or fewer:
+The audit of the day, gzip-coded and named after the book key and the range in UTC; the header line, one row per order of the books' `delta` and one per execution of their `events` - no book of the day is whole, so no row is an alive entry, and the first book's order filled, so the execution that filled it is that book's event - cut to their first 114 characters here. Its `content-length` is this checkout's: a row's `srcuuids` are the UUIDs of the capture lines its message was read from, and a line's UUID derives from the URL of the log it was read from, so a checkout standing elsewhere compresses to a few bytes more or fewer:
 
 ```bash
-curl -s -D - -o audit.csv.gz 'http://127.0.0.1:40799/api/audit.csv.gz?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-15T00:00:00&tz=Europe/Zurich'
-gunzip -c audit.csv.gz | head -3 | cut -c1-114
+curl -s -D - -o audit.csv.gz 'http://127.0.0.1:64722/api/audit.csv.gz?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-15T00:00:00&tz=Europe/Zurich'
+gunzip -c audit.csv.gz | head -4 | cut -c1-114
 gunzip -c audit.csv.gz | wc -l
 ```
 
@@ -330,22 +331,23 @@ gunzip -c audit.csv.gz | wc -l
 HTTP/1.1 200 OK
 cache-control: no-store
 content-disposition: attachment; filename="audit-CH0012214059-20260813T220000Z-20260814T220000Z.csv.gz"
-content-length: 1764
+content-length: 1979
 content-type: application/gzip
-date: Sat, 03 Oct 2026 12:47:03 GMT
-server: yggdryl/0.1.19
+date: Thu, 08 Oct 2026 03:11:03 GMT
+server: yggdryl/0.1.21
 
 bookunix,role,curruuid,crossuuid,crosscode,currhashcode,crosshashcode,srcuuids,currunix,creaunix,recdunix,exprunix
-2026-08-14T12:46:39.743Z,delta,01a0004f-6a7f-7000-bf6b-1827df1245d3,00000000-0000-8000-9618-3c1c758ba489,10:1:0007
+2026-08-14T12:46:39.743Z,delta,01a0004f-6a7f-7000-a4d9-45ec7dcca4bd,00000000-0000-8000-9618-3c1c758ba489,10:1:0007
+2026-08-14T12:46:39.743Z,event,01a0004f-6a7f-7001-a207-a9eb0c5d3441,00000000-0000-8000-b118-5af05a80b3b8,8:1:00064
 2026-08-14T12:46:40.020Z,delta,01a0004f-6b94-7000-910a-dde30e7da6b6,00000000-0000-8000-af7f-b667691dd2c5,10:1:XM8N
-3
+4
 ```
 
 A question the route cannot read is `400` naming the parameter - here a range whose `to` is not after its `from`:
 
 ```bash
-curl -s -D - 'http://127.0.0.1:40799/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-14T00:00:00&tz=Europe/Zurich' | head -1
-curl -s 'http://127.0.0.1:40799/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-14T00:00:00&tz=Europe/Zurich'
+curl -s -D - 'http://127.0.0.1:64722/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-14T00:00:00&tz=Europe/Zurich' | head -1
+curl -s 'http://127.0.0.1:64722/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-14T00:00:00&tz=Europe/Zurich'
 ```
 
 ```text
@@ -356,7 +358,7 @@ HTTP/1.1 400 Bad Request
 The display itself answers at the endpoint:
 
 ```bash
-curl -s -D - -o /dev/null http://127.0.0.1:40799/ | head -5
+curl -s -D - -o /dev/null http://127.0.0.1:64722/ | head -5
 ```
 
 ```text
@@ -364,10 +366,10 @@ HTTP/1.1 200 OK
 cache-control: no-cache
 content-length: 4881
 content-type: text/html; charset=utf-8
-date: Sat, 03 Oct 2026 12:47:03 GMT
+date: Thu, 08 Oct 2026 03:11:47 GMT
 ```
 
-`/tmp/books` is now an Iceberg table - `metadata/v1.metadata.json`, `v2.metadata.json`, `version-hint.text`, a manifest list, a manifest and one Parquet file of ten rows - that `yggdryl market serve books=/tmp/books` serves again from any folder, since with no capture it reads no dictionary, and that a Node program starts through `book.serve({ tables: 'books=/tmp/books' })`.
+`/tmp/books` is now an Iceberg table - `metadata/v1.metadata.json`, `v2.metadata.json`, `version-hint.text`, a manifest list, a manifest and one Parquet file of eleven rows - that `yggdryl market serve books=/tmp/books` serves again from any folder, since with no capture it reads no dictionary, and that a Node program starts through `book.serve({ tables: 'books=/tmp/books' })`.
 
 ## Edges
 

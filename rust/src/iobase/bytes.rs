@@ -144,7 +144,7 @@ macro_rules! delegate_iobase {
     // request plan.
     ($handle:ident) => {
         $crate::delegate_iobase!(@methods $handle: pread, read_all_bytes, read_range_bytes,
-            read_digest, read_range_digest, write_all_bytes, create_bytes, append_bytes,
+            read_tail_bytes, read_digest, read_range_digest, write_all_bytes, create_bytes, append_bytes,
             applied_codec, pstream_bytes, pwrite, size, capacity, reserve,
             truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
             ls, kind, is_container, clear, remove, is_atomic, is_tabular, is_io, is_thread_bound);
@@ -157,7 +157,7 @@ macro_rules! delegate_iobase {
     // mirroring the bytes underneath. The same list, named once instead of at
     // five call sites.
     ($handle:ident, except_lifecycle) => {
-        $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, create_bytes, size, capacity, reserve,
+        $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, read_tail_bytes, pwrite, create_bytes, size, capacity, reserve,
             truncate, uri, url, bound_location, mtime, media_type, set_media_type, applied_codec, flush, open, opened, close,
             parent, child_by_path, ls, kind, is_container, is_thread_bound);
     };
@@ -185,6 +185,12 @@ macro_rules! delegate_iobase {
     (@method $handle:ident, read_range_bytes) => {
         fn read_range_bytes(&self, offset: u64, length: usize) -> $crate::Result<Vec<u8>> {
             $crate::IOBase::read_range_bytes(&self.$handle, offset, length)
+        }
+    };
+
+    (@method $handle:ident, read_tail_bytes) => {
+        fn read_tail_bytes(&self, length: usize) -> $crate::Result<(Vec<u8>, u64)> {
+            $crate::IOBase::read_tail_bytes(&self.$handle, length)
         }
     };
 
@@ -432,6 +438,10 @@ macro_rules! __delegate_resolved_iobase {
 
         fn read_range_bytes(&self, offset: u64, length: usize) -> $crate::Result<Vec<u8>> {
             $crate::IOBase::read_range_bytes(self.$get()?, offset, length)
+        }
+
+        fn read_tail_bytes(&self, length: usize) -> $crate::Result<(Vec<u8>, u64)> {
+            $crate::IOBase::read_tail_bytes(self.$get()?, length)
         }
 
         fn read_digest(
@@ -757,6 +767,10 @@ impl IOBase for Box<dyn IOBase> {
 
     fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
         self.as_ref().read_range_bytes(offset, length)
+    }
+
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        self.as_ref().read_tail_bytes(length)
     }
 
     fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {

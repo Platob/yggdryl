@@ -240,3 +240,128 @@ mod iceberg {
         let _ = std::fs::remove_dir_all(&stage);
     }
 }
+
+/// What an unstaged commit costs an object store, by request.
+#[cfg(feature = "s3")]
+mod object_store {
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::arrow::BatchReader;
+    use yggdryl::iceberg::{
+        FormatVersion, IcebergOptions, IcebergTable, PartitionSpec, WriteStaging, assign_field_ids,
+    };
+    use yggdryl::s3::{self, Credentials, S3Options};
+    use yggdryl::{DataType, Field, StructType};
+
+    use crate::server::FakeS3;
+
+    const BUCKET: &str = "trades";
+
+    /// Options reaching `store` and consulting nothing outside the test.
+    fn options(store: &FakeS3) -> S3Options {
+        S3Options::default()
+            .with_environment(false)
+            .with_endpoint(store.endpoint())
+            .with_region("us-east-1")
+            .with_path_style(true)
+            .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"))
+    }
+
+    fn schema() -> Field {
+        let mut schema = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().nullable_field("venue"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        schema
+    }
+
+    fn rows(ids: &[i64], venues: &[&str]) -> BatchReader {
+        let batch = RecordBatch::try_new(
+            schema().into_arrow_schema().unwrap(),
+            vec![
+                Arc::new(Int64Array::from(ids.to_vec())),
+                Arc::new(StringArray::from(venues.to_vec())),
+            ],
+        )
+        .unwrap();
+        yggdryl::arrow::batch_reader(batch.schema(), [batch])
+    }
+
+    /// The requests the store answered since it was last cleared, as
+    /// `METHOD key` - a listing as `LIST` - in the order they arrived.
+    fn methods(store: &FakeS3) -> Vec<String> {
+        store
+            .requests()
+            .iter()
+            .map(|request| {
+                let listing = request
+                    .query
+                    .iter()
+                    .any(|(name, value)| name == "list-type" && value == "2");
+                if listing {
+                    "LIST".to_owned()
+                } else {
+                    request.method.clone()
+                }
+            })
+            .collect()
+    }
+
+    /// A commit that stages nothing writes every file straight to the store,
+    /// one `PUT` each, and asks nothing back: a data file's statistics and
+    /// length are what its encoder closed it with, a manifest's and a
+    /// manifest list's length what they were laid out as - so no `HEAD`
+    /// sizes a file, no tail or footer `GET` reads one, and no probe of a
+    /// fresh name asks whether it holds rows. Before, each data file cost a
+    /// `HEAD` probing its fresh name, its `PUT`, a `HEAD` and a tail and a
+    /// footer `GET` reading its statistics back, and a `HEAD` for its size,
+    /// and the manifest and the list a `HEAD` each for theirs.
+    #[test]
+    fn an_unstaged_commit_costs_one_put_per_file_and_reads_nothing_back() {
+        let store = FakeS3::start();
+        store.create_bucket(BUCKET);
+        let root =
+            s3::folder_with(&format!("s3://{BUCKET}/lake/unstaged"), options(&store)).unwrap();
+        let schema = schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            IcebergTable::create(root.clone(), FormatVersion::V3, schema, spec).unwrap();
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_write_staging(WriteStaging::Off)
+                .unwrap(),
+        );
+
+        store.clear_requests();
+        table
+            .commit_append(rows(&[1, 2, 3], &["XNAS", "XNYS", "XLON"]))
+            .unwrap();
+        // Three data files, the manifest and the list, then the chain: the
+        // hint read that re-checks the version, the document's claim, its
+        // other spelling's `GET`, and the hint.
+        let mut sent = methods(&store);
+        println!("an unstaged commit of three partitions: {sent:?}");
+        sent.sort();
+        assert_eq!(
+            sent,
+            [
+                "GET", "GET", "PUT", "PUT", "PUT", "PUT", "PUT", "PUT", "PUT"
+            ],
+        );
+
+        let opened = IcebergTable::open(root).unwrap();
+        assert_eq!(
+            opened
+                .scan(None)
+                .unwrap()
+                .map(|batch| batch.unwrap().num_rows())
+                .sum::<usize>(),
+            3
+        );
+    }
+}

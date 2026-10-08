@@ -786,6 +786,52 @@ mod pushdown {
         assert_eq!(batches[0].schema().field(1).name(), "id");
     }
 
+    /// A leaf's schema is its encoding's own header or footer typed by the
+    /// plan its options state - the filter and the selection in the phases a
+    /// read runs them in - and it is the schema that leaf's read publishes,
+    /// whatever the encoding: a `where` over a column the `select` builds is
+    /// typed after it, and one that does not bind is refused.
+    #[test]
+    fn a_leafs_schema_is_the_shape_its_read_publishes() {
+        let mut names = vec!["typed.arrows", "typed.avro", "typed.csv"];
+        if cfg!(feature = "parquet") {
+            names.push("typed.parquet");
+        }
+        for name in names {
+            let handle = stored(name);
+            let plain = handle.record_options().unwrap();
+            for options in [
+                plain.clone(),
+                plain.clone().with_select("price, id").unwrap(),
+                plain
+                    .clone()
+                    .with_select("id, price * 2 as doubled")
+                    .unwrap()
+                    .with_filter("doubled > 3")
+                    .unwrap(),
+                plain
+                    .clone()
+                    .with_filter("symbol = 'AAPL'")
+                    .unwrap()
+                    .with_select("id")
+                    .unwrap(),
+            ] {
+                let field = handle
+                    .read_arrow_field(&options)
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+                let read = handle.read_arrow_reader(&options).unwrap().schema();
+                assert_eq!(
+                    field,
+                    Field::from_arrow_schema(options.name(), read.as_ref()).unwrap(),
+                    "{name}: {}",
+                    options.plan()
+                );
+            }
+            let unbound = plain.with_filter("nowhere > 1").unwrap();
+            assert!(handle.read_arrow_field(&unbound).is_err(), "{name}");
+        }
+    }
+
     #[test]
     fn an_absent_resource_narrows_its_declared_schema_too() {
         let handle = handle("absent.arrows");

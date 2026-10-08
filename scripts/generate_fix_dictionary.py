@@ -710,6 +710,11 @@ def fold_legacy_codes(
 # carry theirs in the crate dump. ``follow`` marks an identifier an
 # operation that follows another carries forward, and ``role`` the
 # PartyRole(452) of the Parties occurrence whose PartyID(448) states the key.
+# A trade's lineage is read as an order's is: OrigTradeID(1126) and
+# OrigSecondaryTradeID(1127) are the first values of TradeID(1003) and
+# SecondaryTradeID(1040), and TradeReportRefID(572) - the report a cancel or
+# a replace refers to - is TradeReportID(571)'s one parent, which the crate's
+# vocabulary owns, so no field states it as ``FIX:parents``.
 # A key is the folded word of its identifier type - lower-case letters and
 # digits. A message's parties are its ``partyids`` and its regulatory trade
 # identifiers are ``identifiers``, both read by the crate natively rather
@@ -737,12 +742,16 @@ IDMAP_SOURCES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
     (262, [idmap("identifiers", "mdreqid")]),
     (526, [idmap("identifiers", "secondaryclordid")]),
     (527, [idmap("identifiers", "secondaryexecid")]),
+    (571, [idmap("identifiers", "tradereportid")]),
+    (572, [idmap("identifiers", "tradereportrefid")]),
     (793, [idmap("identifiers", "secondaryallocid")]),
     (880, [idmap("identifiers", "trdmatchid")]),
     (989, [idmap("identifiers", "secondaryindividualallocid")]),
     (1003, [idmap("identifiers", "tradeid")]),
     (1040, [idmap("identifiers", "secondarytradeid")]),
     (1042, [idmap("identifiers", "secondaryfirmtradeid")]),
+    (1126, [idmap("identifiers", "origtradeid")]),
+    (1127, [idmap("identifiers", "origsecondarytradeid")]),
     (1751, [idmap("identifiers", "secondaryquoteid")]),
 )
 
@@ -778,12 +787,10 @@ def parent_of(name: str, names: set[str]) -> tuple[str, int] | None:
 
 def attach_parents(catalog: dict[str, list[dict[str, Any]]]) -> None:
     """Write onto every identifier field the parents the dictionary's own
-    field names say it has, as ``FIX:parents``, each type once; and where a
-    field is its base's one parent, name it by the other prefix too - an
-    ``orig`` field also ``parent``, a ``parent`` field also ``orig`` - since
-    with one parent the two spellings are one field: OrigClOrdID(41) is also
-    ``parentclordid``, ParentAllocID(1593) also ``origallocid``. A spelling
-    another field holds, as its name or an alias, is never taken."""
+    field names say it has, as ``FIX:parents``, each type once. A parent is
+    named by its own field's names alone: OrigClOrdID(41) is
+    ``origclordid`` and never ``parentclordid``, the word a bridge spells
+    for a hierarchy parent rather than for a previous value."""
     by_name = {field["name"]: field for field in catalog["fields"]}
     names = set(by_name)
     parents: dict[str, list[tuple[int, str]]] = {}
@@ -792,27 +799,10 @@ def attach_parents(catalog: dict[str, list[dict[str, Any]]]) -> None:
         if found is not None:
             base, rank = found
             parents.setdefault(base, []).append((rank, name))
-    # ClOrdID's one parent is OrigClOrdID by FIX's own rule, never read off a
-    # ``parent`` name, so the swap reads the parent fields themselves.
-    held_names = names | {
-        alias for field in catalog["fields"] for alias in field["metadata"].get("FIX:names", [])
-    }
     for base, held in parents.items():
         metadata = by_name[base]["metadata"]
         metadata["FIX:parents"] = [name for _, name in sorted(held)]
         by_name[base]["metadata"] = dict(sorted(metadata.items()))
-        if len(held) != 1:
-            continue
-        parent = held[0][1]
-        prefix = next(prefix for prefix in PARENT_PREFIXES if parent.startswith(prefix))
-        other = next(other for other in PARENT_PREFIXES if other != prefix)
-        swapped = other + parent[len(prefix):]
-        if swapped in held_names:
-            continue
-        aliases = by_name[parent]["metadata"]
-        aliases["FIX:names"] = aliases.get("FIX:names", []) + [swapped]
-        by_name[parent]["metadata"] = dict(sorted(aliases.items()))
-        held_names.add(swapped)
 
 # Spellings a bridge writes for a field that no FIX version ever wrote, each
 # an alias ranked after every spelling a version did: OrderID(37) arrives as a

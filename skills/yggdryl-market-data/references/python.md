@@ -165,8 +165,9 @@ assert [source.as_py() for source in merged.srcuuids] == [LINE_1, LINE_2]
 
 ## Walk a stream into chains
 
-`graph.EventIterator` chains a stream by cross identity (and by a live
-element's `identifiers`), yields a twin as a restatement rather than a successor,
+`graph.EventIterator` chains a stream by cross identity (and by the chain identities a live
+element's `identifiers` hold, never an `execid`), re-keys each element onto its
+chain's side and first cross code, yields a twin as a restatement rather than a successor,
 retires a chain at a terminal state and emits one `EXPIRED` at a deadline.
 An order's or an execution's chain is keyed by side - a quote's is one chain
 whatever side it tags - a chain lives within one `marketdatakind` (an order and
@@ -660,7 +661,7 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
   `marketdata` row, refused where it names a column the row does not carry;
   `EventIterator(items, sorted=True, snapshot_ns=None)` defaults to trusting
   the order - an unsorted list is not refused, it yields broken chains (a step
-  before its live element yielded as it came, `prevuuid` None); pass
+  before its live element yielded following nothing, `prevuuid` None); pass
   `sorted=False` for one you have not sorted.
 - Prices and quantities take `Decimal("189.5")` (or an `int`): a float
   `price=189.5` is refused at `$.price` (`got f64`). `fxrates` takes

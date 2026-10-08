@@ -176,6 +176,18 @@ impl Provider {
         matches!(self, Self::Aws)
     }
 
+    /// Whether the store answers a suffix range, `Range: bytes=-N`, with
+    /// the object's last `N` bytes and a `Content-Range` stating its whole
+    /// length - what lets a footer-first read cost one `GET` and no `HEAD`.
+    ///
+    /// Amazon S3 and Google Cloud Storage do. Azure Blob Storage reads a range
+    /// only as `bytes=start-` or `bytes=start-end`, so a tail there is
+    /// counted back from the size a `HEAD` states - as Apache Arrow's
+    /// `object_store` refuses a suffix request to Azure rather than send one.
+    pub(super) const fn reads_suffix_range(&self) -> bool {
+        !matches!(self, Self::Azure)
+    }
+
     /// Refuse `operation`, which this store does not have.
     pub(super) fn unsupported(&self, operation: &'static str) -> Error {
         Error::unsupported(operation, self.described())

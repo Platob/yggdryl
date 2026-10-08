@@ -8175,6 +8175,16 @@ struct StageCosts {
 /// of the same line with that value spelled `Y` stood at 251 too - to 251.
 /// A frame's line states none of these values, and no other stage moved.
 ///
+/// The `parentclordid` spelling of `OrigClOrdID(41)` then retired, a
+/// bridge's `PARENTCLORDID` a word naming no field: the bridge row's
+/// `OrigClOrdID(41)` column holds a null where it held that key's value, so
+/// its landing lays out the validity a null cell costs and a stated one
+/// does not ([`a_null_cell_costs_the_validity_a_stated_one_does_not`]), one
+/// more, to 1524 - the same line with the key spelled `ORIGCLORDID` lands at
+/// 1523. The walk filing the chain identities alone moved no lifecycle: the
+/// three lines are terminal, so the walk retires each and files no name,
+/// and 12, 12 and 11 stand. No other stage moved.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
@@ -8183,7 +8193,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 548,
             into_row: 88,
-            landing: 1523,
+            landing: 1524,
             batch: 213,
             digest: 1,
             lifecycle: 12,
@@ -8388,6 +8398,150 @@ fn the_native_derivations_cost_every_parse_the_same() {
         "a parse keeps nothing per message: {once} once, {repeated} over a thousand"
     );
     eprintln!("native_derivations: {once} allocations per parse");
+}
+
+/// A typed leaf the walk re-keys onto its chain pays for what moved and
+/// nothing else, its finalize allocating nothing: over followers of a buy
+/// live element stored `10:1:J`, a follower of the chain's side stating
+/// another code costs one allocation - the code's text, the prefix already
+/// the holder's - and a side-less one three - two for the side it is lent,
+/// the leg `side_moved` quotes and the code `reprefix` writes under it, and
+/// one for the code; one already holding the side and the code costs
+/// nothing and moves nothing. Read off the run at 8 and 1024 followers.
+#[cfg(feature = "internals")]
+#[test]
+fn a_rekey_costs_the_chains_cross_code_on_a_typed_leaf() {
+    use yggdryl::internals::graph_iterator::rekeyed;
+
+    let mut live = OrderEvent::at(1);
+    live.set_crosscode("J".to_owned());
+    live.set_side(Side::Buy, true);
+    live.finalize();
+    assert_eq!(live.get_crosscode(), "10:1:J");
+    let identity = live.get_crossuuid();
+    let follower = |side: Option<Side>, code: &str| {
+        let mut event = OrderEvent::at(2);
+        event.set_crosscode(code.to_owned());
+        if let Some(side) = side {
+            event.set_side(side, true);
+        }
+        event.set_price(Some(Decimal::from_int(99)), true);
+        event.set_quantity(Some(Decimal::from_int(5)), true);
+        event.finalize();
+        event
+    };
+    for followers in [8, 1024] {
+        for (what, side, code, each, moves) in [
+            (
+                "the chain's side, another code",
+                Some(Side::Buy),
+                "K",
+                1,
+                true,
+            ),
+            ("no side, another code", None, "K", 3, true),
+            ("the chain's side and code", Some(Side::Buy), "J", 0, false),
+        ] {
+            let mut held: Vec<OrderEvent> = (0..followers).map(|_| follower(side, code)).collect();
+            let (allocations, moved) = counted(|| {
+                held.iter_mut()
+                    .map(|event| rekeyed(event, &live, identity))
+                    .filter(|moved| *moved)
+                    .count()
+            });
+            assert_eq!(moved, if moves { followers } else { 0 }, "{what}");
+            assert_eq!(
+                allocations,
+                each * followers,
+                "{what}: {allocations} over {followers} followers"
+            );
+            assert!(
+                held.iter().all(|event| event.get_side() == Side::Buy
+                    && event.get_crosscode() == "10:1:J"
+                    && event.get_crossuuid() == identity),
+                "{what}: every follower stands under the chain"
+            );
+        }
+    }
+}
+
+/// A FIX message the walk re-keys onto its chain is settled once: over
+/// followers of a `D` stored `10:1:A1`, a sided report stored `10:1:O1`
+/// costs two allocations - the code's text and the one settle, which a
+/// message's finalize costs alone - and a side-less cancel reject stored
+/// `10:0:O1` eighteen, the side written as `Side(54)` through the provided
+/// `follow_identity` before the code and the settle; a report already
+/// holding the chain's side and code costs nothing and moves nothing. Read
+/// off the run at 8 and 1024 followers. The side-less figure is a
+/// `FixMsg`'s own `follow_identity`: the lifecycle's message, crate-private,
+/// writes the side its own way.
+#[cfg(feature = "internals")]
+#[test]
+fn a_rekey_of_a_fix_message_is_one_settle() {
+    use yggdryl::internals::graph_iterator::rekeyed;
+
+    let codec = FixCodec::new(Arc::new(committed_registry().clone())).with_threads(1);
+    let parse = |line: &[u8]| -> FixMsg {
+        codec
+            .parse_line(line)
+            .expect("a readable line")
+            .next()
+            .expect("one message")
+            .expect("a message")
+    };
+    let live = parse(
+        b"8=FIX.4.4|35=D|49=B|56=S|34=1|52=20260921-10:00:00|11=A1|55=AAPL|54=1|38=10|44=100|10=0|",
+    );
+    assert_eq!(live.get_crosscode(), "10:1:A1");
+    let identity = live.get_crossuuid();
+    let cases: [(&str, &[u8], &str, usize, bool); 3] = [
+        (
+            "a sided report under another code",
+            b"8=FIX.4.4|35=8|49=S|56=B|34=2|52=20260921-10:00:01|37=O1|17=E1|150=0|39=0|54=1|55=AAPL|10=0|",
+            "10:1:O1",
+            2,
+            true,
+        ),
+        (
+            "a side-less cancel reject",
+            b"8=FIX.4.4|35=9|49=S|56=B|34=3|52=20260921-10:00:02|11=C2|37=O1|41=A1|39=8|434=1|10=0|",
+            "10:0:O1",
+            18,
+            true,
+        ),
+        (
+            "a report holding the chain's side and code",
+            b"8=FIX.4.4|35=8|49=S|56=B|34=4|52=20260921-10:00:03|11=A1|17=E2|150=0|39=0|54=1|55=AAPL|10=0|",
+            "10:1:A1",
+            0,
+            false,
+        ),
+    ];
+    for followers in [8, 1024] {
+        for (what, line, parsed, each, moves) in cases {
+            let message = parse(line);
+            assert_eq!(message.get_crosscode(), parsed, "{what}");
+            let mut held: Vec<FixMsg> = (0..followers).map(|_| message.clone()).collect();
+            let (allocations, moved) = counted(|| {
+                held.iter_mut()
+                    .map(|message| rekeyed(message, &live, identity))
+                    .filter(|moved| *moved)
+                    .count()
+            });
+            assert_eq!(moved, if moves { followers } else { 0 }, "{what}");
+            assert_eq!(
+                allocations,
+                each * followers,
+                "{what}: {allocations} over {followers} followers"
+            );
+            assert!(
+                held.iter()
+                    .all(|message| message.get_crosscode() == "10:1:A1"
+                        && message.get_crossuuid() == identity),
+                "{what}: every follower stands under the chain"
+            );
+        }
+    }
 }
 
 /// The text options a capture's copies are read under, as the scale
@@ -10865,6 +11019,92 @@ fn a_declared_stream_proves_each_batch_and_each_edge_and_never_a_row() {
             );
         }
     }
+}
+
+/// Reading a manifest that needs no bridge copies none of its bytes and
+/// decodes its rows once: the header is parsed out of the bytes the read
+/// already holds, and the bridge check decides from that header, so no copy
+/// of the bytes is held across the official parse and no container read
+/// decodes every row a second time only to find no text to rewrite. At 8
+/// and 512 entries the read's peak is the official parse's own, the bytes
+/// once, and one overhead the same at both sizes - a copy held beside them
+/// would grow it by the bytes' difference, 1388 here - and after the first
+/// read, which warms what every later one shares, a read costs the same
+/// every time.
+#[cfg(feature = "iceberg")]
+#[test]
+fn reading_a_manifest_that_needs_no_bridge_copies_none_of_its_bytes() {
+    use yggdryl::IOBase as _;
+    use yggdryl::iceberg::{
+        DataFile, FormatVersion, ManifestEntry, PartitionSpec, assign_field_ids, read_manifest,
+        write_manifest,
+    };
+
+    let mut field = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("venue"),
+    ])
+    .map(DataType::from)
+    .expect("distinct columns")
+    .required_field("row");
+    assign_field_ids(&mut field, 1).expect("the schema numbers");
+    let spec = PartitionSpec::identity(3, &field, &["venue"]).expect("venue is a column");
+    let manifest = |entries: usize| {
+        let rows: Vec<ManifestEntry> = (0..entries)
+            .map(|index| {
+                ManifestEntry::added(
+                    41,
+                    DataFile {
+                        file_path: format!("s3://warehouse/table/data/part-{index:05}.parquet")
+                            .into(),
+                        partition: vec![Scalar::from("XNAS")],
+                        record_count: 7,
+                        file_size_in_bytes: 512,
+                        value_counts: vec![(1, 7)],
+                        ..DataFile::default()
+                    },
+                )
+            })
+            .collect();
+        let mut handle = Buffer::new();
+        write_manifest(&mut handle, FormatVersion::V3, &field, &spec, &rows)
+            .expect("the manifest writes");
+        handle
+    };
+    let mut overheads = Vec::new();
+    for entries in [8, 512] {
+        let handle = manifest(entries);
+        let bytes = usize::try_from(handle.size()).expect("a length");
+        drop(read_manifest(&handle).expect("the manifest reads"));
+        let (once, read) = counted(|| read_manifest(&handle).expect("the manifest reads"));
+        assert_eq!(read.len(), entries);
+        drop(read);
+        let (again, read) = counted(|| read_manifest(&handle).expect("the manifest reads"));
+        drop(read);
+        assert_eq!(
+            again, once,
+            "a read of {entries} entries costs the same every time"
+        );
+        let (peak, read) = peaked(|| read_manifest(&handle).expect("the manifest reads"));
+        drop(read);
+        let (parse, parsed) = peaked(|| {
+            iceberg_official::spec::Manifest::parse_avro(handle.as_slice())
+                .expect("the official parse")
+        });
+        drop(parsed);
+        let overhead = peak
+            .checked_sub(parse + bytes)
+            .expect("the read holds the official parse and the bytes");
+        overheads.push((entries, bytes, overhead));
+    }
+    let [(_, small, below), (_, large, above)] = overheads[..] else {
+        panic!("two sizes, not {overheads:?}")
+    };
+    assert!(large > small, "{overheads:?}");
+    assert_eq!(
+        above, below,
+        "one copy of the bytes at every size: {overheads:?}"
+    );
 }
 
 /// A venue-partitioned Iceberg table of `files` commits, each one data

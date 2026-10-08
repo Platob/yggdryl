@@ -487,9 +487,9 @@ pub fn read_manifest<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestEntry
     let bytes = manifest_bytes(handle)?;
     // A fixed-UUID repair may alter only the official parser's temporary
     // view. Resolve partition values against the manifest's original schema
-    // so the returned scalar keeps its logical identity.
-    let bounded = crate::holder::Buffer::from(bytes.as_slice());
-    let metadata = manifest_metadata(&bounded)?;
+    // so the returned scalar keeps its logical identity - read off the
+    // header in the bytes already held, never a copy of them.
+    let metadata = manifest_metadata_from_bytes(&bytes)?;
     let partition_type = metadata
         .partition_spec()
         .partition_type(metadata.schema())
@@ -526,9 +526,25 @@ pub fn read_manifest_spec<H: IOBase + ?Sized>(handle: &H) -> Result<PartitionSpe
 /// as the reserved bucket that carries it, so the partition type and the
 /// spec it answers are read off the same header every other manifest has.
 fn manifest_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<OfficialManifestMetadata> {
-    let blocks = crate::avro::read_blocks(handle)?;
-    let mut metadata: std::collections::HashMap<String, Vec<u8>> = blocks
-        .metadata_bytes()
+    official_manifest_metadata(crate::avro::read_blocks(handle)?.metadata_bytes())
+}
+
+/// [`manifest_metadata`] of a manifest whose bytes are in hand: the header
+/// parsed out of them where it lies, the rows after it never decoded.
+fn manifest_metadata_from_bytes(bytes: &[u8]) -> Result<OfficialManifestMetadata> {
+    use crate::avro::container;
+    use crate::avro::datum::Cursor;
+
+    let mut cursor = Cursor::new(bytes);
+    container::check_magic(cursor.take(container::MAGIC.len())?)?;
+    let (entries, _) = container::parse_header_entries(&mut cursor, crate::Limits::default())?;
+    official_manifest_metadata(&entries)
+}
+
+/// The official metadata of a manifest's raw header `entries`, its schema
+/// and partition spec bridged for the official model.
+fn official_manifest_metadata(entries: &[(SmolStr, Vec<u8>)]) -> Result<OfficialManifestMetadata> {
+    let mut metadata: std::collections::HashMap<String, Vec<u8>> = entries
         .iter()
         .map(|(key, value)| (key.to_string(), value.clone()))
         .collect();
@@ -737,12 +753,13 @@ fn manifest_bytes<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<u8>> {
 
 /// Validate collection semantics the official reader projects into maps.
 fn parse_manifest(bytes: &[u8]) -> Result<OfficialManifest> {
-    preflight_manifest_entries(bytes)?;
+    let header = preflight_manifest_entries(bytes)?;
     // A header spelling `unknown`, `variant` or one of the crate's own
     // transforms is rewritten for the official reader before anything is
     // parsed; the UUID repair below then runs on the same view, so the two
-    // never compete.
-    let view = bridged_official_reader_view(bytes)?;
+    // never compete. The preflight's header decides it, so a manifest with
+    // nothing to bridge is decoded by the official parser alone.
+    let view = bridged_official_reader_view(bytes, &header)?;
     let bytes = view.as_deref().unwrap_or(bytes);
     match OfficialManifest::parse_avro(bytes) {
         Ok(manifest) => Ok(manifest),
@@ -797,37 +814,52 @@ fn fixed_uuid_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
 /// answered `None` without being re-encoded. The partition tuple is read
 /// back under the header as written ([`manifest_metadata`]), so a value keeps
 /// its logical identity whatever the parser was shown.
-fn bridged_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
-    let source = crate::holder::Buffer::from(bytes);
-    let container = crate::avro::read_container(&source)?;
-    let mut metadata = container.metadata;
-    let header = |name: &str| {
-        metadata
+///
+/// `header` is the container's header as parsed out of `bytes`, which is
+/// what decides: only a manifest whose texts change has its rows decoded
+/// here, to be written again under the bridged header.
+fn bridged_official_reader_view(
+    bytes: &[u8],
+    header: &crate::avro::container::Header,
+) -> Result<Option<Vec<u8>>> {
+    let text = |name: &str| {
+        header
+            .metadata
             .iter()
             .find(|(key, _)| key.as_str() == name)
             .and_then(|(_, value)| crate::json::from_utf8(value).ok())
     };
-    let nanoseconds = match (header("schema"), header("partition-spec")) {
+    let nanoseconds = match (text("schema"), text("partition-spec")) {
         (Some(schema), Some(spec)) => super::official::partitions_on_nanoseconds(&schema, &spec),
         _ => false,
     };
-    let mut changed = false;
-    for (name, value) in &mut metadata {
+    let mut bridged = Vec::new();
+    for (name, value) in &header.metadata {
         let Ok(document) = crate::json::from_utf8(value) else {
             continue;
         };
-        let bridged = match name.as_str() {
+        let rewritten = match name.as_str() {
             "schema" => super::official::parser_view_schema(&document, nanoseconds)?,
             "partition-spec" => super::official::bridged_partition_spec(&document)?,
             _ => None,
         };
-        if let Some(bridged) = bridged {
-            *value = SmolStr::new(crate::json::into_utf8(&bridged)?);
-            changed = true;
+        if let Some(rewritten) = rewritten {
+            bridged.push((
+                name.clone(),
+                SmolStr::new(crate::json::into_utf8(&rewritten)?),
+            ));
         }
     }
-    if !changed {
+    if bridged.is_empty() {
         return Ok(None);
+    }
+    let source = crate::holder::Buffer::from(bytes);
+    let container = crate::avro::read_container(&source)?;
+    let mut metadata = container.metadata;
+    for (name, value) in &mut metadata {
+        if let Some((_, rewritten)) = bridged.iter().find(|(bridged, _)| bridged == name) {
+            *value = rewritten.clone();
+        }
     }
     let schema = container.schema.into_json();
     if !nanoseconds {
@@ -1026,8 +1058,9 @@ fn object_without(value: &Scalar, key: &str) -> Result<Scalar> {
     }
 }
 
-/// Decode one bounded row at a time before map conversion can erase duplicates.
-fn preflight_manifest_entries(bytes: &[u8]) -> Result<()> {
+/// Decode one bounded row at a time before map conversion can erase
+/// duplicates, answering the header the rows were decoded under.
+fn preflight_manifest_entries(bytes: &[u8]) -> Result<crate::avro::container::Header> {
     use crate::avro::container;
     use crate::avro::datum::{Cursor, DatumCodec};
 
@@ -1083,7 +1116,7 @@ fn preflight_manifest_entries(bytes: &[u8]) -> Result<()> {
         }
         rows = end;
     }
-    Ok(())
+    Ok(header)
 }
 
 /// Reject lossy metric maps and invalid split offsets in one raw entry.
@@ -1606,6 +1639,31 @@ pub fn write_manifest_list<H: IOBase + ?Sized>(
     first_row_id: Option<i64>,
     manifests: &[ManifestFile],
 ) -> Result<Option<i64>> {
+    write_manifest_list_rows(
+        handle,
+        version,
+        snapshot_id,
+        parent_snapshot_id,
+        sequence_number,
+        first_row_id,
+        manifests,
+    )
+    .map(|(next_row_id, _)| next_row_id)
+}
+
+/// [`write_manifest_list`], answering beside the next unassigned row id the
+/// rows the list states - each unassigned v3 data manifest given its range -
+/// which are the manifests [`read_manifest_list`] reads back from it: what
+/// the commit that wrote the list holds, so the list is never read back.
+pub(crate) fn write_manifest_list_rows<H: IOBase + ?Sized>(
+    handle: &mut H,
+    version: FormatVersion,
+    snapshot_id: i64,
+    parent_snapshot_id: Option<i64>,
+    sequence_number: i64,
+    first_row_id: Option<i64>,
+    manifests: &[ManifestFile],
+) -> Result<(Option<i64>, Vec<ManifestFile>)> {
     if version < FormatVersion::V3 && first_row_id.is_some() {
         return Err(invalid(format_smolstr!(
             "expected no manifest-list first-row-id in Iceberg v{}, got {first_row_id:?}",
@@ -1619,6 +1677,7 @@ pub fn write_manifest_list<H: IOBase + ?Sized>(
     }
     let avro_schema = manifest_list_schema(version)?;
     let mut rows = Vec::with_capacity(manifests.len());
+    let mut stated = Vec::with_capacity(manifests.len());
     let mut next_row_id = first_row_id;
     for manifest in manifests {
         let mut manifest = manifest.clone();
@@ -1626,6 +1685,7 @@ pub fn write_manifest_list<H: IOBase + ?Sized>(
             manifest.assign_first_row_id(&mut next_row_id)?;
         }
         rows.push(manifest_to_value(&manifest, version)?);
+        stated.push(manifest);
     }
     let snapshot_text = snapshot_id.to_string();
     let parent_text = parent_snapshot_id.map_or_else(|| "null".to_owned(), |id| id.to_string());
@@ -1644,7 +1704,7 @@ pub fn write_manifest_list<H: IOBase + ?Sized>(
         metadata.push(("first-row-id", first_row_text.as_str()));
     }
     crate::avro::write_container(handle, &avro_schema, &metadata, &rows)?;
-    Ok(next_row_id)
+    Ok((next_row_id, stated))
 }
 
 /// Build the Avro schema one manifest's entries are written against.

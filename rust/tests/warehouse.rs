@@ -8,6 +8,9 @@
 
 #[path = "support/counting_filesystem.rs"]
 mod counting_filesystem;
+#[cfg(feature = "s3")]
+#[path = "support/server.rs"]
+mod server;
 
 #[path = "warehouse/catalog.rs"]
 mod catalog;

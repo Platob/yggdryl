@@ -81,6 +81,8 @@ pub enum Call {
     ReadAllBytes,
     /// [`IOBase::read_range_bytes`].
     ReadRangeBytes,
+    /// [`IOBase::read_tail_bytes`].
+    ReadTailBytes,
     /// [`IOBase::read_digest`].
     ReadDigest,
     /// [`IOBase::read_range_digest`].
@@ -141,7 +143,7 @@ pub enum Call {
     Close,
 }
 
-/// What a call is for, so a tally reads as five numbers rather than thirty-one.
+/// What a call is for, so a tally reads as five numbers rather than thirty-four.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Group {
     /// Anything that transfers bytes out of the store.
@@ -163,6 +165,7 @@ impl Call {
         Self::PstreamBytes,
         Self::ReadAllBytes,
         Self::ReadRangeBytes,
+        Self::ReadTailBytes,
         Self::ReadDigest,
         Self::ReadRangeDigest,
         Self::Pwrite,
@@ -195,7 +198,7 @@ impl Call {
     ];
 
     /// How many distinct calls a tally holds.
-    pub const COUNT: usize = 33;
+    pub const COUNT: usize = 34;
 
     /// The method's name, spelled as the trait spells it.
     #[must_use]
@@ -205,6 +208,7 @@ impl Call {
             Self::PstreamBytes => "pstream_bytes",
             Self::ReadAllBytes => "read_all_bytes",
             Self::ReadRangeBytes => "read_range_bytes",
+            Self::ReadTailBytes => "read_tail_bytes",
             Self::ReadDigest => "read_digest",
             Self::ReadRangeDigest => "read_range_digest",
             Self::Pwrite => "pwrite",
@@ -245,6 +249,7 @@ impl Call {
             | Self::PstreamBytes
             | Self::ReadAllBytes
             | Self::ReadRangeBytes
+            | Self::ReadTailBytes
             | Self::ReadDigest
             | Self::ReadRangeDigest => Group::Read,
             Self::Pwrite
@@ -537,6 +542,10 @@ impl<H: IOBase> IOBase for Counted<H> {
     fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
         self.record(Call::ReadRangeBytes)
             .read_range_bytes(offset, length)
+    }
+
+    fn read_tail_bytes(&self, length: usize) -> Result<(Vec<u8>, u64)> {
+        self.record(Call::ReadTailBytes).read_tail_bytes(length)
     }
 
     fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {
