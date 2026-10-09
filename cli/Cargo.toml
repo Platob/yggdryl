@@ -44,6 +44,8 @@ shlex = "2.0"
 arrow-array.workspace = true
 arrow-schema.workspace = true
 log.workspace = true
+# The Parquet page names the page codec as the parquet crate spells it.
+parquet = { version = "59.2.0", default-features = false }
 serde_json = "1.0"
 smol_str = "=0.3.2"
 

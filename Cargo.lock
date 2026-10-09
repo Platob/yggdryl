@@ -4419,6 +4419,7 @@ dependencies = [
  "clap",
  "crossterm",
  "log",
+ "parquet 59.2.0",
  "serde_json",
  "shlex",
  "smol_str",
